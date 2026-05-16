@@ -1,12 +1,6 @@
 {
-  "extends": "expo/tsconfig.base",
+  "extends": ["expo/tsconfig.base", "../../tsconfig.base.json"],
   "compilerOptions": {
-    "strict": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "noImplicitOverride": true,
-    "useUnknownInCatchVariables": true,
-    "forceConsistentCasingInFileNames": true,
     "paths": {
       "@/*": ["./src/*"],
       "@/assets/*": ["./assets/*"],

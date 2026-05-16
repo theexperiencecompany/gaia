@@ -1,16 +1,16 @@
 """Unit tests for subagent_runner.py and subagent_helpers.py."""
 
+from datetime import UTC, datetime
 import json
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import (
     AIMessageChunk,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
+import pytest
 
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
@@ -23,7 +23,6 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.models.mcp_config import SubAgentConfig
 from app.models.subagent_models import Subagent
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -265,7 +264,7 @@ class TestPrepareSubagentExecution:
                 subagent_id="github",
                 task="List my repos",
                 user={"user_id": "u1", "email": "t@t.com", "name": "T"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id="conv-1",
             )
 
@@ -292,7 +291,7 @@ class TestPrepareSubagentExecution:
                 subagent_id="nonexistent",
                 task="task",
                 user={"user_id": "u1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id="conv-1",
             )
 
@@ -319,7 +318,7 @@ class TestPrepareSubagentExecution:
                 subagent_id="github",
                 task="task",
                 user={"user_id": "u1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id="conv-1",
             )
 
@@ -362,7 +361,7 @@ class TestPrepareSubagentExecution:
                 subagent_id="subagent:github",
                 task="task",
                 user={"user_id": "u1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id="conv-1",
             )
 
@@ -632,13 +631,15 @@ class TestCheckSubagentIntegration:
 
     @pytest.mark.asyncio
     async def test_exception_returns_none(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.check_integration_status",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("network error"),
+        with (
+            patch(
+                "app.agents.core.subagents.subagent_runner.check_integration_status",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("network error"),
+            ),
+            patch("app.agents.core.subagents.subagent_runner.log"),
         ):
-            with patch("app.agents.core.subagents.subagent_runner.log"):
-                result = await check_subagent_integration("github", "u1")
+            result = await check_subagent_integration("github", "u1")
         assert result is None
 
 
@@ -681,7 +682,7 @@ class TestPrepareExecutorExecution:
                     "email": "t@t.com",
                     "user_name": "Test",
                 },
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert error is None
@@ -700,7 +701,7 @@ class TestPrepareExecutorExecution:
             ctx, error = await prepare_executor_execution(
                 task="task",
                 configurable={"user_id": "u1", "thread_id": "t1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert ctx is None
@@ -744,7 +745,7 @@ class TestPrepareExecutorExecution:
                     "tool_category": "github",
                     "selected_tool": "github_search_repos",
                 },
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert error is None
@@ -782,7 +783,7 @@ class TestPrepareExecutorExecution:
                     "user_id": "u1",
                     "thread_id": "t1",
                 },
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         human_msg = ctx.initial_state["messages"][-1]
@@ -815,7 +816,7 @@ class TestPrepareExecutorExecution:
             ctx, error = await prepare_executor_execution(
                 task="task",
                 configurable={"user_id": "u1", "thread_id": "t1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 stream_id="my-stream-id",
             )
 
@@ -849,7 +850,7 @@ class TestPrepareExecutorExecution:
             await prepare_executor_execution(
                 task="task",
                 configurable={"user_id": "u1", "thread_id": "t1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         call_kwargs = mock_build_config.call_args.kwargs
@@ -899,7 +900,7 @@ class TestCallSubagent:
                 query="List repos",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 chunks.append(c)
 
@@ -927,7 +928,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 chunks.append(c)
 
@@ -957,7 +958,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 skip_integration_check=False,
             ):
                 chunks.append(c)
@@ -1000,7 +1001,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 pass
 
@@ -1043,7 +1044,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 stream_id="s-1",
             ):
                 chunks.append(c)
@@ -1088,7 +1089,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 chunks.append(c)
 
@@ -1123,7 +1124,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 chunks.append(c)
 
@@ -1159,7 +1160,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 chunks.append(c)
 

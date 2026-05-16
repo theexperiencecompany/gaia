@@ -526,6 +526,7 @@ export function PieChartView(props: z.infer<typeof pieChartSchema>) {
                       </text>
                     );
                   }
+                  return null;
                 }}
               />
             </Pie>
@@ -776,6 +777,7 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
                       </text>
                     );
                   }
+                  return null;
                 }}
               />
             </PolarRadiusAxis>
@@ -847,6 +849,7 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
                       </text>
                     );
                   }
+                  return null;
                 }}
               />
             </PolarRadiusAxis>
@@ -920,6 +923,7 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
                     </text>
                   );
                 }
+                return null;
               }}
             />
           </PolarRadiusAxis>

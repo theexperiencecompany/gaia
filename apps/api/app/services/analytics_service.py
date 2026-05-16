@@ -3,12 +3,12 @@ Analytics service for server-side PostHog event tracking.
 Provides type-safe event tracking with consistent naming conventions.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
-from shared.py.wide_events import log
 from app.constants.auth import LOGIN_METHOD_WORKOS
 from app.core.lazy_loader import providers
+from shared.py.wide_events import log
 
 
 # Event name constants for consistent tracking
@@ -40,7 +40,7 @@ def _get_posthog_client():
 
 def identify_user(
     user_id: str,
-    properties: Optional[dict[str, Any]] = None,
+    properties: dict[str, Any] | None = None,
 ) -> None:
     """
     Identify a user in PostHog with their properties.
@@ -60,7 +60,7 @@ def identify_user(
         client.set(distinct_id=user_id, properties=user_properties)
         client.set_once(
             distinct_id=user_id,
-            properties={"first_seen": datetime.now(timezone.utc).isoformat()},
+            properties={"first_seen": datetime.now(UTC).isoformat()},
         )
     except Exception as e:
         log.error(f"Failed to identify user in PostHog: {e}")
@@ -69,7 +69,7 @@ def identify_user(
 def capture_event(
     user_id: str,
     event: str,
-    properties: Optional[dict[str, Any]] = None,
+    properties: dict[str, Any] | None = None,
 ) -> None:
     """
     Capture an analytics event in PostHog.
@@ -88,7 +88,7 @@ def capture_event(
     try:
         event_properties = {
             **(properties or {}),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         client.capture(
             event=event,
@@ -102,9 +102,9 @@ def capture_event(
 def track_signup(
     user_id: str,
     email: str,
-    name: Optional[str] = None,
+    name: str | None = None,
     signup_method: str = LOGIN_METHOD_WORKOS,
-    properties: Optional[dict[str, Any]] = None,
+    properties: dict[str, Any] | None = None,
 ) -> None:
     """
     Track a user signup event.
@@ -124,7 +124,7 @@ def track_signup(
             "email": email,
             "name": name,
             "signup_method": signup_method,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         },
     )
 
@@ -145,9 +145,9 @@ def track_signup(
 def track_login(
     user_id: str,
     email: str,
-    name: Optional[str] = None,
+    name: str | None = None,
     login_method: str = LOGIN_METHOD_WORKOS,
-    properties: Optional[dict[str, Any]] = None,
+    properties: dict[str, Any] | None = None,
 ) -> None:
     """
     Track a user login event.
@@ -166,7 +166,7 @@ def track_login(
             "email": email,
             "name": name,
             "last_login_method": login_method,
-            "last_login_at": datetime.now(timezone.utc).isoformat(),
+            "last_login_at": datetime.now(UTC).isoformat(),
         },
     )
 
@@ -186,7 +186,7 @@ def track_login(
 def track_logout(
     user_id: str,
     email: str,
-    properties: Optional[dict[str, Any]] = None,
+    properties: dict[str, Any] | None = None,
 ) -> None:
     """
     Track a user logout event.
@@ -210,11 +210,11 @@ def track_logout(
 def track_subscription_event(
     user_id: str,
     event_type: str,
-    subscription_id: Optional[str] = None,
-    plan_name: Optional[str] = None,
-    amount: Optional[float] = None,
-    currency: Optional[str] = None,
-    properties: Optional[dict[str, Any]] = None,
+    subscription_id: str | None = None,
+    plan_name: str | None = None,
+    amount: float | None = None,
+    currency: str | None = None,
+    properties: dict[str, Any] | None = None,
 ) -> None:
     """
     Track subscription-related events.
@@ -258,9 +258,7 @@ def track_subscription_event(
                     properties={
                         "plan": plan_name,
                         "subscription_status": "active",
-                        "subscription_activated_at": datetime.now(
-                            timezone.utc
-                        ).isoformat(),
+                        "subscription_activated_at": datetime.now(UTC).isoformat(),
                     },
                 )
             except Exception as e:
@@ -270,10 +268,10 @@ def track_subscription_event(
 def track_payment_event(
     user_id: str,
     event_type: str,
-    payment_id: Optional[str] = None,
-    amount: Optional[float] = None,
-    currency: Optional[str] = None,
-    properties: Optional[dict[str, Any]] = None,
+    payment_id: str | None = None,
+    amount: float | None = None,
+    currency: str | None = None,
+    properties: dict[str, Any] | None = None,
 ) -> None:
     """
     Track payment-related events.

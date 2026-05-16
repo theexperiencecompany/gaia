@@ -7,8 +7,8 @@ extracted from agent chunks and republished to Redis.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import json
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -36,7 +36,7 @@ class TestProcessDataChunkReal:
                 "tool_data": {
                     "tool_name": "web_search",
                     "data": {"query": "cats"},
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 }
             }
         )
@@ -69,9 +69,7 @@ class TestProcessDataChunkReal:
         follow_up_actions: list = []
 
         # follow_up_actions are top-level in the chunk per extract_tool_data contract
-        chunk_payload = json.dumps(
-            {"follow_up_actions": ["Draft email", "Schedule meeting"]}
-        )
+        chunk_payload = json.dumps({"follow_up_actions": ["Draft email", "Schedule meeting"]})
         chunk = f"data: {chunk_payload}\n\n"
 
         with patch("app.services.chat_service.stream_manager") as mock_sm:

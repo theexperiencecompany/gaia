@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.code_exec_tool."""
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,7 +14,7 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.code_exec_tool"
 
 
-def _make_config(user_id: str = FAKE_USER_ID) -> Dict[str, Any]:
+def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
     """Return a minimal RunnableConfig-like dict."""
     return {"metadata": {"user_id": user_id}}
 
@@ -42,7 +42,7 @@ def _make_execution_result(
 def _make_settings_mock(has_e2b_key: bool = True) -> MagicMock:
     """Create a settings mock with optional E2B key."""
     settings = MagicMock()
-    settings.E2B_API_KEY = "test-e2b-key" if has_e2b_key else ""
+    settings.E2B_API_KEY = "test-e2b-key" if has_e2b_key else ""  # pragma: allowlist secret
     return settings
 
 
@@ -69,7 +69,7 @@ class TestExecuteCode:
         mock_writer_factory: MagicMock,
     ) -> None:
         """Successfully executes Python code with stdout output."""
-        mock_settings.E2B_API_KEY = "test-key"
+        mock_settings.E2B_API_KEY = "test-key"  # pragma: allowlist secret
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
 
@@ -90,9 +90,7 @@ class TestExecuteCode:
         )
 
         assert "Hello, World!" in result
-        mock_sandbox.run_code.assert_called_once_with(
-            "print('Hello, World!')", language="python"
-        )
+        mock_sandbox.run_code.assert_called_once_with("print('Hello, World!')", language="python")
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.settings")
@@ -102,7 +100,7 @@ class TestExecuteCode:
         mock_writer_factory: MagicMock,
     ) -> None:
         """Empty code string returns validation error."""
-        mock_settings.E2B_API_KEY = "test-key"
+        mock_settings.E2B_API_KEY = "test-key"  # pragma: allowlist secret
         mock_writer_factory.return_value = _writer_mock()
 
         from app.agents.tools.code_exec_tool import execute_code
@@ -123,7 +121,7 @@ class TestExecuteCode:
         mock_writer_factory: MagicMock,
     ) -> None:
         """Whitespace-only code is rejected."""
-        mock_settings.E2B_API_KEY = "test-key"
+        mock_settings.E2B_API_KEY = "test-key"  # pragma: allowlist secret
         mock_writer_factory.return_value = _writer_mock()
 
         from app.agents.tools.code_exec_tool import execute_code
@@ -144,7 +142,7 @@ class TestExecuteCode:
         mock_writer_factory: MagicMock,
     ) -> None:
         """Code exceeding 50K characters is rejected."""
-        mock_settings.E2B_API_KEY = "test-key"
+        mock_settings.E2B_API_KEY = "test-key"  # pragma: allowlist secret
         mock_writer_factory.return_value = _writer_mock()
 
         from app.agents.tools.code_exec_tool import execute_code
@@ -192,7 +190,7 @@ class TestExecuteCode:
         mock_writer_factory: MagicMock,
     ) -> None:
         """Stderr is included in output."""
-        mock_settings.E2B_API_KEY = "test-key"
+        mock_settings.E2B_API_KEY = "test-key"  # pragma: allowlist secret
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
 
@@ -226,7 +224,7 @@ class TestExecuteCode:
         mock_writer_factory: MagicMock,
     ) -> None:
         """Execution error is reported in output."""
-        mock_settings.E2B_API_KEY = "test-key"
+        mock_settings.E2B_API_KEY = "test-key"  # pragma: allowlist secret
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
 
@@ -260,7 +258,7 @@ class TestExecuteCode:
         mock_writer_factory: MagicMock,
     ) -> None:
         """Charts are processed and included in output."""
-        mock_settings.E2B_API_KEY = "test-key"
+        mock_settings.E2B_API_KEY = "test-key"  # pragma: allowlist secret
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
 
@@ -294,7 +292,7 @@ class TestExecuteCode:
         mock_writer_factory: MagicMock,
     ) -> None:
         """Sandbox creation failure returns error string."""
-        mock_settings.E2B_API_KEY = "test-key"
+        mock_settings.E2B_API_KEY = "test-key"  # pragma: allowlist secret
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
         mock_sandbox_cls.side_effect = Exception("Sandbox creation timeout")
@@ -324,7 +322,7 @@ class TestExecuteCode:
         mock_writer_factory: MagicMock,
     ) -> None:
         """Code with no output returns success fallback message."""
-        mock_settings.E2B_API_KEY = "test-key"
+        mock_settings.E2B_API_KEY = "test-key"  # pragma: allowlist secret
         mock_writer_factory.return_value = _writer_mock()
 
         execution = _make_execution_result()
@@ -357,7 +355,7 @@ class TestExecuteCode:
         mock_writer_factory: MagicMock,
     ) -> None:
         """Verifies code_data events are streamed to writer."""
-        mock_settings.E2B_API_KEY = "test-key"
+        mock_settings.E2B_API_KEY = "test-key"  # pragma: allowlist secret
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
 
@@ -396,7 +394,7 @@ class TestExecuteCode:
         mock_writer_factory: MagicMock,
     ) -> None:
         """Chart processing errors are appended to stderr in output."""
-        mock_settings.E2B_API_KEY = "test-key"
+        mock_settings.E2B_API_KEY = "test-key"  # pragma: allowlist secret
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
 

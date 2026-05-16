@@ -34,9 +34,6 @@ jobs:
         run: pnpm run quality:lint
 
   # --- Workspace dependency hygiene -----------------------------------------
-  # syncpack: every package agrees on dep versions, semver ranges, sort order.
-  # manypkg:  workspace topology is valid; no missing fields / dupes.
-  # pkg-json: shape + no banned deps (eslint/prettier/lint-staged).
   deps:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -60,7 +57,7 @@ jobs:
       - name: Madge circular deps
         run: pnpm run quality:circular
 
-  # --- File size limit (per-extension + allowlist) -------------------------
+  # --- File size limit (per-extension + allowlist + hard cap) -------------
   file-size:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -78,7 +75,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
       - name: Type / interface / enum location
-        run: pnpm run quality:types-location
+        run: node scripts/ci/check-types-location.mjs --enforce
 
   # --- Components-per-file (one component per file) ------------------------
   components-per-file:
@@ -90,27 +87,130 @@ jobs:
       - name: At most 2 components per file
         run: pnpm run quality:components
 
-  # --- Copy-paste detection (informational only) ----------------------------
+  # --- Copy-paste detection (strict; threshold lives in .jscpd.json) -------
   duplicates:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    continue-on-error: true
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
       - name: jscpd duplicate code report
-        run: pnpm run quality:dupe || true
+        run: pnpm run quality:dupe
 
-  # --- Type coverage (informational only) ----------------------------------
+  # --- Type coverage (strict; threshold per workspace) ---------------------
   type-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Explicit-type coverage (per-workspace thresholds)
+        run: pnpm run quality:type-coverage
+
+  # --- Published package hygiene (publint + are-the-types-wrong) ----------
+  package-hygiene:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: publint (packages/cli)
+        run: pnpm run quality:publint
+      - name: are-the-types-wrong (packages/cli)
+        run: pnpm run quality:attw
+
+  # --- TypeScript type-check (all workspaces, strict) ---------------------
+  type-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: tsc --noEmit (all workspaces)
+        run: pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp
+
+  # --- Python ruff (strict rule set) --------------------------------------
+  python-ruff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: ruff check (strict rule set)
+        run: uvx ruff check apps/api apps/voice-agent libs/shared/py
+      - name: ruff format check
+        run: uvx ruff format --check apps/api apps/voice-agent libs/shared/py
+
+  # --- Python mypy (staged-strict) ----------------------------------------
+  python-mypy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: uv sync (api dev + backend)
+        run: uv sync --project apps/api --group backend --group dev
+      - name: mypy (api + voice-agent + shared)
+        run: uv run --project apps/api --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py --ignore-missing-imports
+
+  # --- Python docstring coverage (interrogate) ----------------------------
+  python-interrogate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: interrogate (docstring coverage)
+        run: uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py
+
+  # --- Python complexity (xenon / radon) ----------------------------------
+  python-xenon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: xenon cyclomatic complexity
+        run: pnpm dlx --silent xenon@latest --max-absolute F --max-modules E --max-average B apps/api apps/voice-agent libs/shared/py -e 'apps/api/tests/**' -e 'apps/api/scripts/**' -e 'libs/shared/py/tests/**' || uvx xenon --max-absolute F --max-modules E --max-average B apps/api apps/voice-agent libs/shared/py -e 'apps/api/tests/**' -e 'apps/api/scripts/**' -e 'libs/shared/py/tests/**'
+
+  # --- Python security (bandit + pip-audit) -------------------------------
+  python-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: bandit (security lint)
+        run: uvx bandit -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level medium --confidence-level medium
+      - name: pip-audit (dependency CVEs)
+        continue-on-error: true
+        run: uvx pip-audit --strict --skip-editable
+
+  # --- Dead code detection (knip + vulture) — informational only ----------
+  dead-code:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: Explicit-type coverage (>=85% in apps/web)
-        run: pnpm run quality:type-coverage || true
+      - name: knip + vulture dead-code report
+        run: pnpm run quality:dead
 
   # --- Quality gate (single required status check) -------------------------
   quality-gate:
@@ -122,7 +222,16 @@ jobs:
       - file-size
       - types-location
       - components-per-file
-      # duplicates and type-coverage are informational (continue-on-error).
+      - duplicates
+      - type-coverage
+      - package-hygiene
+      - type-check
+      - python-ruff
+      - python-mypy
+      - python-interrogate
+      - python-xenon
+      - python-security
+      # dead-code is informational (continue-on-error)
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -134,6 +243,15 @@ jobs:
           echo "file-size:           ${{ needs.file-size.result }}"
           echo "types-location:      ${{ needs.types-location.result }}"
           echo "components-per-file: ${{ needs.components-per-file.result }}"
+          echo "duplicates:          ${{ needs.duplicates.result }}"
+          echo "type-coverage:       ${{ needs.type-coverage.result }}"
+          echo "package-hygiene:     ${{ needs.package-hygiene.result }}"
+          echo "type-check:          ${{ needs.type-check.result }}"
+          echo "python-ruff:         ${{ needs.python-ruff.result }}"
+          echo "python-mypy:         ${{ needs.python-mypy.result }}"
+          echo "python-interrogate:  ${{ needs.python-interrogate.result }}"
+          echo "python-xenon:        ${{ needs.python-xenon.result }}"
+          echo "python-security:     ${{ needs.python-security.result }}"
 
           for r in \
             "${{ needs.biome.result }}" \
@@ -141,7 +259,16 @@ jobs:
             "${{ needs.circular.result }}" \
             "${{ needs.file-size.result }}" \
             "${{ needs.types-location.result }}" \
-            "${{ needs.components-per-file.result }}"; do
+            "${{ needs.components-per-file.result }}" \
+            "${{ needs.duplicates.result }}" \
+            "${{ needs.type-coverage.result }}" \
+            "${{ needs.package-hygiene.result }}" \
+            "${{ needs.type-check.result }}" \
+            "${{ needs.python-ruff.result }}" \
+            "${{ needs.python-mypy.result }}" \
+            "${{ needs.python-interrogate.result }}" \
+            "${{ needs.python-xenon.result }}" \
+            "${{ needs.python-security.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
               echo "::error::Required quality job result: $r"
               exit 1

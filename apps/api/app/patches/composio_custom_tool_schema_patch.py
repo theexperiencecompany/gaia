@@ -13,7 +13,7 @@ def to_std_dict(obj: t.Any) -> t.Any:
     """Recursively convert jsonref proxies to standard python dicts/lists"""
     if isinstance(obj, dict):
         return {k: to_std_dict(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
+    if isinstance(obj, list):
         return [to_std_dict(elem) for elem in obj]
     return obj
 
@@ -26,9 +26,7 @@ def _patched_parse_info(self):
     """Patched version that inlines $ref before storing schema"""
     tool_info = _original_parse_info(self)
 
-    if hasattr(tool_info, "input_parameters") and isinstance(
-        tool_info.input_parameters, dict
-    ):
+    if hasattr(tool_info, "input_parameters") and isinstance(tool_info.input_parameters, dict):
         # Use jsonref to inline all $ref references
         resolved = jsonref.replace_refs(tool_info.input_parameters)
         # Convert back to standard dict to avoid jsonref.JsonRef proxy issues

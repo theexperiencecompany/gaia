@@ -1,10 +1,10 @@
 """Unit tests for the support service (app/services/support_service.py)."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi import HTTPException, UploadFile
+import pytest
 
 from app.models.support_models import (
     SupportEmailNotification,
@@ -25,7 +25,6 @@ from app.services.support_service import (
     get_all_support_requests,
     get_user_support_requests,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shared constants
@@ -61,9 +60,7 @@ def mock_cloudinary():
 @pytest.fixture
 def mock_upload_file_to_cloudinary():
     with patch("app.services.support_service.upload_file_to_cloudinary") as mock_upload:
-        mock_upload.return_value = (
-            "https://res.cloudinary.com/demo/support/ticket_file.png"
-        )
+        mock_upload.return_value = "https://res.cloudinary.com/demo/support/ticket_file.png"
         yield mock_upload
 
 
@@ -128,7 +125,7 @@ def _make_db_support_doc(
     req_type: str = "support",
 ) -> dict:
     """Create a support request document as it would exist in MongoDB."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return {
         "_id": request_id,
         "ticket_id": ticket_id,
@@ -164,18 +161,14 @@ class TestDeleteUploadedFiles:
 
         mock_cloudinary.destroy.assert_called_once_with("support/TICKET_file")
 
-    async def test_malformed_url_without_support_segment_is_skipped(
-        self, mock_cloudinary
-    ):
+    async def test_malformed_url_without_support_segment_is_skipped(self, mock_cloudinary):
         """URLs that do not contain 'support/' are silently skipped."""
         urls = ["https://example.com/other/path/file.png"]
         await _delete_uploaded_files(urls, "TICKET")
 
         mock_cloudinary.destroy.assert_not_called()
 
-    async def test_support_segment_at_end_without_filename_is_skipped(
-        self, mock_cloudinary
-    ):
+    async def test_support_segment_at_end_without_filename_is_skipped(self, mock_cloudinary):
         """URL where 'support' is the last segment (no filename after it) is skipped."""
         urls = ["https://res.cloudinary.com/demo/image/upload/support"]
         await _delete_uploaded_files(urls, "TICKET")
@@ -242,7 +235,7 @@ class TestUploadSingleAttachment:
             content_type="image/png",
             content=b"x" * 100,
         )
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         file_url, attachment_meta = await _upload_single_attachment(
             attachment=upload,
@@ -264,7 +257,7 @@ class TestUploadSingleAttachment:
             filename="doc.pdf",
             content_type="application/pdf",
         )
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         with pytest.raises(HTTPException) as exc_info:
             await _upload_single_attachment(
@@ -283,7 +276,7 @@ class TestUploadSingleAttachment:
         upload = _make_upload_file(filename="", content_type="image/png")
         # UploadFile.filename being falsy (empty string) triggers the check
         upload.filename = ""
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         with pytest.raises(HTTPException) as exc_info:
             await _upload_single_attachment(
@@ -301,7 +294,7 @@ class TestUploadSingleAttachment:
         """Attachment with None filename raises 400."""
         upload = _make_upload_file(content_type="image/png")
         upload.filename = None
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         with pytest.raises(HTTPException) as exc_info:
             await _upload_single_attachment(
@@ -322,7 +315,7 @@ class TestUploadSingleAttachment:
             content_type="image/png",
             content=oversized_content,
         )
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         with pytest.raises(HTTPException) as exc_info:
             await _upload_single_attachment(
@@ -336,9 +329,7 @@ class TestUploadSingleAttachment:
         assert exc_info.value.status_code == 400
         assert "exceeds maximum size" in exc_info.value.detail
 
-    async def test_file_exactly_at_max_size_succeeds(
-        self, mock_upload_file_to_cloudinary
-    ):
+    async def test_file_exactly_at_max_size_succeeds(self, mock_upload_file_to_cloudinary):
         """File exactly at max size should succeed."""
         content = b"x" * MAX_FILE_SIZE
         upload = _make_upload_file(
@@ -346,7 +337,7 @@ class TestUploadSingleAttachment:
             content_type="image/png",
             content=content,
         )
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         file_url, _ = await _upload_single_attachment(
             attachment=upload,
@@ -365,21 +356,23 @@ class TestUploadSingleAttachment:
             content_type="image/png",
             content=b"data",
         )
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
-        with patch(
-            "app.services.support_service.upload_file_to_cloudinary",
-            side_effect=Exception("Cloudinary down"),
+        with (
+            patch(
+                "app.services.support_service.upload_file_to_cloudinary",
+                side_effect=Exception("Cloudinary down"),
+            ),
+            patch("app.services.support_service.log"),
+            pytest.raises(HTTPException) as exc_info,
         ):
-            with patch("app.services.support_service.log"):
-                with pytest.raises(HTTPException) as exc_info:
-                    await _upload_single_attachment(
-                        attachment=upload,
-                        ticket_id="T1",
-                        current_time=current_time,
-                        allowed_types=ALLOWED_TYPES,
-                        max_file_size=MAX_FILE_SIZE,
-                    )
+            await _upload_single_attachment(
+                attachment=upload,
+                ticket_id="T1",
+                current_time=current_time,
+                allowed_types=ALLOWED_TYPES,
+                max_file_size=MAX_FILE_SIZE,
+            )
 
         assert exc_info.value.status_code == 500
         assert "Failed to upload" in exc_info.value.detail
@@ -392,7 +385,7 @@ class TestUploadSingleAttachment:
                 content_type=ctype,
                 content=b"data",
             )
-            current_time = datetime.now(timezone.utc)
+            current_time = datetime.now(UTC)
 
             file_url, meta = await _upload_single_attachment(
                 attachment=upload,
@@ -502,9 +495,7 @@ class TestCreateSupportRequest:
         mock_insert_result.inserted_id = REQUEST_ID
         mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
 
-        mock_support_collection.delete_one = AsyncMock(
-            side_effect=Exception("DB unreachable")
-        )
+        mock_support_collection.delete_one = AsyncMock(side_effect=Exception("DB unreachable"))
 
         mock_send_team_notification.side_effect = Exception("SMTP error")
 
@@ -570,17 +561,19 @@ class TestCreateSupportRequest:
         ) as mock_notify:
             mock_notify.return_value = None
             # Cause an error in SupportRequestResponse construction
-            with patch(
-                "app.services.support_service.SupportRequestResponse",
-                side_effect=RuntimeError("unexpected"),
+            with (
+                patch(
+                    "app.services.support_service.SupportRequestResponse",
+                    side_effect=RuntimeError("unexpected"),
+                ),
+                patch("app.services.support_service.log"),
+                pytest.raises(HTTPException) as exc_info,
             ):
-                with patch("app.services.support_service.log"):
-                    with pytest.raises(HTTPException) as exc_info:
-                        await create_support_request(
-                            request_data=sample_request_data,
-                            user_id=USER_ID,
-                            user_email=USER_EMAIL,
-                        )
+                await create_support_request(
+                    request_data=sample_request_data,
+                    user_id=USER_ID,
+                    user_email=USER_EMAIL,
+                )
 
         assert exc_info.value.status_code == 500
         mock_support_collection.delete_one.assert_awaited_once()
@@ -595,25 +588,25 @@ class TestCreateSupportRequest:
         mock_insert_result.inserted_id = REQUEST_ID
         mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
 
-        mock_support_collection.delete_one = AsyncMock(
-            side_effect=Exception("rollback failed")
-        )
+        mock_support_collection.delete_one = AsyncMock(side_effect=Exception("rollback failed"))
 
-        with patch(
-            "app.services.support_service._send_support_email_notifications",
-            new_callable=AsyncMock,
-        ):
-            with patch(
+        with (
+            patch(
+                "app.services.support_service._send_support_email_notifications",
+                new_callable=AsyncMock,
+            ),
+            patch(
                 "app.services.support_service.SupportRequestResponse",
                 side_effect=RuntimeError("unexpected"),
-            ):
-                with patch("app.services.support_service.log"):
-                    with pytest.raises(HTTPException) as exc_info:
-                        await create_support_request(
-                            request_data=sample_request_data,
-                            user_id=USER_ID,
-                            user_email=USER_EMAIL,
-                        )
+            ),
+            patch("app.services.support_service.log"),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await create_support_request(
+                request_data=sample_request_data,
+                user_id=USER_ID,
+                user_email=USER_EMAIL,
+            )
 
         assert exc_info.value.status_code == 500
 
@@ -704,9 +697,7 @@ class TestCreateSupportRequestWithAttachments:
 
     async def test_too_many_attachments_raises_400(self, sample_request_data):
         """More than 5 attachments raises 400."""
-        attachments = [
-            _make_upload_file(f"img{i}.png", "image/png", b"data") for i in range(6)
-        ]
+        attachments = [_make_upload_file(f"img{i}.png", "image/png", b"data") for i in range(6)]
 
         with patch("app.services.support_service.log"):
             with pytest.raises(HTTPException) as exc_info:
@@ -732,9 +723,7 @@ class TestCreateSupportRequestWithAttachments:
         mock_insert_result.inserted_id = REQUEST_ID
         mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
 
-        attachments = [
-            _make_upload_file(f"img{i}.png", "image/png", b"data") for i in range(5)
-        ]
+        attachments = [_make_upload_file(f"img{i}.png", "image/png", b"data") for i in range(5)]
 
         with patch("app.services.support_service.log"):
             result = await create_support_request_with_attachments(
@@ -754,29 +743,31 @@ class TestCreateSupportRequestWithAttachments:
         # We need to test that _delete_uploaded_files is called when
         # asyncio.gather fails. Since gather runs all tasks, we simulate
         # a failure by making _upload_single_attachment raise.
-        with patch(
-            "app.services.support_service._upload_single_attachment",
-            new_callable=AsyncMock,
-            side_effect=HTTPException(status_code=400, detail="bad file"),
-        ):
-            with patch(
+        with (
+            patch(
+                "app.services.support_service._upload_single_attachment",
+                new_callable=AsyncMock,
+                side_effect=HTTPException(status_code=400, detail="bad file"),
+            ),
+            patch(
                 "app.services.support_service._delete_uploaded_files",
                 new_callable=AsyncMock,
-            ):
-                with patch("app.services.support_service.log"):
-                    attachments = [
-                        _make_upload_file("img1.png", "image/png", b"data"),
-                    ]
+            ),
+            patch("app.services.support_service.log"),
+        ):
+            attachments = [
+                _make_upload_file("img1.png", "image/png", b"data"),
+            ]
 
-                    with pytest.raises(HTTPException) as exc_info:
-                        await create_support_request_with_attachments(
-                            request_data=sample_request_data,
-                            attachments=attachments,
-                            user_id=USER_ID,
-                            user_email=USER_EMAIL,
-                        )
+            with pytest.raises(HTTPException) as exc_info:
+                await create_support_request_with_attachments(
+                    request_data=sample_request_data,
+                    attachments=attachments,
+                    user_id=USER_ID,
+                    user_email=USER_EMAIL,
+                )
 
-                    assert exc_info.value.status_code == 400
+            assert exc_info.value.status_code == 400
 
     async def test_db_failure_cleans_up_uploaded_files(
         self,
@@ -793,18 +784,20 @@ class TestCreateSupportRequestWithAttachments:
             _make_upload_file("img1.png", "image/png", b"data"),
         ]
 
-        with patch(
-            "app.services.support_service._delete_uploaded_files",
-            new_callable=AsyncMock,
-        ) as mock_delete:
-            with patch("app.services.support_service.log"):
-                with pytest.raises(HTTPException) as exc_info:
-                    await create_support_request_with_attachments(
-                        request_data=sample_request_data,
-                        attachments=attachments,
-                        user_id=USER_ID,
-                        user_email=USER_EMAIL,
-                    )
+        with (
+            patch(
+                "app.services.support_service._delete_uploaded_files",
+                new_callable=AsyncMock,
+            ) as mock_delete,
+            patch("app.services.support_service.log"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await create_support_request_with_attachments(
+                    request_data=sample_request_data,
+                    attachments=attachments,
+                    user_id=USER_ID,
+                    user_email=USER_EMAIL,
+                )
 
         assert exc_info.value.status_code == 500
         mock_delete.assert_awaited_once()
@@ -832,18 +825,20 @@ class TestCreateSupportRequestWithAttachments:
             _make_upload_file("img1.png", "image/png", b"data"),
         ]
 
-        with patch(
-            "app.services.support_service._delete_uploaded_files",
-            new_callable=AsyncMock,
-        ) as mock_delete_files:
-            with patch("app.services.support_service.log"):
-                with pytest.raises(HTTPException) as exc_info:
-                    await create_support_request_with_attachments(
-                        request_data=sample_request_data,
-                        attachments=attachments,
-                        user_id=USER_ID,
-                        user_email=USER_EMAIL,
-                    )
+        with (
+            patch(
+                "app.services.support_service._delete_uploaded_files",
+                new_callable=AsyncMock,
+            ) as mock_delete_files,
+            patch("app.services.support_service.log"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await create_support_request_with_attachments(
+                    request_data=sample_request_data,
+                    attachments=attachments,
+                    user_id=USER_ID,
+                    user_email=USER_EMAIL,
+                )
 
         assert exc_info.value.status_code == 500
         # Files should be cleaned up
@@ -874,19 +869,21 @@ class TestCreateSupportRequestWithAttachments:
             _make_upload_file("img1.png", "image/png", b"data"),
         ]
 
-        with patch(
-            "app.services.support_service._delete_uploaded_files",
-            new_callable=AsyncMock,
-            side_effect=Exception("cleanup failed"),
+        with (
+            patch(
+                "app.services.support_service._delete_uploaded_files",
+                new_callable=AsyncMock,
+                side_effect=Exception("cleanup failed"),
+            ),
+            patch("app.services.support_service.log"),
+            pytest.raises(HTTPException),
         ):
-            with patch("app.services.support_service.log"):
-                with pytest.raises(HTTPException):
-                    await create_support_request_with_attachments(
-                        request_data=sample_request_data,
-                        attachments=attachments,
-                        user_id=USER_ID,
-                        user_email=USER_EMAIL,
-                    )
+            await create_support_request_with_attachments(
+                request_data=sample_request_data,
+                attachments=attachments,
+                user_id=USER_ID,
+                user_email=USER_EMAIL,
+            )
 
         # DB rollback should still be attempted
         mock_support_collection.delete_one.assert_awaited_once()
@@ -914,21 +911,23 @@ class TestCreateSupportRequestWithAttachments:
             _make_upload_file("img1.png", "image/png", b"data"),
         ]
 
-        with patch(
-            "app.services.support_service._delete_uploaded_files",
-            new_callable=AsyncMock,
+        with (
+            patch(
+                "app.services.support_service._delete_uploaded_files",
+                new_callable=AsyncMock,
+            ),
+            patch("app.services.support_service.log") as mock_log,
         ):
-            with patch("app.services.support_service.log") as mock_log:
-                with pytest.raises(HTTPException):
-                    await create_support_request_with_attachments(
-                        request_data=sample_request_data,
-                        attachments=attachments,
-                        user_id=USER_ID,
-                        user_email=USER_EMAIL,
-                    )
+            with pytest.raises(HTTPException):
+                await create_support_request_with_attachments(
+                    request_data=sample_request_data,
+                    attachments=attachments,
+                    user_id=USER_ID,
+                    user_email=USER_EMAIL,
+                )
 
-                error_calls = [str(c) for c in mock_log.error.call_args_list]
-                assert any("Failed to rollback" in call for call in error_calls)
+            error_calls = [str(c) for c in mock_log.error.call_args_list]
+            assert any("Failed to rollback" in call for call in error_calls)
 
     async def test_unexpected_error_cleans_up_everything(
         self,
@@ -950,26 +949,28 @@ class TestCreateSupportRequestWithAttachments:
         ]
 
         # Make email notification succeed, but the response construction fail
-        with patch(
-            "app.services.support_service._send_support_email_notifications",
-            new_callable=AsyncMock,
-        ):
-            with patch(
+        with (
+            patch(
+                "app.services.support_service._send_support_email_notifications",
+                new_callable=AsyncMock,
+            ),
+            patch(
                 "app.services.support_service.SupportRequestResponse",
                 side_effect=RuntimeError("unexpected model error"),
-            ):
-                with patch(
-                    "app.services.support_service._delete_uploaded_files",
-                    new_callable=AsyncMock,
-                ) as mock_delete_files:
-                    with patch("app.services.support_service.log"):
-                        with pytest.raises(HTTPException) as exc_info:
-                            await create_support_request_with_attachments(
-                                request_data=sample_request_data,
-                                attachments=attachments,
-                                user_id=USER_ID,
-                                user_email=USER_EMAIL,
-                            )
+            ),
+            patch(
+                "app.services.support_service._delete_uploaded_files",
+                new_callable=AsyncMock,
+            ) as mock_delete_files,
+            patch("app.services.support_service.log"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await create_support_request_with_attachments(
+                    request_data=sample_request_data,
+                    attachments=attachments,
+                    user_id=USER_ID,
+                    user_email=USER_EMAIL,
+                )
 
         assert exc_info.value.status_code == 500
         mock_delete_files.assert_awaited_once()
@@ -992,27 +993,29 @@ class TestCreateSupportRequestWithAttachments:
             _make_upload_file("img1.png", "image/png", b"data"),
         ]
 
-        with patch(
-            "app.services.support_service._send_support_email_notifications",
-            new_callable=AsyncMock,
-        ):
-            with patch(
+        with (
+            patch(
+                "app.services.support_service._send_support_email_notifications",
+                new_callable=AsyncMock,
+            ),
+            patch(
                 "app.services.support_service.SupportRequestResponse",
                 side_effect=RuntimeError("unexpected"),
-            ):
-                with patch(
-                    "app.services.support_service._delete_uploaded_files",
-                    new_callable=AsyncMock,
-                    side_effect=Exception("cleanup gone"),
-                ):
-                    with patch("app.services.support_service.log"):
-                        with pytest.raises(HTTPException) as exc_info:
-                            await create_support_request_with_attachments(
-                                request_data=sample_request_data,
-                                attachments=attachments,
-                                user_id=USER_ID,
-                                user_email=USER_EMAIL,
-                            )
+            ),
+            patch(
+                "app.services.support_service._delete_uploaded_files",
+                new_callable=AsyncMock,
+                side_effect=Exception("cleanup gone"),
+            ),
+            patch("app.services.support_service.log"),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await create_support_request_with_attachments(
+                request_data=sample_request_data,
+                attachments=attachments,
+                user_id=USER_ID,
+                user_email=USER_EMAIL,
+            )
 
         assert exc_info.value.status_code == 500
 
@@ -1033,7 +1036,7 @@ class TestSendSupportEmailNotifications:
             type=SupportRequestType.SUPPORT,
             title="Test Ticket",
             description="A description for the test ticket.",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             support_emails=SUPPORT_EMAILS,
             attachments=[],
         )
@@ -1109,9 +1112,7 @@ class TestGetUserSupportRequests:
         mock_support_collection.count_documents = AsyncMock(return_value=1)
 
         with patch("app.services.support_service.log"):
-            result = await get_user_support_requests(
-                user_id=USER_ID, page=1, per_page=10
-            )
+            result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)
 
         assert len(result["requests"]) == 1
         assert isinstance(result["requests"][0], SupportRequestResponse)
@@ -1145,9 +1146,7 @@ class TestGetUserSupportRequests:
         mock_support_collection.count_documents = AsyncMock(return_value=0)
 
         with patch("app.services.support_service.log"):
-            result = await get_user_support_requests(
-                user_id=USER_ID, page=1, per_page=10
-            )
+            result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)
 
         assert result["requests"] == []
         assert result["pagination"]["total"] == 0
@@ -1159,9 +1158,7 @@ class TestGetUserSupportRequests:
         mock_support_collection.count_documents = AsyncMock(return_value=25)
 
         with patch("app.services.support_service.log"):
-            result = await get_user_support_requests(
-                user_id=USER_ID, page=2, per_page=10
-            )
+            result = await get_user_support_requests(user_id=USER_ID, page=2, per_page=10)
 
         assert result["pagination"]["pages"] == 3
         assert result["pagination"]["page"] == 2
@@ -1179,9 +1176,7 @@ class TestGetUserSupportRequests:
 
     async def test_db_error_raises_500(self, mock_support_collection):
         """Database error raises 500."""
-        mock_support_collection.count_documents = AsyncMock(
-            side_effect=Exception("DB error")
-        )
+        mock_support_collection.count_documents = AsyncMock(side_effect=Exception("DB error"))
 
         with patch("app.services.support_service.log"):
             with pytest.raises(HTTPException) as exc_info:
@@ -1191,17 +1186,12 @@ class TestGetUserSupportRequests:
 
     async def test_multiple_documents_returned(self, mock_support_collection):
         """Multiple documents are all converted to response models."""
-        docs = [
-            _make_db_support_doc(request_id=f"id-{i}", ticket_id=f"T-{i}")
-            for i in range(3)
-        ]
+        docs = [_make_db_support_doc(request_id=f"id-{i}", ticket_id=f"T-{i}") for i in range(3)]
         self._setup_cursor(mock_support_collection, docs)
         mock_support_collection.count_documents = AsyncMock(return_value=3)
 
         with patch("app.services.support_service.log"):
-            result = await get_user_support_requests(
-                user_id=USER_ID, page=1, per_page=10
-            )
+            result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)
 
         assert len(result["requests"]) == 3
         for req in result["requests"]:
@@ -1318,9 +1308,7 @@ class TestGetAllSupportRequests:
 
     async def test_db_error_raises_500(self, mock_support_collection):
         """Database error raises 500."""
-        mock_support_collection.count_documents = AsyncMock(
-            side_effect=Exception("DB error")
-        )
+        mock_support_collection.count_documents = AsyncMock(side_effect=Exception("DB error"))
 
         with patch("app.services.support_service.log"):
             with pytest.raises(HTTPException) as exc_info:
@@ -1328,9 +1316,7 @@ class TestGetAllSupportRequests:
 
         assert exc_info.value.status_code == 500
 
-    async def test_sort_order_is_descending_by_created_at(
-        self, mock_support_collection
-    ):
+    async def test_sort_order_is_descending_by_created_at(self, mock_support_collection):
         """Results are sorted by created_at in descending order."""
         mock_cursor = self._setup_cursor(mock_support_collection, [])
         mock_support_collection.count_documents = AsyncMock(return_value=0)

@@ -60,7 +60,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/heygaia/gaia.git",
+    "url": "git+https://github.com/heygaia/gaia.git",
     "directory": "packages/cli"
   }
 }

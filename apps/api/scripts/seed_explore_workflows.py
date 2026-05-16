@@ -24,13 +24,13 @@ Usage:
 
 import argparse
 import asyncio
+from datetime import UTC, datetime
 import json
+from pathlib import Path
 import random
 import sys
-import uuid
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
+import uuid
 
 # Add the backend directory to Python path so we can import from app
 backend_dir = Path(__file__).parent.parent
@@ -47,15 +47,15 @@ from shared.py.utils.slugify import slugify  # noqa: E402
 
 def generate_run_count() -> tuple[int, int]:
     """Generate realistic run counts with some variance."""
-    base_runs = random.choice(  # noqa: S311  # nosec B311
+    base_runs = random.choice(  # nosec B311
         [
-            random.randint(800, 1200),  # noqa: S311  # nosec B311
-            random.randint(1300, 1800),  # noqa: S311  # nosec B311
-            random.randint(2100, 2800),  # noqa: S311  # nosec B311
-            random.randint(3200, 4200),  # noqa: S311  # nosec B311
+            random.randint(800, 1200),  # nosec B311
+            random.randint(1300, 1800),  # nosec B311
+            random.randint(2100, 2800),  # nosec B311
+            random.randint(3200, 4200),  # nosec B311
         ]
     )
-    success_rate = random.uniform(0.88, 0.97)  # noqa: S311  # nosec B311
+    success_rate = random.uniform(0.88, 0.97)  # nosec B311
     successful_runs = int(base_runs * success_rate)
     return base_runs, successful_runs
 
@@ -1323,7 +1323,7 @@ def create_workflow_document(config: dict[str, Any], user_id: str) -> dict[str, 
         step = WorkflowStep(**step_config)
         steps.append(step.model_dump(mode="json"))
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     return {
         "_id": workflow_id,
@@ -1410,9 +1410,7 @@ async def seed_explore_workflows(
         return
 
     if not force:
-        response = input(
-            f"\n❓ Seed {len(workflow_configs)} explore workflows? (y/N): "
-        )
+        response = input(f"\n❓ Seed {len(workflow_configs)} explore workflows? (y/N): ")
         if response.lower() != "y":
             print("❌ Cancelled.")
             return

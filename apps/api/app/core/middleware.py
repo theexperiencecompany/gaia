@@ -4,22 +4,23 @@ Middleware configuration for the GAIA FastAPI application.
 This module provides functions to configure middleware for the FastAPI application.
 """
 
-from app.config.settings import settings
-from shared.py.wide_events import log as wide_log
-from app.api.v1.middleware import (
-    LoggingMiddleware,
-    ProfilingMiddleware,
-    WorkOSAuthMiddleware,
-)
-from app.api.v1.middleware.timeout import RequestTimeoutMiddleware
-from app.api.v1.middleware.rate_limiter import limiter
-from app.core.bot_auth_middleware import BotAuthMiddleware
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from workos import AsyncWorkOSClient
+
+from app.api.v1.middleware import (
+    LoggingMiddleware,
+    ProfilingMiddleware,
+    WorkOSAuthMiddleware,
+)
+from app.api.v1.middleware.rate_limiter import limiter
+from app.api.v1.middleware.timeout import RequestTimeoutMiddleware
+from app.config.settings import settings
+from app.core.bot_auth_middleware import BotAuthMiddleware
+from shared.py.wide_events import log as wide_log
 
 
 async def rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:

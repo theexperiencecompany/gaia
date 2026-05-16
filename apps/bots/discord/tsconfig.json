@@ -1,19 +1,9 @@
 {
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
+    "noEmit": false,
     "outDir": "dist",
-    "rootDir": "src",
-    "strict": true,
-    "noImplicitOverride": true,
-    "noFallthroughCasesInSwitch": true,
-    "useUnknownInCatchVariables": true,
-    "allowUnreachableCode": false,
-    "allowUnusedLabels": false,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "rootDir": "src"
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]

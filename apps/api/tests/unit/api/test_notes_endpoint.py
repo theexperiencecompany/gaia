@@ -11,8 +11,8 @@ propagate to the global handler. With ``ASGITransport(raise_app_exceptions=True)
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 NOTES_BASE = "/api/v1/notes"
 
@@ -35,9 +35,7 @@ class TestCreateNote:
         "app.api.v1.endpoints.notes.create_note_service",
         new_callable=AsyncMock,
     )
-    async def test_create_note_returns_201(
-        self, mock_create: AsyncMock, client: AsyncClient
-    ):
+    async def test_create_note_returns_201(self, mock_create: AsyncMock, client: AsyncClient):
         mock_create.return_value = FAKE_NOTE_RESPONSE
         response = await client.post(
             NOTES_BASE,
@@ -54,16 +52,14 @@ class TestCreateNote:
         "app.api.v1.endpoints.notes.create_note_service",
         new_callable=AsyncMock,
     )
-    async def test_create_note_passes_user_id(
-        self, mock_create: AsyncMock, client: AsyncClient
-    ):
+    async def test_create_note_passes_user_id(self, mock_create: AsyncMock, client: AsyncClient):
         mock_create.return_value = FAKE_NOTE_RESPONSE
         await client.post(
             NOTES_BASE,
             json={"content": "<p>Hello</p>", "plaintext": "Hello"},
         )
         args, _ = mock_create.call_args
-        assert args[1] == "507f1f77bcf86cd799439011"
+        assert args[1] == "507f1f77bcf86cd799439011"  # pragma: allowlist secret
 
     async def test_create_note_missing_content_returns_422(self, client: AsyncClient):
         response = await client.post(NOTES_BASE, json={"plaintext": "Test"})
@@ -106,7 +102,10 @@ class TestGetNote:
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == "note-001"
-        mock_get.assert_awaited_once_with("note-001", "507f1f77bcf86cd799439011")
+        mock_get.assert_awaited_once_with(
+            "note-001",
+            "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+        )  # pragma: allowlist secret
 
     @patch(
         "app.api.v1.endpoints.notes.get_note",
@@ -128,9 +127,7 @@ class TestGetAllNotes:
         "app.api.v1.endpoints.notes.get_all_notes",
         new_callable=AsyncMock,
     )
-    async def test_get_all_notes_returns_200(
-        self, mock_get_all: AsyncMock, client: AsyncClient
-    ):
+    async def test_get_all_notes_returns_200(self, mock_get_all: AsyncMock, client: AsyncClient):
         mock_get_all.return_value = [FAKE_NOTE_RESPONSE]
         response = await client.get(NOTES_BASE)
         assert response.status_code == 200
@@ -143,9 +140,7 @@ class TestGetAllNotes:
         "app.api.v1.endpoints.notes.get_all_notes",
         new_callable=AsyncMock,
     )
-    async def test_get_all_notes_empty_list(
-        self, mock_get_all: AsyncMock, client: AsyncClient
-    ):
+    async def test_get_all_notes_empty_list(self, mock_get_all: AsyncMock, client: AsyncClient):
         mock_get_all.return_value = []
         response = await client.get(NOTES_BASE)
         assert response.status_code == 200
@@ -171,9 +166,7 @@ class TestUpdateNote:
         "app.api.v1.endpoints.notes.update_note",
         new_callable=AsyncMock,
     )
-    async def test_update_note_returns_200(
-        self, mock_update: AsyncMock, client: AsyncClient
-    ):
+    async def test_update_note_returns_200(self, mock_update: AsyncMock, client: AsyncClient):
         updated = {
             **FAKE_NOTE_RESPONSE,
             "content": "<p>Updated</p>",
@@ -203,7 +196,7 @@ class TestUpdateNote:
         )
         args, _ = mock_update.call_args
         assert args[0] == "note-001"
-        assert args[2] == "507f1f77bcf86cd799439011"
+        assert args[2] == "507f1f77bcf86cd799439011"  # pragma: allowlist secret
 
     async def test_update_note_missing_fields_returns_422(self, client: AsyncClient):
         response = await client.put(f"{NOTES_BASE}/note-001", json={})
@@ -232,13 +225,14 @@ class TestDeleteNote:
         "app.api.v1.endpoints.notes.delete_note",
         new_callable=AsyncMock,
     )
-    async def test_delete_note_returns_204(
-        self, mock_delete: AsyncMock, client: AsyncClient
-    ):
+    async def test_delete_note_returns_204(self, mock_delete: AsyncMock, client: AsyncClient):
         mock_delete.return_value = None
         response = await client.delete(f"{NOTES_BASE}/note-001")
         assert response.status_code == 204
-        mock_delete.assert_awaited_once_with("note-001", "507f1f77bcf86cd799439011")
+        mock_delete.assert_awaited_once_with(
+            "note-001",
+            "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+        )  # pragma: allowlist secret
 
     @patch(
         "app.api.v1.endpoints.notes.delete_note",

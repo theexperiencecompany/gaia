@@ -1,12 +1,12 @@
 """Unit tests for ARQ worker lifecycle (startup, shutdown) and config."""
 
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.workers.lifecycle.shutdown import shutdown
-from app.workers.config.worker_settings import WorkerSettings
+import pytest
 
+from app.workers.config.worker_settings import WorkerSettings
+from app.workers.lifecycle.shutdown import shutdown
 
 # ---------------------------------------------------------------------------
 # startup — imported lazily because the module has side-effects at import time
@@ -131,13 +131,15 @@ class TestWorkerShutdown:
     async def test_shutdown_propagates_unified_shutdown_error(self):
         """If unified_shutdown raises, the error propagates."""
         ctx: dict = {"startup_time": 100.0}
-        with patch(
-            "app.workers.lifecycle.shutdown.unified_shutdown",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("cleanup explosion"),
+        with (
+            patch(
+                "app.workers.lifecycle.shutdown.unified_shutdown",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("cleanup explosion"),
+            ),
+            pytest.raises(RuntimeError, match="cleanup explosion"),
         ):
-            with pytest.raises(RuntimeError, match="cleanup explosion"):
-                await shutdown(ctx)
+            await shutdown(ctx)
 
     async def test_shutdown_with_various_ctx_values(self):
         """Different ctx payloads must not crash shutdown."""

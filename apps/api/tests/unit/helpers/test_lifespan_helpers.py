@@ -21,7 +21,6 @@ from app.helpers.lifespan_helpers import (
     setup_event_loop_policy,
 )
 
-
 # ---------------------------------------------------------------------------
 # setup_event_loop_policy
 # ---------------------------------------------------------------------------
@@ -103,13 +102,15 @@ class TestInitWebsocketConsumer:
 
     @pytest.mark.asyncio
     async def test_error_reraises(self) -> None:
-        with patch(
-            "app.helpers.lifespan_helpers.start_websocket_consumer",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("ws fail"),
+        with (
+            patch(
+                "app.helpers.lifespan_helpers.start_websocket_consumer",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("ws fail"),
+            ),
+            pytest.raises(RuntimeError),
         ):
-            with pytest.raises(RuntimeError):
-                await init_websocket_consumer()
+            await init_websocket_consumer()
 
 
 class TestInitMongodbAsync:
@@ -128,12 +129,14 @@ class TestInitMongodbAsync:
 
     @pytest.mark.asyncio
     async def test_error_reraises(self) -> None:
-        with patch(
-            "app.db.mongodb.mongodb.init_mongodb",
-            side_effect=RuntimeError("mongo fail"),
+        with (
+            patch(
+                "app.db.mongodb.mongodb.init_mongodb",
+                side_effect=RuntimeError("mongo fail"),
+            ),
+            pytest.raises(RuntimeError),
         ):
-            with pytest.raises(RuntimeError):
-                await init_mongodb_async()
+            await init_mongodb_async()
 
 
 # ---------------------------------------------------------------------------

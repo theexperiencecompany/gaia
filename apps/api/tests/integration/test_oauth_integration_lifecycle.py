@@ -23,7 +23,7 @@ Mocking boundaries:
 """
 
 from datetime import UTC, datetime
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -35,6 +35,13 @@ from app.config.oauth_config import (
 )
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
+from app.services.integrations.integration_connection_service import (
+    build_integrations_config,
+    connect_composio_integration,
+    connect_mcp_integration,
+    connect_self_integration,
+    disconnect_integration,
+)
 from app.services.integrations.integration_resolver import (
     IntegrationResolver,
     ResolvedIntegration,
@@ -43,13 +50,6 @@ from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
 from app.services.integrations.user_integrations import remove_user_integration
-from app.services.integrations.integration_connection_service import (
-    build_integrations_config,
-    connect_composio_integration,
-    connect_mcp_integration,
-    connect_self_integration,
-    disconnect_integration,
-)
 from app.services.oauth.oauth_state_service import (
     _is_safe_redirect_path,
     create_oauth_state,
@@ -71,15 +71,15 @@ USER_EMAIL = "test@example.com"
 
 def _make_mock_redis() -> AsyncMock:
     """Create a mock Redis client that stores state in a dict."""
-    store: Dict[str, Dict[str, str]] = {}
-    ttls: Dict[str, int] = {}
+    store: dict[str, dict[str, str]] = {}
+    ttls: dict[str, int] = {}
 
     redis = AsyncMock()
 
-    async def _hset(key: str, mapping: Dict[str, str]) -> None:
+    async def _hset(key: str, mapping: dict[str, str]) -> None:
         store[key] = dict(mapping)
 
-    async def _hgetall(key: str) -> Dict[str, str]:
+    async def _hgetall(key: str) -> dict[str, str]:
         return store.get(key, {})
 
     async def _expire(key: str, ttl: int) -> None:
@@ -101,23 +101,23 @@ def _make_mock_redis() -> AsyncMock:
 
 def _make_mock_collection() -> AsyncMock:
     """Create a mock MongoDB collection with an in-memory document store."""
-    docs: List[Dict[str, Any]] = []
+    docs: list[dict[str, Any]] = []
     collection = AsyncMock()
 
-    async def _find_one(query: Dict[str, Any]) -> Dict[str, Any] | None:
+    async def _find_one(query: dict[str, Any]) -> dict[str, Any] | None:
         for doc in docs:
             if all(doc.get(k) == v for k, v in query.items()):
                 return doc
         return None
 
-    async def _insert_one(doc: Dict[str, Any]) -> MagicMock:
+    async def _insert_one(doc: dict[str, Any]) -> MagicMock:
         docs.append(dict(doc))
         result = MagicMock()
         result.inserted_id = f"inserted_{len(docs)}"
         return result
 
     async def _update_one(
-        query: Dict[str, Any], update: Dict[str, Any], upsert: bool = False
+        query: dict[str, Any], update: dict[str, Any], upsert: bool = False
     ) -> MagicMock:
         result = MagicMock()
         result.modified_count = 0
@@ -147,7 +147,7 @@ def _make_mock_collection() -> AsyncMock:
 
         return result
 
-    async def _delete_one(query: Dict[str, Any]) -> MagicMock:
+    async def _delete_one(query: dict[str, Any]) -> MagicMock:
         result = MagicMock()
         result.deleted_count = 0
         for i, doc in enumerate(docs):
@@ -157,10 +157,8 @@ def _make_mock_collection() -> AsyncMock:
                 break
         return result
 
-    def _find(query: Dict[str, Any]) -> AsyncMock:
-        matching = [
-            doc for doc in docs if all(doc.get(k) == v for k, v in query.items())
-        ]
+    def _find(query: dict[str, Any]) -> AsyncMock:
+        matching = [doc for doc in docs if all(doc.get(k) == v for k, v in query.items())]
         cursor = AsyncMock()
         cursor.to_list = AsyncMock(return_value=matching)
         cursor.sort = MagicMock(return_value=cursor)
@@ -464,9 +462,7 @@ class TestComposioIntegrationConnection:
 
         mock_composio = AsyncMock()
         mock_composio.connect_account = AsyncMock(
-            return_value={
-                "redirect_url": "https://accounts.google.com/o/oauth2/auth?client_id=xxx"
-            }
+            return_value={"redirect_url": "https://accounts.google.com/o/oauth2/auth?client_id=xxx"}
         )
 
         with (
@@ -663,9 +659,7 @@ class TestDisconnectIntegration:
         )
 
         with (
-            patch.object(
-                IntegrationResolver, "resolve", AsyncMock(return_value=resolved)
-            ),
+            patch.object(IntegrationResolver, "resolve", AsyncMock(return_value=resolved)),
             patch(
                 "app.services.integrations.integration_connection_service.get_composio_service",
                 return_value=mock_composio,
@@ -712,9 +706,7 @@ class TestDisconnectIntegration:
         mock_mcp_client.disconnect = AsyncMock()
 
         with (
-            patch.object(
-                IntegrationResolver, "resolve", AsyncMock(return_value=resolved)
-            ),
+            patch.object(IntegrationResolver, "resolve", AsyncMock(return_value=resolved)),
             patch(
                 "app.services.integrations.integration_connection_service.get_mcp_client",
                 AsyncMock(return_value=mock_mcp_client),
@@ -762,9 +754,7 @@ class TestDisconnectIntegration:
         mock_delete_custom = AsyncMock()
 
         with (
-            patch.object(
-                IntegrationResolver, "resolve", AsyncMock(return_value=resolved)
-            ),
+            patch.object(IntegrationResolver, "resolve", AsyncMock(return_value=resolved)),
             patch(
                 "app.services.integrations.integration_connection_service.get_mcp_client",
                 AsyncMock(return_value=mock_mcp_client),
@@ -917,12 +907,8 @@ class TestMultiProviderSupport:
 
             assert len(mock_collection._docs) == 2
 
-            gmail_doc = next(
-                d for d in mock_collection._docs if d["integration_id"] == "gmail"
-            )
-            slack_doc = next(
-                d for d in mock_collection._docs if d["integration_id"] == "slack"
-            )
+            gmail_doc = next(d for d in mock_collection._docs if d["integration_id"] == "gmail")
+            slack_doc = next(d for d in mock_collection._docs if d["integration_id"] == "slack")
 
             assert gmail_doc["status"] == "connected"
             assert slack_doc["status"] == "connected"
@@ -979,12 +965,8 @@ class TestMultiProviderSupport:
 
             assert len(mock_collection._docs) == 2
 
-            user1_doc = next(
-                d for d in mock_collection._docs if d["user_id"] == USER_ID
-            )
-            user2_doc = next(
-                d for d in mock_collection._docs if d["user_id"] == USER_ID_2
-            )
+            user1_doc = next(d for d in mock_collection._docs if d["user_id"] == USER_ID)
+            user2_doc = next(d for d in mock_collection._docs if d["user_id"] == USER_ID_2)
 
             assert user1_doc["integration_id"] == "gmail"
             assert user2_doc["integration_id"] == "gmail"
@@ -1152,9 +1134,7 @@ class TestOAuthConfigHelpers:
         for integration in OAUTH_INTEGRATIONS:
             assert integration.id, f"Integration missing id: {integration}"
             assert integration.name, f"Integration {integration.id} missing name"
-            assert integration.provider, (
-                f"Integration {integration.id} missing provider"
-            )
+            assert integration.provider, f"Integration {integration.id} missing provider"
             assert integration.managed_by in ("self", "composio", "mcp", "internal"), (
                 f"Integration {integration.id} has invalid managed_by: {integration.managed_by}"
             )

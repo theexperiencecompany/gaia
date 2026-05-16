@@ -69,13 +69,15 @@ class TestGetPostgresqlEngine:
 
     async def test_raises_runtime_error_when_none(self) -> None:
         """Should raise RuntimeError when provider returns None."""
-        with patch(
-            "app.db.postgresql.providers.aget",
-            new_callable=AsyncMock,
-            return_value=None,
+        with (
+            patch(
+                "app.db.postgresql.providers.aget",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            pytest.raises(RuntimeError, match="not available"),
         ):
-            with pytest.raises(RuntimeError, match="not available"):
-                await get_postgresql_engine()
+            await get_postgresql_engine()
 
     async def test_passes_correct_provider_name(self) -> None:
         """Should request the 'postgresql_engine' provider by name."""
@@ -113,9 +115,7 @@ class TestGetDbSession:
             patch("app.db.postgresql.AsyncSession") as mock_session_cls,
         ):
             # AsyncSession as context manager
-            mock_session_cls.return_value.__aenter__ = AsyncMock(
-                return_value=mock_session
-            )
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
             async with get_db_session() as session:
@@ -136,9 +136,7 @@ class TestGetDbSession:
             ),
             patch("app.db.postgresql.AsyncSession") as mock_session_cls,
         ):
-            mock_session_cls.return_value.__aenter__ = AsyncMock(
-                return_value=mock_session
-            )
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
             with pytest.raises(ValueError, match="test error"):
@@ -149,14 +147,16 @@ class TestGetDbSession:
 
     async def test_propagates_engine_error(self) -> None:
         """If get_postgresql_engine raises, it should propagate."""
-        with patch(
-            "app.db.postgresql.get_postgresql_engine",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("engine unavailable"),
+        with (
+            patch(
+                "app.db.postgresql.get_postgresql_engine",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("engine unavailable"),
+            ),
+            pytest.raises(RuntimeError, match="engine unavailable"),
         ):
-            with pytest.raises(RuntimeError, match="engine unavailable"):
-                async with get_db_session():
-                    pass  # pragma: no cover
+            async with get_db_session():
+                pass  # pragma: no cover
 
 
 # ---------------------------------------------------------------------------
@@ -239,12 +239,12 @@ class TestInitPostgresqlEngine:
 
         with (
             patch("app.db.postgresql.settings") as mock_settings,
-            patch(
-                "app.db.postgresql.create_async_engine", return_value=mock_engine
-            ) as mock_create,
+            patch("app.db.postgresql.create_async_engine", return_value=mock_engine) as mock_create,
             patch("app.db.postgresql.log"),
         ):
-            mock_settings.POSTGRES_URL = "postgresql://user:pass@host:5432/db"
+            mock_settings.POSTGRES_URL = (
+                "postgresql://user:pass@host:5432/db"  # pragma: allowlist secret
+            )
 
             result = await _get_original_init_fn()()
 
@@ -286,9 +286,7 @@ class TestInitPostgresqlEngine:
 
         with (
             patch("app.db.postgresql.settings") as mock_settings,
-            patch(
-                "app.db.postgresql.create_async_engine", return_value=mock_engine
-            ) as mock_create,
+            patch("app.db.postgresql.create_async_engine", return_value=mock_engine) as mock_create,
             patch("app.db.postgresql.log"),
         ):
             mock_settings.POSTGRES_URL = "postgresql://localhost/test"
@@ -312,9 +310,7 @@ class TestInitPostgresqlEngine:
 
         with (
             patch("app.db.postgresql.settings") as mock_settings,
-            patch(
-                "app.db.postgresql.create_async_engine", return_value=mock_engine
-            ) as mock_create,
+            patch("app.db.postgresql.create_async_engine", return_value=mock_engine) as mock_create,
             patch("app.db.postgresql.log"),
         ):
             # URL that doesn't have plain "postgresql://" won't be rewritten

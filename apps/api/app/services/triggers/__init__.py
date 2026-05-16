@@ -35,7 +35,7 @@ trigger_registry.register(todoist_trigger_handler)
 trigger_registry.register(asana_trigger_handler)
 
 __all__ = [
-    "trigger_registry",
-    "get_handler_by_name",
     "get_handler_by_event",
+    "get_handler_by_name",
+    "trigger_registry",
 ]

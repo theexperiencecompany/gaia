@@ -7,20 +7,20 @@ Flow:
 4. Returns result dicts keyed by URL with content/error status
 """
 
-from typing import Dict, Sequence
+from collections.abc import Sequence
 
-from shared.py.wide_events import log
 from app.constants.search import (
     CRAWL4AI_PAGE_TIMEOUT_MS,
     PROFILE_CRAWL4AI_BATCH_TIMEOUT_SECONDS,
     PROFILE_CRAWL4AI_SEMAPHORE_COUNT,
-    PROFILE_CRAWL_CONTENT_MAX_CHARS,
     PROFILE_CRAWL4AI_SINGLE_TIMEOUT_SECONDS,
+    PROFILE_CRAWL_CONTENT_MAX_CHARS,
 )
 from app.utils.crawl4ai_utils import batch_fetch_with_crawl4ai
+from shared.py.wide_events import log
 
 
-async def crawl_profile_url(url: str, platform: str) -> Dict:
+async def crawl_profile_url(url: str, platform: str) -> dict:
     """
     Crawl a single profile URL using crawl4ai.
 
@@ -53,7 +53,7 @@ async def crawl_profile_urls_batch(
     *,
     total_timeout_seconds: float = PROFILE_CRAWL4AI_BATCH_TIMEOUT_SECONDS,
     semaphore_count: int = PROFILE_CRAWL4AI_SEMAPHORE_COUNT,
-) -> list[Dict]:
+) -> list[dict]:
     """Crawl profile URLs with one crawler instance and return normalized results."""
     if not url_platform_pairs:
         return []
@@ -68,14 +68,12 @@ async def crawl_profile_urls_batch(
         context_name="profile crawl",
     )
 
-    results: list[Dict] = []
+    results: list[dict] = []
     for url, platform in url_platform_pairs:
         content = contents.get(url)
         error = errors.get(url)
         if content:
-            log.info(
-                f"Successfully crawled {platform} profile: {url} ({len(content):,} chars)"
-            )
+            log.info(f"Successfully crawled {platform} profile: {url} ({len(content):,} chars)")
             results.append(
                 {
                     "url": url,

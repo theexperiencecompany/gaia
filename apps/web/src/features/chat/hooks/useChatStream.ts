@@ -580,7 +580,7 @@ export const useChatStream = () => {
     }
 
     try {
-      if (!event.data) return; // Skip empty events (@microsoft/fetch-event-source dispatches these for SSE comments)
+      if (!event.data) return undefined; // Skip empty events (@microsoft/fetch-event-source dispatches these for SSE comments)
       const parsedEvents = parseChatStreamEvent(event.data);
       const streamingData: Record<string, unknown> = {};
 
@@ -697,9 +697,10 @@ export const useChatStream = () => {
         }
       }
 
-      if (Object.keys(streamingData).length === 0) return;
-      if (handleImageGeneration(streamingData)) return;
+      if (Object.keys(streamingData).length === 0) return undefined;
+      if (handleImageGeneration(streamingData)) return undefined;
       await handleStreamingContent(streamingData);
+      return undefined;
     } catch (error) {
       console.error("[useChatStream] Error handling stream event:", {
         error,

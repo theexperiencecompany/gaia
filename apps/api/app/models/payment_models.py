@@ -2,9 +2,9 @@
 Payment and subscription related models for Dodo Payments integration.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -57,12 +57,12 @@ class CreatePlanRequest(BaseModel):
     """Request model for creating a subscription plan."""
 
     name: str = Field(..., description="Name of the plan")
-    description: Optional[str] = Field(None, description="Plan description")
+    description: str | None = Field(None, description="Plan description")
     amount: int = Field(..., description="Plan amount in smallest currency unit")
     currency: Currency = Field(Currency.USD, description="Currency")
     duration: PlanDuration = Field(..., description="Billing duration")
-    max_users: Optional[int] = Field(None, description="Maximum users allowed")
-    features: List[str] = Field(default_factory=list, description="List of features")
+    max_users: int | None = Field(None, description="Maximum users allowed")
+    features: list[str] = Field(default_factory=list, description="List of features")
     is_active: bool = Field(True, description="Whether the plan is active")
 
 
@@ -80,12 +80,12 @@ class PlanResponse(BaseModel):
     id: str = Field(..., description="Plan ID")
     dodo_product_id: str = Field(..., description="Dodo product ID")
     name: str = Field(..., description="Plan name")
-    description: Optional[str] = Field(None, description="Plan description")
+    description: str | None = Field(None, description="Plan description")
     amount: int = Field(..., description="Plan amount")
     currency: str = Field(..., description="Currency")
     duration: str = Field(..., description="Billing duration")
-    max_users: Optional[int] = Field(None, description="Maximum users")
-    features: List[str] = Field(default_factory=list, description="Features")
+    max_users: int | None = Field(None, description="Maximum users")
+    features: list[str] = Field(default_factory=list, description="Features")
     is_active: bool = Field(..., description="Active status")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Update timestamp")
@@ -100,7 +100,7 @@ class SubscriptionResponse(BaseModel):
     product_id: str = Field(..., description="Product ID")
     status: SubscriptionStatus = Field(..., description="Subscription status")
     quantity: int = Field(..., description="Quantity")
-    payment_link: Optional[str] = Field(None, description="Payment link URL")
+    payment_link: str | None = Field(None, description="Payment link URL")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Update timestamp")
 
@@ -110,11 +110,11 @@ class PaymentResponse(BaseModel):
 
     id: str = Field(..., description="Payment ID")
     user_id: str = Field(..., description="User ID")
-    subscription_id: Optional[str] = Field(None, description="Subscription ID")
+    subscription_id: str | None = Field(None, description="Subscription ID")
     amount: int = Field(..., description="Payment amount")
     currency: str = Field(..., description="Currency")
     status: PaymentStatus = Field(..., description="Payment status")
-    description: Optional[str] = Field(None, description="Payment description")
+    description: str | None = Field(None, description="Payment description")
     created_at: datetime = Field(..., description="Creation timestamp")
 
 
@@ -122,38 +122,22 @@ class UserSubscriptionStatus(BaseModel):
     """Response model for user subscription status."""
 
     user_id: str = Field(..., description="User ID")
-    current_plan: Optional[Dict[str, Any]] = Field(
-        None, description="Current plan details"
-    )
-    subscription: Optional[Dict[str, Any]] = Field(
-        None, description="Current subscription"
-    )
-    is_subscribed: bool = Field(
-        False, description="Whether user has an active subscription"
-    )
-    days_remaining: Optional[int] = Field(
-        None, description="Days remaining in current period"
-    )
+    current_plan: dict[str, Any] | None = Field(None, description="Current plan details")
+    subscription: dict[str, Any] | None = Field(None, description="Current subscription")
+    is_subscribed: bool = Field(False, description="Whether user has an active subscription")
+    days_remaining: int | None = Field(None, description="Days remaining in current period")
     can_upgrade: bool = Field(True, description="Whether user can upgrade")
     can_downgrade: bool = Field(True, description="Whether user can downgrade")
 
-    has_subscription: Optional[bool] = Field(
-        None, description="Legacy field - use is_subscribed"
-    )
-    plan_type: Optional[PlanType] = Field(
-        None, description="Legacy field - check current_plan"
-    )
-    status: Optional[SubscriptionStatus] = Field(
-        None, description="Legacy field - check subscription"
-    )
+    has_subscription: bool | None = Field(None, description="Legacy field - use is_subscribed")
+    plan_type: PlanType | None = Field(None, description="Legacy field - check current_plan")
+    status: SubscriptionStatus | None = Field(None, description="Legacy field - check subscription")
 
 
 class PaymentHistoryResponse(BaseModel):
     """Response model for payment history."""
 
-    payments: List[PaymentResponse] = Field(
-        default_factory=list, description="Payment list"
-    )
+    payments: list[PaymentResponse] = Field(default_factory=list, description="Payment list")
     total_count: int = Field(0, description="Total payments")
     total_amount: int = Field(0, description="Total amount paid")
 
@@ -161,19 +145,17 @@ class PaymentHistoryResponse(BaseModel):
 class WebhookEvent(BaseModel):
     """Webhook event model for Dodo Payments."""
 
-    addons: List[Dict[str, Any]] = Field(default_factory=list, description="Addons")
-    billing: Dict[str, Any] = Field(..., description="Billing address")
+    addons: list[dict[str, Any]] = Field(default_factory=list, description="Addons")
+    billing: dict[str, Any] = Field(..., description="Billing address")
     cancel_at_next_billing_date: bool = Field(..., description="Cancel at next billing")
     created_at: str = Field(..., description="Creation timestamp")
     currency: str = Field(..., description="Currency")
-    customer: Dict[str, Any] = Field(..., description="Customer details")
-    metadata: Dict[str, Any] = Field(..., description="Metadata")
+    customer: dict[str, Any] = Field(..., description="Customer details")
+    metadata: dict[str, Any] = Field(..., description="Metadata")
     next_billing_date: str = Field(..., description="Next billing date")
     on_demand: bool = Field(..., description="On demand subscription")
     payment_frequency_count: int = Field(..., description="Payment frequency count")
-    payment_frequency_interval: str = Field(
-        ..., description="Payment frequency interval"
-    )
+    payment_frequency_interval: str = Field(..., description="Payment frequency interval")
     previous_billing_date: str = Field(..., description="Previous billing date")
     product_id: str = Field(..., description="Product ID")
     quantity: int = Field(..., description="Quantity")
@@ -181,35 +163,33 @@ class WebhookEvent(BaseModel):
     status: str = Field(..., description="Subscription status")
     subscription_id: str = Field(..., description="Subscription ID")
     subscription_period_count: int = Field(..., description="Subscription period count")
-    subscription_period_interval: str = Field(
-        ..., description="Subscription period interval"
-    )
+    subscription_period_interval: str = Field(..., description="Subscription period interval")
     tax_inclusive: bool = Field(..., description="Tax inclusive")
     trial_period_days: int = Field(..., description="Trial period days")
-    cancelled_at: Optional[str] = Field(None, description="Cancelled at")
-    discount_id: Optional[str] = Field(None, description="Discount ID")
+    cancelled_at: str | None = Field(None, description="Cancelled at")
+    discount_id: str | None = Field(None, description="Discount ID")
 
 
 # Database Models (Internal)
 class PlanDB(BaseModel):
     """Database model for subscription plan."""
 
-    id: Optional[str] = Field(None, alias="_id")
+    id: str | None = Field(None, alias="_id")
     dodo_product_id: str = Field(..., description="Dodo product ID")
     name: str = Field(..., description="Plan name")
-    description: Optional[str] = Field(None, description="Plan description")
+    description: str | None = Field(None, description="Plan description")
     amount: int = Field(..., description="Plan amount")
     currency: str = Field(..., description="Currency")
     duration: str = Field(..., description="Billing duration")
-    max_users: Optional[int] = Field(None, description="Maximum users")
-    features: List[str] = Field(default_factory=list, description="Features")
+    max_users: int | None = Field(None, description="Maximum users")
+    features: list[str] = Field(default_factory=list, description="Features")
     is_active: bool = Field(True, description="Active status")
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Creation timestamp",
     )
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Update timestamp",
     )
 
@@ -221,27 +201,23 @@ class PlanDB(BaseModel):
 class SubscriptionDB(BaseModel):
     """Database model for subscription."""
 
-    id: Optional[str] = Field(None, alias="_id")
+    id: str | None = Field(None, alias="_id")
     dodo_subscription_id: str = Field(..., description="Dodo subscription ID")
     user_id: str = Field(..., description="User ID")
     product_id: str = Field(..., description="Product ID")
     status: str = Field(..., description="Subscription status")
     quantity: int = Field(1, description="Quantity")
-    payment_link: Optional[str] = Field(None, description="Payment link URL")
-    webhook_processed_at: Optional[datetime] = Field(
-        None, description="Webhook processing timestamp"
-    )
+    payment_link: str | None = Field(None, description="Payment link URL")
+    webhook_processed_at: datetime | None = Field(None, description="Webhook processing timestamp")
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Creation timestamp",
     )
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Update timestamp",
     )
-    metadata: Dict[str, Any] = Field(
-        default_factory=dict, description="Additional data"
-    )
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional data")
 
     class Config:
         populate_by_name = True
@@ -251,27 +227,23 @@ class SubscriptionDB(BaseModel):
 class PaymentDB(BaseModel):
     """Database model for payment."""
 
-    id: Optional[str] = Field(None, alias="_id")
+    id: str | None = Field(None, alias="_id")
     dodo_subscription_id: str = Field(..., description="Dodo subscription ID")
     user_id: str = Field(..., description="User ID")
-    subscription_id: Optional[str] = Field(None, description="Internal subscription ID")
+    subscription_id: str | None = Field(None, description="Internal subscription ID")
     amount: int = Field(..., description="Payment amount")
     currency: str = Field(..., description="Currency")
     status: str = Field(..., description="Payment status")
-    description: Optional[str] = Field(None, description="Payment description")
-    webhook_processed_at: Optional[datetime] = Field(
-        None, description="Webhook processing timestamp"
-    )
+    description: str | None = Field(None, description="Payment description")
+    webhook_processed_at: datetime | None = Field(None, description="Webhook processing timestamp")
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Creation timestamp",
     )
-    metadata: Dict[str, Any] = Field(
-        default_factory=dict, description="Additional data"
-    )
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional data")
 
 
 class PaymentVerificationResponse(BaseModel):
     payment_completed: bool
-    subscription_id: Optional[str] = None
+    subscription_id: str | None = None
     message: str

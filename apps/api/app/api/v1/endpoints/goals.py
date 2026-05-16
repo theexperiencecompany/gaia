@@ -1,13 +1,12 @@
-from typing import List, Union
+from typing import Union
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from fastapi.websockets import WebSocketState
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from shared.py.wide_events import log
-from app.decorators import tiered_rate_limit
 from app.db.mongodb.collections import goals_collection
+from app.decorators import tiered_rate_limit
 from app.models.goals_models import (
     GoalCreate,
     GoalResponse,
@@ -23,6 +22,7 @@ from app.services.goals_service import (
     update_goal_with_roadmap_service,
     update_node_status_service,
 )
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -65,7 +65,7 @@ async def get_goal(goal_id: str, user: dict = Depends(get_current_user)):
 
 @router.get(
     "/goals",
-    response_model=List[GoalResponse],
+    response_model=list[GoalResponse],
     summary="List all goals",
     description="Fetch all goals for the authenticated user.",
 )
@@ -89,9 +89,7 @@ async def delete_goal(goal_id: str, user: dict = Depends(get_current_user)):
     """
     Delete a goal by its ID.
     """
-    log.set(
-        user={"id": user.get("user_id")}, goal={"operation": "delete", "id": goal_id}
-    )
+    log.set(user={"id": user.get("user_id")}, goal={"operation": "delete", "id": goal_id})
     return await delete_goal_service(goal_id, user)
 
 
@@ -136,9 +134,7 @@ async def websocket_generate_roadmap(websocket: WebSocket):
             await websocket.send_json({"error": "Invalid data received"})
             return
 
-        log.set(
-            goal={"operation": "generate_roadmap", "id": goal_id, "title": goal_title}
-        )
+        log.set(goal={"operation": "generate_roadmap", "id": goal_id, "title": goal_title})
         # Verify goal exists before proceeding
         goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
         if not goal:
@@ -146,9 +142,7 @@ async def websocket_generate_roadmap(websocket: WebSocket):
             await websocket.send_json({"error": "Goal not found"})
             return
 
-        log.info(
-            f"Starting roadmap generation for goal {goal_id} titled '{goal_title}'."
-        )
+        log.info(f"Starting roadmap generation for goal {goal_id} titled '{goal_title}'.")
         await websocket.send_json({"status": "Generating roadmap..."})
 
         try:
@@ -174,9 +168,7 @@ async def websocket_generate_roadmap(websocket: WebSocket):
 
             # Update the goal with the generated roadmap
             if generated_roadmap:
-                update_success = await update_goal_with_roadmap_service(
-                    goal_id, generated_roadmap
-                )
+                update_success = await update_goal_with_roadmap_service(goal_id, generated_roadmap)
 
                 if update_success:
                     # Send final success message
@@ -188,28 +180,26 @@ async def websocket_generate_roadmap(websocket: WebSocket):
                         }
                     )
                 else:
-                    await websocket.send_json(
-                        {"error": "Failed to update goal with roadmap"}
-                    )
+                    await websocket.send_json({"error": "Failed to update goal with roadmap"})
             else:
                 await websocket.send_json({"error": "No roadmap was generated"})
 
         except Exception as e:
-            log.error(f"Error generating roadmap for goal {goal_id}: {str(e)}")
-            await websocket.send_json({"error": f"Roadmap generation failed: {str(e)}"})
+            log.error(f"Error generating roadmap for goal {goal_id}: {e!s}")
+            await websocket.send_json({"error": f"Roadmap generation failed: {e!s}"})
 
     except WebSocketDisconnect:
         log.info("WebSocket disconnected.")
     except Exception as e:
-        log.error(f"WebSocket error: {str(e)}")
+        log.error(f"WebSocket error: {e!s}")
         try:
-            await websocket.send_json({"error": f"WebSocket error: {str(e)}"})
+            await websocket.send_json({"error": f"WebSocket error: {e!s}"})
         except Exception as send_error:
-            log.error(f"Failed to send error message via WebSocket: {str(send_error)}")
+            log.error(f"Failed to send error message via WebSocket: {send_error!s}")
     finally:
         # Ensure WebSocket is closed
         try:
             if websocket.client_state == WebSocketState.CONNECTED:
                 await websocket.close()
         except Exception as close_error:
-            log.error(f"Failed to close WebSocket: {str(close_error)}")
+            log.error(f"Failed to close WebSocket: {close_error!s}")

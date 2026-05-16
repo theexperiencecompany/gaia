@@ -3,17 +3,18 @@ Monkey patch for Opik's evaluation_tasks_executor to use sequential execution
 instead of ThreadPoolExecutor, avoiding cross-event-loop Future issues.
 """
 
-from typing import Any, Callable, List, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 T = TypeVar("T")
 
 
 def _patched_execute(
-    evaluation_tasks: List[Callable[[], T]],
+    evaluation_tasks: list[Callable[[], T]],
     _workers: int,
     verbose: int,
     desc: str = "Evaluation",
-) -> List[T]:
+) -> list[T]:
     """
     Replacement for Opik's execute function that runs sequentially
     instead of using ThreadPoolExecutor.
@@ -27,7 +28,7 @@ def _patched_execute(
 
     # Run all tasks sequentially regardless of workers count
     # This avoids ThreadPoolExecutor which causes cross-loop Future issues
-    test_results: List[Any] = [
+    test_results: list[Any] = [
         evaluation_task()
         for evaluation_task in tqdm(  # type: ignore[operator]
             evaluation_tasks,

@@ -1,6 +1,6 @@
 import asyncio
-from datetime import datetime, timezone
-from typing import List, Literal, Optional
+from datetime import UTC, datetime
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -22,10 +22,10 @@ from app.models.message_models import (
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.memory_service import memory_service
 from app.services.workflow import WorkflowService
-from shared.py.wide_events import log
 from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
 )
+from shared.py.wide_events import log
 
 # Sentinel marker on dynamic-context SystemMessages so
 # manage_system_prompts_node can keep only the latest one.
@@ -33,10 +33,10 @@ DYNAMIC_CONTEXT_MARKER = "dynamic_context"
 
 
 def create_system_message(
-    user_id: Optional[str] = None,
-    user_name: Optional[str] = None,
+    user_id: str | None = None,
+    user_name: str | None = None,
     agent_type: Literal["comms", "executor"] = "comms",
-    source: Optional[str] = None,
+    source: str | None = None,
 ) -> SystemMessage:
     """Return the STATIC main system prompt for the given agent.
 
@@ -58,7 +58,7 @@ def create_system_message(
 
 
 def build_current_time_message(
-    user_timezone: Optional[str] = None,
+    user_timezone: str | None = None,
 ) -> HumanMessage:
     """Return a tiny HumanMessage carrying the current UTC + local time.
 
@@ -72,13 +72,11 @@ def build_current_time_message(
     costs us nothing on the cache budget but keeps ``system_instruction``
     fully stable.
     """
-    utc_now = datetime.now(timezone.utc).strftime("%A, %B %d, %Y, %H:%M UTC")
+    utc_now = datetime.now(UTC).strftime("%A, %B %d, %Y, %H:%M UTC")
     parts = [f"[Current UTC Time: {utc_now}]"]
     if user_timezone:
         try:
-            local_now = datetime.now(ZoneInfo(user_timezone)).strftime(
-                "%A, %B %d, %Y, %H:%M"
-            )
+            local_now = datetime.now(ZoneInfo(user_timezone)).strftime("%A, %B %d, %Y, %H:%M")
             parts.append(f"[User Local Time ({user_timezone}): {local_now}]")
         except Exception as e:
             log.warning(f"Error formatting user local time: {e}")
@@ -100,9 +98,7 @@ async def _get_user_memories_section(query: str, user_id: str) -> str:
         Formatted memories section or empty string
     """
     try:
-        results = await memory_service.search_memories(
-            query=query, user_id=user_id, limit=5
-        )
+        results = await memory_service.search_memories(query=query, user_id=user_id, limit=5)
         if results and (memories := getattr(results, "memories", None)):
             log.info(f"Added {len(memories)} memories to context")
             return "\n\nBased on our previous conversations:\n" + "\n".join(
@@ -151,15 +147,15 @@ def _mark_dynamic_context(msg: SystemMessage) -> SystemMessage:
 
 
 async def build_dynamic_context_message(
-    user_id: Optional[str],
-    query: Optional[str],
-    user_name: Optional[str] = None,
-    user_timezone: Optional[str] = None,
-    user_preferences: Optional[dict] = None,
-    source: Optional[str] = None,
+    user_id: str | None,
+    query: str | None,
+    user_name: str | None = None,
+    user_timezone: str | None = None,
+    user_preferences: dict | None = None,
+    source: str | None = None,
     include_openui: bool = False,
-    memories_text: Optional[str] = None,
-    skills_text: Optional[str] = None,
+    memories_text: str | None = None,
+    skills_text: str | None = None,
 ) -> SystemMessage:
     """Build the single dynamic-context system message.
 
@@ -274,9 +270,9 @@ async def build_dynamic_context_message(
 async def get_memory_message(
     user_id: str,
     query: str,
-    user_name: Optional[str] = None,
-    user_timezone: Optional[str] = None,
-    user_preferences: Optional[dict] = None,
+    user_name: str | None = None,
+    user_timezone: str | None = None,
+    user_preferences: dict | None = None,
 ) -> SystemMessage:
     """Deprecated: thin wrapper over build_dynamic_context_message."""
     return await build_dynamic_context_message(
@@ -289,8 +285,8 @@ async def get_memory_message(
 
 
 def get_platform_context_message(
-    source: Optional[str] = None,
-) -> Optional[SystemMessage]:
+    source: str | None = None,
+) -> SystemMessage | None:
     """Deprecated. Platform restrictions now live in the static per-channel
     comms prompt selected by ``create_system_message(source=...)``. This
     shim is kept only so older call sites don't break during migration;
@@ -301,7 +297,7 @@ def get_platform_context_message(
 
 
 def format_tool_selection_message(
-    selected_tool: str, existing_content: str, tool_category: Optional[str] = None
+    selected_tool: str, existing_content: str, tool_category: str | None = None
 ) -> str:
     """Format tool selection message, handling both standalone and combined requests.
 
@@ -337,8 +333,8 @@ Execute immediately without asking for clarification."""
 
 async def format_workflow_execution_message(
     selected_workflow: SelectedWorkflowData,
-    user_id: Optional[str] = None,
-    trigger_context: Optional[dict] = None,
+    user_id: str | None = None,
+    trigger_context: dict | None = None,
     existing_content: str = "",
 ) -> str:
     """Format workflow execution message, handling both manual and automated triggers."""
@@ -381,8 +377,7 @@ async def format_workflow_execution_message(
         return EMAIL_TRIGGERED_WORKFLOW_PROMPT.format(
             email_sender=email_data.get("sender", "Unknown"),
             email_subject=email_data.get("subject", "No Subject"),
-            email_content_preview=msg_text[:200]
-            + ("..." if len(msg_text) > 200 else ""),
+            email_content_preview=msg_text[:200] + ("..." if len(msg_text) > 200 else ""),
             trigger_timestamp=trigger_context.get("triggered_at", "Unknown"),
             **common_args,
         )
@@ -417,9 +412,7 @@ Time: {time}"""
     return f"{context}\n\n{existing_content}" if existing_content else context
 
 
-def format_reply_context(
-    reply_to_message: ReplyToMessageData, existing_content: str = ""
-) -> str:
+def format_reply_context(reply_to_message: ReplyToMessageData, existing_content: str = "") -> str:
     """Format reply-to-message context for AI conversation.
 
     This adds context about which message the user is replying to,
@@ -432,25 +425,17 @@ def format_reply_context(
     return f"{context}\n\n{existing_content}" if existing_content else context
 
 
-def format_files_list(
-    files_data: Optional[List[FileData]], file_ids: Optional[List[str]] = None
-) -> str:
+def format_files_list(files_data: list[FileData] | None, file_ids: list[str] | None = None) -> str:
     """Format file information for agent context with usage instructions."""
     if not files_data or (file_ids is not None and not file_ids):
         return "No files uploaded."
 
     # Filter to specific files if IDs provided, otherwise use all
-    files = (
-        files_data
-        if file_ids is None
-        else [f for f in files_data if f.fileId in file_ids]
-    )
+    files = files_data if file_ids is None else [f for f in files_data if f.fileId in file_ids]
     if not files:
         return "No files uploaded."
 
-    file_list = "\n".join(
-        f"- Name: {file.filename} Id: {file.fileId}" for file in files
-    )
+    file_list = "\n".join(f"- Name: {file.filename} Id: {file.fileId}" for file in files)
 
     return f"""
 Uploaded Files:

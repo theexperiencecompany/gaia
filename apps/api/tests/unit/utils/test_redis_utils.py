@@ -7,7 +7,6 @@ import pytest
 
 from app.utils.redis_utils import RedisPoolManager
 
-
 # ---------------------------------------------------------------------------
 # Fixtures — reset the singleton between every test
 # ---------------------------------------------------------------------------
@@ -98,9 +97,9 @@ class TestGetPool:
                 "app.config.settings.settings",
                 MagicMock(REDIS_URL="redis://localhost:6379/0"),
             ),
+            pytest.raises(ConnectionError, match="Redis down"),
         ):
-            with pytest.raises(ConnectionError, match="Redis down"):
-                await RedisPoolManager.get_pool()
+            await RedisPoolManager.get_pool()
 
         # Pool should remain None after failure
         assert RedisPoolManager._pool is None

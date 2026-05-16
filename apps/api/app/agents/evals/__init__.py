@@ -24,9 +24,9 @@ from .initialization import init_eval_providers
 
 __all__ = [
     "GENERIC_EVAL_CONFIGS",
+    "SUBAGENT_CONFIGS",
     "GenericEvalConfig",
     "GenericEvaluator",
-    "SUBAGENT_CONFIGS",
     "SubagentEvalConfig",
     "SubagentEvaluator",
     "evaluate_all_generic",

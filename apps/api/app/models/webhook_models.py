@@ -3,7 +3,7 @@ Clean webhook models for Dodo Payments based on actual webhook format.
 """
 
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -49,7 +49,7 @@ class DodoPaymentData(BaseModel):
     """Payment data from payment webhook."""
 
     payment_id: str
-    subscription_id: Optional[str] = None
+    subscription_id: str | None = None
     business_id: str
     brand_id: str
     customer: DodoCustomerData
@@ -62,15 +62,15 @@ class DodoPaymentData(BaseModel):
     settlement_tax: int
     status: str
     payment_method: str
-    card_network: Optional[str] = None
-    card_type: Optional[str] = None
-    card_last_four: Optional[str] = None
-    card_issuing_country: Optional[str] = None
+    card_network: str | None = None
+    card_type: str | None = None
+    card_last_four: str | None = None
+    card_issuing_country: str | None = None
     created_at: str
-    updated_at: Optional[str] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    error_code: Optional[str] = None
-    error_message: Optional[str] = None
+    updated_at: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    error_code: str | None = None
+    error_message: str | None = None
 
 
 class DodoSubscriptionData(BaseModel):
@@ -88,17 +88,17 @@ class DodoSubscriptionData(BaseModel):
     payment_frequency_interval: str
     subscription_period_count: int
     subscription_period_interval: str
-    next_billing_date: Optional[str] = None
-    previous_billing_date: Optional[str] = None
+    next_billing_date: str | None = None
+    previous_billing_date: str | None = None
     created_at: str
-    cancelled_at: Optional[str] = None
+    cancelled_at: str | None = None
     cancel_at_next_billing_date: bool = False
     tax_inclusive: bool = False
     trial_period_days: int = 0
     on_demand: bool = False
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    addons: List[Any] = Field(default_factory=list)
-    discount_id: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    addons: list[Any] = Field(default_factory=list)
+    discount_id: str | None = None
 
 
 class DodoWebhookEvent(BaseModel):
@@ -107,9 +107,9 @@ class DodoWebhookEvent(BaseModel):
     business_id: str
     type: DodoWebhookEventType
     timestamp: str
-    data: Dict[str, Any]
+    data: dict[str, Any]
 
-    def get_payment_data(self) -> Optional[DodoPaymentData]:
+    def get_payment_data(self) -> DodoPaymentData | None:
         """Extract payment data if payment event."""
         if self.type.value.startswith("payment."):
             try:
@@ -118,7 +118,7 @@ class DodoWebhookEvent(BaseModel):
                 return None
         return None
 
-    def get_subscription_data(self) -> Optional[DodoSubscriptionData]:
+    def get_subscription_data(self) -> DodoSubscriptionData | None:
         """Extract subscription data if subscription event."""
         if self.type.value.startswith("subscription."):
             try:
@@ -134,8 +134,8 @@ class DodoWebhookProcessingResult(BaseModel):
     event_type: str
     status: str  # "processed", "ignored", "failed"
     message: str
-    payment_id: Optional[str] = None
-    subscription_id: Optional[str] = None
+    payment_id: str | None = None
+    subscription_id: str | None = None
 
 
 class ComposioWebhookEvent(BaseModel):
@@ -143,7 +143,7 @@ class ComposioWebhookEvent(BaseModel):
 
     type: str
     timestamp: str
-    data: Dict[str, Any]
+    data: dict[str, Any]
     connection_id: str
     connection_nano_id: str
     trigger_nano_id: str

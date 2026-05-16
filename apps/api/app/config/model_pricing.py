@@ -3,11 +3,10 @@ Model pricing configuration for token cost calculation.
 Uses model_service to fetch models with caching support.
 """
 
-from typing import Dict, NamedTuple, Optional
+from typing import NamedTuple
 
-from shared.py.wide_events import log
 from app.services.model_service import get_model_by_id
-
+from shared.py.wide_events import log
 
 # Default cached-input price as a fraction of full input price when the
 # model entry doesn't specify one. Matches Gemini's standard implicit-cache
@@ -47,15 +46,11 @@ async def get_model_pricing(model_name: str) -> ModelPricing:
         if model:
             input_cost = getattr(model, "pricing_per_1k_input_tokens", None)
             output_cost = getattr(model, "pricing_per_1k_output_tokens", None)
-            cached_input_cost = getattr(
-                model, "pricing_per_1k_cached_input_tokens", None
-            )
+            cached_input_cost = getattr(model, "pricing_per_1k_cached_input_tokens", None)
 
             if input_cost is not None and output_cost is not None:
                 if cached_input_cost is None:
-                    cached_input_cost = (
-                        float(input_cost) * DEFAULT_CACHED_INPUT_FRACTION
-                    )
+                    cached_input_cost = float(input_cost) * DEFAULT_CACHED_INPUT_FRACTION
                 return ModelPricing(
                     input_cost_per_1k=float(input_cost),
                     output_cost_per_1k=float(output_cost),
@@ -74,8 +69,8 @@ async def calculate_token_cost(
     model_name: str,
     input_tokens: int,
     output_tokens: int,
-    cached_tokens: Optional[int] = 0,
-) -> Dict[str, float]:
+    cached_tokens: int | None = 0,
+) -> dict[str, float]:
     """Calculate the cost in USD for token usage.
 
     ``input_tokens`` is the total prompt size; ``cached_tokens`` is the

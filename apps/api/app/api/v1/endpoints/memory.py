@@ -93,8 +93,7 @@ async def create_memory(
             memory_id=memory_entry.id,
             message="Memory created successfully",
         )
-    else:
-        return CreateMemoryResponse(success=False, message="Failed to create memory")
+    return CreateMemoryResponse(success=False, message="Failed to create memory")
 
 
 @router.delete("/{memory_id}", response_model=DeleteMemoryResponse)
@@ -128,8 +127,7 @@ async def delete_memory(
 
     if success:
         return DeleteMemoryResponse(success=True, message="Memory deleted successfully")
-    else:
-        return DeleteMemoryResponse(success=False, message="Failed to delete memory")
+    return DeleteMemoryResponse(success=False, message="Failed to delete memory")
 
 
 @router.delete("", response_model=DeleteMemoryResponse)
@@ -162,14 +160,7 @@ async def clear_all_memories(
         log.set(memory={"operation": "delete_all", "success": success})
 
         if success:
-            return DeleteMemoryResponse(
-                success=True, message="All memories cleared successfully"
-            )
-        else:
-            return DeleteMemoryResponse(
-                success=False, message="Failed to clear memories"
-            )
+            return DeleteMemoryResponse(success=True, message="All memories cleared successfully")
+        return DeleteMemoryResponse(success=False, message="Failed to clear memories")
     except Exception as e:
-        return DeleteMemoryResponse(
-            success=False, message=f"Failed to clear memories: {str(e)}"
-        )
+        return DeleteMemoryResponse(success=False, message=f"Failed to clear memories: {e!s}")

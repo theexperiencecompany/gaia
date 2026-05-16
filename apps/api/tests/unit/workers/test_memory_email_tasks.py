@@ -1,7 +1,8 @@
 """Unit tests for memory_email_tasks ARQ worker."""
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from app.workers.tasks.memory_email_tasks import process_gmail_emails_to_memory
 
@@ -158,23 +159,27 @@ class TestProcessGmailEmailsToMemory:
 
     async def test_exception_in_processor_propagates(self, ctx):
         """Unhandled exceptions from process_gmail_to_memory propagate."""
-        with patch(
-            "app.workers.tasks.memory_email_tasks.process_gmail_to_memory",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("Gmail API down"),
+        with (
+            patch(
+                "app.workers.tasks.memory_email_tasks.process_gmail_to_memory",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("Gmail API down"),
+            ),
+            pytest.raises(RuntimeError, match="Gmail API down"),
         ):
-            with pytest.raises(RuntimeError, match="Gmail API down"):
-                await process_gmail_emails_to_memory(ctx, "user_error")
+            await process_gmail_emails_to_memory(ctx, "user_error")
 
     async def test_connection_error_propagates(self, ctx):
         """Network errors from the processor are not swallowed."""
-        with patch(
-            "app.workers.tasks.memory_email_tasks.process_gmail_to_memory",
-            new_callable=AsyncMock,
-            side_effect=ConnectionError("Cannot reach Gmail"),
+        with (
+            patch(
+                "app.workers.tasks.memory_email_tasks.process_gmail_to_memory",
+                new_callable=AsyncMock,
+                side_effect=ConnectionError("Cannot reach Gmail"),
+            ),
+            pytest.raises(ConnectionError, match="Cannot reach Gmail"),
         ):
-            with pytest.raises(ConnectionError, match="Cannot reach Gmail"):
-                await process_gmail_emails_to_memory(ctx, "user_net")
+            await process_gmail_emails_to_memory(ctx, "user_net")
 
     # ------------------------------------------------------------------
     # ARQ ctx parameter

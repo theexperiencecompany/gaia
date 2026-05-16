@@ -2,7 +2,9 @@
 ARQ worker settings configuration.
 """
 
-from typing import Callable, Optional, Any, Coroutine
+from collections.abc import Callable, Coroutine
+from typing import Any
+
 from arq.connections import RedisSettings
 
 from app.config.settings import settings
@@ -24,8 +26,8 @@ class WorkerSettings:
     cron_jobs: list[Any] = []
 
     # Lifecycle functions will be set from the main worker file
-    on_startup: Optional[Callable[[dict], Coroutine[Any, Any, None]]] = None
-    on_shutdown: Optional[Callable[[dict], Coroutine[Any, Any, None]]] = None
+    on_startup: Callable[[dict], Coroutine[Any, Any, None]] | None = None
+    on_shutdown: Callable[[dict], Coroutine[Any, Any, None]] | None = None
 
     # Performance settings
     max_jobs = 10

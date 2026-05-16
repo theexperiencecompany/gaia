@@ -2,8 +2,8 @@
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 BASE = "/api/v1/platform-links"
 
@@ -68,9 +68,7 @@ class TestLinkPlatform:
     @pytest.mark.asyncio
     async def test_missing_platform_user_id(self, client: AsyncClient) -> None:
         mock_redis = AsyncMock()
-        mock_redis.hgetall = AsyncMock(
-            return_value={"platform": "discord", "platform_user_id": ""}
-        )
+        mock_redis.hgetall = AsyncMock(return_value={"platform": "discord", "platform_user_id": ""})
         mock_redis.delete = AsyncMock()
 
         with patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache:
@@ -172,9 +170,7 @@ class TestDisconnectPlatform:
         assert resp.status_code == 400
 
     @pytest.mark.asyncio
-    async def test_successful_disconnect_clears_cache(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_successful_disconnect_clears_cache(self, client: AsyncClient) -> None:
         existing = {"discord": {"platformUserId": "DISC999", "username": "u"}}
         mock_redis = AsyncMock()
         mock_redis.delete = AsyncMock()

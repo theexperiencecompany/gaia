@@ -1,7 +1,6 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from shared.py.wide_events import log
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.db.mongodb.collections import goals_collection
 from app.models.chat_models import (
@@ -16,6 +15,7 @@ from app.services.conversation_service import (
 )
 from app.services.todos.sync_service import create_goal_project_and_todo
 from app.services.todos.todo_service import TodoService
+from shared.py.wide_events import log
 
 
 async def seed_initial_goal(user_id: str) -> None:
@@ -127,14 +127,14 @@ async def seed_initial_goal(user_id: str) -> None:
         goal_data = {
             "title": "Explore Gaia's Goal Tracking",
             "description": "A comprehensive guide to help you discover all the powerful features of goal tracking in Gaia. Complete the roadmap to learn everything!",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "user_id": user_id,
             "roadmap": roadmap_data,
         }
 
         result = await goals_collection.insert_one(goal_data)
 
-        due_date = datetime.now(timezone.utc)
+        due_date = datetime.now(UTC)
 
         await create_goal_project_and_todo(
             goal_id=str(result.inserted_id),
@@ -183,12 +183,10 @@ async def seed_initial_conversation(user_id: str) -> None:
         message = MessageModel(
             type="ai",
             response=welcome_message,
-            date=datetime.now(timezone.utc).isoformat(),
+            date=datetime.now(UTC).isoformat(),
         )
 
-        update_request = UpdateMessagesRequest(
-            conversation_id=conversation_id, messages=[message]
-        )
+        update_request = UpdateMessagesRequest(conversation_id=conversation_id, messages=[message])
 
         await update_messages(update_request, user_dict)
         log.info(f"Seeded initial conversation for user {user_id}")
@@ -204,7 +202,7 @@ async def seed_onboarding_todo(user_id: str) -> None:
     """
     log.set(operation="seed_onboarding_todo", user_id=user_id)
     try:
-        due_date = datetime.now(timezone.utc) + timedelta(days=1)
+        due_date = datetime.now(UTC) + timedelta(days=1)
 
         # Create subtasks that guide users through all todo features
         subtasks = [

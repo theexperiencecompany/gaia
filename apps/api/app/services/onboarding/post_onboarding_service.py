@@ -1,10 +1,10 @@
 """Post-onboarding personalization service."""
 
 import asyncio
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 
-from shared.py.wide_events import log
+from bson import ObjectId
+
 from app.core.websocket_manager import websocket_manager
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import users_collection, workflows_collection
@@ -21,7 +21,7 @@ from app.utils.seeding_utils import (
     seed_initial_conversation,
     seed_onboarding_todo,
 )
-from bson import ObjectId
+from shared.py.wide_events import log
 
 
 async def emit_progress(
@@ -46,7 +46,7 @@ async def emit_progress(
     )
 
 
-async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> List[str]:
+async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> list[str]:
     """
     Use RAG to find similar workflows based on user memories.
 
@@ -59,9 +59,7 @@ async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> List[str]:
     """
     try:
         # Get user memories
-        memories: MemorySearchResult = await memory_service.get_all_memories(
-            user_id=user_id
-        )
+        memories: MemorySearchResult = await memory_service.get_all_memories(user_id=user_id)
 
         if not memories.memories:
             log.info(f"No memories found for user {user_id}, using default workflows")
@@ -80,7 +78,7 @@ async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> List[str]:
         results = chroma_client.similarity_search(query_text, k=10)
 
         # Extract workflow IDs and verify they're public
-        workflow_ids: List[str] = []
+        workflow_ids: list[str] = []
         for doc in results:
             wf_id = doc.metadata.get("workflow_id")
             if not wf_id:
@@ -89,9 +87,7 @@ async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> List[str]:
             # Verify workflow exists and is public
             try:
                 query_id = ObjectId(wf_id) if ObjectId.is_valid(wf_id) else wf_id
-                workflow = await workflows_collection.find_one(
-                    {"_id": query_id, "is_public": True}
-                )
+                workflow = await workflows_collection.find_one({"_id": query_id, "is_public": True})
                 if workflow and len(workflow_ids) < limit:
                     workflow_ids.append(str(wf_id))
             except Exception as e:
@@ -110,12 +106,12 @@ async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> List[str]:
         return await _get_default_workflows(limit)
 
 
-async def _get_default_workflows(limit: int = 4) -> List[str]:
+async def _get_default_workflows(limit: int = 4) -> list[str]:
     """Get default public workflows as fallback."""
     try:
-        workflows = await workflows_collection.find(
-            {"is_public": True}, limit=limit
-        ).to_list(length=limit)
+        workflows = await workflows_collection.find({"is_public": True}, limit=limit).to_list(
+            length=limit
+        )
         return [str(wf["_id"]) for wf in workflows]
     except Exception as e:
         log.error(f"Error fetching default workflows: {e}")
@@ -128,7 +124,7 @@ async def save_personalization_data(
     personality_phrase: str,
     user_bio: str,
     bio_status: BioStatus,
-    workflow_ids: List[str],
+    workflow_ids: list[str],
     account_number: int,
     member_since: str,
     overlay_color: str,
@@ -164,7 +160,7 @@ async def save_personalization_data(
                     "onboarding.member_since": member_since,
                     "onboarding.overlay_color": overlay_color,
                     "onboarding.overlay_opacity": overlay_opacity,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
         )
@@ -187,9 +183,7 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
         log.info(f"Starting post-onboarding personalization for user {user_id}")
 
         # Emit initial progress
-        await emit_progress(
-            user_id, "initializing", "✨ Preparing your magical space...", 5
-        )
+        await emit_progress(user_id, "initializing", "✨ Preparing your magical space...", 5)
 
         # Set bio status to processing
         await users_collection.update_one(
@@ -199,9 +193,7 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
 
         # Get user memories (this triggers email scanning if needed)
         # Email scanning happens silently in background - we show generic progress
-        await emit_progress(
-            user_id, "discovering", "🔮 Discovering your essence...", 10
-        )
+        await emit_progress(user_id, "discovering", "🔮 Discovering your essence...", 10)
 
         # This may take time as it triggers email processing internally
         memories_result = await memory_service.get_all_memories(user_id=user_id)
@@ -217,16 +209,12 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
         )
 
         # Run all tasks in parallel where possible
-        await emit_progress(
-            user_id, "crafting", "🎨 Crafting your unique identity...", 70
-        )
+        await emit_progress(user_id, "crafting", "🎨 Crafting your unique identity...", 70)
 
         # Get user profession for personality phrase
         user = await users_collection.find_one({"_id": ObjectId(user_id)})
         profession = (
-            user.get("onboarding", {}).get("preferences", {}).get("profession", "")
-            if user
-            else ""
+            user.get("onboarding", {}).get("preferences", {}).get("profession", "") if user else ""
         )
 
         # Parallel tasks
@@ -250,16 +238,12 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
         user_bio, bio_status = bio_result
 
         # Emit progress after parallel tasks
-        await emit_progress(
-            user_id, "curating", "🔧 Curating your perfect toolkit...", 75
-        )
+        await emit_progress(user_id, "curating", "🔧 Curating your perfect toolkit...", 75)
 
         # Always save personalization data
         # Even if bio is placeholder, we save it so user sees progress
         # Frontend checks if bio is placeholder via has_personalization flag
-        log.info(
-            f"Saving personalization for user {user_id} with bio: {user_bio[:50]}..."
-        )
+        log.info(f"Saving personalization for user {user_id} with bio: {user_bio[:50]}...")
 
         # Generate profile card design (house, colors)
         card_design = generate_profile_card_design()
@@ -268,9 +252,7 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
         overlay_opacity = card_design["overlay_opacity"]
 
         # Emit house assignment progress
-        await emit_progress(
-            user_id, "finalizing", f"🏠 Welcome to {house.title()}!", 90
-        )
+        await emit_progress(user_id, "finalizing", f"🏠 Welcome to {house.title()}!", 90)
 
         # Save to database (including account_number and member_since for persistence)
         await save_personalization_data(
@@ -308,9 +290,7 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
                 continue
 
         # Emit house assignment progress
-        await emit_progress(
-            user_id, "finalizing", f"🏠 Welcome to {house.title()}!", 90
-        )
+        await emit_progress(user_id, "finalizing", f"🏠 Welcome to {house.title()}!", 90)
 
         # Only broadcast completion if bio is actually ready
         # COMPLETED: Bio generated from memories

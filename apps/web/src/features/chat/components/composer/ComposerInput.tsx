@@ -436,6 +436,7 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
         document.addEventListener("click", handleClickOutside);
         return () => document.removeEventListener("click", handleClickOutside);
       }
+      return undefined;
     }, [slashCommandState.isActive, inputRef]);
 
     return (

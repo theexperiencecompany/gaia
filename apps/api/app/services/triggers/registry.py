@@ -5,10 +5,8 @@ Maps trigger names and event types to their handlers.
 Provides plug-and-play registration for new trigger handlers.
 """
 
-from typing import Dict, Optional, Set
-
-from shared.py.wide_events import log
 from app.services.triggers.base import TriggerHandler
+from shared.py.wide_events import log
 
 
 class TriggerRegistry:
@@ -20,9 +18,9 @@ class TriggerRegistry:
 
     def __init__(self) -> None:
         # Maps trigger_name -> handler
-        self._name_handlers: Dict[str, TriggerHandler] = {}
+        self._name_handlers: dict[str, TriggerHandler] = {}
         # Maps event_type -> handler
-        self._event_handlers: Dict[str, TriggerHandler] = {}
+        self._event_handlers: dict[str, TriggerHandler] = {}
 
     def register(self, handler: TriggerHandler) -> None:
         """Register a trigger handler.
@@ -50,19 +48,19 @@ class TriggerRegistry:
             self._event_handlers[event_type] = handler
             log.info(f"Registered handler for event: {event_type}")
 
-    def get_by_trigger_name(self, trigger_name: str) -> Optional[TriggerHandler]:
+    def get_by_trigger_name(self, trigger_name: str) -> TriggerHandler | None:
         """Get handler by trigger name (for registration)."""
         return self._name_handlers.get(trigger_name)
 
-    def get_by_event_type(self, event_type: str) -> Optional[TriggerHandler]:
+    def get_by_event_type(self, event_type: str) -> TriggerHandler | None:
         """Get handler by event type (for webhook processing)."""
         return self._event_handlers.get(event_type)
 
-    def get_all_trigger_names(self) -> Set[str]:
+    def get_all_trigger_names(self) -> set[str]:
         """Get all registered trigger names."""
         return set(self._name_handlers.keys())
 
-    def get_all_event_types(self) -> Set[str]:
+    def get_all_event_types(self) -> set[str]:
         """Get all registered event types."""
         return set(self._event_handlers.keys())
 
@@ -71,11 +69,11 @@ class TriggerRegistry:
 trigger_registry = TriggerRegistry()
 
 
-def get_handler_by_name(trigger_name: str) -> Optional[TriggerHandler]:
+def get_handler_by_name(trigger_name: str) -> TriggerHandler | None:
     """Get handler by trigger name."""
     return trigger_registry.get_by_trigger_name(trigger_name)
 
 
-def get_handler_by_event(event_type: str) -> Optional[TriggerHandler]:
+def get_handler_by_event(event_type: str) -> TriggerHandler | None:
     """Get handler by event type."""
     return trigger_registry.get_by_event_type(event_type)

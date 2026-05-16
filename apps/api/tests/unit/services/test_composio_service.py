@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # ComposioService tests
 # ---------------------------------------------------------------------------
@@ -16,9 +15,7 @@ class TestComposioServiceInit:
     @patch("app.services.composio.composio_service.custom_tools_registry")
     @patch("app.services.composio.composio_service.LangchainProvider")
     @patch("app.services.composio.composio_service.Composio")
-    def test_init_no_toolkit_versions(
-        self, mock_composio_cls, mock_provider_cls, mock_registry
-    ):
+    def test_init_no_toolkit_versions(self, mock_composio_cls, mock_provider_cls, mock_registry):
         mock_provider = MagicMock()
         mock_provider_cls.return_value = mock_provider
         mock_composio_cls.return_value = MagicMock()
@@ -29,7 +26,7 @@ class TestComposioServiceInit:
             svc = ComposioService(api_key="test-key")
         mock_composio_cls.assert_called_once_with(
             provider=mock_provider,
-            api_key="test-key",
+            api_key="test-key",  # pragma: allowlist secret
             timeout=120,
             toolkit_versions=None,
         )
@@ -38,9 +35,7 @@ class TestComposioServiceInit:
     @patch("app.services.composio.composio_service.custom_tools_registry")
     @patch("app.services.composio.composio_service.LangchainProvider")
     @patch("app.services.composio.composio_service.Composio")
-    def test_init_with_toolkit_versions(
-        self, mock_composio_cls, mock_provider_cls, mock_registry
-    ):
+    def test_init_with_toolkit_versions(self, mock_composio_cls, mock_provider_cls, mock_registry):
         integration = MagicMock()
         integration.composio_config.toolkit_version = "1.2.3"
         integration.composio_config.toolkit.lower.return_value = "gmail"
@@ -51,7 +46,7 @@ class TestComposioServiceInit:
         ):
             from app.services.composio.composio_service import ComposioService
 
-            ComposioService(api_key="key")
+            ComposioService(api_key="key")  # pragma: allowlist secret
             call_kwargs = mock_composio_cls.call_args[1]
             assert call_kwargs["toolkit_versions"] == {"gmail": "1.2.3"}
 
@@ -70,7 +65,7 @@ class TestComposioServiceInit:
         ):
             from app.services.composio.composio_service import ComposioService
 
-            ComposioService(api_key="key")
+            ComposioService(api_key="key")  # pragma: allowlist secret
             call_kwargs = mock_composio_cls.call_args[1]
             assert call_kwargs["toolkit_versions"] is None
 
@@ -94,11 +89,11 @@ class TestConnectAccount:
     @pytest.mark.asyncio
     async def test_unsupported_provider_raises(self):
         svc = _make_service()
-        with patch(
-            "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS", {}
+        with (
+            patch("app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS", {}),
+            pytest.raises(ValueError, match="not supported"),
         ):
-            with pytest.raises(ValueError, match="not supported"):
-                await svc.connect_account("unsupported", "user1")
+            await svc.connect_account("unsupported", "user1")
 
     @pytest.mark.asyncio
     async def test_connect_account_success(self):
@@ -175,9 +170,9 @@ class TestConnectAccount:
                 "app.services.composio.composio_service.settings",
                 MagicMock(COMPOSIO_REDIRECT_URI="https://example.com/cb"),
             ),
+            pytest.raises(RuntimeError, match="boom"),
         ):
-            with pytest.raises(RuntimeError, match="boom"):
-                await svc.connect_account("gmail", "user1")
+            await svc.connect_account("gmail", "user1")
 
 
 class TestGetTools:
@@ -195,9 +190,7 @@ class TestGetTools:
         svc.composio.tools.get = MagicMock(side_effect=[[tool1, tool2], [tool1, tool2]])
 
         with (
-            patch(
-                "app.services.composio.composio_service.custom_tools_registry"
-            ) as mock_reg,
+            patch("app.services.composio.composio_service.custom_tools_registry") as mock_reg,
             patch(
                 "app.services.composio.composio_service.before_execute",
                 return_value=lambda f: f,
@@ -232,9 +225,7 @@ class TestGetTools:
         svc.composio.tools.get = MagicMock(side_effect=[[tool1], [tool1]])
 
         with (
-            patch(
-                "app.services.composio.composio_service.custom_tools_registry"
-            ) as mock_reg,
+            patch("app.services.composio.composio_service.custom_tools_registry") as mock_reg,
             patch(
                 "app.services.composio.composio_service.before_execute",
                 return_value=lambda f: f,
@@ -282,9 +273,7 @@ class TestStoreToolMetadata:
     @pytest.mark.asyncio
     async def test_empty_tools_returns_early(self):
         svc = _make_service()
-        with patch(
-            "app.services.composio.composio_service.get_mcp_tools_store"
-        ) as mock_get:
+        with patch("app.services.composio.composio_service.get_mcp_tools_store") as mock_get:
             await svc._store_tool_metadata("gmail", [])
             mock_get.assert_not_called()
 
@@ -472,9 +461,7 @@ class TestCheckConnectionStatus:
         user_accounts.items = []
         svc.composio.connected_accounts.list = MagicMock(return_value=user_accounts)
 
-        with patch(
-            "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS", {}
-        ):
+        with patch("app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS", {}):
             result = await svc.check_connection_status(["unknown"], "user1")
 
         assert result == {"unknown": False}
@@ -484,9 +471,7 @@ class TestCheckConnectionStatus:
         svc = _make_service()
         config = MagicMock()
         config.auth_config_id = "auth_gmail"
-        svc.composio.connected_accounts.list = MagicMock(
-            side_effect=RuntimeError("fail")
-        )
+        svc.composio.connected_accounts.list = MagicMock(side_effect=RuntimeError("fail"))
 
         with patch(
             "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
@@ -514,11 +499,11 @@ class TestDeleteConnectedAccount:
     @pytest.mark.asyncio
     async def test_unsupported_provider(self):
         svc = _make_service()
-        with patch(
-            "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS", {}
+        with (
+            patch("app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS", {}),
+            pytest.raises(ValueError, match="not supported"),
         ):
-            with pytest.raises(ValueError, match="not supported"):
-                await svc.delete_connected_account("user1", "bad")
+            await svc.delete_connected_account("user1", "bad")
 
     @pytest.mark.asyncio
     async def test_no_active_accounts(self):
@@ -578,16 +563,16 @@ class TestDeleteConnectedAccount:
         user_accounts = MagicMock()
         user_accounts.items = [account]
         svc.composio.connected_accounts.list = MagicMock(return_value=user_accounts)
-        svc.composio.connected_accounts.delete = MagicMock(
-            side_effect=RuntimeError("fail")
-        )
+        svc.composio.connected_accounts.delete = MagicMock(side_effect=RuntimeError("fail"))
 
-        with patch(
-            "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
-            {"gmail": config},
+        with (
+            patch(
+                "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
+                {"gmail": config},
+            ),
+            pytest.raises(RuntimeError, match="fail"),
         ):
-            with pytest.raises(RuntimeError, match="fail"):
-                await svc.delete_connected_account("user1", "gmail")
+            await svc.delete_connected_account("user1", "gmail")
 
     @pytest.mark.asyncio
     async def test_delete_invalidates_proxy_cache(self):
@@ -696,18 +681,14 @@ class TestHandleSubscribeTrigger:
 class TestGetComposioService:
     def test_returns_service(self):
         mock_svc = MagicMock()
-        with patch(
-            "app.services.composio.composio_service.providers"
-        ) as mock_providers:
+        with patch("app.services.composio.composio_service.providers") as mock_providers:
             mock_providers.get.return_value = mock_svc
             from app.services.composio.composio_service import get_composio_service
 
             assert get_composio_service() == mock_svc
 
     def test_raises_when_none(self):
-        with patch(
-            "app.services.composio.composio_service.providers"
-        ) as mock_providers:
+        with patch("app.services.composio.composio_service.providers") as mock_providers:
             mock_providers.get.return_value = None
             from app.services.composio.composio_service import get_composio_service
 

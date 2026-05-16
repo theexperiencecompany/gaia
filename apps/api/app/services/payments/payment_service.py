@@ -3,12 +3,11 @@ Streamlined Dodo Payments integration service.
 Clean, simple, and maintainable.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from bson import ObjectId
 from dodopayments import DodoPayments
 from fastapi import HTTPException
-from shared.py.wide_events import log
 
 from app.config.settings import settings
 from app.db.mongodb.collections import (
@@ -25,6 +24,7 @@ from app.models.payment_models import (
     UserSubscriptionStatus,
 )
 from app.utils.email_utils import send_pro_subscription_email
+from shared.py.wide_events import log
 
 
 class DodoPaymentService:
@@ -41,7 +41,7 @@ class DodoPaymentService:
         except Exception as e:
             log.error(f"Failed to instantiate dodo payments: {e}")
 
-    async def get_plans(self, active_only: bool = True) -> List[PlanResponse]:
+    async def get_plans(self, active_only: bool = True) -> list[PlanResponse]:
         """Get subscription plans with caching."""
         cache_key = f"plans:{'active' if active_only else 'all'}"
 
@@ -92,8 +92,8 @@ class DodoPaymentService:
         user_id: str,
         product_id: str,
         quantity: int = 1,
-        discount_code: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        discount_code: str | None = None,
+    ) -> dict[str, Any]:
         """Create subscription via Checkout Sessions; show promo code field and get hosted checkout url."""
         log.set(payment={"event_type": "create_subscription", "status": "initiated"})
 
@@ -103,15 +103,13 @@ class DodoPaymentService:
             raise HTTPException(404, "User not found")
 
         # Check for existing active subscription
-        existing = await subscriptions_collection.find_one(
-            {"user_id": user_id, "status": "active"}
-        )
+        existing = await subscriptions_collection.find_one({"user_id": user_id, "status": "active"})
         if existing:
             raise HTTPException(409, "Active subscription exists")
 
         # Create hosted checkout session (preferred over deprecated subscriptions.create)
         try:
-            params: Dict[str, Any] = {
+            params: dict[str, Any] = {
                 "product_cart": [
                     {
                         "product_id": product_id,
@@ -141,15 +139,13 @@ class DodoPaymentService:
             checkout_session = self.client.checkout_sessions.create(**params)
         except Exception as e:
             log.error(f"Error creating Dodo checkout session: {e}")
-            raise HTTPException(502, f"Payment service error: {str(e)}")
+            raise HTTPException(502, f"Payment service error: {e!s}")
 
         # Look up plan name for richer logging
-        plan_name: Optional[str] = None
+        plan_name: str | None = None
         try:
             plans = await self.get_plans(active_only=False)
-            matched_plan = next(
-                (p for p in plans if p.dodo_product_id == product_id), None
-            )
+            matched_plan = next((p for p in plans if p.dodo_product_id == product_id), None)
             if matched_plan:
                 plan_name = matched_plan.name
         except Exception as e:  # nosec B110
@@ -170,7 +166,7 @@ class DodoPaymentService:
             "status": "payment_link_created",
         }
 
-    async def verify_payment_completion(self, user_id: str) -> Dict[str, Any]:
+    async def verify_payment_completion(self, user_id: str) -> dict[str, Any]:
         """Check payment completion status from webhook data."""
         subscription = await subscriptions_collection.find_one(
             {"user_id": user_id, "status": "active"}, sort=[("created_at", -1)]
@@ -199,9 +195,7 @@ class DodoPaymentService:
             "message": "Payment completed",
         }
 
-    async def get_user_subscription_status(
-        self, user_id: str
-    ) -> UserSubscriptionStatus:
+    async def get_user_subscription_status(self, user_id: str) -> UserSubscriptionStatus:
         """Get user subscription status."""
         subscription = await subscriptions_collection.find_one(
             {"user_id": user_id, "status": "active"}
@@ -225,11 +219,7 @@ class DodoPaymentService:
         try:
             plans = await self.get_plans(active_only=False)
             plan = next(
-                (
-                    p
-                    for p in plans
-                    if p.dodo_product_id == subscription.get("product_id")
-                ),
+                (p for p in plans if p.dodo_product_id == subscription.get("product_id")),
                 None,
             )
         except Exception:

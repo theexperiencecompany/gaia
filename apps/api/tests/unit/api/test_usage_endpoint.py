@@ -5,11 +5,11 @@ Tests cover:
 - GET /api/v1/usage/history
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 SUMMARY_URL = "/api/v1/usage/summary"
 HISTORY_URL = "/api/v1/usage/history"
@@ -114,7 +114,7 @@ class TestGetUsageHistory:
         mock_feature.limit = 50
 
         mock_snapshot = MagicMock()
-        mock_snapshot.created_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        mock_snapshot.created_at = datetime(2025, 1, 1, tzinfo=UTC)
         mock_snapshot.plan_type = "free"
         mock_snapshot.features = [mock_feature]
 
@@ -139,7 +139,11 @@ class TestGetUsageHistory:
 
         assert response.status_code == 200
         # Default is 7 days
-        mock_get.assert_awaited_once_with("507f1f77bcf86cd799439011", None, 7)
+        mock_get.assert_awaited_once_with(
+            "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+            None,
+            7,  # pragma: allowlist secret
+        )  # pragma: allowlist secret
 
     async def test_get_history_with_feature_filter(self, client: AsyncClient):
         with (
@@ -156,16 +160,18 @@ class TestGetUsageHistory:
             response = await client.get(HISTORY_URL, params={"feature_key": "chat"})
 
         assert response.status_code == 200
-        mock_get.assert_awaited_once_with("507f1f77bcf86cd799439011", "chat", 7)
+        mock_get.assert_awaited_once_with(
+            "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+            "chat",
+            7,  # pragma: allowlist secret
+        )  # pragma: allowlist secret
 
     async def test_get_history_unknown_feature_returns_400(self, client: AsyncClient):
         with patch(
             "app.api.v1.endpoints.usage.FEATURE_LIMITS",
             {"chat": MagicMock()},
         ):
-            response = await client.get(
-                HISTORY_URL, params={"feature_key": "nonexistent"}
-            )
+            response = await client.get(HISTORY_URL, params={"feature_key": "nonexistent"})
 
         assert response.status_code == 400
         assert "Unknown feature" in response.json()["detail"]

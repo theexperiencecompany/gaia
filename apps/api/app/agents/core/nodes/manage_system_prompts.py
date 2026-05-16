@@ -18,11 +18,12 @@ that doesn't matter for the cache: only the per-call request bytes do.
 
 from typing import cast
 
-from shared.py.wide_events import log
-from app.override.langgraph_bigtool.utils import State
 from langchain_core.messages import AnyMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
+
+from app.override.langgraph_bigtool.utils import State
+from shared.py.wide_events import log
 
 
 def _has_marker(msg: AnyMessage, name: str) -> bool:
@@ -58,9 +59,7 @@ def _is_time_context(msg: AnyMessage) -> bool:
     return _has_marker(msg, "time_context")
 
 
-def manage_system_prompts_node(
-    state: State, config: RunnableConfig, store: BaseStore
-) -> State:
+def manage_system_prompts_node(state: State, config: RunnableConfig, store: BaseStore) -> State:
     """Keep only the latest system message in each of three slots.
 
     Logic:
@@ -96,9 +95,8 @@ def manage_system_prompts_node(
                 elif _is_dynamic_context(msg):
                     if latest_dynamic_idx is None:
                         latest_dynamic_idx = idx
-                else:
-                    if latest_static_idx is None:
-                        latest_static_idx = idx
+                elif latest_static_idx is None:
+                    latest_static_idx = idx
             elif _is_time_context(msg) and latest_time_idx is None:
                 latest_time_idx = idx
             if (

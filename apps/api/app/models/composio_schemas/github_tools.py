@@ -15,16 +15,12 @@ from pydantic import BaseModel, ConfigDict, Field
 class GitHubListRepositoriesInput(BaseModel):
     """Input for GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER."""
 
-    before: str | None = Field(
-        None, description="Filter for repos updated before timestamp"
-    )
+    before: str | None = Field(None, description="Filter for repos updated before timestamp")
     direction: Literal["asc", "desc"] | None = Field(None, description="Sort direction")
     page: int = Field(1, description="Page number")
     per_page: int = Field(30, description="Results per page")
     raw_response: bool = Field(False, description="Return full raw response")
-    since: str | None = Field(
-        None, description="Filter for repos updated after timestamp"
-    )
+    since: str | None = Field(None, description="Filter for repos updated after timestamp")
     sort: Literal["created", "updated", "pushed", "full_name"] | None = Field(
         None, description="Sort field"
     )

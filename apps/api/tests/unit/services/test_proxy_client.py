@@ -101,9 +101,8 @@ class TestResolveConnectedAccountId:
         assert exc.value.status_code == 500
 
     def test_raises_when_toolkit_unknown(self) -> None:
-        with _patch_auth_config(auth_config_id=None):
-            with pytest.raises(AppError) as exc:
-                _resolve_connected_account_id("u1", "WHATSAPP")
+        with _patch_auth_config(auth_config_id=None), pytest.raises(AppError) as exc:
+            _resolve_connected_account_id("u1", "WHATSAPP")
         assert "Unknown" in exc.value.message
 
     def test_raises_when_no_active_account(self) -> None:

@@ -1,8 +1,8 @@
 """Unit tests for profile card utilities."""
 
-import random
 from datetime import datetime
-from typing import Any, Dict, List
+import random
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,13 +12,12 @@ from app.models.user_models import BioStatus
 from app.utils.profile_card import (
     HOUSES,
     assign_random_house,
+    generate_personality_phrase,
     generate_profile_card_design,
     generate_random_color,
-    generate_personality_phrase,
     generate_user_bio,
     get_user_metadata,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helper factories
@@ -30,7 +29,7 @@ def _make_memory(content: str) -> MemoryEntry:
     return MemoryEntry(content=content)
 
 
-def _make_memories(contents: List[str]) -> List[MemoryEntry]:
+def _make_memories(contents: list[str]) -> list[MemoryEntry]:
     """Create a list of MemoryEntry objects from content strings."""
     return [_make_memory(c) for c in contents]
 
@@ -40,9 +39,9 @@ def _make_user(
     profession: str = "developer",
     created_at: Any = None,
     email_memory_processed: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build a fake MongoDB user document."""
-    user: Dict[str, Any] = {
+    user: dict[str, Any] = {
         "name": name,
         "onboarding": {"preferences": {"profession": profession}},
         "email_memory_processed": email_memory_processed,
@@ -256,9 +255,7 @@ class TestGetUserMetadata:
     @pytest.mark.asyncio
     async def test_exception_returns_defaults(self) -> None:
         mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(
-            side_effect=Exception("DB connection lost")
-        )
+        mock_collection.find_one = AsyncMock(side_effect=Exception("DB connection lost"))
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
             result = await get_user_metadata(
@@ -279,9 +276,7 @@ class TestGetUserMetadata:
                 "507f1f77bcf86cd799439011"  # pragma: allowlist secret
             )
 
-        mock_collection.count_documents.assert_awaited_once_with(
-            {"created_at": {"$lt": dt}}
-        )
+        mock_collection.count_documents.assert_awaited_once_with({"created_at": {"$lt": dt}})
         assert result["account_number"] == 1
         assert result["member_since"] == "Mar 10, 2025"
 
@@ -319,9 +314,7 @@ class TestGeneratePersonalityPhrase:
         memories = _make_memories(["likes coding", "enjoys music"])
 
         with patch("app.utils.profile_card.init_llm", return_value=mock_llm):
-            result = await generate_personality_phrase(
-                "user123", memories, profession="developer"
-            )
+            result = await generate_personality_phrase("user123", memories, profession="developer")
 
         assert result == "Digital Alchemist"
 
@@ -377,9 +370,7 @@ class TestGeneratePersonalityPhrase:
         mock_llm.ainvoke = AsyncMock(side_effect=Exception("LLM timeout"))
 
         with patch("app.utils.profile_card.init_llm", return_value=mock_llm):
-            result = await generate_personality_phrase(
-                "user123", [], profession="developer"
-            )
+            result = await generate_personality_phrase("user123", [], profession="developer")
 
         assert result == "Curious Developer"
 
@@ -390,9 +381,7 @@ class TestGeneratePersonalityPhrase:
         mock_llm.ainvoke = AsyncMock(side_effect=Exception("LLM error"))
 
         with patch("app.utils.profile_card.init_llm", return_value=mock_llm):
-            result = await generate_personality_phrase(
-                "user123", [], profession="UX Designer"
-            )
+            result = await generate_personality_phrase("user123", [], profession="UX Designer")
 
         assert result == "Creative Designer"
 
@@ -416,9 +405,7 @@ class TestGeneratePersonalityPhrase:
         mock_llm.ainvoke = AsyncMock(side_effect=Exception("LLM error"))
 
         with patch("app.utils.profile_card.init_llm", return_value=mock_llm):
-            result = await generate_personality_phrase(
-                "user123", [], profession="student"
-            )
+            result = await generate_personality_phrase("user123", [], profession="student")
 
         assert result == "Eager Learner"
 
@@ -429,9 +416,7 @@ class TestGeneratePersonalityPhrase:
         mock_llm.ainvoke = AsyncMock(side_effect=Exception("LLM error"))
 
         with patch("app.utils.profile_card.init_llm", return_value=mock_llm):
-            result = await generate_personality_phrase(
-                "user123", [], profession="Project Manager"
-            )
+            result = await generate_personality_phrase("user123", [], profession="Project Manager")
 
         assert result == "Strategic Leader"
 
@@ -442,9 +427,7 @@ class TestGeneratePersonalityPhrase:
         mock_llm.ainvoke = AsyncMock(side_effect=Exception("LLM error"))
 
         with patch("app.utils.profile_card.init_llm", return_value=mock_llm):
-            result = await generate_personality_phrase(
-                "user123", [], profession="astronaut"
-            )
+            result = await generate_personality_phrase("user123", [], profession="astronaut")
 
         assert result == "Curious Adventurer"
 
@@ -469,9 +452,7 @@ class TestGeneratePersonalityPhrase:
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
 
         with patch("app.utils.profile_card.init_llm", return_value=mock_llm):
-            result = await generate_personality_phrase(
-                "user123", [], profession="developer"
-            )
+            result = await generate_personality_phrase("user123", [], profession="developer")
 
         assert result == "Lone Wanderer"
         # Verify prompt was invoked with empty memory_summary
@@ -490,9 +471,7 @@ class TestGeneratePersonalityPhrase:
         memories = _make_memories(["loves Python", "reads sci-fi", "plays guitar"])
 
         with patch("app.utils.profile_card.init_llm", return_value=mock_llm):
-            result = await generate_personality_phrase(
-                "user123", memories, profession="developer"
-            )
+            result = await generate_personality_phrase("user123", memories, profession="developer")
 
         assert result == "Tech Poet"
         prompt_text = mock_llm.ainvoke.call_args[0][0]
@@ -509,9 +488,7 @@ class TestGeneratePersonalityPhrase:
         mock_llm.bind = MagicMock(return_value=mock_llm)
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
 
-        with patch(
-            "app.utils.profile_card.init_llm", return_value=mock_llm
-        ) as mock_init:
+        with patch("app.utils.profile_card.init_llm", return_value=mock_llm) as mock_init:
             await generate_personality_phrase("user123", [], profession="")
 
         mock_init.assert_called_once_with(preferred_provider="gemini")
@@ -766,9 +743,7 @@ class TestGenerateUserBio:
 
         # First composio call succeeds, second (in except) raises
         mock_composio_ok = AsyncMock()
-        mock_composio_ok.check_connection_status = AsyncMock(
-            return_value={"gmail": True}
-        )
+        mock_composio_ok.check_connection_status = AsyncMock(return_value={"gmail": True})
         mock_composio_fail = AsyncMock()
         mock_composio_fail.check_connection_status = AsyncMock(
             side_effect=Exception("Composio down")
@@ -808,9 +783,7 @@ class TestGenerateUserBio:
     async def test_db_find_raises_falls_to_outer_except(self) -> None:
         """DB failure in find_one triggers the outer except block."""
         mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(
-            side_effect=Exception("DB connection lost")
-        )
+        mock_collection.find_one = AsyncMock(side_effect=Exception("DB connection lost"))
 
         mock_composio = AsyncMock()
         mock_composio.check_connection_status = AsyncMock(return_value={"gmail": False})
@@ -890,9 +863,7 @@ class TestGenerateUserBio:
                 "app.utils.profile_card.get_composio_service",
                 return_value=mock_composio,
             ),
-            patch(
-                "app.utils.profile_card.init_llm", return_value=mock_llm
-            ) as mock_init,
+            patch("app.utils.profile_card.init_llm", return_value=mock_llm) as mock_init,
         ):
             await generate_user_bio(
                 "507f1f77bcf86cd799439011",  # pragma: allowlist secret
@@ -934,7 +905,7 @@ class TestGenerateUserBio:
     @pytest.mark.asyncio
     async def test_user_missing_onboarding_key(self) -> None:
         """User document lacks onboarding key entirely."""
-        user: Dict[str, Any] = {"name": "Kara"}
+        user: dict[str, Any] = {"name": "Kara"}
         mock_collection = AsyncMock()
         mock_collection.find_one = AsyncMock(return_value=user)
 
@@ -964,7 +935,7 @@ class TestGenerateUserBio:
     @pytest.mark.asyncio
     async def test_user_missing_name_defaults_to_user(self) -> None:
         """User document lacks name key entirely."""
-        user: Dict[str, Any] = {
+        user: dict[str, Any] = {
             "onboarding": {"preferences": {"profession": "chef"}},
             "email_memory_processed": False,
         }

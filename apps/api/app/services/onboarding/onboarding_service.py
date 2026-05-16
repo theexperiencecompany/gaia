@@ -1,7 +1,10 @@
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 
-from shared.py.wide_events import log
+from bson import ObjectId
+from fastapi import BackgroundTasks, HTTPException
+from pymongo import ReturnDocument
+
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import (
     BioStatus,
@@ -9,13 +12,11 @@ from app.models.user_models import (
     OnboardingPreferences,
     OnboardingRequest,
 )
-from app.utils.redis_utils import RedisPoolManager
 from app.services.onboarding.post_onboarding_service import seed_initial_user_data
 from app.utils.errors import AppError
+from app.utils.redis_utils import RedisPoolManager
 from app.utils.user_preferences_utils import format_user_preferences_for_agent
-from bson import ObjectId
-from fastapi import BackgroundTasks, HTTPException
-from pymongo import ReturnDocument
+from shared.py.wide_events import log
 
 
 async def queue_personalization(user_id: str) -> None:
@@ -25,9 +26,7 @@ async def queue_personalization(user_id: str) -> None:
         job = await pool.enqueue_job("process_personalization_task", user_id)
 
         if job:
-            log.info(
-                f"Queued personalization for user {user_id} with job ID {job.job_id}"
-            )
+            log.info(f"Queued personalization for user {user_id} with job ID {job.job_id}")
         else:
             log.error(f"Failed to queue personalization for user {user_id}")
 
@@ -39,8 +38,8 @@ async def complete_onboarding(
     user_id: str,
     onboarding_data: OnboardingRequest,
     background_tasks: BackgroundTasks,
-    user_timezone: Optional[str] = None,
-) -> Dict[str, Any]:
+    user_timezone: str | None = None,
+) -> dict[str, Any]:
     """
     Complete user onboarding by storing preferences and updating user profile.
     Uses atomic operations to prevent race conditions.
@@ -75,11 +74,11 @@ async def complete_onboarding(
         update_fields = {
             "name": onboarding_data.name.strip(),
             "onboarding.completed": True,
-            "onboarding.completed_at": datetime.now(timezone.utc),
+            "onboarding.completed_at": datetime.now(UTC),
             "onboarding.phase": OnboardingPhase.PERSONALIZATION_PENDING,
             "onboarding.bio_status": BioStatus.PENDING,
             "onboarding.preferences": preferences.model_dump(),
-            "updated_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(UTC),
         }
 
         # Always set timezone at root level from onboarding data
@@ -105,14 +104,13 @@ async def complete_onboarding(
             existing_user = await users_collection.find_one({"_id": user_object_id})
             if not existing_user:
                 raise HTTPException(status_code=404, detail="User not found")
-            elif existing_user.get("onboarding", {}).get("completed", False):
+            if existing_user.get("onboarding", {}).get("completed", False):
                 raise AppError(
                     message="Onboarding already completed",
                     status_code=409,
                     meta={"code": "ONBOARDING_ALREADY_COMPLETED"},
                 )
-            else:
-                raise HTTPException(status_code=500, detail="Failed to update user")
+            raise HTTPException(status_code=500, detail="Failed to update user")
 
         # Convert ObjectId to string for JSON serialization
         updated_user["_id"] = str(updated_user["_id"])
@@ -128,13 +126,11 @@ async def complete_onboarding(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(
-            f"Error completing onboarding for user {user_id}: {str(e)}", exc_info=True
-        )
+        log.error(f"Error completing onboarding for user {user_id}: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to complete onboarding")
 
 
-async def get_user_onboarding_status(user_id: str) -> Dict[str, Any]:
+async def get_user_onboarding_status(user_id: str) -> dict[str, Any]:
     """
     Get user's onboarding status and preferences.
 
@@ -161,17 +157,15 @@ async def get_user_onboarding_status(user_id: str) -> Dict[str, Any]:
 
     except Exception as e:
         log.error(
-            f"Error getting onboarding status for user {user_id}: {str(e)}",
+            f"Error getting onboarding status for user {user_id}: {e!s}",
             exc_info=True,
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get onboarding status: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get onboarding status: {e!s}")
 
 
 async def update_onboarding_preferences(
     user_id: str, preferences: OnboardingPreferences
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Update user's onboarding preferences (for settings page).
     Uses atomic operations for data consistency.
@@ -206,7 +200,7 @@ async def update_onboarding_preferences(
             {
                 "$set": {
                     "onboarding.preferences": sanitized_preferences,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
             return_document=ReturnDocument.AFTER,
@@ -227,13 +221,13 @@ async def update_onboarding_preferences(
         raise
     except Exception as e:
         log.error(
-            f"Error updating onboarding preferences for user {user_id}: {str(e)}",
+            f"Error updating onboarding preferences for user {user_id}: {e!s}",
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Failed to update preferences")
 
 
-async def get_user_preferences_for_agent(user_id: str) -> Optional[str]:
+async def get_user_preferences_for_agent(user_id: str) -> str | None:
     """
     Get formatted user preferences for agent system prompt.
 
@@ -259,5 +253,5 @@ async def get_user_preferences_for_agent(user_id: str) -> Optional[str]:
         return format_user_preferences_for_agent(prefs)
 
     except Exception as e:
-        log.error(f"Error getting user preferences for agent: {str(e)}", exc_info=True)
+        log.error(f"Error getting user preferences for agent: {e!s}", exc_info=True)
         return None

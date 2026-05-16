@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.support_tool."""
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,11 +13,11 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.support_tool"
 
 
-def _cfg(user_id: str = FAKE_USER_ID) -> Dict[str, Any]:
+def _cfg(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
     return {"metadata": {"user_id": user_id}}
 
 
-def _cfg_no_user() -> Dict[str, Any]:
+def _cfg_no_user() -> dict[str, Any]:
     return {"metadata": {}}
 
 
@@ -34,9 +34,7 @@ def _writer() -> MagicMock:
 class TestCreateSupportTicket:
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.user_service")
-    async def test_happy_path_support(
-        self, mock_user_svc: MagicMock, mock_gsw: MagicMock
-    ) -> None:
+    async def test_happy_path_support(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         w = _writer()
         mock_gsw.return_value = w
         mock_user_svc.get_user_by_id = AsyncMock(
@@ -66,9 +64,7 @@ class TestCreateSupportTicket:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.user_service")
-    async def test_happy_path_feature(
-        self, mock_user_svc: MagicMock, mock_gsw: MagicMock
-    ) -> None:
+    async def test_happy_path_feature(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
         mock_user_svc.get_user_by_id = AsyncMock(
             return_value={"email": "test@example.com", "name": "Test User"}
@@ -125,9 +121,7 @@ class TestCreateSupportTicket:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.user_service")
-    async def test_strips_whitespace(
-        self, mock_user_svc: MagicMock, mock_gsw: MagicMock
-    ) -> None:
+    async def test_strips_whitespace(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         w = _writer()
         mock_gsw.return_value = w
         mock_user_svc.get_user_by_id = AsyncMock(
@@ -164,14 +158,10 @@ class TestCreateSupportTicket:
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.user_service")
-    async def test_user_name_defaults(
-        self, mock_user_svc: MagicMock, mock_gsw: MagicMock
-    ) -> None:
+    async def test_user_name_defaults(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         w = _writer()
         mock_gsw.return_value = w
-        mock_user_svc.get_user_by_id = AsyncMock(
-            return_value={"email": "test@example.com"}
-        )
+        mock_user_svc.get_user_by_id = AsyncMock(return_value={"email": "test@example.com"})
 
         from app.agents.tools.support_tool import create_support_ticket
 

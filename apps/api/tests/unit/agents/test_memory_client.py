@@ -2,7 +2,6 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-
 from app.agents.memory.client import MemoryClientManager, memory_client_manager
 
 
@@ -21,7 +20,7 @@ class TestMemoryClientManager:
         self, mock_settings: MagicMock, mock_client_cls: MagicMock
     ) -> None:
         """First call to get_client should instantiate AsyncMemoryClient."""
-        mock_settings.MEM0_API_KEY = "test-key"
+        mock_settings.MEM0_API_KEY = "test-key"  # pragma: allowlist secret
         mock_settings.MEM0_ORG_ID = "test-org"
         mock_settings.MEM0_PROJECT_ID = "test-project"
 
@@ -34,7 +33,7 @@ class TestMemoryClientManager:
         client = await mgr.get_client()
 
         mock_client_cls.assert_called_once_with(
-            api_key="test-key",
+            api_key="test-key",  # pragma: allowlist secret
             org_id="test-org",
             project_id="test-project",
         )
@@ -96,9 +95,7 @@ class TestMemoryClientManager:
 
         mock_instance = MagicMock()
         mock_instance.project = MagicMock()
-        mock_instance.project.update = AsyncMock(
-            side_effect=RuntimeError("network error")
-        )
+        mock_instance.project.update = AsyncMock(side_effect=RuntimeError("network error"))
         mock_client_cls.return_value = mock_instance
 
         mgr = MemoryClientManager()

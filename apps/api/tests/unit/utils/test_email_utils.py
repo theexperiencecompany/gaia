@@ -8,7 +8,7 @@ Tests cover:
 """
 
 import base64
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -25,7 +25,6 @@ from app.utils.email_utils import (
     send_inactive_user_email,
     send_welcome_email,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -123,9 +122,7 @@ class TestExtractSender:
         assert extract_sender({}) == ""
 
     def test_from_with_display_name(self):
-        msg = _gmail_msg(
-            headers=[{"name": "From", "value": "Alice <alice@example.com>"}]
-        )
+        msg = _gmail_msg(headers=[{"name": "From", "value": "Alice <alice@example.com>"}])
         assert extract_sender(msg) == "Alice <alice@example.com>"
 
 
@@ -137,9 +134,7 @@ class TestExtractSender:
 @pytest.mark.unit
 class TestExtractDate:
     def test_returns_date_when_present(self):
-        msg = _gmail_msg(
-            headers=[{"name": "Date", "value": "Mon, 1 Jan 2024 12:00:00 +0000"}]
-        )
+        msg = _gmail_msg(headers=[{"name": "Date", "value": "Mon, 1 Jan 2024 12:00:00 +0000"}])
         assert extract_date(msg) == "Mon, 1 Jan 2024 12:00:00 +0000"
 
     def test_returns_empty_when_no_date_header(self):
@@ -506,20 +501,14 @@ class TestSendWelcomeEmail:
 
         mock_send.assert_not_called()
 
-    @patch(
-        "app.utils.email_utils.resend.Emails.send", side_effect=Exception("API error")
-    )
-    @patch(
-        "app.utils.email_utils.generate_welcome_email_html", return_value="<h1>ok</h1>"
-    )
+    @patch("app.utils.email_utils.resend.Emails.send", side_effect=Exception("API error"))
+    @patch("app.utils.email_utils.generate_welcome_email_html", return_value="<h1>ok</h1>")
     async def test_propagates_send_exception(self, mock_gen_html, mock_send):
         with pytest.raises(Exception, match="API error"):
             await send_welcome_email("user@example.com")
 
     @patch("app.utils.email_utils.resend.Emails.send")
-    @patch(
-        "app.utils.email_utils.generate_welcome_email_html", return_value="<h1>Hi</h1>"
-    )
+    @patch("app.utils.email_utils.generate_welcome_email_html", return_value="<h1>Hi</h1>")
     async def test_no_name_passed_through(self, mock_gen_html, mock_send):
         await send_welcome_email("user@example.com")
         mock_gen_html.assert_called_once_with(None)
@@ -626,9 +615,7 @@ class TestSendInactiveUserEmail:
         "app.utils.email_utils.generate_inactive_user_email_html",
         return_value="<h1>ok</h1>",
     )
-    async def test_user_not_found_returns_false(
-        self, mock_gen_html, mock_send, mock_users
-    ):
+    async def test_user_not_found_returns_false(self, mock_gen_html, mock_send, mock_users):
         mock_users.find_one = AsyncMock(return_value=None)
 
         result = await send_inactive_user_email(
@@ -648,7 +635,7 @@ class TestSendInactiveUserEmail:
         self, mock_gen_html, mock_send, mock_users
     ):
         """User active 3 days ago should NOT receive an inactive email."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         mock_users.find_one = AsyncMock(
             return_value={
                 "_id": "507f1f77bcf86cd799439011",
@@ -670,9 +657,7 @@ class TestSendInactiveUserEmail:
         "app.utils.email_utils.generate_inactive_user_email_html",
         return_value="<h1>ok</h1>",
     )
-    async def test_no_last_active_returns_false(
-        self, mock_gen_html, mock_send, mock_users
-    ):
+    async def test_no_last_active_returns_false(self, mock_gen_html, mock_send, mock_users):
         """If user has no last_active_at field at all, skip."""
         mock_users.find_one = AsyncMock(
             return_value={
@@ -694,11 +679,9 @@ class TestSendInactiveUserEmail:
         "app.utils.email_utils.generate_inactive_user_email_html",
         return_value="<h1>ok</h1>",
     )
-    async def test_email_sent_recently_returns_false(
-        self, mock_gen_html, mock_send, mock_users
-    ):
+    async def test_email_sent_recently_returns_false(self, mock_gen_html, mock_send, mock_users):
         """If an inactive email was sent less than 7 days ago, skip."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         mock_users.find_one = AsyncMock(
             return_value={
                 "_id": "507f1f77bcf86cd799439011",
@@ -722,7 +705,7 @@ class TestSendInactiveUserEmail:
     )
     async def test_success_with_user_id(self, mock_gen_html, mock_send, mock_users):
         """User inactive 10 days, never emailed -> should send and update DB."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         mock_users.find_one = AsyncMock(
             return_value={
                 "_id": "507f1f77bcf86cd799439011",
@@ -746,11 +729,9 @@ class TestSendInactiveUserEmail:
         "app.utils.email_utils.generate_inactive_user_email_html",
         return_value="<h1>ok</h1>",
     )
-    async def test_max_2_emails_stops_after_14_days(
-        self, mock_gen_html, mock_send, mock_users
-    ):
+    async def test_max_2_emails_stops_after_14_days(self, mock_gen_html, mock_send, mock_users):
         """After 14+ days inactive with a previous email sent, stop sending."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         mock_users.find_one = AsyncMock(
             return_value={
                 "_id": "507f1f77bcf86cd799439011",
@@ -776,7 +757,7 @@ class TestSendInactiveUserEmail:
         self, mock_gen_html, mock_send, mock_users
     ):
         """User inactive 12 days, first email sent 8 days ago -> eligible for second email."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         mock_users.find_one = AsyncMock(
             return_value={
                 "_id": "507f1f77bcf86cd799439011",
@@ -801,7 +782,7 @@ class TestSendInactiveUserEmail:
     )
     async def test_naive_datetimes_handled(self, mock_gen_html, mock_send, mock_users):
         """MongoDB may return naive datetimes; the function should handle them."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Naive datetimes (no tzinfo) — function adds timezone.utc
         naive_last_active = (now - timedelta(days=10)).replace(tzinfo=None)
         mock_users.find_one = AsyncMock(
@@ -820,9 +801,7 @@ class TestSendInactiveUserEmail:
         assert result is True
         mock_send.assert_called_once()
 
-    @patch(
-        "app.utils.email_utils.resend.Emails.send", side_effect=Exception("send failed")
-    )
+    @patch("app.utils.email_utils.resend.Emails.send", side_effect=Exception("send failed"))
     @patch(
         "app.utils.email_utils.generate_inactive_user_email_html",
         return_value="<h1>ok</h1>",
@@ -837,11 +816,9 @@ class TestSendInactiveUserEmail:
         "app.utils.email_utils.generate_inactive_user_email_html",
         return_value="<h1>ok</h1>",
     )
-    async def test_naive_last_email_sent_handled(
-        self, mock_gen_html, mock_send, mock_users
-    ):
+    async def test_naive_last_email_sent_handled(self, mock_gen_html, mock_send, mock_users):
         """Naive last_inactive_email_sent datetime should be handled."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         naive_last_email = (now - timedelta(days=2)).replace(tzinfo=None)
         mock_users.find_one = AsyncMock(
             return_value={

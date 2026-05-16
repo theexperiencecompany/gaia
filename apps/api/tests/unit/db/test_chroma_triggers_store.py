@@ -4,8 +4,8 @@ import hashlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langgraph.store.base import PutOp
+import pytest
 
 from app.db.chroma.chroma_triggers_store import (
     TRIGGERS_NAMESPACE,
@@ -18,7 +18,6 @@ from app.db.chroma.chroma_triggers_store import (
     _get_existing_triggers_from_chroma,
     get_triggers_store,
 )
-
 
 # ---------------------------------------------------------------------------
 # _compute_trigger_hash
@@ -35,7 +34,7 @@ class TestComputeTriggerHash:
         )
         result = _compute_trigger_hash("gmail", trigger)
         expected = hashlib.sha256(
-            "new_email::New Email::Triggered on new email::gmail".encode()
+            b"new_email::New Email::Triggered on new email::gmail"
         ).hexdigest()
         assert result == expected
 

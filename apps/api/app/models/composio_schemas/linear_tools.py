@@ -53,5 +53,5 @@ class LinearGetAllTeamsData(BaseModel):
     def get_teams(self) -> list[LinearTeam]:
         """Get teams list, preferring 'items' over 'teams'."""
         # Prefer 'items' as it has the structured data
-        items_data = self.items if self.items else self.teams
+        items_data = self.items or self.teams
         return [LinearTeam.model_validate(t) for t in items_data if isinstance(t, dict)]

@@ -3,18 +3,17 @@
 import hashlib
 import json
 import re
-from typing import Any, Dict, List
+from typing import Any
 
-from app.agents.llm.client import get_free_llm_chain, invoke_with_fallback
-from shared.py.wide_events import log
-from app.constants.cache import SIX_HOUR_TTL
-from app.decorators.caching import Cacheable
 from langchain_core.messages import HumanMessage
 
+from app.agents.llm.client import get_free_llm_chain, invoke_with_fallback
+from app.constants.cache import SIX_HOUR_TTL
+from app.decorators.caching import Cacheable
+from shared.py.wide_events import log
 
-def build_research_cache_key(
-    query: str, scope: str, focus_areas: List[str], depth: int
-) -> str:
+
+def build_research_cache_key(query: str, scope: str, focus_areas: list[str], depth: int) -> str:
     content = f"{query}|{scope}|{'|'.join(sorted(focus_areas))}|{depth}"
     h = hashlib.sha256(content.encode()).hexdigest()[:16]
     return f"research:result:{h}"
@@ -26,7 +25,7 @@ async def decompose_research_queries(
     scope: str,
     focus_areas_str: str,
     depth: int,
-) -> List[str]:
+) -> list[str]:
     """Use a cheap LLM to generate diverse, targeted sub-queries for thorough coverage."""
     log.set(
         operation="decompose_research_queries",
@@ -89,14 +88,12 @@ async def decompose_research_queries(
     return base[:n_queries]
 
 
-def rank_and_deduplicate_urls(
-    search_results: List[Any], max_urls: int
-) -> List[Dict[str, Any]]:
+def rank_and_deduplicate_urls(search_results: list[Any], max_urls: int) -> list[dict[str, Any]]:
     """
     Merge results from multiple searches, rank by appearance frequency + relevance score.
     Returns deduplicated URL list sorted by combined relevance.
     """
-    url_map: Dict[str, Dict[str, Any]] = {}
+    url_map: dict[str, dict[str, Any]] = {}
 
     for result in search_results:
         if isinstance(result, Exception) or not result:

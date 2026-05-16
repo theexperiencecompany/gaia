@@ -3,27 +3,27 @@
 from app.schemas.mcp.requests import (
     MCPProxyPromptsListRequest,
     MCPProxyResourceReadRequest,
-    MCPProxyResourceTemplatesListRequest,
     MCPProxyResourcesListRequest,
+    MCPProxyResourceTemplatesListRequest,
     MCPProxyToolCallRequest,
 )
 from app.schemas.mcp.responses import (
     MCPProxyPromptsListResponse,
     MCPProxyResourceReadResponse,
-    MCPProxyResourceTemplatesListResponse,
     MCPProxyResourcesListResponse,
+    MCPProxyResourceTemplatesListResponse,
     MCPProxyToolCallResponse,
 )
 
 __all__ = [
-    "MCPProxyToolCallRequest",
-    "MCPProxyResourcesListRequest",
-    "MCPProxyResourceTemplatesListRequest",
-    "MCPProxyResourceReadRequest",
     "MCPProxyPromptsListRequest",
-    "MCPProxyToolCallResponse",
-    "MCPProxyResourcesListResponse",
-    "MCPProxyResourceTemplatesListResponse",
-    "MCPProxyResourceReadResponse",
     "MCPProxyPromptsListResponse",
+    "MCPProxyResourceReadRequest",
+    "MCPProxyResourceReadResponse",
+    "MCPProxyResourceTemplatesListRequest",
+    "MCPProxyResourceTemplatesListResponse",
+    "MCPProxyResourcesListRequest",
+    "MCPProxyResourcesListResponse",
+    "MCPProxyToolCallRequest",
+    "MCPProxyToolCallResponse",
 ]

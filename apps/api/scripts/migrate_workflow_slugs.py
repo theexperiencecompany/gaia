@@ -6,14 +6,14 @@ Run from repo root:
 """
 
 import asyncio
-import sys
 from pathlib import Path
+import sys
 
 # Ensure app is on path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db.mongodb.collections import workflows_collection  # noqa: E402
-from shared.py.utils.slugify import slugify  # noqa: E402
+from app.db.mongodb.collections import workflows_collection
+from shared.py.utils.slugify import slugify
 
 
 async def migrate() -> None:
@@ -45,9 +45,7 @@ async def migrate() -> None:
         slug = base_slug
         counter = 1
         while (
-            await workflows_collection.count_documents(
-                {"slug": slug, "_id": {"$ne": workflow_id}}
-            )
+            await workflows_collection.count_documents({"slug": slug, "_id": {"$ne": workflow_id}})
             > 0
         ):
             slug = f"{base_slug}-{counter}"

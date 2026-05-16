@@ -146,9 +146,7 @@ class DynamicToolNode(ToolNode):
         (e.g. VFSCompactionMiddleware).
         """
         tool_calls, _ = self._parse_input(input)
-        all_parent_routed = all(
-            self._needs_parent_routing(tc.get("name", "")) for tc in tool_calls
-        )
+        all_parent_routed = all(self._needs_parent_routing(tc.get("name", "")) for tc in tool_calls)
         if all_parent_routed:
             return await super()._afunc(input, config, runtime)
         delegate_state = self._extract_state(input)
@@ -275,7 +273,7 @@ class DynamicToolNode(ToolNode):
             return cast(State, {"messages": list(delegate_state)})
 
         if isinstance(delegate_state, BaseModel):
-            raw_state = cast(dict[str, Any], delegate_state.model_dump())
+            raw_state = delegate_state.model_dump()
         elif isinstance(delegate_state, dict):
             raw_state = dict(delegate_state)
         else:

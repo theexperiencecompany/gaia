@@ -36,10 +36,10 @@ Example:
 
 import argparse
 import asyncio
+from datetime import UTC, datetime
 import os
-import sys
-from datetime import datetime, timezone
 from pathlib import Path
+import sys
 
 # Ensure Infisical secrets are injected before importing settings
 try:
@@ -106,9 +106,7 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
         settings, "DODO_PAYMENTS_API_KEY", None
     )
     if not dodo_payments_api_key:
-        print(
-            "❌ DODO_PAYMENTS_API_KEY not found in Infisical or environment variables/settings"
-        )
+        print("❌ DODO_PAYMENTS_API_KEY not found in Infisical or environment variables/settings")
         return False
 
     print(f"🔗 Using Dodo Payments API Key: {dodo_payments_api_key[:10]}...")
@@ -227,8 +225,8 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
                         "max_users": plan_item["max_users"],
                         "features": plan_item["features"],
                         "is_active": plan_item["is_active"],
-                        "created_at": datetime.now(timezone.utc),
-                        "updated_at": datetime.now(timezone.utc),
+                        "created_at": datetime.now(UTC),
+                        "updated_at": datetime.now(UTC),
                     }
                 )
 
@@ -236,19 +234,13 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
                     # Update existing plan
                     await collection.update_one(
                         {"_id": existing_plan["_id"]},
-                        {
-                            "$set": plan_doc.model_dump(
-                                by_alias=True, exclude={"id", "created_at"}
-                            )
-                        },
+                        {"$set": plan_doc.model_dump(by_alias=True, exclude={"id", "created_at"})},
                     )
                     updated_count += 1
                     print("   ✅ Updated existing plan")
                 else:
                     # Insert new plan
-                    await collection.insert_one(
-                        plan_doc.model_dump(by_alias=True, exclude={"id"})
-                    )
+                    await collection.insert_one(plan_doc.model_dump(by_alias=True, exclude={"id"}))
                     created_count += 1
                     print("   ✅ Created new plan")
 
@@ -257,9 +249,7 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
                 )
                 print(f"   📅 Duration: {plan_duration.capitalize()}")
                 print(f"   👥 Max Users: {plan_item['max_users']}")
-                print(
-                    f"   🏷️  Dodo Product ID: {dodo_product_id or 'Free Plan (No Product ID)'}"
-                )
+                print(f"   🏷️  Dodo Product ID: {dodo_product_id or 'Free Plan (No Product ID)'}")
                 print(f"   🎯 Features: {len(list(plan_item['features']))} features")
                 print()
 
@@ -279,17 +269,13 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
 
         print("📋 Active Plans:")
         for plan in plans:
-            print(
-                f"   • {plan['name']} ({plan['duration']}) - ${plan['amount'] / 100:.2f}"
-            )
+            print(f"   • {plan['name']} ({plan['duration']}) - ${plan['amount'] / 100:.2f}")
             print(f"     Dodo Product ID: {plan.get('dodo_product_id') or 'N/A'}")
 
         print()
         print("✅ Payment system setup complete!")
         print("🔗 Frontend can now fetch plans via GET /api/v1/payments/plans")
-        print(
-            "🎯 Users can create subscriptions via POST /api/v1/payments/subscriptions"
-        )
+        print("🎯 Users can create subscriptions via POST /api/v1/payments/subscriptions")
 
         return True
 

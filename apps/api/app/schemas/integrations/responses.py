@@ -1,7 +1,7 @@
 """Integration response models with camelCase aliases."""
 
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
@@ -37,16 +37,16 @@ class IntegrationConfigItem(CamelModel):
     available: bool
     is_special: bool
     display_priority: int
-    included_integrations: List[str]
+    included_integrations: list[str]
     is_featured: bool
     managed_by: Literal["self", "composio", "mcp", "internal"]
-    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
+    auth_type: Literal["none", "oauth", "bearer"] | None = None
     source: Literal["platform"] = "platform"
     slug: str  # For platform integrations, this is the same as id
 
 
 class IntegrationsConfigResponse(BaseModel):
-    integrations: List[IntegrationConfigItem]
+    integrations: list[IntegrationConfigItem]
 
 
 class IntegrationStatusItem(CamelModel):
@@ -55,7 +55,7 @@ class IntegrationStatusItem(CamelModel):
 
 
 class IntegrationsStatusResponse(BaseModel):
-    integrations: List[IntegrationStatusItem]
+    integrations: list[IntegrationStatusItem]
 
 
 class IntegrationSuccessResponse(SuccessResponse, CamelModel):
@@ -69,9 +69,9 @@ class AddUserIntegrationResponse(SuccessResponse, CamelModel):
 
 class CustomIntegrationConnectionResult(CamelModel):
     status: Literal["created", "connected", "requires_oauth", "failed"]
-    tools_count: Optional[int] = None
-    oauth_url: Optional[str] = None
-    error: Optional[str] = None
+    tools_count: int | None = None
+    oauth_url: str | None = None
+    error: str | None = None
 
 
 class CreateCustomIntegrationResponse(SuccessResponse, CamelModel):
@@ -82,7 +82,7 @@ class CreateCustomIntegrationResponse(SuccessResponse, CamelModel):
 
 class IntegrationTool(BaseModel):
     name: str
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class IntegrationResponse(CamelModel, CloneCountMixin):
@@ -97,16 +97,16 @@ class IntegrationResponse(CamelModel, CloneCountMixin):
     is_featured: bool
     display_priority: int
     requires_auth: bool = False
-    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
-    tools: List[IntegrationTool] = []
-    icon_url: Optional[str] = None
-    is_public: Optional[bool] = None
-    created_by: Optional[str] = None
+    auth_type: Literal["none", "oauth", "bearer"] | None = None
+    tools: list[IntegrationTool] = []
+    icon_url: str | None = None
+    is_public: bool | None = None
+    created_by: str | None = None
 
     # Publishing fields
-    published_at: Optional[datetime] = None
+    published_at: datetime | None = None
     clone_count: int = 0
-    slug: Optional[str] = None  # Computed at runtime via generate_integration_slug
+    slug: str | None = None  # Computed at runtime via generate_integration_slug
     # Creator info (populated via aggregation from users collection)
     creator: Optional["CommunityIntegrationCreator"] = None
 
@@ -115,18 +115,18 @@ class UserIntegrationResponse(CamelModel):
     integration_id: str
     status: Literal["created", "connected"]
     created_at: datetime
-    connected_at: Optional[datetime] = None
+    connected_at: datetime | None = None
     integration: IntegrationResponse
 
 
 class MarketplaceResponse(BaseModel):
-    featured: List[IntegrationResponse] = []
-    integrations: List[IntegrationResponse] = []
+    featured: list[IntegrationResponse] = []
+    integrations: list[IntegrationResponse] = []
     total: int = 0
 
 
 class UserIntegrationsListResponse(BaseModel):
-    integrations: List[UserIntegrationResponse] = []
+    integrations: list[UserIntegrationResponse] = []
     total: int = 0
 
 
@@ -134,10 +134,10 @@ class ConnectIntegrationResponse(CamelModel):
     status: Literal["connected", "redirect", "error"]
     integration_id: str
     name: str
-    message: Optional[str] = None
-    tools_count: Optional[int] = None
-    redirect_url: Optional[str] = None
-    error: Optional[str] = None
+    message: str | None = None
+    tools_count: int | None = None
+    redirect_url: str | None = None
+    error: str | None = None
 
 
 class PublishIntegrationResponse(SuccessResponse, CamelModel):
@@ -152,8 +152,8 @@ class UnpublishIntegrationResponse(SuccessResponse, CamelModel):
 class CommunityIntegrationCreator(CamelModel):
     """Creator info for community integration display."""
 
-    name: Optional[str] = None
-    picture: Optional[str] = None
+    name: str | None = None
+    picture: str | None = None
 
 
 class CommunityIntegrationItem(CamelModel, CloneCountMixin):
@@ -164,18 +164,18 @@ class CommunityIntegrationItem(CamelModel, CloneCountMixin):
     name: str
     description: str
     category: str
-    icon_url: Optional[str] = None
+    icon_url: str | None = None
     clone_count: int = 0
     tool_count: int = 0
-    tools: List[IntegrationTool] = []
-    published_at: Optional[datetime] = None
-    creator: Optional[CommunityIntegrationCreator] = None
+    tools: list[IntegrationTool] = []
+    published_at: datetime | None = None
+    creator: CommunityIntegrationCreator | None = None
 
 
 class CommunityListResponse(BaseModel):
     """Response for community marketplace listing."""
 
-    integrations: List[CommunityIntegrationItem] = []
+    integrations: list[CommunityIntegrationItem] = []
     total: int = 0
     has_more: bool = False
 
@@ -183,9 +183,9 @@ class CommunityListResponse(BaseModel):
 class MCPConfigDetail(CamelModel):
     """MCP config for public display."""
 
-    server_url: Optional[str] = None
+    server_url: str | None = None
     requires_auth: bool = False
-    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
+    auth_type: Literal["none", "oauth", "bearer"] | None = None
 
 
 class PublicIntegrationDetailResponse(CamelModel, CloneCountMixin):
@@ -196,28 +196,28 @@ class PublicIntegrationDetailResponse(CamelModel, CloneCountMixin):
     name: str
     description: str
     category: str
-    icon_url: Optional[str] = None
+    icon_url: str | None = None
 
     # Creator info (nested object populated via aggregation from users collection)
-    creator: Optional[CommunityIntegrationCreator] = None
+    creator: CommunityIntegrationCreator | None = None
 
     # MCP config for public display (nested object for frontend compatibility)
-    mcp_config: Optional[MCPConfigDetail] = None
+    mcp_config: MCPConfigDetail | None = None
 
     # Tools list
-    tools: List[IntegrationTool] = []
+    tools: list[IntegrationTool] = []
 
     # Stats
     clone_count: int = 0
     tool_count: int = 0
-    published_at: Optional[datetime] = None
+    published_at: datetime | None = None
 
     # Source type (platform or custom)
-    source: Optional[Literal["platform", "custom"]] = None
-    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
+    source: Literal["platform", "custom"] | None = None
+    auth_type: Literal["none", "oauth", "bearer"] | None = None
 
     # Rich content — only present for native (platform) integrations
-    content: Optional[IntegrationContent] = None
+    content: IntegrationContent | None = None
 
 
 class AddIntegrationResponse(CamelModel):
@@ -227,9 +227,9 @@ class AddIntegrationResponse(CamelModel):
     name: str
     status: Literal["connected", "redirect", "error"]
     message: str = "Integration added successfully"
-    redirect_url: Optional[str] = None
-    tools_count: Optional[int] = None
-    error: Optional[str] = None
+    redirect_url: str | None = None
+    tools_count: int | None = None
+    error: str | None = None
 
 
 class SearchIntegrationItem(CamelModel, CloneCountMixin):
@@ -243,11 +243,11 @@ class SearchIntegrationItem(CamelModel, CloneCountMixin):
     relevance_score: float
     clone_count: int = 0
     tool_count: int = 0
-    icon_url: Optional[str] = None
+    icon_url: str | None = None
 
 
 class SearchIntegrationsResponse(BaseModel):
     """Response for semantic search of integrations."""
 
-    integrations: List[SearchIntegrationItem] = []
+    integrations: list[SearchIntegrationItem] = []
     query: str

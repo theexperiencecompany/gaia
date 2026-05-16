@@ -1,10 +1,10 @@
 """Tests for shared.py.logging — configure_loguru, configure_file_logging, get_contextual_logger, JSON format."""
 
+from datetime import UTC, datetime
 import json
 import logging
-import sys
-from datetime import datetime, timezone
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -20,7 +20,6 @@ from shared.py.logging import (
     configure_loguru,
     get_contextual_logger,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -103,7 +102,15 @@ class TestConfigureLoguru:
 
     def test_intercept_handlers_attached(self, mock_logger: MagicMock):
         configure_loguru()
-        for name in ["uvicorn", "uvicorn.access", "uvicorn.error", "fastapi", "gunicorn", "livekit", "app"]:
+        for name in [
+            "uvicorn",
+            "uvicorn.access",
+            "uvicorn.error",
+            "fastapi",
+            "gunicorn",
+            "livekit",
+            "app",
+        ]:
             specific = logging.getLogger(name)
             assert len(specific.handlers) == 1
             assert specific.propagate is False
@@ -141,12 +148,12 @@ class TestConfigureFileLogging:
         assert mock_logger.add.call_count == 5
 
     def test_default_log_dir_from_config(self, mock_logger: MagicMock):
-        with patch.dict(LOG_CONFIG, {"log_dir": "/tmp/claude/test_logs"}):
+        with patch.dict(LOG_CONFIG, {"log_dir": "/tmp/claude/test_logs"}):  # nosec B108
             with patch.object(Path, "mkdir"):
                 configure_file_logging(None)
             first_add = mock_logger.add.call_args_list[0]
             # The path should be based on the config value
-            assert "/tmp/claude/test_logs" in str(first_add.args[0])
+            assert "/tmp/claude/test_logs" in str(first_add.args[0])  # nosec B108
 
     def test_accepts_string_path(self, tmp_path: Path, mock_logger: MagicMock):
         configure_file_logging(str(tmp_path))
@@ -160,7 +167,7 @@ class TestConfigureFileLogging:
         filter_fn = perf_call.kwargs["filter"]
         # Filter should pass when 'performance' is in extra
         record_with = {"extra": {"performance": True}}
-        record_without = {"extra": {}}
+        record_without: dict[str, dict[str, bool]] = {"extra": {}}
         assert filter_fn(record_with) is True
         assert filter_fn(record_without) is False
 
@@ -216,7 +223,7 @@ class TestBuildJsonEntry:
         exception: object = None,
     ) -> dict:
         return {
-            "time": datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+            "time": datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC),
             "level": SimpleNamespace(name=level_name),
             "message": message,
             "module": "test_module",

@@ -3,10 +3,12 @@ Clean payment webhook service for Dodo Payments integration.
 Handles webhook events and updates database state accordingly.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 
-from shared.py.wide_events import log
+from bson import ObjectId
+from standardwebhooks.webhooks import Webhook
+
 from app.config.settings import settings
 from app.db.mongodb.collections import (
     processed_webhooks_collection,
@@ -24,8 +26,7 @@ from app.services.analytics_service import (
     track_subscription_event,
 )
 from app.utils.email_utils import send_pro_subscription_email
-from bson import ObjectId
-from standardwebhooks.webhooks import Webhook
+from shared.py.wide_events import log
 
 
 class PaymentWebhookService:
@@ -58,7 +59,7 @@ class PaymentWebhookService:
             DodoWebhookEventType.SUBSCRIPTION_PLAN_CHANGED: self._handle_subscription_plan_changed,
         }
 
-    def verify_webhook_signature(self, payload: str, headers: Dict[str, str]) -> bool:
+    def verify_webhook_signature(self, payload: str, headers: dict[str, str]) -> bool:
         """
         Verify webhook signature using Standard Webhooks library.
 
@@ -67,9 +68,7 @@ class PaymentWebhookService:
             headers: Dictionary of headers from the webhook request
         """
         if not self.webhook_verifier:
-            log.warning(
-                "No webhook verifier configured - skipping signature verification"
-            )
+            log.warning("No webhook verifier configured - skipping signature verification")
             return True
 
         # Skip verification in development
@@ -104,9 +103,7 @@ class PaymentWebhookService:
 
     async def _is_webhook_processed(self, webhook_id: str) -> bool:
         """Check if webhook has already been processed."""
-        processed = await processed_webhooks_collection.find_one(
-            {"webhook_id": webhook_id}
-        )
+        processed = await processed_webhooks_collection.find_one({"webhook_id": webhook_id})
         return processed is not None
 
     async def _mark_webhook_as_processed(
@@ -122,14 +119,14 @@ class PaymentWebhookService:
                     "message": result.message,
                     "payment_id": result.payment_id,
                     "subscription_id": result.subscription_id,
-                    "processed_at": datetime.now(timezone.utc),
+                    "processed_at": datetime.now(UTC),
                 }
             )
         except Exception as e:
             log.error(f"Failed to store processed webhook ID: {e}")
 
     async def process_webhook(
-        self, webhook_data: Dict[str, Any], webhook_id: str
+        self, webhook_data: dict[str, Any], webhook_id: str
     ) -> DodoWebhookProcessingResult:
         """
         Process Dodo payment webhook with idempotency check.
@@ -144,7 +141,7 @@ class PaymentWebhookService:
         try:
             event_type_raw = webhook_data.get("type", "unknown")
             # Extract financial fields from the nested payload (Dodo wraps data under "data")
-            payload_data: Dict[str, Any] = webhook_data.get("data", webhook_data)
+            payload_data: dict[str, Any] = webhook_data.get("data", webhook_data)
             customer_field = payload_data.get("customer")
             customer_id = (
                 customer_field.get("customer_id")
@@ -183,9 +180,7 @@ class PaymentWebhookService:
                     message=f"No handler for {event.type}",
                 )
                 # Store even ignored webhooks to prevent reprocessing
-                await self._mark_webhook_as_processed(
-                    webhook_id, event.type.value, result
-                )
+                await self._mark_webhook_as_processed(webhook_id, event.type.value, result)
                 return result
 
             result = await handler(event)
@@ -200,12 +195,10 @@ class PaymentWebhookService:
             return DodoWebhookProcessingResult(
                 event_type=webhook_data.get("type", "unknown"),
                 status="failed",
-                message=f"Processing error: {str(e)}",
+                message=f"Processing error: {e!s}",
             )
 
-    async def _get_user_email_from_metadata(
-        self, metadata: Dict[str, Any]
-    ) -> str | None:
+    async def _get_user_email_from_metadata(self, metadata: dict[str, Any]) -> str | None:
         """Get user email from metadata or database lookup."""
         user_id = metadata.get("user_id")
         if user_id:
@@ -232,9 +225,7 @@ class PaymentWebhookService:
                 user_id=user_email,
                 event_type=AnalyticsEvents.PAYMENT_SUCCEEDED,
                 payment_id=payment_data.payment_id,
-                amount=payment_data.total_amount / 100
-                if payment_data.total_amount
-                else None,
+                amount=payment_data.total_amount / 100 if payment_data.total_amount else None,
                 currency=payment_data.currency,
             )
 
@@ -246,9 +237,7 @@ class PaymentWebhookService:
             subscription_id=payment_data.subscription_id,
         )
 
-    async def _handle_payment_failed(
-        self, event: DodoWebhookEvent
-    ) -> DodoWebhookProcessingResult:
+    async def _handle_payment_failed(self, event: DodoWebhookEvent) -> DodoWebhookProcessingResult:
         """Handle failed payment."""
         payment_data = event.get_payment_data()
         if not payment_data:
@@ -263,9 +252,7 @@ class PaymentWebhookService:
                 user_id=user_email,
                 event_type=AnalyticsEvents.PAYMENT_FAILED,
                 payment_id=payment_data.payment_id,
-                amount=payment_data.total_amount / 100
-                if payment_data.total_amount
-                else None,
+                amount=payment_data.total_amount / 100 if payment_data.total_amount else None,
                 currency=payment_data.currency,
             )
 
@@ -338,9 +325,7 @@ class PaymentWebhookService:
         if not user_id:
             user = await users_collection.find_one({"email": user_email})
             if not user:
-                log.error(
-                    f"User not found for subscription: {sub_data.subscription_id}"
-                )
+                log.error(f"User not found for subscription: {sub_data.subscription_id}")
                 return DodoWebhookProcessingResult(
                     event_type=event.type.value,
                     status="failed",
@@ -364,8 +349,8 @@ class PaymentWebhookService:
             "subscription_period_interval": sub_data.subscription_period_interval,
             "next_billing_date": sub_data.next_billing_date,
             "previous_billing_date": sub_data.previous_billing_date,
-            "created_at": datetime.now(timezone.utc),
-            "updated_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
             "metadata": sub_data.metadata,
         }
 
@@ -413,15 +398,13 @@ class PaymentWebhookService:
                     "status": "active",
                     "next_billing_date": sub_data.next_billing_date,
                     "previous_billing_date": sub_data.previous_billing_date,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
         )
 
         if result.matched_count == 0:
-            log.warning(
-                f"Subscription not found for renewal: {sub_data.subscription_id}"
-            )
+            log.warning(f"Subscription not found for renewal: {sub_data.subscription_id}")
         else:
             # Track subscription renewal in PostHog
             user_email = sub_data.customer.email if sub_data.customer else None
@@ -450,7 +433,7 @@ class PaymentWebhookService:
 
         update_data = {
             "status": "cancelled",
-            "updated_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(UTC),
         }
 
         if sub_data.cancelled_at:
@@ -490,7 +473,7 @@ class PaymentWebhookService:
             {
                 "$set": {
                     "status": "expired",
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
         )
@@ -524,7 +507,7 @@ class PaymentWebhookService:
             {
                 "$set": {
                     "status": "failed",
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
         )
@@ -549,7 +532,7 @@ class PaymentWebhookService:
             {
                 "$set": {
                     "status": "on_hold",
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
         )
@@ -576,7 +559,7 @@ class PaymentWebhookService:
                     "product_id": sub_data.product_id,
                     "quantity": sub_data.quantity,
                     "recurring_pre_tax_amount": sub_data.recurring_pre_tax_amount,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
         )

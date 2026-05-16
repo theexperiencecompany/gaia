@@ -76,10 +76,10 @@ export default function EmailListCard({
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!onLoadMore || !hasNextPage) return;
+    if (!onLoadMore || !hasNextPage) return undefined;
 
     const sentinel = sentinelRef.current;
-    if (!sentinel) return;
+    if (!sentinel) return undefined;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -172,4 +172,5 @@ export default function EmailListCard({
       </CollapsibleListWrapper>
     );
   }
+  return null;
 }

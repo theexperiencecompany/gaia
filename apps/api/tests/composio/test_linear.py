@@ -16,7 +16,7 @@ with an ImportError, satisfying the requirement that the tests must import and
 call the actual tool code.
 """
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -48,13 +48,13 @@ AUTH = {"user_id": "test_linear_user"}
 EXECUTE_REQUEST = MagicMock()  # not used by any of the current tools
 
 
-def _capture_tools() -> Dict[str, Any]:
+def _capture_tools() -> dict[str, Any]:
     """
     Run `register_linear_custom_tools` with a fake Composio object whose
     `tools.custom_tool` decorator simply stores the decorated functions
     keyed by their __name__, then returns the collected dict.
     """
-    captured: Dict[str, Any] = {}
+    captured: dict[str, Any] = {}
 
     def fake_custom_tool(toolkit: str):
         def decorator(fn):
@@ -226,14 +226,14 @@ class TestResolveContext:
     @pytest.mark.composio
     def test_resolve_graphql_error_propagates(self):
         """graphql_request exceptions bubble up to the caller."""
-        with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            side_effect=Exception("Unauthorized"),
+        with (
+            patch(
+                "app.agents.tools.integrations.linear_tool.graphql_request",
+                side_effect=Exception("Unauthorized"),
+            ),
+            pytest.raises(Exception, match="Unauthorized"),
         ):
-            with pytest.raises(Exception, match="Unauthorized"):
-                _TOOLS["CUSTOM_RESOLVE_CONTEXT"](
-                    ResolveContextInput(), EXECUTE_REQUEST, AUTH
-                )
+            _TOOLS["CUSTOM_RESOLVE_CONTEXT"](ResolveContextInput(), EXECUTE_REQUEST, AUTH)
 
 
 # ===========================================================================
@@ -264,12 +264,14 @@ class TestGetMyTasks:
     @pytest.mark.composio
     def test_viewer_id_missing_raises(self):
         """Raises ValueError when viewer response is empty."""
-        with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            return_value={"viewer": {}},
+        with (
+            patch(
+                "app.agents.tools.integrations.linear_tool.graphql_request",
+                return_value={"viewer": {}},
+            ),
+            pytest.raises(ValueError, match="Could not get current user"),
         ):
-            with pytest.raises(ValueError, match="Could not get current user"):
-                _TOOLS["CUSTOM_GET_MY_TASKS"](GetMyTasksInput(), EXECUTE_REQUEST, AUTH)
+            _TOOLS["CUSTOM_GET_MY_TASKS"](GetMyTasksInput(), EXECUTE_REQUEST, AUTH)
 
     @pytest.mark.composio
     def test_filter_high_priority(self):
@@ -331,8 +333,7 @@ class TestGetMyTasks:
     def test_limit_respected(self):
         """Result set is capped at the requested limit."""
         many_issues = [
-            {**ISSUE_NODE, "id": f"issue-{i}", "identifier": f"ENG-{i}"}
-            for i in range(30)
+            {**ISSUE_NODE, "id": f"issue-{i}", "identifier": f"ENG-{i}"} for i in range(30)
         ]
         issues_response = {"issues": {"nodes": many_issues}}
         result, _ = _call(
@@ -487,14 +488,14 @@ class TestSearchIssues:
     @pytest.mark.composio
     def test_graphql_error_propagates(self):
         """HTTP-level errors from graphql_request surface as exceptions."""
-        with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            side_effect=Exception("403 Forbidden"),
+        with (
+            patch(
+                "app.agents.tools.integrations.linear_tool.graphql_request",
+                side_effect=Exception("403 Forbidden"),
+            ),
+            pytest.raises(Exception, match="403 Forbidden"),
         ):
-            with pytest.raises(Exception, match="403 Forbidden"):
-                _TOOLS["CUSTOM_SEARCH_ISSUES"](
-                    SearchIssuesInput(query="test"), EXECUTE_REQUEST, AUTH
-                )
+            _TOOLS["CUSTOM_SEARCH_ISSUES"](SearchIssuesInput(query="test"), EXECUTE_REQUEST, AUTH)
 
 
 # ===========================================================================
@@ -570,16 +571,18 @@ class TestGetIssueFullContext:
     @pytest.mark.composio
     def test_issue_not_found_raises(self):
         """Raises ValueError when the API returns no issue data."""
-        with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            return_value={"issue": None},
+        with (
+            patch(
+                "app.agents.tools.integrations.linear_tool.graphql_request",
+                return_value={"issue": None},
+            ),
+            pytest.raises(ValueError, match="Issue not found"),
         ):
-            with pytest.raises(ValueError, match="Issue not found"):
-                _TOOLS["CUSTOM_GET_ISSUE_FULL_CONTEXT"](
-                    GetIssueFullContextInput(issue_id="missing-id"),
-                    EXECUTE_REQUEST,
-                    AUTH,
-                )
+            _TOOLS["CUSTOM_GET_ISSUE_FULL_CONTEXT"](
+                GetIssueFullContextInput(issue_id="missing-id"),
+                EXECUTE_REQUEST,
+                AUTH,
+            )
 
     @pytest.mark.composio
     def test_sub_issues_included(self):
@@ -721,16 +724,18 @@ class TestCreateIssue:
     def test_create_issue_api_failure_raises(self):
         """Raises RuntimeError when issueCreate.success is False."""
         failure_response = {"issueCreate": {"success": False, "issue": None}}
-        with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            return_value=failure_response,
+        with (
+            patch(
+                "app.agents.tools.integrations.linear_tool.graphql_request",
+                return_value=failure_response,
+            ),
+            pytest.raises(RuntimeError, match="Failed to create issue"),
         ):
-            with pytest.raises(RuntimeError, match="Failed to create issue"):
-                _TOOLS["CUSTOM_CREATE_ISSUE"](
-                    CreateIssueInput(team_id="team-1", title="Bad"),
-                    EXECUTE_REQUEST,
-                    AUTH,
-                )
+            _TOOLS["CUSTOM_CREATE_ISSUE"](
+                CreateIssueInput(team_id="team-1", title="Bad"),
+                EXECUTE_REQUEST,
+                AUTH,
+            )
 
     @pytest.mark.composio
     def test_create_issue_with_sub_issues(self):
@@ -778,16 +783,18 @@ class TestCreateIssue:
     @pytest.mark.composio
     def test_graphql_error_propagates(self):
         """Network-level errors bubble out of create_issue."""
-        with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            side_effect=Exception("GraphQL errors: Unauthorized"),
+        with (
+            patch(
+                "app.agents.tools.integrations.linear_tool.graphql_request",
+                side_effect=Exception("GraphQL errors: Unauthorized"),
+            ),
+            pytest.raises(Exception, match="Unauthorized"),
         ):
-            with pytest.raises(Exception, match="Unauthorized"):
-                _TOOLS["CUSTOM_CREATE_ISSUE"](
-                    CreateIssueInput(team_id="team-1", title="Test"),
-                    EXECUTE_REQUEST,
-                    AUTH,
-                )
+            _TOOLS["CUSTOM_CREATE_ISSUE"](
+                CreateIssueInput(team_id="team-1", title="Test"),
+                EXECUTE_REQUEST,
+                AUTH,
+            )
 
 
 # ===========================================================================
@@ -825,19 +832,21 @@ class TestCreateSubIssues:
     @pytest.mark.composio
     def test_parent_not_found_raises(self):
         """Raises ValueError when parent_issue_id resolves to nothing."""
-        with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            return_value={"issue": None},
+        with (
+            patch(
+                "app.agents.tools.integrations.linear_tool.graphql_request",
+                return_value={"issue": None},
+            ),
+            pytest.raises(ValueError, match="Parent issue not found"),
         ):
-            with pytest.raises(ValueError, match="Parent issue not found"):
-                _TOOLS["CUSTOM_CREATE_SUB_ISSUES"](
-                    CreateSubIssuesInput(
-                        parent_issue_id="bad-id",
-                        sub_issues=[SubIssueItem(title="Sub")],
-                    ),
-                    EXECUTE_REQUEST,
-                    AUTH,
-                )
+            _TOOLS["CUSTOM_CREATE_SUB_ISSUES"](
+                CreateSubIssuesInput(
+                    parent_issue_id="bad-id",
+                    sub_issues=[SubIssueItem(title="Sub")],
+                ),
+                EXECUTE_REQUEST,
+                AUTH,
+            )
 
     @pytest.mark.composio
     def test_no_parent_raises(self):
@@ -853,19 +862,21 @@ class TestCreateSubIssues:
     @pytest.mark.composio
     def test_team_id_missing_from_parent_raises(self):
         """Raises ValueError when parent issue has no team."""
-        with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            return_value={"issue": {"id": "p1", "team": {}}},
+        with (
+            patch(
+                "app.agents.tools.integrations.linear_tool.graphql_request",
+                return_value={"issue": {"id": "p1", "team": {}}},
+            ),
+            pytest.raises(ValueError, match="Could not get parent's team"),
         ):
-            with pytest.raises(ValueError, match="Could not get parent's team"):
-                _TOOLS["CUSTOM_CREATE_SUB_ISSUES"](
-                    CreateSubIssuesInput(
-                        parent_issue_id="p1",
-                        sub_issues=[SubIssueItem(title="Sub")],
-                    ),
-                    EXECUTE_REQUEST,
-                    AUTH,
-                )
+            _TOOLS["CUSTOM_CREATE_SUB_ISSUES"](
+                CreateSubIssuesInput(
+                    parent_issue_id="p1",
+                    sub_issues=[SubIssueItem(title="Sub")],
+                ),
+                EXECUTE_REQUEST,
+                AUTH,
+            )
 
 
 # ===========================================================================
@@ -922,20 +933,22 @@ class TestCreateIssueRelation:
     def test_create_relation_failure_raises(self):
         """Raises RuntimeError when the API reports failure."""
         failure = {"issueRelationCreate": {"success": False, "issueRelation": None}}
-        with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            return_value=failure,
+        with (
+            patch(
+                "app.agents.tools.integrations.linear_tool.graphql_request",
+                return_value=failure,
+            ),
+            pytest.raises(RuntimeError, match="Failed to create relation"),
         ):
-            with pytest.raises(RuntimeError, match="Failed to create relation"):
-                _TOOLS["CUSTOM_CREATE_ISSUE_RELATION"](
-                    CreateIssueRelationInput(
-                        issue_id="a",
-                        related_issue_id="b",
-                        relation_type="relates_to",
-                    ),
-                    EXECUTE_REQUEST,
-                    AUTH,
-                )
+            _TOOLS["CUSTOM_CREATE_ISSUE_RELATION"](
+                CreateIssueRelationInput(
+                    issue_id="a",
+                    related_issue_id="b",
+                    relation_type="relates_to",
+                ),
+                EXECUTE_REQUEST,
+                AUTH,
+            )
 
     @pytest.mark.composio
     def test_relates_to_mapped_to_related(self):
@@ -1002,9 +1015,7 @@ class TestGetIssueActivity:
         """Raises ValueError when neither issue_id nor issue_identifier is given."""
         with patch("app.agents.tools.integrations.linear_tool.graphql_request"):
             with pytest.raises(ValueError, match="Could not resolve issue"):
-                _TOOLS["CUSTOM_GET_ISSUE_ACTIVITY"](
-                    GetIssueActivityInput(), EXECUTE_REQUEST, AUTH
-                )
+                _TOOLS["CUSTOM_GET_ISSUE_ACTIVITY"](GetIssueActivityInput(), EXECUTE_REQUEST, AUTH)
 
     @pytest.mark.composio
     def test_activity_by_identifier(self):
@@ -1257,16 +1268,18 @@ class TestBulkUpdateIssues:
     def test_api_failure_raises(self):
         """Raises RuntimeError when the batch update API reports failure."""
         failure = {"issueBatchUpdate": {"success": False, "issues": []}}
-        with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            return_value=failure,
+        with (
+            patch(
+                "app.agents.tools.integrations.linear_tool.graphql_request",
+                return_value=failure,
+            ),
+            pytest.raises(RuntimeError, match="Batch update failed"),
         ):
-            with pytest.raises(RuntimeError, match="Batch update failed"):
-                _TOOLS["CUSTOM_BULK_UPDATE_ISSUES"](
-                    BulkUpdateIssuesInput(issue_ids=["i1"], state_id="s1"),
-                    EXECUTE_REQUEST,
-                    AUTH,
-                )
+            _TOOLS["CUSTOM_BULK_UPDATE_ISSUES"](
+                BulkUpdateIssuesInput(issue_ids=["i1"], state_id="s1"),
+                EXECUTE_REQUEST,
+                AUTH,
+            )
 
     @pytest.mark.composio
     def test_labels_to_add_forwarded(self):
@@ -1314,11 +1327,7 @@ class TestGetNotifications:
             "CUSTOM_GET_NOTIFICATIONS",
             GetNotificationsInput(),
             return_values=[
-                {
-                    "notifications": {
-                        "nodes": [NOTIFICATION_NODE_UNREAD, NOTIFICATION_NODE_READ]
-                    }
-                }
+                {"notifications": {"nodes": [NOTIFICATION_NODE_UNREAD, NOTIFICATION_NODE_READ]}}
             ],
         )
         assert result["count"] == 1
@@ -1332,11 +1341,7 @@ class TestGetNotifications:
             "CUSTOM_GET_NOTIFICATIONS",
             GetNotificationsInput(include_read=True),
             return_values=[
-                {
-                    "notifications": {
-                        "nodes": [NOTIFICATION_NODE_UNREAD, NOTIFICATION_NODE_READ]
-                    }
-                }
+                {"notifications": {"nodes": [NOTIFICATION_NODE_UNREAD, NOTIFICATION_NODE_READ]}}
             ],
         )
         assert result["count"] == 2
@@ -1510,11 +1515,13 @@ class TestGetWorkspaceContext:
     @pytest.mark.composio
     def test_graphql_error_propagates(self):
         """Errors from any graphql_request call surface as exceptions."""
-        with patch(
-            "app.agents.tools.integrations.linear_tool.graphql_request",
-            side_effect=Exception("GraphQL errors: token expired"),
+        with (
+            patch(
+                "app.agents.tools.integrations.linear_tool.graphql_request",
+                side_effect=Exception("GraphQL errors: token expired"),
+            ),
+            pytest.raises(Exception, match="token expired"),
         ):
-            with pytest.raises(Exception, match="token expired"):
-                _TOOLS["CUSTOM_GET_WORKSPACE_CONTEXT"](
-                    GetWorkspaceContextInput(), EXECUTE_REQUEST, AUTH
-                )
+            _TOOLS["CUSTOM_GET_WORKSPACE_CONTEXT"](
+                GetWorkspaceContextInput(), EXECUTE_REQUEST, AUTH
+            )

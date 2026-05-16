@@ -179,6 +179,7 @@ export function RunCountDisplay({
         <span className="text-nowrap">{formatRunCount(totalExecutions)}</span>
       </div>
     );
+  return null;
 }
 
 // Reusable Activation Status Chip

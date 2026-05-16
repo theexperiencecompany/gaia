@@ -121,4 +121,5 @@ export default function CalendarListCard({
       </CollapsibleListWrapper>
     );
   }
+  return null;
 }

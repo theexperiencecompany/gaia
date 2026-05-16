@@ -1,13 +1,12 @@
 """Unit tests for blog service operations."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
+import pytest
 
 from app.models.blog_models import BlogPost, BlogPostCreate, BlogPostUpdate
 from app.services.blog_service import BlogService
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -101,9 +100,7 @@ class TestGetAllBlogs:
         assert isinstance(result[0], BlogPost)
         assert result[0].title == "Test Blog Post"
 
-    async def test_pagination_calculates_skip(
-        self, mock_blog_collection, mock_redis_cache
-    ):
+    async def test_pagination_calculates_skip(self, mock_blog_collection, mock_redis_cache):
         cursor = MagicMock()
         cursor.to_list = AsyncMock(return_value=[])
         mock_blog_collection.aggregate.return_value = cursor
@@ -114,9 +111,7 @@ class TestGetAllBlogs:
         skip_stage = next(s for s in pipeline if "$skip" in s)
         assert skip_stage["$skip"] == 20  # (3-1) * 10
 
-    async def test_excludes_content_when_flag_false(
-        self, mock_blog_collection, mock_redis_cache
-    ):
+    async def test_excludes_content_when_flag_false(self, mock_blog_collection, mock_redis_cache):
         blog_without_content = {
             "_id": MagicMock(),
             "id": "blogX",
@@ -180,9 +175,7 @@ class TestGetBlogBySlug:
         assert isinstance(result, BlogPost)
         assert result.slug == "test-blog"
 
-    async def test_raises_404_when_not_found(
-        self, mock_blog_collection, mock_redis_cache
-    ):
+    async def test_raises_404_when_not_found(self, mock_blog_collection, mock_redis_cache):
         cursor = MagicMock()
         cursor.to_list = AsyncMock(return_value=[])
         mock_blog_collection.aggregate.return_value = cursor
@@ -238,12 +231,8 @@ class TestCreateBlog:
         assert isinstance(result, BlogPost)
         mock_blog_collection.insert_one.assert_called_once()
 
-    async def test_raises_409_when_slug_exists(
-        self, mock_blog_collection, mock_redis_cache
-    ):
-        mock_blog_collection.find_one = AsyncMock(
-            return_value={"slug": "existing-slug"}
-        )
+    async def test_raises_409_when_slug_exists(self, mock_blog_collection, mock_redis_cache):
+        mock_blog_collection.find_one = AsyncMock(return_value={"slug": "existing-slug"})
 
         blog_data = BlogPostCreate(
             slug="existing-slug",
@@ -260,9 +249,7 @@ class TestCreateBlog:
         assert exc_info.value.status_code == 409
         assert "slug already exists" in exc_info.value.detail
 
-    async def test_raises_500_when_insert_fails(
-        self, mock_blog_collection, mock_redis_cache
-    ):
+    async def test_raises_500_when_insert_fails(self, mock_blog_collection, mock_redis_cache):
         mock_blog_collection.find_one = AsyncMock(return_value=None)
         insert_result = MagicMock(inserted_id=None)
         mock_blog_collection.insert_one = AsyncMock(return_value=insert_result)
@@ -318,9 +305,7 @@ class TestUpdateBlog:
         assert isinstance(result, BlogPost)
         mock_blog_collection.update_one.assert_not_called()
 
-    async def test_raises_404_when_slug_not_found(
-        self, mock_blog_collection, mock_redis_cache
-    ):
+    async def test_raises_404_when_slug_not_found(self, mock_blog_collection, mock_redis_cache):
         update_result = MagicMock(matched_count=0)
         mock_blog_collection.update_one = AsyncMock(return_value=update_result)
 
@@ -347,9 +332,7 @@ class TestDeleteBlog:
 
         mock_blog_collection.delete_one.assert_called_once_with({"slug": "test-blog"})
 
-    async def test_raises_404_when_slug_not_found(
-        self, mock_blog_collection, mock_redis_cache
-    ):
+    async def test_raises_404_when_slug_not_found(self, mock_blog_collection, mock_redis_cache):
         delete_result = MagicMock(deleted_count=0)
         mock_blog_collection.delete_one = AsyncMock(return_value=delete_result)
 

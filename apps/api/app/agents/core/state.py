@@ -1,5 +1,4 @@
 from collections.abc import Iterator, MutableMapping
-from typing import List, Optional
 from typing import Annotated
 
 from langchain_core.messages import AnyMessage
@@ -26,11 +25,11 @@ class DictLikeModel(BaseModel, MutableMapping):
 
 class State(DictLikeModel):
     query: str = ""
-    intent: Optional[str] = None
-    messages: Annotated[List[AnyMessage], add_messages] = Field(default_factory=list)
-    current_datetime: Optional[str] = None
-    mem0_user_id: Optional[str] = None
-    memories: List[str] = Field(default_factory=list)
+    intent: str | None = None
+    messages: Annotated[list[AnyMessage], add_messages] = Field(default_factory=list)
+    current_datetime: str | None = None
+    mem0_user_id: str | None = None
+    memories: list[str] = Field(default_factory=list)
     memories_stored: bool = False
-    conversation_id: Optional[str] = None
+    conversation_id: str | None = None
     integration_usernames: dict[str, str] = Field(default_factory=dict)

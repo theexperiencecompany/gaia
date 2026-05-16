@@ -1,6 +1,6 @@
 """MCP configuration models (Pydantic)."""
 
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -10,14 +10,14 @@ class MCPConfig(BaseModel):
 
     server_url: str
     requires_auth: bool = False
-    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
-    transport: Optional[str] = None
-    client_id: Optional[str] = None
-    client_secret: Optional[str] = None
-    client_id_env: Optional[str] = None
-    client_secret_env: Optional[str] = None
-    oauth_scopes: Optional[List[str]] = None
-    oauth_metadata: Optional[Dict[str, str]] = None
+    auth_type: Literal["none", "oauth", "bearer"] | None = None
+    transport: str | None = None
+    client_id: str | None = None
+    client_secret: str | None = None
+    client_id_env: str | None = None
+    client_secret_env: str | None = None
+    oauth_scopes: list[str] | None = None
+    oauth_metadata: dict[str, str] | None = None
 
 
 class OAuthScope(BaseModel):
@@ -48,9 +48,9 @@ class SubAgentConfig(BaseModel):
     system_prompt: str
     use_direct_tools: bool = False
     disable_retrieve_tools: bool = False
-    specific_tools: Optional[List[str]] = None
-    auto_bind_tools: Optional[List[str]] = None
-    memory_prompt: Optional[str] = None
+    specific_tools: list[str] | None = None
+    auto_bind_tools: list[str] | None = None
+    memory_prompt: str | None = None
     # When False, finish_task is omitted from the subagent's tool set. The
     # subagent must terminate naturally with an AIMessage. The streaming
     # layer's complete_message accumulator captures that text directly —
@@ -71,9 +71,7 @@ class ToolMetadataConfig(BaseModel):
     """Configuration for one tool and its variables to extract."""
 
     tool: str  # Tool to call (e.g., "TWITTER_USER_LOOKUP_ME")
-    variables: List[
-        VariableExtraction
-    ]  # Variables to extract from this tool's response
+    variables: list[VariableExtraction]  # Variables to extract from this tool's response
 
 
 class ProviderMetadataConfig(BaseModel):
@@ -95,4 +93,4 @@ class ProviderMetadataConfig(BaseModel):
         )
     """
 
-    tools: List[ToolMetadataConfig]  # List of tools to call and variables to extract
+    tools: list[ToolMetadataConfig]  # List of tools to call and variables to extract

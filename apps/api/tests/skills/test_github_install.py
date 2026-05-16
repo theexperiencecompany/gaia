@@ -134,9 +134,7 @@ async def test_get_skill_by_name() -> None:
     respx.get(tree_url).mock(return_value=httpx.Response(200, json=_TREE_RESPONSE))
     respx.get(raw_url).mock(return_value=httpx.Response(200, text=_SKILL_MD_CONTENT))
 
-    skill = await get_skill_from_repo(
-        "vercel-labs/agent-skills", "vercel-react-best-practices"
-    )
+    skill = await get_skill_from_repo("vercel-labs/agent-skills", "vercel-react-best-practices")
 
     assert skill is not None, "Should find vercel-react-best-practices skill"
     assert skill.name == "vercel-react-best-practices"
@@ -146,12 +144,8 @@ async def test_get_skill_by_name() -> None:
 async def test_skill_has_valid_metadata() -> None:
     """Each discovered skill carries name, description, path, and repo_url."""
     tree_url = f"{GITHUB_API_BASE}/repos/vercel-labs/agent-skills/git/trees/main"
-    raw_alpha = (
-        f"{GITHUB_RAW_BASE}/vercel-labs/agent-skills/main/skills/skill-alpha/SKILL.md"
-    )
-    raw_beta = (
-        f"{GITHUB_RAW_BASE}/vercel-labs/agent-skills/main/skills/skill-beta/SKILL.md"
-    )
+    raw_alpha = f"{GITHUB_RAW_BASE}/vercel-labs/agent-skills/main/skills/skill-alpha/SKILL.md"
+    raw_beta = f"{GITHUB_RAW_BASE}/vercel-labs/agent-skills/main/skills/skill-beta/SKILL.md"
 
     respx.get(tree_url).mock(return_value=httpx.Response(200, json=_TREE_TWO_SKILLS))
     respx.get(raw_alpha).mock(return_value=httpx.Response(200, text=_SKILL_MD_ALPHA))

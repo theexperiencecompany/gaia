@@ -24,14 +24,14 @@ Usage:
         pass
 """
 
+from collections.abc import Callable
 import functools
 import inspect
 import random
 import time
-from typing import Callable, Optional
 
-from shared.py.wide_events import log
 from app.config.settings import settings
+from shared.py.wide_events import log
 
 Profiler = None
 try:
@@ -45,9 +45,9 @@ except ImportError:
 
 
 def profile_function(
-    func: Optional[Callable] = None,
+    func: Callable | None = None,
     *,
-    sample_rate: Optional[float] = None,
+    sample_rate: float | None = None,
 ) -> Callable:
     """
     Simple profiling decorator for both async and sync functions.
@@ -80,8 +80,7 @@ def profile_function(
                 # Apply sampling - skip profiling if random check fails
                 # Non-cryptographic sampling: random.random() is safe here (Bandit B311 # nosec)
                 if (
-                    effective_sample_rate < 1.0
-                    and random.random() >= effective_sample_rate  # nosec: B311
+                    effective_sample_rate < 1.0 and random.random() >= effective_sample_rate  # nosec: B311
                 ):
                     return await f(*args, **kwargs)
 
@@ -110,56 +109,49 @@ def profile_function(
                                     duration_ms=round(duration_s * 1000, 2),
                                 )
                         except Exception as e:
-                            log.warning(
-                                f"Failed to generate profile for {f.__name__}: {e}"
-                            )
+                            log.warning(f"Failed to generate profile for {f.__name__}: {e}")
 
             return async_wrapper
-        else:
 
-            @functools.wraps(f)
-            def sync_wrapper(*args, **kwargs):
-                # Apply sampling - skip profiling if random check fails
-                # Non-cryptographic sampling: random.random() is safe here (Bandit B311 # nosec)
-                if (
-                    effective_sample_rate < 1.0
-                    and random.random() >= effective_sample_rate  # nosec: B311
-                ):
-                    return f(*args, **kwargs)
+        @functools.wraps(f)
+        def sync_wrapper(*args, **kwargs):
+            # Apply sampling - skip profiling if random check fails
+            # Non-cryptographic sampling: random.random() is safe here (Bandit B311 # nosec)
+            if (
+                effective_sample_rate < 1.0 and random.random() >= effective_sample_rate  # nosec: B311
+            ):
+                return f(*args, **kwargs)
 
-                profiler = None
-                start_time = time.time()
-                try:
-                    if Profiler is not None:
-                        profiler = Profiler()
-                        profiler.start()
-                    result = f(*args, **kwargs)
-                    return result
-                except Exception:
-                    # Re-raise the original exception, profiling error logged separately
-                    raise
-                finally:
-                    duration_s = time.time() - start_time
-                    if profiler is not None:
-                        try:
-                            profiler.stop()
-                            output = profiler.output_text()
-                            log.info(f"Profile for {f.__name__}:\n{output}")
-                            if duration_s > 1.0:
-                                log.warning(
-                                    "slow function",
-                                    function=f.__name__,
-                                    duration_ms=round(duration_s * 1000, 2),
-                                )
-                        except Exception as e:
+            profiler = None
+            start_time = time.time()
+            try:
+                if Profiler is not None:
+                    profiler = Profiler()
+                    profiler.start()
+                result = f(*args, **kwargs)
+                return result
+            except Exception:
+                # Re-raise the original exception, profiling error logged separately
+                raise
+            finally:
+                duration_s = time.time() - start_time
+                if profiler is not None:
+                    try:
+                        profiler.stop()
+                        output = profiler.output_text()
+                        log.info(f"Profile for {f.__name__}:\n{output}")
+                        if duration_s > 1.0:
                             log.warning(
-                                f"Failed to generate profile for {f.__name__}: {e}"
+                                "slow function",
+                                function=f.__name__,
+                                duration_ms=round(duration_s * 1000, 2),
                             )
+                    except Exception as e:
+                        log.warning(f"Failed to generate profile for {f.__name__}: {e}")
 
-            return sync_wrapper
+        return sync_wrapper
 
     # Handle both @profile_function and @profile_function() usage
     if func is None:
         return decorator
-    else:
-        return decorator(func)
+    return decorator(func)

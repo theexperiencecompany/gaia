@@ -17,7 +17,7 @@ Add env vars
 2) Add a `SettingsGroup` in `_register_predefined_groups()` with matching key names.
 """
 
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 from shared.py.wide_events import log
 
@@ -26,13 +26,13 @@ class SettingsGroup:
     def __init__(
         self,
         name: str,
-        keys: List[str],
+        keys: list[str],
         description: str,
         affected_features: str,
         required_in_prod: bool = True,
         all_required: bool = True,
-        docs_url: Optional[str] = None,
-        alternative_group: Optional[str] = None,
+        docs_url: str | None = None,
+        alternative_group: str | None = None,
     ):
         """
         Initialize a settings group.
@@ -59,8 +59,8 @@ class SettingsGroup:
 
 class SettingsValidator:
     def __init__(self) -> None:
-        self.groups: List[SettingsGroup] = []
-        self.missing_groups: List[Tuple[SettingsGroup, List[str]]] = []
+        self.groups: list[SettingsGroup] = []
+        self.missing_groups: list[tuple[SettingsGroup, list[str]]] = []
         self.show_warnings: bool = True
         self.is_production: bool = True
         self._register_predefined_groups()
@@ -333,9 +333,7 @@ class SettingsValidator:
         self.is_production = is_production
         self.missing_groups = []
 
-    def validate_settings(
-        self, settings_obj: Any
-    ) -> List[Tuple[SettingsGroup, List[str]]]:
+    def validate_settings(self, settings_obj: Any) -> list[tuple[SettingsGroup, list[str]]]:
         """
         Validate settings against registered groups.
 
@@ -377,11 +375,7 @@ class SettingsValidator:
                 continue
 
             # Determine the message prefix based on criticality
-            prefix = (
-                "CRITICAL"
-                if self.is_production and group.required_in_prod
-                else "WARNING"
-            )
+            prefix = "CRITICAL" if self.is_production and group.required_in_prod else "WARNING"
 
             # Create the warning message
             warning_msg = (

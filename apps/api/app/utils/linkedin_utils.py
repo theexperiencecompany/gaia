@@ -8,10 +8,10 @@ shape: Composio fetches the source URL and forwards the bytes to LinkedIn's
 upload endpoint with the authenticated headers.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
-from shared.py.wide_events import log
 from app.services.composio.proxy_client import proxy_request_sync
+from shared.py.wide_events import log
 
 LINKEDIN_API_BASE = "https://api.linkedin.com/v2"
 LINKEDIN_REST_BASE = "https://api.linkedin.com/rest"
@@ -19,7 +19,7 @@ LINKEDIN_VERSION = "202401"
 LINKEDIN_TOOLKIT = "LINKEDIN"
 
 
-def _restli_headers() -> Dict[str, str]:
+def _restli_headers() -> dict[str, str]:
     return {
         "Content-Type": "application/json",
         "X-Restli-Protocol-Version": "2.0.0",
@@ -32,10 +32,10 @@ def _proxy(
     *,
     endpoint: str,
     method: str,
-    body: Optional[Dict[str, Any]] = None,
-    query: Optional[Dict[str, Any]] = None,
-    headers: Optional[Dict[str, str]] = None,
-    binary_body: Optional[Dict[str, str]] = None,
+    body: dict[str, Any] | None = None,
+    query: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    binary_body: dict[str, str] | None = None,
 ) -> Any:
     return proxy_request_sync(
         user_id=user_id,
@@ -117,9 +117,7 @@ def upload_document_from_url(
 
     Returns the LinkedIn document URN on success, or None on failure.
     """
-    log.set(
-        operation="upload_document", document_url=document_url, author_urn=author_urn
-    )
+    log.set(operation="upload_document", document_url=document_url, author_urn=author_urn)
 
     try:
         init_result = _proxy(

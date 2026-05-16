@@ -1,11 +1,11 @@
 """Unit tests for onboarding service and post-onboarding service."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from bson import ObjectId
 from fastapi import BackgroundTasks, HTTPException
+import pytest
 
 from app.models.user_models import (
     BioStatus,
@@ -27,7 +27,6 @@ from app.services.onboarding.post_onboarding_service import (
     seed_initial_user_data,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -35,42 +34,32 @@ from app.services.onboarding.post_onboarding_service import (
 
 @pytest.fixture
 def mock_users_collection():
-    with patch(
-        "app.services.onboarding.onboarding_service.users_collection"
-    ) as mock_col:
+    with patch("app.services.onboarding.onboarding_service.users_collection") as mock_col:
         yield mock_col
 
 
 @pytest.fixture
 def mock_post_users_collection():
-    with patch(
-        "app.services.onboarding.post_onboarding_service.users_collection"
-    ) as mock_col:
+    with patch("app.services.onboarding.post_onboarding_service.users_collection") as mock_col:
         yield mock_col
 
 
 @pytest.fixture
 def mock_workflows_collection():
-    with patch(
-        "app.services.onboarding.post_onboarding_service.workflows_collection"
-    ) as mock_col:
+    with patch("app.services.onboarding.post_onboarding_service.workflows_collection") as mock_col:
         yield mock_col
 
 
 @pytest.fixture
 def mock_websocket_manager():
-    with patch(
-        "app.services.onboarding.post_onboarding_service.websocket_manager"
-    ) as mock_ws:
+    with patch("app.services.onboarding.post_onboarding_service.websocket_manager") as mock_ws:
         mock_ws.broadcast_to_user = AsyncMock()
         yield mock_ws
 
 
 @pytest.fixture
 def mock_redis_pool():
-    with patch(
-        "app.services.onboarding.onboarding_service.RedisPoolManager"
-    ) as mock_rpm:
+    with patch("app.services.onboarding.onboarding_service.RedisPoolManager") as mock_rpm:
         mock_pool = AsyncMock()
         mock_rpm.get_pool = AsyncMock(return_value=mock_pool)
         yield mock_pool
@@ -103,7 +92,7 @@ def sample_updated_user(sample_user_id):
         "name": "Alice",
         "onboarding": {
             "completed": True,
-            "completed_at": datetime.now(timezone.utc),
+            "completed_at": datetime.now(UTC),
             "phase": OnboardingPhase.PERSONALIZATION_PENDING,
             "preferences": {
                 "profession": "Engineer",
@@ -158,9 +147,7 @@ class TestCompleteOnboarding:
         sample_background_tasks,
         sample_updated_user,
     ):
-        mock_users_collection.find_one_and_update = AsyncMock(
-            return_value=sample_updated_user
-        )
+        mock_users_collection.find_one_and_update = AsyncMock(return_value=sample_updated_user)
 
         result = await complete_onboarding(
             sample_user_id,
@@ -251,9 +238,7 @@ class TestCompleteOnboarding:
             profession="Engineer",
             timezone="America/New_York",
         )
-        mock_users_collection.find_one_and_update = AsyncMock(
-            return_value=sample_updated_user
-        )
+        mock_users_collection.find_one_and_update = AsyncMock(return_value=sample_updated_user)
 
         await complete_onboarding(sample_user_id, request, sample_background_tasks)
 
@@ -306,9 +291,7 @@ class TestGetUserOnboardingStatus:
         assert result["completed"] is True
         assert result["preferences"]["profession"] == "Engineer"
 
-    async def test_user_not_found_raises_500(
-        self, mock_users_collection, sample_user_id
-    ):
+    async def test_user_not_found_raises_500(self, mock_users_collection, sample_user_id):
         """The inner 404 is caught by the broad except and re-raised as 500."""
         mock_users_collection.find_one = AsyncMock(return_value=None)
 
@@ -321,9 +304,7 @@ class TestGetUserOnboardingStatus:
         assert "User not found" in exc_info.value.detail
 
     async def test_no_onboarding_data(self, mock_users_collection, sample_user_id):
-        mock_users_collection.find_one = AsyncMock(
-            return_value={"_id": ObjectId(sample_user_id)}
-        )
+        mock_users_collection.find_one = AsyncMock(return_value={"_id": ObjectId(sample_user_id)})
 
         result = await get_user_onboarding_status(sample_user_id)
 
@@ -374,9 +355,7 @@ class TestUpdateOnboardingPreferences:
 
         assert exc_info.value.status_code == 404
 
-    async def test_custom_instructions_trimmed(
-        self, mock_users_collection, sample_user_id
-    ):
+    async def test_custom_instructions_trimmed(self, mock_users_collection, sample_user_id):
         updated_doc = {
             "_id": ObjectId(sample_user_id),
             "onboarding": {"preferences": {}},
@@ -393,9 +372,7 @@ class TestUpdateOnboardingPreferences:
         if "custom_instructions" in saved_prefs:
             assert len(saved_prefs["custom_instructions"]) <= 500
 
-    async def test_generic_exception_returns_500(
-        self, mock_users_collection, sample_user_id
-    ):
+    async def test_generic_exception_returns_500(self, mock_users_collection, sample_user_id):
         mock_users_collection.find_one_and_update = AsyncMock(
             side_effect=RuntimeError("Unexpected")
         )
@@ -414,9 +391,7 @@ class TestUpdateOnboardingPreferences:
 
 @pytest.mark.unit
 class TestGetUserPreferencesForAgent:
-    async def test_returns_formatted_preferences(
-        self, mock_users_collection, sample_user_id
-    ):
+    async def test_returns_formatted_preferences(self, mock_users_collection, sample_user_id):
         mock_users_collection.find_one = AsyncMock(
             return_value={
                 "_id": ObjectId(sample_user_id),
@@ -439,18 +414,14 @@ class TestGetUserPreferencesForAgent:
         assert result is not None
         mock_format.assert_called_once()
 
-    async def test_returns_none_when_user_not_found(
-        self, mock_users_collection, sample_user_id
-    ):
+    async def test_returns_none_when_user_not_found(self, mock_users_collection, sample_user_id):
         mock_users_collection.find_one = AsyncMock(return_value=None)
 
         result = await get_user_preferences_for_agent(sample_user_id)
 
         assert result is None
 
-    async def test_returns_none_when_not_onboarded(
-        self, mock_users_collection, sample_user_id
-    ):
+    async def test_returns_none_when_not_onboarded(self, mock_users_collection, sample_user_id):
         mock_users_collection.find_one = AsyncMock(
             return_value={
                 "_id": ObjectId(sample_user_id),
@@ -462,9 +433,7 @@ class TestGetUserPreferencesForAgent:
 
         assert result is None
 
-    async def test_returns_none_when_no_preferences(
-        self, mock_users_collection, sample_user_id
-    ):
+    async def test_returns_none_when_no_preferences(self, mock_users_collection, sample_user_id):
         mock_users_collection.find_one = AsyncMock(
             return_value={
                 "_id": ObjectId(sample_user_id),
@@ -476,21 +445,15 @@ class TestGetUserPreferencesForAgent:
 
         assert result is None
 
-    async def test_returns_none_on_exception(
-        self, mock_users_collection, sample_user_id
-    ):
+    async def test_returns_none_on_exception(self, mock_users_collection, sample_user_id):
         mock_users_collection.find_one = AsyncMock(side_effect=Exception("DB error"))
 
         result = await get_user_preferences_for_agent(sample_user_id)
 
         assert result is None
 
-    async def test_returns_none_when_no_onboarding_key(
-        self, mock_users_collection, sample_user_id
-    ):
-        mock_users_collection.find_one = AsyncMock(
-            return_value={"_id": ObjectId(sample_user_id)}
-        )
+    async def test_returns_none_when_no_onboarding_key(self, mock_users_collection, sample_user_id):
+        mock_users_collection.find_one = AsyncMock(return_value={"_id": ObjectId(sample_user_id)})
 
         result = await get_user_preferences_for_agent(sample_user_id)
 
@@ -565,9 +528,7 @@ class TestSavePersonalizationData:
         assert set_data["onboarding.phase"] == OnboardingPhase.PERSONALIZATION_COMPLETE
 
     async def test_handles_exception(self, mock_post_users_collection, sample_user_id):
-        mock_post_users_collection.update_one = AsyncMock(
-            side_effect=Exception("DB error")
-        )
+        mock_post_users_collection.update_one = AsyncMock(side_effect=Exception("DB error"))
 
         # Should not raise
         await save_personalization_data(
@@ -660,25 +621,19 @@ class TestSuggestWorkflowsViaRag:
 
         wf_ids = [ObjectId(), ObjectId()]
         mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[{"_id": wf_ids[0]}, {"_id": wf_ids[1]}]
-        )
+        mock_cursor.to_list = AsyncMock(return_value=[{"_id": wf_ids[0]}, {"_id": wf_ids[1]}])
         mock_workflows_collection.find = MagicMock(return_value=mock_cursor)
 
         mock_memories = MagicMock()
         mock_memories.memories = []
 
-        with patch(
-            "app.services.onboarding.post_onboarding_service.memory_service"
-        ) as mock_mem:
+        with patch("app.services.onboarding.post_onboarding_service.memory_service") as mock_mem:
             mock_mem.get_all_memories = AsyncMock(return_value=mock_memories)
             result = await suggest_workflows_via_rag("user1", limit=4)
 
         assert len(result) == 2
 
-    async def test_returns_rag_results_when_memories_exist(
-        self, mock_workflows_collection
-    ):
+    async def test_returns_rag_results_when_memories_exist(self, mock_workflows_collection):
         from app.services.onboarding.post_onboarding_service import (
             suggest_workflows_via_rag,
         )
@@ -700,12 +655,8 @@ class TestSuggestWorkflowsViaRag:
         )
 
         with (
-            patch(
-                "app.services.onboarding.post_onboarding_service.memory_service"
-            ) as mock_mem,
-            patch(
-                "app.services.onboarding.post_onboarding_service.ChromaClient"
-            ) as mock_cc,
+            patch("app.services.onboarding.post_onboarding_service.memory_service") as mock_mem,
+            patch("app.services.onboarding.post_onboarding_service.ChromaClient") as mock_cc,
         ):
             mock_mem.get_all_memories = AsyncMock(return_value=mock_memories)
             mock_cc.get_langchain_client = AsyncMock(return_value=mock_chroma)
@@ -722,17 +673,13 @@ class TestSuggestWorkflowsViaRag:
         mock_cursor.to_list = AsyncMock(return_value=[])
         mock_workflows_collection.find = MagicMock(return_value=mock_cursor)
 
-        with patch(
-            "app.services.onboarding.post_onboarding_service.memory_service"
-        ) as mock_mem:
+        with patch("app.services.onboarding.post_onboarding_service.memory_service") as mock_mem:
             mock_mem.get_all_memories = AsyncMock(side_effect=Exception("Memory error"))
             result = await suggest_workflows_via_rag("user1")
 
         assert isinstance(result, list)
 
-    async def test_fills_with_defaults_when_rag_returns_few(
-        self, mock_workflows_collection
-    ):
+    async def test_fills_with_defaults_when_rag_returns_few(self, mock_workflows_collection):
         from app.services.onboarding.post_onboarding_service import (
             suggest_workflows_via_rag,
         )
@@ -759,12 +706,8 @@ class TestSuggestWorkflowsViaRag:
         mock_workflows_collection.find = MagicMock(return_value=mock_cursor)
 
         with (
-            patch(
-                "app.services.onboarding.post_onboarding_service.memory_service"
-            ) as mock_mem,
-            patch(
-                "app.services.onboarding.post_onboarding_service.ChromaClient"
-            ) as mock_cc,
+            patch("app.services.onboarding.post_onboarding_service.memory_service") as mock_mem,
+            patch("app.services.onboarding.post_onboarding_service.ChromaClient") as mock_cc,
         ):
             mock_mem.get_all_memories = AsyncMock(return_value=mock_memories)
             mock_cc.get_langchain_client = AsyncMock(return_value=mock_chroma)
@@ -811,9 +754,7 @@ class TestProcessPostOnboardingPersonalization:
         mock_workflows_collection.find_one = AsyncMock(return_value=None)
 
         with (
-            patch(
-                "app.services.onboarding.post_onboarding_service.memory_service"
-            ) as mock_mem,
+            patch("app.services.onboarding.post_onboarding_service.memory_service") as mock_mem,
             patch(
                 "app.services.onboarding.post_onboarding_service.suggest_workflows_via_rag",
                 new_callable=AsyncMock,
@@ -864,9 +805,7 @@ class TestProcessPostOnboardingPersonalization:
             process_post_onboarding_personalization,
         )
 
-        mock_post_users_collection.update_one = AsyncMock(
-            side_effect=Exception("DB error")
-        )
+        mock_post_users_collection.update_one = AsyncMock(side_effect=Exception("DB error"))
 
         # Should not raise
         await process_post_onboarding_personalization(sample_user_id)
@@ -896,9 +835,7 @@ class TestProcessPostOnboardingPersonalization:
         mock_workflows_collection.find_one = AsyncMock(return_value=None)
 
         with (
-            patch(
-                "app.services.onboarding.post_onboarding_service.memory_service"
-            ) as mock_mem,
+            patch("app.services.onboarding.post_onboarding_service.memory_service") as mock_mem,
             patch(
                 "app.services.onboarding.post_onboarding_service.suggest_workflows_via_rag",
                 new_callable=AsyncMock,

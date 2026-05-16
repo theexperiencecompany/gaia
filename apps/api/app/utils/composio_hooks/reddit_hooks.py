@@ -7,9 +7,10 @@ minimizing token usage by extracting only critical information.
 
 from typing import Any
 
-from shared.py.wide_events import log
 from composio.types import ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
+
+from shared.py.wide_events import log
 
 from .registry import register_after_hook, register_before_hook
 
@@ -155,9 +156,7 @@ def reddit_content_before_hook(
     return params
 
 
-@register_before_hook(
-    tools=["REDDIT_DELETE_REDDIT_POST", "REDDIT_DELETE_REDDIT_COMMENT"]
-)
+@register_before_hook(tools=["REDDIT_DELETE_REDDIT_POST", "REDDIT_DELETE_REDDIT_COMMENT"])
 def reddit_delete_before_hook(
     tool: str, toolkit: str, params: ToolExecuteParams
 ) -> ToolExecuteParams:
@@ -174,9 +173,7 @@ def reddit_delete_before_hook(
     return params
 
 
-@register_before_hook(
-    tools=["REDDIT_RETRIEVE_REDDIT_POST", "REDDIT_RETRIEVE_POST_COMMENTS"]
-)
+@register_before_hook(tools=["REDDIT_RETRIEVE_REDDIT_POST", "REDDIT_RETRIEVE_POST_COMMENTS"])
 def reddit_retrieve_before_hook(
     tool: str, toolkit: str, params: ToolExecuteParams
 ) -> ToolExecuteParams:
@@ -202,9 +199,7 @@ def reddit_retrieve_before_hook(
 
 
 @register_after_hook(tools=["REDDIT_SEARCH_ACROSS_SUBREDDITS"])
-def reddit_search_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+def reddit_search_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process Reddit search response to minimize raw data."""
     log.set(reddit_tool=tool, toolkit=toolkit)
     try:
@@ -254,9 +249,7 @@ def reddit_search_after_hook(
 
 
 @register_after_hook(tools=["REDDIT_RETRIEVE_REDDIT_POST"])
-def reddit_post_detail_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+def reddit_post_detail_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process single Reddit post response and stream to frontend."""
     try:
         writer = get_stream_writer()
@@ -305,9 +298,7 @@ def reddit_post_detail_after_hook(
 
 
 @register_after_hook(tools=["REDDIT_RETRIEVE_POST_COMMENTS"])
-def reddit_comments_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+def reddit_comments_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process Reddit comments response and stream to frontend."""
     try:
         writer = get_stream_writer()
@@ -327,9 +318,7 @@ def reddit_comments_after_hook(
                 comments_data = []
         else:
             # Alternative structure
-            comments_data = (
-                response_data.get("comments", {}).get("data", {}).get("children", [])
-            )
+            comments_data = response_data.get("comments", {}).get("data", {}).get("children", [])
 
         # Process comments
         processed_comments = []

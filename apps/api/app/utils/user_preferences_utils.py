@@ -3,7 +3,7 @@ User preferences utilities for formatting and processing user data.
 Provides functions to format user preferences for agent system prompts.
 """
 
-from typing import Optional, Dict, Any
+from typing import Any
 
 from shared.py.wide_events import log
 
@@ -45,7 +45,7 @@ def format_profession_for_display(profession: str) -> str:
     return profession.strip().title()
 
 
-def build_user_context_parts(preferences: Dict[str, Any]) -> list[str]:
+def build_user_context_parts(preferences: dict[str, Any]) -> list[str]:
     """
     Build user context parts from preferences for agent system prompt.
 
@@ -72,9 +72,7 @@ def build_user_context_parts(preferences: Dict[str, Any]) -> list[str]:
 
         # Add communication style context
         if preferences.get("response_style"):
-            style_instruction = format_response_style_instruction(
-                preferences["response_style"]
-            )
+            style_instruction = format_response_style_instruction(preferences["response_style"])
             parts.append(f"Communication Style: {style_instruction}")
 
         # Add custom instructions
@@ -84,12 +82,12 @@ def build_user_context_parts(preferences: Dict[str, Any]) -> list[str]:
                 parts.append(f"Special Instructions: {instructions}")
 
     except Exception as e:
-        log.warning(f"Error building user context parts: {str(e)}")
+        log.warning(f"Error building user context parts: {e!s}")
 
     return parts
 
 
-def format_user_preferences_for_agent(preferences: Dict[str, Any]) -> Optional[str]:
+def format_user_preferences_for_agent(preferences: dict[str, Any]) -> str | None:
     """
     Format user preferences into a string suitable for agent system prompt.
 
@@ -111,11 +109,11 @@ def format_user_preferences_for_agent(preferences: Dict[str, Any]) -> Optional[s
         return None
 
     except Exception as e:
-        log.error(f"Error formatting user preferences for agent: {str(e)}")
+        log.error(f"Error formatting user preferences for agent: {e!s}")
         return None
 
 
-def validate_user_preferences(preferences: Dict[str, Any]) -> Dict[str, Any]:
+def validate_user_preferences(preferences: dict[str, Any]) -> dict[str, Any]:
     """
     Validate and sanitize user preferences.
 
@@ -147,12 +145,12 @@ def validate_user_preferences(preferences: Dict[str, Any]) -> Dict[str, Any]:
                 validated["custom_instructions"] = instructions
 
     except Exception as e:
-        log.warning(f"Error validating user preferences: {str(e)}")
+        log.warning(f"Error validating user preferences: {e!s}")
 
     return validated
 
 
-def get_user_preference_summary(preferences: Dict[str, Any]) -> str:
+def get_user_preference_summary(preferences: dict[str, Any]) -> str:
     """
     Get a brief summary of user preferences for logging/debugging.
 

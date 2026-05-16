@@ -1,9 +1,9 @@
 """ARQ worker task for post-onboarding personalization."""
 
-from shared.py.wide_events import log, wide_task
 from app.services.onboarding.post_onboarding_service import (
     process_post_onboarding_personalization,
 )
+from shared.py.wide_events import log, wide_task
 
 
 async def process_personalization_task(ctx, user_id: str) -> str:

@@ -1,11 +1,11 @@
 """ARQ cleanup tasks for stuck/failed background processes."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.db.mongodb.collections import users_collection
-from shared.py.wide_events import log, wide_task
 from app.models.user_models import BioStatus
 from app.utils.redis_utils import RedisPoolManager
+from shared.py.wide_events import log, wide_task
 
 
 async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
@@ -27,13 +27,9 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
     Returns:
         Summary of cleanup actions
     """
-    async with wide_task(
-        "cleanup_stuck_personalization", max_age_minutes=max_age_minutes
-    ):
+    async with wide_task("cleanup_stuck_personalization", max_age_minutes=max_age_minutes):
         try:
-            cutoff_time = datetime.now(timezone.utc) - timedelta(
-                minutes=max_age_minutes
-            )
+            cutoff_time = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
 
             # Find users stuck in PROCESSING or PENDING for too long
             stuck_users = await users_collection.find(
@@ -74,9 +70,7 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
 
                 try:
                     # Queue personalization job instead of running directly
-                    job = await pool.enqueue_job(
-                        "process_personalization_task", user_id
-                    )
+                    job = await pool.enqueue_job("process_personalization_task", user_id)
 
                     if job:
                         log.info(

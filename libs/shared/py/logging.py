@@ -26,19 +26,20 @@ Usage:
     logger.info("Hello world")
 """
 
-import json as _json
-import os
-import sys
-import logging
 from collections.abc import Callable
+import json as _json
+import logging
+import os
 from pathlib import Path
+import sys
+from typing import Any  # noqa: F401  # used in function signatures below
 
 from loguru import logger
 
 _LOGURU_CONFIGURED = False
 _FILE_LOGGING_CONFIGURED = False
 
-LOG_CONFIG = {
+LOG_CONFIG: dict[str, Any] = {
     "level": os.getenv("LOG_LEVEL", "INFO"),
     # Set LOG_FORMAT=json in production Docker to emit newline-delimited JSON to
     # stdout. Promtail picks this up and ships it to Loki with zero parsing issues.
@@ -110,13 +111,13 @@ def _build_json_entry(record: dict) -> str:
     return _json.dumps(entry, default=str) + "\n"
 
 
-def _json_stdout_sink(message: object) -> None:
+def _json_stdout_sink(message: Any) -> None:
     """Callable sink that writes flat JSON to stdout.
 
     Using a callable sink (not format=callable) bypasses loguru's str.format_map()
     post-processing, which would otherwise choke on the curly braces in JSON output.
     """
-    record = message.record  # type: ignore[union-attr]
+    record = message.record
     sys.stdout.write(_build_json_entry(record))
     sys.stdout.flush()
 
@@ -127,28 +128,28 @@ def _json_file_sink_factory(log_dir: Path) -> "Callable[..., None]":
     Produces the same flat JSON format as _json_stdout_sink so that Promtail
     and Grafana dashboards work identically for local dev and Docker.
     """
-    _handles: dict[str, object] = {}
+    _handles: dict[str, Any] = {}
 
-    def _sink(message: object) -> None:
-        record = message.record  # type: ignore[union-attr]
+    def _sink(message: Any) -> None:
+        record = message.record
         date_str = record["time"].strftime("%Y-%m-%d")
         resolved = log_dir / f"structured-{date_str}.json"
         key = str(resolved)
 
         fh = _handles.get(key)
-        if fh is None or fh.closed:  # type: ignore[union-attr]
+        if fh is None or fh.closed:
             # Close stale handles from previous days before opening a new one
             for old_key in list(_handles):
                 if old_key != key:
                     try:
-                        _handles.pop(old_key).close()  # type: ignore[union-attr]
+                        _handles.pop(old_key).close()
                     except Exception:
                         pass
             fh = open(resolved, "a", encoding="utf-8")  # noqa: SIM115
             _handles[key] = fh
 
-        fh.write(_build_json_entry(record))  # type: ignore[union-attr]
-        fh.flush()  # type: ignore[union-attr]
+        fh.write(_build_json_entry(record))
+        fh.flush()
 
     return _sink
 
@@ -162,7 +163,7 @@ def _worker_name_patcher(record: dict) -> None:
     """
     name: str = record["process"].name
     if name.startswith("SpawnProcess-"):
-        record["extra"]["worker"] = "w" + name.split("-")[-1]
+        record["extra"]["worker"] = "w" + name.rsplit("-", maxsplit=1)[-1]
     elif name == "MainProcess":
         record["extra"]["worker"] = "main"
     else:
@@ -240,14 +241,14 @@ def configure_loguru():
             ]
 
             should_intercept = any(
-                record.name.startswith(namespace)
-                or record.name == namespace.rstrip(".")
+                record.name.startswith(namespace) or record.name == namespace.rstrip(".")
                 for namespace in app_namespaces
             )
 
             if not should_intercept:
                 return
 
+            level: str | int
             try:
                 level = logger.level(record.levelname).name
             except ValueError:
@@ -272,9 +273,9 @@ def configure_loguru():
             else:
                 context_name = logger_name_map.get(record.name, record.name.upper()[:7])
 
-            logger.bind(logger_name=context_name).opt(
-                depth=depth, exception=record.exc_info
-            ).log(level, record.getMessage())
+            logger.bind(logger_name=context_name).opt(depth=depth, exception=record.exc_info).log(
+                level, record.getMessage()
+            )
 
     intercept_loggers = [
         "uvicorn",

@@ -14,13 +14,13 @@ of a connection.
 from __future__ import annotations
 
 import asyncio
-import time
 from threading import Lock
+import time
 from typing import Any, Literal
 
-from shared.py.wide_events import log
 from app.config.oauth_config import get_composio_social_configs
 from app.utils.errors import AppError
+from shared.py.wide_events import log
 
 ProxyMethod = Literal["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"]
 
@@ -126,10 +126,8 @@ def _build_parameters(
             if value is None:
                 continue
             if isinstance(value, (list, tuple)):
-                for item in value:
-                    params.append(
-                        {"name": name, "type": "query", "value": str(item)}
-                    )
+                for item in value:  # type: ignore[attr-defined]
+                    params.append({"name": name, "type": "query", "value": str(item)})
             else:
                 params.append({"name": name, "type": "query", "value": str(value)})
     return params
@@ -323,8 +321,8 @@ def invalidate_connected_account_cache(
 
 __all__ = [
     "ProxyMethod",
-    "proxy_request",
-    "proxy_request_sync",
-    "proxy_request_full_sync",
     "invalidate_connected_account_cache",
+    "proxy_request",
+    "proxy_request_full_sync",
+    "proxy_request_sync",
 ]

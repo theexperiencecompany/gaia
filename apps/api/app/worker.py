@@ -13,8 +13,8 @@ from app.workers.tasks import (
     process_personalization_task,
     process_reminder,
     process_workflow_generation_task,
-    store_memories_batch,
     regenerate_workflow_steps,
+    store_memories_batch,
 )
 
 # Wrap every task with the Prometheus histogram instrumentation so arq-worker.json

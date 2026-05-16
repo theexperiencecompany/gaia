@@ -24,7 +24,6 @@ import argparse
 import asyncio
 import os
 from pathlib import Path
-from typing import List
 
 from app.agents.skills.models import Skill, SkillSource
 from app.agents.skills.parser import parse_skill_md, validate_skill_content
@@ -33,10 +32,10 @@ from app.agents.skills.registry import (
     install_skill,
     uninstall_skill,
 )
-from shared.py.wide_events import log
 from app.db.redis import delete_cache_by_pattern
 from app.services.vfs.mongo_vfs import MongoVFS
 from app.services.vfs.path_resolver import get_system_skill_path
+from shared.py.wide_events import log
 
 
 async def _seed_builtin_skill(
@@ -77,15 +76,13 @@ async def _seed_builtin_skill(
         if existing and not force:
             log.info(f"[seed] Builtin skill already exists: {metadata.name}")
             return None, metadata.name
-        elif existing and force and existing.id:
+        if existing and force and existing.id:
             await uninstall_skill("system", existing.id)
     except Exception as e:
         log.debug(f"[seed] Could not check existing skill {metadata.name}: {e}")
 
     try:
-        await vfs.write(
-            f"{vfs_dir}/SKILL.md", body, "system", metadata={"source": "builtin"}
-        )
+        await vfs.write(f"{vfs_dir}/SKILL.md", body, "system", metadata={"source": "builtin"})
 
         all_files = ["SKILL.md"]
         for root, _dirs, files in os.walk(skill_dir):
@@ -126,7 +123,7 @@ async def _seed_builtin_skill(
         return None, None
 
 
-async def seed_all_system_skills(force: bool = False) -> tuple[List[Skill], List[str]]:
+async def seed_all_system_skills(force: bool = False) -> tuple[list[Skill], list[str]]:
     """Seed all builtin system skills to VFS and MongoDB.
 
     Args:
@@ -138,8 +135,8 @@ async def seed_all_system_skills(force: bool = False) -> tuple[List[Skill], List
     log.info("[seed] Starting system skills seeding")
 
     vfs = MongoVFS(allow_system_write=True)
-    seeded: List[Skill] = []
-    existing: List[str] = []
+    seeded: list[Skill] = []
+    existing: list[str] = []
 
     builtin_path = Path(__file__).parent.parent / "agents" / "skills" / "builtin"
     if builtin_path.exists():
@@ -147,9 +144,7 @@ async def seed_all_system_skills(force: bool = False) -> tuple[List[Skill], List
         log.info(f"[seed] Found {len(builtin_dirs)} builtin skills")
 
         for skill_dir in builtin_dirs:
-            skill, existing_name = await _seed_builtin_skill(
-                vfs, skill_dir, force=force
-            )
+            skill, existing_name = await _seed_builtin_skill(vfs, skill_dir, force=force)
             if skill:
                 seeded.append(skill)
             elif existing_name:
@@ -234,8 +229,7 @@ async def main():
 
         if existing_skills:
             print(
-                f"Skipped {len(existing_skills)} existing system skills "
-                "(use --force to overwrite):"
+                f"Skipped {len(existing_skills)} existing system skills (use --force to overwrite):"
             )
             for skill_name in existing_skills:
                 print(f"  - {skill_name}")

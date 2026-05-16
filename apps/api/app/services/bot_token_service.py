@@ -4,7 +4,7 @@ JWT-based session tokens for bot authentication. Prevents user impersonation
 by issuing tokens only after legitimate platform messages.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from jose import JWTError, jwt
 
@@ -41,7 +41,7 @@ def create_bot_session_token(
         )
     """
     secret = _get_bot_session_secret()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
+    expire = datetime.now(UTC) + timedelta(minutes=expires_minutes)
 
     payload = {
         "sub": user_id,  # Subject: internal user ID
@@ -49,7 +49,7 @@ def create_bot_session_token(
         "platform_user_id": platform_user_id,
         "role": "bot",  # Identifies this as a bot session token
         "exp": expire,
-        "iat": datetime.now(timezone.utc),
+        "iat": datetime.now(UTC),
     }
 
     return jwt.encode(payload, secret, algorithm=JWT_ALGORITHM)
@@ -92,7 +92,7 @@ def verify_bot_session_token(token: str) -> dict:
         }
 
     except JWTError as e:
-        raise JWTError(f"Token verification failed: {str(e)}") from e
+        raise JWTError(f"Token verification failed: {e!s}") from e
 
 
 def _get_bot_session_secret() -> str:

@@ -10,7 +10,7 @@ __all__ = [
     "WorkflowGenerationService",
     "WorkflowQueueService",
     "WorkflowScheduler",
-    "workflow_scheduler",
     "WorkflowService",
     "WorkflowValidator",
+    "workflow_scheduler",
 ]

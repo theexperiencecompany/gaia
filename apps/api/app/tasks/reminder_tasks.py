@@ -2,7 +2,6 @@
 Reminder task handlers for static reminders only.
 """
 
-from shared.py.wide_events import log
 from app.models.reminder_models import (
     AgentType,
     ReminderModel,
@@ -10,6 +9,7 @@ from app.models.reminder_models import (
 )
 from app.services.notification_service import notification_service
 from app.utils.notification.sources import AIProactiveNotificationSource
+from shared.py.wide_events import log
 
 
 async def _execute_static_reminder(reminder: ReminderModel) -> None:
@@ -35,9 +35,7 @@ async def _execute_static_reminder(reminder: ReminderModel) -> None:
 
     await notification_service.create_notification(notification)
 
-    log.info(
-        f"Static reminder {reminder.id} sent notification to user {reminder.user_id}"
-    )
+    log.info(f"Static reminder {reminder.id} sent notification to user {reminder.user_id}")
 
 
 async def execute_reminder_by_agent(
@@ -64,9 +62,7 @@ async def execute_reminder_by_agent(
         else:
             raise ValueError(f"Unknown agent type: {reminder.agent}")
 
-        log.info(
-            f"Reminder {reminder.id} executed successfully for agent: {reminder.agent}"
-        )
+        log.info(f"Reminder {reminder.id} executed successfully for agent: {reminder.agent}")
     except Exception as e:
-        log.error(f"Failed to execute reminder {reminder.id}: {str(e)}")
+        log.error(f"Failed to execute reminder {reminder.id}: {e!s}")
         raise

@@ -26,7 +26,7 @@ export function useWebSocketConnection() {
         console.error(
           "[WebSocket] NEXT_PUBLIC_API_BASE_URL environment variable not set",
         );
-        return;
+        return undefined;
       }
 
       const wsUrl =
@@ -46,9 +46,9 @@ export function useWebSocketConnection() {
         console.log("[WebSocket] Disconnecting due to unmount or user change");
         wsManager.disconnect();
       };
-    } else {
-      console.log("[WebSocket] Not connecting - no user email available");
     }
+    console.log("[WebSocket] Not connecting - no user email available");
+    return undefined;
   }, [user?.email]);
 
   // Handle page visibility changes — subscribe once, read latest email from ref

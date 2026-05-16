@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
+import pytest
 
 from app.agents.core.messages import construct_langchain_messages
 

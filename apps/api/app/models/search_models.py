@@ -1,22 +1,21 @@
-from typing import Dict, List, Optional, Union
 from pydantic import BaseModel, HttpUrl
 
 
 class URLRequest(BaseModel):
-    urls: List[str]  # Always accept array of URLs
+    urls: list[str]  # Always accept array of URLs
 
 
 class URLResponse(BaseModel):
-    title: Union[str, None] = None
-    description: Union[str, None] = None
-    favicon: Union[str, None] = None
-    website_name: Union[str, None] = None
-    website_image: Union[str, None] = None
+    title: str | None = None
+    description: str | None = None
+    favicon: str | None = None
+    website_name: str | None = None
+    website_image: str | None = None
     url: HttpUrl
 
 
 class MultiURLResponse(BaseModel):
-    results: Dict[str, URLResponse]  # URL -> metadata mapping
+    results: dict[str, URLResponse]  # URL -> metadata mapping
 
 
 class WebResult(BaseModel):
@@ -50,32 +49,32 @@ class VideoResult(BaseModel):
 
 
 class SearchResults(BaseModel):
-    web: Optional[List[WebResult]] = []
-    images: Optional[List[ImageResult]] = []
-    news: Optional[List[NewsResult]] = []
-    videos: Optional[List[VideoResult]] = []
+    web: list[WebResult] | None = []
+    images: list[ImageResult] | None = []
+    news: list[NewsResult] | None = []
+    videos: list[VideoResult] | None = []
 
 
 class DeepResearchResultsMedata(BaseModel):
-    elapsed_time: Optional[float] = None
-    query: Optional[str] = None
-    total_content_size: Optional[int] = None
+    elapsed_time: float | None = None
+    query: str | None = None
+    total_content_size: int | None = None
 
 
 class DeepResearchResult(BaseModel):
     title: str
     url: str
     snippet: str
-    full_content: Optional[str] = None
-    screenshot_url: Optional[str] = None
-    fetch_error: Optional[str] = None
-    source: Optional[str] = None
-    date: Optional[str] = None
+    full_content: str | None = None
+    screenshot_url: str | None = None
+    fetch_error: str | None = None
+    source: str | None = None
+    date: str | None = None
 
 
 class DeepResearchResults(BaseModel):
-    original_search: Optional[SearchResults] = None
-    enhanced_results: Optional[List[DeepResearchResult]] = None
-    metadata: Optional[DeepResearchResultsMedata] = None
-    query: Optional[str] = None
-    error: Optional[str] = None
+    original_search: SearchResults | None = None
+    enhanced_results: list[DeepResearchResult] | None = None
+    metadata: DeepResearchResultsMedata | None = None
+    query: str | None = None
+    error: str | None = None

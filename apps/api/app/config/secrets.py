@@ -11,6 +11,6 @@ from shared.py.secrets import (
 )
 
 __all__ = [
-    "inject_infisical_secrets",
     "InfisicalConfigError",
+    "inject_infisical_secrets",
 ]

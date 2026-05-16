@@ -1,8 +1,8 @@
-from typing import Optional
 from urllib.parse import quote
 
+from fastapi import APIRouter, Depends, HTTPException
+
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX
 from app.db.redis import redis_cache
@@ -15,14 +15,14 @@ from app.models.platform_models import (
 )
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.platform_link_service import Platform, PlatformLinkService
-from fastapi import APIRouter, Depends, HTTPException
+from shared.py.wide_events import log
 
 router = APIRouter()
 
 
 @router.get("", response_model=GetPlatformLinksResponse)
 async def get_platform_links(
-    current_user: Optional[dict] = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user),
 ) -> GetPlatformLinksResponse:
     """Get user's connected platform accounts."""
     if not current_user:
@@ -42,7 +42,7 @@ async def get_platform_links(
 async def link_platform(
     platform: str,
     body: LinkPlatformRequest,
-    current_user: Optional[dict] = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user),
 ) -> LinkPlatformResponse:
     """Link a platform account to the authenticated GAIA user.
 
@@ -106,7 +106,7 @@ async def link_platform(
 @router.delete("/{platform}", response_model=DisconnectPlatformResponse)
 async def disconnect_platform(
     platform: str,
-    current_user: Optional[dict] = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user),
 ) -> DisconnectPlatformResponse:
     """Disconnect a platform from user account."""
     if not current_user:
@@ -141,7 +141,7 @@ async def disconnect_platform(
 @router.get("/{platform}/connect", response_model=InitiatePlatformConnectResponse)
 async def initiate_platform_connect(
     platform: str,
-    current_user: Optional[dict] = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user),
 ) -> InitiatePlatformConnectResponse:
     """Initiate platform connection via OAuth or manual instructions.
 
@@ -158,9 +158,7 @@ async def initiate_platform_connect(
     user_id = current_user.get("user_id")
     if not isinstance(user_id, str):
         raise ValueError("user_id must be a string")
-    log.set(
-        user={"id": user_id}, operation="initiate_platform_connect", platform=platform
-    )
+    log.set(user={"id": user_id}, operation="initiate_platform_connect", platform=platform)
 
     # Discord OAuth flow
     if platform == "discord" and settings.DISCORD_OAUTH_CLIENT_ID:

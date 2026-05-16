@@ -3,8 +3,8 @@
 from collections.abc import Mapping
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.tools import BaseTool
+import pytest
 
 from app.agents.tools.core.registry import (
     DynamicToolDict,
@@ -221,9 +221,7 @@ class TestToolRegistry:
 
     def test_get_tool_names(self):
         registry = ToolRegistry()
-        registry._add_category(
-            "cat1", tools=[_make_mock_tool("a"), _make_mock_tool("b")]
-        )
+        registry._add_category("cat1", tools=[_make_mock_tool("a"), _make_mock_tool("b")])
         registry._add_category("cat2", tools=[_make_mock_tool("c")])
 
         names = registry.get_tool_names()
@@ -379,14 +377,12 @@ class TestToolRegistryAsync:
         with _patch_initialize_categories():
             await registry.setup()
             counts_after_first = {
-                name: len(registry.get_category(name).tools)
-                for name in _CORE_CATEGORY_NAMES
+                name: len(registry.get_category(name).tools) for name in _CORE_CATEGORY_NAMES
             }
 
             await registry.setup()
             counts_after_second = {
-                name: len(registry.get_category(name).tools)
-                for name in _CORE_CATEGORY_NAMES
+                name: len(registry.get_category(name).tools) for name in _CORE_CATEGORY_NAMES
             }
 
         # _initialize_categories replaces the dict entry each call, so counts
@@ -611,9 +607,7 @@ class TestToolRegistryAsync:
         no tools."""
         user_id = "user-mcp-empty"
         mock_mcp_client = MagicMock()
-        mock_mcp_client.get_all_connected_tools = AsyncMock(
-            return_value={"empty_server": []}
-        )
+        mock_mcp_client.get_all_connected_tools = AsyncMock(return_value={"empty_server": []})
 
         registry = ToolRegistry()
 

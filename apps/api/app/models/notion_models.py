@@ -1,6 +1,6 @@
 """Notion models for custom tools."""
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -12,18 +12,14 @@ class MovePageInput(BaseModel):
     parent_type: Literal["page_id", "database_id"] = Field(
         ..., description="Type of parent: 'page_id' or 'database_id'."
     )
-    parent_id: str = Field(
-        ..., description="UUID of the new parent (page or database)."
-    )
+    parent_id: str = Field(..., description="UUID of the new parent (page or database).")
 
 
 class FetchPageAsMarkdownInput(BaseModel):
     """Input for fetching a page as markdown."""
 
     page_id: str = Field(..., description="UUID of the page to fetch.")
-    recursive: bool = Field(
-        default=True, description="Whether to fetch nested children blocks."
-    )
+    recursive: bool = Field(default=True, description="Whether to fetch nested children blocks.")
     include_block_ids: bool = Field(
         default=True,
         description="Include block IDs as HTML comments (<!-- block:id -->) for insertion positioning with `after` parameter.",
@@ -41,7 +37,7 @@ class InsertMarkdownInput(BaseModel):
         ...,
         description="Markdown content to insert. Supports headings, lists, code blocks, quotes, todos, and inline formatting.",
     )
-    after: Optional[str] = Field(
+    after: str | None = Field(
         default=None,
         description="UUID of an existing block. New blocks will be inserted immediately after this block. If omitted, blocks are appended to the end.",
     )
@@ -57,7 +53,7 @@ class FetchDataInput(BaseModel):
         default=100,
         description="Maximum number of results to return (default: 100).",
     )
-    query: Optional[str] = Field(
+    query: str | None = Field(
         default=None,
         description="Optional search query to filter results by title or content.",
     )

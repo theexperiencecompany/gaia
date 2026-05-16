@@ -11,9 +11,9 @@ Based on Vercel skills CLI patterns (https://github.com/vercel-labs/skills)
 
 import asyncio
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
 
 import httpx
+
 from app.agents.skills.parser import parse_skill_md
 from app.agents.skills.utils import (
     GITHUB_API_BASE,
@@ -53,7 +53,7 @@ async def _fetch_git_tree(
     owner: str,
     repo: str,
     branch: str = "main",
-) -> Tuple[List[dict], str]:
+) -> tuple[list[dict], str]:
     """Fetch entire repository tree using Git Tree API.
 
     Uses recursive=1 to get all files in a single API call.
@@ -78,9 +78,7 @@ async def _fetch_git_tree(
             return await _fetch_git_tree(owner, repo, "master")
 
         if resp.status_code == 403:
-            log.warning(
-                "[skills] GitHub rate limited. Set GITHUB_TOKEN for higher limits"
-            )
+            log.warning("[skills] GitHub rate limited. Set GITHUB_TOKEN for higher limits")
             return [], branch
 
         resp.raise_for_status()
@@ -97,7 +95,7 @@ async def _fetch_single_file_content(
     repo: str,
     path: str,
     branch: str,
-) -> Optional[Tuple[str, str]]:
+) -> tuple[str, str] | None:
     """Fetch raw file content from GitHub.
 
     Args:
@@ -130,9 +128,9 @@ async def _fetch_single_file_content(
 async def _fetch_file_contents_batch(
     owner: str,
     repo: str,
-    paths: List[str],
+    paths: list[str],
     branch: str,
-) -> List[Tuple[str, str]]:
+) -> list[tuple[str, str]]:
     """Fetch multiple file contents in parallel.
 
     Args:
@@ -148,7 +146,7 @@ async def _fetch_file_contents_batch(
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    contents: List[Tuple[str, str]] = []
+    contents: list[tuple[str, str]] = []
     for result in results:
         if isinstance(result, BaseException):
             log.debug(f"[skills] Exception fetching file: {result}")
@@ -163,7 +161,7 @@ async def _parse_skill_from_content(
     content: str,
     folder_path: str,
     repo_url: str,
-) -> Optional[DiscoveredSkill]:
+) -> DiscoveredSkill | None:
     """Parse SKILL.md content and return DiscoveredSkill."""
     try:
         metadata, _ = parse_skill_md(content)
@@ -182,7 +180,7 @@ async def _parse_skill_from_content(
 async def discover_skills_from_repo(
     repo_url: str,
     branch: str = "main",
-) -> List[DiscoveredSkill]:
+) -> list[DiscoveredSkill]:
     """Discover all available skills in a GitHub repository.
 
     Uses Git Tree API for efficient discovery in a single API call,
@@ -230,12 +228,10 @@ async def discover_skills_from_repo(
     skill_files.sort(key=get_folder_priority)
 
     # Step 4: Batch fetch all skill file contents
-    contents = await _fetch_file_contents_batch(
-        owner, repo, skill_files, resolved_branch
-    )
+    contents = await _fetch_file_contents_batch(owner, repo, skill_files, resolved_branch)
 
     # Step 5: Parse each skill file
-    all_skills: List[DiscoveredSkill] = []
+    all_skills: list[DiscoveredSkill] = []
 
     for file_path, content in contents:
         folder_path = get_folder_path(file_path)
@@ -257,7 +253,7 @@ async def get_skill_from_repo(
     repo_url: str,
     skill_name: str,
     branch: str = "main",
-) -> Optional[DiscoveredSkill]:
+) -> DiscoveredSkill | None:
     """Get a specific skill by name from a GitHub repository.
 
     Uses the same efficient tree-based discovery as discover_skills_from_repo.
@@ -290,9 +286,7 @@ async def get_skill_from_repo(
     skill_files = find_skill_files(tree_entries)
 
     # Batch fetch and parse until we find the matching skill
-    contents = await _fetch_file_contents_batch(
-        owner, repo, skill_files, resolved_branch
-    )
+    contents = await _fetch_file_contents_batch(owner, repo, skill_files, resolved_branch)
 
     for file_path, content in contents:
         folder_path = get_folder_path(file_path)

@@ -4,7 +4,6 @@ import pytest
 
 from shared.py.utils.slugify import slugify
 
-
 # ---------------------------------------------------------------------------
 # Basic conversion
 # ---------------------------------------------------------------------------
@@ -229,7 +228,7 @@ class TestSlugifyEdgeCases:
         assert slugify("version 2.0.1") == "version-201"
 
     def test_mixed_numbers_and_letters(self):
-        assert slugify("abc123def") == "abc123def"
+        assert slugify("abc123def") == "abc123def"  # pragma: allowlist secret
 
     def test_dots_stripped(self):
         assert slugify("file.name.txt") == "filenametxt"
@@ -256,7 +255,7 @@ class TestSlugifyEdgeCases:
         assert slugify("a; b; c") == "a-b-c"
 
     def test_quotes_stripped(self):
-        assert slugify("it's a \"test\"") == "its-a-test"
+        assert slugify('it\'s a "test"') == "its-a-test"
 
     def test_very_long_single_word(self):
         word = "a" * 200

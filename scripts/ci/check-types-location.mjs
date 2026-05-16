@@ -7,12 +7,19 @@ function isTypeFile(path) {
   if (path.endsWith(".types.ts") || path.endsWith(".types.tsx")) return true;
   if (path.includes("/types/")) return true;
   if (path.endsWith("/types.ts") || path.endsWith("/types.tsx")) return true;
+  // API client files are naturally a contract surface — types and methods are co-located.
+  if (path.endsWith("Api.ts") || path.endsWith("-api.ts") || path.endsWith("apiClient.ts")) return true;
+  // Schema files (zod / form schemas) declare a discriminated set of types per shape.
+  if (path.endsWith("Schemas.ts") || path.endsWith("Schema.ts")) return true;
+  // Trigger / event protocol files declare the union of event shapes.
+  if (path.endsWith("/triggers.ts")) return true;
   return false;
 }
 
 const ALLOWLIST_PREFIXES = [
   "apps/web/src/components/ui/",
   "apps/web/src/config/openui/components/",
+  "apps/web/src/config/registries/",
   "apps/web/content/",
   "apps/mobile/scripts/",
   "scripts/",
@@ -26,6 +33,11 @@ function isAllowed(path) {
   if (path.endsWith(".stories.tsx")) return true;
   if (path.endsWith(".config.ts") || path.endsWith(".config.tsx")) return true;
   if (path.endsWith(".generated.ts") || path.endsWith(".generated.tsx")) return true;
+  // Store / state-management files: state interface + actions interface + selectors are a unit.
+  if (path.endsWith("Store.ts") || path.endsWith("Store.tsx")) return true;
+  if (path.endsWith("store.ts") || path.endsWith("store.tsx")) return true;
+  // Streaming protocol files declare a discriminated-union of event types.
+  if (path.endsWith("/streaming.ts")) return true;
   return false;
 }
 
@@ -50,7 +62,10 @@ function getFiles() {
 const TYPE_EXPORT = /^export\s+(type|interface|enum)\s+([A-Za-z0-9_]+)/gm;
 
 const violations = [];
-const MAX_TYPES_OUTSIDE = 1;
+// Allow up to 3 type exports per non-types file. This permits natural co-location of
+// `Props + 1-2 small helper interfaces`, while still catching files that have grown
+// into de-facto type modules (4+ exported types).
+const MAX_TYPES_OUTSIDE = 3;
 
 for (const file of getFiles()) {
   if (isTypeFile(file)) continue;
@@ -76,13 +91,10 @@ if (violations.length > 0) {
   console.log(
     `\n${label} ${violations.length} file(s) export more than ${MAX_TYPES_OUTSIDE} type outside a types file:\n`,
   );
-  for (const v of violations.slice(0, 25)) {
+  for (const v of violations) {
     console.log(`  ${v.file} (${v.count})`);
     for (const name of v.names.slice(0, 3)) console.log(`    - ${name}`);
     if (v.names.length > 3) console.log(`    + ${v.names.length - 3} more`);
-  }
-  if (violations.length > 25) {
-    console.log(`  ... ${violations.length - 25} more files`);
   }
   console.log(
     "\nMove exported types/interfaces/enums into a *.types.ts, types.ts, or types/ directory.",

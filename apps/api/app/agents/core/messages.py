@@ -1,4 +1,6 @@
-from typing import List, Literal, Optional
+from typing import Literal
+
+from langchain_core.messages import AnyMessage, HumanMessage
 
 from app.helpers.message_helpers import (
     build_current_time_message,
@@ -17,26 +19,25 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
-from langchain_core.messages import AnyMessage, HumanMessage
 
 
 async def construct_langchain_messages(
-    messages: List[MessageDict],
-    files_data: List[FileData] | None = None,
-    currently_uploaded_file_ids: Optional[List[str]] = [],
-    user_id: Optional[str] = None,
-    user_name: Optional[str] = None,
-    user_dict: Optional[dict] = None,
-    query: Optional[str] = None,
-    selected_tool: Optional[str] = None,
-    tool_category: Optional[str] = None,
-    selected_workflow: Optional[SelectedWorkflowData] = None,
-    selected_calendar_event: Optional[SelectedCalendarEventData] = None,
-    reply_to_message: Optional[ReplyToMessageData] = None,
-    trigger_context: Optional[dict] = None,
+    messages: list[MessageDict],
+    files_data: list[FileData] | None = None,
+    currently_uploaded_file_ids: list[str] | None = [],
+    user_id: str | None = None,
+    user_name: str | None = None,
+    user_dict: dict | None = None,
+    query: str | None = None,
+    selected_tool: str | None = None,
+    tool_category: str | None = None,
+    selected_workflow: SelectedWorkflowData | None = None,
+    selected_calendar_event: SelectedCalendarEventData | None = None,
+    reply_to_message: ReplyToMessageData | None = None,
+    trigger_context: dict | None = None,
     agent_type: Literal["comms", "executor"] = "comms",
-    source: Optional[str] = None,
-) -> List[AnyMessage]:
+    source: str | None = None,
+) -> list[AnyMessage]:
     """
     Construct LangChain messages for agent interaction.
 
@@ -73,9 +74,7 @@ async def construct_langchain_messages(
     )
 
     user_timezone = user_dict.get("timezone") if user_dict else None
-    user_preferences = (
-        user_dict.get("onboarding", {}).get("preferences") if user_dict else None
-    )
+    user_preferences = user_dict.get("onboarding", {}).get("preferences") if user_dict else None
 
     # Dynamic-context SystemMessage — user name, preferences, memories.
     # Intentionally does NOT contain the clock or any output-format

@@ -12,18 +12,10 @@ It handles executing middleware hooks at appropriate points:
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 import inspect
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
 
-from app.agents.middleware.runtime_adapter import (
-    BigtoolRuntime,
-    BigtoolToolRuntime,
-    create_model_request,
-    create_tool_call_request,
-    to_agent_state,
-)
-from shared.py.wide_events import log
-from app.override.langgraph_bigtool.utils import State
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import (
     ModelRequest,
@@ -35,6 +27,16 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.store.base import BaseStore
+
+from app.agents.middleware.runtime_adapter import (
+    BigtoolRuntime,
+    BigtoolToolRuntime,
+    create_model_request,
+    create_tool_call_request,
+    to_agent_state,
+)
+from app.override.langgraph_bigtool.utils import State
+from shared.py.wide_events import log
 
 
 def _has_override(mw: AgentMiddleware, method_name: str) -> bool:
@@ -97,7 +99,7 @@ class MiddlewareExecutor:
     def _create_runtime(
         self,
         config: RunnableConfig,
-        store: Optional[BaseStore] = None,
+        store: BaseStore | None = None,
     ) -> BigtoolRuntime:
         """Create a BigtoolRuntime from graph context."""
         return BigtoolRuntime.from_graph_context(
@@ -108,8 +110,8 @@ class MiddlewareExecutor:
     def _create_tool_runtime(
         self,
         config: RunnableConfig,
-        store: Optional[BaseStore] = None,
-        tool_name: Optional[str] = None,
+        store: BaseStore | None = None,
+        tool_name: str | None = None,
     ) -> BigtoolToolRuntime:
         """Create a BigtoolToolRuntime for tool execution."""
         return BigtoolToolRuntime.from_graph_context(
@@ -122,7 +124,7 @@ class MiddlewareExecutor:
         self,
         state: State,
         config: RunnableConfig,
-        store: Optional[BaseStore] = None,
+        store: BaseStore | None = None,
     ) -> State:
         """
         Execute before_model hooks on all middleware.
@@ -161,9 +163,7 @@ class MiddlewareExecutor:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                log.warning(
-                    f"Middleware {mw.__class__.__name__}.before_model failed: {e}"
-                )
+                log.warning(f"Middleware {mw.__class__.__name__}.before_model failed: {e}")
 
         return State(**current_state)
 
@@ -171,7 +171,7 @@ class MiddlewareExecutor:
         self,
         state: State,
         config: RunnableConfig,
-        store: Optional[BaseStore] = None,
+        store: BaseStore | None = None,
     ) -> State:
         """
         Execute after_model hooks on all middleware.
@@ -210,9 +210,7 @@ class MiddlewareExecutor:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                log.warning(
-                    f"Middleware {mw.__class__.__name__}.after_model failed: {e}"
-                )
+                log.warning(f"Middleware {mw.__class__.__name__}.after_model failed: {e}")
 
         return State(**current_state)
 
@@ -221,7 +219,7 @@ class MiddlewareExecutor:
         model: BaseChatModel,
         state: State,
         config: RunnableConfig,
-        store: Optional[BaseStore],
+        store: BaseStore | None,
         tools: list[BaseTool | dict[str, Any]],
         invoke_fn: Callable[..., Awaitable[AIMessage]],
     ) -> AIMessage:
@@ -303,10 +301,10 @@ class MiddlewareExecutor:
     async def wrap_tool_invocation(
         self,
         tool_call: dict[str, Any],
-        tool: Optional[BaseTool],
+        tool: BaseTool | None,
         state: State,
         config: RunnableConfig,
-        store: Optional[BaseStore],
+        store: BaseStore | None,
         invoke_fn: Callable[..., Awaitable[ToolMessage]],
     ) -> ToolMessage:
         """
@@ -373,8 +371,7 @@ class MiddlewareExecutor:
     def has_wrap_model_call(self) -> bool:
         """Check if any middleware has wrap_model_call."""
         return any(
-            _has_override(mw, "wrap_model_call")
-            or _has_override(mw, "awrap_model_call")
+            _has_override(mw, "wrap_model_call") or _has_override(mw, "awrap_model_call")
             for mw in self.middleware
         )
 

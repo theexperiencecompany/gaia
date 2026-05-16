@@ -12,12 +12,13 @@ Each handler implements its own `process_event()` method which handles:
 import asyncio
 from typing import Any
 
-from shared.py.wide_events import log
+from fastapi import APIRouter, Request
+
 from app.db.redis import redis_cache
 from app.models.webhook_models import ComposioWebhookEvent
 from app.services.triggers import get_handler_by_event
 from app.utils.webhook_utils import verify_composio_webhook_signature
-from fastapi import APIRouter, Request
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -28,9 +29,7 @@ _webhook_tasks: set[asyncio.Task[Any]] = set()
 _WEBHOOK_TASK_TIMEOUT: float = 120.0
 
 
-async def _process_webhook_event(
-    handler: Any, event_data: ComposioWebhookEvent
-) -> None:
+async def _process_webhook_event(handler: Any, event_data: ComposioWebhookEvent) -> None:
     """Background task: find matching workflows and queue them."""
     try:
         await asyncio.wait_for(
@@ -42,7 +41,7 @@ async def _process_webhook_event(
             ),
             timeout=_WEBHOOK_TASK_TIMEOUT,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         log.error(
             f"Webhook background processing timed out after {_WEBHOOK_TASK_TIMEOUT}s "
             f"for {event_data.type}"

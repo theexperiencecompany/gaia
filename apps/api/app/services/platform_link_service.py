@@ -8,12 +8,12 @@ containing the platform user ID as a non-empty plain string. Optional keys: "use
 unlinked.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Optional
+
+from bson import ObjectId
 
 from app.db.mongodb.collections import users_collection
-from bson import ObjectId
 
 
 class Platform(str, Enum):
@@ -43,9 +43,7 @@ class PlatformLinkService:
     """Service for platform account linking operations."""
 
     @staticmethod
-    async def get_user_by_platform_id(
-        platform: str, platform_user_id: str
-    ) -> Optional[dict]:
+    async def get_user_by_platform_id(platform: str, platform_user_id: str) -> dict | None:
         """
         Find a GAIA user by their platform account ID.
 
@@ -58,9 +56,7 @@ class PlatformLinkService:
         Returns:
             User document if found, None otherwise
         """
-        return await users_collection.find_one(
-            {f"platform_links.{platform}.id": platform_user_id}
-        )
+        return await users_collection.find_one({f"platform_links.{platform}.id": platform_user_id})
 
     @staticmethod
     async def is_authenticated(platform: str, platform_user_id: str) -> bool:
@@ -74,9 +70,7 @@ class PlatformLinkService:
         Returns:
             True if linked, False otherwise
         """
-        user = await PlatformLinkService.get_user_by_platform_id(
-            platform, platform_user_id
-        )
+        user = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
         return user is not None
 
     @staticmethod
@@ -85,7 +79,7 @@ class PlatformLinkService:
         platform: str,
         platform_user_id: str,
         _use_object_id: bool = False,
-        profile: Optional[dict] = None,
+        profile: dict | None = None,
     ) -> dict:
         """
         Link a platform account to a GAIA user.
@@ -120,9 +114,7 @@ class PlatformLinkService:
             {f"platform_links.{platform}.id": platform_user_id}
         )
         if existing and str(existing.get("_id")) != user_id:
-            raise ValueError(
-                f"This {platform} account is already linked to another GAIA user"
-            )
+            raise ValueError(f"This {platform} account is already linked to another GAIA user")
 
         # Reject if the user already has a different platform ID stored
         user = await users_collection.find_one({"_id": query_value})
@@ -135,7 +127,7 @@ class PlatformLinkService:
                         f"Your account already has a different {platform} account linked"
                     )
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         # Build the stored dict value
         link_value: dict = {"id": platform_user_id}
@@ -166,9 +158,7 @@ class PlatformLinkService:
         }
 
     @staticmethod
-    async def unlink_account(
-        user_id: str, platform: str, _use_object_id: bool = False
-    ) -> dict:
+    async def unlink_account(user_id: str, platform: str, _use_object_id: bool = False) -> dict:
         """
         Unlink a platform account from a GAIA user.
 
