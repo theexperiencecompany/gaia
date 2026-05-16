@@ -110,12 +110,13 @@ def build(name: str) -> str:
             "rm -rf /tmp/juicefs.tar.gz /tmp/juicefs /tmp/LICENSE /tmp/README.md",
             user="root",
         )
-        # Strip the sandbox user from every privilege group that would let
-        # them run arbitrary code as root. The default e2b base image puts
-        # the `user` account in `sudo` (and sometimes `wheel`); remove from
-        # both, then purge any pre-existing NOPASSWD rule that might survive
-        # in /etc/sudoers.d/. The API uses commands.run(user="root") for the
-        # handful of operations that genuinely need root — see CLAUDE.md.
+        # Strip the sandbox user from every privilege group, then purge the
+        # `sudo` package itself. Removing the setuid binary closes the last
+        # theoretical escalation surface — even if a future regression added
+        # a password or a NOPASSWD rule back, there's no `sudo` for it to
+        # apply to. The API uses commands.run(user="root") for the handful
+        # of operations that genuinely need root; nothing in our sandbox
+        # codepath ever shells out to `sudo`.
         .run_cmd(
             "set -e; "
             "if id -u user >/dev/null 2>&1; then "
@@ -127,7 +128,13 @@ def build(name: str) -> str:
             "if [ -f /etc/sudoers ]; then "
             "  sed -i '/^%sudo[[:space:]].*NOPASSWD/d' /etc/sudoers; "
             "  sed -i '/^user[[:space:]].*NOPASSWD/d' /etc/sudoers; "
-            "fi",
+            "fi; "
+            # Purge sudo entirely. `--allow-remove-essential` is not needed
+            # — sudo is not Essential. Run after the group-strip so we don't
+            # leave a sudoers.d entry pointing at a now-removed binary.
+            "DEBIAN_FRONTEND=noninteractive apt-get purge -y sudo 2>&1 | tail -3; "
+            "apt-get autoremove -y --purge 2>&1 | tail -3; "
+            "rm -rf /var/lib/apt/lists/*",
             user="root",
         )
         # Cache + workspace dirs. /workspace and /mnt/jfs are mode 0750 owned
@@ -143,31 +150,30 @@ def build(name: str) -> str:
         # directly into /etc/...), then move it into place as root. /etc/gaia
         # is root-owned 0755; mount.sh is root-owned 0750 so only root (via
         # commands.run(user="root")) can execute it.
+        # Stage the mount script in /tmp (E2B's copy step has issues writing
+        # directly into /etc/...), then move it into place as root. /etc/gaia
+        # is root-owned 0755; mount.sh is root-owned 0750 so only root (via
+        # commands.run(user="root")) can execute it.
+        #
+        # `verify_sandbox_hardening.sh` is intentionally NOT baked in — it
+        # ships as a push-on-demand diagnostic (upload via sbx.files.write,
+        # run, delete) so the sandbox surface stays minimal. The source
+        # script lives at apps/api/scripts/verify_sandbox_hardening.sh.
         .copy("mount_juicefs.sh", "/tmp/mount.sh", mode=0o755)
         .copy("jfs_launcher.py", "/tmp/jfs_launcher.py", mode=0o755)
-        .copy(
-            "verify_sandbox_hardening.sh",
-            "/tmp/verify_sandbox_hardening.sh",
-            mode=0o755,
-        )
         .run_cmd(
             "mkdir -p /etc/gaia && "
             "mv /tmp/mount.sh /etc/gaia/mount.sh && "
             "mv /tmp/jfs_launcher.py /etc/gaia/jfs_launcher.py && "
-            "mv /tmp/verify_sandbox_hardening.sh "
-            "   /etc/gaia/verify_sandbox_hardening.sh && "
             "chown root:root /etc/gaia /etc/gaia/mount.sh "
-            "   /etc/gaia/jfs_launcher.py /etc/gaia/verify_sandbox_hardening.sh && "
+            "   /etc/gaia/jfs_launcher.py && "
             "chmod 0755 /etc/gaia && "
             "chmod 0750 /etc/gaia/mount.sh && "
             # jfs_launcher.py is 0755 so root-owned juicefs invocations from
             # mount.sh can exec it. It's not a setuid binary; running it as
             # the unprivileged user just runs juicefs as that user (and the
             # daemon would fail to mount without root anyway).
-            "chmod 0755 /etc/gaia/jfs_launcher.py && "
-            # verify script is 0755 so anyone can run the read-only checks
-            # (it only does `id`, `stat`, `cat /proc/<pid>/cmdline`, etc.).
-            "chmod 0755 /etc/gaia/verify_sandbox_hardening.sh",
+            "chmod 0755 /etc/gaia/jfs_launcher.py",
             user="root",
         )
         # /proc with hidepid=invisible hides PIDs of processes the calling

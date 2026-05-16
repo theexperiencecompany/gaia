@@ -5,10 +5,13 @@
 # template rebuild or `E2B_TEMPLATE_ID` rotation. Each numbered check is
 # one wall in the defense; all must pass for Finding 3 to stay closed.
 #
-#   curl -X POST $API/api/v1/dev/sandbox-bash \
-#     -d '{"command": "/etc/gaia/verify_sandbox_hardening.sh"}'
+# Delivery: push-on-demand. The script is NOT baked into the template
+# (keeps the sandbox surface minimal). Upload via `sbx.files.write`, run,
+# then delete:
 #
-# Or copy this file into a running sandbox and execute directly.
+#   await sbx.files.write("/tmp/verify.sh", open("verify_sandbox_hardening.sh").read())
+#   await sbx.commands.run("chmod +x /tmp/verify.sh && /tmp/verify.sh")
+#   await sbx.files.remove("/tmp/verify.sh")
 #
 # Exit codes:
 #   0  all walls hold
@@ -29,11 +32,15 @@ echo
 # Wall 1: sudo strip
 # ---------------------------------------------------------------------------
 echo "[1/7] Unprivileged user has no sudo"
-sudo_out=$(sudo -n true 2>&1 || true)
-if echo "$sudo_out" | grep -qiE "password is required|not in the sudoers|not allowed"; then
-    pass "sudo correctly denied"
+if ! command -v sudo >/dev/null 2>&1; then
+    pass "sudo binary is absent (purged from template)"
 else
-    crit "sudo unexpectedly succeeded or returned: $sudo_out"
+    sudo_out=$(sudo -n true 2>&1 || true)
+    if echo "$sudo_out" | grep -qiE "password is required|not in the sudoers|not allowed"; then
+        pass "sudo binary present but denied"
+    else
+        crit "sudo unexpectedly succeeded or returned: $sudo_out"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
