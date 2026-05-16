@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "0ec71eea4c14",
+  "session_id": "ed5b2b66-b569-4378-bd69-c1be5778fceb",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-16T18:39:57.847874Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/web/src/features/onboarding/components/stages/Clarify.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "3c88171373eb",
+  "token_usage": {
+    "input_tokens": 408,
+    "cache_creation_tokens": 43027,
+    "cache_read_tokens": 474959,
+    "output_tokens": 3162,
+    "api_call_count": 9
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-16T18:39:57.842555Z",
+    "agent_lines": 52,
+    "agent_removed": 24,
+    "human_added": 139,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 191,
+    "total_lines_changed": 310,
+    "agent_percentage": 24.516129032258064,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
