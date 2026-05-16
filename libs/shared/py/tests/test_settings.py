@@ -198,6 +198,8 @@ class TestSubclassing:
         class MyAppSettings(BaseAppSettings):
             API_KEY: str = "default"
 
-        with patch.dict(os.environ, {"API_KEY": "from-env"}, clear=True):  # pragma: allowlist secret
+        with patch.dict(
+            os.environ, {"API_KEY": "from-env"}, clear=True
+        ):  # pragma: allowlist secret
             settings = MyAppSettings.from_env()
         assert settings.API_KEY == "from-env"  # pragma: allowlist secret
