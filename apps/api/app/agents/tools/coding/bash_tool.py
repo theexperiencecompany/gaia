@@ -20,6 +20,7 @@ from app.agents.workspace.paths import (
     WORKSPACE_ROOT,
     detect_content_type,
     is_inlineable_content_type,
+    is_under_workspace,
     runs_log_dir,
     session_artifacts,
     session_dir,
@@ -69,6 +70,17 @@ async def bash(
     use_session_cwd = bool(session_id) and (not cwd or cwd == WORKSPACE_ROOT)
     if use_session_cwd and session_id:
         cwd = session_dir(session_id)
+    elif cwd:
+        # LLM-supplied cwd must stay under /workspace. Without this gate the
+        # agent could `cd /etc/gaia` (or anywhere else inside the sandbox)
+        # and read host-internal config files that have no business being in
+        # the agent's reach. Same-user sandbox so it's not a cross-user
+        # issue, but it makes prompt-injection drift much harder to bound.
+        if not is_under_workspace(cwd):
+            return (
+                f"Error: cwd must be under {WORKSPACE_ROOT} "
+                f"(got {cwd!r})"
+            )
 
     safe_emit(
         {
@@ -148,20 +160,21 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
     of how many artifacts the turn produced.
     """
     artifacts_root = session_artifacts(session_id)
-    # %P  -- relative path under the find root
-    # %s  -- file size in bytes
-    # Per-file the script prints "<rel>\t<size>\t<base64-body-or-empty>\n".
-    # Body is only emitted when small + inlineable so the protocol stays cheap
-    # for large binaries — content-type sniff happens host-side after.
+    # NUL-delimited fields AND records. Filenames cannot contain NUL bytes on
+    # Linux, so this delimitation is desync-proof even when the agent creates
+    # artifacts whose names contain tabs or newlines. Each artifact emits
+    # exactly three NUL-terminated fields: <path>\0<size>\0<base64-body>\0.
+    # The body is only emitted when small + inlineable; content-type sniff
+    # happens host-side after.
     max_inline = INLINE_ARTIFACT_MAX_BYTES
     enumerate_cmd = (
         f"find {sh_quote(artifacts_root)} -type f "
         f"! -name '*.gaia-tmp' "
-        f"-printf '%P\\t%s\\t' "
+        f"-printf '%P\\0%s\\0' "
         f"-exec sh -c '"
         f'  s=$(stat -c%s "$0"); '
         f'  if [ "$s" -le {max_inline} ]; then base64 -w0 "$0" 2>/dev/null; fi; '
-        f'  printf "\\n"'
+        f'  printf "\\0"'
         f"' {{}} \\; 2>/dev/null"
     )
     try:
@@ -169,8 +182,15 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
     except Exception:
         return
 
-    for line in (getattr(res, "stdout", "") or "").splitlines():
-        rel, size_str, body_b64 = _parse_enum_line(line)
+    stdout = getattr(res, "stdout", "") or ""
+    fields = stdout.split("\0")
+    # Last element after the trailing NUL is the empty tail — discard. Group
+    # the remainder in 3-tuples (path, size, body); a partial trailing group
+    # means find was interrupted mid-record and we skip it.
+    for i in range(0, len(fields) - (len(fields) % 3), 3):
+        rel = fields[i]
+        size_str = fields[i + 1]
+        body_b64 = fields[i + 2]
         if not rel:
             continue
         try:
@@ -195,14 +215,6 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
             )
 
 
-def _parse_enum_line(line: str) -> tuple[str, str, str]:
-    """Split a ``find -printf -exec`` row into (rel, size, body_b64)."""
-    parts = line.split("\t", 2)
-    if len(parts) < 3:
-        # Malformed (interrupted stat or missing exec output) — skip.
-        return "", "", ""
-    rel, size, body = parts
-    return rel.strip(), size.strip(), body.strip()
 
 
 def _decode_inline(

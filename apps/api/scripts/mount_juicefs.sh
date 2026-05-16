@@ -5,23 +5,36 @@
 # by the API after every sandbox cold-start or resume. Idempotent — re-running
 # is a no-op when /workspace is already healthy.
 #
+# Privilege model
+# ---------------
+# This script runs AS ROOT. The API invokes it via
+# `commands.run(user="root", envs=mount_env)` (see lifecycle._run_mount_script),
+# so envd in the sandbox forks the process directly as root and the credentials
+# never appear in the unprivileged sandbox user's environ. The sandbox user has
+# NO `sudo` capability (the template removes them from the `sudo` group), so a
+# malicious agent cannot read root's `/proc/<pid>/environ` even after this
+# script has spawned the long-running juicefs daemon.
+#
 # Isolation model
 # ---------------
 # JuiceFS shares a single metadata DB and R2 bucket across every user. A naive
 # `juicefs mount $META_URL /mnt/jfs` exposes the WHOLE filesystem at /mnt/jfs,
 # including every other user's prefix — a trivial cross-user data leak the
-# moment the sandbox user runs `ls /mnt/jfs/users/`. We avoid that with two
-# defenses:
+# moment the sandbox user runs `ls /mnt/jfs/users/`. We avoid that with:
 #
 #   1. `--subdir /users/$USER_ID` on the primary mount. JuiceFS scopes the
 #      kernel-visible tree to that subdirectory; no parent navigation is
 #      possible inside the sandbox. A second `--subdir /skills/$USER_ID`
 #      mount serves the read-only skills bind (same JuiceFS instance, but
 #      isolated to the user's installed-skills subtree).
-#   2. Credentials (`JFS_META_URL`, R2 keys) are passed **per-call** by the
-#      API to this script via the `commands.run(envs=...)` parameter — they
-#      are NOT in the sandbox-wide envd config. After mount.sh returns, no
-#      user-initiated shell can read them out of /proc/self/environ.
+#   2. `META_PASSWORD` env split — the metadata DB password is consumed by
+#      juicefs from the env, NOT spliced into the connection URL passed as
+#      argv. `/proc/<juicefs_pid>/cmdline` is world-readable on Linux, so
+#      keeping creds out of argv is mandatory even though root's environ is
+#      mode 0o400.
+#   3. Per-call credential env. The API passes `JFS_META_URL`, `META_PASSWORD`,
+#      and the R2 keys via `commands.run(envs=mount_env)` scoped to this one
+#      script invocation. They are not in any sandbox-wide envd config.
 #
 # Best-effort: if JuiceFS metadata is unreachable (e.g. local-only Postgres in
 # dev) or R2 creds are missing, the script falls back to a plain `/workspace`
@@ -32,20 +45,36 @@
 # Required env (set by app.services.sandbox.lifecycle._mount_env per-call):
 #   USER_ID         - GAIA user id; determines the JuiceFS subdir to expose.
 # Optional:
-#   JFS_META_URL    - PostgreSQL metadata URL. If unset or unreachable, mount
-#                     is skipped and /workspace falls back to ephemeral.
-#   JFS_R2_KEY      - R2 access key id (forwarded to juicefs)
-#   JFS_R2_SECRET   - R2 secret access key
+#   JFS_META_URL    - PostgreSQL metadata URL, with NO password (the password
+#                     belongs in META_PASSWORD). If unset or unreachable,
+#                     mount is skipped and /workspace falls back to ephemeral.
+#   META_PASSWORD   - JuiceFS reads this from env; never appears in argv.
+#   JFS_R2_KEY      - R2 access key id (forwarded as AWS_ACCESS_KEY_ID).
+#   JFS_R2_SECRET   - R2 secret access key (forwarded as AWS_SECRET_ACCESS_KEY).
 
 set -uo pipefail
 
 JFS_MOUNT=/mnt/jfs            # primary mount: scoped to /users/$USER_ID
 JFS_SKILLS_MOUNT=/mnt/jfs-skills  # secondary mount: scoped to /skills/$USER_ID, ro
 WORKSPACE=/workspace
+SANDBOX_USER="${SANDBOX_USER:-user}"
+SANDBOX_UID="$(id -u "$SANDBOX_USER" 2>/dev/null || echo 1000)"
+SANDBOX_GID="$(id -g "$SANDBOX_USER" 2>/dev/null || echo 1000)"
+
+# Refuse to run as anything but root — the API is supposed to invoke us via
+# commands.run(user="root"), so this is a safety net against misconfiguration.
+if [[ "$(id -u)" -ne 0 ]]; then
+    echo "FATAL: mount.sh must run as root (got uid=$(id -u))" >&2
+    exit 2
+fi
 
 ensure_workspace_writable() {
-    sudo mkdir -p "$WORKSPACE" "$WORKSPACE/.gaia/runs"
-    sudo chmod 0777 "$WORKSPACE" "$WORKSPACE/.gaia" "$WORKSPACE/.gaia/runs" 2>/dev/null || true
+    mkdir -p "$WORKSPACE" "$WORKSPACE/.gaia/runs"
+    chown -R "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE" 2>/dev/null || true
+    # 0750 lets the sandbox user read+write own files; group/other have no
+    # access. Single-uid sandbox today, but tight perms close the door against
+    # a future second-uid feature inheriting world-rwx by accident.
+    chmod 0750 "$WORKSPACE" "$WORKSPACE/.gaia" "$WORKSPACE/.gaia/runs" 2>/dev/null || true
 }
 
 # Fast path — /workspace is already a real mount, nothing to do.
@@ -66,23 +95,38 @@ if [[ -z "${JFS_META_URL:-}" ]]; then
     exit 0
 fi
 
+# JuiceFS reads its S3-compatible credentials from these standard AWS vars.
+# Both are exported here only for the lifetime of THIS script + its child
+# juicefs daemon — they never leave the per-call env block the API set.
 export AWS_ACCESS_KEY_ID="${JFS_R2_KEY:-}"
 export AWS_SECRET_ACCESS_KEY="${JFS_R2_SECRET:-}"
+
+# META_PASSWORD must be set on the env JuiceFS reads, not embedded in argv.
+# `/proc/<juicefs_pid>/cmdline` is world-readable on Linux; spliced creds
+# would let the unprivileged sandbox user recover the meta DB password
+# without ever escalating.
+export META_PASSWORD="${META_PASSWORD:-}"
+
+# jfs_launcher.py is a tiny wrapper that flips PR_SET_DUMPABLE=0 on its own
+# process and then execvp's juicefs. The flag persists across exec (juicefs
+# is not set-uid) and across fork into the daemon child (--background), so
+# every juicefs descendant becomes invisible to non-CAP_SYS_PTRACE readers
+# of /proc. This is defense-in-depth on top of the sudo strip: even if a
+# future change re-grants sudo to the sandbox user, the daemon's environ
+# and cmdline stay locked down.
+JFS_LAUNCHER="/etc/gaia/jfs_launcher.py"
 
 mount_user_subdir() {
     if mountpoint -q "$JFS_MOUNT"; then
         return 0
     fi
-    sudo mkdir -p "$JFS_MOUNT" /var/cache/juicefs
+    mkdir -p "$JFS_MOUNT" /var/cache/juicefs
     # --subdir scopes the kernel-visible tree to the user's prefix — every
     # path under $JFS_MOUNT inside the sandbox is rooted at /users/$USER_ID,
-    # and there is no way to navigate up to a sibling user. The juicefs
-    # daemon itself still talks to the full meta DB (it has to — it owns the
-    # locks/permissions/etc.), but the FUSE filesystem it exposes is the
-    # subtree.
+    # and there is no way to navigate up to a sibling user.
     # --backup-meta=0 : R2 ListObjects is unsorted; auto-backup would fail.
     # no --writeback  : writeback loses data on sandbox kill — keep durable.
-    sudo -E juicefs mount \
+    "$JFS_LAUNCHER" mount \
         --subdir "/users/$USER_ID" \
         --backup-meta=0 \
         --cache-dir=/var/cache/juicefs \
@@ -97,11 +141,9 @@ mount_skills_subdir() {
     if mountpoint -q "$JFS_SKILLS_MOUNT"; then
         return 0
     fi
-    sudo mkdir -p "$JFS_SKILLS_MOUNT"
-    # Read-only mount of /skills/$USER_ID — backs /workspace/skills. Same
-    # isolation principle: the sandbox sees only this user's installed
-    # skills subtree, never the cross-user /skills root.
-    sudo -E juicefs mount \
+    mkdir -p "$JFS_SKILLS_MOUNT"
+    # Read-only mount of /skills/$USER_ID — backs /workspace/skills.
+    "$JFS_LAUNCHER" mount \
         --subdir "/skills/$USER_ID" \
         --read-only \
         --backup-meta=0 \
@@ -112,12 +154,12 @@ mount_skills_subdir() {
         "$JFS_META_URL" "$JFS_SKILLS_MOUNT" 2>&1
 }
 
-# The per-user subtree ``/users/$USER_ID`` and the per-user skills subtree
-# ``/skills/$USER_ID`` are pre-created on the HOST side before any sandbox
-# command runs — see ``ensure_user_workspace`` and ``ensure_user_skills_dir``
-# in apps/api/app/services/storage/juicefs.py, plus the bootstrap call in
-# acquire_sandbox below. That keeps the brief "full FS visible" window out
-# of the sandbox entirely; we never need an unrestricted mount in here.
+# The per-user subtrees ``/users/$USER_ID`` and ``/skills/$USER_ID`` are
+# pre-created on the HOST side before any sandbox command runs — see
+# ``ensure_user_workspace`` / ``ensure_user_skills_dir`` in
+# apps/api/app/services/storage/juicefs.py. That keeps the brief "full FS
+# visible" window out of the sandbox entirely; we never need an unrestricted
+# mount in here.
 
 if ! mount_user_subdir; then
     echo "WARN: juicefs user --subdir mount failed (metadata DB or R2 " \
@@ -128,27 +170,31 @@ fi
 
 # JuiceFS user-subdir mounted at $JFS_MOUNT. Bind-mount it at /workspace so
 # downstream paths keep working unchanged.
-sudo chmod 0777 "$JFS_MOUNT" 2>/dev/null || true
-sudo mkdir -p "$WORKSPACE"
-if ! sudo mount --bind "$JFS_MOUNT" "$WORKSPACE"; then
+chown "$SANDBOX_UID:$SANDBOX_GID" "$JFS_MOUNT" 2>/dev/null || true
+chmod 0750 "$JFS_MOUNT" 2>/dev/null || true
+mkdir -p "$WORKSPACE"
+if ! mount --bind "$JFS_MOUNT" "$WORKSPACE"; then
     echo "WARN: bind-mount $JFS_MOUNT → $WORKSPACE failed — " \
          "falling back to ephemeral /workspace" >&2
     ensure_workspace_writable
     exit 0
 fi
-sudo chmod 0777 "$WORKSPACE" 2>/dev/null || true
+chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE" 2>/dev/null || true
+chmod 0750 "$WORKSPACE" 2>/dev/null || true
 
 # Optional skills overlay — best-effort. If /skills/$USER_ID doesn't exist or
 # the second mount fails, /workspace/skills falls back to the user's own
 # materialized executor-skills subdir under /workspace/skills/.
-sudo mkdir -p "$WORKSPACE/skills"
+mkdir -p "$WORKSPACE/skills"
+chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE/skills" 2>/dev/null || true
 if mount_skills_subdir; then
-    sudo mount --bind "$JFS_SKILLS_MOUNT" "$WORKSPACE/skills" -o ro || true
+    mount --bind "$JFS_SKILLS_MOUNT" "$WORKSPACE/skills" -o ro || true
 fi
 
-mkdir -p "$WORKSPACE/.gaia/runs" 2>/dev/null || sudo mkdir -p "$WORKSPACE/.gaia/runs"
-sudo chmod -R 0777 "$WORKSPACE/.gaia" 2>/dev/null || true
-# User-scoped, cross-session dirs (sessions/ are created on demand by the API).
-sudo mkdir -p "$WORKSPACE/pinned" "$WORKSPACE/settings"
-sudo chmod 0777 "$WORKSPACE/pinned" "$WORKSPACE/settings" 2>/dev/null || true
+mkdir -p "$WORKSPACE/.gaia/runs"
+chown -R "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE/.gaia" 2>/dev/null || true
+chmod -R u=rwX,g=,o= "$WORKSPACE/.gaia" 2>/dev/null || true
+mkdir -p "$WORKSPACE/pinned" "$WORKSPACE/settings"
+chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE/pinned" "$WORKSPACE/settings" 2>/dev/null || true
+chmod 0750 "$WORKSPACE/pinned" "$WORKSPACE/settings" 2>/dev/null || true
 echo "OK: JuiceFS mounted (subdir-scoped); /workspace is durable" >&2

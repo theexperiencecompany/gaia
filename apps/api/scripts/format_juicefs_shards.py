@@ -67,6 +67,10 @@ def format_shard(shard: int, encrypt_key_path: str | None, dry_run: bool = False
     bucket_url = f"https://{account}.r2.cloudflarestorage.com/{bucket}"
     name = f"gaia-{shard}"
 
+    # R2 credentials are passed via env (juicefs reads AWS_ACCESS_KEY_ID /
+    # AWS_SECRET_ACCESS_KEY when --access-key/--secret-key are absent), so
+    # they do not appear in argv that `ps auxww` could expose during the
+    # ~30s format window.
     cmd = [
         "juicefs",
         "format",
@@ -74,10 +78,6 @@ def format_shard(shard: int, encrypt_key_path: str | None, dry_run: bool = False
         "s3",
         "--bucket",
         bucket_url,
-        "--access-key",
-        access_key,
-        "--secret-key",
-        secret_key,
         "--shards",
         "16",  # Always 16 chunk-distribution shards regardless of FS count
     ]
@@ -87,10 +87,15 @@ def format_shard(shard: int, encrypt_key_path: str | None, dry_run: bool = False
 
     pretty = " ".join(shlex.quote(c) for c in cmd)
     if dry_run:
-        print(f"# Would run:\n{pretty}")
+        print(f"# Would run (with AWS_ACCESS_KEY_ID/SECRET in env):\n{pretty}")
         return
     print(f"$ {pretty}", file=sys.stderr)
-    subprocess.run(cmd, check=True)
+    child_env = {
+        **os.environ,
+        "AWS_ACCESS_KEY_ID": access_key,
+        "AWS_SECRET_ACCESS_KEY": secret_key,
+    }
+    subprocess.run(cmd, check=True, env=child_env)
 
 
 def main() -> int:

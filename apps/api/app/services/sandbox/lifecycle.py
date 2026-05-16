@@ -22,6 +22,9 @@ import asyncio
 import contextlib
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Optional
+from urllib.parse import urlsplit, urlunsplit
+
+from e2b import AsyncSandbox
 
 from shared.py.wide_events import log
 from app.config.settings import settings
@@ -49,38 +52,64 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _import_e2b() -> Any:
-    """Import the E2B AsyncSandbox lazily so module import doesn't fail in dev.
+def _split_meta_url(url: str) -> tuple[str, str]:
+    """Split a Postgres meta URL into (url_without_password, password).
 
-    Uses the base `e2b` package (not `e2b_code_interpreter`) because our
-    template is a plain Python image — no Jupyter kernel involved. All
-    interaction goes through `sbx.commands.run(...)` which is in the base SDK.
+    Keeping the password out of the URL argv is mandatory: the juicefs daemon
+    long-lives with the URL spliced into its `cmdline`, and Linux exposes
+    `/proc/<pid>/cmdline` world-readable. The unprivileged sandbox user could
+    otherwise recover the meta-DB Postgres credentials with one `cat`. JuiceFS
+    reads `META_PASSWORD` from env when the URL has no userinfo password.
+
+    Empty / userinfo-less URLs round-trip cleanly so callers don't need to
+    branch (dev / local Postgres without a password).
     """
-    from e2b import AsyncSandbox
-
-    return AsyncSandbox
+    if not url:
+        return "", ""
+    parts = urlsplit(url)
+    password = parts.password or ""
+    if not password:
+        return url, ""
+    # Rebuild netloc without the password but with the username intact.
+    username = parts.username or ""
+    host = parts.hostname or ""
+    if parts.port:
+        host = f"{host}:{parts.port}"
+    netloc = f"{username}@{host}" if username else host
+    sanitized = urlunsplit(
+        (parts.scheme, netloc, parts.path, parts.query, parts.fragment)
+    )
+    return sanitized, password
 
 
 def _mount_env(user_id: str, shard_id: int) -> dict[str, str]:
     """Build the env block consumed by ``mount.sh``.
 
     These values are credentials: the JuiceFS metadata URL plus R2 keys give
-    full filesystem access. They MUST NOT be set as sandbox-wide env vars —
-    any user shell in the sandbox would otherwise read them out of
-    ``/proc/self/environ`` and re-mount the JuiceFS volume *without* the
-    per-user subdir restriction, bypassing isolation entirely.
+    full filesystem access. They MUST NOT appear in argv or in any
+    unprivileged process's environ.
 
-    We pass them only as per-invocation envs to ``commands.run("mount.sh", ...)``
-    so they exist in the environ of the mount.sh process and the juicefs
-    daemon it spawns (root-owned ``/proc/<pid>/environ`` is mode 0o400), but
-    not in the environ of subsequent user-initiated bash sessions.
+    Delivery model: the API invokes ``mount.sh`` via
+    ``commands.run(MOUNT_SCRIPT_PATH, user="root", envs=mount_env)``. e2b's
+    envd (running as root inside the sandbox) sets these on the new root
+    process directly — there is no unprivileged intermediate shell, and the
+    sandbox user (who has no `sudo`) cannot read root's ``/proc/<pid>/environ``
+    (mode 0o400).
+
+    The meta URL is split here so the Postgres password rides in
+    ``META_PASSWORD`` env (which JuiceFS reads) instead of being spliced into
+    the URL argv passed to the long-running juicefs daemon — that argv shows
+    up world-readable in ``/proc/<pid>/cmdline``.
 
     ``.strip()`` because Infisical-fetched secrets sometimes pick up trailing
     newlines that AWS SigV4 then rejects with cryptic "InvalidSignature".
     """
+    meta_url_with_pw = shard_meta_url(shard_id)
+    meta_url, meta_password = _split_meta_url(meta_url_with_pw)
     return {
         "USER_ID": user_id,
-        "JFS_META_URL": shard_meta_url(shard_id),
+        "JFS_META_URL": meta_url,
+        "META_PASSWORD": meta_password,
         "JFS_R2_KEY": (settings.R2_ACCESS_KEY or "").strip(),
         "JFS_R2_SECRET": (settings.R2_SECRET_KEY or "").strip(),
         "JFS_R2_BUCKET": (settings.R2_BUCKET or "").strip(),
@@ -95,7 +124,7 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
     if not settings.E2B_TEMPLATE_ID:
         raise SandboxAcquisitionError("E2B_TEMPLATE_ID is not configured")
 
-    async_sandbox_cls = _import_e2b()
+    async_sandbox_cls = AsyncSandbox
 
     # Sandbox-wide env is deliberately empty of credentials — see _mount_env
     # docstring. USER_ID is not a secret but we still scope it per-call so
@@ -118,19 +147,20 @@ async def _run_mount_script(sbx: Any, mount_env: dict[str, str]) -> None:
     back to a plain ``/workspace`` directory and exits 0. We only raise here
     if the script genuinely crashed (couldn't even fall back).
 
-    ``mount_env`` carries the JuiceFS / R2 credentials as **per-call** envs,
-    not sandbox-wide. After ``sudo --preserve-env=...`` propagates them into
-    mount.sh and on to the root-owned juicefs daemon, no user-initiated shell
-    sees them in its own environ.
+    ``user="root"`` makes e2b's envd fork the process directly as root, with
+    ``envs=mount_env`` set on that root process's environment. The
+    unprivileged sandbox user never holds the credentials — no
+    ``sudo --preserve-env`` shell is involved, so there is no parent-shell
+    environ race window. The sandbox user has no `sudo` (template removes
+    them from the `sudo` group), so root's ``/proc/<pid>/environ`` stays
+    inaccessible.
     """
-    # sudo strips env by default; preserve the ones the script reads so it
-    # can actually find JFS_META_URL / USER_ID / R2 creds.
-    preserve = ",".join(sorted(mount_env.keys()))
     async with fs_timer(FS_OPS.SBX_MOUNT_SCRIPT):
         result = await sbx.commands.run(
-            f"sudo --preserve-env={preserve} {MOUNT_SCRIPT_PATH}",
+            MOUNT_SCRIPT_PATH,
             timeout=60,
             envs=mount_env,
+            user="root",
         )
     if result.exit_code != 0:
         raise SandboxAcquisitionError(
@@ -217,7 +247,7 @@ async def _try_connect_or_resume(sandbox_id: str) -> Optional[Any]:
     Each attempt is bounded to 10s so a hung E2B control-plane call doesn't
     stall the agent — we'd rather just create a fresh sandbox.
     """
-    async_sandbox_cls = _import_e2b()
+    async_sandbox_cls = AsyncSandbox
     async with fs_timer(FS_OPS.SBX_CONNECT_RESUME):
         for method_name in ("connect", "resume"):
             method = getattr(async_sandbox_cls, method_name, None)

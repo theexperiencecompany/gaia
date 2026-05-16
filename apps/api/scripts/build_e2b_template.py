@@ -13,6 +13,22 @@ Usage:
 Requires `E2B_API_KEY` in the env. Prints the resulting template ID — set it
 as `E2B_TEMPLATE_ID` in Infisical (and the gaia-backend container will pick
 it up on next boot).
+
+Security posture
+----------------
+The default E2B Python image ships its sandbox user as a member of `sudo` with
+NOPASSWD ALL — convenient for ad-hoc package installs, but catastrophic for
+multi-tenant isolation: the JuiceFS daemon runs as root and (regardless of how
+carefully we deliver creds) holds the meta-DB password somewhere in its
+process tree. With unrestricted sudo, a malicious agent could `sudo cat
+/proc/<juicefs_pid>/environ` and recover those creds — then re-mount the
+cross-user namespace without `--subdir`. The fix is to remove the sandbox user
+from the `sudo` group entirely.
+
+The API drives root-needing operations (running mount.sh, tailing the JuiceFS
+access log) via `sbx.commands.run(..., user="root")`, which e2b's envd honors
+directly — no sudo involved. The agent's bash tool runs commands as the
+unprivileged sandbox user; it has no path to root.
 """
 
 from __future__ import annotations
@@ -32,6 +48,7 @@ JUICEFS_TARBALL = (
 TEMPLATE_NAME_DEFAULT = "gaia-coder"
 
 MOUNT_SCRIPT_PATH = Path(__file__).parent / "mount_juicefs.sh"
+JFS_LAUNCHER_PATH = Path(__file__).parent / "jfs_launcher.py"
 
 
 def build(name: str) -> str:
@@ -39,6 +56,8 @@ def build(name: str) -> str:
         raise SystemExit("E2B_API_KEY is not set in the environment")
     if not MOUNT_SCRIPT_PATH.exists():
         raise SystemExit(f"Mount script not found at {MOUNT_SCRIPT_PATH}")
+    if not JFS_LAUNCHER_PATH.exists():
+        raise SystemExit(f"jfs_launcher not found at {JFS_LAUNCHER_PATH}")
 
     # All system-level work must run as root: apt_install does (auto), but
     # run_cmd / copy default to the image's user (non-root for python:3.11).
@@ -47,19 +66,42 @@ def build(name: str) -> str:
         .from_python_image("3.11")
         .apt_install(
             [
+                # Mount + storage primitives (required for JuiceFS to boot).
                 "fuse3",
                 "ca-certificates",
                 "postgresql-client",
                 "curl",
                 "tar",
-                "sudo",
+                # Pre-baked because the sandbox user has no `sudo` (see the
+                # group-strip below) and cannot install Debian packages
+                # at runtime. This list covers ~95% of what coding agents
+                # reach for; for anything else, language-level installers
+                # (pip --user, npm, cargo, gem --user-install) still work
+                # without root. Add packages here when telemetry shows
+                # genuine demand rather than letting the agent compile
+                # from source in a tight loop.
+                "git",
+                "jq",
+                "ripgrep",
+                "fd-find",
+                "build-essential",
+                "pkg-config",
+                "libpq-dev",
+                "libssl-dev",
+                "libffi-dev",
+                "sqlite3",
+                "tree",
+                "less",
+                "vim-tiny",
+                "ffmpeg",
+                "imagemagick",
+                "graphviz",
             ]
         )
-        # Allow non-root user to mount FUSE (juicefs mount needs it)
-        .run_cmd(
-            "sed -i 's/^#user_allow_other/user_allow_other/' /etc/fuse.conf",
-            user="root",
-        )
+        # `user_allow_other` is NOT set in /etc/fuse.conf — leaving it disabled
+        # closes a sudo-independent re-mount path. The API always invokes
+        # `juicefs mount` as root (via commands.run(user="root")), so the
+        # FUSE-as-non-root capability is not needed.
         # Install juicefs binary
         .run_cmd(f"curl -fsSL {JUICEFS_TARBALL} -o /tmp/juicefs.tar.gz", user="root")
         .run_cmd("tar -xzf /tmp/juicefs.tar.gz -C /tmp", user="root")
@@ -68,23 +110,66 @@ def build(name: str) -> str:
             "rm -rf /tmp/juicefs.tar.gz /tmp/juicefs /tmp/LICENSE /tmp/README.md",
             user="root",
         )
-        # Cache + workspace dirs, world-writable so the default sandbox user
-        # can mount under them. /etc/gaia is created later (after the copy).
+        # Strip the sandbox user from every privilege group that would let
+        # them run arbitrary code as root. The default e2b base image puts
+        # the `user` account in `sudo` (and sometimes `wheel`); remove from
+        # both, then purge any pre-existing NOPASSWD rule that might survive
+        # in /etc/sudoers.d/. The API uses commands.run(user="root") for the
+        # handful of operations that genuinely need root — see CLAUDE.md.
         .run_cmd(
-            "mkdir -p /var/cache/juicefs /workspace && "
-            "chmod 0777 /var/cache/juicefs /workspace",
+            "set -e; "
+            "if id -u user >/dev/null 2>&1; then "
+            "  gpasswd -d user sudo 2>/dev/null || true; "
+            "  gpasswd -d user wheel 2>/dev/null || true; "
+            "fi; "
+            "rm -f /etc/sudoers.d/*-user /etc/sudoers.d/90-cloud-init-users "
+            "       /etc/sudoers.d/nopasswd-user /etc/sudoers.d/user; "
+            "if [ -f /etc/sudoers ]; then "
+            "  sed -i '/^%sudo[[:space:]].*NOPASSWD/d' /etc/sudoers; "
+            "fi",
+            user="root",
+        )
+        # Cache + workspace dirs. /workspace and /mnt/jfs are mode 0750 owned
+        # by `user` so unprivileged ops work but no cross-uid leak is possible.
+        .run_cmd(
+            "mkdir -p /var/cache/juicefs /workspace /mnt/jfs && "
+            "chown -R user:user /workspace /mnt/jfs && "
+            "chmod 0750 /workspace /mnt/jfs && "
+            "chmod 0755 /var/cache/juicefs",
             user="root",
         )
         # Stage the mount script in /tmp (E2B's copy step has issues writing
-        # directly into /etc/...), then move it into place as root. The
-        # source path is interpreted relative to file_context_path on the
-        # builder constructor above.
+        # directly into /etc/...), then move it into place as root. /etc/gaia
+        # is root-owned 0755; mount.sh is root-owned 0750 so only root (via
+        # commands.run(user="root")) can execute it.
         .copy("mount_juicefs.sh", "/tmp/mount.sh", mode=0o755)
+        .copy("jfs_launcher.py", "/tmp/jfs_launcher.py", mode=0o755)
         .run_cmd(
             "mkdir -p /etc/gaia && "
             "mv /tmp/mount.sh /etc/gaia/mount.sh && "
-            "chown root:root /etc/gaia/mount.sh && "
-            "chmod 0755 /etc/gaia/mount.sh /etc/gaia",
+            "mv /tmp/jfs_launcher.py /etc/gaia/jfs_launcher.py && "
+            "chown root:root /etc/gaia /etc/gaia/mount.sh /etc/gaia/jfs_launcher.py && "
+            "chmod 0755 /etc/gaia && "
+            "chmod 0750 /etc/gaia/mount.sh && "
+            # jfs_launcher.py is 0755 so root-owned juicefs invocations from
+            # mount.sh can exec it. It's not a setuid binary; running it as
+            # the unprivileged user just runs juicefs as that user (and the
+            # daemon would fail to mount without root anyway).
+            "chmod 0755 /etc/gaia/jfs_launcher.py",
+            user="root",
+        )
+        # /proc with hidepid=invisible hides PIDs of processes the calling
+        # user doesn't own. Combined with the sudo strip above, the sandbox
+        # user cannot enumerate (`pgrep`, `ls /proc/`) or read the juicefs
+        # daemon's /proc entries. Persist via /etc/fstab so the option
+        # re-applies on every sandbox boot, and live-remount so the running
+        # build's /proc reflects it too.
+        .run_cmd(
+            "set -e; "
+            "grep -qE '^proc[[:space:]]+/proc' /etc/fstab 2>/dev/null && "
+            "  sed -i -E 's|^(proc[[:space:]]+/proc[[:space:]]+proc[[:space:]]+)([^[:space:]]+)|\\1\\2,hidepid=invisible|' /etc/fstab || "
+            "  echo 'proc /proc proc defaults,hidepid=invisible 0 0' >> /etc/fstab; "
+            "mount -o remount,hidepid=invisible /proc 2>/dev/null || true",
             user="root",
         )
     )

@@ -50,14 +50,17 @@ if [ "$_jfs_can_mount" = "1" ] && command -v juicefs >/dev/null 2>&1; then
     fi
 
     # Format on first boot. `juicefs status` exits non-zero if the FS is unformatted.
+    # R2 credentials ride in AWS_* env vars (juicefs honours them when the
+    # --access-key/--secret-key flags are absent) so they don't appear in
+    # argv visible to `ps auxww` while format is running.
     if ! juicefs status "$META_URL" >/dev/null 2>&1; then
         echo "[entrypoint] Formatting JuiceFS shard 0 against $BUCKET_URL"
         # shellcheck disable=SC2086
+        AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY" \
+        AWS_SECRET_ACCESS_KEY="$R2_SECRET_KEY" \
         juicefs format \
             --storage s3 \
             --bucket "$BUCKET_URL" \
-            --access-key "$R2_ACCESS_KEY" \
-            --secret-key "$R2_SECRET_KEY" \
             --shards 16 \
             $ENCRYPT_FLAG \
             "$META_URL" gaia-0 \

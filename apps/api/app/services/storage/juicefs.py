@@ -1,32 +1,29 @@
-"""Host-side JuiceFS mount primitives + user/skill helpers.
-
-The API container runs a JuiceFS sidecar mount at `settings.JUICEFS_HOST_MOUNT_PATH`
-(default `/mnt/jfs`). This module reads and writes user workspace + skill files
-against that mount on behalf of the API process — the agent sandbox accesses
-the same files via its own JuiceFS mount inside the E2B VM.
-
-Layout under the mount:
-
-    /mnt/jfs/users/{user_id}/        # bind-mounted to /workspace inside sandbox
-    /mnt/jfs/skills/{user_id}/{name}/ # bind-mounted read-only to /workspace/skills
-
-Session-scoped helpers live in `sessions.py`; this module owns only the mount
-and the user/skill trees. In dev mode the mount typically isn't present — all
-helpers raise `JuiceFSUnavailable`, which callers treat as a soft-fail.
-"""
+"""Host-side JuiceFS mount primitives + user/skill helpers."""
 
 from __future__ import annotations
 
 import asyncio
+import re
 import shutil
 from pathlib import Path
 
 from shared.py.wide_events import log
 from app.config.settings import settings
+from app.services.storage.metrics import FS_OPS, add_fs_bytes, fs_timer
 
 
 class JuiceFSUnavailable(Exception):
     """Raised when the host-side JuiceFS mount is not available."""
+
+
+SAFE_PATH_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
+_SAFE_ID_RE = re.compile(SAFE_PATH_ID_PATTERN)
+
+
+def ensure_safe_path_id(value: str, *, label: str = "id") -> None:
+    """Raise ``ValueError`` if ``value`` could escape a single path component."""
+    if not isinstance(value, str) or not _SAFE_ID_RE.match(value):
+        raise ValueError(f"unsafe {label}: must match {SAFE_PATH_ID_PATTERN}")
 
 
 def _mount_root() -> Path:
@@ -35,11 +32,7 @@ def _mount_root() -> Path:
 
 def _is_mounted() -> bool:
     root = _mount_root()
-    if not root.exists():
-        return False
-    # We don't insist on a real FUSE mount in dev — if the directory exists
-    # and is writable, treat it as a usable workspace root.
-    return root.is_dir()
+    return root.exists() and root.is_dir()
 
 
 def _require_mount() -> Path:
@@ -53,11 +46,7 @@ def _require_mount() -> Path:
 
 
 def _contained(base: Path, relative_path: str, *, root_label: str = "root") -> Path:
-    """Resolve `relative_path` under `base`, refusing to escape it.
-
-    Single source of the path-containment check used by every host-side
-    writer/reader. `root_label` only shapes the error message.
-    """
+    """Resolve ``relative_path`` under ``base``; raise ``ValueError`` if it escapes."""
     target = (base / relative_path).resolve()
     base_resolved = base.resolve()
     try:
@@ -79,23 +68,17 @@ def user_skills_path(user_id: str) -> Path:
 
 def session_root(user_id: str, conversation_id: str) -> Path:
     """Host path for a conversation's session directory."""
+    ensure_safe_path_id(conversation_id, label="conversation_id")
     return _mount_root() / "users" / user_id / "sessions" / conversation_id
 
 
 def sandbox_session_path(conversation_id: str) -> str:
-    """The `/workspace/...` path the agent uses to read session files.
-
-    `/workspace` inside the sandbox is bind-mounted from
-    `/mnt/jfs/users/{user_id}/`, so the agent never sees the user prefix.
-    """
+    """Return the ``/workspace/...`` session path visible inside the sandbox."""
     return f"/workspace/sessions/{conversation_id}"
 
 
 async def ensure_user_workspace(user_id: str) -> Path:
-    """Create the user's `/users/{user_id}/` directory tree on JuiceFS.
-
-    Idempotent. Raises `JuiceFSUnavailable` if the host mount is missing.
-    """
+    """Idempotently create the user's workspace tree on JuiceFS."""
 
     def _mkdir() -> Path:
         root = _require_mount()
@@ -127,14 +110,7 @@ def _content_size(content: bytes | str) -> int:
 async def write_skill_file(
     user_id: str, skill_name: str, relative_path: str, content: bytes | str
 ) -> Path:
-    """Write a single skill file (SKILL.md or script) into the user's skill dir.
-
-    ``relative_path`` is interpreted relative to the skill's root and must
-    not escape it. Returns the absolute on-disk path of the written file.
-    """
-    # Lazy imports keep `storage.metrics` from creating an import cycle with
-    # this module — it sits "below" the wider storage package in the graph.
-    from app.services.storage.metrics import FS_OPS, add_fs_bytes, fs_timer
+    """Write a skill file under the user's skill root. ``relative_path`` cannot escape it."""
 
     def _write() -> Path:
         skills_root = _require_mount() / "skills" / user_id / skill_name
@@ -158,12 +134,8 @@ async def write_session_file(
     relative_path: str,
     content: bytes | str,
 ) -> tuple[Path, str]:
-    """Write a session-scoped file under ``users/{user_id}/sessions/{conv}/``.
-
-    Returns ``(host_path, sandbox_path)`` where ``sandbox_path`` is the
-    ``/workspace/...`` path the agent can pass to the ``read`` tool.
-    """
-    from app.services.storage.metrics import FS_OPS, add_fs_bytes, fs_timer
+    """Write a session-scoped file. Returns ``(host_path, sandbox_path)``."""
+    ensure_safe_path_id(conversation_id, label="conversation_id")
 
     def _write() -> tuple[Path, str]:
         base = _require_mount() / "users" / user_id / "sessions" / conversation_id
@@ -183,8 +155,7 @@ async def write_session_file(
 
 
 async def delete_user_workspace(user_id: str) -> None:
-    """Delete the user's workspace and skills directories. For GDPR / account
-    deletion only."""
+    """Delete the user's workspace and skills trees (account deletion / GDPR)."""
 
     def _delete() -> None:
         if not _is_mounted():

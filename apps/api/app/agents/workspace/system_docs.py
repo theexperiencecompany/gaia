@@ -14,6 +14,8 @@ once the sandbox template binds a `_system/` mount alongside the user root.
 
 from __future__ import annotations
 
+from app.agents.workspace.skill_loader import skills_by_subagent
+
 INDEX_MD = """# /workspace — your operating environment
 
 This is your persistent root inside the sandbox. Everything you create
@@ -76,9 +78,12 @@ your default working directory for `bash`.
 2. **Final outputs go in `artifacts/`.** The user sees them immediately, no
    extra step. Don't tell the user "the file is in scratch/foo" — move or
    copy it to `artifacts/` so they can actually open it.
-3. **Use bash.** You have a full Linux shell with python, node, sudo, and
-   pip/npm install. Install whatever you need on the fly — it persists for
-   the rest of the session.
+3. **Use bash.** You have a full Linux shell with python, node, pip, and
+   npm. Install whatever you need on the fly — `pip install` and `npm install`
+   persist across conversations (the workspace is on durable storage).
+   System-level commands that require root are NOT available; the sandbox
+   user has no `sudo`. If something needs a package that isn't already in
+   the image, install it under your own user (`pip install --user`).
 4. **Don't ask the user where files are.** If they attached something, it's
    already at `./user-uploaded/<name>` — list the directory if you're not
    sure of the exact filename.
@@ -139,17 +144,7 @@ Each external service the user has connected (gmail, googlecalendar, slack,
 
 
 def integration_skills_block(subagent_id: str) -> str:
-    """Markdown listing of an integration subagent's available skills.
-
-    Injected into the subagent's dynamic-context system message so the LLM
-    sees skill names + descriptions + on-disk paths every turn and can `cat`
-    the right `skill.md` before acting. Source: the canonical SKILL.md
-    library under ``apps/api/app/agents/skills/builtin/``, loaded by
-    ``skill_loader.skills_by_subagent``. Returns "" if there are no skills
-    targeting this subagent (custom MCP, brand-new integration, etc.).
-    """
-    from app.agents.workspace.skill_loader import skills_by_subagent
-
+    """Markdown listing of a subagent's available skills, or "" if none."""
     skills = skills_by_subagent().get(subagent_id) or []
     if not skills:
         return ""

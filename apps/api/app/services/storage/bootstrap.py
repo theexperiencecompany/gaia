@@ -156,14 +156,32 @@ def _materialize_encryption_key() -> Path | None:
     return target
 
 
-def _run(cmd: list[str], *, timeout: int = 60) -> subprocess.CompletedProcess[str]:
-    """Run a short-lived subprocess and capture output for logging."""
+def _run(
+    cmd: list[str],
+    *,
+    timeout: int = 60,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run a short-lived subprocess and capture output for logging.
+
+    When ``env`` is provided, it is merged onto the inherited environment
+    (rather than replacing it) so the child still sees PATH / LD_LIBRARY_PATH
+    / etc. We use this to feed R2 credentials via env instead of argv when
+    invoking ``juicefs format`` — argv is visible to anyone with shell on the
+    host via ``ps auxww`` during the format window.
+    """
+    merged_env: dict[str, str] | None
+    if env is None:
+        merged_env = None
+    else:
+        merged_env = {**os.environ, **env}
     return subprocess.run(  # nosec B603 - argv list, no shell
         cmd,
         check=False,
         capture_output=True,
         text=True,
         timeout=timeout,
+        env=merged_env,
     )
 
 
@@ -192,6 +210,9 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
         return "fatal"
     # Non-zero status with no permanent marker == "not formatted yet" (or a
     # transient blip); attempt format — it will surface its own outcome.
+    # R2 credentials ride in env (the JuiceFS CLI honours the standard AWS
+    # variables when --access-key/--secret-key are absent), so they do not
+    # appear in argv visible to `ps auxww` during the format window.
     log.info(f"[juicefs] formatting filesystem against {_bucket_url()}")
     cmd: list[str] = [
         "juicefs",
@@ -200,16 +221,16 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
         "s3",
         "--bucket",
         _bucket_url(),
-        "--access-key",
-        (settings.R2_ACCESS_KEY or "").strip(),
-        "--secret-key",
-        (settings.R2_SECRET_KEY or "").strip(),
     ]
     if encrypt_key is not None:
         cmd.extend(["--encrypt-rsa-key", str(encrypt_key)])
     cmd.extend([meta_url, "gaia-0"])
+    fmt_env = {
+        "AWS_ACCESS_KEY_ID": (settings.R2_ACCESS_KEY or "").strip(),
+        "AWS_SECRET_ACCESS_KEY": (settings.R2_SECRET_KEY or "").strip(),
+    }
     fmt_started = time.monotonic()
-    fmt = _run(cmd, timeout=120)
+    fmt = _run(cmd, timeout=120, env=fmt_env)
     record_fs_op(
         FS_OPS.JUICEFS_FORMAT,
         duration_ms=(time.monotonic() - fmt_started) * 1000.0,

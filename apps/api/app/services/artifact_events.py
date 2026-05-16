@@ -17,12 +17,23 @@ import time
 from typing import Any
 
 from app.db.redis import redis_cache
-from app.services.storage import ArtifactInfo
+from app.services.storage import ArtifactInfo, ensure_safe_path_id
 
 ARTIFACT_CHANNEL_PREFIX = "artifacts:"
 
 
 def artifact_channel(user_id: str) -> str:
+    """Per-user pub/sub channel name.
+
+    ``ensure_safe_path_id`` belt-and-suspenders behind the auth layer: today
+    ``user_id`` comes only from authenticated context (WorkOS-issued opaque
+    string), but any future identity source that returns a value containing
+    ``:`` or a wildcard would otherwise be able to alias another user's
+    channel. Raises ``ValueError`` on a malformed id — callers treat that
+    the same as a missing Redis (event delivery is a latency optimization;
+    the listing endpoint is the authoritative recovery path).
+    """
+    ensure_safe_path_id(user_id, label="user_id")
     return f"{ARTIFACT_CHANNEL_PREFIX}{user_id}"
 
 

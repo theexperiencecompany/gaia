@@ -58,7 +58,8 @@ SESSIONS_WATCH_ROOT = f"{WORKSPACE_ROOT}/{SESSIONS_DIRNAME}"
 # JuiceFS at /mnt/jfs and bind-mounts users/<uid> -> /workspace, so the
 # accesslog lives at /mnt/jfs/.accesslog (NOT /workspace/.accesslog, which is
 # just a nonexistent path under the bound user prefix). It is root-owned
-# (mounted via sudo), so reads need sudo too.
+# (mounted by mount.sh under user="root"), so reads need root — we drive them
+# through `commands.run(user="root")` so the sandbox user never needs sudo.
 SANDBOX_JFS_MOUNT = "/mnt/jfs"
 ACCESSLOG_PATH = f"{SANDBOX_JFS_MOUNT}/.accesslog"
 _TMP_SUFFIX = ".gaia-tmp"
@@ -145,8 +146,9 @@ class ArtifactWatcher:
                     await kill()
             with contextlib.suppress(Exception):
                 await self.sandbox.commands.run(
-                    f"sudo -n pkill -f 'tail -n0 -F {ACCESSLOG_PATH}'",
+                    f"pkill -f 'tail -n0 -F {ACCESSLOG_PATH}'",
                     timeout=5,
+                    user="root",
                 )
         else:
             stop = getattr(handle, "stop", None)
@@ -208,14 +210,16 @@ class ArtifactWatcher:
     # -- accesslog mode ---------------------------------------------------
 
     async def _start_accesslog(self) -> None:
-        # sudo -n: the JuiceFS mount (and its root-only .accesslog) is created
-        # by mount_juicefs.sh via passwordless sudo, so the sandbox's default
-        # user can't read it directly.
+        # `user="root"`: mount.sh creates the JuiceFS mount and its root-only
+        # `.accesslog` as root, so we have to read it as root. We drive that
+        # through envd's `user=` parameter instead of sudo — the sandbox user
+        # has no sudo capability (template removes them from the `sudo` group).
         self._handle = await self.sandbox.commands.run(
-            f"sudo -n tail -n0 -F {ACCESSLOG_PATH}",
+            f"tail -n0 -F {ACCESSLOG_PATH}",
             background=True,
             on_stdout=self._on_accesslog_line,
             timeout=0,
+            user="root",
         )
 
     async def _on_accesslog_line(self, line: str) -> None:

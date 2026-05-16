@@ -1,7 +1,11 @@
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 from typing_extensions import TypedDict
+
+from app.services.storage import SAFE_PATH_ID_PATTERN
+
+SafePathId = Annotated[str, StringConstraints(pattern=SAFE_PATH_ID_PATTERN)]
 
 
 class MessageDict(TypedDict):
@@ -47,7 +51,7 @@ class ReplyToMessageData(BaseModel):
 
 class MessageRequestWithHistory(BaseModel):
     message: str
-    conversation_id: Optional[str] = None
+    conversation_id: Optional[SafePathId] = None
     messages: List[MessageDict]
     fileIds: Optional[List[str]] = []
     fileData: Optional[List[FileData]] = []
@@ -55,7 +59,7 @@ class MessageRequestWithHistory(BaseModel):
     toolCategory: Optional[str] = None
     selectedWorkflow: Optional[SelectedWorkflowData] = None
     selectedCalendarEvent: Optional[SelectedCalendarEventData] = None
-    replyToMessage: Optional[ReplyToMessageData] = None  # Message being replied to
+    replyToMessage: Optional[ReplyToMessageData] = None
 
 
 class MessageRequest(BaseModel):
@@ -64,4 +68,4 @@ class MessageRequest(BaseModel):
 
 class MessageRequestPrimary(BaseModel):
     message: str
-    conversation_id: str
+    conversation_id: SafePathId

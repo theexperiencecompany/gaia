@@ -2,9 +2,11 @@
 
 from app.services.storage.bootstrap import init_juicefs_mount
 from app.services.storage.juicefs import (
+    SAFE_PATH_ID_PATTERN,
     JuiceFSUnavailable,
     delete_user_skill,
     delete_user_workspace,
+    ensure_safe_path_id,
     ensure_user_skills_dir,
     ensure_user_workspace,
     sandbox_session_path,
@@ -42,12 +44,14 @@ __all__ = [
     "ArtifactInfo",
     "FS_OPS",
     "JuiceFSUnavailable",
+    "SAFE_PATH_ID_PATTERN",
     "add_fs_bytes",
     "bootstrap_user_session",
     "chmod_path",
     "delete_session_dir",
     "delete_user_skill",
     "delete_user_workspace",
+    "ensure_safe_path_id",
     "ensure_session_dirs",
     "ensure_user_skills_dir",
     "ensure_user_workspace",

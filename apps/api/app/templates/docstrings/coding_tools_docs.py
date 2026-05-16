@@ -10,9 +10,11 @@ BASH_TOOL = """
 Run a shell command inside the user's persistent coding sandbox.
 
 The command runs in your session's working directory by default. The
-sandbox has Python, Node.js, common Linux tools, and `sudo`. Anything you
-install (pip, apt, npm) persists across conversations because the workspace
-is on a durable filesystem.
+sandbox has Python, Node.js, and common Linux tools. Anything you install
+via `pip install` or `npm install` persists across conversations because
+the workspace is on a durable filesystem. The sandbox user has no `sudo`
+and cannot install system packages — use the language-level package
+managers instead.
 
 Path conventions inside your session:
 - Relative paths resolve against your session root. Put intermediate work in

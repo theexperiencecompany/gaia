@@ -1,9 +1,8 @@
-"""
-Router module for file upload functionality with RAG integration.
-"""
+"""File upload, update, and delete endpoints."""
 
 from shared.py.wide_events import log
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.db.mongodb.collections import conversations_collection
 from app.decorators import tiered_rate_limit
 from app.models.message_models import FileData
 from app.services.file_service import (
@@ -11,6 +10,7 @@ from app.services.file_service import (
     update_file_service,
     upload_file_service,
 )
+from app.services.storage import SAFE_PATH_ID_PATTERN
 from fastapi import (
     APIRouter,
     Body,
@@ -30,30 +30,30 @@ router = APIRouter()
 @tiered_rate_limit("file_upload")
 async def upload_file_endpoint(
     file: UploadFile = File(...),
-    conversation_id: str = Form(None),
+    conversation_id: str | None = Form(default=None, pattern=SAFE_PATH_ID_PATTERN),
     content_length: int | None = Header(default=None, alias="content-length"),
     user: dict = Depends(get_current_user),
 ):
-    """
-    Upload a file to the server and generate embeddings for image files.
-
-    This endpoint uploads files to Cloudinary and stores metadata in MongoDB.
-    For image files, it also generates vector embeddings to enable semantic search.
-
-    Args:
-        file: The file to upload
-        conversation_id: Optional ID of conversation to associate with the file
-        content_length: HTTP Content-Length header, used to reject oversize uploads pre-flight
-        user: The authenticated user information
-
-    Returns:
-        File metadata including ID, URL, and auto-generated description
-    """
+    """Upload a file, persist metadata, and generate embeddings for images."""
     user_id = user.get("user_id", None)
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required."
         )
+
+    if conversation_id is not None:
+        # Reject uploads targeting a conversation the authenticated user does
+        # not own — otherwise alice could pollute her own session tree with
+        # artifacts keyed under bob's conversation id.
+        owner = await conversations_collection.find_one(
+            {"user_id": user_id, "conversation_id": conversation_id},
+            projection={"_id": 1},
+        )
+        if owner is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Conversation not found or not owned by this user",
+            )
 
     try:
         result = await upload_file_service(
@@ -79,7 +79,7 @@ async def upload_file_endpoint(
             type=result.get("type", "file"),
         )
     except HTTPException:
-        # Preserve 4xx from validation (413 oversize, 415 bad type, 400 bad filename, etc.)
+        # Preserve 4xx from the upload service (413 oversize, 415 bad type, …).
         raise
     except Exception as e:
         log.error(f"Error uploading file: {str(e)}")
@@ -95,20 +95,7 @@ async def update_file_endpoint(
     update_data: dict = Body(...),
     user: dict = Depends(get_current_user),
 ):
-    """
-    Update file metadata and refresh embeddings if needed.
-
-    This endpoint updates file metadata in MongoDB and ChromaDB.
-    If the description is updated, it regenerates the embedding.
-
-    Args:
-        file_id: The ID of the file to update
-        update_data: The file data to update
-        user: The authenticated user information
-
-    Returns:
-        Updated file metadata
-    """
+    """Update file metadata; regenerates the embedding when the description changes."""
     user_id = user.get("user_id", None)
     if not user_id:
         return {"error": "User ID is required"}
@@ -137,18 +124,7 @@ async def delete_file_endpoint(
     file_id: str,
     user: dict = Depends(get_current_user),
 ):
-    """
-    Delete a file by its ID.
-
-    This endpoint removes a file from Cloudinary storage, MongoDB, and ChromaDB.
-
-    Args:
-        file_id: The ID of the file to delete
-        user: The authenticated user information
-
-    Returns:
-        Success message with deleted file information
-    """
+    """Delete a file from Cloudinary, MongoDB, and ChromaDB."""
     try:
         result = await delete_file_service(
             file_id=file_id,
