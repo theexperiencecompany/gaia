@@ -181,22 +181,13 @@ const nextConfig = {
   pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
   async headers() {
     return [
-      {
-        source: "/_next/static/(.*)",
-        headers: [
-          {
-            key: "Cache-Control",
-            // In dev Turbopack reuses chunk filenames across rebuilds, so the
-            // immutable hint mis-caches stale bundles in the browser. Only
-            // claim immutability in production builds (where Webpack/Turbopack
-            // bake a content hash into the filename).
-            value:
-              process.env.NODE_ENV === "production"
-                ? "public, max-age=31536000, immutable"
-                : "no-store, max-age=0",
-          },
-        ],
-      },
+      // /_next/static/* — intentionally NOT setting a custom Cache-Control
+      // here. Next.js content-hashes chunk filenames in production builds, so
+      // its default immutable cache headers are already correct; in dev
+      // Turbopack reuses the same chunk filenames across rebuilds, and any
+      // custom long-cache header would pin a stale bundle in the browser and
+      // break hot reloads (Next itself warns "Setting a custom Cache-Control
+      // header can break Next.js development behavior").
       {
         source: "/images/(.*)",
         headers: [
