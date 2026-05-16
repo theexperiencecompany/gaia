@@ -32,7 +32,13 @@ interface MessagesRegionProps {
 function MessagesRegionImpl({ state, stage }: MessagesRegionProps) {
   const messages = useMemo(
     () => getMessages(state),
-    [state.responses, state.questionIndex],
+    [
+      state.responses,
+      state.questionIndex,
+      state.clarifyAnswers,
+      state.clarifyQuestions,
+      state.clarifySubmitted,
+    ],
   );
 
   const checklist = STAGES_WITH_PROCESSING_CHECKLIST.has(stage) ? (

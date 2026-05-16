@@ -1,13 +1,14 @@
 import type { ClarifyQuestion } from "../types";
 
 export const CLARIFY_INTRO =
-  "Quick — three questions so the todos I draft for you actually move things forward.";
+  "Quick. Three questions so the todos I draft for you actually move things forward.";
 
 export const CLARIFY_PROCESSING_MSG =
   "Got it. Lining up the right todos based on that.";
 
 export const CLARIFY_OTHER_LABEL = "Other";
 export const CLARIFY_SKIP_LABEL = "Skip this question";
+export const CLARIFY_SKIP_REPLY = "Skipped";
 
 /**
  * Placeholder questions used while the backend `/onboarding/clarify-questions`
@@ -21,9 +22,9 @@ export const CLARIFY_MOCK_QUESTIONS: ClarifyQuestion[] = [
     kind: "scope",
     question: "What needs to move forward this week?",
     options: [
-      "The main project — shipping the next milestone",
-      "External work — outreach, meetings, customers",
-      "Internal work — planning, hiring, ops",
+      "The main project: shipping the next milestone",
+      "External work: outreach, meetings, customers",
+      "Internal work: planning, hiring, ops",
     ],
   },
   {
@@ -43,7 +44,7 @@ export const CLARIFY_MOCK_QUESTIONS: ClarifyQuestion[] = [
     options: [
       "A few hours every day",
       "One or two deep-work blocks total",
-      "Honestly, very little — I'm mostly in meetings",
+      "Honestly, very little. I'm mostly in meetings",
     ],
   },
 ];

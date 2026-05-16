@@ -8,7 +8,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
 import { getProgress, PROGRESS_TOTAL_STEPS } from "../state/derive";
 import type { OnboardingState, Stage } from "../state/types";
@@ -58,8 +58,13 @@ function getContentFingerprint(state: OnboardingState, stage: Stage): string {
     b?.suggested_workflows?.length ?? 0,
     b?.first_message_conversation_id ?? "",
     state.todoExecutionMessage ?? "",
+    Object.keys(state.clarifyAnswers).length,
+    state.clarifySubmitted ? 1 : 0,
   ].join("|");
 }
+
+const COMPOSER_GUTTER_PX = 24;
+const BOTTOM_BLUR_PX = 96;
 
 export function OnboardingShell({
   state,
@@ -69,18 +74,34 @@ export function OnboardingShell({
   composer,
 }: OnboardingShellProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
+  const [composerHeight, setComposerHeight] = useState(0);
   const progressStep = getProgress(state, stage);
   const fingerprint = useMemo(
     () => getContentFingerprint(state, stage),
     [state, stage],
   );
 
+  const hasComposer = !!composer;
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) {
+      setComposerHeight(0);
+      return;
+    }
+    const update = () => setComposerHeight(el.getBoundingClientRect().height);
+    update();
+    const obs = new ResizeObserver(update);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasComposer, stage]);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [fingerprint]);
+  }, [fingerprint, composerHeight]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-primary-bg backdrop-blur-2xl">
@@ -102,7 +123,14 @@ export function OnboardingShell({
         ref={scrollRef}
         className="relative z-10 flex-1 overflow-y-auto px-4 pt-20"
       >
-        <div className="relative mx-auto w-full max-w-3xl pb-32">
+        <div
+          className="relative mx-auto w-full max-w-3xl"
+          style={{
+            paddingBottom:
+              Math.max(composer ? composerHeight : 0, BOTTOM_BLUR_PX) +
+              COMPOSER_GUTTER_PX,
+          }}
+        >
           {children}
         </div>
       </div>
@@ -115,10 +143,8 @@ export function OnboardingShell({
 
       {composer && (
         <div
+          ref={composerRef}
           className={
-            // Clarify composer is a multi-question card — give it more room
-            // than the standard text composer. Every other stage stays at
-            // max-w-lg so the visual rhythm of the existing flow is unchanged.
             stage === "clarify"
               ? "fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-xl pb-3"
               : "fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-lg pb-3"

@@ -106,20 +106,22 @@ CLARIFY_QUESTIONS_PROMPT = (
     "2. BLOCKER — surfaces what is actually in the way or where they are stuck\n"
     "3. CONSTRAINT — captures realistic time budget, deadlines, tools, or people involved\n\n"
     "Each question has exactly 3 plausible options. The options must be:\n"
-    "- Specific to the user's stated focus and profession — not generic\n"
+    "- Specific to the user's stated focus and profession, not generic\n"
     "- Mutually exclusive enough that picking one tells you something useful\n"
-    "- Short — ideally under 8 words each, never more than 12\n"
+    "- Short. Ideally under 8 words each, never more than 12\n"
     "- Phrased as something the user would actually say about themselves\n\n"
     "Questions must:\n"
-    "- Be answerable in 5 seconds — no essay prompts\n"
+    "- Be answerable in 5 seconds. No essay prompts\n"
     "- Never ask anything that could be answered by reading the user's inbox (this user has no inbox connected)\n"
     "- Avoid corporate-speak, MBA jargon, and abstract framing\n"
     "- End in a question mark\n\n"
+    "NEVER use em dashes (—) anywhere in the questions or options. Use commas, "
+    "periods, or colons instead.\n\n"
     "GOOD (focus: 'run my startup', profession: 'founder'):\n"
     "Q1 SCOPE: 'What needs to move forward this week?'\n"
-    "  - Fundraising — investor outreach, deck, data room\n"
-    "  - Product — shipping the next release\n"
-    "  - Sales — pipeline, demos, closing deals\n"
+    "  - Fundraising: investor outreach, deck, data room\n"
+    "  - Product: shipping the next release\n"
+    "  - Sales: pipeline, demos, closing deals\n"
     "Q2 BLOCKER: 'Where are you actually stuck right now?'\n"
     "  - Too many open threads, nothing's closing\n"
     "  - Waiting on others (investors, customers, team)\n"
@@ -127,7 +129,7 @@ CLARIFY_QUESTIONS_PROMPT = (
     "Q3 CONSTRAINT: 'How much focused time can you carve out?'\n"
     "  - A few hours every day\n"
     "  - One or two deep-work blocks\n"
-    "  - Honestly, very little — I'm mostly in meetings\n\n"
+    "  - Honestly, very little. I'm mostly in meetings\n\n"
     "BAD (avoid):\n"
     "- 'What's your biggest priority?' (vague, not anchored to focus)\n"
     "- 'How do you feel about your week?' (not actionable)\n"
@@ -339,14 +341,14 @@ User profile (PRIMARY signal — weigh this most):
 - Profession: {profession}
 - Current focus: {focus}
 
-Secondary signals (use sparingly — do not let these dominate):
+{clarify_context}Secondary signals (use sparingly — do not let these dominate):
 - Has Gmail connected: {has_gmail}
 - Inbox patterns observed: {inbox_patterns}
 - Frequent senders: {email_senders_summary}
 - Writing style: {writing_style_summary}
 
 How to think about this:
-1. Anchor every workflow to the person's profession and focus — that is who they are.
+1. Anchor every workflow to the person's profession, focus, and any clarifying context they shared (scope, blocker, constraint) — that is who they are. When the clarifying context names a specific area or blocker, at least 2 of the 4 workflows should directly attack that area, not the broader focus.
 2. Inbox patterns are ONE input, not the brief. Do not design every workflow around their email categories. The user is more than their inbox.
 3. At least THREE of the four workflows should NOT be primarily about email filtering, sorting, or summarizing. They should help the user move their actual work forward — research, drafting, planning, monitoring, follow-ups, prep, briefings.
 4. At most ONE workflow may incorporate inbox signal, and only if it produces a tangible deliverable beyond "summarize emails" — e.g. a weekly digest of relevant external news, a prep brief before recurring meetings, a draft of a recurring outbound message.

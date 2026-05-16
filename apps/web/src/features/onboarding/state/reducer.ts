@@ -174,7 +174,6 @@ export function reducer(
     }
 
     case "clarifySelectOption": {
-      // Picking a real option clears any pending "Other" selection.
       const { [action.questionId]: _drop, ...remainingOther } =
         state.clarifyOtherSelected;
       return {
@@ -188,9 +187,6 @@ export function reducer(
     }
 
     case "clarifyOtherSelect": {
-      // User clicked the "Other" radio — flag the selection so the input
-      // reveals, and clear any committed answer for this question so submit
-      // gating waits on the user typing something.
       const { [action.questionId]: _droppedAns, ...remainingAnswers } =
         state.clarifyAnswers;
       return {
@@ -204,8 +200,6 @@ export function reducer(
     }
 
     case "clarifyCustomDraft": {
-      // Typing keeps "Other" selected and clears any committed answer so the
-      // UI follows the input. Final commit happens on blur / submit.
       const { [action.questionId]: _dropped, ...remainingAnswers } =
         state.clarifyAnswers;
       return {
@@ -225,7 +219,6 @@ export function reducer(
     case "clarifyCustomCommit": {
       const draft = state.clarifyCustomDrafts[action.questionId]?.trim();
       if (!draft) return state;
-      // Once committed, the pending "Other" selection is now a real answer.
       const { [action.questionId]: _drop, ...remainingOther } =
         state.clarifyOtherSelected;
       return {

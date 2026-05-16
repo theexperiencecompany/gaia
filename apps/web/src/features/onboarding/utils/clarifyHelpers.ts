@@ -23,15 +23,6 @@ export const CLARIFY_RADIO_BASE_CLASS =
 export const CLARIFY_RADIO_LABEL_CLASS = "text-sm text-zinc-200";
 export const CLARIFY_RADIO_LABEL_MUTED_CLASS = "text-sm text-zinc-400";
 
-/**
- * Resolves the radio value the RadioGroup should highlight, given the current
- * committed answer and any in-flight "Other" draft. Returning `null` means no
- * row is selected yet.
- *
- * Order of precedence: committed option → committed custom → skip → pending
- * "Other" selection (flagged by `clarifyOtherSelected`, set when the user
- * clicks the Other radio but hasn't typed/committed yet).
- */
 export function radioValueFor(
   question: ClarifyQuestion,
   answer: ClarifyAnswer | undefined,

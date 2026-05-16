@@ -104,12 +104,6 @@ export interface OnboardingState {
   clarifyActiveTab: string | null;
   /** In-flight custom text inputs per question id (reveals when "Other" is chosen). */
   clarifyCustomDrafts: Record<string, string>;
-  /**
-   * Per-question flag: did the user pick the "Other" radio? Tracked separately
-   * from `clarifyCustomDrafts` so selection (radio highlight + input visible)
-   * stays decoupled from in-flight text content. Cleared when the user picks
-   * an option, skips, or commits the typed value to a real answer.
-   */
   clarifyOtherSelected: Record<string, boolean>;
   /** True once the user clicks "Submit & continue" on the clarify composer. */
   clarifySubmitted: boolean;

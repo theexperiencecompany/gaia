@@ -1,13 +1,3 @@
-/**
- * `clarify` stage. Non-Gmail users answer 3 follow-up questions
- * (scope / blocker / constraint) so the todo generator has enough signal
- * to produce concrete actions. UI lives entirely in the composer footer:
- * HeroUI Tabs for navigation, RadioGroup for options, an "Other" radio
- * that reveals an Input, and a "Skip this question" radio. Submit unlocks
- * once every question has either an option, a committed custom answer,
- * or a skip.
- */
-
 "use client";
 
 import { Button } from "@heroui/button";
@@ -55,16 +45,35 @@ export function ClarifyComposer({ state, dispatch }: ClarifyProps) {
   const allAnswered =
     questions.length > 0 && answeredCount === questions.length;
 
+  const advanceToNextUnanswered = useCallback(
+    (justAnsweredId: string) => {
+      const currentIdx = questions.findIndex((q) => q.id === justAnsweredId);
+      if (currentIdx < 0) return;
+      for (let i = 1; i <= questions.length; i++) {
+        const next = questions[(currentIdx + i) % questions.length];
+        if (!next || next.id === justAnsweredId) continue;
+        const answered = isQuestionAnswered(
+          state.clarifyAnswers[next.id],
+          state.clarifyCustomDrafts[next.id],
+        );
+        if (!answered) {
+          dispatch({ type: "clarifyTab", questionId: next.id });
+          return;
+        }
+      }
+    },
+    [questions, state.clarifyAnswers, state.clarifyCustomDrafts, dispatch],
+  );
+
   const handleRadioChange = useCallback(
     (value: string) => {
       if (!activeQuestion) return;
       if (value === SKIP_VALUE) {
         dispatch({ type: "clarifySkip", questionId: activeQuestion.id });
+        advanceToNextUnanswered(activeQuestion.id);
         return;
       }
       if (value === OTHER_VALUE) {
-        // Flags the selection so the input reveals; previously typed text
-        // (if any) stays in `clarifyCustomDrafts` and is shown in the input.
         dispatch({ type: "clarifyOtherSelect", questionId: activeQuestion.id });
         return;
       }
@@ -77,10 +86,11 @@ export function ClarifyComposer({ state, dispatch }: ClarifyProps) {
             questionId: activeQuestion.id,
             value: option,
           });
+          advanceToNextUnanswered(activeQuestion.id);
         }
       }
     },
-    [activeQuestion, dispatch],
+    [activeQuestion, dispatch, advanceToNextUnanswered],
   );
 
   const handleCustomChange = useCallback(
@@ -97,12 +107,17 @@ export function ClarifyComposer({ state, dispatch }: ClarifyProps) {
 
   const handleCustomCommit = useCallback(() => {
     if (!activeQuestion) return;
+    const draft = state.clarifyCustomDrafts[activeQuestion.id]?.trim();
     dispatch({ type: "clarifyCustomCommit", questionId: activeQuestion.id });
-  }, [activeQuestion, dispatch]);
+    if (draft) advanceToNextUnanswered(activeQuestion.id);
+  }, [
+    activeQuestion,
+    dispatch,
+    state.clarifyCustomDrafts,
+    advanceToNextUnanswered,
+  ]);
 
   const handleSubmit = useCallback(() => {
-    // Commit any pending "Other" drafts before locking in the submission so
-    // the transcript reflects what the user actually typed.
     for (const q of questions) {
       if (
         !state.clarifyAnswers[q.id] &&
@@ -114,8 +129,6 @@ export function ClarifyComposer({ state, dispatch }: ClarifyProps) {
     dispatch({ type: "clarifySubmit" });
   }, [questions, state.clarifyAnswers, state.clarifyCustomDrafts, dispatch]);
 
-  // Questions are fetched async from /onboarding/clarify-questions — render a
-  // skeleton until the load lands so the composer doesn't flash empty space.
   if (!activeQuestion) {
     return (
       <m.div
@@ -125,14 +138,29 @@ export function ClarifyComposer({ state, dispatch }: ClarifyProps) {
         className="mx-2 rounded-2xl bg-zinc-800 p-4"
       >
         <div className="mb-3 flex items-center justify-between">
-          <Skeleton className="h-7 w-40 rounded-full" />
+          <div className="flex items-center gap-1 rounded-full bg-zinc-900 p-1">
+            <Skeleton className="h-6 w-9 rounded-full" />
+            <Skeleton className="h-6 w-9 rounded-full" />
+            <Skeleton className="h-6 w-9 rounded-full" />
+          </div>
           <Skeleton className="h-3 w-8 rounded" />
         </div>
-        <div className="space-y-2 rounded-2xl bg-zinc-900 p-3">
-          <Skeleton className="h-4 w-full max-w-xs rounded" />
-          <Skeleton className="h-10 w-full rounded-xl" />
-          <Skeleton className="h-10 w-full rounded-xl" />
-          <Skeleton className="h-10 w-full rounded-xl" />
+        <div className="rounded-2xl bg-zinc-900 p-3">
+          <Skeleton className="mb-3 h-4 w-3/4 rounded" />
+          <div className="flex flex-col gap-1.5">
+            {["opt-a", "opt-b", "opt-c", "other", "skip"].map((key) => (
+              <div
+                key={key}
+                className="flex items-center gap-2 rounded-xl bg-zinc-800/60 p-2"
+              >
+                <Skeleton className="size-4 shrink-0 rounded-full" />
+                <Skeleton className="h-4 w-2/3 rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <Skeleton className="h-8 w-36 rounded-full" />
         </div>
       </m.div>
     );

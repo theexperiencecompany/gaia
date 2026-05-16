@@ -79,8 +79,6 @@ export default function ChatBubbleBot(
     systemPurpose,
   );
 
-  // Match the logo's reveal to the last text part's stagger delay so it
-  // pops in alongside the final bubble rather than appearing instantly.
   const logoDelay = useMemo(() => {
     if (!itShouldShowTextBubble) return 0;
     const cleanText = parseThinkingFromText(text?.toString() || "").cleanText;

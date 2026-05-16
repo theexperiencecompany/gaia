@@ -352,6 +352,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
             user_timezone,
             triage_future,
             writing_style_future,
+            clarify_answers,
         )
     )
     t_gather = time.monotonic()
@@ -421,6 +422,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
             triage,
             writing_style,
             social_profiles,
+            clarify_answers,
         )
 
     t_final = time.monotonic()
@@ -846,7 +848,9 @@ async def _run_todos(
                 OnboardingStage.TODOS_CREATING,
                 {"status_text": "Drafting todos from your focus"},
             )
-            todos = await _create_focus_todos(user_id, name, profession, focus)
+            todos = await _create_focus_todos(
+                user_id, name, profession, focus, clarify_answers
+            )
     except Exception as e:
         log.error(
             "[intelligence] todos failed",
@@ -897,6 +901,7 @@ async def _run_workflows(
     user_timezone: str,
     triage_future: asyncio.Task[Optional[InboxTriage]],
     writing_style_future: asyncio.Task[Optional[WritingStyleProfile]],
+    clarify_answers: list[dict] | None = None,
 ) -> list[dict]:
     triage, writing_style = await asyncio.gather(triage_future, writing_style_future)
 
@@ -916,6 +921,7 @@ async def _run_workflows(
             user_timezone,
             triage,
             writing_style,
+            clarify_answers,
         )
     except Exception as e:
         log.error(
@@ -981,6 +987,7 @@ async def _run_holo_card(
     triage: Optional[InboxTriage],
     writing_style: Optional[WritingStyleProfile],
     social_profiles: Optional[list[SocialProfile]] = None,
+    clarify_answers: list[dict] | None = None,
 ) -> None:
     t0 = time.monotonic()
     try:
@@ -999,6 +1006,15 @@ async def _run_holo_card(
             context_parts.append(f"Social profiles: {platforms}")
         if focus:
             context_parts.append(f"Current focus: {focus}")
+        # On the no-Gmail path this is often the richest user signal — surface
+        # it to the bio/phrase LLM so the card reflects the user's real area,
+        # not just a paraphrase of their one-line focus.
+        for answer in clarify_answers or []:
+            value = (answer.get("value") or "").strip()
+            if not value:
+                continue
+            kind = (answer.get("kind") or "context").strip() or "context"
+            context_parts.append(f"{kind.capitalize()}: {value}")
         context_summary = "\n".join(context_parts)
 
         t_meta = time.monotonic()
@@ -1428,11 +1444,14 @@ async def _create_onboarding_workflows(
     user_timezone: str = "UTC",
     triage: Optional[InboxTriage] = None,
     writing_style: Optional[WritingStyleProfile] = None,
+    clarify_answers: list[dict] | None = None,
 ) -> list[dict]:
-    """Create 3 LLM-generated workflows tailored to the user's inbox context.
+    """Create 4 LLM-generated workflows tailored to the user's context.
 
     Gmail system workflow provisioning runs as a separate root task in the
-    orchestrator — not here.
+    orchestrator — not here. On the no-Gmail path, `clarify_answers` carry
+    the scope/blocker/constraint the user just shared so the workflows can
+    attack their named area instead of staying at the focus's surface level.
     """
     inbox_patterns = (
         "; ".join(triage.patterns[:3])
@@ -1453,6 +1472,7 @@ async def _create_onboarding_workflows(
         prompt = WORKFLOW_CREATION_PROMPT.format(
             profession=profession or "professional",
             focus=focus or "not specified",
+            clarify_context=format_clarify_context(clarify_answers),
             has_gmail=has_gmail,
             inbox_patterns=inbox_patterns,
             email_senders_summary=email_senders_summary,
@@ -1504,12 +1524,9 @@ async def _create_onboarding_workflows(
             llm_duration_s=specs_llm_duration_s,
         )
         specs_total = len(parsed.workflows)
-        created: list[dict] = []
-        specs_failed = 0
-        for idx, spec in enumerate(parsed.workflows):
+
+        async def _build_one(idx: int, spec: _WorkflowSpec) -> Optional[dict]:
             t_spec = time.monotonic()
-            t_prompt = t_spec
-            t_create = t_spec
             try:
                 t_prompt = time.monotonic()
                 gen_result = await WorkflowGenerationService.generate_workflow_prompt(
@@ -1536,17 +1553,6 @@ async def _create_onboarding_workflows(
                     request, user_id, user_timezone=user_timezone
                 )
                 create_duration_s = round(time.monotonic() - t_create, 2)
-                created.append(
-                    {
-                        "id": str(workflow.id),
-                        "title": spec.title,
-                        "description": spec.description,
-                        "categories": spec.categories,
-                        "trigger": _serialize_trigger_for_payload(
-                            workflow.trigger_config
-                        ),
-                    }
-                )
                 log.info(
                     "[intelligence] workflow spec done",
                     user_id=user_id,
@@ -1559,8 +1565,14 @@ async def _create_onboarding_workflows(
                     create_duration_s=create_duration_s,
                     duration_s=round(time.monotonic() - t_spec, 2),
                 )
+                return {
+                    "id": str(workflow.id),
+                    "title": spec.title,
+                    "description": spec.description,
+                    "categories": spec.categories,
+                    "trigger": _serialize_trigger_for_payload(workflow.trigger_config),
+                }
             except Exception as e:
-                specs_failed += 1
                 log.warning(
                     "[intelligence] workflow spec failed",
                     user_id=user_id,
@@ -1571,6 +1583,15 @@ async def _create_onboarding_workflows(
                     error_type=type(e).__name__,
                     duration_s=round(time.monotonic() - t_spec, 2),
                 )
+                return None
+
+        # Run all specs concurrently — each is an independent LLM + DB call.
+        # Order in `created` matches spec order so the UI list is stable.
+        results = await asyncio.gather(
+            *[_build_one(idx, spec) for idx, spec in enumerate(parsed.workflows)]
+        )
+        created: list[dict] = [r for r in results if r is not None]
+        specs_failed = specs_total - len(created)
         log.info(
             "[intelligence] workflows specs done",
             user_id=user_id,

@@ -8,7 +8,7 @@ import { FIELD_NAMES, professionOptions, questions } from "../constants";
 import {
   CLARIFY_INTRO,
   CLARIFY_PROCESSING_MSG,
-  CLARIFY_SKIP_LABEL,
+  CLARIFY_SKIP_REPLY,
 } from "../constants/clarify";
 import {
   FOCUS_QUESTION,
@@ -19,12 +19,6 @@ import {
 import type { Message } from "../types";
 import type { OnboardingState } from "./types";
 
-/**
- * No-Gmail clarify Q&A projection into the transcript. Renders once the user
- * has submitted clarify so the chat history reflects the conversation that
- * drove the todo generation. Before submit, only the intro bubble appears —
- * the live Q&A lives in the composer until then.
- */
 function appendClarifyTranscript(
   messages: Message[],
   state: OnboardingState,
@@ -35,18 +29,16 @@ function appendClarifyTranscript(
     type: "bot",
     content: CLARIFY_INTRO,
   });
-  if (!state.clarifySubmitted) return;
   for (const q of state.clarifyQuestions) {
+    const answer = state.clarifyAnswers[q.id];
+    if (!answer) continue;
     messages.push({
       id: `clarify-q-${q.id}`,
       type: "bot",
       content: q.question,
     });
-    const answer = state.clarifyAnswers[q.id];
     const userContent =
-      answer?.kind === "skip"
-        ? CLARIFY_SKIP_LABEL
-        : (answer?.value ?? CLARIFY_SKIP_LABEL);
+      answer.kind === "skip" ? CLARIFY_SKIP_REPLY : (answer.value ?? "");
     messages.push({
       id: `clarify-a-${q.id}`,
       type: "user",

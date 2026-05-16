@@ -19,6 +19,13 @@ import type { OnboardingState } from "../state/types";
  * until `useBackendSync`'s async snapshot fetch resolves. Without the
  * persisted guard, the user-store flag wins that race and a duplicate POST
  * fires, re-running the intelligence pipeline.
+ *
+ * The snapshot-based guard only bails when the snapshot reports a phase past
+ * `"initial"`. A bare `state.server != null` check would trap the no-Gmail
+ * path: `useBackendSync` activates at `"clarify"` and resolves the initial
+ * snapshot before the user finishes answering, so by submit time `server`
+ * is non-null but the pipeline has not started yet. The phase check matches
+ * the original intent ("pipeline already running") without the false bail.
  */
 export function useOnboardingSubmission(
   state: OnboardingState,
@@ -30,11 +37,33 @@ export function useOnboardingSubmission(
   );
 
   useEffect(() => {
-    if (inFlightRef.current) return;
-    if (state.isRestarting) return;
-    if (state.server != null) return;
-    if (alreadyCompleted) return;
-    if (!isResponsesComplete(state)) return;
+    if (inFlightRef.current) {
+      console.debug("[onboarding:submit] skip — inFlight");
+      return;
+    }
+    if (state.isRestarting) {
+      console.debug("[onboarding:submit] skip — isRestarting");
+      return;
+    }
+    const serverPhase = state.server?.phase;
+    if (serverPhase && serverPhase !== "initial") {
+      console.debug("[onboarding:submit] skip — phase", serverPhase);
+      return;
+    }
+    if (alreadyCompleted) {
+      console.debug("[onboarding:submit] skip — alreadyCompleted");
+      return;
+    }
+    if (!isResponsesComplete(state)) {
+      console.debug("[onboarding:submit] skip — responses incomplete", {
+        questionIndex: state.questionIndex,
+        gmail: state.responses?.gmail,
+        focus: state.responses?.focus,
+        clarifySubmitted: state.clarifySubmitted,
+      });
+      return;
+    }
+    console.debug("[onboarding:submit] FIRING POST /onboarding");
 
     inFlightRef.current = true;
     const responses = state.responses;
