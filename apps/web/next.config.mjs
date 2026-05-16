@@ -178,7 +178,19 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
   },
-  pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
+  // Files named *.dev.tsx / *.dev.ts are only routable in development. In
+  // production builds Next never registers them as routes, so their pages,
+  // layouts, and everything they import are completely absent from the
+  // build graph — no chunks emitted, no compile time spent. Used by the
+  // demo and debug routes under `app/[locale]/dev/*`.
+  pageExtensions: [
+    "js",
+    "jsx",
+    "mdx",
+    "ts",
+    "tsx",
+    ...(process.env.NODE_ENV === "development" ? ["dev.ts", "dev.tsx"] : []),
+  ],
   async headers() {
     return [
       {

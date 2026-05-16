@@ -8,6 +8,7 @@ import { defaultFont, getAllFontVariables } from "@/app/fonts";
 import { AgentationProvider } from "@/components/dev/AgentationProvider";
 import { routing } from "@/i18n/routing";
 import AnalyticsLayout from "@/layouts/AnalyticsLayout";
+import RootProviders from "@/layouts/RootProviders";
 import {
   generateOrganizationSchema,
   generateWebSiteSchema,
@@ -186,7 +187,9 @@ export default async function LocaleLayout({ children, params }: Props) {
       <body className={`dark ${defaultFont.className}`}>
         <NextIntlClientProvider locale={locale} messages={{}}>
           <div id="app-root">
-            <Suspense fallback={null}>{children}</Suspense>
+            <RootProviders>
+              <Suspense fallback={null}>{children}</Suspense>
+            </RootProviders>
           </div>
         </NextIntlClientProvider>
 
