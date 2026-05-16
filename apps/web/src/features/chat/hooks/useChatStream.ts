@@ -87,11 +87,6 @@ export const useChatStream = () => {
     conversationId: string,
     description: string | null,
   ) => {
-    console.log(
-      "[useChatStream] handleConversationCreation:",
-      conversationId,
-      description,
-    );
     // Check if conversation already exists in store
     const existing = useChatStore
       .getState()
@@ -595,7 +590,6 @@ export const useChatStream = () => {
         }
 
         if (parsed.type === "main_response_complete") {
-          console.log("[handleStreamEvent] Received main_response_complete");
           handleMainResponseComplete();
           continue;
         }
@@ -637,10 +631,6 @@ export const useChatStream = () => {
         }
 
         if (parsed.type === "conversation_initialized") {
-          console.log(
-            "[useChatStream] conversation_initialized event:",
-            parsed,
-          );
           const data = {
             conversation_id: parsed.conversation_id,
             conversation_description: parsed.conversation_description ?? null,
@@ -715,7 +705,6 @@ export const useChatStream = () => {
   };
 
   const handleStreamClose = async () => {
-    console.log("[useChatStream] handleStreamClose called");
     // Prevent double invocation — handleStreamClose is called from both
     // onmessage (on [DONE]) and onclose (on connection close) in chatApi.ts.
     // Only the first call should execute; the second is a no-op.
@@ -760,13 +749,6 @@ export const useChatStream = () => {
       resetLoadingText();
       streamController.clear();
 
-      console.log("[handleStreamClose] Persisting bot message:", {
-        hasConversationId: !!conversationId,
-        conversationId,
-        botMessageId: refs.current.botMessage.message_id,
-        responseLength: refs.current.accumulatedResponse.length,
-      });
-
       if (conversationId) {
         try {
           // Use refs.current.botMessage directly as single source of truth
@@ -782,10 +764,6 @@ export const useChatStream = () => {
           // Persist the complete message with final status
           // Event emission will automatically update the store
           await db.putMessage(finalMessage);
-          console.log(
-            "[handleStreamClose] Bot message persisted successfully:",
-            finalMessage.id,
-          );
 
           // Update conversation metadata only when stream ends
           await db.updateConversationFields(conversationId, {
@@ -864,10 +842,6 @@ export const useChatStream = () => {
       console.warn("[useChatStream] stream already in progress, skipping");
       return;
     }
-    console.log(
-      "[useChatStream] starting stream, activeConversationId:",
-      useChatStore.getState().activeConversationId,
-    );
 
     streamInProgressRef.current = true;
 
@@ -972,15 +946,6 @@ export const useChatStream = () => {
         }
         // Note: Backend also saves - streamController.abort() schedules sync after 3s
       });
-
-      console.log(
-        "[useChatStream] calling chatApi.fetchChatStream, inputText:",
-        inputText,
-        "msgs:",
-        currentMessages.length,
-        "workflow:",
-        selectedWorkflow?.id,
-      );
       await chatApi.fetchChatStream(
         inputText,
         [...refs.current.convoMessages, ...currentMessages],

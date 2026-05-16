@@ -12,7 +12,7 @@
 
 import { InfisicalSDK } from "@infisical/sdk";
 
-const log = (msg: string) => console.log(`[secrets] ${msg}`);
+const log = (_msg: string) => {};
 const warn = (msg: string) => console.warn(`[secrets] ${msg}`);
 
 class InfisicalConfigError extends Error {

@@ -405,19 +405,20 @@ ignore-property-decorators = true
 ignore-module = true
 ignore-nested-functions = true
 ignore-nested-classes = true
-fail-under = 30
+fail-under = 80
 exclude = [
-  "tests",
-  "conftest.py",
-  "setup.py",
-  "alembic",
-  "migrations",
-  "scripts",
+  "**/tests",
+  "**/tests/**",
+  "**/conftest.py",
+  "**/setup.py",
+  "**/alembic",
+  "**/migrations",
+  "**/scripts",
   ".venv",
   ".venv311",
 ]
 ignore-regex = ["^_", "^test_"]
-verbose = 0
+verbose = 2
 quiet = false
 whitelist-regex = []
 color = true

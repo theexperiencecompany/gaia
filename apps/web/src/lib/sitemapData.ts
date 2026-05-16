@@ -216,10 +216,6 @@ async function getCommunityWorkflowPages(
         };
       }, 100);
 
-    console.log(
-      `[Sitemap] Generated ${allWorkflows.length} community workflow pages`,
-    );
-
     return allWorkflows.map((workflow) => ({
       url: `${baseUrl}/use-cases/${workflow.slug}`,
       lastModified: new Date(workflow.created_at),
@@ -299,10 +295,6 @@ async function getIntegrationPages(
         hasMore: data.hasMore !== false,
       };
     }, 100);
-
-    console.log(
-      `[Sitemap] Generated ${allIntegrations.length} integration pages`,
-    );
 
     return allIntegrations.map(
       (integration: {

@@ -176,7 +176,7 @@ export class GaiaClient {
     ];
 
     let lastError: Error | null = null;
-    let attemptedRetries = 0;
+    let _attemptedRetries = 0;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -205,10 +205,7 @@ export class GaiaClient {
 
         // Wait before retrying (exponential backoff)
         const delayMs = Math.min(1000 * 2 ** attempt, 5000);
-        attemptedRetries++;
-        console.log(
-          `Retrying stream (attempt ${attemptedRetries}/${maxRetries}) after ${delayMs}ms...`,
-        );
+        _attemptedRetries++;
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }

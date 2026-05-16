@@ -102,7 +102,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
         );
 
         if (data.phase) {
-          console.log("[MainLayout] Initialized phase from API:", data.phase);
           setPhase(data.phase as OnboardingPhase);
         }
       } catch (error) {
@@ -120,10 +119,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
         setPhase(message.data.phase);
       }
     };
-
-    console.log(
-      "[MainLayout] Registering WebSocket listener for phase updates",
-    );
     wsManager.on("onboarding_phase_update", handlePhaseUpdate);
 
     return () => {

@@ -274,7 +274,6 @@ export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
                   selectedKeys={new Set([simpleSchedule.dayOfMonth])}
                   onSelectionChange={(keys) => {
                     const selectedDay = Array.from(keys)[0] as string;
-                    console.log("Monthly day selected:", selectedDay);
                     handleSimpleScheduleChange({
                       dayOfMonth: selectedDay,
                     });

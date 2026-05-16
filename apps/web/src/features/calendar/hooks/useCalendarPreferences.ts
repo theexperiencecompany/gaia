@@ -40,23 +40,10 @@ export const useCalendarPreferences = (
       const currentStore = useCalendarStore.getState().selectedCalendars;
 
       if (query.data && query.data.length > 0) {
-        console.log(
-          "[Calendar Preferences] Backend returned:",
-          query.data.length,
-          "calendars",
-        );
-        console.log(
-          "[Calendar Preferences] Current store has:",
-          currentStore.length,
-          "calendars",
-        );
-
         // Always sync from backend when available
         if (JSON.stringify(currentStore) !== JSON.stringify(query.data)) {
-          console.log("[Calendar Preferences] Syncing to store...");
           setSelectedCalendars(query.data);
         } else {
-          console.log("[Calendar Preferences] Already in sync");
         }
       } else if (query.data && query.data.length === 0) {
         console.warn(

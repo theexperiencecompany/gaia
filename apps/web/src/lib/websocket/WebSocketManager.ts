@@ -51,7 +51,6 @@ class WebSocketManager {
       this.isIntentionalClose = false;
 
       this.ws.onopen = () => {
-        console.log("[WebSocketManager] Connected successfully to:", this.url);
         this.reconnectAttempts = 0;
         this.connectionHandlers.forEach((handler) => handler());
       };
@@ -65,8 +64,6 @@ class WebSocketManager {
             this.send({ type: "pong" });
             return;
           }
-
-          console.log("[WebSocketManager] Received message:", message.type);
 
           // Notify all handlers for this message type
           const handlers = this.messageHandlers.get(message.type);
@@ -86,21 +83,11 @@ class WebSocketManager {
       };
 
       this.ws.onclose = (event) => {
-        console.log(
-          "[WebSocketManager] Disconnected:",
-          event.code,
-          event.reason,
-          "intentional:",
-          this.isIntentionalClose,
-        );
         this.ws = null;
         this.disconnectionHandlers.forEach((handler) => handler());
 
         // Don't reconnect if close was intentional
         if (this.isIntentionalClose || event.code === 1000) {
-          console.log(
-            "[WebSocketManager] Not reconnecting (intentional close)",
-          );
           return;
         }
 
@@ -202,10 +189,6 @@ class WebSocketManager {
 
     const delay = this.baseReconnectDelay * 2 ** this.reconnectAttempts;
     this.reconnectAttempts++;
-
-    console.log(
-      `[WebSocketManager] Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
-    );
 
     this.reconnectTimeout = setTimeout(() => {
       this.connect();

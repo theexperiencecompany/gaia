@@ -104,10 +104,6 @@ export default function TodoSection({
 
       // Use selectWorkflow to store and navigate to chat with auto-send
       selectWorkflow(workflowData, { autoSend: true });
-
-      console.log(
-        "Todo workflow selected for manual execution in chat with auto-send",
-      );
     } catch (error) {
       console.error("Failed to select workflow for execution:", error);
     }

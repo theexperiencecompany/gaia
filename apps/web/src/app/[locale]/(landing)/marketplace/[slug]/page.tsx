@@ -122,10 +122,6 @@ export async function generateStaticParams() {
 
   // Deduplicate by slug
   const allSlugs = [...new Set([...communitySlugs, ...nativeSlugs])];
-
-  console.log(
-    `[SSG Marketplace] Generating ${allSlugs.length} pages (${communitySlugs.length} community + ${nativeSlugs.length} native)`,
-  );
   return allSlugs.map((slug) => ({ slug }));
 }
 

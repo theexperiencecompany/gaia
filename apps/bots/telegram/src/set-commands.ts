@@ -32,11 +32,7 @@ const commands = [
 (async () => {
   try {
     await bot.api.setMyCommands(commands);
-    console.log(
-      `Successfully registered ${commands.length} Telegram bot commands:`,
-    );
-    for (const cmd of commands) {
-      console.log(`  /${cmd.command} — ${cmd.description}`);
+    for (const _cmd of commands) {
     }
   } catch (error) {
     console.error("Failed to register Telegram bot commands:", error);

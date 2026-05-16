@@ -140,9 +140,7 @@ if (isMain) {
 
   (async () => {
     try {
-      console.log("Registering slash and context menu commands...");
       await rest.put(Routes.applicationCommands(clientId), { body: commands });
-      console.log("Successfully registered all commands");
     } catch (error) {
       console.error("Failed to register commands:", error);
       process.exit(1);

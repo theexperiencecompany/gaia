@@ -73,7 +73,6 @@ export async function runLogs(): Promise<void> {
     typeof devPid === "number" && isPidAlive(devPid);
 
   if (fs.existsSync(devLogPath) && isDeveloperProcessAlive) {
-    console.log("Streaming app and infrastructure logs...");
     if (process.platform === "win32") {
       await runConcurrentInteractiveCommands([
         {
@@ -110,14 +109,8 @@ export async function runLogs(): Promise<void> {
   }
 
   if (fs.existsSync(devLogPath) && !isDeveloperProcessAlive) {
-    console.log(
-      "Detected stale developer app logs from a previous run. Streaming Docker logs only.",
-    );
     await runInteractiveCommand("docker", dockerArgs, dockerDir, dockerEnv);
   } else {
-    console.log(
-      "No active developer process detected. Streaming Docker service logs. Run `gaia dev` in another terminal for live Nx app logs.",
-    );
     await runInteractiveCommand("docker", dockerArgs, dockerDir, dockerEnv);
   }
 }
