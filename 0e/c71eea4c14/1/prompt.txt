@@ -1,0 +1,42 @@
+## Page Feedback: /onboarding
+**Viewport:** 1492×889
+
+### 1. <Onboarding> <OnboardingShell> <motion.div> <RevealTodos> <motion.div> container
+**Location:** .relative > div > .mt-10 > div
+**Source:** _next/static/chunks/node_modules_agentation_dist_index_mjs_a4d7dd5f._.js:14068:23
+**React:** <Onboarding> <OnboardingShell> <motion.div> <RevealTodos> <motion.div>
+**Feedback:** remove this left padding bcz we already have a container now
+
+### 2. <Onboarding> <OnboardingShell> <motion.div> <RevealTodos> <motion.div> flex items
+**Location:** div > .mt-10 > div > .flex
+**Source:** _next/static/chunks/node_modules_agentation_dist_index_mjs_a4d7dd5f._.js:14068:23
+**React:** <Onboarding> <OnboardingShell> <motion.div> <RevealTodos> <motion.div>
+**Feedback:** no need to write "demo remove that along with the icon
+
+### 3. <OnboardingShell> <motion.div> <RevealTodos> <motion.div> <SelectedTodoIndicator> <CheckListIcon> icon
+**Location:** .mt-10 > .rounded-2xl > .flex > svg
+**Source:** _next/static/chunks/node_modules_agentation_dist_index_mjs_a4d7dd5f._.js:14068:23
+**React:** <OnboardingShell> <motion.div> <RevealTodos> <motion.div> <SelectedTodoIndicator> <CheckListIcon>
+**Feedback:** dont use this icon use checkmark icon instesd and dont use the uppercase styling for selected todo text
+
+### 4. <Onboarding> <OnboardingShell> <motion.div> <RevealTodos> <motion.div> 10.75 space
+**Location:** .relative > .relative > div > .mt-10
+**Source:** _next/static/chunks/node_modules_agentation_dist_index_mjs_a4d7dd5f._.js:14068:23
+**React:** <Onboarding> <OnboardingShell> <motion.div> <RevealTodos> <motion.div>
+**Feedback:** ensure this container has same left and right padding! in onboarding fix these styling issues and walk me through your changes
+
+---
+
+### 3. <Onboarding> <OnboardingShell> <motion.div> <RevealTodos> <motion.div>
+  <SelectedTodoIndicator> rounded 2xl
+  **Location:** .relative > div > .mt-10 > .rounded-2xl
+  **Source:**
+  _next/static/chunks/node_modules_agentation_dist_index_mjs_a4d7dd5f._.js:14068:23
+  **React:** <Onboarding> <OnboardingShell> <motion.div> <RevealTodos> <motion.div>
+  <SelectedTodoIndicator>
+  **Feedback:** make this left padding align with the bottom component because of the profile
+  photo and selected todo write it in a success chip
+
+---
+
+use the circle check icon
