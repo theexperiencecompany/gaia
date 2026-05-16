@@ -38,7 +38,7 @@ class ReminderModel(BaseScheduledTask):
 
     agent: AgentType = Field(..., description="Agent responsible for this reminder task")
     stop_after: datetime | None = Field(
-        default=datetime.now(UTC) + timedelta(days=180),
+        default_factory=lambda: datetime.now(UTC) + timedelta(days=180),
         description="Stop executing after this date (optional), defaults to 6 months from now",
     )
     payload: StaticReminderPayload | dict[str, Any] = Field(

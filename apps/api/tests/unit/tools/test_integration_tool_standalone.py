@@ -116,8 +116,8 @@ class TestListIntegrations:
 
         # user_integrations_collection.find returns async iterable with no docs
         async def _empty_cursor():
-            return
-            yield
+            for _ in []:  # empty async generator (yields nothing)
+                yield _
 
         mock_user_int.find.return_value = _empty_cursor()
 
@@ -146,8 +146,8 @@ class TestListIntegrations:
         mock_status.return_value = {"gmail": True, "notion": False}
 
         async def _empty_cursor():
-            return
-            yield
+            for _ in []:  # empty async generator (yields nothing)
+                yield _
 
         mock_user_int.find.return_value = _empty_cursor()
 
@@ -198,8 +198,8 @@ class TestListIntegrations:
         mock_status.return_value = {}
 
         async def _empty_cursor():
-            return
-            yield
+            for _ in []:  # empty async generator (yields nothing)
+                yield _
 
         mock_user_int.find.return_value = _empty_cursor()
 

@@ -916,8 +916,8 @@ class TestGetUserIntegrations:
     @patch("app.services.integrations.user_integrations.user_integrations_collection")
     async def test_empty_workspace(self, mock_collection, mock_get_details):
         async def aiter_empty(*args, **kwargs):
-            return
-            yield
+            for _ in []:  # empty async generator (yields nothing)
+                yield _
 
         mock_cursor = MagicMock()
         mock_cursor.sort = MagicMock(return_value=mock_cursor)
@@ -963,8 +963,8 @@ class TestGetUserConnectedIntegrations:
     @patch("app.services.integrations.user_integrations.user_integrations_collection")
     async def test_empty_list_when_no_integrations(self, mock_collection):
         async def aiter_empty(*args, **kwargs):
-            return
-            yield  # NOSONAR — intentionally unreachable: makes this an async generator
+            for _ in []:  # empty async generator (yields nothing)
+                yield _  # NOSONAR — intentionally unreachable: makes this an async generator
 
         mock_cursor = MagicMock()
         mock_cursor.__aiter__ = aiter_empty
@@ -1574,8 +1574,8 @@ class TestDeleteCustomIntegration:
         mock_int_collection.delete_one = AsyncMock(return_value=mock_delete_result)
 
         async def aiter_empty(*args, **kwargs):
-            return
-            yield  # NOSONAR — intentionally unreachable: makes this an async generator
+            for _ in []:  # empty async generator (yields nothing)
+                yield _  # NOSONAR — intentionally unreachable: makes this an async generator
 
         mock_cursor = MagicMock()
         mock_cursor.__aiter__ = aiter_empty

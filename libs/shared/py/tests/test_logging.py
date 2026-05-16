@@ -148,12 +148,12 @@ class TestConfigureFileLogging:
         assert mock_logger.add.call_count == 5
 
     def test_default_log_dir_from_config(self, mock_logger: MagicMock):
-        with patch.dict(LOG_CONFIG, {"log_dir": "/tmp/claude/test_logs"}):  # nosec B108
+        with patch.dict(LOG_CONFIG, {"log_dir": "/tmp/claude/test_logs"}):  # nosec B108  # NOSONAR python:S5443 — mocked, never written
             with patch.object(Path, "mkdir"):
                 configure_file_logging(None)
             first_add = mock_logger.add.call_args_list[0]
             # The path should be based on the config value
-            assert "/tmp/claude/test_logs" in str(first_add.args[0])  # nosec B108
+            assert "/tmp/claude/test_logs" in str(first_add.args[0])  # nosec B108  # NOSONAR python:S5443 — string check only
 
     def test_accepts_string_path(self, tmp_path: Path, mock_logger: MagicMock):
         configure_file_logging(str(tmp_path))
