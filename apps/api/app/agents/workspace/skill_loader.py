@@ -19,6 +19,7 @@ Used by:
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from functools import lru_cache
@@ -136,9 +137,32 @@ def integration_subagent_ids() -> Iterable[str]:
     return tuple(sa for sa in sorted(skills_by_subagent()) if sa != "executor")
 
 
+@lru_cache(maxsize=1)
+def library_hash() -> str:
+    """SHA-256 over every skill's (slug, target, body) — stable per deploy.
+
+    Materializers compare this against a per-user marker on disk to skip the
+    full rewrite when the library hasn't changed since the user last logged
+    in. The hash is hex-truncated to 32 chars — collisions on a corpus of
+    ~30 SKILL.md files are not a real concern, and the shorter hash keeps
+    the on-disk marker readable when debugging.
+    """
+    digest = hashlib.sha256()
+    for skill in load_builtin_skills():
+        # Include every field that determines what gets written to disk.
+        digest.update(skill.slug.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(skill.target.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(skill.body.encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()[:32]
+
+
 __all__ = [
     "BuiltinSkill",
     "integration_subagent_ids",
+    "library_hash",
     "load_builtin_skills",
     "skills_by_subagent",
 ]

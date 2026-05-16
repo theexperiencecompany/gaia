@@ -25,7 +25,7 @@ from app.agents.workspace.paths import (
 from app.decorators import with_doc, with_rate_limiting
 from app.services.artifact_events import publish_artifact_event, upsert_event
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
-from app.services.storage import ArtifactInfo
+from app.services.storage import FS_OPS, ArtifactInfo, add_fs_bytes, fs_timer
 from app.templates.docstrings.coding_tools_docs import WRITE_TOOL
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
@@ -63,8 +63,9 @@ async def write(
         return f"Error: content exceeds {MAX_CONTENT_BYTES} bytes"
 
     try:
-        async with acquire_sandbox(user_id) as sbx:
+        async with fs_timer(FS_OPS.TOOL_WRITE), acquire_sandbox(user_id) as sbx:
             await _atomic_write(sbx, abs_path, encoded)
+        add_fs_bytes(FS_OPS.TOOL_WRITE, len(encoded))
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"
     except Exception as e:

@@ -14,6 +14,7 @@ from app.agents.tools.coding._context import (
 )
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
+from app.services.storage import FS_OPS, fs_timer
 from app.templates.docstrings.coding_tools_docs import READ_TOOL
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
@@ -47,7 +48,7 @@ async def read(
     limit = max(1, min(limit, MAX_LIMIT))
 
     try:
-        async with acquire_sandbox(user_id) as sbx:
+        async with fs_timer(FS_OPS.TOOL_READ), acquire_sandbox(user_id) as sbx:
             return await _read_file(sbx, abs_path, offset, limit, session_id)
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"

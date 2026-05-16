@@ -21,6 +21,7 @@ from app.agents.core.agent import call_agent
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from shared.py.wide_events import ChatContext, log, wide_task
 from app.config.model_pricing import calculate_token_cost
+from app.config.settings import settings
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.services.artifact_events import artifact_channel
@@ -33,12 +34,14 @@ from app.models.chat_models import (
 from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
 from app.services.conversation_service import update_messages
+from app.services.integrations.user_integrations import (
+    get_user_connected_integrations,
+)
 from app.services.payments.payment_service import payment_service
 from app.services.storage import (
     JuiceFSUnavailable,
-    ensure_session_dirs,
-    materialize_user_integrations,
-    touch_session_last_active,
+    bootstrap_user_session,
+    flush_fs_metrics,
 )
 from app.utils.chat_utils import create_conversation, generate_and_update_description
 from langchain_core.callbacks import UsageMetadataCallbackHandler
@@ -331,6 +334,33 @@ async def _wait_for_http_subscriber(
         log.warning(f"Stream {stream_id} HTTP subscriber timeout, proceeding anyway")
 
 
+async def _prepare_user_workspace(user_id: str, conversation_id: str) -> None:
+    """Materialize the user's session dirs + INDEX/GUIDE + integrations tree.
+
+    Single fused host-side bootstrap — what used to be three sequential
+    ``asyncio.to_thread`` hops is now one, and the SKILL.md catalog is
+    hash-gated so a steady-state turn writes nothing. Soft-fails when the
+    JuiceFS mount is missing (dev) so the chat stream still serves; coding
+    tool errors will surface clearly if the user tries to use the sandbox.
+    """
+    try:
+        docs = await get_user_connected_integrations(user_id)
+    except Exception as e:  # noqa: BLE001 — Mongo flake must not block chat
+        log.warning(f"[chat] could not load connected integrations: {e}")
+        docs = []
+    connected_ids = {
+        str(d.get("integration_id"))
+        for d in docs
+        if d.get("status") == "connected" and d.get("integration_id")
+    }
+    try:
+        await bootstrap_user_session(user_id, conversation_id, connected_ids)
+    except JuiceFSUnavailable:
+        return  # dev mode — proceed; tool errors will surface clearly
+    except Exception as e:  # noqa: BLE001 — never block chat on FS infra
+        log.warning(f"[chat] session dir setup failed: {e}")
+
+
 async def _forward_artifact_events(
     user_id: str,
     conversation_id: str,
@@ -439,28 +469,7 @@ async def _run_chat_stream(
         )
 
         if user_id:
-            try:
-                await ensure_session_dirs(user_id, conversation_id)
-                await touch_session_last_active(user_id, conversation_id)
-                # Refresh the integrations FS tree so subagents always see
-                # the current set of connected integrations + their skill
-                # listings under /workspace/integrations/<id>/agent/.
-                from app.services.integrations.user_integrations import (
-                    get_user_connected_integrations,
-                )
-
-                docs = await get_user_connected_integrations(user_id)
-                connected_ids = {
-                    str(d.get("integration_id"))
-                    for d in docs
-                    if d.get("status") == "connected" and d.get("integration_id")
-                }
-                if connected_ids:
-                    await materialize_user_integrations(user_id, connected_ids)
-            except JuiceFSUnavailable:
-                pass  # dev mode — proceed; tool errors will surface clearly
-            except Exception as e:
-                log.warning(f"[chat] session dir setup failed: {e}")
+            await _prepare_user_workspace(user_id, conversation_id)
             artifact_task = asyncio.create_task(
                 _forward_artifact_events(user_id, conversation_id, stream_id, tool_data)
             )
@@ -620,11 +629,16 @@ async def _run_chat_stream(
         await stream_manager.cleanup(stream_id)
 
         tool_entries = tool_data.get("tool_data", [])
+        fs_metrics = flush_fs_metrics()
         log.set(
             response_length=len(complete_message),
             tool_calls_count=len(tool_entries),
             tool_types=list({e["tool_name"] for e in tool_entries if "tool_name" in e}),
             todo_progress_sources=list(todo_progress_accumulated.keys()),
+            # Per-op FS latency aggregate — one structured field so LogQL can
+            # split on op name, count, total_ms, max_ms without N+1 log lines.
+            # Empty dict elided so events without FS activity stay clean.
+            **({"fs": fs_metrics} if fs_metrics else {}),
         )
         log.debug(f"Background stream {stream_id} completed and saved")
 
@@ -695,7 +709,6 @@ def _absolutize_artifact_urls(message: str, conversation_id: str) -> str:
     """
     if not message or not conversation_id:
         return message
-    from app.config.settings import settings
 
     base = f"{settings.HOST}/api/v1/sessions/{conversation_id}/artifacts"
 

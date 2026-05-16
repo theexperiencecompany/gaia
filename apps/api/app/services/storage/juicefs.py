@@ -120,14 +120,21 @@ async def ensure_user_skills_dir(user_id: str) -> Path:
     return await asyncio.to_thread(_mkdir)
 
 
+def _content_size(content: bytes | str) -> int:
+    return len(content) if isinstance(content, bytes) else len(content.encode("utf-8"))
+
+
 async def write_skill_file(
     user_id: str, skill_name: str, relative_path: str, content: bytes | str
 ) -> Path:
     """Write a single skill file (SKILL.md or script) into the user's skill dir.
 
-    `relative_path` is interpreted relative to the skill's root and must not
-    escape it. Returns the absolute on-disk path of the written file.
+    ``relative_path`` is interpreted relative to the skill's root and must
+    not escape it. Returns the absolute on-disk path of the written file.
     """
+    # Lazy imports keep `storage.metrics` from creating an import cycle with
+    # this module — it sits "below" the wider storage package in the graph.
+    from app.services.storage.metrics import FS_OPS, add_fs_bytes, fs_timer
 
     def _write() -> Path:
         skills_root = _require_mount() / "skills" / user_id / skill_name
@@ -139,7 +146,10 @@ async def write_skill_file(
             target.write_bytes(content)
         return target
 
-    return await asyncio.to_thread(_write)
+    async with fs_timer(FS_OPS.WRITE_SKILL_FILE):
+        path = await asyncio.to_thread(_write)
+    add_fs_bytes(FS_OPS.WRITE_SKILL_FILE, _content_size(content))
+    return path
 
 
 async def write_session_file(
@@ -148,12 +158,12 @@ async def write_session_file(
     relative_path: str,
     content: bytes | str,
 ) -> tuple[Path, str]:
-    """Write a session-scoped file under `users/{user_id}/sessions/{conv}/`.
+    """Write a session-scoped file under ``users/{user_id}/sessions/{conv}/``.
 
-    Returns:
-        (host_path, sandbox_path) where `sandbox_path` is the `/workspace/...`
-        path the agent can pass to the `read` tool.
+    Returns ``(host_path, sandbox_path)`` where ``sandbox_path`` is the
+    ``/workspace/...`` path the agent can pass to the ``read`` tool.
     """
+    from app.services.storage.metrics import FS_OPS, add_fs_bytes, fs_timer
 
     def _write() -> tuple[Path, str]:
         base = _require_mount() / "users" / user_id / "sessions" / conversation_id
@@ -166,7 +176,10 @@ async def write_session_file(
         sandbox_view = f"/workspace/sessions/{conversation_id}/{relative_path}"
         return target, sandbox_view
 
-    return await asyncio.to_thread(_write)
+    async with fs_timer(FS_OPS.WRITE_SESSION_FILE):
+        result = await asyncio.to_thread(_write)
+    add_fs_bytes(FS_OPS.WRITE_SESSION_FILE, _content_size(content))
+    return result
 
 
 async def delete_user_workspace(user_id: str) -> None:

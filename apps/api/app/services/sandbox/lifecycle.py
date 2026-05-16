@@ -29,6 +29,13 @@ from app.db.mongodb.collections import e2b_sandboxes_collection
 from app.services.sandbox.artifact_watcher import start_watcher_for
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
+from app.services.storage import (
+    FS_OPS,
+    JuiceFSUnavailable,
+    ensure_user_skills_dir,
+    ensure_user_workspace,
+    fs_timer,
+)
 
 CANARY_PATH = "/workspace/.gaia/canary.txt"
 MOUNT_SCRIPT_PATH = "/etc/gaia/mount.sh"
@@ -54,6 +61,33 @@ def _import_e2b() -> Any:
     return AsyncSandbox
 
 
+def _mount_env(user_id: str, shard_id: int) -> dict[str, str]:
+    """Build the env block consumed by ``mount.sh``.
+
+    These values are credentials: the JuiceFS metadata URL plus R2 keys give
+    full filesystem access. They MUST NOT be set as sandbox-wide env vars —
+    any user shell in the sandbox would otherwise read them out of
+    ``/proc/self/environ`` and re-mount the JuiceFS volume *without* the
+    per-user subdir restriction, bypassing isolation entirely.
+
+    We pass them only as per-invocation envs to ``commands.run("mount.sh", ...)``
+    so they exist in the environ of the mount.sh process and the juicefs
+    daemon it spawns (root-owned ``/proc/<pid>/environ`` is mode 0o400), but
+    not in the environ of subsequent user-initiated bash sessions.
+
+    ``.strip()`` because Infisical-fetched secrets sometimes pick up trailing
+    newlines that AWS SigV4 then rejects with cryptic "InvalidSignature".
+    """
+    return {
+        "USER_ID": user_id,
+        "JFS_META_URL": shard_meta_url(shard_id),
+        "JFS_R2_KEY": (settings.R2_ACCESS_KEY or "").strip(),
+        "JFS_R2_SECRET": (settings.R2_SECRET_KEY or "").strip(),
+        "JFS_R2_BUCKET": (settings.R2_BUCKET or "").strip(),
+        "JFS_R2_ACCOUNT": (settings.R2_ACCOUNT_ID or "").strip(),
+    }
+
+
 async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
     """Provision a new E2B sandbox for the user, run mount script, return handle."""
     if not settings.E2B_API_KEY:
@@ -63,43 +97,41 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
 
     async_sandbox_cls = _import_e2b()
 
-    # `.strip()` because Infisical-fetched secrets sometimes pick up trailing
-    # newlines that AWS SigV4 then rejects with cryptic "InvalidSignature".
-    envs = {
-        "USER_ID": user_id,
-        "JFS_META_URL": shard_meta_url(shard_id),
-        "JFS_R2_KEY": (settings.R2_ACCESS_KEY or "").strip(),
-        "JFS_R2_SECRET": (settings.R2_SECRET_KEY or "").strip(),
-        "JFS_R2_BUCKET": (settings.R2_BUCKET or "").strip(),
-        "JFS_R2_ACCOUNT": (settings.R2_ACCOUNT_ID or "").strip(),
-    }
-    sbx = await async_sandbox_cls.create(
-        template=settings.E2B_TEMPLATE_ID,
-        timeout=3600,
-        metadata={"user_id": user_id, "shard_id": str(shard_id)},
-        envs=envs,
-    )
-    await _run_mount_script(sbx)
+    # Sandbox-wide env is deliberately empty of credentials — see _mount_env
+    # docstring. USER_ID is not a secret but we still scope it per-call so
+    # there's no implicit reliance on sandbox-wide identity for security.
+    async with fs_timer(FS_OPS.SBX_CREATE):
+        sbx = await async_sandbox_cls.create(
+            template=settings.E2B_TEMPLATE_ID,
+            timeout=3600,
+            metadata={"user_id": user_id, "shard_id": str(shard_id)},
+        )
+    await _run_mount_script(sbx, _mount_env(user_id, shard_id))
     return sbx
 
 
-async def _run_mount_script(sbx: Any) -> None:
+async def _run_mount_script(sbx: Any, mount_env: dict[str, str]) -> None:
     """Run the bundled mount script that mounts JuiceFS + bind-mounts /workspace.
 
     The mount itself is best-effort inside the script: if the JuiceFS
     metadata DB or R2 isn't reachable from the sandbox, the script falls
-    back to a plain `/workspace` directory and exits 0. We only raise here
+    back to a plain ``/workspace`` directory and exits 0. We only raise here
     if the script genuinely crashed (couldn't even fall back).
+
+    ``mount_env`` carries the JuiceFS / R2 credentials as **per-call** envs,
+    not sandbox-wide. After ``sudo --preserve-env=...`` propagates them into
+    mount.sh and on to the root-owned juicefs daemon, no user-initiated shell
+    sees them in its own environ.
     """
     # sudo strips env by default; preserve the ones the script reads so it
     # can actually find JFS_META_URL / USER_ID / R2 creds.
-    preserve = (
-        "USER_ID,JFS_META_URL,JFS_R2_KEY,JFS_R2_SECRET,JFS_R2_BUCKET,JFS_R2_ACCOUNT"
-    )
-    result = await sbx.commands.run(
-        f"sudo --preserve-env={preserve} {MOUNT_SCRIPT_PATH}",
-        timeout=60,
-    )
+    preserve = ",".join(sorted(mount_env.keys()))
+    async with fs_timer(FS_OPS.SBX_MOUNT_SCRIPT):
+        result = await sbx.commands.run(
+            f"sudo --preserve-env={preserve} {MOUNT_SCRIPT_PATH}",
+            timeout=60,
+            envs=mount_env,
+        )
     if result.exit_code != 0:
         raise SandboxAcquisitionError(
             f"Mount script crashed (exit {result.exit_code}): {result.stderr}"
@@ -132,14 +164,17 @@ async def _run_silent(sbx: Any, cmd: str, *, timeout: int = 10) -> tuple[int, st
         return 1, "", msg
 
 
-async def _ensure_mounted(sbx: Any) -> None:
+async def _ensure_mounted(sbx: Any, mount_env: dict[str, str]) -> None:
     """No-op if /workspace is mounted, else re-run mount script.
 
-    Handles stale FUSE mounts after pause/resume.
+    Handles stale FUSE mounts after pause/resume. ``mount_env`` is required
+    because the credentials are no longer sandbox-wide — every call site
+    that may re-run the script must supply them (see ``_mount_env``).
     """
-    exit_code, _, _ = await _run_silent(sbx, "mountpoint -q /workspace", timeout=5)
-    if exit_code != 0:
-        await _run_mount_script(sbx)
+    async with fs_timer(FS_OPS.SBX_ENSURE_MOUNTED):
+        exit_code, _, _ = await _run_silent(sbx, "mountpoint -q /workspace", timeout=5)
+        if exit_code != 0:
+            await _run_mount_script(sbx, mount_env)
 
 
 async def _write_canary(sbx: Any) -> str:
@@ -167,12 +202,13 @@ async def _verify_canary_or_die(entry: PooledSandbox) -> bool:
     Returns True if the canary is valid (proceed with the call). Returns False
     if the FS appears stale and the sandbox should be discarded + recreated.
     """
-    if entry.last_canary_ts is None:
-        # First use after acquire — write canary now.
-        entry.last_canary_ts = await _write_canary(entry.sandbox)
-        return True
-    actual = await _read_canary(entry.sandbox)
-    return actual == entry.last_canary_ts
+    async with fs_timer(FS_OPS.SBX_CANARY_VERIFY):
+        if entry.last_canary_ts is None:
+            # First use after acquire — write canary now.
+            entry.last_canary_ts = await _write_canary(entry.sandbox)
+            return True
+        actual = await _read_canary(entry.sandbox)
+        return actual == entry.last_canary_ts
 
 
 async def _try_connect_or_resume(sandbox_id: str) -> Optional[Any]:
@@ -182,29 +218,31 @@ async def _try_connect_or_resume(sandbox_id: str) -> Optional[Any]:
     stall the agent — we'd rather just create a fresh sandbox.
     """
     async_sandbox_cls = _import_e2b()
-    for method_name in ("connect", "resume"):
-        method = getattr(async_sandbox_cls, method_name, None)
-        if method is None:
-            continue
-        try:
-            return await asyncio.wait_for(method(sandbox_id), timeout=10)
-        except (asyncio.TimeoutError, Exception) as e:
-            log.info(
-                f"AsyncSandbox.{method_name}({sandbox_id}) failed: {e}",
-            )
+    async with fs_timer(FS_OPS.SBX_CONNECT_RESUME):
+        for method_name in ("connect", "resume"):
+            method = getattr(async_sandbox_cls, method_name, None)
+            if method is None:
+                continue
+            try:
+                return await asyncio.wait_for(method(sandbox_id), timeout=10)
+            except (asyncio.TimeoutError, Exception) as e:
+                log.info(
+                    f"AsyncSandbox.{method_name}({sandbox_id}) failed: {e}",
+                )
     return None
 
 
 async def _health_probe(sbx: Any) -> bool:
     """Return True if the sandbox responds within a short window."""
-    try:
-        exit_code, _, _ = await asyncio.wait_for(
-            _run_silent(sbx, "true", timeout=3),
-            timeout=5,
-        )
-        return exit_code == 0
-    except Exception:
-        return False
+    async with fs_timer(FS_OPS.SBX_HEALTH_PROBE):
+        try:
+            exit_code, _, _ = await asyncio.wait_for(
+                _run_silent(sbx, "true", timeout=3),
+                timeout=5,
+            )
+            return exit_code == 0
+        except Exception:
+            return False
 
 
 async def _ensure_watcher(user_id: str, entry: PooledSandbox) -> None:
@@ -229,9 +267,31 @@ async def _stop_watcher(entry: PooledSandbox) -> None:
         entry.watcher = None
 
 
+async def _seed_user_subtrees(user_id: str) -> None:
+    """Pre-create the per-user JuiceFS subtrees the sandbox's --subdir mounts
+    need on the HOST side, so the sandbox never has to do a full-FS admin
+    mount itself.
+
+    Soft-fails when the host JuiceFS mount is missing (dev mode) — the
+    sandbox-side mount.sh will then take its ephemeral-fallback branch.
+    """
+    try:
+        await ensure_user_workspace(user_id)
+        await ensure_user_skills_dir(user_id)
+    except JuiceFSUnavailable:
+        # Dev mode without juicefs — mount.sh will fall back to ephemeral
+        # /workspace, which is fine for tool calls but won't persist.
+        return
+
+
 async def _acquire_or_create(user_id: str) -> PooledSandbox:
     """Return a PooledSandbox for the user, creating/resuming as needed."""
     pool = get_sandbox_pool()
+    shard_id = shard_for(user_id)
+    # Built once per acquire so _ensure_mounted can re-run mount.sh on a
+    # stale FUSE without resorting to sandbox-wide credential env vars.
+    mount_env = _mount_env(user_id, shard_id)
+
     entry = pool.get(user_id)
     if entry is not None and entry.sandbox is not None:
         if entry.pause_task is not None and not entry.pause_task.done():
@@ -245,7 +305,7 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
             await _hard_evict(user_id, entry)
             entry = None  # type: ignore[assignment]
         else:
-            await _ensure_mounted(entry.sandbox)
+            await _ensure_mounted(entry.sandbox, mount_env)
             if not await _verify_canary_or_die(entry):
                 log.warning(f"Canary stale for user {user_id}; recreating sandbox")
                 await _hard_evict(user_id, entry)
@@ -254,7 +314,6 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
                 await _ensure_watcher(user_id, entry)
                 return entry
 
-    shard_id = shard_for(user_id)
     doc = await e2b_sandboxes_collection.find_one({"user_id": user_id})
 
     sbx: Optional[Any] = None
@@ -270,9 +329,14 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
             )
             sbx = None
         if sbx is not None:
-            await _ensure_mounted(sbx)
+            await _ensure_mounted(sbx, mount_env)
 
     if sbx is None:
+        # Pre-create the per-user subtrees host-side so the sandbox's
+        # ``--subdir`` mounts find them ready. Doing this on the host (which
+        # holds the full JuiceFS mount) avoids ever exposing the full
+        # cross-user namespace inside the sandbox, even briefly.
+        await _seed_user_subtrees(user_id)
         sbx = await _create_fresh_sandbox(user_id, shard_id)
         workspace_version += 1
 
@@ -390,7 +454,8 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[Any]:
     lock = await pool.get_lock(user_id)
     await lock.acquire()
     try:
-        entry = await _acquire_or_create(user_id)
+        async with fs_timer(FS_OPS.SBX_ACQUIRE):
+            entry = await _acquire_or_create(user_id)
         entry.refcount += 1
         try:
             yield entry.sandbox

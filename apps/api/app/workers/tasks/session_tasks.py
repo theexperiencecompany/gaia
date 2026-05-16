@@ -14,7 +14,11 @@ from typing import Any
 
 from shared.py.wide_events import log, wide_task
 from app.config.settings import settings
-from app.services.storage import delete_session_dir, list_stale_sessions
+from app.services.storage import (
+    delete_session_dir,
+    flush_fs_metrics,
+    list_stale_sessions,
+)
 
 
 async def prune_inactive_sessions(ctx: dict[str, Any]) -> str:
@@ -35,5 +39,10 @@ async def prune_inactive_sessions(ctx: dict[str, Any]) -> str:
                     conv=conv_id,
                     error=str(e),
                 )
-        log.set(stale_count=len(stale), pruned=pruned)
+        fs_metrics = flush_fs_metrics()
+        log.set(
+            stale_count=len(stale),
+            pruned=pruned,
+            **({"fs": fs_metrics} if fs_metrics else {}),
+        )
         return f"pruned {pruned}/{len(stale)} sessions (cutoff={cutoff_days}d)"

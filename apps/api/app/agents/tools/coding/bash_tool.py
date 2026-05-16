@@ -27,7 +27,7 @@ from app.agents.workspace.paths import (
 from app.decorators import with_doc, with_rate_limiting
 from app.services.artifact_events import publish_artifact_event, upsert_event
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
-from app.services.storage import ArtifactInfo
+from app.services.storage import FS_OPS, ArtifactInfo, fs_timer
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
 from langchain_core.runnables.config import RunnableConfig
@@ -83,7 +83,7 @@ async def bash(
     )
 
     try:
-        async with acquire_sandbox(user_id) as sbx:
+        async with fs_timer(FS_OPS.TOOL_BASH), acquire_sandbox(user_id) as sbx:
             if use_session_cwd:
                 # Session scratch is created host-side at chat start, but
                 # silent/background runs may reach here first — make it cheap
@@ -102,7 +102,8 @@ async def bash(
             # them in real time; the chat forwarder relays them as SSE during
             # this turn. De-duped downstream by (session_id, path).
             if session_id:
-                await _publish_artifacts(sbx, user_id, session_id)
+                async with fs_timer(FS_OPS.TOOL_BASH_PUBLISH):
+                    await _publish_artifacts(sbx, user_id, session_id)
             return result
     except SandboxAcquisitionError as e:
         safe_emit(
@@ -136,29 +137,48 @@ async def bash(
 
 
 async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None:
-    """Enumerate the session's `artifacts/` in the sandbox and push each
-    file as a real-time artifact event (covers cat/python/mv/curl, etc.)."""
+    """Enumerate the session's ``artifacts/`` in the sandbox and push each
+    file as a real-time artifact event (covers cat/python/mv/curl, etc.).
+
+    Implementation note: this used to be N+1 sandbox round-trips (one ``find``
+    plus one ``base64`` per artifact). For a turn that writes 5 artifacts that
+    was 6 envd round-trips. We now collapse to a *single* ``find`` invocation
+    whose ``-exec`` emits the path, size, and base64 body for every artifact in
+    one stream — parsed back here in Python. One round-trip total, regardless
+    of how many artifacts the turn produced.
+    """
     artifacts_root = session_artifacts(session_id)
+    # %P  -- relative path under the find root
+    # %s  -- file size in bytes
+    # Per-file the script prints "<rel>\t<size>\t<base64-body-or-empty>\n".
+    # Body is only emitted when small + inlineable so the protocol stays cheap
+    # for large binaries — content-type sniff happens host-side after.
+    max_inline = INLINE_ARTIFACT_MAX_BYTES
+    enumerate_cmd = (
+        f"find {sh_quote(artifacts_root)} -type f "
+        f"! -name '*.gaia-tmp' "
+        f"-printf '%P\\t%s\\t' "
+        f"-exec sh -c '"
+        f'  s=$(stat -c%s "$0"); '
+        f'  if [ "$s" -le {max_inline} ]; then base64 -w0 "$0" 2>/dev/null; fi; '
+        f'  printf "\\n"'
+        f"' {{}} \\; 2>/dev/null"
+    )
     try:
-        res = await sbx.commands.run(  # type: ignore[attr-defined]
-            f"find {sh_quote(artifacts_root)} -type f -printf '%P\\t%s\\n' 2>/dev/null",
-            timeout=10,
-        )
+        res = await sbx.commands.run(enumerate_cmd, timeout=15)  # type: ignore[attr-defined]
     except Exception:
         return
+
     for line in (getattr(res, "stdout", "") or "").splitlines():
-        rel, _, size = line.partition("\t")
-        rel = rel.strip()
+        rel, size_str, body_b64 = _parse_enum_line(line)
         if not rel:
             continue
         try:
-            size_bytes = int(size.strip() or 0)
+            size_bytes = int(size_str) if size_str else 0
         except ValueError:
             size_bytes = 0
         content_type = detect_content_type(rel)
-        inline_body = await _read_inline_body(
-            sbx, f"{artifacts_root}/{rel}", size_bytes, content_type
-        )
+        inline_body = _decode_inline(body_b64, size_bytes, content_type)
         with contextlib.suppress(Exception):
             await publish_artifact_event(
                 user_id,
@@ -175,33 +195,29 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
             )
 
 
-async def _read_inline_body(
-    sbx: object, abs_path: str, size_bytes: int, content_type: str | None
-) -> str | None:
-    """Return the file's UTF-8 contents iff small enough and textual.
+def _parse_enum_line(line: str) -> tuple[str, str, str]:
+    """Split a ``find -printf -exec`` row into (rel, size, body_b64)."""
+    parts = line.split("\t", 2)
+    if len(parts) < 3:
+        # Malformed (interrupted stat or missing exec output) — skip.
+        return "", "", ""
+    rel, size, body = parts
+    return rel.strip(), size.strip(), body.strip()
 
-    Sandbox files written via bash (cat/python/mv/curl) aren't in our memory,
-    so we cat them back to inline the body in the artifact event — keeps the
-    side-panel preview instant and lets the persisted conversation render on
-    reload without a fetch. Falls back to None on any failure.
-    """
+
+def _decode_inline(
+    body_b64: str, size_bytes: int, content_type: str | None
+) -> str | None:
+    """Decode the inline body if the file is small + textual, else None."""
+    if not body_b64:
+        return None
     if size_bytes <= 0 or size_bytes > INLINE_ARTIFACT_MAX_BYTES:
         return None
     if not is_inlineable_content_type(content_type):
         return None
     try:
-        res = await sbx.commands.run(  # type: ignore[attr-defined]
-            f"base64 -w0 -- {sh_quote(abs_path)} 2>/dev/null",
-            timeout=10,
-        )
-    except Exception:
-        return None
-    encoded = (getattr(res, "stdout", "") or "").strip()
-    if not encoded:
-        return None
-    try:
-        return base64.b64decode(encoded).decode("utf-8", errors="replace")
-    except Exception:
+        return base64.b64decode(body_b64).decode("utf-8", errors="replace")
+    except (ValueError, UnicodeDecodeError):
         return None
 
 

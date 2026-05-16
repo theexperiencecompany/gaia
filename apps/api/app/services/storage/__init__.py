@@ -14,8 +14,16 @@ from app.services.storage.juicefs import (
     write_session_file,
     write_skill_file,
 )
+from app.services.storage.metrics import (
+    FS_OPS,
+    add_fs_bytes,
+    flush_fs_metrics,
+    fs_timer,
+    record_fs_op,
+)
 from app.services.storage.sessions import (
     ArtifactInfo,
+    bootstrap_user_session,
     chmod_path,
     delete_session_dir,
     ensure_session_dirs,
@@ -32,7 +40,10 @@ from app.services.storage.sessions import (
 
 __all__ = [
     "ArtifactInfo",
+    "FS_OPS",
     "JuiceFSUnavailable",
+    "add_fs_bytes",
+    "bootstrap_user_session",
     "chmod_path",
     "delete_session_dir",
     "delete_user_skill",
@@ -40,13 +51,16 @@ __all__ = [
     "ensure_session_dirs",
     "ensure_user_skills_dir",
     "ensure_user_workspace",
+    "flush_fs_metrics",
+    "fs_timer",
     "init_juicefs_mount",
+    "list_artifacts",
     "list_session_ids",
     "list_stale_sessions",
     "list_user_uploaded",
-    "list_artifacts",
     "materialize_user_integrations",
     "pin_session_artifact",
+    "record_fs_op",
     "resolve_session_path",
     "sandbox_session_path",
     "session_root",

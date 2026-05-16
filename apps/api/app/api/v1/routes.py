@@ -10,7 +10,6 @@ from app.api.v1.endpoints import (
     calendar,
     chat,
     conversations,
-    dev_sandbox,
     file,
     goals,
     image,
@@ -87,5 +86,3 @@ router.include_router(
 router.include_router(
     platform_links.router, prefix="/platform-links", tags=["Platform Links"]
 )
-# Dev-only smoke tests; handlers 404 themselves when ENV=production.
-router.include_router(dev_sandbox.router)

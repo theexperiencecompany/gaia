@@ -45,9 +45,11 @@ from app.services.artifact_events import (
     upsert_event,
 )
 from app.services.storage import (
+    FS_OPS,
     JuiceFSUnavailable,
-    list_session_ids,
+    fs_timer,
     list_artifacts,
+    list_session_ids,
     stat_artifact,
 )
 
@@ -239,10 +241,14 @@ class ArtifactWatcher:
             log.debug(f"[artifact-watcher] rescan failed: {e}")
 
     async def _rescan_all(self) -> None:
-        try:
-            conv_ids = await list_session_ids(self.user_id)
-        except JuiceFSUnavailable:
-            return
+        async with fs_timer(FS_OPS.WATCHER_RESCAN):
+            try:
+                conv_ids = await list_session_ids(self.user_id)
+            except JuiceFSUnavailable:
+                return
+            await self._rescan_each(conv_ids)
+
+    async def _rescan_each(self, conv_ids: list[str]) -> None:
         for conv in conv_ids:
             try:
                 infos = await list_artifacts(self.user_id, conv)

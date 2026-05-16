@@ -42,8 +42,7 @@ from app.agents.workspace.skill_loader import (
 )
 from app.services.storage import (
     JuiceFSUnavailable,
-    ensure_session_dirs,
-    materialize_user_integrations,
+    bootstrap_user_session,
 )
 
 
@@ -67,15 +66,15 @@ async def _materialize_one(user_id: str, connected_override: set[str] | None) ->
         if connected_override is not None
         else await _connected_for(user_id)
     )
-    # ensure_session_dirs requires a conversation id to lay down session-level
-    # docs; use a sentinel so the user-root INDEX.md + sessions/GUIDE.md still
-    # get written even if the user has no live conversation in flight.
+    # The unified bootstrap lays down INDEX/GUIDE + the full SKILL.md catalog
+    # in one pass. A sentinel conv id keeps the call shape consistent for users
+    # with no live conversation in flight; the resulting session dir is
+    # disposable and the prune worker reaps it on the normal cadence.
     try:
-        await ensure_session_dirs(user_id, "_bootstrap")
+        await bootstrap_user_session(user_id, "_bootstrap", connected)
     except JuiceFSUnavailable:
         print(f"[skip] {user_id}: JuiceFS mount unavailable", file=sys.stderr)
         return
-    await materialize_user_integrations(user_id, connected)
     grouped = skills_by_subagent()
     per_iid = {iid: len(grouped.get(iid, [])) for iid in connected if iid in grouped}
     exec_count = len(grouped.get("executor", []))

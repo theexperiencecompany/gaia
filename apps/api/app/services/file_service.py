@@ -21,8 +21,10 @@ from app.models.files_models import DocumentSummaryModel
 from app.models.message_models import FileData
 from app.services.artifact_events import publish_artifact_event, upload_event
 from app.services.storage import (
+    FS_OPS,
     JuiceFSUnavailable,
     chmod_path,
+    fs_timer,
     session_root,
     write_session_file,
 )
@@ -181,23 +183,24 @@ async def _persist_upload_to_sandbox(
     failure here must never fail the upload.
     """
     try:
-        # Clear a prior read-only copy so re-uploads (last-writer-wins) work.
-        prior = (
-            session_root(user_id, conversation_id)
-            / USER_UPLOADED_DIRNAME
-            / safe_filename
-        )
-        with contextlib.suppress(Exception):
-            if prior.exists():
-                await chmod_path(prior, 0o644)
+        async with fs_timer(FS_OPS.UPLOAD_PERSIST_SANDBOX):
+            # Clear a prior read-only copy so re-uploads (last-writer-wins) work.
+            prior = (
+                session_root(user_id, conversation_id)
+                / USER_UPLOADED_DIRNAME
+                / safe_filename
+            )
+            with contextlib.suppress(Exception):
+                if prior.exists():
+                    await chmod_path(prior, 0o644)
 
-        host_path, sbx_path = await write_session_file(
-            user_id=user_id,
-            conversation_id=conversation_id,
-            relative_path=f"{USER_UPLOADED_DIRNAME}/{safe_filename}",
-            content=content,
-        )
-        await chmod_path(host_path, 0o444)
+            host_path, sbx_path = await write_session_file(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                relative_path=f"{USER_UPLOADED_DIRNAME}/{safe_filename}",
+                content=content,
+            )
+            await chmod_path(host_path, 0o444)
     except JuiceFSUnavailable as e:
         log.warning("[upload] juicefs unavailable; sandbox_path not set", error=str(e))
         return None

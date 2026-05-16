@@ -40,6 +40,7 @@ from pathlib import Path
 from shared.py.wide_events import log
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
+from app.services.storage.metrics import FS_OPS, record_fs_op  # noqa: F401
 
 _ENCRYPTION_KEY_FILE = Path("/etc/gaia/jfs-master.pem")
 _CACHE_DIR = Path("/var/cache/juicefs")
@@ -172,7 +173,13 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
     Returns "ok" | "transient" | "fatal". Idempotent: an already-formatted
     volume (status==0) or a concurrent-format race is "ok".
     """
+    status_started = time.monotonic()
     status = _run(["juicefs", "status", meta_url], timeout=20)
+    record_fs_op(
+        FS_OPS.JUICEFS_STATUS,
+        duration_ms=(time.monotonic() - status_started) * 1000.0,
+        outcome="ok" if status.returncode == 0 else "miss",
+    )
     if status.returncode == 0:
         log.info("[juicefs] filesystem already formatted")
         return "ok"
@@ -201,7 +208,13 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
     if encrypt_key is not None:
         cmd.extend(["--encrypt-rsa-key", str(encrypt_key)])
     cmd.extend([meta_url, "gaia-0"])
+    fmt_started = time.monotonic()
     fmt = _run(cmd, timeout=120)
+    record_fs_op(
+        FS_OPS.JUICEFS_FORMAT,
+        duration_ms=(time.monotonic() - fmt_started) * 1000.0,
+        outcome="ok" if fmt.returncode == 0 else "fail",
+    )
     if fmt.returncode == 0:
         return "ok"
     err = fmt.stderr.strip()
@@ -258,16 +271,20 @@ def _mount(meta_url: str, mount_path: Path) -> str:
     started = time.monotonic()
     while time.monotonic() - started < timeout:
         if _is_mounted(mount_path):
+            elapsed_ms = (time.monotonic() - started) * 1000.0
+            record_fs_op(FS_OPS.JUICEFS_MOUNT, duration_ms=elapsed_ms, outcome="ok")
             log.info(
                 "[juicefs] mounted",
                 mount=str(mount_path),
-                elapsed_s=round(time.monotonic() - started, 1),
+                elapsed_s=round(elapsed_ms / 1000.0, 1),
             )
             return "ok"
         time.sleep(1)
 
+    elapsed_ms = (time.monotonic() - started) * 1000.0
     detail = (res.stderr or "")[-4000:]
     kind = _classify(detail)  # transient unless an explicit permanent error
+    record_fs_op(FS_OPS.JUICEFS_MOUNT, duration_ms=elapsed_ms, outcome=kind)
     log.warning(
         f"[juicefs] mount not ready within {timeout}s ({kind})",
         meta=_mask_meta(meta_url),
