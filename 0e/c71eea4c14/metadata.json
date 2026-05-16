@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "0ec71eea4c14",
+  "strategy": "manual-commit",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "apps/api/app/agents/prompts/onboarding_prompts.py",
+    "apps/api/app/services/onboarding/intelligence_service.py",
+    "apps/web/src/features/chat/components/bubbles/bot/ChatBubbleBot.tsx",
+    "apps/web/src/features/onboarding/components/MessagesRegion.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingShell.tsx",
+    "apps/web/src/features/onboarding/components/stages/Clarify.tsx",
+    "apps/web/src/features/onboarding/constants/clarify.ts",
+    "apps/web/src/features/onboarding/effects/useOnboardingSubmission.ts",
+    "apps/web/src/features/onboarding/state/messages.ts",
+    "apps/web/src/features/onboarding/state/reducer.ts",
+    "apps/web/src/features/onboarding/state/types.ts",
+    "apps/web/src/features/onboarding/utils/clarifyHelpers.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0e/c71eea4c14/0/metadata.json",
+      "transcript": "/0e/c71eea4c14/0/full.jsonl",
+      "content_hash": "/0e/c71eea4c14/0/content_hash.txt",
+      "prompt": "/0e/c71eea4c14/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 315,
+    "cache_creation_tokens": 855278,
+    "cache_read_tokens": 63423967,
+    "output_tokens": 120835,
+    "api_call_count": 235
+  }
+}
