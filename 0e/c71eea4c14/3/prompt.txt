@@ -1,0 +1,40 @@
+so post onboarding, we seed this on backend Hey, welcome! I’m your GAIA (general-purpose ai assistant).
+
+I can draft investor updates, prep your meeting notes, and pull together what needs your attention this week.
+
+Just connect Calendar and Notion and I’ll get to it!
+
+ but this text is only available after the user reloads. before the user reloads it shows this Aryan, this was actually a fun way to get a sense of your startup grind.
+
+It is clear you are in the thick of building, so I focused on clearing the path for your sales outreach.
+
+I lined up your competitor research and sales templates, plus set up a few automations to handle your lead tracking and daily priorities.
+
+Oh, and I made you something.
+ which was the text that we show before the holo card in the onboarding process. why is it shown in the process post onboarding? what have we fucked up
+
+---
+
+i dont understand the root cause. why does this even happen? previously, the todo chat was shown in the post onboarding chat, and now the holo card main text is shown in the post onboarding chat, isntead of just the normal post onboarding text being properly shown
+
+---
+
+but why is that even stored in the conversation? i don't understand
+
+---
+
+does it affect how that holo card text is rendered in the onboarding chat?? i guess remove the workaround. and now tell me what is shown in the post onboarding chat
+
+---
+
+Hey, welcome! I’m your GAIA (general-purpose ai assistant).
+
+I can draft investor updates, prep your meeting notes, and pull together what needs your attention this week.
+
+Just connect Calendar and Notion and I’ll get to it!
+
+ but i want this in the post onboarding chat tho. please explore deeply. and please explain things to me in short
+
+---
+
+dude explore extremely deeply figure out what should be there and what to remove
