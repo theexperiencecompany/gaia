@@ -68,6 +68,27 @@ if [[ "$(id -u)" -ne 0 ]]; then
     exit 2
 fi
 
+# E2B's post-build configuration step re-adds `user` to sudo with NOPASSWD,
+# undoing the strip in build_e2b_template.py. We re-strip on every sandbox
+# acquire (mount.sh runs as root before the agent's first tool call), so the
+# unprivileged window between sandbox boot and our first invocation is the
+# only time `user` ever holds sudo. Idempotent — silently no-ops if `user`
+# is already out of every privilege group.
+if id -u "$SANDBOX_USER" >/dev/null 2>&1; then
+    gpasswd -d "$SANDBOX_USER" sudo  >/dev/null 2>&1 || true
+    gpasswd -d "$SANDBOX_USER" wheel >/dev/null 2>&1 || true
+fi
+rm -f /etc/sudoers.d/*-user /etc/sudoers.d/90-cloud-init-users \
+      /etc/sudoers.d/nopasswd-user /etc/sudoers.d/user 2>/dev/null || true
+if [[ -f /etc/sudoers ]]; then
+    # E2B's per-boot config script appends `user ALL=(ALL:ALL) NOPASSWD: ALL`
+    # directly into /etc/sudoers (not a drop-in). Strip every NOPASSWD line
+    # referencing the sandbox user or the sudo group on each acquire — the
+    # appended rule survives sudoers.d purges otherwise.
+    sed -i '/^%sudo[[:space:]].*NOPASSWD/d' /etc/sudoers
+    sed -i "/^${SANDBOX_USER}[[:space:]].*NOPASSWD/d" /etc/sudoers
+fi
+
 ensure_workspace_writable() {
     mkdir -p "$WORKSPACE" "$WORKSPACE/.gaia/runs"
     chown -R "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE" 2>/dev/null || true

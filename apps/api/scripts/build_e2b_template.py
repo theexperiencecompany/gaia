@@ -126,6 +126,7 @@ def build(name: str) -> str:
             "       /etc/sudoers.d/nopasswd-user /etc/sudoers.d/user; "
             "if [ -f /etc/sudoers ]; then "
             "  sed -i '/^%sudo[[:space:]].*NOPASSWD/d' /etc/sudoers; "
+            "  sed -i '/^user[[:space:]].*NOPASSWD/d' /etc/sudoers; "
             "fi",
             user="root",
         )
@@ -144,18 +145,29 @@ def build(name: str) -> str:
         # commands.run(user="root")) can execute it.
         .copy("mount_juicefs.sh", "/tmp/mount.sh", mode=0o755)
         .copy("jfs_launcher.py", "/tmp/jfs_launcher.py", mode=0o755)
+        .copy(
+            "verify_sandbox_hardening.sh",
+            "/tmp/verify_sandbox_hardening.sh",
+            mode=0o755,
+        )
         .run_cmd(
             "mkdir -p /etc/gaia && "
             "mv /tmp/mount.sh /etc/gaia/mount.sh && "
             "mv /tmp/jfs_launcher.py /etc/gaia/jfs_launcher.py && "
-            "chown root:root /etc/gaia /etc/gaia/mount.sh /etc/gaia/jfs_launcher.py && "
+            "mv /tmp/verify_sandbox_hardening.sh "
+            "   /etc/gaia/verify_sandbox_hardening.sh && "
+            "chown root:root /etc/gaia /etc/gaia/mount.sh "
+            "   /etc/gaia/jfs_launcher.py /etc/gaia/verify_sandbox_hardening.sh && "
             "chmod 0755 /etc/gaia && "
             "chmod 0750 /etc/gaia/mount.sh && "
             # jfs_launcher.py is 0755 so root-owned juicefs invocations from
             # mount.sh can exec it. It's not a setuid binary; running it as
             # the unprivileged user just runs juicefs as that user (and the
             # daemon would fail to mount without root anyway).
-            "chmod 0755 /etc/gaia/jfs_launcher.py",
+            "chmod 0755 /etc/gaia/jfs_launcher.py && "
+            # verify script is 0755 so anyone can run the read-only checks
+            # (it only does `id`, `stat`, `cat /proc/<pid>/cmdline`, etc.).
+            "chmod 0755 /etc/gaia/verify_sandbox_hardening.sh",
             user="root",
         )
         # /proc with hidepid=invisible hides PIDs of processes the calling
