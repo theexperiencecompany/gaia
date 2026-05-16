@@ -398,14 +398,11 @@ async def fetch_files(context: Dict[str, Any]) -> Dict[str, Any]:
         return context
 
     try:
-        # Track files to include in the response
         included_files = []
 
-        # Get explicit file IDs and file data from context
         explicit_file_ids = context.get("fileIds", [])
         file_data_list: List[FileData] = context.get("fileData", [])
 
-        # Create a mapping of file IDs to their complete metadata from fileData
         file_data_map = {
             file_data.fileId: file_data.model_dump() for file_data in file_data_list
         }
@@ -619,7 +616,6 @@ async def delete_file_service(file_id: str, user_id: Optional[str]) -> dict:
             status_code=404, detail="File not found"
         )  # Get the conversation_id for cache invalidation
 
-    # Get the public_id for cloudinary deletion
     public_id = file_data.get("public_id")
     if not public_id:
         log.warning(f"File {file_id} has no public_id for Cloudinary deletion")
@@ -696,7 +692,6 @@ async def update_file_service(
         service="file_service", operation="update", file_id=file_id, user_id=user_id
     )
 
-    # Get the current file data
     file_data = await files_collection.find_one(
         {"file_id": file_id, "user_id": user_id}
     )
@@ -747,7 +742,6 @@ async def update_file_service(
     if result.modified_count == 0:
         log.warning(f"No changes made to file {file_id}")
 
-    # Get the updated file data
     updated_file = await files_collection.find_one(
         {"file_id": file_id, "user_id": user_id}
     )
