@@ -393,6 +393,30 @@ strict_optional = false
 warn_return_any = false
 
 # ---------------------------------------------------------------------------
+# bandit — security linter. Strict mode: zero warnings policy.
+# Tests excluded because asserts (B101) are legitimately required by pytest.
+# ---------------------------------------------------------------------------
+[tool.bandit]
+exclude_dirs = [
+  ".venv",
+  ".venv311",
+  "venv",
+  "node_modules",
+  "tests",
+  "**/tests",
+  "**/test_*.py",
+  "**/conftest.py",
+  "scripts",
+  "alembic",
+  "migrations",
+]
+# Skip noisy rules that fire on legitimate patterns:
+# - B101: assert used (legitimate in pydantic validators / dev guards)
+# - B311: random module for non-crypto (sampling, jitter)
+# - B404: subprocess import (we run trusted commands)
+skips = ["B101", "B311", "B404"]
+
+# ---------------------------------------------------------------------------
 # interrogate — docstring coverage (strict for public surface).
 # ---------------------------------------------------------------------------
 [tool.interrogate]

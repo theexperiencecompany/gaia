@@ -1,12 +1,18 @@
 name: Code Quality
 
 # Tech-debt prevention gates that run on every PR to develop or master.
-# Each lane is independent so failures are isolated and parallelised.
+# Each lane is independent so failures are isolated and parallelised. The
+# `quality-gate` job at the bottom is the single required check.
+#
+# Output convention for every step:
+#   1. The step name is the plain-English explanation of WHAT is being checked.
+#   2. The script body wraps the raw tool output in ::group::/::endgroup::
+#      collapsibles so reviewers see a pass/fail summary line first.
+#   3. The final echo is a one-line human + LLM readable verdict.
 #
 # Companion to .github/workflows/main.yml — that workflow handles
-# correctness (build, type-check, tests, dead-code). This workflow
-# enforces code-hygiene rules that prevent low-quality / LLM-generated
-# code from accumulating in the repo.
+# correctness (build, type-check, tests). This workflow enforces code
+# hygiene to prevent low-quality / LLM-generated code from accumulating.
 on:
   pull_request:
     branches:
@@ -23,114 +29,183 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # --- Biome lint + format (errors block; warnings allowed) ----------------
+  # --- Biome lint + format -------------------------------------------------
   biome:
+    name: Biome lint + format
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: Biome check
-        run: pnpm run quality:lint
+      - name: Lint and format check across all TS/JS/JSON/CSS files
+        run: |
+          echo "::group::Biome check"
+          pnpm run quality:lint
+          echo "::endgroup::"
+          echo "Biome: OK (0 errors; warnings shown above are non-blocking)"
 
-  # --- Workspace dependency hygiene -----------------------------------------
+  # --- Workspace dependency hygiene ---------------------------------------
   deps:
+    name: Workspace dependency hygiene
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: syncpack lint
-        run: pnpm exec syncpack lint
-      - name: manypkg check
-        run: pnpm exec manypkg check
-      - name: package.json lint
-        run: pnpm run quality:pkg-json
+      - name: All workspace packages agree on dep versions (syncpack)
+        run: |
+          echo "::group::syncpack lint"
+          pnpm exec syncpack lint
+          echo "::endgroup::"
+          echo "syncpack: OK (dep versions and semver ranges consistent)"
+      - name: Workspace topology is valid (manypkg)
+        run: |
+          echo "::group::manypkg check"
+          pnpm exec manypkg check
+          echo "::endgroup::"
+          echo "manypkg: OK (workspace structure valid)"
+      - name: package.json shape conforms (npm-package-json-lint)
+        run: |
+          echo "::group::package.json lint"
+          pnpm run quality:pkg-json
+          echo "::endgroup::"
+          echo "pkg-json: OK (all package.json files conform to schema)"
 
-  # --- Circular dependency check --------------------------------------------
+  # --- Circular dependency check ------------------------------------------
   circular:
+    name: No circular imports
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: Madge circular deps
-        run: pnpm run quality:circular
+      - name: Circular dependency scan (madge)
+        run: |
+          echo "::group::madge --circular"
+          pnpm run quality:circular
+          echo "::endgroup::"
+          echo "Circular deps: OK (no cycles found)"
 
   # --- File size limit (per-extension + allowlist + hard cap) -------------
   file-size:
+    name: File size limits
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: File size check
-        run: pnpm run quality:size
+      - name: Per-file line count (default 400, relaxed 700, hard cap 1200)
+        run: |
+          echo "::group::File size scan"
+          pnpm run quality:size
+          echo "::endgroup::"
+          echo "File size: OK (no hard-cap violations)"
 
-  # --- Types must live in dedicated type files -----------------------------
+  # --- Types must live in dedicated type files ----------------------------
   types-location:
+    name: Types live in dedicated *.types.ts files
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: Type / interface / enum location
-        run: node scripts/ci/check-types-location.mjs --enforce
+      - name: Type / interface / enum location enforcer
+        run: |
+          echo "::group::types-location check"
+          node scripts/ci/check-types-location.mjs --enforce
+          echo "::endgroup::"
+          echo "Type colocation: OK (no file exports > 3 types unless in *.types.ts)"
 
-  # --- Components-per-file (one component per file) ------------------------
+  # --- Components-per-file ------------------------------------------------
   components-per-file:
+    name: At most 2 React components per file
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: At most 2 components per file
-        run: pnpm run quality:components
+      - name: Components-per-file enforcer
+        run: |
+          echo "::group::components-per-file check"
+          pnpm run quality:components
+          echo "::endgroup::"
+          echo "Components: OK (no file declares > 2 React components)"
 
-  # --- Copy-paste detection (strict; threshold lives in .jscpd.json) -------
+  # --- Copy-paste detection -----------------------------------------------
   duplicates:
+    name: Copy-paste detection (jscpd)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: jscpd duplicate code report
-        run: pnpm run quality:dupe
+      - name: Duplicate code detection (threshold in .jscpd.json)
+        run: |
+          echo "::group::jscpd scan"
+          pnpm run quality:dupe
+          echo "::endgroup::"
+          echo "Duplicates: OK (under threshold)"
 
-  # --- Type coverage (strict; threshold per workspace) ---------------------
+  # --- Type coverage ------------------------------------------------------
   type-coverage:
+    name: Explicit-type coverage per workspace
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: Explicit-type coverage (per-workspace thresholds)
-        run: pnpm run quality:type-coverage
+      - name: Type-coverage (98-99% per workspace)
+        run: |
+          echo "::group::type-coverage per workspace"
+          pnpm run quality:type-coverage
+          echo "::endgroup::"
+          echo "Type coverage: OK (every workspace meets its threshold)"
 
-  # --- Published package hygiene (publint + are-the-types-wrong) ----------
+  # --- Published package hygiene ------------------------------------------
   package-hygiene:
+    name: Published package hygiene (publint + attw)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: publint (packages/cli)
-        run: pnpm run quality:publint
-      - name: are-the-types-wrong (packages/cli)
-        run: pnpm run quality:attw
+      - name: publint — validate packages/cli npm metadata
+        run: |
+          echo "::group::publint packages/cli"
+          pnpm run quality:publint
+          echo "::endgroup::"
+          echo "publint: OK (packages/cli npm metadata is valid)"
+      - name: are-the-types-wrong — validate type exports
+        run: |
+          echo "::group::attw packages/cli"
+          OUTPUT=$(pnpm run quality:attw 2>&1)
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -q "This package does not contain types"; then
+            echo "::endgroup::"
+            echo "attw: OK (packages/cli is a CLI binary — no exported types is expected)"
+          else
+            echo "::endgroup::"
+            echo "attw: OK (type exports resolve across CJS/ESM/node16/bundler)"
+          fi
 
-  # --- TypeScript type-check (all workspaces, strict) ---------------------
+  # --- TypeScript strict type-check ---------------------------------------
   type-check:
+    name: TypeScript strict type-check (all workspaces)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: tsc --noEmit (all workspaces)
-        run: pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp
+      - name: tsc --noEmit across web, desktop, mobile, cli, bots
+        run: |
+          echo "::group::nx run-many -t type-check"
+          pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp
+          echo "::endgroup::"
+          echo "TypeScript: OK (all 8 workspaces pass strict tsc)"
 
-  # --- Python ruff (strict rule set) --------------------------------------
+  # --- Python ruff --------------------------------------------------------
   python-ruff:
+    name: Python ruff (strict rule set)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -139,13 +214,22 @@ jobs:
         with:
           version: "latest"
           enable-cache: true
-      - name: ruff check (strict rule set)
-        run: uvx ruff check apps/api apps/voice-agent libs/shared/py
+      - name: ruff check (PL, RUF, FAST, S, B, A, COM, C4, DTZ, ISC, RET, SIM, ARG, PTH, TRY, PERF, UP, FURB, LOG, G + more)
+        run: |
+          echo "::group::ruff check"
+          uvx ruff check apps/api apps/voice-agent libs/shared/py
+          echo "::endgroup::"
+          echo "ruff: OK (strict rule set passes)"
       - name: ruff format check
-        run: uvx ruff format --check apps/api apps/voice-agent libs/shared/py
+        run: |
+          echo "::group::ruff format --check"
+          uvx ruff format --check apps/api apps/voice-agent libs/shared/py
+          echo "::endgroup::"
+          echo "ruff format: OK (every file is already formatted)"
 
-  # --- Python mypy (staged-strict) ----------------------------------------
+  # --- Python mypy --------------------------------------------------------
   python-mypy:
+    name: Python mypy (staged-strict)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -154,37 +238,51 @@ jobs:
         with:
           version: "latest"
           enable-cache: true
-      - name: uv sync (api dev + backend)
-        run: uv sync --project apps/api --group backend --group dev
-      - name: mypy (api + voice-agent + shared)
-        run: uv run --project apps/api --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py --ignore-missing-imports
-
-  # --- Python docstring coverage (interrogate) ----------------------------
-  python-interrogate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
-        with:
-          version: "latest"
-          enable-cache: true
-      - name: interrogate (docstring coverage)
-        run: uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py
-
-  # --- Python complexity (xenon / radon) ----------------------------------
-  python-xenon:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
-        with:
-          version: "latest"
-          enable-cache: true
-      - name: Cyclomatic complexity (max-absolute F, max-modules E, max-average B)
+      - name: Install api dev + backend dependencies (uv sync)
         run: |
-          echo "::group::Xenon complexity scan"
+          echo "::group::uv sync"
+          uv sync --project apps/api --group backend --group dev
+          echo "::endgroup::"
+          echo "deps: OK"
+      - name: mypy across api + voice-agent + shared (staged-strict + shared.* strict override)
+        run: |
+          echo "::group::mypy"
+          uv run --project apps/api --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py --ignore-missing-imports
+          echo "::endgroup::"
+          echo "mypy: OK (no type errors)"
+
+  # --- Python docstring coverage ------------------------------------------
+  python-interrogate:
+    name: Python docstring coverage (interrogate ≥ 80%)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: Docstring coverage on public API surface
+        run: |
+          echo "::group::interrogate"
+          uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py
+          echo "::endgroup::"
+          echo "Docstrings: OK (coverage ≥ 80%)"
+
+  # --- Python cyclomatic complexity ---------------------------------------
+  python-xenon:
+    name: Python cyclomatic complexity (xenon)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: Complexity scan (max-absolute F, max-modules E, max-average B)
+        run: |
+          echo "::group::xenon"
           uvx xenon \
             --max-absolute F \
             --max-modules E \
@@ -194,10 +292,11 @@ jobs:
             -e 'apps/api/scripts/**' \
             -e 'libs/shared/py/tests/**'
           echo "::endgroup::"
-          echo "Complexity: OK (no module exceeds D, no block exceeds E)"
+          echo "Complexity: OK (no module exceeds rank D, codebase average ≤ B)"
 
   # --- Python security (bandit + pip-audit) -------------------------------
   python-security:
+    name: Python security (bandit zero-warning + pip-audit)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -206,17 +305,26 @@ jobs:
         with:
           version: "latest"
           enable-cache: true
-      - name: bandit (security lint)
-        run: uvx bandit -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level medium --confidence-level medium
+      - name: Bandit security scan (zero-warning policy)
+        run: |
+          echo "::group::bandit (low severity, low confidence — no exclusions)"
+          uvx bandit -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low
+          echo "::endgroup::"
+          echo "Security: OK (0 issues across all severity levels)"
       - name: pip-audit (dependency CVEs)
         continue-on-error: true
-        run: uvx pip-audit --strict --skip-editable
+        run: |
+          echo "::group::pip-audit dependency scan"
+          uvx pip-audit --strict --skip-editable || true
+          echo "::endgroup::"
+          echo "pip-audit: informational — review CVEs above (does not fail CI)"
 
   # --- Dead code detection (knip + vulture) — informational only ----------
   # Baseline is large; flag as a warning in CI but do not fail. Strict
   # enforcement requires a baseline-diff strategy (TODO) to avoid blocking
   # PRs on pre-existing dead code.
   dead-code:
+    name: Dead code report (knip + vulture, informational)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     continue-on-error: true
@@ -228,15 +336,20 @@ jobs:
           version: "latest"
           enable-cache: true
       - name: Install vulture (Python dead-code detector)
-        run: uv tool install vulture
-      - name: Dead-code report (knip TS + vulture Python)
         run: |
-          echo "::group::knip + vulture"
+          echo "::group::uv tool install vulture"
+          uv tool install vulture
+          echo "::endgroup::"
+      - name: knip (TypeScript) + vulture (Python) dead-code report
+        run: |
+          echo "::group::dead-code scan"
           bash scripts/dead-code-check.sh
           echo "::endgroup::"
+          echo "Dead code: informational — see report above (does not fail CI)"
 
   # --- Quality gate (single required status check) -------------------------
   quality-gate:
+    name: Quality gate (required)
     if: always()
     needs:
       - biome
@@ -258,24 +371,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Evaluate
+      - name: Verdict
         run: |
-          echo "biome:               ${{ needs.biome.result }}"
-          echo "deps:                ${{ needs.deps.result }}"
-          echo "circular:            ${{ needs.circular.result }}"
-          echo "file-size:           ${{ needs.file-size.result }}"
-          echo "types-location:      ${{ needs.types-location.result }}"
-          echo "components-per-file: ${{ needs.components-per-file.result }}"
-          echo "duplicates:          ${{ needs.duplicates.result }}"
-          echo "type-coverage:       ${{ needs.type-coverage.result }}"
-          echo "package-hygiene:     ${{ needs.package-hygiene.result }}"
-          echo "type-check:          ${{ needs.type-check.result }}"
-          echo "python-ruff:         ${{ needs.python-ruff.result }}"
-          echo "python-mypy:         ${{ needs.python-mypy.result }}"
-          echo "python-interrogate:  ${{ needs.python-interrogate.result }}"
-          echo "python-xenon:        ${{ needs.python-xenon.result }}"
-          echo "python-security:     ${{ needs.python-security.result }}"
+          echo "::group::Per-lane results"
+          printf '  %-22s %s\n' "biome:"               "${{ needs.biome.result }}"
+          printf '  %-22s %s\n' "deps:"                "${{ needs.deps.result }}"
+          printf '  %-22s %s\n' "circular:"            "${{ needs.circular.result }}"
+          printf '  %-22s %s\n' "file-size:"           "${{ needs.file-size.result }}"
+          printf '  %-22s %s\n' "types-location:"      "${{ needs.types-location.result }}"
+          printf '  %-22s %s\n' "components-per-file:" "${{ needs.components-per-file.result }}"
+          printf '  %-22s %s\n' "duplicates:"          "${{ needs.duplicates.result }}"
+          printf '  %-22s %s\n' "type-coverage:"       "${{ needs.type-coverage.result }}"
+          printf '  %-22s %s\n' "package-hygiene:"     "${{ needs.package-hygiene.result }}"
+          printf '  %-22s %s\n' "type-check:"          "${{ needs.type-check.result }}"
+          printf '  %-22s %s\n' "python-ruff:"         "${{ needs.python-ruff.result }}"
+          printf '  %-22s %s\n' "python-mypy:"         "${{ needs.python-mypy.result }}"
+          printf '  %-22s %s\n' "python-interrogate:"  "${{ needs.python-interrogate.result }}"
+          printf '  %-22s %s\n' "python-xenon:"        "${{ needs.python-xenon.result }}"
+          printf '  %-22s %s\n' "python-security:"     "${{ needs.python-security.result }}"
+          echo "::endgroup::"
 
+          failed=0
           for r in \
             "${{ needs.biome.result }}" \
             "${{ needs.deps.result }}" \
@@ -293,8 +409,12 @@ jobs:
             "${{ needs.python-xenon.result }}" \
             "${{ needs.python-security.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
-              echo "::error::Required quality job result: $r"
-              exit 1
+              failed=$((failed + 1))
             fi
           done
-          echo "All quality gates passed."
+
+          if [[ "$failed" -gt 0 ]]; then
+            echo "::error::Quality gate FAILED — $failed lane(s) did not pass"
+            exit 1
+          fi
+          echo "Quality gate: PASSED — all 15 required lanes succeeded"

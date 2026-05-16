@@ -1,5 +1,5 @@
 {
-  "threshold": 5,
+  "threshold": 3.5,
   "reporters": ["consoleFull", "json"],
   "output": ".jscpd-report",
   "absolute": true,

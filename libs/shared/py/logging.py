@@ -143,7 +143,7 @@ def _json_file_sink_factory(log_dir: Path) -> "Callable[..., None]":
                 if old_key != key:
                     try:
                         _handles.pop(old_key).close()
-                    except Exception:
+                    except Exception:  # nosec B110 - best-effort cleanup of stale file handles
                         pass
             fh = open(resolved, "a", encoding="utf-8")  # noqa: SIM115
             _handles[key] = fh
