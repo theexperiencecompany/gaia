@@ -1,8 +1,10 @@
 "use client";
 
 import { Tooltip } from "@heroui/tooltip";
+import * as m from "motion/react-m";
+import NextImage from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   DiscordIcon,
   Github,
@@ -11,13 +13,15 @@ import {
 } from "@/components/shared/icons";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import {
+  getNextTimeOfDay,
   getTimeOfDay,
   isDarkTimeOfDay,
   type TimeOfDay,
 } from "@/features/landing/utils/timeOfDay";
 
-import { SplitTextBlur } from "../hero/SplitTextBlur";
 import GetStartedButton from "../shared/GetStartedButton";
+import { TextSoftBlurIn } from "../shared/TextSoftBlurIn";
+import { TimeOfDayToggle } from "../shared/TimeOfDayToggle";
 
 const SWISS_KID_WALLPAPERS: Record<TimeOfDay, { webp: string; png: string }> = {
   morning: {
@@ -99,11 +103,13 @@ export default function FinalSection({
   timeOfDay: timeOfDayProp,
   isDark: isDarkProp,
   onTextClick,
+  onTimeChange,
 }: {
   showSocials?: boolean;
   timeOfDay?: TimeOfDay;
   isDark?: boolean;
   onTextClick?: () => void;
+  onTimeChange?: () => void;
 }) {
   const [internalTimeOfDay, setInternalTimeOfDay] = useState<TimeOfDay>(() =>
     getTimeOfDay(),
@@ -114,26 +120,89 @@ export default function FinalSection({
   const isDark =
     isDarkProp !== undefined ? isDarkProp : isDarkTimeOfDay(timeOfDay);
 
-  const TIME_OF_DAY_CYCLE: TimeOfDay[] = ["morning", "day", "evening", "night"];
-
   const handleInternalClick = () => {
     const next = internalClickCount + 1;
     setInternalClickCount(next);
     if (next % 3 === 0) {
-      setInternalTimeOfDay((prev) => {
-        const idx = TIME_OF_DAY_CYCLE.indexOf(prev);
-        return TIME_OF_DAY_CYCLE[(idx + 1) % TIME_OF_DAY_CYCLE.length];
-      });
+      setInternalTimeOfDay((prev) => getNextTimeOfDay(prev));
     }
   };
 
+  const handleTimeChange =
+    onTimeChange ??
+    (() => {
+      setInternalTimeOfDay((prev) => getNextTimeOfDay(prev));
+    });
+
   const wallpaper = SWISS_KID_WALLPAPERS[timeOfDay];
 
+  const [previousTime, setPreviousTime] = useState<TimeOfDay | null>(null);
+  const lastTimeRef = useRef<TimeOfDay>(timeOfDay);
+
+  if (timeOfDay !== lastTimeRef.current) {
+    setPreviousTime(lastTimeRef.current);
+    lastTimeRef.current = timeOfDay;
+  }
+
+  const [shouldPreloadOthers, setShouldPreloadOthers] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setShouldPreloadOthers(true), 1200);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
-    <div className="relative z-1 m-0! flex min-h-screen w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
+    <div className="relative m-0! flex min-h-screen w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
+      {shouldPreloadOthers && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed left-0 top-0 h-px w-px overflow-hidden opacity-0"
+        >
+          {Object.entries(SWISS_KID_WALLPAPERS)
+            .filter(([t]) => t !== timeOfDay)
+            .map(([t, { webp }]) => (
+              <NextImage
+                key={t}
+                src={webp}
+                alt=""
+                width={1920}
+                height={1080}
+                sizes="100vw"
+                loading="eager"
+              />
+            ))}
+        </div>
+      )}
+
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[30vh] bg-linear-to-b from-background to-transparent" />
-      <div className="absolute bottom-0 left-0 right-0 z-0">
+      <div className="absolute bottom-6 right-6 z-[1002]">
+        <TimeOfDayToggle timeOfDay={timeOfDay} onPress={handleTimeChange} />
+      </div>
+
+      {previousTime && (
+        <div
+          key={`prev-${previousTime}`}
+          className="absolute bottom-0 left-0 right-0 z-0"
+        >
+          <ProgressiveImage
+            webpSrc={SWISS_KID_WALLPAPERS[previousTime].webp}
+            pngSrc={SWISS_KID_WALLPAPERS[previousTime].png}
+            alt="Wallpaper"
+            className="object-cover object-bottom"
+            shouldHaveInitialFade={false}
+            priority={false}
+          />
+        </div>
+      )}
+
+      <m.div
+        key={timeOfDay}
+        className="absolute bottom-0 left-0 right-0 z-0"
+        initial={previousTime ? { clipPath: "circle(0% at 100% 50%)" } : false}
+        animate={{ clipPath: "circle(150% at 100% 50%)" }}
+        transition={{ duration: 0.5, ease: [0.65, 0, 0.35, 1] }}
+        onAnimationComplete={() => setPreviousTime(null)}
+      >
         <ProgressiveImage
           webpSrc={wallpaper.webp}
           pngSrc={wallpaper.png}
@@ -142,7 +211,7 @@ export default function FinalSection({
           shouldHaveInitialFade={true}
           priority={false}
         />
-      </div>
+      </m.div>
 
       <div
         className={`relative z-20 ${showSocials ? "mb-30" : "mb-10"} flex h-full flex-col items-center justify-start gap-4`}
@@ -151,23 +220,16 @@ export default function FinalSection({
           onClick={onTextClick ?? handleInternalClick}
           className="cursor-default select-none"
         >
-          {isDark || timeOfDay === "morning" ? (
-            <SplitTextBlur
-              text="Stop doing everything yourself."
-              delay={0}
-              className="z-10 text-center text-[2.2rem] font-medium sm:text-5xl md:text-8xl tracking-tight leading-snug text-white"
-              gradient="linear-gradient(to bottom, #ffffff, #dbdbdb)"
-              disableIntersectionObserver
-            />
-          ) : (
-            <SplitTextBlur
-              text="Stop doing everything yourself."
-              delay={0}
-              className="z-10 text-center text-[2.2rem] font-medium sm:text-5xl md:text-8xl tracking-tight leading-snug text-white"
-              gradient="linear-gradient(to bottom, #837e88, #000000)"
-              disableIntersectionObserver
-            />
-          )}
+          <TextSoftBlurIn
+            text="Stop doing everything yourself."
+            as="h2"
+            className="z-10 text-center text-[2.2rem] font-serif font-normal sm:text-5xl md:text-8xl tracking-tight leading-snug text-white"
+            gradient={
+              isDark || timeOfDay === "morning"
+                ? "linear-gradient(to bottom, #ffffff, #dbdbdb)"
+                : "linear-gradient(to bottom, #837e88, #000000)"
+            }
+          />
         </div>
 
         <div

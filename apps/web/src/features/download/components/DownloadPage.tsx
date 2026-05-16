@@ -19,7 +19,6 @@ import { appConfig } from "@/config/appConfig";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
 import {
   GITHUB_RELEASES_BASE,
-  platformConfigs,
   usePlatformDetection,
 } from "@/hooks/ui/usePlatformDetection";
 
@@ -96,6 +95,7 @@ function DownloadSectionLayout({
 }
 
 function MacDownloadButton({ isPrimary = false }: { isPrimary?: boolean }) {
+  const { platformConfigs } = usePlatformDetection();
   const [selectedOption, setSelectedOption] = useState<Set<MacChipOption>>(
     new Set(["intel"]),
   );
@@ -218,7 +218,7 @@ function MacDownloadButton({ isPrimary = false }: { isPrimary?: boolean }) {
 }
 
 function DesktopSection() {
-  const { isMac, isWindows, isLinux } = usePlatformDetection();
+  const { isMac, isWindows, isLinux, platformConfigs } = usePlatformDetection();
 
   const renderPrimaryButton = () => {
     if (isMac) return <MacDownloadButton isPrimary />;
@@ -532,7 +532,7 @@ function DownloadCard({
 
 // Landing page variant - 2 column grid with Desktop and Mobile side by side
 export function LandingDownloadSection() {
-  const { isMac, isWindows, isLinux } = usePlatformDetection();
+  const { isMac, isWindows, isLinux, platformConfigs } = usePlatformDetection();
 
   const renderPrimaryButton = () => {
     if (isMac) return <MacDownloadButton isPrimary />;

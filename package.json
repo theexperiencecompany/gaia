@@ -47,6 +47,7 @@
     "overrides": {
       "react": "19.1.0",
       "react-dom": "19.1.0",
+      "zod": "4.3.6",
       "fast-xml-parser@<4.5.5": "4.5.5",
       "fast-xml-parser@>=5.0.0 <5.5.7": "5.5.7",
       "node-forge@<1.4.0": "1.4.0",

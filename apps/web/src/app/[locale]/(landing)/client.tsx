@@ -2,18 +2,18 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import HeroImage from "@/features/landing/components/hero/HeroImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
+import { TimeOfDayToggle } from "@/features/landing/components/shared/TimeOfDayToggle";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
 import {
+  getNextTimeOfDay,
   getTimeOfDay,
   isDarkTimeOfDay,
   type TimeOfDay,
 } from "@/features/landing/utils/timeOfDay";
-
-const TIME_OF_DAY_CYCLE: TimeOfDay[] = ["morning", "day", "evening", "night"];
 
 function SectionLoader() {
   return (
@@ -102,12 +102,13 @@ export default function LandingPageClient({
     const next = clickCount + 1;
     setClickCount(next);
     if (next % 3 === 0) {
-      setTimeOfDay((prev) => {
-        const idx = TIME_OF_DAY_CYCLE.indexOf(prev);
-        return TIME_OF_DAY_CYCLE[(idx + 1) % TIME_OF_DAY_CYCLE.length];
-      });
+      setTimeOfDay((prev) => getNextTimeOfDay(prev));
     }
   };
+
+  const handleTimeChange = useCallback(() => {
+    setTimeOfDay((prev) => getNextTimeOfDay(prev));
+  }, []);
 
   useEffect(() => {
     const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -129,12 +130,15 @@ export default function LandingPageClient({
           <HeroImage timeOfDay={timeOfDay} />
         </div>
 
-        <section className="relative z-20 flex min-h-screen w-full flex-col items-center justify-center">
+        <section className="relative flex min-h-screen w-full flex-col items-center justify-center">
           <HeroSection
             isDark={isDark}
             onTextClick={handleTextClick}
             latestRelease={latestRelease}
           />
+          <div className="absolute bottom-6 right-6 z-[1002]">
+            <TimeOfDayToggle timeOfDay={timeOfDay} onPress={handleTimeChange} />
+          </div>
         </section>
 
         <section className="relative z-20 w-full py-16 sm:py-12 mb-12 sm:mb-16">
@@ -165,12 +169,13 @@ export default function LandingPageClient({
         <div>
           {/* Capabilities — what GAIA does */}
           <TiredBoringAssistants />
-          <WorkflowSection />
-          <UseCasesSectionLanding />
-          <TodoShowcaseSection />
 
           {/* Reach — where you can use it */}
           <BotsShowcaseSection />
+
+          <WorkflowSection />
+          <UseCasesSectionLanding />
+          <TodoShowcaseSection />
 
           {/* Decision — how it stacks up, trust, price */}
           <ComparisonGrid />
@@ -188,6 +193,7 @@ export default function LandingPageClient({
             timeOfDay={timeOfDay}
             isDark={isDark}
             onTextClick={handleTextClick}
+            onTimeChange={handleTimeChange}
           />
         </div>
       </div>

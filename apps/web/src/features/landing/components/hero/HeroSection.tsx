@@ -4,7 +4,7 @@ import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
 import { Link } from "@/i18n/navigation";
 import { MotionContainer } from "@/layouts/MotionContainer";
 import GetStartedButton from "../shared/GetStartedButton";
-import { SplitTextBlur } from "./SplitTextBlur";
+import { SoftBlurInBlock, TextSoftBlurIn } from "../shared/TextSoftBlurIn";
 
 export default function HeroSection({
   isDark = false,
@@ -54,37 +54,44 @@ export default function HeroSection({
         )}
 
         <div onClick={onTextClick} className="cursor-default select-none">
-          {isDark ? (
-            <SplitTextBlur
-              text="Get a workday back every week."
-              delay={0}
-              staggerDelay={0.08}
-              className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-[6.5rem] font-normal tracking-tighter overflow-visible"
-              gradient="linear-gradient(to bottom, #ffffff, #dbdbdb)"
-              lcpOptimized
-              disableIntersectionObserver
-              as="h1"
+          <h1
+            aria-label="Get a workday back every week."
+            className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-[6.5rem] font-normal tracking-tighter overflow-visible font-serif"
+          >
+            <TextSoftBlurIn
+              text="Get a workday back"
+              as="span"
+              immediate
+              charStagger={0.04}
+              className="block"
+              gradient={
+                isDark
+                  ? "linear-gradient(to bottom, #ffffff, #dbdbdb)"
+                  : "linear-gradient(to bottom, #837e88, #000000)"
+              }
             />
-          ) : (
-            <SplitTextBlur
-              text="Get a workday back every week."
-              delay={0}
-              staggerDelay={0.08}
-              className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none -space-y-10 sm:text-[6.5rem] font-normal tracking-tighter overflow-visible"
-              gradient="linear-gradient(to bottom, #837e88, #000000)"
-              lcpOptimized
-              disableIntersectionObserver
-              as="h1"
+            <TextSoftBlurIn
+              text="every week."
+              as="span"
+              immediate
+              startDelay={0.4}
+              charStagger={0.04}
+              className="block"
+              gradient={
+                isDark
+                  ? "linear-gradient(to bottom, #ffffff, #dbdbdb)"
+                  : "linear-gradient(to bottom, #837e88, #000000)"
+              }
             />
-          )}
+          </h1>
         </div>
       </MotionContainer>
 
       {/* Subtitle + CTA rendered outside MotionContainer to avoid stagger delay (LCP fix) */}
       <div className="relative z-2 flex flex-col items-center gap-4 bg-transparent">
-        <div className="relative">
+        <SoftBlurInBlock immediate delay={0.35} className="relative">
           <div
-            className={`mb-3 max-w-(--breakpoint-lg) items-center justify-center gap-x-1.5 gap-y-1 px-4 py-0 text-center text-lg leading-7 tracking-tighter sm:px-0 sm:text-xl animate-[fadeIn_0.4s_ease-out_0.2s_both] ${isDark ? "text-zinc-200" : "text-black"}`}
+            className={`mb-3 max-w-(--breakpoint-lg) items-center justify-center gap-x-1.5 gap-y-1 px-4 py-0 text-center text-lg leading-7 tracking-tighter sm:px-0 sm:text-xl ${isDark ? "text-zinc-200" : "text-black"}`}
           >
             <span>
               GAIA watches your inbox, calendar, and tools and acts before you
@@ -130,31 +137,35 @@ export default function HeroSection({
               </Link>
             </div>
           </div>
-        </div>
+        </SoftBlurInBlock>
         <div className="flex gap-4 mt-4">
-          <GetStartedButton
-            btnColor={isDark ? "#00bbff" : "#000000"}
-            classname={
-              isDark
-                ? "text-black! px-1 hover:scale-105"
-                : "text-white! px-1 hover:scale-105"
-            }
-            text={
-              <div className="flex items-center gap-1.5">
-                Sign Up <CircleArrowRight02Icon width={20} height={20} />
-              </div>
-            }
-          />
-          <GetStartedButton
-            btnColor="#ffffff"
-            classname="px-1 hover:scale-105"
-            text={
-              <div className="flex items-center gap-1.5">
-                Explore <DiscoverCircleIcon width={20} height={20} />
-              </div>
-            }
-            href="/use-cases"
-          />
+          <SoftBlurInBlock immediate delay={0.55}>
+            <GetStartedButton
+              btnColor={isDark ? "#00bbff" : "#000000"}
+              classname={
+                isDark
+                  ? "text-black! px-1 hover:scale-105"
+                  : "text-white! px-1 hover:scale-105"
+              }
+              text={
+                <div className="flex items-center gap-1.5">
+                  Sign Up <CircleArrowRight02Icon width={20} height={20} />
+                </div>
+              }
+            />
+          </SoftBlurInBlock>
+          <SoftBlurInBlock immediate delay={0.75}>
+            <GetStartedButton
+              btnColor="#ffffff"
+              classname="px-1 hover:scale-105"
+              text={
+                <div className="flex items-center gap-1.5">
+                  Explore <DiscoverCircleIcon width={20} height={20} />
+                </div>
+              }
+              href="/use-cases"
+            />
+          </SoftBlurInBlock>
         </div>
       </div>
     </div>

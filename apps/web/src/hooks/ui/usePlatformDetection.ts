@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export type Platform =
   | "mac-arm"
@@ -22,66 +22,115 @@ export interface PlatformInfo {
 }
 
 const GITHUB_RELEASES_BASE =
-  "https://github.com/theexperiencecompany/gaia/releases/latest";
+  "https://github.com/theexperiencecompany/gaia/releases";
+const GITHUB_RELEASES_API =
+  "https://api.github.com/repos/theexperiencecompany/gaia/releases?per_page=10";
 
-const platformConfigs: Record<Platform, Omit<PlatformInfo, "platform">> = {
-  "mac-arm": {
-    displayName: "macOS (Apple Silicon)",
-    shortName: "Mac (M-series)",
-    iconPath: "/images/icons/apple.svg",
-    downloadUrl: `${GITHUB_RELEASES_BASE}/download/GAIA-arm64.dmg`,
-    isDesktop: true,
-    isMobile: false,
-  },
-  "mac-intel": {
-    displayName: "macOS (Intel)",
-    shortName: "Mac (Intel)",
-    iconPath: "/images/icons/apple.svg",
-    downloadUrl: `${GITHUB_RELEASES_BASE}/download/GAIA-x64.dmg`,
-    isDesktop: true,
-    isMobile: false,
-  },
-  windows: {
-    displayName: "Windows",
-    shortName: "Windows",
-    iconPath: "/images/icons/windows.svg",
-    downloadUrl: `${GITHUB_RELEASES_BASE}/download/GAIA-x64.exe`,
-    isDesktop: true,
-    isMobile: false,
-  },
-  linux: {
-    displayName: "Linux",
-    shortName: "Linux",
-    iconPath: "/images/icons/linux.svg",
-    downloadUrl: `${GITHUB_RELEASES_BASE}/download/GAIA-x64.AppImage`,
-    isDesktop: true,
-    isMobile: false,
-  },
-  ios: {
-    displayName: "iOS",
-    shortName: "iPhone & iPad",
-    iconPath: "/images/icons/apple.svg",
-    downloadUrl: null, // Coming soon
-    isDesktop: false,
-    isMobile: true,
-  },
-  android: {
-    displayName: "Android",
-    shortName: "Android",
-    iconPath: "/images/icons/google_play.svg",
-    downloadUrl: null, // Coming soon
-    isDesktop: false,
-    isMobile: true,
-  },
-  unknown: {
-    displayName: "Desktop",
-    shortName: "Desktop",
-    iconPath: "/images/icons/apple.svg",
-    downloadUrl: GITHUB_RELEASES_BASE,
-    isDesktop: true,
-    isMobile: false,
-  },
-};
+// GitHub's global "latest" release tracks the web app, not desktop, so we
+// resolve the newest tag starting with `desktop-` at runtime. If that fetch
+// fails, buttons fall back to this filtered releases page.
+const DESKTOP_RELEASES_FALLBACK = `${GITHUB_RELEASES_BASE}?q=desktop&expanded=true`;
+
+function buildPlatformConfigs(
+  tag: string | null,
+): Record<Platform, Omit<PlatformInfo, "platform">> {
+  const desktopUrl = (asset: string) =>
+    tag
+      ? `${GITHUB_RELEASES_BASE}/download/${tag}/${asset}`
+      : DESKTOP_RELEASES_FALLBACK;
+
+  return {
+    "mac-arm": {
+      displayName: "macOS (Apple Silicon)",
+      shortName: "Mac (M-series)",
+      iconPath: "/images/icons/apple.svg",
+      downloadUrl: desktopUrl("GAIA-arm64.dmg"),
+      isDesktop: true,
+      isMobile: false,
+    },
+    "mac-intel": {
+      displayName: "macOS (Intel)",
+      shortName: "Mac (Intel)",
+      iconPath: "/images/icons/apple.svg",
+      downloadUrl: desktopUrl("GAIA-x64.dmg"),
+      isDesktop: true,
+      isMobile: false,
+    },
+    windows: {
+      displayName: "Windows",
+      shortName: "Windows",
+      iconPath: "/images/icons/windows.svg",
+      downloadUrl: desktopUrl("GAIA-x64.exe"),
+      isDesktop: true,
+      isMobile: false,
+    },
+    linux: {
+      displayName: "Linux",
+      shortName: "Linux",
+      iconPath: "/images/icons/linux.svg",
+      downloadUrl: desktopUrl("GAIA-x86_64.AppImage"),
+      isDesktop: true,
+      isMobile: false,
+    },
+    ios: {
+      displayName: "iOS",
+      shortName: "iPhone & iPad",
+      iconPath: "/images/icons/apple.svg",
+      downloadUrl: null, // Coming soon
+      isDesktop: false,
+      isMobile: true,
+    },
+    android: {
+      displayName: "Android",
+      shortName: "Android",
+      iconPath: "/images/icons/google_play.svg",
+      downloadUrl: null, // Coming soon
+      isDesktop: false,
+      isMobile: true,
+    },
+    unknown: {
+      displayName: "Desktop",
+      shortName: "Desktop",
+      iconPath: "/images/icons/apple.svg",
+      downloadUrl: tag
+        ? `${GITHUB_RELEASES_BASE}/tag/${tag}`
+        : DESKTOP_RELEASES_FALLBACK,
+      isDesktop: true,
+      isMobile: false,
+    },
+  };
+}
+
+interface GithubRelease {
+  tag_name: string;
+  draft: boolean;
+  prerelease: boolean;
+}
+
+function useLatestDesktopTag(): string | null {
+  const [tag, setTag] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(GITHUB_RELEASES_API, {
+      headers: { Accept: "application/vnd.github+json" },
+      signal: controller.signal,
+    })
+      .then((r) => (r.ok ? (r.json() as Promise<GithubRelease[]>) : null))
+      .then((releases) => {
+        if (!releases) return;
+        const desktop = releases.find(
+          (r) => r.tag_name.startsWith("desktop-") && !r.draft && !r.prerelease,
+        );
+        if (desktop) setTag(desktop.tag_name);
+      })
+      .catch(() => {});
+
+    return () => controller.abort();
+  }, []);
+
+  return tag;
+}
 
 function detectPlatform(): Platform {
   if (typeof window === "undefined" || typeof navigator === "undefined") {
@@ -135,11 +184,17 @@ function detectPlatform(): Platform {
 export function usePlatformDetection() {
   const [platform, setPlatform] = useState<Platform>("unknown");
   const [isLoading, setIsLoading] = useState(true);
+  const desktopTag = useLatestDesktopTag();
 
   useEffect(() => {
     setPlatform(detectPlatform());
     setIsLoading(false);
   }, []);
+
+  const platformConfigs = useMemo(
+    () => buildPlatformConfigs(desktopTag),
+    [desktopTag],
+  );
 
   const currentPlatform: PlatformInfo = {
     platform,
@@ -164,6 +219,7 @@ export function usePlatformDetection() {
 
   return {
     platform,
+    platformConfigs,
     currentPlatform,
     allPlatforms,
     desktopPlatforms,
@@ -178,4 +234,4 @@ export function usePlatformDetection() {
 }
 
 // Export platform configs for use in server components
-export { platformConfigs, GITHUB_RELEASES_BASE };
+export { GITHUB_RELEASES_BASE };

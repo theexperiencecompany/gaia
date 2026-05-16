@@ -1,46 +1,28 @@
 "use client";
 
-import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { Chip } from "@heroui/chip";
 import {
-  AttachmentIcon,
-  Call02Icon,
-  Camera01Icon,
-  Gif01Icon,
-  GiftIcon,
-  Happy01Icon,
-  HappyIcon,
-  Mic02Icon,
-  MoreVerticalCircle01Icon,
-  PlusSignIcon,
-  Search01Icon,
-  SentIcon,
-  TextBoldIcon,
-  Video01Icon,
+  ArrowLeft02Icon,
+  ArrowRight02Icon,
+  CircleArrowRight02Icon,
+  SquareLockIcon,
 } from "@icons";
-import { AnimatePresence, useInView } from "motion/react";
+import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
-import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RaisedButton } from "@/components/ui/raised-button";
 import { Link } from "@/i18n/navigation";
 
+import {
+  ChatDemo,
+  type ChatMessageItem,
+  type ChatPlatform,
+} from "../iphone/ChatDemo";
+import { IPhoneMockup } from "../iphone/IPhoneMockup";
 import LargeHeader from "../shared/LargeHeader";
-
-// ─── Config ───────────────────────────────────────────────────────────────────
-
-type PlatformId = "whatsapp" | "telegram" | "slack" | "discord";
-
-const DURATION = 7000;
-const TICK = 50;
-
-const AVATAR_ARYAN = "https://github.com/aryanranderiya.png";
-const AVATAR_DHRUV = "https://github.com/dhruv-maradiya.png";
-
-const MOBILE_ICON = 20;
-const SEND_BTN_ICON = 20;
-const DESKTOP_ICON = 16;
 
 interface ActionLink {
   label: string;
@@ -48,13 +30,40 @@ interface ActionLink {
   external?: boolean;
 }
 
+interface PhoneConfig {
+  screenBackground?: string;
+  statusBarTone?: "auto" | "light" | "dark";
+}
+
+interface DemoConfig {
+  title?: string;
+  subtitle?: string;
+  messages: ChatMessageItem[];
+}
+
 interface Platform {
-  id: PlatformId;
+  id: ChatPlatform;
   name: string;
-  icon: string;
-  description: string;
+  icon: string | ReactNode;
+  comingSoon?: boolean;
   primaryAction: ActionLink;
-  secondaryAction?: ActionLink;
+  phone: PhoneConfig;
+  demo: DemoConfig;
+}
+
+const AVATAR_ARYAN = "/aryan-avatar.webp";
+
+function IMessageChipIcon({ size = 20 }: { size?: number }) {
+  return (
+    // biome-ignore lint/a11y/noSvgWithoutTitle: decorative brand icon, hidden from a11y tree
+    <svg width={size} height={size} viewBox="0 0 20 20" aria-hidden>
+      <rect width="20" height="20" rx="4.5" fill="#25D057" />
+      <path
+        d="M10 3.8C6.63 3.8 3.9 6.22 3.9 9.2c0 1.67.84 3.16 2.16 4.16-.04.58-.29 1.54-1.21 2.24 0 0 1.78.06 3.2-1.05.59.15 1.2.25 1.87.25 3.37 0 6.1-2.42 6.1-5.4S13.37 3.8 10 3.8z"
+        fill="white"
+      />
+    </svg>
+  );
 }
 
 const PLATFORMS: Platform[] = [
@@ -62,1083 +71,719 @@ const PLATFORMS: Platform[] = [
     id: "whatsapp",
     name: "WhatsApp",
     icon: "/images/icons/macos/whatsapp.webp",
-    description:
-      "Already on your phone. Text GAIA like a friend — reminders, plans, quick answers, anything.",
     primaryAction: {
-      label: "Message GAIA",
+      label: "Message on WhatsApp",
       href: "https://wa.me/12762088737",
       external: true,
+    },
+    phone: { screenBackground: "#F6F6F6" },
+    demo: {
+      title: "GAIA",
+      messages: [
+        {
+          from: "me",
+          text: "what's on my plate today?",
+          time: "9:14",
+          status: "read",
+        },
+        {
+          from: "them",
+          text: "4 meetings back to back from 9.30, plus that investor draft you flagged yesterday",
+          time: "9:14",
+        },
+        {
+          from: "them",
+          text: "want me to push standup to 11 so you have a coffee window?",
+          time: "9:14",
+        },
+        {
+          from: "me",
+          text: "yes pls. also remind me to call mom at 8 🙏",
+          time: "9:15",
+          status: "read",
+        },
+        {
+          from: "them",
+          text: "done & done 🫡",
+          time: "9:15",
+        },
+      ],
     },
   },
   {
     id: "telegram",
     name: "Telegram",
     icon: "/images/icons/macos/telegram.webp",
-    description:
-      "One tap to @heygaia_bot. No setup, no groups, no follow-up. Just ask.",
     primaryAction: {
-      label: "Message GAIA",
+      label: "Message on Telegram",
       href: "https://t.me/heygaia_bot",
       external: true,
+    },
+    phone: { screenBackground: "#F6F6F6" },
+    demo: {
+      title: "GAIA",
+      subtitle: "bot",
+      messages: [
+        {
+          from: "me",
+          text: "summarise my inbox",
+          time: "14:02",
+          status: "read",
+        },
+        {
+          from: "them",
+          text: "you've got 12 unread. 3 actually need you, the rest is noise",
+          time: "14:03",
+        },
+        {
+          from: "them",
+          text: "drafting replies to the linear founder + the recruiter rn",
+          time: "14:03",
+        },
+        {
+          from: "me",
+          text: "also book me to NYC next thursday",
+          time: "14:04",
+          status: "read",
+        },
+        {
+          from: "them",
+          text: "looking… delta has $189 out at 8am, lands 11ish. lock it in?",
+          time: "14:04",
+        },
+      ],
     },
   },
   {
     id: "slack",
     name: "Slack",
     icon: "/images/icons/macos/slack.webp",
-    description:
-      "@GAIA in any channel. Summarise threads, draft docs, pull updates, without opening a new tab.",
     primaryAction: {
       label: "Install in Slack",
       href: "/slack-bot",
+    },
+    phone: {},
+    demo: {
+      title: "design",
+      subtitle: "42 members",
+      messages: [
+        {
+          author: "Aryan",
+          avatar: AVATAR_ARYAN,
+          text: "@GAIA standup post for design? pull from yesterday's threads",
+          time: "10:24 AM",
+        },
+        {
+          author: "GAIA",
+          text: "pulled this from 4 open PRs and 6 figma comments since yesterday 🧵",
+          time: "10:24 AM",
+          reactions: [
+            { emoji: "🎉", count: 4 },
+            { emoji: "🔥", count: 2 },
+          ],
+        },
+        {
+          author: "Aryan",
+          avatar: AVATAR_ARYAN,
+          text: "send it. also draft a reply to the PM thread in #product",
+          time: "10:25 AM",
+        },
+        {
+          author: "GAIA",
+          text: "on it. DMing you the draft in 30s",
+          time: "10:26 AM",
+        },
+      ],
     },
   },
   {
     id: "discord",
     name: "Discord",
     icon: "/images/icons/macos/discord.webp",
-    description:
-      "/gaia from any server. Summarise standups, ship digests, DM answers, all without a browser.",
     primaryAction: {
       label: "Add to Your Server",
       href: "https://heygaia.io/discord-bot",
       external: true,
     },
+    phone: { screenBackground: "#1E1F22", statusBarTone: "light" },
+    demo: {
+      title: "general",
+      messages: [
+        {
+          author: "Aryan",
+          avatar: AVATAR_ARYAN,
+          authorColor: "#F47FFF",
+          text: "@GAIA ship digest for the week?",
+          time: "9:14 PM",
+          reactions: [{ emoji: "👍", count: 3 }],
+        },
+        {
+          author: "GAIA",
+          authorColor: "#9CC3FF",
+          text: "12 PRs merged, 4 features shipped, 2 incidents resolved 🚀",
+          time: "9:14 PM",
+        },
+        {
+          author: "Aryan",
+          avatar: AVATAR_ARYAN,
+          authorColor: "#F47FFF",
+          text: "post it in #releases",
+          time: "9:15 PM",
+        },
+        {
+          author: "GAIA",
+          authorColor: "#9CC3FF",
+          text: "posted, ping me if anyone has follow-ups",
+          time: "9:15 PM",
+        },
+      ],
+    },
+  },
+  {
+    id: "imessage",
+    name: "iMessage",
+    icon: <IMessageChipIcon />,
+    comingSoon: true,
+    primaryAction: { label: "Coming Soon", href: "" },
+    phone: { screenBackground: "#FFFFFF" },
+    demo: {
+      title: "GAIA",
+      messages: [
+        {
+          from: "me",
+          text: "reschedule my 3pm to tomorrow same time",
+          time: "2:58 PM",
+          status: "read",
+        },
+        {
+          from: "them",
+          text: "done. rescheduled and invite updated",
+        },
+        {
+          from: "me",
+          text: "also add a note to call sarah before it",
+          time: "3:04 PM",
+          status: "read",
+        },
+        {
+          from: "them",
+          text: "added. anything else?",
+        },
+      ],
+    },
   },
 ];
-
-// ─── Avatars ──────────────────────────────────────────────────────────────────
-
-function GaiaAvatar({ size = 36 }: { size?: number }) {
-  return (
-    <div
-      className="relative shrink-0 overflow-hidden rounded-full"
-      style={{ width: size, height: size }}
-    >
-      <Image
-        src="/images/logos/logo_bg_grey.png"
-        alt="GAIA"
-        fill
-        className="object-cover"
-        sizes={`${size}px`}
-      />
-    </div>
-  );
-}
-
-function RemoteAvatar({
-  src,
-  size = 36,
-  alt,
-  rounded = "full",
-}: {
-  src: string;
-  size?: number;
-  alt: string;
-  rounded?: "full" | "md";
-}) {
-  return (
-    <div
-      className={`relative shrink-0 overflow-hidden bg-zinc-800 ${
-        rounded === "full" ? "rounded-full" : "rounded-md"
-      }`}
-      style={{ width: size, height: size }}
-    >
-      <Image
-        src={src}
-        alt={alt}
-        fill
-        className="object-cover"
-        sizes={`${size}px`}
-        unoptimized
-      />
-    </div>
-  );
-}
-
-// ─── Icon button (HeroUI) ─────────────────────────────────────────────────────
-
-function IconBtn({
-  children,
-  colorClass = "text-zinc-300",
-  ariaLabel,
-}: {
-  children: React.ReactNode;
-  colorClass?: string;
-  ariaLabel: string;
-}) {
-  // Plain native button — avoids HeroUI Button's default min-width / slot sizing
-  // that makes icons overflow their containers. Same interactivity, zero overflow.
-  return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-transparent transition hover:bg-white/10 ${colorClass}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-// ─── Chat bubble ──────────────────────────────────────────────────────────────
-
-function DoubleTick({ color }: { color: string }) {
-  return (
-    <svg
-      viewBox="0 0 16 12"
-      width="14"
-      height="11"
-      fill="none"
-      aria-hidden="true"
-      style={{ display: "inline-block", verticalAlign: "middle" }}
-    >
-      <title>Double tick</title>
-      <path
-        d="M1 6.5L5 10.5L11 3.5"
-        stroke={color}
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M5.5 6.5L9 10.5L15 3.5"
-        stroke={color}
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-interface BubbleProps {
-  side: "in" | "out";
-  color: string;
-  textColor?: string;
-  time: string;
-  tickColor?: string;
-  doubleTick?: boolean;
-  children: React.ReactNode;
-}
-
-function ChatBubble({
-  side,
-  color,
-  textColor = "#fff",
-  time,
-  tickColor,
-  doubleTick,
-  children,
-}: BubbleProps) {
-  const isOut = side === "out";
-  return (
-    <div className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
-      <div
-        className="max-w-[82%] rounded-2xl px-4 py-2 text-[15px] leading-[1.4]"
-        style={{ backgroundColor: color, color: textColor }}
-      >
-        <span className="whitespace-pre-wrap">{children}</span>
-        <span className="ml-2 inline-flex items-center gap-1 align-bottom text-[11px] opacity-70">
-          {time}
-          {isOut && tickColor && doubleTick && <DoubleTick color={tickColor} />}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ─── Mention / command highlight ──────────────────────────────────────────────
-
-function Mention({
-  text,
-  variant,
-}: {
-  text: string;
-  variant: "slack" | "discord";
-}) {
-  const styles =
-    variant === "slack"
-      ? { backgroundColor: "rgba(29,155,209,0.18)", color: "#6CB9EE" }
-      : { backgroundColor: "rgba(88,101,242,0.25)", color: "#C9CDFB" };
-  return (
-    <span className="rounded px-1 py-[1px] font-medium" style={styles}>
-      {text}
-    </span>
-  );
-}
-
-// ─── HeroUI Input styled as a transparent message field ──────────────────────
-
-function MessageInput({
-  placeholder,
-  textColor,
-}: {
-  placeholder: string;
-  textColor: string;
-}) {
-  return (
-    <Input
-      type="text"
-      placeholder={placeholder}
-      variant="flat"
-      size="sm"
-      classNames={{
-        base: "flex-1",
-        mainWrapper: "h-auto",
-        inputWrapper: [
-          "h-auto min-h-0 bg-transparent shadow-none p-0",
-          "group-data-[focus=true]:bg-transparent",
-          "data-[hover=true]:bg-transparent",
-        ],
-        input: "text-[13px] placeholder:opacity-100",
-      }}
-      style={{ color: textColor }}
-    />
-  );
-}
-
-// ─── WhatsApp ─────────────────────────────────────────────────────────────────
-
-function WhatsAppDemo() {
-  return (
-    <div
-      className="relative flex h-full w-full flex-col overflow-hidden"
-      style={{ backgroundColor: "#0A1014" }}
-    >
-      {/* Wallpaper overlay — kept low-opacity */}
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          backgroundImage: "url('/images/wallpapers/whatsapp-tile-dark.png')",
-          backgroundRepeat: "repeat",
-          opacity: 0.15,
-        }}
-        aria-hidden
-      />
-
-      {/* header — distinct darker band with subtle bottom border */}
-      <div
-        className="relative flex shrink-0 items-center gap-3 px-4 py-3"
-        style={{
-          backgroundColor: "#1F2C34",
-          borderBottom: "1px solid rgba(0,0,0,0.3)",
-        }}
-      >
-        <GaiaAvatar size={38} />
-        <div className="flex min-w-0 flex-1 flex-col leading-tight">
-          <span className="truncate text-[14px] font-semibold text-white">
-            GAIA
-          </span>
-          <span className="text-[11px] text-[#25D366]">online</span>
-        </div>
-        <IconBtn ariaLabel="Video call" colorClass="text-zinc-300">
-          <Video01Icon width={MOBILE_ICON} />
-        </IconBtn>
-        <IconBtn ariaLabel="Voice call" colorClass="text-zinc-300">
-          <Call02Icon width={MOBILE_ICON} />
-        </IconBtn>
-        <IconBtn ariaLabel="Menu" colorClass="text-zinc-300">
-          <MoreVerticalCircle01Icon width={MOBILE_ICON} />
-        </IconBtn>
-      </div>
-
-      {/* messages */}
-      <div className="relative flex flex-1 flex-col gap-2 overflow-y-auto px-4 py-4">
-        <div
-          className="mx-auto mb-2 rounded-md px-2.5 py-1 text-[10px] font-medium text-zinc-300"
-          style={{ backgroundColor: "rgba(24,34,41,0.9)" }}
-        >
-          TODAY
-        </div>
-        <ChatBubble
-          side="out"
-          color="#005C4B"
-          time="09:14"
-          tickColor="#53bdeb"
-          doubleTick
-        >
-          what&apos;s on my plate tomorrow?
-        </ChatBubble>
-        <ChatBubble side="in" color="#1F2C34" time="09:14">
-          Light day. Design review at 9:30, lunch with Sarah at 12, deep work
-          2-5. Want me to block the afternoon?
-        </ChatBubble>
-        <ChatBubble
-          side="out"
-          color="#005C4B"
-          time="09:15"
-          tickColor="#53bdeb"
-          doubleTick
-        >
-          yes, and email sarah to confirm lunch
-        </ChatBubble>
-        <ChatBubble side="in" color="#1F2C34" time="09:15">
-          Blocked. Sent Sarah a confirm, Pico at noon, parking link attached.
-        </ChatBubble>
-        <ChatBubble side="in" color="#1F2C34" time="09:17">
-          FYI your Friday SF flight moved to gate 42. I&apos;ll text the night
-          before.
-        </ChatBubble>
-      </div>
-
-      {/* input — inset floating bar so it isn't clipped by the demo's rounded corners */}
-      <div
-        className="relative mx-3 mb-3 flex shrink-0 items-center gap-2 rounded-2xl px-3 py-2"
-        style={{ backgroundColor: "#131C21" }}
-      >
-        <div
-          className="flex min-w-0 flex-1 items-center gap-1 rounded-full px-2 py-1.5"
-          style={{ backgroundColor: "#2A3942" }}
-        >
-          <IconBtn ariaLabel="Emoji" colorClass="text-[#8696A0]">
-            <Happy01Icon width={MOBILE_ICON} />
-          </IconBtn>
-          <MessageInput placeholder="Message" textColor="#D1D7DB" />
-          <IconBtn ariaLabel="Attach" colorClass="text-[#8696A0]">
-            <AttachmentIcon width={MOBILE_ICON} />
-          </IconBtn>
-          <IconBtn ariaLabel="Camera" colorClass="text-[#8696A0]">
-            <Camera01Icon width={MOBILE_ICON} />
-          </IconBtn>
-        </div>
-        <Button
-          isIconOnly
-          radius="full"
-          aria-label="Send voice"
-          className="h-10 w-10 min-w-0"
-          style={{ backgroundColor: "#00A884" }}
-        >
-          <Mic02Icon width={SEND_BTN_ICON} className="text-white" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Telegram ─────────────────────────────────────────────────────────────────
-
-function TelegramDemo() {
-  return (
-    <div
-      className="relative flex h-full w-full flex-col overflow-hidden"
-      style={{ backgroundColor: "#0E1621" }}
-    >
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle, rgba(91,157,217,0.08) 1px, transparent 1px)",
-          backgroundSize: "22px 22px",
-        }}
-        aria-hidden
-      />
-
-      {/* header */}
-      <div
-        className="relative flex shrink-0 items-center gap-3 px-4 py-3"
-        style={{
-          backgroundColor: "#17212B",
-          borderBottom: "1px solid rgba(0,0,0,0.35)",
-        }}
-      >
-        <GaiaAvatar size={38} />
-        <div className="flex min-w-0 flex-1 flex-col leading-tight">
-          <span className="text-[14px] font-semibold text-white">GAIA</span>
-          <span className="text-[11px] text-[#64B5F6]">bot</span>
-        </div>
-        <IconBtn ariaLabel="Search" colorClass="text-[#64B5F6]">
-          <Search01Icon width={MOBILE_ICON} />
-        </IconBtn>
-        <IconBtn ariaLabel="Menu" colorClass="text-[#64B5F6]">
-          <MoreVerticalCircle01Icon width={MOBILE_ICON} />
-        </IconBtn>
-      </div>
-
-      {/* messages */}
-      <div className="relative flex flex-1 flex-col gap-2 overflow-y-auto px-4 py-4">
-        <ChatBubble
-          side="out"
-          color="#2B5278"
-          time="14:02"
-          tickColor="#64B5F6"
-          doubleTick
-        >
-          any P0s in the backlog?
-        </ChatBubble>
-        <ChatBubble side="in" color="#182533" time="14:02">
-          Two. &apos;Payment webhook retries&apos; (Priya) and &apos;OAuth
-          refresh&apos; (Dhruv). Both in progress, ETA Friday.
-        </ChatBubble>
-        <ChatBubble
-          side="out"
-          color="#2B5278"
-          time="14:04"
-          tickColor="#64B5F6"
-          doubleTick
-        >
-          draft a status update for leadership
-        </ChatBubble>
-        <ChatBubble side="in" color="#182533" time="14:04">
-          Drafted: shipped, in-flight, blockers, next week. Send as Friday
-          update?
-        </ChatBubble>
-        <ChatBubble
-          side="out"
-          color="#2B5278"
-          time="14:05"
-          tickColor="#64B5F6"
-          doubleTick
-        >
-          yep
-        </ChatBubble>
-        <ChatBubble side="in" color="#182533" time="14:05">
-          Sent to #leadership. I&apos;ll ping you if anyone replies.
-        </ChatBubble>
-      </div>
-
-      {/* input — inset floating bar so it isn't clipped by the demo's rounded corners */}
-      <div
-        className="relative mx-3 mb-3 flex shrink-0 items-center gap-2 rounded-2xl px-3 py-2"
-        style={{ backgroundColor: "#17212B" }}
-      >
-        <IconBtn ariaLabel="Attach" colorClass="text-[#64B5F6]">
-          <AttachmentIcon width={MOBILE_ICON} />
-        </IconBtn>
-        <div
-          className="flex min-w-0 flex-1 items-center gap-1 rounded-full px-3 py-1.5"
-          style={{ backgroundColor: "#242F3D" }}
-        >
-          <MessageInput placeholder="Message" textColor="#D1D7DB" />
-          <IconBtn ariaLabel="Emoji" colorClass="text-zinc-500">
-            <HappyIcon width={MOBILE_ICON} />
-          </IconBtn>
-        </div>
-        <Button
-          isIconOnly
-          radius="full"
-          aria-label="Send voice"
-          className="h-10 w-10 min-w-0"
-          style={{ backgroundColor: "#2B5278" }}
-        >
-          <Mic02Icon width={SEND_BTN_ICON} className="text-white" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Server / workspace logos ────────────────────────────────────────────────
-
-interface ServerLogo {
-  name: string;
-  src: string;
-  bg?: string;
-  padding?: number;
-}
-
-// Elevated grey relative to each platform's rail color.
-const SLACK_GAIA_TILE_BG = "#2A2830"; // lifts above rail #19171D
-const DISCORD_GAIA_TILE_BG = "#3A3C43"; // lifts above rail #1E1F22
-
-const SLACK_WORKSPACES: ServerLogo[] = [
-  {
-    name: "GAIA",
-    src: "/brand/gaia_logo.png",
-    bg: SLACK_GAIA_TILE_BG,
-    padding: 0.22,
-  },
-  { name: "Linear", src: "/images/icons/linear.svg", padding: 0.18 },
-  { name: "Notion", src: "/images/icons/notion.webp", padding: 0.1 },
-  {
-    name: "Vercel",
-    src: "/images/icons/vercel.svg",
-    bg: "#000",
-    padding: 0.22,
-  },
-];
-
-const DISCORD_SERVERS: ServerLogo[] = [
-  {
-    name: "Discord",
-    // Canonical Discord blurple with white Simple Icons logo.
-    src: "https://cdn.simpleicons.org/discord/ffffff",
-    bg: "#5865F2",
-    padding: 0.2,
-  },
-  {
-    name: "GAIA",
-    src: "/brand/gaia_logo.png",
-    bg: DISCORD_GAIA_TILE_BG,
-    padding: 0.22,
-  },
-  { name: "Linear", src: "/images/icons/linear.svg", padding: 0.18 },
-  { name: "Notion", src: "/images/icons/notion.webp", padding: 0.1 },
-  {
-    name: "Vercel",
-    src: "/images/icons/vercel.svg",
-    bg: "#000",
-    padding: 0.22,
-  },
-];
-
-function ServerTile({
-  logo,
-  size,
-  radius,
-}: {
-  logo: ServerLogo;
-  size: number;
-  radius: number;
-}) {
-  const pad = Math.round(size * (logo.padding ?? 0.15));
-  return (
-    <div className="relative flex items-center">
-      <Button
-        isIconOnly
-        radius="none"
-        aria-label={logo.name}
-        className="min-w-0 shrink-0 overflow-hidden p-0"
-        style={{
-          width: size,
-          height: size,
-          borderRadius: radius,
-          backgroundColor: logo.bg ?? "#2B2D31",
-        }}
-      >
-        <div
-          className="absolute inset-0 flex items-center justify-center"
-          style={{ padding: pad }}
-        >
-          <div className="relative h-full w-full">
-            <Image
-              src={logo.src}
-              alt={logo.name}
-              fill
-              className="object-contain"
-              sizes={`${size}px`}
-            />
-          </div>
-        </div>
-      </Button>
-    </div>
-  );
-}
-
-// ─── Slack ────────────────────────────────────────────────────────────────────
-
-const SLACK_BORDER = "rgba(255,255,255,0.06)";
-
-function SlackMessage({
-  who,
-  avatarSrc,
-  color,
-  time,
-  children,
-  isBot,
-}: {
-  who: string;
-  avatarSrc?: string;
-  color: string;
-  time: string;
-  children: React.ReactNode;
-  isBot?: boolean;
-}) {
-  return (
-    <div className="flex items-start gap-3">
-      {isBot ? (
-        <div className="overflow-hidden rounded-md">
-          <GaiaAvatar size={36} />
-        </div>
-      ) : (
-        <RemoteAvatar src={avatarSrc ?? ""} size={36} alt={who} rounded="md" />
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-1.5">
-          <span
-            className="text-[13px] font-bold leading-none"
-            style={{ color }}
-          >
-            {who}
-          </span>
-          {isBot && (
-            <span className="rounded-sm bg-white/10 px-1 py-[1px] text-[9px] font-semibold uppercase tracking-wide text-zinc-300">
-              APP
-            </span>
-          )}
-          <span className="text-[10.5px] leading-none text-zinc-500">
-            {time}
-          </span>
-        </div>
-        <p className="mt-1 text-[13px] leading-snug text-zinc-200">
-          {children}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function SlackDemo() {
-  return (
-    <div
-      className="relative flex h-full w-full overflow-hidden"
-      style={{ backgroundColor: "#1A1D21" }}
-    >
-      {/* workspace rail */}
-      <div
-        className="flex w-[72px] shrink-0 flex-col items-center gap-3 px-2 py-3"
-        style={{ backgroundColor: "#19171D" }}
-      >
-        {SLACK_WORKSPACES.map((logo) => (
-          <ServerTile key={logo.name} logo={logo} size={40} radius={10} />
-        ))}
-      </div>
-
-      {/* main */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div
-          className="flex h-12 shrink-0 items-center justify-between px-4"
-          style={{ borderBottom: `1px solid ${SLACK_BORDER}` }}
-        >
-          <div className="flex items-center gap-2">
-            <span className="text-[14px] font-bold text-white"># product</span>
-            <span className="text-[11px] text-zinc-500">| 14</span>
-          </div>
-          <div className="flex items-center gap-1 text-zinc-400">
-            <IconBtn ariaLabel="Start call">
-              <Call02Icon width={DESKTOP_ICON} />
-            </IconBtn>
-            <IconBtn ariaLabel="Search">
-              <Search01Icon width={DESKTOP_ICON} />
-            </IconBtn>
-          </div>
-        </div>
-
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
-          <SlackMessage
-            who="dhruv"
-            avatarSrc={AVATAR_DHRUV}
-            color="#ECB22E"
-            time="10:38 AM"
-          >
-            anyone got bandwidth to pull the Q2 launch checklist together?
-          </SlackMessage>
-          <SlackMessage
-            who="aryan"
-            avatarSrc={AVATAR_ARYAN}
-            color="#36C5F0"
-            time="10:40 AM"
-          >
-            <Mention text="@GAIA" variant="slack" /> take a crack at it from the
-            meeting notes
-          </SlackMessage>
-          <SlackMessage who="GAIA" color="#E01E5A" time="10:40 AM" isBot>
-            Drafted. 12 items across eng, design, marketing. 2 at risk: legal
-            review pending, API keys blocked. Thread open for owner assignment.
-          </SlackMessage>
-        </div>
-
-        <div
-          className="m-3 shrink-0 overflow-hidden rounded-lg border border-white/10"
-          style={{ backgroundColor: "#222529" }}
-        >
-          <div
-            className="flex items-center gap-3 px-3 py-2 text-zinc-400"
-            style={{ borderBottom: `1px solid ${SLACK_BORDER}` }}
-          >
-            <TextBoldIcon width={DESKTOP_ICON} />
-            <span className="text-[13px] italic leading-none">i</span>
-            <span className="text-[13px] line-through leading-none">S</span>
-          </div>
-          <div className="flex items-center justify-between gap-2 px-3 py-2">
-            <MessageInput placeholder="Message #product" textColor="#D1D7DB" />
-            <div className="flex shrink-0 items-center gap-1 text-zinc-500">
-              <IconBtn ariaLabel="Attach">
-                <AttachmentIcon width={DESKTOP_ICON} />
-              </IconBtn>
-              <IconBtn ariaLabel="Emoji">
-                <HappyIcon width={DESKTOP_ICON} />
-              </IconBtn>
-              <IconBtn ariaLabel="Send">
-                <SentIcon width={DESKTOP_ICON} />
-              </IconBtn>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Discord ──────────────────────────────────────────────────────────────────
-
-const DISCORD_BORDER = "rgba(0,0,0,0.35)";
-const DISCORD_HEADER_HEIGHT = 48;
-
-function DiscordMessage({
-  who,
-  avatarSrc,
-  color,
-  time,
-  children,
-  isBot,
-}: {
-  who: string;
-  avatarSrc?: string;
-  color: string;
-  time: string;
-  children: React.ReactNode;
-  isBot?: boolean;
-}) {
-  return (
-    <div className="flex items-start gap-3">
-      {isBot ? (
-        <GaiaAvatar size={38} />
-      ) : (
-        <RemoteAvatar src={avatarSrc ?? ""} size={38} alt={who} />
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-1.5">
-          <span
-            className="text-[14px] font-semibold leading-none"
-            style={{ color }}
-          >
-            {who}
-          </span>
-          {isBot && (
-            <span className="rounded bg-indigo-500 px-1 py-[2px] text-[9px] font-bold uppercase tracking-wide text-white">
-              Bot
-            </span>
-          )}
-          <span className="text-[10.5px] leading-none text-zinc-500">
-            {time}
-          </span>
-        </div>
-        <p className="mt-1 text-[13.5px] leading-snug text-zinc-200">
-          {children}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function DiscordDemo() {
-  return (
-    <div
-      className="relative flex h-full w-full overflow-hidden"
-      style={{ backgroundColor: "#313338" }}
-    >
-      {/* server rail */}
-      <div
-        className="flex w-[80px] shrink-0 flex-col items-center gap-2.5 px-2 py-3"
-        style={{ backgroundColor: "#1E1F22" }}
-      >
-        {DISCORD_SERVERS.map((logo) => (
-          <ServerTile key={logo.name} logo={logo} size={46} radius={15} />
-        ))}
-      </div>
-
-      {/* main */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div
-          className="flex shrink-0 items-center justify-between px-4"
-          style={{
-            height: DISCORD_HEADER_HEIGHT,
-            borderBottom: `1px solid ${DISCORD_BORDER}`,
-          }}
-        >
-          <div className="flex items-center gap-1.5">
-            <span className="text-zinc-400">#</span>
-            <span className="text-[14px] font-semibold text-white">
-              general
-            </span>
-          </div>
-          <IconBtn ariaLabel="Search">
-            <Search01Icon width={DESKTOP_ICON} />
-          </IconBtn>
-        </div>
-
-        <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-4">
-          <DiscordMessage
-            who="aryan"
-            avatarSrc={AVATAR_ARYAN}
-            color="#F2B544"
-            time="Today at 09:02"
-          >
-            <Mention text="/gaia" variant="discord" /> post yesterday&apos;s PR
-            digest
-          </DiscordMessage>
-          <DiscordMessage
-            who="GAIA"
-            color="#8B5CF6"
-            time="Today at 09:02"
-            isBot
-          >
-            8 PRs shipped, 3 merged, 2 awaiting review.{" "}
-            <Mention text="@dhruv" variant="discord" /> your billing-fix is
-            still open.
-          </DiscordMessage>
-          <DiscordMessage
-            who="dhruv"
-            avatarSrc={AVATAR_DHRUV}
-            color="#4ADE80"
-            time="Today at 09:05"
-          >
-            <Mention text="@GAIA" variant="discord" /> ping me when mine gets
-            reviewed
-          </DiscordMessage>
-          <DiscordMessage
-            who="GAIA"
-            color="#8B5CF6"
-            time="Today at 09:05"
-            isBot
-          >
-            Got it. I&apos;ll DM you the moment a reviewer approves.
-          </DiscordMessage>
-        </div>
-
-        {/* composer — brighter shade so it lifts off the chat bg */}
-        <div
-          className="m-3 flex shrink-0 items-center gap-3 rounded-2xl px-3 py-2.5"
-          style={{
-            backgroundColor: "#434651",
-            border: "1px solid rgba(0,0,0,0.35)",
-          }}
-        >
-          <button
-            type="button"
-            aria-label="Attach"
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-zinc-300 hover:bg-white"
-          >
-            <PlusSignIcon width={DESKTOP_ICON - 2} className="text-zinc-800" />
-          </button>
-          <MessageInput placeholder="Message #general" textColor="#DBDEE1" />
-          <div className="flex shrink-0 items-center gap-0.5 text-zinc-400">
-            <IconBtn ariaLabel="Send gift" colorClass="text-zinc-400">
-              <GiftIcon width={DESKTOP_ICON} />
-            </IconBtn>
-            <IconBtn ariaLabel="GIF" colorClass="text-zinc-400">
-              <Gif01Icon width={DESKTOP_ICON} />
-            </IconBtn>
-            <IconBtn ariaLabel="Emoji" colorClass="text-zinc-400">
-              <HappyIcon width={DESKTOP_ICON} />
-            </IconBtn>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Demo container ───────────────────────────────────────────────────────────
-
-const DEMO_MAP: Record<PlatformId, React.ComponentType> = {
-  whatsapp: WhatsAppDemo,
-  telegram: TelegramDemo,
-  slack: SlackDemo,
-  discord: DiscordDemo,
-};
-
-function PlatformDemo({ activeId }: { activeId: PlatformId }) {
-  const Demo = DEMO_MAP[activeId];
-  return (
-    <div className="mx-auto w-full max-w-[640px]">
-      <div
-        className="relative w-full overflow-hidden rounded-2xl shadow-2xl shadow-black/40"
-        style={{ aspectRatio: "5 / 4" }}
-      >
-        <AnimatePresence mode="wait">
-          <m.div
-            key={activeId}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-            className="absolute inset-0"
-          >
-            <Demo />
-          </m.div>
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
-// ─── Accordion sidebar (HeroUI) ──────────────────────────────────────────────
-
-function PlatformAccordion({
-  activeId,
-  progress,
-  onSelect,
-}: {
-  activeId: PlatformId;
-  progress: number;
-  onSelect: (id: PlatformId) => void;
-}) {
-  return (
-    <div className="flex flex-col">
-      <Accordion
-        selectionMode="single"
-        selectedKeys={new Set([activeId])}
-        onSelectionChange={(keys) => {
-          if (keys === "all") return;
-          const next = [...keys][0] as PlatformId | undefined;
-          if (next) onSelect(next);
-        }}
-        disallowEmptySelection
-        showDivider={false}
-        itemClasses={{
-          base: "!shadow-none",
-          trigger: "py-2 cursor-pointer",
-          title: "text-[inherit]",
-          content: "-mt-1 pb-6",
-        }}
-      >
-        {PLATFORMS.map((platform, idx) => {
-          const isActive = activeId === platform.id;
-          const isLast = idx === PLATFORMS.length - 1;
-          return (
-            <AccordionItem
-              key={platform.id}
-              aria-label={platform.name}
-              classNames={{
-                // Single border-top per item, plus border-bottom only on the last.
-                base: `relative !shadow-none border-t border-white/10 ${
-                  isLast ? "border-b" : ""
-                }`,
-              }}
-              title={
-                <div className="flex items-center gap-4 py-1">
-                  <Image
-                    src={platform.icon}
-                    alt={platform.name}
-                    width={48}
-                    height={48}
-                    className="shrink-0 object-contain"
-                  />
-                  <span
-                    className={`text-xl font-medium tracking-tight transition-colors ${
-                      isActive ? "text-white" : "text-zinc-400"
-                    }`}
-                  >
-                    {platform.name}
-                  </span>
-                </div>
-              }
-            >
-              <p className="text-sm font-light leading-relaxed text-zinc-400">
-                {platform.description}
-              </p>
-              <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
-                {platform.secondaryAction && (
-                  <Button
-                    as={Link}
-                    href={platform.secondaryAction.href}
-                    target={
-                      platform.secondaryAction.external ? "_blank" : "_self"
-                    }
-                    rel={
-                      platform.secondaryAction.external
-                        ? "noopener noreferrer"
-                        : undefined
-                    }
-                    variant="flat"
-                  >
-                    {platform.secondaryAction.label}
-                  </Button>
-                )}
-                <Button
-                  as={Link}
-                  href={platform.primaryAction.href}
-                  target={platform.primaryAction.external ? "_blank" : "_self"}
-                  rel={
-                    platform.primaryAction.external
-                      ? "noopener noreferrer"
-                      : undefined
-                  }
-                  color="primary"
-                >
-                  {platform.primaryAction.label}
-                </Button>
-              </div>
-              {/* Progress bar: top edge of the open item, overlays the divider */}
-              <div className="absolute left-0 right-0 top-0 h-[2px] w-full -translate-y-px overflow-hidden bg-transparent">
-                <div
-                  className="h-full bg-primary transition-none"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-            </AccordionItem>
-          );
-        })}
-      </Accordion>
-    </div>
-  );
-}
-
-// ─── Section ──────────────────────────────────────────────────────────────────
 
 export default function BotsShowcaseSection() {
-  const [activeId, setActiveId] = useState<PlatformId>("whatsapp");
-  const [progress, setProgress] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const isInView = useInView(containerRef, { once: true, amount: 0.2 });
-  const stateRef = useRef({ activeId: "whatsapp" as PlatformId, elapsed: 0 });
+  const [activeId, setActiveId] = useState<ChatPlatform>(PLATFORMS[0].id);
+  const [autoRotate, setAutoRotate] = useState(true);
+  const active = PLATFORMS.find((p) => p.id === activeId) ?? PLATFORMS[0];
 
-  const handleSelect = (id: PlatformId) => {
-    stateRef.current.activeId = id;
-    stateRef.current.elapsed = 0;
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const inView = useSectionInView(sectionRef, 0.25);
+
+  const visibleMessages = useStaggeredMessages(active, inView);
+  const phoneRef = useRef<HTMLDivElement>(null);
+  const isCtaFloating = useFloatingCta(phoneRef);
+
+  const handleSelect = useCallback((id: ChatPlatform) => {
     setActiveId(id);
-    setProgress(0);
-  };
+    setAutoRotate(false);
+  }, []);
+
+  const handlePrev = useCallback(() => {
+    setAutoRotate(false);
+    setActiveId((current) => {
+      const idx = PLATFORMS.findIndex((p) => p.id === current);
+      return PLATFORMS[(idx - 1 + PLATFORMS.length) % PLATFORMS.length].id;
+    });
+  }, []);
+
+  const handleNext = useCallback(() => {
+    setAutoRotate(false);
+    setActiveId((current) => {
+      const idx = PLATFORMS.findIndex((p) => p.id === current);
+      return PLATFORMS[(idx + 1) % PLATFORMS.length].id;
+    });
+  }, []);
 
   useEffect(() => {
-    if (!isInView) return;
-    const interval = setInterval(() => {
-      stateRef.current.elapsed += TICK;
-      const p = Math.min((stateRef.current.elapsed / DURATION) * 100, 100);
-      setProgress(p);
-      if (stateRef.current.elapsed >= DURATION) {
-        stateRef.current.elapsed = 0;
-        const currentIdx = PLATFORMS.findIndex(
-          (pl) => pl.id === stateRef.current.activeId,
-        );
-        const next = PLATFORMS[(currentIdx + 1) % PLATFORMS.length].id;
-        stateRef.current.activeId = next;
-        setActiveId(next);
-        setProgress(0);
-      }
-    }, TICK);
-    return () => clearInterval(interval);
-  }, [isInView]);
+    if (inView) return;
+    setAutoRotate(true);
+  }, [inView]);
+
+  useEffect(() => {
+    if (!inView || !autoRotate) return;
+    const cascadeMs =
+      Math.max(0, active.demo.messages.length - 1) *
+      (TYPING_DELAY_MS + TYPING_DURATION_MS);
+    const dwellMs = 2500;
+    const id = window.setTimeout(() => {
+      setActiveId((current) => {
+        const idx = PLATFORMS.findIndex((p) => p.id === current);
+        return PLATFORMS[(idx + 1) % PLATFORMS.length].id;
+      });
+    }, cascadeMs + dwellMs);
+    return () => window.clearTimeout(id);
+  }, [inView, autoRotate, active]);
 
   return (
     <section
-      ref={containerRef}
-      className="flex w-full flex-col items-center px-4 py-24 sm:px-6 sm:py-28 lg:px-8 lg:py-32 min-h-screen justify-center my-20"
+      ref={sectionRef}
+      className="relative flex w-full flex-col items-center px-4 py-20 sm:px-6 sm:py-24 lg:px-8"
     >
-      <div className="flex w-full max-w-7xl flex-col items-center gap-16">
-        <div className="flex flex-col items-center text-center">
-          <LargeHeader headingText="Reach GAIA from anywhere" centered />
-          <p className="mt-2 max-w-[960px] text-base font-light text-zinc-400 sm:text-xl">
-            Text it on WhatsApp. Mention it in Slack. Slash-command it in
-            Discord. Same assistant, same memory, every channel you already live
-            in.
-          </p>
+      <div className="flex w-full max-w-6xl flex-col items-center gap-8">
+        <LargeHeader
+          chipText="Available everywhere"
+          headingText="Reach GAIA from anywhere"
+          subHeadingText="No new app to learn. Just open the one you already have open."
+          centered
+        />
+
+        <PlatformChips
+          platforms={PLATFORMS}
+          activeId={activeId}
+          onSelect={handleSelect}
+        />
+
+        <div ref={phoneRef}>
+          <PhoneFrame platform={active} messages={visibleMessages} />
         </div>
 
-        <div className="relative mx-auto flex w-full flex-col gap-10 px-2 lg:flex-row lg:items-stretch lg:gap-12 lg:px-4">
-          <div className="w-full lg:w-1/2">
-            <PlatformDemo activeId={activeId} />
-          </div>
-          <div className="flex w-full flex-col justify-center lg:w-1/2">
-            <PlatformAccordion
-              activeId={activeId}
-              progress={progress}
-              onSelect={handleSelect}
-            />
-          </div>
-        </div>
+        <FloatingCTA
+          isFloating={isCtaFloating}
+          action={active.primaryAction}
+          actionKey={active.id}
+          iconSrc={typeof active.icon === "string" ? active.icon : undefined}
+          comingSoon={active.comingSoon}
+          onPrev={handlePrev}
+          onNext={handleNext}
+        />
       </div>
     </section>
+  );
+}
+
+function useSectionInView(
+  ref: React.RefObject<HTMLElement | null>,
+  threshold: number,
+): boolean {
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => setInView(entry?.isIntersecting ?? false),
+      { threshold },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [ref, threshold]);
+
+  return inView;
+}
+
+function FloatingCTA({
+  isFloating,
+  action,
+  actionKey,
+  iconSrc,
+  comingSoon,
+  onPrev,
+  onNext,
+}: {
+  isFloating: boolean;
+  action: ActionLink;
+  actionKey: string;
+  iconSrc: string | undefined;
+  comingSoon?: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  // Reserve the static-flow slot so the layout never jumps when the button
+  // pops out of the flow into a fixed position. The CTA is rendered twice:
+  //   - In flow, invisible while floating (reserves space)
+  //   - Fixed at the bottom while floating, fades in via opacity only
+  return (
+    <div className="relative flex w-full justify-center pt-2">
+      <div
+        aria-hidden={isFloating}
+        className={isFloating ? "pointer-events-none opacity-0" : "opacity-100"}
+      >
+        <CTAGroup
+          actionKey={actionKey}
+          action={action}
+          iconSrc={iconSrc}
+          comingSoon={comingSoon}
+          onPrev={onPrev}
+          onNext={onNext}
+        />
+      </div>
+
+      <AnimatePresence initial={false}>
+        {isFloating && (
+          <m.div
+            key="floating"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="pointer-events-none fixed inset-x-0 bottom-6 z-[1001] flex justify-center px-4"
+          >
+            <div className="pointer-events-auto">
+              <CTAGroup
+                actionKey={actionKey}
+                action={action}
+                iconSrc={iconSrc}
+                comingSoon={comingSoon}
+                onPrev={onPrev}
+                onNext={onNext}
+              />
+            </div>
+          </m.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function CTAGroup({
+  actionKey,
+  action,
+  iconSrc,
+  comingSoon,
+  onPrev,
+  onNext,
+}: {
+  actionKey: string;
+  action: ActionLink;
+  iconSrc: string | undefined;
+  comingSoon?: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <div className="relative flex w-[390px] max-w-full items-center justify-center sm:w-[429px]">
+      <div className="-left-24 -translate-y-1/2 absolute top-1/2 flex items-center gap-2">
+        <Button
+          isIconOnly
+          variant="flat"
+          radius="full"
+          aria-label="Previous platform"
+          onPress={onPrev}
+          className="min-w-10 h-10 w-10 p-0 text-zinc-500 transition-colors hover:text-zinc-200"
+        >
+          <ArrowLeft02Icon size={24} />
+        </Button>
+        <Button
+          isIconOnly
+          variant="flat"
+          radius="full"
+          aria-label="Next platform"
+          onPress={onNext}
+          className="min-w-10 h-10 w-10 p-0 text-zinc-500 transition-colors hover:text-zinc-200"
+        >
+          <ArrowRight02Icon size={24} />
+        </Button>
+      </div>
+      <PlatformCTASwitcher
+        actionKey={actionKey}
+        action={action}
+        iconSrc={iconSrc}
+        comingSoon={comingSoon}
+      />
+    </div>
+  );
+}
+
+function PlatformCTASwitcher({
+  actionKey,
+  action,
+  iconSrc,
+  comingSoon,
+}: {
+  actionKey: string;
+  action: ActionLink;
+  iconSrc: string | undefined;
+  comingSoon?: boolean;
+}) {
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <m.div
+        key={actionKey}
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -4 }}
+        transition={{ duration: 0.18, ease: "easeOut" }}
+      >
+        <PrimaryCTA action={action} iconSrc={iconSrc} comingSoon={comingSoon} />
+      </m.div>
+    </AnimatePresence>
+  );
+}
+
+function useFloatingCta(
+  phoneRef: React.RefObject<HTMLDivElement | null>,
+): boolean {
+  const [floating, setFloating] = useState(false);
+
+  useEffect(() => {
+    const phone = phoneRef.current;
+    if (!phone) return;
+
+    const update = (): void => {
+      const phoneRect = phone.getBoundingClientRect();
+      const vh = window.innerHeight;
+      // Threshold is tuned so the floating button and its static-flow slot
+      // line up vertically at the moment of switch — the visual position
+      // doesn't jump.
+      const phoneEnoughVisible = phoneRect.top < vh - 200;
+      // The floating button sits at vh - 56 (bottom-6 + button height). The
+      // static slot sits at phoneRect.bottom + 62 (flex gap-8 + pt-2 + half
+      // button). The switch happens when the two y positions match.
+      const phoneStillNearBottom = phoneRect.bottom > vh - 118;
+      setFloating(phoneEnoughVisible && phoneStillNearBottom);
+    };
+
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [phoneRef]);
+
+  return floating;
+}
+
+const TYPING_DELAY_MS = 450;
+const TYPING_DURATION_MS = 850;
+
+function useStaggeredMessages(
+  platform: Platform,
+  enabled: boolean,
+): ChatMessageItem[] {
+  const allMessages = platform.demo.messages;
+  const [visibleCount, setVisibleCount] = useState(1);
+  const [showTyping, setShowTyping] = useState(false);
+
+  useEffect(() => {
+    setVisibleCount(1);
+    setShowTyping(false);
+    if (!enabled) return;
+    if (allMessages.length <= 1) return;
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let elapsed = 0;
+    for (let i = 1; i < allMessages.length; i++) {
+      elapsed += TYPING_DELAY_MS;
+      timers.push(setTimeout(() => setShowTyping(true), elapsed));
+      elapsed += TYPING_DURATION_MS;
+      timers.push(
+        setTimeout(() => {
+          setShowTyping(false);
+          setVisibleCount((c) => c + 1);
+        }, elapsed),
+      );
+    }
+
+    return () => {
+      for (const t of timers) clearTimeout(t);
+    };
+  }, [allMessages, enabled]);
+
+  return useMemo(() => {
+    const real = allMessages.slice(0, visibleCount).map((m, i) => ({
+      ...m,
+      id: m.id ?? `msg-${i}`,
+    }));
+    if (!showTyping || visibleCount >= allMessages.length) return real;
+    const next = allMessages[visibleCount];
+    return [
+      ...real,
+      {
+        id: `typing-${visibleCount}`,
+        from: next.from,
+        author: next.author,
+        avatar: next.avatar,
+        authorColor: next.authorColor,
+        typing: true,
+      },
+    ];
+  }, [allMessages, visibleCount, showTyping]);
+}
+
+function PlatformChips({
+  platforms,
+  activeId,
+  onSelect,
+}: {
+  platforms: Platform[];
+  activeId: ChatPlatform;
+  onSelect: (id: ChatPlatform) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Choose a platform"
+      className="flex flex-wrap items-center justify-center gap-2"
+    >
+      {platforms.map((p) => {
+        const isActive = p.id === activeId;
+        return (
+          <Chip
+            key={p.id}
+            variant={isActive ? "solid" : "flat"}
+            color={isActive ? "primary" : "default"}
+            size="lg"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onSelect(p.id)}
+            className="cursor-pointer select-none"
+            startContent={
+              typeof p.icon === "string" ? (
+                <Image
+                  src={p.icon}
+                  alt=""
+                  width={20}
+                  height={20}
+                  className="h-5 w-5 shrink-0 rounded"
+                  aria-hidden
+                />
+              ) : (
+                <span
+                  className="flex h-5 w-5 shrink-0 items-center justify-center"
+                  aria-hidden
+                >
+                  {p.icon}
+                </span>
+              )
+            }
+          >
+            {p.name}
+          </Chip>
+        );
+      })}
+    </div>
+  );
+}
+
+function PhoneFrame({
+  platform,
+  messages,
+}: {
+  platform: Platform;
+  messages: ChatMessageItem[];
+}) {
+  return (
+    <div className="relative isolate sm:pb-[82px]">
+      <div
+        aria-hidden
+        className="-z-10 pointer-events-none absolute -inset-x-[28rem] -inset-y-[20rem]"
+        style={{
+          backgroundImage:
+            "radial-gradient(closest-side, rgba(0,187,255,0.7), rgba(0,187,255,0.25) 35%, rgba(0,187,255,0.06) 65%, transparent 80%)",
+          filter: "blur(18px)",
+        }}
+      />
+      <IPhoneMockup
+        screenBackground={platform.phone.screenBackground}
+        statusBarTone={platform.phone.statusBarTone}
+        className="sm:scale-[1.1] sm:origin-top"
+      >
+        <AnimatePresence mode="wait" initial={false}>
+          <m.div
+            key={platform.id}
+            className="flex h-full flex-col"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+          >
+            <ChatDemo
+              platform={platform.id}
+              title={platform.demo.title}
+              subtitle={platform.demo.subtitle}
+              messages={messages}
+            />
+          </m.div>
+        </AnimatePresence>
+      </IPhoneMockup>
+    </div>
+  );
+}
+
+function PrimaryCTA({
+  action,
+  iconSrc,
+  comingSoon,
+}: {
+  action: ActionLink;
+  iconSrc: string | undefined;
+  comingSoon?: boolean;
+}) {
+  if (comingSoon) {
+    return (
+      <RaisedButton
+        color="#52525B"
+        className="h-10 cursor-not-allowed rounded-full pr-4 pl-3 before:rounded-full"
+        tabIndex={-1}
+        aria-disabled="true"
+        onClick={(e) => e.preventDefault()}
+      >
+        <span className="flex items-center gap-2">
+          <SquareLockIcon size={18} />
+          Coming Soon
+        </span>
+      </RaisedButton>
+    );
+  }
+
+  const buttonContent = (
+    <span className="flex items-center gap-2">
+      {iconSrc && (
+        <Image
+          src={iconSrc}
+          alt=""
+          width={28}
+          height={28}
+          aria-hidden
+          className="h-7 w-7 shrink-0 rounded"
+        />
+      )}
+      {action.label}
+      <CircleArrowRight02Icon size={18} />
+    </span>
+  );
+
+  if (action.external) {
+    return (
+      <RaisedButton
+        color="#00bbff"
+        className="text-black! h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
+        onClick={() =>
+          window.open(action.href, "_blank", "noopener,noreferrer")
+        }
+      >
+        {buttonContent}
+      </RaisedButton>
+    );
+  }
+
+  return (
+    <Link href={action.href}>
+      <RaisedButton
+        color="#00bbff"
+        className="text-black! h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
+      >
+        {buttonContent}
+      </RaisedButton>
+    </Link>
   );
 }

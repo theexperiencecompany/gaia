@@ -1079,3 +1079,33 @@
   border: none;
   border-top: 1px solid rgb(39 39 42 / 0.7); /* zinc-800/70 */
 }
+
+/* Landing bots-showcase chat bubble pop-in */
+@keyframes chat-bubble-pop {
+  from {
+    transform: scale(0.96) translateY(4px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+.chat-bubble-pop {
+  animation: chat-bubble-pop 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: bottom;
+}
+
+/* Landing bots-showcase typing-indicator dots */
+@keyframes chat-demo-typing {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 0.9;
+  }
+}

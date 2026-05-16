@@ -3,6 +3,7 @@ import { RaisedButton } from "@/components/ui/raised-button";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import { Link } from "@/i18n/navigation";
 import GetStartedButton from "../shared/GetStartedButton";
+import { TextSoftBlurIn } from "../shared/TextSoftBlurIn";
 
 export default function UseCasesSectionLanding() {
   const contentRef = useRef(null);
@@ -10,9 +11,11 @@ export default function UseCasesSectionLanding() {
   return (
     <div className="relative flex flex-col items-center justify-start px-4 sm:px-6 min-h-screen">
       <div className="relative z-1 flex w-full max-w-7xl flex-col items-center justify-center p-4 sm:p-6 lg:p-7 gap-10 min-h-screen">
-        <h3 className="text-4xl font-serif font-normal!">
-          If you do it, GAIA can automate it
-        </h3>
+        <TextSoftBlurIn
+          text="If you do it, GAIA can automate it"
+          as="h3"
+          className="text-4xl font-serif font-normal!"
+        />
         <div className="max-w-5xl">
           <UseCaseSection
             dummySectionRef={contentRef}
