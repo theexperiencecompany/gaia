@@ -570,7 +570,9 @@ export class DiscordAdapter extends BaseBotAdapter {
               await (
                 message.channel as { sendTyping: () => Promise<void> }
               ).sendTyping();
-            } catch {}
+            } catch {
+              /* intentional: best-effort, errors ignored */
+            }
           }, 8000)
         : null;
 
@@ -747,7 +749,9 @@ export class DiscordAdapter extends BaseBotAdapter {
               await (
                 message.channel as { sendTyping: () => Promise<void> }
               ).sendTyping();
-            } catch {}
+            } catch {
+              /* intentional: best-effort, errors ignored */
+            }
           }, 8000)
         : null;
 
@@ -894,7 +898,9 @@ export class DiscordAdapter extends BaseBotAdapter {
       },
 
       startTyping: async () => {
-        return () => {};
+        return () => {
+          /* intentional no-op */
+        };
       },
     };
   }

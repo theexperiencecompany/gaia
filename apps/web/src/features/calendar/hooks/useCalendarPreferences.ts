@@ -43,7 +43,6 @@ export const useCalendarPreferences = (
         // Always sync from backend when available
         if (JSON.stringify(currentStore) !== JSON.stringify(query.data)) {
           setSelectedCalendars(query.data);
-        } else {
         }
       } else if (query.data && query.data.length === 0) {
         console.warn(

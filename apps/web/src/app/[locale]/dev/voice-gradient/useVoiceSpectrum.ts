@@ -202,7 +202,9 @@ export function useVoiceSpectrum({ source }: UseVoiceSpectrumOptions) {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
-      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current.close().catch(() => {
+        /* intentional no-op */
+      });
     }
     audioCtxRef.current = null;
     setIsActive(false);
@@ -216,7 +218,9 @@ export function useVoiceSpectrum({ source }: UseVoiceSpectrumOptions) {
       analyserRef.current?.disconnect();
       streamRef.current?.getTracks().forEach((t) => t.stop());
       if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
-        await audioCtxRef.current.close().catch(() => {});
+        await audioCtxRef.current.close().catch(() => {
+          /* intentional no-op */
+        });
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({

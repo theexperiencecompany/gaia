@@ -1,3 +1,4 @@
+/* biome-ignore-all lint/performance/noReExportAll: barrel file — package public API */
 export * from "./auth";
 export * from "./dateUtils";
 export * from "./formatters";

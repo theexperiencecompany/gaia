@@ -1,6 +1,8 @@
 import { useTriggerAction } from "@openuidev/react-lang";
 
-const NOOP = () => {};
+const NOOP = () => {
+  /* intentional no-op */
+};
 
 /**
  * `useTriggerAction` from @openuidev/react-lang throws when called outside a

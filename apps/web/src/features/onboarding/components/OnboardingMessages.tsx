@@ -48,8 +48,12 @@ export const OnboardingMessages = ({
               memory_data={undefined}
               todo_progress={undefined}
               replyToMessage={undefined}
-              setOpenImage={() => {}}
-              setImageData={() => {}}
+              setOpenImage={() => {
+                /* intentional no-op */
+              }}
+              setImageData={() => {
+                /* intentional no-op */
+              }}
               text={message.content}
               disableActions={true}
               {...message}

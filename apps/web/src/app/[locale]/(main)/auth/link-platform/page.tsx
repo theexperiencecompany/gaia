@@ -78,7 +78,9 @@ export default function LinkPlatformPage() {
             displayName: display_name,
           });
         })
-        .catch(() => {});
+        .catch(() => {
+          /* intentional no-op */
+        });
     }
   }, [token]);
 

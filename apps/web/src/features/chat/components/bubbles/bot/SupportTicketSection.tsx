@@ -6,7 +6,9 @@ export default function SupportTicketSection({
 }: {
   support_ticket_data: SupportTicketData[];
 }) {
-  const handleTicketSubmitted = () => {};
+  const handleTicketSubmitted = () => {
+    /* intentional no-op */
+  };
 
   return (
     <div className="mt-3 w-full space-y-3">

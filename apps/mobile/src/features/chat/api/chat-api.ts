@@ -1,3 +1,4 @@
+/* biome-ignore-all lint/performance/noReExportAll: barrel file — package public API */
 import type { ToolDataEntry } from "@gaia/shared/chat";
 import { getAuthToken } from "@/features/auth/utils/auth-storage";
 import { apiService } from "@/lib/api";

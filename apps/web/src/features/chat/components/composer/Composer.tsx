@@ -384,7 +384,9 @@ const Composer: React.FC<MainSearchbarProps> = ({
 
   // Store paste handler in a ref to avoid re-subscribing the event listener
   // whenever dependencies change (advanced-event-handler-refs pattern).
-  const handlePasteRef = useRef((_e: ClipboardEvent) => {});
+  const handlePasteRef = useRef((_e: ClipboardEvent) => {
+    /* intentional no-op */
+  });
   handlePasteRef.current = (e: ClipboardEvent) => {
     const items = e.clipboardData?.items;
     if (!items) return;

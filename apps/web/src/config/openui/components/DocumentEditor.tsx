@@ -152,7 +152,9 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
     void navigator.clipboard
       .writeText(full)
       .then(flashCopied)
-      .catch(() => {});
+      .catch(() => {
+        /* intentional no-op */
+      });
   }, [fields, editor]);
 
   const copyAsText = React.useCallback(() => {
@@ -164,7 +166,9 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
     void navigator.clipboard
       .writeText(full)
       .then(flashCopied)
-      .catch(() => {});
+      .catch(() => {
+        /* intentional no-op */
+      });
   }, [fields, editor]);
 
   return (

@@ -374,7 +374,9 @@ describe("formatAuthRequiredMessage", () => {
 // ---------------------------------------------------------------------------
 describe("formatBotError", () => {
   // Suppress console.error for the generic error fallback tests
-  const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {
+    /* intentional no-op */
+  });
 
   it("returns auth message for GaiaApiError with 401", () => {
     const err = new GaiaApiError("Unauthorized", 401);

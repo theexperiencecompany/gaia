@@ -124,7 +124,9 @@ function useLatestDesktopTag(): string | null {
         );
         if (desktop) setTag(desktop.tag_name);
       })
-      .catch(() => {});
+      .catch(() => {
+        /* intentional no-op */
+      });
 
     return () => controller.abort();
   }, []);

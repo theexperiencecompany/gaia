@@ -12,7 +12,9 @@
 
 import { InfisicalSDK } from "@infisical/sdk";
 
-const log = (_msg: string) => {};
+const log = (_msg: string) => {
+  /* intentional no-op */
+};
 const warn = (msg: string) => console.warn(`[secrets] ${msg}`);
 
 class InfisicalConfigError extends Error {

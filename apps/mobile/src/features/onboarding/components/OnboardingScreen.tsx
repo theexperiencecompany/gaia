@@ -653,7 +653,9 @@ export function OnboardingScreen() {
     } else {
       // Mark complete and navigate
       try {
-        await updateOnboardingPhase("complete", true).catch(() => {});
+        await updateOnboardingPhase("complete", true).catch(() => {
+          /* intentional no-op */
+        });
       } finally {
         router.replace("/(app)/(tabs)");
       }
@@ -662,7 +664,9 @@ export function OnboardingScreen() {
 
   const handleSkip = useCallback(async () => {
     const step = STEPS[currentIndex];
-    await updateOnboardingPhase(step, false).catch(() => {});
+    await updateOnboardingPhase(step, false).catch(() => {
+      /* intentional no-op */
+    });
     if (currentIndex < STEPS.length - 1) {
       scrollToIndex(currentIndex + 1);
     } else {
@@ -672,8 +676,12 @@ export function OnboardingScreen() {
 
   const handleNavigateToWorkflows = useCallback(() => {
     // Mark workflow step complete then navigate
-    updateOnboardingPhase("create_workflow", true).catch(() => {});
-    updateOnboardingPhase("complete", true).catch(() => {});
+    updateOnboardingPhase("create_workflow", true).catch(() => {
+      /* intentional no-op */
+    });
+    updateOnboardingPhase("complete", true).catch(() => {
+      /* intentional no-op */
+    });
     router.replace("/(app)/(tabs)/workflows");
   }, [router]);
 
@@ -706,7 +714,11 @@ export function OnboardingScreen() {
             />
           )}
           {item === "enable_notifications" && (
-            <EnableNotificationsStep onPermissionGranted={() => {}} />
+            <EnableNotificationsStep
+              onPermissionGranted={() => {
+                /* intentional no-op */
+              }}
+            />
           )}
           {item === "complete" && <CompleteStep />}
         </View>

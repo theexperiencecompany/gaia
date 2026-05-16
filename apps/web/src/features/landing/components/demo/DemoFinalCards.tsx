@@ -325,7 +325,14 @@ function MorningBriefingCard() {
 export function DemoFinalCard({ type }: { type: FinalCardType }) {
   switch (type) {
     case "email":
-      return <EmailComposeCard emailData={FOUNDER_EMAIL} onSent={() => {}} />;
+      return (
+        <EmailComposeCard
+          emailData={FOUNDER_EMAIL}
+          onSent={() => {
+            /* intentional no-op */
+          }}
+        />
+      );
     case "workflow":
       return <WorkflowCard />;
     case "tools":

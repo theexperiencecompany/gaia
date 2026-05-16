@@ -55,16 +55,34 @@ export default function DemoSettingsDropdown({
       key: "documentation",
       label: "Documentation",
       icon: BookBookmark02Icon,
-      action: () => {},
+      action: () => {
+        /* intentional no-op */
+      },
     },
     {
       key: "changelog",
       label: "Changelog",
       icon: Layers01Icon,
-      action: () => {},
+      action: () => {
+        /* intentional no-op */
+      },
     },
-    { key: "blog", label: "Blog", icon: QuillWrite01Icon, action: () => {} },
-    { key: "roadmap", label: "Roadmap", icon: MapsIcon, action: () => {} },
+    {
+      key: "blog",
+      label: "Blog",
+      icon: QuillWrite01Icon,
+      action: () => {
+        /* intentional no-op */
+      },
+    },
+    {
+      key: "roadmap",
+      label: "Roadmap",
+      icon: MapsIcon,
+      action: () => {
+        /* intentional no-op */
+      },
+    },
   ];
 
   const supportMenuItems = [
@@ -72,20 +90,42 @@ export default function DemoSettingsDropdown({
       key: "contact_support",
       label: "Contact Support",
       icon: BubbleChatQuestionIcon,
-      action: () => {},
+      action: () => {
+        /* intentional no-op */
+      },
     },
     {
       key: "feature_request",
       label: "Request a Feature",
       icon: GitPullRequestIcon,
-      action: () => {},
+      action: () => {
+        /* intentional no-op */
+      },
     },
   ];
 
   const downloadMenuItems = [
-    { key: "macos", label: "macOS", action: () => {} },
-    { key: "windows", label: "Windows", action: () => {} },
-    { key: "linux", label: "Linux", action: () => {} },
+    {
+      key: "macos",
+      label: "macOS",
+      action: () => {
+        /* intentional no-op */
+      },
+    },
+    {
+      key: "windows",
+      label: "Windows",
+      action: () => {
+        /* intentional no-op */
+      },
+    },
+    {
+      key: "linux",
+      label: "Linux",
+      action: () => {
+        /* intentional no-op */
+      },
+    },
   ];
 
   return (

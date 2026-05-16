@@ -312,13 +312,17 @@ export class TelegramAdapter extends BaseBotAdapter {
       async () => {
         try {
           await ctx.api.sendChatAction(chatId, "typing");
-        } catch {}
+        } catch {
+          /* intentional: best-effort, errors ignored */
+        }
       },
       5000,
     );
     try {
       await ctx.api.sendChatAction(chatId, "typing");
-    } catch {}
+    } catch {
+      /* intentional: best-effort, errors ignored */
+    }
 
     const clearTyping = () => {
       if (typingInterval) {
@@ -356,7 +360,9 @@ export class TelegramAdapter extends BaseBotAdapter {
             ) {
               try {
                 await ctx.api.editMessageText(chatId, currentMessageId, text);
-              } catch {}
+              } catch {
+                /* intentional: best-effort, errors ignored */
+              }
               return;
             }
             this.adapterLogger.error(
@@ -403,7 +409,9 @@ export class TelegramAdapter extends BaseBotAdapter {
                     newMessage.message_id,
                     updatedText,
                   );
-                } catch {}
+                } catch {
+                  /* intentional: best-effort, errors ignored */
+                }
                 return;
               }
               this.adapterLogger.error(
@@ -604,14 +612,21 @@ export class TelegramAdapter extends BaseBotAdapter {
       },
 
       startTyping: async () => {
-        if (!chatId) return () => {};
+        if (!chatId)
+          return () => {
+            /* intentional no-op */
+          };
         try {
           await api.sendChatAction(chatId, "typing");
-        } catch {}
+        } catch {
+          /* intentional: best-effort, errors ignored */
+        }
         const interval = setInterval(async () => {
           try {
             await api.sendChatAction(chatId, "typing");
-          } catch {}
+          } catch {
+            /* intentional: best-effort, errors ignored */
+          }
         }, 5000);
         return () => clearInterval(interval);
       },

@@ -102,8 +102,12 @@ export const filterEmptyMessagePairs = (
           ...baseFields,
           text: nextMessage.response || "",
           loading: nextMessage.loading,
-          setOpenImage: () => {},
-          setImageData: () => {},
+          setOpenImage: () => {
+            /* intentional no-op */
+          },
+          setImageData: () => {
+            /* intentional no-op */
+          },
           systemPurpose,
           isConvoSystemGenerated,
         };
@@ -132,8 +136,12 @@ export const filterEmptyMessagePairs = (
         ...baseFields,
         text: currentMessage.response || "",
         loading: currentMessage.loading,
-        setOpenImage: () => {},
-        setImageData: () => {},
+        setOpenImage: () => {
+          /* intentional no-op */
+        },
+        setImageData: () => {
+          /* intentional no-op */
+        },
         systemPurpose,
         isConvoSystemGenerated,
       };

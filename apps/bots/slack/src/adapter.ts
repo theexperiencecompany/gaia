@@ -434,13 +434,17 @@ export class SlackAdapter extends BaseBotAdapter {
         await respond({ text: markdown, response_type: "ephemeral" });
         return {
           id: "ephemeral",
-          edit: async (_t: string) => {},
+          edit: async (_t: string) => {
+            /* intentional no-op */
+          },
         };
       },
 
       startTyping: async () => {
         // Slack has no typing indicator API for bots
-        return () => {};
+        return () => {
+          /* intentional no-op */
+        };
       },
     };
   }

@@ -60,7 +60,9 @@ export const BarVisualizer = ({
       if (sourceRef.current) {
         try {
           sourceRef.current.disconnect();
-        } catch (_e) {}
+        } catch (_e) {
+          /* intentional: best-effort, errors ignored */
+        }
       }
       if (
         audioContextRef.current &&
@@ -68,7 +70,9 @@ export const BarVisualizer = ({
       ) {
         try {
           audioContextRef.current.close();
-        } catch (_e) {}
+        } catch (_e) {
+          /* intentional: best-effort, errors ignored */
+        }
       }
     };
 

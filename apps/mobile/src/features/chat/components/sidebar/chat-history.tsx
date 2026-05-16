@@ -102,7 +102,9 @@ function RenameModal({
             width: "100%",
             maxWidth: 360,
           }}
-          onPress={() => {}}
+          onPress={() => {
+            /* intentional no-op */
+          }}
         >
           <Text
             style={{

@@ -87,7 +87,9 @@ const ProductivityOSDemo = memo(function ProductivityOSDemo({
     setSidebarOpen((o) => !o);
   }, []);
 
-  const handleNotificationsClick = useCallback(() => {}, []);
+  const handleNotificationsClick = useCallback(() => {
+    /* intentional no-op */
+  }, []);
 
   const activePageContent = useMemo(() => {
     switch (activePage) {

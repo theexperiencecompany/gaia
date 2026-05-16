@@ -1,3 +1,4 @@
+/* biome-ignore-all lint/performance/noReExportAll: barrel file — package public API */
 export * from "./cards/artifact-card";
 export * from "./cards/calendar-delete-card";
 export * from "./cards/calendar-edit-card";

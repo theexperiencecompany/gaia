@@ -6,7 +6,9 @@ import { injectInfisicalSecrets } from "./secrets";
 
 export { injectInfisicalSecrets } from "./secrets";
 
-const log = (_msg: string) => {};
+const log = (_msg: string) => {
+  /* intentional no-op */
+};
 const warn = (msg: string) => console.warn(`[config] ${msg}`);
 
 /**

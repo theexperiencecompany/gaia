@@ -573,7 +573,9 @@ function MermaidBlock({ code }: { code: string }) {
           try {
             const data = JSON.parse(event.nativeEvent.data);
             if (data.height) setHeight(Math.max(data.height, 100));
-          } catch {}
+          } catch {
+            /* intentional: best-effort, errors ignored */
+          }
         }}
         originWhitelist={["*"]}
         javaScriptEnabled
@@ -630,7 +632,9 @@ function MathBlock({ code, inline }: { code: string; inline?: boolean }) {
         try {
           const data = JSON.parse(event.nativeEvent.data);
           if (data.height) setHeight(Math.max(data.height, inline ? 20 : 40));
-        } catch {}
+        } catch {
+          /* intentional: best-effort, errors ignored */
+        }
       }}
       originWhitelist={["*"]}
       javaScriptEnabled

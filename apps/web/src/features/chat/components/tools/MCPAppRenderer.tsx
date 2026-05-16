@@ -258,7 +258,9 @@ export function MCPAppRenderer({ data }: Props) {
       // can save state. We give it 500ms then force-close regardless.
       const timeout = setTimeout(() => b.close(), 500);
       b.teardownResource({})
-        .catch(() => {})
+        .catch(() => {
+          /* intentional no-op */
+        })
         .finally(() => {
           clearTimeout(timeout);
           b.close();

@@ -42,7 +42,9 @@ if (typeof window !== "undefined") {
             const client = Sentry.getClient();
             if (client) client.addIntegration(replayIntegration());
           })
-          .catch(() => {});
+          .catch(() => {
+            /* intentional no-op */
+          });
       } catch {
         // Observability should never break the app.
       }

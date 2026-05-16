@@ -111,7 +111,9 @@ export function useElectron() {
       if (typeof window !== "undefined" && hasElectronAPI(window)) {
         return window.api.onAuthCallback(callback);
       }
-      return () => {}; // No-op cleanup if not in Electron
+      return () => {
+        /* intentional no-op */
+      }; // No-op cleanup if not in Electron
     },
     [],
   );
@@ -126,7 +128,9 @@ export function useElectron() {
       if (typeof window !== "undefined" && hasElectronAPI(window)) {
         return window.api.onAuthRedirecting(callback);
       }
-      return () => {}; // No-op cleanup if not in Electron
+      return () => {
+        /* intentional no-op */
+      }; // No-op cleanup if not in Electron
     },
     [],
   );
