@@ -186,7 +186,14 @@ const nextConfig = {
         headers: [
           {
             key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
+            // In dev Turbopack reuses chunk filenames across rebuilds, so the
+            // immutable hint mis-caches stale bundles in the browser. Only
+            // claim immutability in production builds (where Webpack/Turbopack
+            // bake a content hash into the filename).
+            value:
+              process.env.NODE_ENV === "production"
+                ? "public, max-age=31536000, immutable"
+                : "no-store, max-age=0",
           },
         ],
       },
