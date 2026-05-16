@@ -130,23 +130,28 @@ async def ensure_session_dirs(user_id: str, conv_id: str) -> Path:
 
 
 async def materialize_user_integrations(user_id: str, connected_ids: set[str]) -> None:
-    """Lay down the FS tree for a user's connected integrations + generic skills.
+    """Lay down the FULL FS catalog of built-in skills under the user's workspace.
 
-    Reads the canonical SKILL.md library under
+    Reads the canonical SKILL.md library at
     ``apps/api/app/agents/skills/builtin/`` via ``skill_loader`` and writes
     byte-identical bodies into the user's workspace:
 
         integrations/
             GUIDE.md                      — how the dir works
-            <integration>/agent/skills/<slug>/skill.md
+            <integration>/agent/skills/<slug>/skill.md   (every target subagent)
         skills/<slug>/skill.md            — executor-targeted general skills
 
-    The frontmatter ``target`` field decides where each skill lands:
-    ``<provider>_agent`` goes under that integration; ``executor`` goes
-    under the top-level ``skills/`` tree. Only integrations the user has
-    actually connected get their skills materialized (others are dead
-    weight in context). Executor-level skills are always laid down — they
-    don't depend on any single integration connection.
+    Every built-in skill is materialized regardless of whether the user has
+    that integration connected — the disk catalog is the source of truth for
+    "what is possible", connection state is reflected via a stub
+    ``integrations/<id>/agent/.connected`` marker (an empty file present
+    only for connected integrations) so the agent can tell which sub-tree
+    the user can actually act on right now.
+
+    Context loading (the dynamic system message inserted at subagent
+    runtime via ``integration_skills_block``) stays scoped to whichever
+    subagent the executor is currently invoking, so this fuller FS catalog
+    doesn't bloat the LLM prompt.
 
     Idempotent: overwrites bodies on every bootstrap so SKILL.md edits in
     the repo roll out the moment a user starts a new session. Soft-fails
@@ -164,17 +169,25 @@ async def materialize_user_integrations(user_id: str, connected_ids: set[str]) -
         )
 
         grouped = skills_by_subagent()
-        # Per-integration skills — only for the ones the user has connected.
-        for iid in connected_ids:
-            skills = grouped.get(iid) or []
+        # Every target subagent's skills — full catalog, not just connected.
+        for iid, skills in grouped.items():
+            if iid == "executor" or not skills:
+                continue
             agent_dir = integrations_root / iid / "agent"
             skills_dir = agent_dir / "skills"
             skills_dir.mkdir(parents=True, exist_ok=True)
-            agent_dir.mkdir(parents=True, exist_ok=True)
             for skill in skills:
                 slug_dir = skills_dir / skill.slug
                 slug_dir.mkdir(parents=True, exist_ok=True)
                 (slug_dir / "skill.md").write_text(skill.body, encoding="utf-8")
+            # Connection marker — agent can `test -e ./.connected` to know
+            # whether the user has actually connected this integration vs
+            # it being a catalog stub.
+            connected_marker = agent_dir / ".connected"
+            if iid in connected_ids:
+                connected_marker.write_text("", encoding="utf-8")
+            elif connected_marker.exists():
+                connected_marker.unlink()
 
         # General-purpose skills (target: executor) live at the workspace
         # root so the executor can `cat /workspace/skills/<slug>/skill.md`
