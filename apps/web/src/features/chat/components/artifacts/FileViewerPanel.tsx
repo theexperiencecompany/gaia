@@ -11,6 +11,7 @@ import {
 } from "@icons";
 import { formatFileSize } from "@shared/utils";
 import { useCallback, useEffect, useState, type WheelEvent } from "react";
+import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useArtifactText } from "@/features/chat/hooks/useArtifactText";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
@@ -175,15 +176,16 @@ export default function FileViewerPanel({
   sizeBytes,
   inlineBody,
 }: FileViewerPanelProps) {
+  const isImage = contentType.startsWith("image/");
   const {
     text: content,
     loading,
     error,
-  } = useArtifactText(conversationId, path, inlineBody);
+  } = useArtifactText(conversationId, path, inlineBody, !isImage);
   const [copied, setCopied] = useState(false);
   const closeSidebar = useRightSidebar((state) => state.close);
 
-  const isPreviewable = PREVIEWABLE_CONTENT_TYPES.has(contentType);
+  const isPreviewable = PREVIEWABLE_CONTENT_TYPES.has(contentType) || isImage;
 
   const [viewMode, setViewMode] = useState<ViewMode>(
     isPreviewable ? "preview" : "source",
@@ -206,18 +208,22 @@ export default function FileViewerPanel({
   }, [content]);
 
   const handleDownload = useCallback(() => {
-    if (content === null) return;
-
-    const blob = new Blob([content], { type: contentType });
-    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = url;
+    if (isImage || content === null) {
+      // For binary artifacts (images etc.) anchor to the auth-gated URL —
+      // we never fetched the body and don't want to.
+      link.href = sessionFilesApi.artifactUrl(conversationId, path);
+    } else {
+      const blob = new Blob([content], { type: contentType });
+      link.href = URL.createObjectURL(blob);
+    }
     link.download = filename;
+    link.rel = "noopener";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [content, contentType, filename]);
+    if (!isImage && content !== null) URL.revokeObjectURL(link.href);
+  }, [content, contentType, conversationId, filename, isImage, path]);
 
   const ext = getExtension(filename).toUpperCase();
   const sizeLabel =
@@ -297,7 +303,7 @@ export default function FileViewerPanel({
             variant="light"
             onClick={handleDownload}
             aria-label="Download file"
-            isDisabled={content === null}
+            isDisabled={!isImage && content === null}
           >
             <Download01Icon size={16} />
           </Button>
@@ -317,19 +323,23 @@ export default function FileViewerPanel({
         className={`min-h-0 flex-1 ${isHtmlPreview ? "overflow-hidden" : "overflow-y-auto overscroll-contain"}`}
         onWheel={handleContentWheel}
       >
-        {loading ? (
+        {isImage ? (
+          <div className="flex h-full items-center justify-center bg-zinc-950 p-4">
+            <img
+              src={sessionFilesApi.artifactUrl(conversationId, path)}
+              alt={filename}
+              className="max-h-full max-w-full object-contain"
+            />
+          </div>
+        ) : loading ? (
           <div className="flex h-full items-center justify-center">
             <Spinner size="lg" />
           </div>
-        ) : null}
-
-        {error ? (
+        ) : error ? (
           <div className="flex h-full items-center justify-center">
             <p className="text-sm text-red-400">Failed to load file</p>
           </div>
-        ) : null}
-
-        {!loading && !error && content !== null ? (
+        ) : content !== null ? (
           <FileContentRenderer
             content={content}
             contentType={contentType}

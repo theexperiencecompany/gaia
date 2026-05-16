@@ -108,4 +108,244 @@ moment you write into `artifacts/` the card appears.
 """
 
 
-__all__ = ["INDEX_MD", "SESSIONS_GUIDE_MD"]
+INTEGRATIONS_GUIDE_MD = """# Integrations — how connected services live on disk
+
+Each external service the user has connected (gmail, googlecalendar, slack,
+…) gets its own subdirectory:
+
+    integrations/
+        GUIDE.md           (this file)
+        <integration>/
+            agent/
+                prompt.md           the subagent's persona + behavioral rules
+                skills/<slug>/
+                    skill.md        a single named capability — when to use
+                                    it and how. Read these on demand; the
+                                    subagent's runtime context already lists
+                                    them by title and path.
+
+## Rules
+
+1. **Everything here is read-only.** These files are materialized by the
+   runtime when the user connects an integration. Edits won't persist — and
+   wouldn't be honored by the subagent's prompt builder anyway.
+2. **Skills are addressable docs, not code.** Each `skill.md` is a
+   self-contained recipe. The subagent decides which one applies and `cat`s
+   it before acting.
+3. **One integration per subagent.** The gmail subagent uses
+   `integrations/gmail/agent/`; the googlecalendar subagent uses
+   `integrations/googlecalendar/agent/`. They never cross-read.
+"""
+
+# Per-integration subagent assets. Keyed by the subagent id used by the
+# tool registry. Each entry is materialized into
+# `/workspace/users/<uid>/integrations/<id>/agent/{prompt.md, skills/<slug>/skill.md}`
+# when the user has that integration connected. Adding a new entry here +
+# making sure the subagent id matches the registry is enough — the rest is
+# rolled out on the next `ensure_session_dirs` call.
+#
+# Skill body is short on purpose: titles drive discovery (they ride into the
+# subagent's system prompt as a list); bodies are read on demand only when
+# the subagent actually invokes that skill.
+INTEGRATION_AGENTS: dict[str, dict[str, object]] = {
+    "googlecalendar": {
+        "prompt": """# Google Calendar subagent
+
+You are the Google Calendar specialist subagent. Your job is to read and
+modify the user's calendar via the Google Calendar tools, never via a
+direct API or another integration. You operate on behalf of the executor;
+return concise results when done — the executor will narrate them to the
+user.
+
+Defaults: user's primary calendar, the user's timezone, the next 7 days.
+Always confirm before deleting events or making cross-account changes.
+""",
+        "skills": {
+            "create-event": (
+                "Create a calendar event",
+                """# Create a calendar event
+
+Use when the user wants to schedule something new.
+
+Required: title, start datetime, end datetime (or duration).
+Optional: attendees, location, description, recurrence rule.
+
+Always:
+- Resolve relative times ("tomorrow 3pm") against the user's timezone.
+- Default duration to 30 min if the user didn't specify.
+- Skip adding attendees you weren't asked to invite — confirm first.
+""",
+            ),
+            "find-free-time": (
+                "Find a free time slot",
+                """# Find a free time slot
+
+Use when the user asks "when am I free", "find a time for X", or wants to
+schedule against attendees' availability.
+
+Inputs: window (start/end), duration, optional attendees, optional working
+hours, optional buffer between meetings.
+
+Return the top 3 slots. Prefer slots that respect the user's working hours
+and existing focus blocks.
+""",
+            ),
+            "list-events": (
+                "List upcoming events",
+                """# List upcoming events
+
+Use for "what's on my calendar", "what's next", "today's agenda".
+
+Inputs: window (default: rest of today + tomorrow), calendar id (default:
+primary). Return: title, time range, location, attendees (when relevant).
+Skip declined events unless the user asked to see them.
+""",
+            ),
+        },
+    },
+    "gmail": {
+        "prompt": """# Gmail subagent
+
+You are the Gmail specialist subagent. Read and send mail via the Gmail
+tools, never another email service. Return concise results to the
+executor; it narrates them to the user.
+
+Defaults: the user's primary mailbox. Drafts go to Drafts (never send
+without confirmation unless the user explicitly said "send"). For
+sensitive actions (delete, archive at scale, forward to a new address),
+ask before acting.
+""",
+        "skills": {
+            "send-email": (
+                "Send or draft an email",
+                """# Send or draft an email
+
+Use for "email <person> about X", "reply to <subject>", "draft a note to …".
+
+Default action is **draft** unless the user explicitly said send/just send
+it. Subject and body must be concrete — never leave `[your name]`-style
+placeholders.
+
+Required: to (email or contact name to resolve), subject, body.
+Optional: cc, bcc, attachments, reply_to_thread.
+""",
+            ),
+            "search-inbox": (
+                "Search the inbox",
+                """# Search the inbox
+
+Use for "find the email from <person>", "did <person> reply", "show me
+threads about X".
+
+Inputs: free-text query, optional from/to filters, optional date range.
+Return: subject, sender, date, short snippet, message id. Sort by date
+desc by default.
+""",
+            ),
+            "summarize-thread": (
+                "Summarize an email thread",
+                """# Summarize an email thread
+
+Use when the user asks "what did <person> say", "summarize this thread",
+or wants to act on a long back-and-forth without reading every message.
+
+Input: thread id (preferred) or a free-text descriptor that uniquely
+identifies the thread. Return: 1-3 sentence summary + the open question
+or ask, if any.
+""",
+            ),
+        },
+    },
+    "googlesheets": {
+        "prompt": """# Google Sheets subagent
+
+You are the Google Sheets specialist subagent. Read, append, and update
+sheets via the Google Sheets tools. Return small results inline; for
+larger results, write a CSV into `/workspace/sessions/<conv>/artifacts/`
+and tell the executor where it landed.
+""",
+        "skills": {
+            "read-range": (
+                "Read a range from a sheet",
+                """# Read a range from a sheet
+
+Inputs: spreadsheet id (or url), sheet name, A1 range (default: whole
+sheet). Return rows as a list of dicts when there's a header row;
+otherwise as a list of lists.
+""",
+            ),
+            "append-rows": (
+                "Append rows to a sheet",
+                """# Append rows to a sheet
+
+Inputs: spreadsheet id, sheet name, list of rows (each row a list aligned
+to the header). Confirm the header columns before writing if the sheet
+isn't fresh.
+""",
+            ),
+        },
+    },
+    "todoist": {
+        "prompt": """# Todoist subagent
+
+You are the Todoist specialist subagent. Manage the user's Todoist
+projects, tasks, and labels. Default project is Inbox unless the user
+specifies otherwise.
+""",
+        "skills": {
+            "create-task": (
+                "Create a task",
+                """# Create a Todoist task
+
+Inputs: content (the task itself), optional project, due_string (e.g.
+"tomorrow 9am"), priority (1-4), labels.
+Confirm the project if the user gave a name that matches more than one.
+""",
+            ),
+            "list-tasks": (
+                "List tasks",
+                """# List tasks
+
+Inputs: optional project, optional filter (e.g. "today", "overdue"),
+optional label. Return: content, due date, priority, project name.
+""",
+            ),
+        },
+    },
+}
+
+
+def integration_skills_block(subagent_id: str) -> str:
+    """Markdown listing of an integration subagent's available skills.
+
+    Injected into the subagent's dynamic-context system message so the LLM
+    sees skill titles + on-disk paths every turn and can `cat` the right
+    `skill.md` before acting. Returns "" if we don't know this integration
+    (custom MCP, etc.) — the FS isn't materialized for unknown ids and the
+    block would be empty anyway.
+    """
+    cfg = INTEGRATION_AGENTS.get(subagent_id)
+    if not cfg:
+        return ""
+    raw_skills = cfg.get("skills")
+    if not isinstance(raw_skills, dict) or not raw_skills:
+        return ""
+    base = f"/workspace/integrations/{subagent_id}/agent/skills"
+    lines = [f"## Available skills for {subagent_id}"]
+    lines.append(
+        f"Read `{base}/<slug>/skill.md` before invoking the underlying tool. "
+        "The body is the recipe; titles below show when each one applies."
+    )
+    for slug, value in raw_skills.items():
+        title = value[0] if isinstance(value, tuple) else str(value)
+        lines.append(f"- **{title}** — `{base}/{slug}/skill.md`")
+    return "\n".join(lines)
+
+
+__all__ = [
+    "INDEX_MD",
+    "INTEGRATIONS_GUIDE_MD",
+    "INTEGRATION_AGENTS",
+    "SESSIONS_GUIDE_MD",
+    "integration_skills_block",
+]

@@ -36,6 +36,7 @@ from app.services.payments.payment_service import payment_service
 from app.services.storage import (
     JuiceFSUnavailable,
     ensure_session_dirs,
+    materialize_user_integrations,
     touch_session_last_active,
 )
 from app.utils.chat_utils import create_conversation, generate_and_update_description
@@ -440,6 +441,21 @@ async def _run_chat_stream(
             try:
                 await ensure_session_dirs(user_id, conversation_id)
                 await touch_session_last_active(user_id, conversation_id)
+                # Refresh the integrations FS tree so subagents always see
+                # the current set of connected integrations + their skill
+                # listings under /workspace/integrations/<id>/agent/.
+                from app.services.integrations.user_integrations import (
+                    get_user_connected_integrations,
+                )
+
+                docs = await get_user_connected_integrations(user_id)
+                connected_ids = {
+                    str(d.get("integration_id"))
+                    for d in docs
+                    if d.get("status") == "connected" and d.get("integration_id")
+                }
+                if connected_ids:
+                    await materialize_user_integrations(user_id, connected_ids)
             except JuiceFSUnavailable:
                 pass  # dev mode — proceed; tool errors will surface clearly
             except Exception as e:

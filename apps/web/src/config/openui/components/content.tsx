@@ -7,6 +7,7 @@ import {
 } from "@icons";
 import { defineComponent } from "@openuidev/react-lang";
 import * as m from "motion/react-m";
+import { useParams } from "next/navigation";
 import React from "react";
 import { z } from "zod";
 import { ChevronLeft, ChevronRight } from "@/components/shared/icons";
@@ -31,6 +32,7 @@ import {
   useMap,
 } from "@/components/ui/map";
 import { NumberTicker } from "@/components/ui/number-ticker";
+import { resolveArtifactSrc } from "@/features/chat/api/sessionFilesApi";
 import { useSafeTriggerAction } from "../hooks/useSafeTriggerAction";
 import { ToolCard, ToolInset } from "../primitives";
 
@@ -137,6 +139,8 @@ function GalleryImage({
   img: { src: string; alt?: string; caption?: string };
   aspectRatio?: string;
 }) {
+  const params = useParams<{ id?: string }>();
+  const src = resolveArtifactSrc(img.src, params?.id) ?? img.src;
   return (
     <m.div
       whileHover={{ scale: 1.02 }}
@@ -146,7 +150,7 @@ function GalleryImage({
     >
       {/* biome-ignore lint/performance/noImgElement: external user-provided URLs */}
       <img
-        src={img.src}
+        src={src}
         alt={img.alt ?? ""}
         className="w-full h-full object-cover"
       />

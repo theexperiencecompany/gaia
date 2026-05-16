@@ -12,21 +12,30 @@ interface ArtifactText {
  * (HTML/Markdown previews, the file viewer). When `inlineBody` is provided
  * by the artifact event (small + textual files), it's used directly and no
  * network request is made — keeps reload-restored previews instant.
- * Cancels in-flight requests when the target changes or unmounts.
+ * `enabled` lets callers short-circuit the hook for non-textual artifacts
+ * (e.g. images render via <img src=...> directly — no body fetch needed).
  */
 export function useArtifactText(
   conversationId: string,
   path: string,
   inlineBody?: string,
+  enabled: boolean = true,
 ): ArtifactText {
   const hasInline = typeof inlineBody === "string";
   const [text, setText] = useState<string | null>(
     hasInline ? inlineBody : null,
   );
-  const [loading, setLoading] = useState(!hasInline);
+  const [loading, setLoading] = useState(enabled && !hasInline);
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    if (!enabled) {
+      setText(null);
+      setLoading(false);
+      setError(false);
+      return;
+    }
+
     if (hasInline) {
       setText(inlineBody);
       setLoading(false);
@@ -54,7 +63,7 @@ export function useArtifactText(
     return () => {
       cancelled = true;
     };
-  }, [conversationId, path, hasInline, inlineBody]);
+  }, [conversationId, path, hasInline, inlineBody, enabled]);
 
   return { text, loading, error };
 }

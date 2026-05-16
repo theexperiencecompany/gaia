@@ -171,21 +171,33 @@ async def create_agent_context_message(
         return ""
 
     async def _fetch_skills() -> str:
+        from app.agents.workspace.system_docs import integration_skills_block
+
+        block = ""
         if skills_text is not None:
-            return f"\n\n{skills_text}" if skills_text else ""
-        if not user_id:
-            return ""
-        try:
-            agent_for_skills = subagent_id or "executor"
-            text = await get_available_skills_text(
-                user_id=user_id, agent_name=agent_for_skills
-            )
-            if text:
-                log.info(f"Injected installable skills for {agent_for_skills}")
-                return f"\n\n{text}"
-        except Exception as e:
-            log.warning(f"Error injecting installable skills: {e}")
-        return ""
+            block = skills_text or ""
+        elif user_id:
+            try:
+                agent_for_skills = subagent_id or "executor"
+                text = await get_available_skills_text(
+                    user_id=user_id, agent_name=agent_for_skills
+                )
+                if text:
+                    log.info(f"Injected installable skills for {agent_for_skills}")
+                    block = text
+            except Exception as e:
+                log.warning(f"Error injecting installable skills: {e}")
+
+        # Per-integration FS-resident skills — titles + paths the subagent
+        # can `cat` on demand. The FS is materialized by ensure_session_dirs.
+        if subagent_id:
+            integration_block = integration_skills_block(subagent_id)
+            if integration_block:
+                block = (
+                    f"{block}\n\n{integration_block}" if block else integration_block
+                )
+
+        return f"\n\n{block}" if block else ""
 
     memories_section, skills_section, metadata_section = await asyncio.gather(
         _fetch_memories(),

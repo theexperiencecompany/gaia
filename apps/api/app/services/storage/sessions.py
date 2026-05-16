@@ -25,7 +25,12 @@ from app.agents.workspace.paths import (
     USER_UPLOADED_DIRNAME,
     detect_content_type,
 )
-from app.agents.workspace.system_docs import INDEX_MD, SESSIONS_GUIDE_MD
+from app.agents.workspace.system_docs import (
+    INDEX_MD,
+    INTEGRATION_AGENTS,
+    INTEGRATIONS_GUIDE_MD,
+    SESSIONS_GUIDE_MD,
+)
 from app.services.storage.juicefs import (
     _contained,
     _is_mounted,
@@ -122,6 +127,49 @@ async def ensure_session_dirs(user_id: str, conv_id: str) -> Path:
         return base
 
     return await asyncio.to_thread(_mk)
+
+
+async def materialize_user_integrations(user_id: str, connected_ids: set[str]) -> None:
+    """Lay down the integrations FS tree for a user's connected integrations.
+
+    Writes one parent ``integrations/GUIDE.md`` describing the layout, then
+    for each integration we know about (see ``INTEGRATION_AGENTS``):
+
+        integrations/<id>/agent/prompt.md
+        integrations/<id>/agent/skills/<slug>/skill.md
+
+    The files are runtime-managed scaffolding — the executor and per-
+    integration subagents treat them as read-only by contract, not by OS
+    perms (we re-materialize on every session bootstrap to roll out content
+    updates, so chmod 0444 would just make the next overwrite fail).
+    Idempotent. Soft-fails if the mount is missing (dev mode).
+    """
+
+    def _go() -> None:
+        if not _is_mounted():
+            return
+        root = _mount_root() / "users" / user_id / "integrations"
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "GUIDE.md").write_text(INTEGRATIONS_GUIDE_MD, encoding="utf-8")
+        for iid in connected_ids:
+            cfg = INTEGRATION_AGENTS.get(iid)
+            if not cfg:
+                continue
+            agent_dir = root / iid / "agent"
+            skills_dir = agent_dir / "skills"
+            skills_dir.mkdir(parents=True, exist_ok=True)
+            prompt_text = str(cfg.get("prompt", ""))
+            (agent_dir / "prompt.md").write_text(prompt_text, encoding="utf-8")
+            skills = cfg.get("skills") or {}
+            if not isinstance(skills, dict):
+                continue
+            for slug, value in skills.items():
+                body = value[1] if isinstance(value, tuple) else str(value)
+                slug_dir = skills_dir / slug
+                slug_dir.mkdir(parents=True, exist_ok=True)
+                (slug_dir / "skill.md").write_text(body, encoding="utf-8")
+
+    await asyncio.to_thread(_go)
 
 
 async def delete_session_dir(user_id: str, conv_id: str) -> None:

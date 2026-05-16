@@ -18,6 +18,23 @@ function encodePath(path: string): string {
 }
 
 /**
+ * Rewrite bot-emitted artifact paths (./artifacts/foo, /artifacts/foo,
+ * artifacts/foo) to the auth-gated backend URL for the current conversation.
+ * Returns the original src for anything that doesn't match (absolute URLs,
+ * data: URIs, etc.). Used by MarkdownRenderer and OpenUI components that
+ * render images the bot wrote into the session's artifacts/ dir.
+ */
+export function resolveArtifactSrc(
+  src: string | undefined,
+  conversationId: string | undefined,
+): string | undefined {
+  if (!src || !conversationId) return src;
+  const m = src.match(/^(?:\.?\/)?artifacts\/(.+)$/);
+  if (!m) return src;
+  return sessionFilesApi.artifactUrl(conversationId, m[1]);
+}
+
+/**
  * Session workspace files. `artifacts/` (agent output) and `user-uploaded/`
  * attachments are served by the backend `/sessions` router. `listArtifacts`
  * is also the tab-focus reconcile path for missed live events.
