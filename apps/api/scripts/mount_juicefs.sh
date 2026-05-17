@@ -68,6 +68,15 @@ if [[ "$(id -u)" -ne 0 ]]; then
     exit 2
 fi
 
+# If the configured sandbox user doesn't exist, the strip block below silently
+# no-ops and we'd quietly skip privilege hardening. Surface that loudly — the
+# template invariant is `user` (or whatever SANDBOX_USER was overridden to)
+# exists at acquire time. Continuing is safe (`sudo` binary is purged in the
+# template) but a WARN here means future template drift gets noticed.
+if ! id -u "$SANDBOX_USER" >/dev/null 2>&1; then
+    echo "WARN: SANDBOX_USER='$SANDBOX_USER' does not exist; sudo-strip will no-op" >&2
+fi
+
 # E2B's post-build configuration step re-adds `user` to sudo with NOPASSWD,
 # undoing the strip in build_e2b_template.py. We re-strip on every sandbox
 # acquire (mount.sh runs as root before the agent's first tool call), so the
@@ -209,7 +218,15 @@ chmod 0750 "$WORKSPACE" 2>/dev/null || true
 mkdir -p "$WORKSPACE/skills"
 chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE/skills" 2>/dev/null || true
 if mount_skills_subdir; then
-    mount --bind "$JFS_SKILLS_MOUNT" "$WORKSPACE/skills" -o ro || true
+    # `mount --bind ... -o ro` is honoured on the bind itself only on newer
+    # kernels; older kernels silently ignore the flag and require a remount to
+    # actually mark the bind read-only. The underlying FUSE is `--read-only`
+    # already (mount_skills_subdir uses --read-only), so writes still fail in
+    # either case — but pin the bind itself ro explicitly so the read-only
+    # surface is consistent at every layer.
+    if mount --bind "$JFS_SKILLS_MOUNT" "$WORKSPACE/skills"; then
+        mount -o remount,bind,ro "$WORKSPACE/skills" 2>/dev/null || true
+    fi
 fi
 
 mkdir -p "$WORKSPACE/.gaia/runs"
