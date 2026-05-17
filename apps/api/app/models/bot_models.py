@@ -3,10 +3,11 @@
 Pydantic models for bot chat, sessions, and related operations.
 """
 
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.models.message_models import FileData
 from app.services.platform_link_service import Platform
 
 
@@ -22,6 +23,17 @@ class BotChatRequest(BaseModel):
     )
     channel_id: Optional[str] = Field(
         None, description="Channel/group ID (None for DM)"
+    )
+    file_ids: Optional[List[str]] = Field(
+        None,
+        description="IDs of files attached to this message (uploaded via /api/v1/upload).",
+    )
+    file_data: Optional[List[FileData]] = Field(
+        None,
+        description=(
+            "Full metadata for attached files. Mirrors the web chat payload so "
+            "the agent can resolve URL/filename without an extra DB lookup."
+        ),
     )
 
     @field_validator("platform")

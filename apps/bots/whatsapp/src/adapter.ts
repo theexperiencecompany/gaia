@@ -18,6 +18,7 @@
 import {
   BaseBotAdapter,
   type BotCommand,
+  type BotFileData,
   convertToWhatsAppMarkdown,
   createBotLogger,
   handleStreamingChat,
@@ -34,6 +35,8 @@ import {
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import { REPLAY_WINDOW_MS } from "./constants";
 import {
+  type ExtractedMedia,
+  extractMedia,
   extractTextBody,
   extractWaId,
   type KapsoMessageBatch,
@@ -199,10 +202,10 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           message_type: event.message.type,
           has_text: Boolean(text),
         });
+        const msgId = event.message.id;
         if (text) {
           // Enqueue per user — webhook returns 200 immediately while processing
           // is serialized: messages from the same user run one at a time, in order.
-          const msgId = event.message.id;
           this.enqueueForUser(waId, () =>
             this.handleIncomingMessage(waId, text, msgId).catch((err) =>
               this.adapterLogger.error("incoming_message_processing_failed", {
@@ -212,16 +215,37 @@ export class WhatsAppAdapter extends BaseBotAdapter {
               }),
             ),
           );
-        } else if (event.message.type !== "text") {
-          // Non-text message (image, audio, video, document, etc.)
-          this.handleUnsupportedMedia(waId, event.message.type).catch((err) =>
-            this.adapterLogger.error("unsupported_media_handling_failed", {
+          continue;
+        }
+        if (event.message.type === "text") continue;
+
+        // Non-text message — try to handle as media (image/audio/voice/doc).
+        const media = extractMedia(event);
+        if (!media) {
+          // No usable media descriptor (sticker without id, unknown type, etc.)
+          // Fall back to the friendly rejection.
+          this.enqueueForUser(waId, () =>
+            this.handleUnsupportedMedia(waId, event.message.type).catch((err) =>
+              this.adapterLogger.error("unsupported_media_handling_failed", {
+                wa_hash: waIdHash,
+                message_type: event.message.type,
+                ...sanitizeErrorForLog(err),
+              }),
+            ),
+          );
+          continue;
+        }
+
+        this.enqueueForUser(waId, () =>
+          this.handleMediaMessage(waId, media, msgId).catch((err) =>
+            this.adapterLogger.error("media_message_processing_failed", {
               wa_hash: waIdHash,
-              message_type: event.message.type,
+              message_id: msgId,
+              media_kind: media.kind,
               ...sanitizeErrorForLog(err),
             }),
-          );
-        }
+          ),
+        );
       }
 
       return c.json({ status: "ok" });
@@ -387,12 +411,17 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * so the full response is accumulated and sent as a single message.
    * The typing indicator was already fired once before this is called and will
    * auto-dismiss when the reply is sent (Meta's hard 25s ceiling).
+   *
+   * @param attachments - Files already uploaded to GAIA's storage (via
+   *   {@link GaiaClient.uploadFile}) that should accompany this message so
+   *   the agent can ground its reply in their contents.
    */
   private async handleStreamingMessage(
     waId: string,
     text: string,
+    attachments: BotFileData[] = [],
   ): Promise<void> {
-    if (!text.trim()) {
+    if (!text.trim() && attachments.length === 0) {
       await this.sendWhatsAppText(
         waId,
         "Hi! Send me a message and I'll help you. Type /help for available commands.",
@@ -407,10 +436,16 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       await handleStreamingChat(
         this.gaia,
         {
-          message: text,
+          message: text || "Please describe the attached file.",
           platform: "whatsapp",
           platformUserId: waId,
           channelId: waId,
+          ...(attachments.length > 0
+            ? {
+                fileIds: attachments.map((a) => a.fileId),
+                fileData: attachments,
+              }
+            : {}),
         },
         // editMessage: no placeholder to edit — send as new message on first call
         async (updatedText: string) => {
@@ -505,29 +540,301 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   // ---------------------------------------------------------------------------
-  // Unsupported media handler
+  // Media handling
   // ---------------------------------------------------------------------------
 
+  /** WhatsApp upload size caps that mirror Meta's per-type limits. */
+  private static readonly MEDIA_LIMITS = {
+    // GAIA upload pipeline caps at 10 MB regardless of WhatsApp's larger caps.
+    file: 10 * 1024 * 1024,
+    // OpenAI Whisper hard cap (also matches our backend transcribe endpoint).
+    audio: 25 * 1024 * 1024,
+  } as const;
+
   /**
-   * Replies to non-text messages (images, audio, video, documents) with a
-   * helpful message explaining that only text is currently supported.
+   * Handles an inbound media message (image, audio, voice note, or document).
+   *
+   * Pipeline:
+   * 1. Mark-as-read + typing indicator (parity with text path).
+   * 2. Download the media bytes via the Kapso WhatsApp client.
+   * 3. For audio: transcribe → use transcript as the user's message text.
+   *    For image/document: upload to GAIA storage → reference the {@link BotFileData}
+   *    on the chat request via `fileIds` / `fileData`.
+   * 4. Hand off to {@link handleStreamingMessage} so the agent reply path is
+   *    identical to plain text — keeps adapters single-purpose and the test
+   *    surface minimal.
+   *
+   * Videos and stickers are not supported yet; the user gets a polite reply.
+   */
+  private async handleMediaMessage(
+    waId: string,
+    media: ExtractedMedia,
+    messageId: string,
+  ): Promise<void> {
+    const waIdHash = hashLogIdentifier(waId);
+    this.adapterLogger.info("media_message_started", {
+      wa_hash: waIdHash,
+      message_id: messageId,
+      media_kind: media.kind,
+      is_voice_note: media.isVoiceNote,
+      mime_type: media.mimeType,
+    });
+
+    // Always show typing first — matches the text path so the UX is identical.
+    const showTyping = () =>
+      this.whatsAppClient.messages
+        .markRead({
+          phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
+          messageId,
+          typingIndicator: { type: "text" },
+        })
+        .catch((err: unknown) =>
+          this.adapterLogger.error("typing_indicator_failed", {
+            wa_hash: waIdHash,
+            message_id: messageId,
+            ...sanitizeErrorForLog(err),
+          }),
+        );
+
+    showTyping();
+    const typingInterval = setInterval(showTyping, 20_000);
+    const clearTyping = () => clearInterval(typingInterval);
+
+    try {
+      // Welcome gate runs once per process per user — same as text path. If
+      // the user isn't linked we send a different friendly message because
+      // /api/v1/upload + /api/v1/bot/transcribe both require a linked user.
+      if (!this.welcomeSent.has(waId)) {
+        this.welcomeSent.add(waId);
+        let isLinked = this.linkedUsers.has(waId);
+        if (!isLinked) {
+          try {
+            const status = await this.gaia.checkAuthStatus("whatsapp", waId);
+            isLinked = status.authenticated;
+            if (isLinked) this.linkedUsers.add(waId);
+          } catch (err) {
+            this.adapterLogger.warn("welcome_auth_check_failed", {
+              wa_hash: waIdHash,
+              ...sanitizeErrorForLog(err),
+            });
+          }
+        }
+        if (!isLinked) {
+          await this.sendWelcome(waId);
+          showTyping();
+        }
+      }
+
+      if (media.kind === "video" || media.kind === "sticker") {
+        await this.handleUnsupportedMedia(waId, media.kind);
+        return;
+      }
+
+      // Download once, then route to the matching pipeline.
+      const bytes = await this.downloadMediaBytes(media);
+
+      if (media.kind === "audio") {
+        await this.handleAudioMedia(waId, media, bytes);
+        return;
+      }
+
+      // image | document
+      await this.handleFileMedia(waId, media, bytes);
+    } catch (err) {
+      this.adapterLogger.error("media_message_failed", {
+        wa_hash: waIdHash,
+        message_id: messageId,
+        media_kind: media.kind,
+        ...sanitizeErrorForLog(err),
+      });
+      try {
+        await this.sendWhatsAppText(
+          waId,
+          this.friendlyMediaError(media.kind, err),
+        );
+      } catch (sendErr) {
+        this.adapterLogger.error("media_error_message_send_failed", {
+          wa_hash: waIdHash,
+          ...sanitizeErrorForLog(sendErr),
+        });
+      }
+    } finally {
+      clearTyping();
+    }
+  }
+
+  /** Downloads the raw bytes for a media message via the Kapso SDK. */
+  private async downloadMediaBytes(media: ExtractedMedia): Promise<Uint8Array> {
+    const arrayBuf = (await this.whatsAppClient.media.download({
+      mediaId: media.mediaId,
+      phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
+    })) as ArrayBuffer;
+    return new Uint8Array(arrayBuf);
+  }
+
+  /** Transcribes a voice note / audio file and runs it through the chat pipeline. */
+  private async handleAudioMedia(
+    waId: string,
+    media: ExtractedMedia,
+    bytes: Uint8Array,
+  ): Promise<void> {
+    if (bytes.byteLength > WhatsAppAdapter.MEDIA_LIMITS.audio) {
+      await this.sendWhatsAppText(
+        waId,
+        `That voice note is too large to transcribe (limit: ${
+          WhatsAppAdapter.MEDIA_LIMITS.audio / (1024 * 1024)
+        } MB). Please send a shorter message.`,
+      );
+      return;
+    }
+
+    const filename = media.isVoiceNote
+      ? "voice-note.ogg"
+      : `audio${this.extensionForMime(media.mimeType, ".ogg")}`;
+
+    const transcript = await this.gaia.transcribeAudio(
+      {
+        data: Buffer.from(bytes),
+        filename,
+        mimeType: media.mimeType,
+      },
+      { platform: "whatsapp", platformUserId: waId },
+    );
+
+    const trimmed = transcript.trim();
+    if (!trimmed) {
+      await this.sendWhatsAppText(
+        waId,
+        "I couldn't understand that audio. Could you try recording again or sending a text message?",
+      );
+      return;
+    }
+
+    // Include the user's caption (if any) ahead of the transcript so the
+    // agent sees both signals — voice notes rarely carry captions but image-
+    // shaped audio captures sometimes do.
+    const messageText = media.caption
+      ? `${media.caption.trim()}\n\n${trimmed}`
+      : trimmed;
+    await this.handleStreamingMessage(waId, messageText);
+  }
+
+  /** Uploads the media to GAIA storage and references it on the chat request. */
+  private async handleFileMedia(
+    waId: string,
+    media: ExtractedMedia,
+    bytes: Uint8Array,
+  ): Promise<void> {
+    if (bytes.byteLength > WhatsAppAdapter.MEDIA_LIMITS.file) {
+      await this.sendWhatsAppText(
+        waId,
+        `That file is too large to process (limit: ${
+          WhatsAppAdapter.MEDIA_LIMITS.file / (1024 * 1024)
+        } MB). Please share a smaller file.`,
+      );
+      return;
+    }
+
+    const filename =
+      media.filename ??
+      (media.kind === "image"
+        ? `image${this.extensionForMime(media.mimeType, ".jpg")}`
+        : `document${this.extensionForMime(media.mimeType, "")}`);
+
+    const fileData = await this.gaia.uploadFile(
+      {
+        data: Buffer.from(bytes),
+        filename,
+        mimeType: media.mimeType,
+      },
+      { platform: "whatsapp", platformUserId: waId },
+    );
+
+    // Caption — when present — is the user's prompt. Otherwise prompt the
+    // agent to summarise / answer questions about the attachment.
+    const messageText =
+      media.caption?.trim() ||
+      (media.kind === "image"
+        ? "Please describe this image."
+        : `Please review this ${media.filename ? "document" : "file"} and tell me what's in it.`);
+
+    await this.handleStreamingMessage(waId, messageText, [fileData]);
+  }
+
+  /** Returns a leading-dot file extension for a known mime type, or fallback. */
+  private extensionForMime(mimeType: string, fallback: string): string {
+    const mime = mimeType.split(";")[0].trim().toLowerCase();
+    const lookup: Record<string, string> = {
+      "image/jpeg": ".jpg",
+      "image/png": ".png",
+      "image/gif": ".gif",
+      "image/webp": ".webp",
+      "image/bmp": ".bmp",
+      "audio/ogg": ".ogg",
+      "audio/opus": ".opus",
+      "audio/mpeg": ".mp3",
+      "audio/mp3": ".mp3",
+      "audio/mp4": ".m4a",
+      "audio/m4a": ".m4a",
+      "audio/wav": ".wav",
+      "audio/webm": ".webm",
+      "audio/aac": ".aac",
+      "application/pdf": ".pdf",
+      "application/msword": ".doc",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        ".docx",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+        ".xlsx",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+        ".pptx",
+      "text/plain": ".txt",
+      "text/markdown": ".md",
+      "text/csv": ".csv",
+      "application/json": ".json",
+    };
+    return lookup[mime] ?? fallback;
+  }
+
+  /** Maps known failure paths to a user-facing reply. */
+  private friendlyMediaError(
+    kind: ExtractedMedia["kind"],
+    err: unknown,
+  ): string {
+    const status = (err as { status?: number; response?: { status?: number } })
+      ?.status;
+    const responseStatus = (err as { response?: { status?: number } })?.response
+      ?.status;
+    const code = status ?? responseStatus;
+
+    if (code === 401 || code === 403) {
+      return "I need you to link your GAIA account first before I can read attachments. Send /auth to get started.";
+    }
+    if (code === 413) {
+      return `That ${kind} is too large for me to process. Please share a smaller file.`;
+    }
+    if (code === 415) {
+      return `I can't read this kind of ${kind} yet. Try a common format like JPG, PNG, PDF, or an OGG voice note.`;
+    }
+    return "Something went wrong while processing your attachment. Please try again in a moment.";
+  }
+
+  /**
+   * Replies to genuinely unsupported message types (video, sticker, etc.).
+   * Kept narrow now that image/audio/document are first-class.
    */
   private async handleUnsupportedMedia(
     waId: string,
     messageType: string,
   ): Promise<void> {
     const typeLabelMap: Record<string, string> = {
-      image: "images",
-      audio: "audio messages",
-      voice: "audio messages",
       video: "videos",
-      document: "documents",
+      sticker: "stickers",
     };
     const typeLabel = typeLabelMap[messageType] ?? `${messageType} messages`;
 
     await this.sendWhatsAppText(
       waId,
-      `I can't process ${typeLabel} yet — please send your message as text. Type /help for available commands.`,
+      `I can't process ${typeLabel} yet — please send your message as text, an image, a document, or a voice note. Type /help for available commands.`,
     );
   }
 

@@ -5,6 +5,7 @@ import type {
   BotConversation,
   BotConversationListResponse,
   BotCreateTodoRequest,
+  BotFileData,
   BotTodo,
   BotTodoListResponse,
   BotUserContext,
@@ -249,6 +250,12 @@ export class GaiaClient {
           platform: request.platform,
           platform_user_id: request.platformUserId,
           channel_id: request.channelId,
+          ...(request.fileIds && request.fileIds.length > 0
+            ? { file_ids: request.fileIds }
+            : {}),
+          ...(request.fileData && request.fileData.length > 0
+            ? { file_data: request.fileData }
+            : {}),
         },
         {
           responseType: "stream",
@@ -809,6 +816,86 @@ export class GaiaClient {
       );
       this.sessionTokens.delete(`${platform}:${platformUserId}`);
     });
+  }
+
+  /**
+   * Uploads a binary file to GAIA's shared file storage on behalf of the
+   * authenticated bot user. The returned {@link BotFileData} can be sent
+   * alongside the next chat request via `fileIds` / `fileData` so the agent
+   * grounds its reply in the uploaded content.
+   *
+   * Uses the same `/api/v1/upload` endpoint as the web app — the bot auth
+   * middleware resolves the linked user from `X-Bot-API-Key` + platform
+   * headers, so no separate bot-only upload route is required.
+   */
+  async uploadFile(
+    input: {
+      data: Buffer;
+      filename: string;
+      mimeType: string;
+      conversationId?: string;
+    },
+    ctx: BotUserContext,
+  ): Promise<BotFileData> {
+    return this.requestWithAuth(async () => {
+      const form = new FormData();
+      // Blob preserves the mime type for FastAPI's UploadFile content_type,
+      // which file_service.py uses to dispatch image/PDF/text summarisation.
+      const blob = new Blob([new Uint8Array(input.data)], {
+        type: input.mimeType,
+      });
+      form.append("file", blob, input.filename);
+      if (input.conversationId) {
+        form.append("conversation_id", input.conversationId);
+      }
+
+      const { data } = await this.client.post("/api/v1/upload", form, {
+        headers: this.userHeaders(ctx),
+        // Allow uploads up to the backend's 10 MB cap plus multipart overhead.
+        maxBodyLength: 12 * 1024 * 1024,
+        maxContentLength: 12 * 1024 * 1024,
+      });
+
+      return {
+        fileId: data.fileId,
+        url: data.url,
+        filename: data.filename,
+        type: data.type ?? "file",
+        message: data.message,
+      };
+    }, ctx);
+  }
+
+  /**
+   * Transcribes a short audio clip (voice note or audio file) to text via the
+   * bot transcription endpoint, which proxies to OpenAI Whisper server-side.
+   *
+   * Returns the transcribed text. Throws {@link GaiaApiError} on failure so
+   * callers can fall back to a "couldn't understand audio" reply.
+   */
+  async transcribeAudio(
+    input: {
+      data: Buffer;
+      filename: string;
+      mimeType: string;
+    },
+    ctx: BotUserContext,
+  ): Promise<string> {
+    return this.requestWithAuth(async () => {
+      const form = new FormData();
+      const blob = new Blob([new Uint8Array(input.data)], {
+        type: input.mimeType,
+      });
+      form.append("file", blob, input.filename);
+
+      const { data } = await this.client.post("/api/v1/bot/transcribe", form, {
+        headers: this.userHeaders(ctx),
+        maxBodyLength: 30 * 1024 * 1024,
+        maxContentLength: 30 * 1024 * 1024,
+      });
+
+      return String(data.text ?? "").trim();
+    }, ctx);
   }
 
   /**

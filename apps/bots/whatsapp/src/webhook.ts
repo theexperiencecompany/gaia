@@ -41,14 +41,39 @@ export function extractTextBody(event: KapsoMessageEvent): string | null {
   return event.message.text?.body ?? null;
 }
 
+// ─── Media payloads ───────────────────────────────────────────────────────
+// Meta's WhatsApp Cloud API ships inbound media as a typed object alongside
+// the message envelope. Kapso passes these through verbatim (camelCase
+// variants live under message.kapso.*; the raw Meta-shaped fields use
+// snake_case mime_type — keep both optional so we stay tolerant to drift).
+
+export interface WaMediaPayload {
+  id?: string;
+  link?: string;
+  caption?: string;
+  filename?: string;
+  // Meta's Graph API field; both casings observed in the wild.
+  mime_type?: string;
+  mimeType?: string;
+  sha256?: string;
+  /** Voice-note flag set by WhatsApp on `audio` messages from push-to-talk. */
+  voice?: boolean;
+}
+
 // Kapso v2 whatsapp.message.received event payload (single, non-batched).
 // The event type is delivered via the X-Webhook-Event header, not in the body.
 export interface KapsoMessageEvent {
   message: {
     id: string;
     timestamp: string;
-    type: string; // "text" | "image" | "audio" | "document" | ...
+    type: string; // "text" | "image" | "audio" | "voice" | "video" | "document" | "sticker" | ...
     text?: { body: string };
+    image?: WaMediaPayload;
+    audio?: WaMediaPayload;
+    voice?: WaMediaPayload;
+    video?: WaMediaPayload;
+    document?: WaMediaPayload;
+    sticker?: WaMediaPayload;
     kapso?: {
       direction: string;
       status: string;
@@ -56,6 +81,24 @@ export interface KapsoMessageEvent {
       origin: string;
       has_media: boolean;
       content?: string;
+      // Kapso enrichments — present when fields=kapso(media_url) was set on
+      // the original subscription. Lets us skip the Graph download round-trip.
+      media_url?: string;
+      mediaUrl?: string;
+      media_data?: {
+        url?: string;
+        filename?: string;
+        content_type?: string;
+        contentType?: string;
+        byte_size?: number;
+        byteSize?: number;
+      };
+      mediaData?: {
+        url?: string;
+        filename?: string;
+        contentType?: string;
+        byteSize?: number;
+      };
     };
   };
   conversation: {
@@ -66,6 +109,105 @@ export interface KapsoMessageEvent {
   };
   is_new_conversation?: boolean;
   phone_number_id: string;
+}
+
+// ─── Media descriptor extraction ──────────────────────────────────────────
+// Normalises the message-type-specific sub-object into a uniform shape the
+// adapter can act on. Returns `null` for non-media or unparseable payloads.
+
+export interface ExtractedMedia {
+  /**
+   * Kind of media payload, mirroring `message.type` after `voice` is folded
+   * into `audio`. Used to pick the right handler in the adapter.
+   */
+  kind: "image" | "audio" | "video" | "document" | "sticker";
+  /** Whether this audio is a voice note (push-to-talk). Only meaningful for `kind === "audio"`. */
+  isVoiceNote: boolean;
+  /** WhatsApp media id used to download via the Cloud API. */
+  mediaId: string;
+  /** Best-known mime type, falling back to a sensible default per kind. */
+  mimeType: string;
+  /** Caption shipped alongside the media, if any. */
+  caption?: string;
+  /** Original filename for documents; absent for inline media. */
+  filename?: string;
+  /** Pre-resolved CDN URL when Kapso has already mirrored the media. */
+  prefetchedUrl?: string;
+}
+
+const DEFAULT_MIME_BY_KIND: Record<ExtractedMedia["kind"], string> = {
+  image: "image/jpeg",
+  audio: "audio/ogg",
+  video: "video/mp4",
+  document: "application/octet-stream",
+  sticker: "image/webp",
+};
+
+/**
+ * Extracts a normalised {@link ExtractedMedia} descriptor from an inbound
+ * WhatsApp message. Returns `null` if the message is text-only or the media
+ * payload is missing its `id` (we cannot download without it).
+ */
+export function extractMedia(event: KapsoMessageEvent): ExtractedMedia | null {
+  const { type } = event.message;
+  // WhatsApp emits voice notes as type "voice" historically but more recent
+  // payloads label them type "audio" with `voice: true`. Treat both as audio.
+  const normalisedType = type === "voice" ? "audio" : type;
+
+  // For voice-typed messages, the payload may live under either the original
+  // `voice` field (legacy) or `audio` (newer). Probe both so we stay tolerant.
+  const candidateKeys =
+    type === "voice" ? ["voice", "audio"] : [normalisedType];
+  let payload: WaMediaPayload | undefined;
+  for (const key of candidateKeys) {
+    const p = (
+      event.message as unknown as Record<string, WaMediaPayload | undefined>
+    )[key];
+    if (p) {
+      payload = p;
+      break;
+    }
+  }
+
+  if (!payload) return null;
+
+  const supportedKinds: ExtractedMedia["kind"][] = [
+    "image",
+    "audio",
+    "video",
+    "document",
+    "sticker",
+  ];
+  if (!supportedKinds.includes(normalisedType as ExtractedMedia["kind"])) {
+    return null;
+  }
+  const kind = normalisedType as ExtractedMedia["kind"];
+
+  if (!payload.id) return null;
+
+  const mimeType =
+    payload.mime_type ?? payload.mimeType ?? DEFAULT_MIME_BY_KIND[kind];
+
+  const kapso = event.message.kapso;
+  const prefetchedUrl =
+    kapso?.media_url ??
+    kapso?.mediaUrl ??
+    kapso?.media_data?.url ??
+    kapso?.mediaData?.url ??
+    undefined;
+
+  const isVoiceNote =
+    kind === "audio" && (type === "voice" || payload.voice === true);
+
+  return {
+    kind,
+    isVoiceNote,
+    mediaId: payload.id,
+    mimeType,
+    caption: payload.caption,
+    filename: payload.filename,
+    prefetchedUrl,
+  };
 }
 
 // Batched variant: Kapso wraps multiple events in a data array.

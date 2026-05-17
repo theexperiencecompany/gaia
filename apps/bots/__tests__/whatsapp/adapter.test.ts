@@ -791,36 +791,6 @@ describe("WhatsAppAdapter - handleUnsupportedMedia", () => {
     vi.clearAllMocks();
   });
 
-  it('replies with "images" for image messages', async () => {
-    await priv.handleUnsupportedMedia("15551234567", "image");
-
-    expect(mockSendText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.stringContaining("images"),
-      }),
-    );
-  });
-
-  it('replies with "audio messages" for audio messages', async () => {
-    await priv.handleUnsupportedMedia("15551234567", "audio");
-
-    expect(mockSendText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.stringContaining("audio messages"),
-      }),
-    );
-  });
-
-  it('replies with "audio messages" for voice messages', async () => {
-    await priv.handleUnsupportedMedia("15551234567", "voice");
-
-    expect(mockSendText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.stringContaining("audio messages"),
-      }),
-    );
-  });
-
   it('replies with "videos" for video messages', async () => {
     await priv.handleUnsupportedMedia("15551234567", "video");
 
@@ -831,28 +801,28 @@ describe("WhatsAppAdapter - handleUnsupportedMedia", () => {
     );
   });
 
-  it('replies with "documents" for document messages', async () => {
-    await priv.handleUnsupportedMedia("15551234567", "document");
+  it('replies with "stickers" for sticker messages', async () => {
+    await priv.handleUnsupportedMedia("15551234567", "sticker");
 
     expect(mockSendText).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: expect.stringContaining("documents"),
+        body: expect.stringContaining("stickers"),
       }),
     );
   });
 
   it("replies with generic label for unknown message types", async () => {
-    await priv.handleUnsupportedMedia("15551234567", "sticker");
+    await priv.handleUnsupportedMedia("15551234567", "contact");
 
     expect(mockSendText).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: expect.stringContaining("sticker messages"),
+        body: expect.stringContaining("contact messages"),
       }),
     );
   });
 
   it("includes help hint in all media responses", async () => {
-    await priv.handleUnsupportedMedia("15551234567", "image");
+    await priv.handleUnsupportedMedia("15551234567", "video");
 
     expect(mockSendText).toHaveBeenCalledWith(
       expect.objectContaining({

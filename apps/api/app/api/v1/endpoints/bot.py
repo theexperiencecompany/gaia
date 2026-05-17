@@ -19,13 +19,20 @@ from app.models.bot_models import (
     ResetSessionRequest,
 )
 from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.services.audio_transcription_service import (
+    MAX_AUDIO_BYTES,
+    AudioTooLargeError,
+    UnsupportedAudioFormatError,
+    transcribe_audio,
+    validate_audio_payload,
+)
 from app.services.bot_service import BotService
 from app.services.bot_token_service import create_bot_session_token
 from app.services.chat_service import run_chat_stream_background
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_connected_integrations
 from app.services.platform_link_service import Platform, PlatformLinkService
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 router = APIRouter()
@@ -166,6 +173,8 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
         message=body.message,
         conversation_id=conversation_id,
         messages=history,
+        fileIds=body.file_ids or [],
+        fileData=body.file_data or [],
     )
 
     # Generate session token upfront so it can be sent in the stream
@@ -413,3 +422,68 @@ async def unlink_account(request: Request) -> dict:
 
     log.set(platform=platform, outcome="success")
     return {"success": True}
+
+
+@router.post(
+    "/transcribe",
+    status_code=200,
+    summary="Transcribe Bot Audio",
+    description=(
+        "Transcribe a short audio clip (e.g. WhatsApp voice note) to text. "
+        "Requires the bot to be authenticated as a linked platform user."
+    ),
+)
+async def transcribe_bot_audio(
+    request: Request,
+    file: UploadFile = File(...),
+    content_length: int | None = Header(default=None, alias="content-length"),
+) -> dict:
+    """Convert audio bytes into a transcript.
+
+    Bots forward inbound voice notes here so the agent receives a plain-text
+    user message instead of a binary attachment. We rely on the
+    BotAuthMiddleware to resolve the linked user before the route runs.
+    """
+    await require_bot_api_key(request)
+    log.set(operation="bot_transcribe_audio")
+
+    if not getattr(request.state, "authenticated", False):
+        raise HTTPException(
+            status_code=401,
+            detail="Account not linked — transcription requires a linked GAIA user.",
+        )
+
+    if content_length is not None and content_length > MAX_AUDIO_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio exceeds the {MAX_AUDIO_BYTES // (1024 * 1024)} MB limit.",
+        )
+
+    audio_bytes = await file.read(MAX_AUDIO_BYTES + 1)
+    if len(audio_bytes) > MAX_AUDIO_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio exceeds the {MAX_AUDIO_BYTES // (1024 * 1024)} MB limit.",
+        )
+
+    try:
+        normalized = validate_audio_payload(
+            content_type=file.content_type, size=len(audio_bytes)
+        )
+    except AudioTooLargeError as e:
+        raise HTTPException(status_code=413, detail=str(e))
+    except UnsupportedAudioFormatError as e:
+        raise HTTPException(status_code=415, detail=str(e))
+
+    filename = file.filename or "voice-note"
+    try:
+        text = await transcribe_audio(
+            audio_bytes=audio_bytes,
+            filename=filename,
+            content_type=normalized,
+        )
+    except Exception as e:
+        log.error(f"Transcription failed: {e}", exc_info=True)
+        raise HTTPException(status_code=502, detail="Transcription failed")
+
+    return {"text": text}
