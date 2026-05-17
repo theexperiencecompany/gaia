@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "ab6926567247",
+  "strategy": "manual-commit",
+  "branch": "chore/strict-code-quality-tooling",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "apps/web/src/components/layout/headers/SidebarHeaderButton.tsx",
+    "libs/shared/ts/src/bots/utils/response.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ab/6926567247/0/metadata.json",
+      "transcript": "/ab/6926567247/0/full.jsonl",
+      "content_hash": "/ab/6926567247/0/content_hash.txt",
+      "prompt": "/ab/6926567247/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 31,
+    "cache_creation_tokens": 32354,
+    "cache_read_tokens": 7895290,
+    "output_tokens": 15321,
+    "api_call_count": 21
+  }
+}
