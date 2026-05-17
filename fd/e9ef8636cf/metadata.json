@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "fde9ef8636cf",
+  "strategy": "manual-commit",
+  "branch": "chore/strict-code-quality-tooling",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "apps/api/app/main.py",
+    "apps/bots/CLAUDE.md",
+    "apps/web/src/app/[locale]/dev/openui-samples/page.dev.tsx",
+    "apps/web/src/features/mail/hooks/useEmailComposition.ts",
+    "libs/shared/ts/src/bots/api/index.ts",
+    "libs/shared/ts/src/validation/todoSchemas.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/fd/e9ef8636cf/0/metadata.json",
+      "transcript": "/fd/e9ef8636cf/0/full.jsonl",
+      "content_hash": "/fd/e9ef8636cf/0/content_hash.txt",
+      "prompt": "/fd/e9ef8636cf/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 243,
+    "cache_creation_tokens": 1479500,
+    "cache_read_tokens": 18384736,
+    "output_tokens": 88503,
+    "api_call_count": 102
+  }
+}

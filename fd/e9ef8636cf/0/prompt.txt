@@ -1,0 +1,115 @@
+please review all changes file by file in this branch
+
+---
+
+<task-notification>
+<task-id>a4e98a43ed77b6f47</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-aryan-Projects-GAIA-gaia-1/002bffb8-691a-48ff-8dc6-5a2a015503aa/tasks/a4e98a43ed77b6f47.output</output-file>
+<status>completed</status>
+<summary>Agent "Audit apps/api Python changes" completed</summary>
+<result>All `timezone.utc` → `UTC` correctly preserved. Audit is complete. Let me produce the final report.
+
+## Audit Report — Strict Code-Quality Tooling Branch
+
+### Summary verdict: CLEAN (one minor follow-up)
+
+I sampled ~40 files across `libs/shared/py/`, `apps/api/app/core/`, `app/main.py`, `app/agents/` (core, tools, subagents, memory, middleware), `app/services/` (calendar, payments, mcp, composio, gmail_tools, onboarding), `apps/voice-agent/`, conftests, the heaviest test file, and `pyproject.toml`. The branch is overwhelmingly mechanical cleanup. **I did not find any behavioral regression, lying type annotation, dropped error handling, or silenced-but-real security issue introduced by this branch.**
+
+### What the changes consist of (confirmed pattern-by-pattern)
+- `Optional[X]` / `Union[X,Y]` / `List`/`Dict`/`Tuple`/`Set` → modern `X | None`, `list`/`dict`/`tuple`/`set` (PEP 585/604).
+- `f"...{str(e)}..."` → `f"...{e!s}..."` (G004-style).
+- `datetime.timezone.utc` → `datetime.UTC` (Python 3.11+ alias). `replace(tzinfo=None)` is preserved everywhere it existed (e.g. `mcp_token_store.py` lines 100, 133, 145, 156).
+- `asyncio.TimeoutError` → `TimeoutError` in `webpage_tool.py:154` — same class on 3.11+.
+- Import reordering (isort), trailing-comma normalization, `else` → flat `if`/`elif` after `return` (RET505/506). I verified the lazy_loader and vfs_cmd_parser restructurings preserve control flow (each prior branch returns).
+- `if limit &gt; 100: limit = 100` → `limit = min(limit, 100)` (SIM910) — equivalent.
+- `priority if priority else None` → `priority or None` — equivalent for falsy strings.
+- `complete_message if complete_message else "Task completed"` → `complete_message or "Task completed"` — equivalent.
+- One subprocess call I could find: zero — `apps/api/app` and `libs/shared/py` have no `subprocess`/`shell=True` usage.
+
+### `# nosec` / `# NOSONAR` markers
+I grepped every suppression in `apps/api/app`, `libs/shared/py`, `apps/voice-agent`. All are legitimate:
+- B105/B106 on OAuth token-type strings, OAuth URLs, header names — correct, not passwords.
+- B311 on `random.random()` for sampling and `profile_card.py` UI variation — non-crypto, correct.
+- B301/B403 on `pickle.loads` for ChromaDB internal data round-trips — acceptable (trusted store).
+- B110/B112 on `pass`/`continue` in cleanup paths — correct.
+- B101 on the import-time invariant assert in `app/agents/tools/finish_task_tool.py:23` — well-justified with comment.
+
+### One follow-up worth filing (not a regression — pre-existing issue surfaced by the suppression)
+`apps/api/app/utils/weather_utils.py:142-144` — `await http_async_client.get(f"http://ip-api.com/json/{ip_address}")` sends the user IP over **plaintext HTTP**. The branch added `# NOSONAR python:S5332` to suppress the warning. The HTTP call pre-existed on `develop`; only the silencer is new. Suggest opening a Linear issue to switch to `https://` (ip-api free tier does support HTTPS via `https://pro.ip-api.com` or `ipinfo.io` / `ipapi.co` as alternatives) or proxy through a backend that uses HTTPS.
+
+### Minor observations (not blocking)
+- `apps/api/app/main.py:13` lost the `# noqa: F401 to apply patches` comment when migrating from `import app.patches  # noqa: F401` to `import app.patches`. I verified ruff still passes (`uvx ruff check apps/api/app/main.py` → "All checks passed"), so this is fine — but the rationale comment is gone. Future devs may not realize the import is load-bearing for monkey-patches. Consider re-adding a one-line comment ("# applies third-party monkey-patches at startup").
+- `libs/shared/py/logging.py:31` has `from typing import Any  # noqa: F401  # used in function signatures below` — `Any` is actually used (line 35 `LOG_CONFIG: dict[str, Any]`, lines 114 / 130 in sinks), so the `# noqa: F401` is unnecessary but harmless.
+- Mypy pre-commit hook was scoped to `files: ^apps/api/app/` (`apps/api/.pre-commit-config.yaml:34`), so tests are no longer mypy-checked on commit. CI lanes presumably still cover them.
+
+### Tests
+- `apps/api/tests/unit/workers/test_workflow_tasks.py` lost 113 lines but the test count is identical (56 → 56). All deletions are line-merges from `ruff format`.
+- Conftests (`tests/conftest.py`, `tests/unit/conftest.py`, `tests/integration/conftest.py`) only got import-order and line-merge changes — fixture semantics preserved.
+- `libs/shared/py/tests/test_secrets.py` correctly adds `# pragma: allowlist secret` to fake `csec-xyz` literals — appropriate.
+
+### Verdict
+Ship it. The single substantive follow-up is the pre-existing plaintext-HTTP-with-user-IP call in `weather_utils.py`, which is independent of this branch.</result>
+<usage><total_tokens>140086</total_tokens><tool_uses>67</tool_uses><duration_ms>305277</duration_ms></usage>
+</task-notification>
+
+---
+
+please review all changes file by file in this branch
+
+---
+
+no i want it to be done rn
+
+---
+
+have we fucked anything up? have we broken any code???
+
+---
+
+broken in the sense of functioanlity or logically code being broken and not working just so that it fits the new ci guidelines?
+
+---
+
+<task-notification>
+<task-id>aadafa3054a7d0e92</task-id>
+<tool-use-id>toolu_01LRnGkcRPLaMat7hkzQGTR2</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-aryan-Projects-GAIA-gaia-1/002bffb8-691a-48ff-8dc6-5a2a015503aa/tasks/aadafa3054a7d0e92.output</output-file>
+<status>completed</status>
+<summary>Agent "Hunt for behavior regressions disguised as lint fixes" completed</summary>
+<result>`if env == "development": return ...` then `log.critical + raise`. The `else:` was dropped because the if returns — RET505 safe.
+
+Audit complete.
+
+---
+
+## Audit Report: `chore/strict-code-quality-tooling`
+
+### Verdict: NO behavior regressions found.
+
+Sampled the highest-risk diffs across 924 changed files — services (mail, calendar, workflow, mcp_client, todo_service, lazy_loader, settings.py, mongodb/indexes), agent tools (todo_tool, vfs_cmd_parser, linkedin_tool, linear_tool, gmail_tools), tests (workflow, todo, composio_hooks), TS web utils, zod usage, console.log removals, NOSONAR/nosec markers, async/await/with parity, pydantic Field defaults, and side-effect imports.
+
+### What I verified
+- **try/except parity**: equal add/remove counts (15/15 + 14/14 try). All changes are `asyncio.TimeoutError` → `TimeoutError` (Py 3.11+ alias, identical) plus re-indent. **Zero except clauses dropped or narrowed.**
+- **await parity**: 177/177 add/remove. No await dropped or wrapped synchronously.
+- **`with` collapses**: all 86 net-removed `with`s were folded into PEP 617 parenthesized `with (a, b, c):` in tests (SIM117). Semantically identical.
+- **RET505 collapses** (`else:` after `return`/`raise`, `elif` → `if` after return) in `apps/api/app/agents/tools/vfs_cmd_parser.py`, `apps/api/app/core/lazy_loader.py`, `apps/api/app/services/workflow/service.py`, `apps/api/app/config/settings.py`: spot-checked each — every preceding branch returns or raises, so the collapse is semantics-preserving.
+- **pydantic Field defaults**: every `default_factory=lambda: datetime.now(timezone.utc)` → `datetime.now(UTC)`; every `default=` kept as `default=`. No default vs default_factory swaps.
+- **Side-effect imports**: zero bare `import X` lines removed (no monkey-patch / decorator registration loss).
+- **NOSONAR/nosec**: all 5 new markers cover defensible cases (best-effort cleanup, mocked /tmp paths, random sampling, infisical secret_path field name, git on PATH). None mask a real bug.
+- **zod v3 → v4**: only `.passthrough()` and `.default("…")` after `.optional()` in `libs/shared/ts/src/validation/workflowSchemas.ts:17` — both supported identically in v4. No `errorMap`, `invalid_type_error`, or `required_error` usage anywhere in the workspace.
+- **`request.steps if request.steps else []` → `request.steps or []`** in `apps/api/app/services/workflow/service.py`: equivalent for Pydantic optional list (None/[] both falsy).
+- **`yield` → `yield _`** in `test_composio_hooks.py`: both empty async generators (zero iterations). Identical.
+- **`with open(path, "r")` → `with open(path)`**: `"r"` is the default mode. Identical.
+- **Test asserts**: zero net assertion change in `test_todo_service.py`, `test_workflow_service_main.py`, `test_composio_hooks.py` — same behavior is being verified.
+
+### Console.log removals — all benign
+Removed lines are debug noise (`"[WorkflowSection] handleRun clicked"`, `"useWorkflowCreation: API response:"`, `"[WebSocketManager] Connected to:"`, `"Workflow deleted:"`, etc.). Production Next.js build strips `console.log` anyway (per `apps/web/CLAUDE.md`). `console.error` removals retained or replaced.
+
+### One change that LOOKS like a behavior change but isn't
+- `/Users/aryan/Projects/GAIA/gaia-chore-strict-code-quality-tooling/apps/web/src/utils/interceptorUtils.ts:22` — `processAxiosError` lost its `pathname` parameter, the `console.error("Axios Error:", error, "Pathname:", pathname)` debug line, and the `if (isOnLandingRoute(pathname)) return;` short-circuit. Looks dangerous, but is intentional and safe: the dev-route refactor (PR #685, commit `0e370c170`) moved `useAxiosInterceptor()` out of `LandingProvidersLayout` (see `apps/web/src/layouts/LandingProvidersLayout.tsx:22-23` comment "useAxiosInterceptor … no background-fetch error toasts for anonymous visitors") — the interceptor is now only mounted in `ProvidersLayout` (the `(main)` tree), so the runtime `isOnLandingRoute` check became dead code. Verified by grep — only call site is `apps/web/src/hooks/api/useAxiosInterceptor.ts:22`, which is mounted only via `ProvidersLayout.tsx:43`. Behaviorally identical.
+
+### Ambiguous / low-confidence concerns
+None worth flagging. The branch is functionally identical to `develop` aside from the intended additions (voice gradient, download URL fix, tooling, dev route group). The reviewer can merge this with confidence.</result>
+<usage><total_tokens>100653</total_tokens><tool_uses>76</tool_uses><duration_ms>360507</duration_ms></usage>
+</task-notification>
