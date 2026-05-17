@@ -8,12 +8,23 @@ export const SPECTRUM_BINS = 24;
 /**
  * Source of the spectrum on a given frame:
  * - "mic": live microphone input via Web Audio AnalyserNode
- * - "synthetic": generated speech-like spectrum
- * - "hybrid": synthetic spectrum additively blended with the live mic so the
- *   demo's "GAIA speaking" mode still reacts to your voice
- * - "idle": low-amplitude ambient noise so the wave never goes dead
+ * - "agent-track": Web Audio AnalyserNode over a remote MediaStreamTrack
+ *   (e.g. the LiveKit agent's TTS audio track) passed in via `remoteTrack`
+ * - "synthetic": generated speech-like spectrum (demo only)
+ * - "hybrid": synthetic spectrum additively blended with the live mic (demo only)
+ * - "loading": procedural low-pass-filtered random walk — used during the
+ *   voice-mode connecting phase so the gradient visibly vibrates while the
+ *   room negotiates. Caller invokes `decayLoading()` when transitioning out
+ *   to fade the amplitude to zero before switching sources.
+ * - "idle": flat baseline — wave settles to zero
  */
-export type SpectrumSource = "mic" | "synthetic" | "hybrid" | "idle";
+export type SpectrumSource =
+  | "mic"
+  | "agent-track"
+  | "synthetic"
+  | "hybrid"
+  | "loading"
+  | "idle";
 
 export interface VoiceSpectrumState {
   /** Float32Array of length SPECTRUM_BINS, values in [0, 1]. Mutated in place across frames. */
@@ -34,6 +45,11 @@ interface UseVoiceSpectrumOptions {
    * generated locally so callers don't need a microphone.
    */
   source: SpectrumSource;
+  /**
+   * Remote MediaStreamTrack to analyse when `source === "agent-track"`. The
+   * hook re-attaches its analyser whenever this track identity changes.
+   */
+  remoteTrack?: MediaStreamTrack | null;
 }
 
 const TEMPORAL_SMOOTHING = 0.18;
@@ -145,6 +161,47 @@ const buildIdleSpectrum = (_t: number, out: Float32Array) => {
   for (let i = 0; i < SPECTRUM_BINS; i++) out[i] = 0;
 };
 
+interface LoadingState {
+  /** Per-bin current values (smoothed). */
+  current: Float32Array;
+  /** Per-bin random targets, refreshed at LOADING_TARGET_REFRESH_MS cadence. */
+  target: Float32Array;
+  /** Timestamp of the last target refresh. */
+  lastRefresh: number;
+}
+
+const LOADING_AMPLITUDE = 0.3;
+const LOADING_TARGET_REFRESH_MS = 80;
+const LOADING_SMOOTHING = 0.12;
+
+/**
+ * Loading: low-pass-filtered random walk per bin. Reads visually as gentle,
+ * organic vibration — not the buzzy white noise you'd get from raw
+ * Math.random() per frame. Multiplied by `amplitude` so the caller can fade
+ * the source out via `decayLoading()` before switching to mic/agent.
+ */
+const buildLoadingSpectrum = (
+  t: number,
+  out: Float32Array,
+  state: LoadingState,
+  amplitude: number,
+) => {
+  if (t - state.lastRefresh > LOADING_TARGET_REFRESH_MS) {
+    for (let i = 0; i < SPECTRUM_BINS; i++) {
+      state.target[i] = Math.random() * LOADING_AMPLITUDE;
+    }
+    state.lastRefresh = t;
+  }
+  for (let i = 0; i < SPECTRUM_BINS; i++) {
+    state.current[i] = lerp(
+      state.current[i],
+      state.target[i],
+      LOADING_SMOOTHING,
+    );
+    out[i] = state.current[i] * amplitude;
+  }
+};
+
 /** Threshold below which a bin is considered "noise" and squelched to zero
  *  so silence reads as a flat wave instead of background fuzz. */
 const NOISE_GATE = 0.05;
@@ -155,7 +212,10 @@ const gateBin = (v: number): number => {
   return ((v - NOISE_GATE) / (1 - NOISE_GATE)) ** 0.9;
 };
 
-export function useVoiceSpectrum({ source }: UseVoiceSpectrumOptions) {
+export function useVoiceSpectrum({
+  source,
+  remoteTrack = null,
+}: UseVoiceSpectrumOptions) {
   const [isActive, setIsActive] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
@@ -176,6 +236,13 @@ export function useVoiceSpectrum({ source }: UseVoiceSpectrumOptions) {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  // Parallel pipeline for the remote agent audio track (only built when a
+  // remoteTrack is passed in). Kept separate from the mic pipeline so the two
+  // sources can be swapped per-frame by `source` without tearing each other down.
+  const remoteCtxRef = useRef<AudioContext | null>(null);
+  const remoteAnalyserRef = useRef<AnalyserNode | null>(null);
+  const remoteSourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const remoteFftRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const rafRef = useRef<number | null>(null);
   const sourceRef = useRef<SpectrumSource>(source);
   const mutedRef = useRef(false);
@@ -185,6 +252,17 @@ export function useVoiceSpectrum({ source }: UseVoiceSpectrumOptions) {
     isSpeaking: true,
     syllablePitch: 0.4,
   });
+  const loadingStateRef = useRef<LoadingState>({
+    current: new Float32Array(SPECTRUM_BINS),
+    target: new Float32Array(SPECTRUM_BINS),
+    lastRefresh: 0,
+  });
+  // 1 → full loading jitter visible. Caller flips `decayLoading()` and the
+  // tick loop decays this toward 0 over ~LOADING_DECAY_MS so the gradient
+  // smoothly settles before the next source (mic/agent-track) takes over.
+  const loadingAmplitudeRef = useRef(1);
+  const loadingDecayingRef = useRef(false);
+  const lastTickTsRef = useRef(0);
 
   useEffect(() => {
     sourceRef.current = source;
@@ -193,6 +271,49 @@ export function useVoiceSpectrum({ source }: UseVoiceSpectrumOptions) {
   useEffect(() => {
     mutedRef.current = isMuted;
   }, [isMuted]);
+
+  // Build / rebuild the analyser pipeline over the remote agent track whenever
+  // its identity changes. Tear down cleanly on unmount or when the track goes
+  // away. Idle source paths read remoteFftRef which stays null until attached.
+  useEffect(() => {
+    const teardown = () => {
+      remoteSourceNodeRef.current?.disconnect();
+      remoteSourceNodeRef.current = null;
+      remoteAnalyserRef.current?.disconnect();
+      remoteAnalyserRef.current = null;
+      remoteFftRef.current = null;
+      if (remoteCtxRef.current && remoteCtxRef.current.state !== "closed") {
+        remoteCtxRef.current.close().catch(() => {});
+      }
+      remoteCtxRef.current = null;
+    };
+
+    if (!remoteTrack) {
+      teardown();
+      return;
+    }
+
+    const AC =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext })
+        .webkitAudioContext;
+    const ctx = new AC();
+    const stream = new MediaStream([remoteTrack]);
+    const node = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = FFT_SIZE;
+    analyser.smoothingTimeConstant = 0.5;
+    node.connect(analyser);
+
+    remoteCtxRef.current = ctx;
+    remoteSourceNodeRef.current = node;
+    remoteAnalyserRef.current = analyser;
+    remoteFftRef.current = new Uint8Array(
+      new ArrayBuffer(analyser.frequencyBinCount),
+    );
+
+    return teardown;
+  }, [remoteTrack]);
 
   const stop = useCallback(() => {
     sourceNodeRef.current?.disconnect();
@@ -266,6 +387,19 @@ export function useVoiceSpectrum({ source }: UseVoiceSpectrumOptions) {
     [start],
   );
 
+  const decayLoading = useCallback(() => {
+    loadingDecayingRef.current = true;
+  }, []);
+
+  // When source switches BACK to "loading" (e.g. a re-entered connecting
+  // phase), reset the amplitude + decay flag so the jitter is visible again.
+  useEffect(() => {
+    if (source === "loading") {
+      loadingAmplitudeRef.current = 1;
+      loadingDecayingRef.current = false;
+    }
+  }, [source]);
+
   const toggleMute = useCallback(() => {
     setIsMuted((m) => {
       const next = !m;
@@ -327,13 +461,68 @@ export function useVoiceSpectrum({ source }: UseVoiceSpectrumOptions) {
       return true;
     };
 
+    // Reads from the remote-agent analyser built in the remoteTrack effect.
+    // Returns false when no analyser is attached yet.
+    const sampleAgentTrack = (out: Float32Array): boolean => {
+      const analyser = remoteAnalyserRef.current;
+      const raw = remoteFftRef.current;
+      if (!analyser || !raw) {
+        for (let i = 0; i < SPECTRUM_BINS; i++) out[i] = 0;
+        return false;
+      }
+      analyser.getByteFrequencyData(raw);
+      const usableBins = Math.min(raw.length, 256);
+      for (let i = 0; i < SPECTRUM_BINS; i++) {
+        const norm = i / (SPECTRUM_BINS - 1);
+        const curved = norm ** 1.6;
+        const fromIdx = Math.floor(curved * (usableBins - 4)) + 2;
+        const toIdx = Math.min(
+          usableBins - 1,
+          Math.floor(((i + 1) / SPECTRUM_BINS) ** 1.6 * (usableBins - 4)) + 2,
+        );
+        let sum = 0;
+        let count = 0;
+        for (let j = fromIdx; j <= toIdx; j++) {
+          sum += raw[j];
+          count++;
+        }
+        const avg = count > 0 ? sum / count / 255 : 0;
+        const lifted = Math.min(1, (avg * 2.4) ** 1.1);
+        out[i] = gateBin(lifted);
+      }
+      return true;
+    };
+
+    const LOADING_DECAY_MS = 300;
+
     const tick = (now: number) => {
+      const dt = lastTickTsRef.current === 0 ? 16 : now - lastTickTsRef.current;
+      lastTickTsRef.current = now;
+
+      if (loadingDecayingRef.current) {
+        loadingAmplitudeRef.current = Math.max(
+          0,
+          loadingAmplitudeRef.current - dt / LOADING_DECAY_MS,
+        );
+      }
+
       switch (sourceRef.current) {
         case "mic":
           if (!sampleMic(target)) buildIdleSpectrum(now, target);
           break;
+        case "agent-track":
+          if (!sampleAgentTrack(target)) buildIdleSpectrum(now, target);
+          break;
         case "synthetic":
           buildSyntheticSpectrum(now, target, syntheticStateRef.current);
+          break;
+        case "loading":
+          buildLoadingSpectrum(
+            now,
+            target,
+            loadingStateRef.current,
+            loadingAmplitudeRef.current,
+          );
           break;
         case "hybrid": {
           // Synthetic baseline + live mic added on top.
@@ -390,5 +579,5 @@ export function useVoiceSpectrum({ source }: UseVoiceSpectrumOptions) {
     deviceId,
     error,
   };
-  return { ...state, start, stop, toggleMute, selectDevice };
+  return { ...state, start, stop, toggleMute, selectDevice, decayLoading };
 }

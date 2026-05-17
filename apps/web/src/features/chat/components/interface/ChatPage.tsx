@@ -1,30 +1,20 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
-
-// ssr:false — VoiceModeOverlay imports `livekit-client` (~1.5 MB raw bundled
-// with @bufbuild/protobuf). Voice is opt-in, so the CLIENT bundle is split
-// and livekit only fetches on demand. This does NOT remove livekit from the
-// Cloudflare worker handler.mjs — OpenNext concatenates every chunk because
-// CF Workers can't load chunks at runtime. The client-side win (no livekit
-// in the initial JS download for chat users who don't use voice) is still
-// worth keeping.
-const VoiceApp = dynamic(
-  () =>
-    import("@/features/chat/components/composer/VoiceModeOverlay").then(
-      (m) => m.VoiceApp,
-    ),
-  { ssr: false },
-);
+import Composer from "@/features/chat/components/composer/Composer";
 
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { useChatLayout } from "@/features/chat/components/interface/hooks/useChatLayout";
 import { useScrollBehavior } from "@/features/chat/components/interface/hooks/useScrollBehavior";
 import { ChatWithMessages } from "@/features/chat/components/interface/layouts/ChatWithMessages";
 import { NewChatLayout } from "@/features/chat/components/interface/layouts/NewChatLayout";
+import {
+  VoiceControlBarContainer,
+  VoiceControlBarSlot,
+} from "@/features/chat/components/voice-agent/VoiceControlBarContainer";
+import { VoiceModeBackground } from "@/features/chat/components/voice-agent/VoiceModeBackground";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchIntegrationStatus } from "@/features/integrations/hooks/useIntegrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
@@ -37,11 +27,16 @@ import {
   useComposerTextActions,
   usePendingPrompt,
 } from "@/stores/composerStore";
+import {
+  useVoiceModeActions,
+  useVoiceModeActive,
+} from "@/stores/voiceModeStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
 import ScrollToBottomButton from "./ScrollToBottomButton";
 
 const ChatPage = React.memo(function MainChat() {
-  const [voiceModeActive, setVoiceModeActive] = useState(false);
+  const voiceModeActive = useVoiceModeActive();
+  const { enterVoiceMode, exitVoiceMode } = useVoiceModeActions();
   const { convoMessages } = useConversation();
   const pendingPrompt = usePendingPrompt();
   const { clearPendingPrompt } = useComposerTextActions();
@@ -58,15 +53,10 @@ const ChatPage = React.memo(function MainChat() {
   const autoSend = useWorkflowSelectionStore((s) => s.autoSend);
   const autoSendFiredRef = useRef(false);
 
-  // Fetching status on chat-page to resolve caching issues when new integration is connected
   useFetchIntegrationStatus({
     refetchOnMount: "always",
   });
 
-  // Workflow auto-send: when navigating from /todos with a selected workflow,
-  // send "Run this workflow" automatically. This MUST live in ChatPage (not
-  // Composer) because Composer remounts when hasMessages toggles from false→true,
-  // which orphans the useChatStream refs and kills the streaming connection.
   useEffect(() => {
     if (!(selectedWorkflow && autoSend)) return;
     if (autoSendFiredRef.current) return;
@@ -76,9 +66,6 @@ const ChatPage = React.memo(function MainChat() {
     useWorkflowSelectionStore.getState().clearSelectedWorkflow();
     useChatStore.getState().setActiveConversationId(null);
 
-    // Defer to next tick so the store updates (clearSelectedWorkflow,
-    // setActiveConversationId) are processed first and useConversation
-    // correctly shows the optimistic message.
     setTimeout(() => {
       sendMessage("Run this workflow", {
         selectedWorkflow: workflow,
@@ -89,7 +76,6 @@ const ChatPage = React.memo(function MainChat() {
     }, 0);
   }, [selectedWorkflow, autoSend, sendMessage]);
 
-  // Reset the auto-send guard when the workflow/autoSend state clears
   useEffect(() => {
     if (!selectedWorkflow || !autoSend) autoSendFiredRef.current = false;
   }, [selectedWorkflow, autoSend]);
@@ -106,30 +92,23 @@ const ChatPage = React.memo(function MainChat() {
     convoIdParam,
   } = useChatLayout();
 
-  // Set active conversation ID and mark as read when opening
   useEffect(() => {
     setActiveConversationId(convoIdParam || null);
 
-    // Mark conversation as read if it's unread
-    // Using getState() to avoid re-running when conversations update
     if (convoIdParam) {
       const conversations = useChatStore.getState().conversations;
       const conversation = conversations.find((c) => c.id === convoIdParam);
       if (conversation?.isUnread) {
-        // Optimistically update local state
         useChatStore
           .getState()
           .upsertConversation({ ...conversation, isUnread: false });
         db.updateConversationFields(convoIdParam, { isUnread: false });
-        // Fire API call (don't await to avoid blocking)
         chatApi.markAsRead(convoIdParam).catch(console.error);
       }
 
       syncSingleConversation(convoIdParam);
     }
 
-    // Clear optimistic message when navigating to a different conversation
-    // This prevents stale optimistic message from showing in wrong conversations
     return () => {
       useChatStore.getState().clearOptimisticMessage();
     };
@@ -147,7 +126,6 @@ const ChatPage = React.memo(function MainChat() {
     shouldShowScrollButton,
   } = useScrollBehavior(hasMessages, convoMessages?.length);
 
-  // Drag and drop functionality
   const { isDragging, dragHandlers } = useDragAndDrop({
     onDrop: (files: File[]) => {
       setDroppedFiles(files);
@@ -159,7 +137,6 @@ const ChatPage = React.memo(function MainChat() {
     multiple: true,
   });
 
-  // Handle pending prompt from global composer
   useEffect(() => {
     if (pendingPrompt && appendToInputRef.current) {
       appendToInputRef.current(pendingPrompt);
@@ -167,8 +144,6 @@ const ChatPage = React.memo(function MainChat() {
     }
   }, [pendingPrompt, clearPendingPrompt, appendToInputRef]);
 
-  // Handle ?q= query parameter for external app deep linking — read on
-  // mount only; avoids subscribing to all searchParam changes.
   useEffect(() => {
     const queryParam = new URLSearchParams(window.location.search).get("q");
     if (queryParam && appendToInputRef.current) {
@@ -180,7 +155,6 @@ const ChatPage = React.memo(function MainChat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Common composer props
   const composerProps = {
     inputRef,
     scrollToBottom,
@@ -195,32 +169,71 @@ const ChatPage = React.memo(function MainChat() {
         voice_mode_enabled: true,
         conversation_id: convoIdParam,
       });
-      setVoiceModeActive(true);
+      enterVoiceMode();
     },
   };
+
+  const handleEndVoiceCall = () => {
+    trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
+      voice_mode_enabled: false,
+      conversation_id: convoIdParam,
+    });
+    exitVoiceMode();
+    // Pull server canonical messages so the chat shows them without the
+    // in-memory voice turns; prevents duplicate-after-refresh.
+    const activeId = useChatStore.getState().activeConversationId;
+    if (activeId) {
+      syncSingleConversation(activeId).catch((err) =>
+        console.error("[ChatPage] post-voice sync failed", err),
+      );
+    }
+  };
+
+  // Voice mode forces the messages layout so the gradient + bar always have
+  // a stable container; the user can speak from a fresh /c without flipping
+  // layouts mid-call.
+  const useMessagesLayout = voiceModeActive || hasMessages;
+
+  if (voiceModeActive) {
+    return (
+      // `isolate` creates a new stacking context so the gradient (z-index: -10)
+      // paints behind the layout content but ABOVE the ancestor `<main>`'s
+      // solid bg-zinc background. Without this, the parent's background covers
+      // the gradient entirely (gradient paints in the ancestor's stacking
+      // context, below the parent's block-level background).
+      <div className="relative isolate flex h-full min-h-0 flex-col">
+        <FileDropModal isDragging={isDragging} />
+        <VoiceControlBarContainer>
+          <VoiceModeBackground />
+          <ChatWithMessages
+            scrollContainerRef={scrollContainerRef}
+            chatRef={chatRef}
+            handleScroll={handleScroll}
+            dragHandlers={dragHandlers}
+            bottomBar={<VoiceControlBarSlot onEndCall={handleEndVoiceCall} />}
+          />
+        </VoiceControlBarContainer>
+        <ScrollToBottomButton
+          onScrollToBottom={scrollToBottom}
+          shouldShow={shouldShowScrollButton}
+          hasMessages={hasMessages}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <FileDropModal isDragging={isDragging} />
 
-      {voiceModeActive ? (
-        <VoiceApp
-          onEndCall={() => {
-            trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
-              voice_mode_enabled: false,
-              conversation_id: convoIdParam,
-            });
-            setVoiceModeActive(false);
-          }}
-        />
-      ) : hasMessages ? (
+      {useMessagesLayout ? (
         <>
           <ChatWithMessages
             scrollContainerRef={scrollContainerRef}
             chatRef={chatRef}
             handleScroll={handleScroll}
             dragHandlers={dragHandlers}
-            composerProps={composerProps}
+            bottomBar={<Composer {...composerProps} />}
           />
           <ScrollToBottomButton
             onScrollToBottom={scrollToBottom}

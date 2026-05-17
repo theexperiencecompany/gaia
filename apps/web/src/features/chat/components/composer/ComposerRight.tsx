@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
-import { ArrowUp02Icon, StopIcon, AudioWave01Icon } from "@icons";
+import { ArrowUp02Icon, AudioWave01Icon, StopIcon } from "@icons";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";

@@ -1,5 +1,5 @@
+import { NEW_MESSAGE_BREAK_TOKEN } from "@shared/utils";
 import Image from "next/image";
-
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useUser } from "@/features/auth/hooks/useUser";
 import SelectedCalendarEventIndicator from "@/features/chat/components/composer/SelectedCalendarEventIndicator";
@@ -41,9 +41,18 @@ export default function ChatBubbleUser({
 
   if (!hasContent) return null;
 
+  // Voice-mode user groups join consecutive transcriptions with
+  // <NEW_MESSAGE_BREAK>. Render them as paragraph breaks within the same
+  // bubble (whitespace-pre-wrap on textClassName turns "\n\n" into visible
+  // gaps). Emoji detection + actions copy use the same display text so the
+  // sentinel never leaks out.
+  const displayText = text
+    ? text.split(NEW_MESSAGE_BREAK_TOKEN).join("\n\n")
+    : text;
+
   // Calculate emoji state
-  const isEmojiOnly = isOnlyEmojis(text);
-  const emojiCount = isEmojiOnly ? getEmojiCount(text) : 0;
+  const isEmojiOnly = isOnlyEmojis(displayText);
+  const emojiCount = isEmojiOnly ? getEmojiCount(displayText) : 0;
 
   // Determine styles based on emoji count
   let bubbleClassName = "imessage-bubble imessage-from-me";
@@ -113,9 +122,9 @@ export default function ChatBubbleUser({
               </div>
             )}
 
-            {text?.trim() && (
+            {displayText?.trim() && (
               <div className={bubbleClassName}>
-                {!!text && <div className={textClassName}>{text}</div>}
+                <div className={textClassName}>{displayText}</div>
               </div>
             )}
           </div>
@@ -146,10 +155,10 @@ export default function ChatBubbleUser({
                 {parseDate(date)}
               </span>
             )}
-            {text && (
+            {displayText && (
               <ChatBubble_Actions
                 loading={false}
-                text={text}
+                text={displayText}
                 message_id={message_id}
                 messageRole="user"
                 onRetry={onRetry}

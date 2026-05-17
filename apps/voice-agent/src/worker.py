@@ -37,6 +37,45 @@ configure_file_logging("./logs")
 
 logger = get_contextual_logger("voice")
 
+SSE_DATA_PREFIX = "data:"
+DONE_SENTINEL = "[DONE]"
+FRONTEND_STREAM_TOPIC = "backend-stream-event"
+RESPONSE_KEY = "response"
+MAIN_RESPONSE_COMPLETE_KEY = "main_response_complete"
+
+# Matches OpenUI / HTML-style tags inside `response` chunks (e.g. <Label …>,
+# </Section>, <Text foo="bar"/>). The LLM streams OpenUI markup through the
+# same `response` field the UI parses for cards; without this, the tag names
+# and attribute values leak into TTS.
+_TAG_RE = re.compile(r"</?[A-Za-z][A-Za-z0-9_-]*(?:\s+[^>]*)?/?>")
+_SENTINEL_RE = re.compile(r"(_BREAK|_MESSAGE|NEW)")
+# Strip markdown structural characters that have no spoken form. Note: we
+# intentionally do NOT strip `<` and `>` separately — _TAG_RE already removes
+# matched tags, and standalone angle brackets in dictated prose are rare.
+_MARKDOWN_RE = re.compile(r"[*_#`]")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _sanitize_for_tts(piece: str) -> str:
+    """Strip OpenUI tags, sentinel tokens, and markdown chars from a response chunk."""
+    piece = _TAG_RE.sub(" ", piece)
+    piece = _SENTINEL_RE.sub(" ", piece)
+    piece = _MARKDOWN_RE.sub(" ", piece)
+    return _WHITESPACE_RE.sub(" ", piece).strip()
+
+
+def _has_open_tag_at_tail(s: str) -> bool:
+    """True when the string ends inside an open tag (last `<` is later than last `>`)."""
+    last_open = s.rfind("<")
+    if last_open == -1:
+        return False
+    return s.rfind(">") < last_open
+
+
+# Bound on how many times a flush may be deferred while a tag straddles chunks.
+# Caps worst-case latency on a malformed/runaway tag stream.
+_OPEN_TAG_DEFER_CAP = 4
+
 
 def _extract_meta_data(md: Optional[str]) -> tuple[Optional[str], Optional[str]]:
     """Extract agentToken and conversationId from participant metadata JSON."""
@@ -112,6 +151,28 @@ class CustomLLM(LLM):
             except Exception as e:
                 logger.error(f"Failed to send conversation description: {e}")
 
+    async def _forward_stream_event_to_frontend(self, raw_event: str) -> None:
+        """Forward raw backend stream payloads to frontend without modification."""
+        if not raw_event or not self.room or not self.room.local_participant:
+            return
+        try:
+            await self.room.local_participant.send_text(
+                raw_event,
+                topic=FRONTEND_STREAM_TOPIC,
+            )
+            logger.info(
+                "Forwarded backend stream event",
+                stream_route="frontend",
+                topic=FRONTEND_STREAM_TOPIC,
+                payload=raw_event,
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to forward backend stream event",
+                topic=FRONTEND_STREAM_TOPIC,
+                error=str(e),
+            )
+
     @asynccontextmanager
     async def chat(self, chat_ctx: ChatContext, **kwargs):  # type: ignore[override]
         """
@@ -121,6 +182,7 @@ class CustomLLM(LLM):
 
         async def gen() -> AsyncGenerator[ChatChunk, None]:
             user_message = _extract_latest_user_text(chat_ctx)
+            tts_enabled = True
 
             timeout = aiohttp.ClientTimeout(total=self.request_timeout_s)
             headers = {"x-timezone": "UTC"}
@@ -143,92 +205,125 @@ class CustomLLM(LLM):
                     resp.raise_for_status()
 
                     text_buffer: list[str] = []
+                    # Counts how many times we've deferred a flush because a tag
+                    # straddles a chunk boundary. Reset on every successful flush.
+                    deferred_flushes = 0
 
                     async for raw in resp.content:
                         if not raw:
                             continue
                         line = raw.decode("utf-8", errors="ignore").strip()
-                        if not line or not line.startswith("data:"):
+                        if not line or not line.startswith(SSE_DATA_PREFIX):
                             continue
 
-                        data = line[5:].strip()
-                        if data == "[DONE]":
+                        data = line[len(SSE_DATA_PREFIX) :].strip()
+                        await self._forward_stream_event_to_frontend(data)
+
+                        if data == DONE_SENTINEL:
                             if text_buffer:
-                                chunk = "".join(text_buffer).strip()
-                                if chunk:
+                                final = _sanitize_for_tts("".join(text_buffer))
+                                text_buffer.clear()
+                                if final:
                                     yield ChatChunk(
-                                        id="custom", delta=ChoiceDelta(content=chunk)
+                                        id="custom",
+                                        delta=ChoiceDelta(content=final),
                                     )
-                                    text_buffer.clear()
                             break
 
                         try:
-                            payload = json.loads(data)
+                            event_payload = json.loads(data)
                         except json.JSONDecodeError:
                             continue
 
-                        conv_id = payload.get("conversation_id")
+                        logger.info(
+                            "Received backend stream event",
+                            stream_route="backend",
+                            event_keys=list(event_payload.keys()),
+                        )
+
+                        if event_payload.get(MAIN_RESPONSE_COMPLETE_KEY) is True:
+                            if tts_enabled and text_buffer:
+                                final = _sanitize_for_tts("".join(text_buffer))
+                                text_buffer.clear()
+                                if final:
+                                    yield ChatChunk(
+                                        id="custom",
+                                        delta=ChoiceDelta(content=final),
+                                    )
+                            tts_enabled = False
+                            logger.info(
+                                "Main response complete received, disabled TTS for remaining events",
+                                stream_route="tts",
+                            )
+                            continue
+
+                        conv_id = event_payload.get("conversation_id")
                         if isinstance(conv_id, str) and conv_id:
                             await self.set_conversation_id(conv_id)
                             continue
 
                         # Handle conversation description (title)
-                        conv_desc = payload.get("conversation_description")
+                        conv_desc = event_payload.get("conversation_description")
                         if isinstance(conv_desc, str) and conv_desc:
                             await self.set_conversation_description(conv_desc)
                             continue
 
-                        piece = payload.get("response", "")
-                        if not piece:
+                        piece = event_payload.get(RESPONSE_KEY, "")
+                        if not tts_enabled or not piece:
                             continue
 
-                        if isinstance(piece, str):
-                            piece = re.sub(r"(_BREAK|_MESSAGE|NEW|<|>)", " ", piece)
-
-                            if piece.strip() == "":
-                                piece = " "
-
-                                last = text_buffer[-1] if text_buffer else ""
-                                if (
-                                    last
-                                    and not last.endswith(" ")
-                                    and piece
-                                    and not piece.startswith(" ")
-                                ):
-                                    piece = " " + piece
-
-                        if piece is None or piece == "":
-                            continue
-
+                        # Append raw to the buffer; sanitization happens at
+                        # flush time so tags split across chunks (e.g. `<hea`
+                        # + `d>`) reassemble before the regex sees them.
                         if isinstance(piece, str):
                             text_buffer.append(piece)
                         elif isinstance(piece, (list, tuple, set)):
                             text_buffer.append("".join(str(x) for x in piece))
                         else:
                             text_buffer.append(str(piece))
+
                         joined = "".join(text_buffer)
 
                         should_flush = False
-
                         if any(joined.endswith(p) for p in [".", "!", "?"]):
                             if len(joined) >= 40:
                                 should_flush = True
-
                         elif len(joined) >= 120:
                             should_flush = True
 
+                        # Defer flush if the buffer ends inside an open tag so
+                        # the sanitizer sees the full tag once it closes.
+                        if (
+                            should_flush
+                            and _has_open_tag_at_tail(joined)
+                            and deferred_flushes < _OPEN_TAG_DEFER_CAP
+                        ):
+                            deferred_flushes += 1
+                            should_flush = False
+
                         if should_flush:
-                            out = joined.strip()
+                            out = _sanitize_for_tts(joined)
                             text_buffer.clear()
+                            deferred_flushes = 0
                             if len(out) >= 15:
+                                logger.info(
+                                    "Emitting TTS chunk",
+                                    stream_route="tts",
+                                    chunk_length=len(out),
+                                )
                                 yield ChatChunk(
                                     id="custom", delta=ChoiceDelta(content=out)
                                 )
                                 await asyncio.sleep(0.1)
 
-                    if text_buffer:
-                        tail = "".join(text_buffer).strip()
+                    if tts_enabled and text_buffer:
+                        tail = _sanitize_for_tts("".join(text_buffer))
                         if len(tail) >= 1:
+                            logger.info(
+                                "Emitting final TTS chunk",
+                                stream_route="tts",
+                                chunk_length=len(tail),
+                            )
                             yield ChatChunk(
                                 id="custom", delta=ChoiceDelta(content=tail)
                             )
@@ -361,4 +456,8 @@ if __name__ == "__main__":
 
         load_settings()
 
+    # Dispatch audit (fix-voice-mode-bugs-and-ux): default global auto-dispatch
+    # is correct for production. Dev non-determinism comes from FE mounts (now
+    # gated). Explicit `agent_name` + `RoomAgentDispatch` in /token is the next
+    # knob if join latency stays bad — requires a backend change, deferred.
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
