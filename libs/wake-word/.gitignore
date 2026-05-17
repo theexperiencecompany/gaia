@@ -1,0 +1,14 @@
+node_modules
+dist
+coverage
+*.tsbuildinfo
+.venv*
+__pycache__
+.pytest_cache
+.ruff_cache
+.vitest-cache
+
+# ONNX models — fetched at install / test time via scripts/fetch-models.sh.
+# Too large for git (>500KB each). Web copies live in apps/web/public/wake-word/
+# (allowlisted by the repo's large-file policy).
+models/*.onnx

@@ -1,0 +1,110 @@
+# "Hey GAIA" wake-word training configuration.
+#
+# This config drives openWakeWord's automatic_model_training pipeline. It
+# generates ~50k synthetic positive samples via Piper TTS with extensive
+# variation (voice / speed / pitch / both pronunciations of GAIA), augments
+# with realistic noise / reverb / music negatives, trains the classifier head
+# for ~50 epochs, and exports the trained head as ONNX.
+#
+# Run with:
+#   uv run python -m training.train --config configs/hey_gaia.yaml
+#
+# Output:
+#   models/hey_gaia.onnx       — the trained classifier head (~250 KB)
+#   training/checkpoints/...   — intermediate states
+
+# ---------------- Wake phrase ----------------
+
+target_phrase:
+  - "hey gaia"
+  - "hey guy uh"          # captures the /ˈɡaɪ.ə/ pronunciation
+  - "hey gaya"            # captures the /ˈɡeɪ.ə/ pronunciation
+  - "hey gaiia"           # elongated final vowel
+  - "hey gye uh"          # alternate phonetic
+
+# Hard-negative phrases the model MUST learn to reject. Synthesized with the
+# same Piper voices/variation as positives so the model can't shortcut on
+# voice characteristics.
+hard_negative_phrases:
+  - "hey google"
+  - "hey siri"
+  - "hey alexa"
+  - "hey jarvis"
+  - "hey jane"
+  - "hey kayla"
+  - "hey gaby"
+  - "hey gabriel"
+  - "hey gabby"
+  - "hey gala"
+  - "hey gaza"             # phonetic neighbours, force rejection
+  - "gaia"                 # the word alone is NOT a wake-word
+  - "guy uh"
+  - "hey"
+  - "they got ya"
+  - "hey getter"
+
+# ---------------- Synthetic-data generation ----------------
+
+n_samples_positive: 50000
+n_samples_hard_negative: 25000
+n_samples_negative_random: 200000   # drawn from Common Voice + LibriSpeech
+
+piper_voices:
+  - en_US-amy-medium
+  - en_US-libritts-high
+  - en_US-ryan-high
+  - en_US-lessac-medium
+  - en_US-hfc_male-medium
+  - en_GB-alan-medium
+  - en_GB-jenny_dioco-medium
+  - en_AU-aletheia-medium
+
+# Per-sample augmentation knobs.
+augmentation:
+  speed_jitter: [0.85, 1.15]        # ±15% speed
+  pitch_jitter_semitones: [-2.0, 2.0]
+  gain_db: [-6.0, 6.0]
+  noise_snr_db: [5.0, 25.0]
+  rir_probability: 0.6              # convolve with Room Impulse Response
+  pre_silence_ms: [0, 300]
+  post_silence_ms: [0, 400]
+
+# ---------------- Model architecture ----------------
+
+# Classifier head. Stays compatible with the openWakeWord ONNX schema:
+# input  x.1 [1, 16, 96]  → output [1, 1]
+classifier:
+  architecture: "fc"                # "fc" | "rnn"; FC is smaller + faster, RNN is more accurate
+  hidden_dim: 32
+  dropout: 0.2
+
+# ---------------- Training ----------------
+
+training:
+  batch_size: 1024
+  learning_rate: 1.0e-3
+  epochs: 50
+  patience: 8                       # early stop on val loss
+  weight_decay: 1.0e-4
+  positive_weight: 1.0
+  hard_negative_weight: 3.0         # weight hard negatives heavier — they're the FP killers
+  random_negative_weight: 1.0
+  optimizer: "adamw"
+  lr_scheduler: "cosine"
+  val_split: 0.1
+
+# ---------------- Evaluation gates ----------------
+# These thresholds gate model release. Training fails if the new model regresses.
+
+eval:
+  min_recall: 0.95
+  max_false_positives_per_hour:
+    librispeech_dev_clean: 0.5
+    musan_music: 0.5
+    musan_noise: 0.5
+
+# ---------------- Output ----------------
+
+output:
+  model_path: "../models/hey_gaia.onnx"
+  threshold_calibration_path: "../models/hey_gaia.threshold.json"

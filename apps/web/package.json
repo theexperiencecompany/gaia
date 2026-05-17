@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@composio/core": "^0.3.4",
+    "@gaia/wake-word": "workspace:*",
     "@heroui/accordion": "2.2.27",
     "@heroui/autocomplete": "2.3.32",
     "@heroui/avatar": "2.2.25",
@@ -61,6 +62,7 @@
     "@hookform/resolvers": "^5.2.1",
     "@internationalized/date": "^3.8.2",
     "@livekit/components-react": "^2.9.14",
+    "onnxruntime-web": "^1.20.0",
     "@lottiefiles/dotlottie-react": "^0.17.1",
     "@mcp-ui/client": "^6.1.0",
     "@mdx-js/loader": "^3.1.0",
