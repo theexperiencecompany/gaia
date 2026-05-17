@@ -63,11 +63,11 @@ export default function OpenUISamplesPage(): JSX.Element {
             <code className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-xs text-zinc-300">
               @gaia/shared/utils
             </code>
-            . Open the mobile gallery at{" "}
+            . Open the mobile{" "}
             <code className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-xs text-zinc-300">
-              (app)/openui-demo
+              openui-demo
             </code>{" "}
-            side-by-side to spot visual drift.
+            screen side-by-side to spot visual drift.
           </p>
         </header>
 

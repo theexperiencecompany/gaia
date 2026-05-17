@@ -10,7 +10,7 @@ from fastapi import FastAPI
 
 from app.config.sentry import init_sentry
 from app.core.app_factory import create_app
-import app.patches
+import app.patches  # noqa: F401  # applies third-party monkey-patches at startup
 from shared.py.wide_events import log
 
 # Create the FastAPI application

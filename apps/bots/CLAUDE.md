@@ -434,7 +434,7 @@ In `libs/shared/ts/src/bots/utils/streaming.ts`, add your platform to `STREAMING
 
 In `libs/shared/ts/src/bots/types/index.ts`:
 - Add `"{platform}"` to the `PlatformName` union type
-- Add platform to `PLATFORM_LIMITS` in `libs/shared/ts/src/bots/utils/index.ts` (character limit)
+- Add platform to `PLATFORM_LIMITS` in `libs/shared/ts/src/bots/utils/response.ts` (character limit)
 
 ### 7. Wire into Nx
 
@@ -673,6 +673,7 @@ Session tokens are cached client-side (12-min TTL) to avoid repeated auth calls.
 | `libs/shared/ts/src/bots/api/index.ts` | `GaiaClient` — authenticated API client for bot endpoints |
 | `libs/shared/ts/src/bots/utils/streaming.ts` | `handleStreamingChat()` + `STREAMING_DEFAULTS` |
 | `libs/shared/ts/src/bots/utils/formatters.ts` | Markdown converters, error formatter, display formatters |
-| `libs/shared/ts/src/bots/utils/index.ts` | `parseTextArgs()`, `truncateResponse()`, `PLATFORM_LIMITS` |
+| `libs/shared/ts/src/bots/utils/index.ts` | `parseTextArgs()` (re-exports `response.ts`, `streaming.ts`, `commands.ts`, `formatters.ts`, `logger.ts`) |
+| `libs/shared/ts/src/bots/utils/response.ts` | `truncateResponse()`, `chunkResponse()`, `PLATFORM_LIMITS` |
 | `libs/shared/ts/src/bots/commands/` | All unified command handlers (help, auth, todo, workflow, etc.) |
 | `libs/shared/ts/src/bots/config/index.ts` | `loadConfig()` — env var loading |
