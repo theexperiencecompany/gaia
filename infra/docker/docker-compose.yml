@@ -1,10 +1,13 @@
 name: gaia-dev
 
 services:
-  # FastAPI Application — runs in docker by default (has the juicefs CLI +
-  # /mnt/jfs sidecar mount, which a native `nx dev api` on macOS cannot do).
+  # FastAPI Application — profile-gated so `mise dev` runs the API natively on
+  # the host (hot reload, fast iteration on macOS). Opt into the dockered API
+  # with `docker compose --profile backend up -d` when you need the juicefs CLI
+  # + /mnt/jfs FUSE mount that a native `nx dev api` on macOS cannot provide.
   gaia-backend:
     container_name: gaia-backend
+    profiles: ["backend", "all"]
     build:
       context: ../..
       dockerfile: apps/api/Dockerfile
