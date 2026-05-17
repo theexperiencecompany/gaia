@@ -20,6 +20,8 @@ from typing import Any, Dict, Optional
 from shared.py.wide_events import log
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
+from app.services.sandbox.shard_router import shard_for
+from app.services.storage.metrics import set_sandbox_pool_size
 
 
 @dataclass
@@ -43,6 +45,16 @@ class SandboxPool:
         self._lock_registry: Dict[str, asyncio.Lock] = {}
         # Guards mutation of _entries and _lock_registry themselves.
         self._registry_lock = asyncio.Lock()
+        # Shards we have ever published a count for. Tracked so transitions
+        # to zero re-publish 0 explicitly (Prometheus gauges otherwise hold
+        # their last positive value indefinitely).
+        self._known_shards: set[int] = set()
+        # Seed warm-pool gauges at zero for each configured shard so the
+        # dashboard renders a flat zero line instead of "No data" until the
+        # warm pool capability (sibling change e2b-perf-metrics-and-
+        # improvements) actually populates entries.
+        for shard in range(max(1, settings.JUICEFS_NUM_SHARDS)):
+            set_sandbox_pool_size("warm", str(shard), 0)
 
     async def get_lock(self, user_id: str) -> asyncio.Lock:
         """Return the per-user lock, creating it on first access."""
@@ -58,12 +70,38 @@ class SandboxPool:
 
     def put(self, user_id: str, entry: PooledSandbox) -> None:
         self._entries[user_id] = entry
+        self._publish_size()
 
     def evict(self, user_id: str) -> Optional[PooledSandbox]:
-        return self._entries.pop(user_id, None)
+        removed = self._entries.pop(user_id, None)
+        if removed is not None:
+            self._publish_size()
+        return removed
 
     def all(self) -> Dict[str, PooledSandbox]:
         return dict(self._entries)
+
+    def _publish_size(self) -> None:
+        """Recompute per-shard pool occupancy and publish to Prometheus.
+
+        Walks ``_entries`` once, buckets by ``shard_for(user_id)``, and emits
+        one ``sandbox_pool_size{kind="user",shard=...}`` gauge value per
+        shard. Re-publishes 0 for previously-seen shards now empty so the
+        gauge falls instead of holding its last positive value forever.
+
+        The walk is O(N) where N is the active user count (typically small;
+        one entry per active user per replica). If this gets expensive we
+        switch to incremental counts; today it's cheap.
+        """
+        counts: Dict[int, int] = {}
+        for user_id in self._entries:
+            shard = shard_for(user_id)
+            counts[shard] = counts.get(shard, 0) + 1
+        for shard, n in counts.items():
+            set_sandbox_pool_size("user", str(shard), n)
+            self._known_shards.add(shard)
+        for shard in self._known_shards - counts.keys():
+            set_sandbox_pool_size("user", str(shard), 0)
 
 
 _pool_singleton: Optional[SandboxPool] = None

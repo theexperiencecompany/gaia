@@ -34,6 +34,45 @@ Op names are stable, lowercased, snake_cased identifiers — keep them stable
 because dashboards will pivot on them. The list lives in ``FS_OPS`` below as
 the source of truth; adding a new op = add a constant here first.
 
+Prometheus export
+-----------------
+Every call to ``record_fs_op`` (and ``add_fs_bytes`` for byte volume) emits to
+the following Prometheus collectors, all registered on the default registry:
+
+- ``fs_op_duration_seconds`` (Histogram, labels ``operation, mode, status``).
+  Standard latency view. ``mode`` carries the acquire-path label for
+  ``sbx_acquire`` and defaults to ``"none"`` elsewhere.
+- ``fs_op_bytes_total`` (Counter, label ``operation``). Only incremented when
+  an op reports a non-zero byte count.
+- ``fs_op_total`` (Counter, labels ``operation, mode, status``). Lifetime
+  count — never decays. Backs lifetime-totals dashboard panels.
+- ``fs_op_last_seen_unix_seconds`` (Gauge, label ``operation``). Wall-clock
+  timestamp of the most recent observation. Drives "last seen N minutes ago"
+  columns.
+- ``fs_op_in_flight`` (Gauge, label ``operation``). Maintained by ``fs_timer``:
+  inc on enter, dec in finally. Exposes contention + stuck operations.
+- ``sandbox_pool_size`` (Gauge, labels ``kind, shard``). Set by the sandbox
+  pool on add/remove via :func:`set_sandbox_pool_size`. ``kind`` is
+  ``"user"`` or ``"warm"``.
+
+Bash exit-code distribution lives in ``apps/api/app/agents/tools/coding/
+bash_tool.py`` as ``tool_bash_exit_code_total`` (Counter, label ``exit_code``
+bucketed into ``0``, ``1-126``, ``127``, ``128-254``, ``255``, ``timeout``).
+
+Label discipline: the labels above are the *complete* allowed set. Adding a
+label requires updating the matching OpenSpec capability (``fs-metrics-
+prometheus`` for the original two, ``fs-metrics-coverage`` for the rest)
+because dashboards pivot on these names.
+
+The API process exposes everything via ``/metrics`` mounted by
+``prometheus-fastapi-instrumentator``. The ARQ worker re-registers the same
+collector instances on its custom registry inside
+``apps/api/app/workers/metrics.py`` so the worker's ``/metrics`` endpoint
+mirrors the API.
+
+Grafana panels live in
+``infra/docker/observability/grafana/provisioning/dashboards/fs-ops.json``.
+
 Usage
 -----
 
@@ -60,7 +99,140 @@ import contextlib
 import contextvars
 import time
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Final
+from typing import Any, AsyncIterator, Callable, Final
+
+from prometheus_client import REGISTRY, Counter, Gauge, Histogram  # noqa: F401  # Gauge used via lambda factories below
+
+from shared.py.logging import get_contextual_logger
+
+_log = get_contextual_logger("app.services.storage.metrics")
+
+
+# Prometheus collectors. Allowed labels (CHANGES REQUIRE A SPEC UPDATE on
+# either the `fs-metrics-prometheus` or `fs-metrics-coverage` capability):
+#   - fs_op_duration_seconds:        operation, mode, status
+#   - fs_op_bytes_total:              operation
+#   - fs_op_total:                    operation, mode, status
+#   - fs_op_last_seen_unix_seconds:   operation
+#   - fs_op_in_flight:                operation
+#   - sandbox_pool_size:              kind, shard
+# High-cardinality identifiers (user_id, conv_id, paths) MUST stay on the wide
+# event, never on these collectors. The default registry is what the existing
+# /metrics endpoint serves; the worker process re-registers these same instances
+# on its custom registry inside app/workers/metrics.py.
+
+_FS_OP_BUCKETS: Final[tuple[float, ...]] = (
+    0.001,
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
+    10.0,
+    30.0,
+    60.0,
+)
+
+
+def _register_once(name: str, factory: Callable[[], Any]) -> Any:
+    """Register a Prometheus collector at module load, tolerating re-imports.
+
+    `uvicorn --reload` and some test fixtures import this module twice in the
+    same process. The second registration raises ``ValueError("Duplicated
+    timeseries...")``. We catch that and return the previously-registered
+    collector, so the same instance is used across imports.
+    """
+    try:
+        return factory()
+    except ValueError:
+        existing = REGISTRY._names_to_collectors.get(name)  # noqa: SLF001
+        if existing is None:
+            raise
+        return existing
+
+
+_FS_OP_DURATION_SECONDS = _register_once(
+    "fs_op_duration_seconds",
+    lambda: Histogram(
+        name="fs_op_duration_seconds",
+        documentation="FS_OPS measurement duration in seconds",
+        labelnames=("operation", "mode", "status"),
+        buckets=_FS_OP_BUCKETS,
+    ),
+)
+
+_FS_OP_BYTES_TOTAL = _register_once(
+    "fs_op_bytes_total",
+    lambda: Counter(
+        name="fs_op_bytes_total",
+        documentation="FS_OPS measurement byte volume",
+        labelnames=("operation",),
+    ),
+)
+
+_FS_OP_TOTAL = _register_once(
+    "fs_op_total",
+    lambda: Counter(
+        name="fs_op_total",
+        documentation="FS_OPS lifetime total observations",
+        labelnames=("operation", "mode", "status"),
+    ),
+)
+
+_FS_OP_LAST_SEEN = _register_once(
+    "fs_op_last_seen_unix_seconds",
+    lambda: Gauge(
+        name="fs_op_last_seen_unix_seconds",
+        documentation="Wall-clock time of the most recent FS_OPS observation per op",
+        labelnames=("operation",),
+    ),
+)
+
+_FS_OP_IN_FLIGHT = _register_once(
+    "fs_op_in_flight",
+    lambda: Gauge(
+        name="fs_op_in_flight",
+        documentation="FS_OPS operations currently executing per op",
+        labelnames=("operation",),
+    ),
+)
+
+_SANDBOX_POOL_SIZE = _register_once(
+    "sandbox_pool_size",
+    lambda: Gauge(
+        name="sandbox_pool_size",
+        documentation="Sandbox pool occupancy by kind and shard",
+        labelnames=("kind", "shard"),
+    ),
+)
+
+
+def set_sandbox_pool_size(kind: str, shard: str, n: int) -> None:
+    """Publish the current pool size for ``(kind, shard)``.
+
+    ``kind`` is ``"user"`` (per-user pooled sandboxes) or ``"warm"`` (warm
+    pre-created sandboxes). ``shard`` is the stringified shard id. The
+    underlying ``sandbox_pool_size`` gauge supports ``set`` semantics —
+    last-writer-wins per (kind, shard), which matches the desired "current
+    count" view.
+
+    Wrap in try/except so a registry bug never breaks the pool mutation that
+    called us.
+    """
+    try:
+        _SANDBOX_POOL_SIZE.labels(kind=kind, shard=shard).set(n)
+    except Exception as e:  # noqa: BLE001
+        _log.warning(
+            "[metrics] sandbox_pool_size set failed",
+            kind=kind,
+            shard=shard,
+            error_type=type(e).__name__,
+        )
 
 
 @dataclass(slots=True)
@@ -177,6 +349,11 @@ def record_fs_op(
     are merged into the op's ``labels`` dict on a last-write-wins basis — use
     them for very low-cardinality identifiers (role, mount status). High-
     cardinality values (conv_id, path) belong in the wide event, not here.
+
+    Additionally emits to the Prometheus collectors declared at module scope.
+    Prometheus emit is wrapped in ``try/except`` so a registry bug never breaks
+    the wide event flush — the ContextVar bucket update above is the canonical
+    record, the Prometheus emit is a parallel surface.
     """
     stats = _bucket().setdefault(op, _OpStats())
     stats.count += 1
@@ -191,6 +368,23 @@ def record_fs_op(
     if labels:
         stats.labels.update(labels)
 
+    try:
+        mode = labels.get("mode") or "none"
+        status = "error" if error is not None else "ok"
+        _FS_OP_DURATION_SECONDS.labels(operation=op, mode=mode, status=status).observe(
+            duration_ms / 1000.0
+        )
+        _FS_OP_TOTAL.labels(operation=op, mode=mode, status=status).inc()
+        _FS_OP_LAST_SEEN.labels(operation=op).set(time.time())
+        if bytes > 0:
+            _FS_OP_BYTES_TOTAL.labels(operation=op).inc(bytes)
+    except Exception as e:  # noqa: BLE001 — dashboard surface must not break callers
+        _log.warning(
+            "[metrics] prometheus observe failed",
+            op=op,
+            error_type=type(e).__name__,
+        )
+
 
 def add_fs_bytes(op: str, n: int) -> None:
     """Add bytes to an op's running total without bumping count/duration.
@@ -204,6 +398,15 @@ def add_fs_bytes(op: str, n: int) -> None:
     stats = _bucket().setdefault(op, _OpStats())
     stats.bytes += n
 
+    try:
+        _FS_OP_BYTES_TOTAL.labels(operation=op).inc(n)
+    except Exception as e:  # noqa: BLE001
+        _log.warning(
+            "[metrics] prometheus bytes inc failed",
+            op=op,
+            error_type=type(e).__name__,
+        )
+
 
 @contextlib.asynccontextmanager
 async def fs_timer(op: str, **labels: Any) -> AsyncIterator[None]:
@@ -212,9 +415,23 @@ async def fs_timer(op: str, **labels: Any) -> AsyncIterator[None]:
     On exception, the op is still recorded (with ``error=<exception>``) so we
     can see the latency cost of a failure path in the same dashboard. The
     exception is then re-raised; never swallow.
+
+    Also maintains the ``fs_op_in_flight`` Prometheus gauge: incremented on
+    entry, decremented in ``finally``. The increment is wrapped in
+    try/except so a registry bug never breaks the yield; the decrement is
+    similarly guarded so a paired-state inconsistency never blocks
+    ``record_fs_op`` from running.
     """
     start = time.monotonic()
     err: BaseException | None = None
+    try:
+        _FS_OP_IN_FLIGHT.labels(operation=op).inc()
+    except Exception as e:  # noqa: BLE001
+        _log.warning(
+            "[metrics] in_flight inc failed",
+            op=op,
+            error_type=type(e).__name__,
+        )
     try:
         yield
     except BaseException as exc:  # noqa: BLE001 — surfaced via re-raise
@@ -222,6 +439,14 @@ async def fs_timer(op: str, **labels: Any) -> AsyncIterator[None]:
         raise
     finally:
         elapsed_ms = (time.monotonic() - start) * 1000.0
+        try:
+            _FS_OP_IN_FLIGHT.labels(operation=op).dec()
+        except Exception as e:  # noqa: BLE001
+            _log.warning(
+                "[metrics] in_flight dec failed",
+                op=op,
+                error_type=type(e).__name__,
+            )
         record_fs_op(op, duration_ms=elapsed_ms, error=err, **labels)
 
 
@@ -261,4 +486,5 @@ __all__ = [
     "fs_timer",
     "peek_fs_metrics",
     "record_fs_op",
+    "set_sandbox_pool_size",
 ]

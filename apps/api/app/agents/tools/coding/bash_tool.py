@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import contextlib
 import time
 import uuid
 from typing import Annotated
 
+from prometheus_client import Counter
+from shared.py.logging import get_contextual_logger
 from shared.py.wide_events import log
 from app.agents.tools.coding._context import (
     get_session_id,
@@ -29,6 +32,7 @@ from app.decorators import with_doc, with_rate_limiting
 from app.services.artifact_events import publish_artifact_event, upsert_event
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FS_OPS, ArtifactInfo, fs_timer
+from app.services.storage.metrics import _register_once
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
 from langchain_core.runnables.config import RunnableConfig
@@ -37,6 +41,61 @@ from langchain_core.tools import tool
 MAX_TIMEOUT_SECONDS = 600
 DEFAULT_TIMEOUT_SECONDS = 120
 MAX_COMMAND_LENGTH = 16_000
+
+_metrics_log = get_contextual_logger("app.agents.tools.coding.bash_tool.metrics")
+
+# Bucketed bash exit code counter. The buckets (string labels) are part of the
+# `fs-metrics-coverage` capability contract; changing them requires a spec
+# update. Raw exit codes would be ≤256 series per process — wasted cardinality
+# when 95% are 0. The bucket choice mirrors the standard shell semantics:
+#   - 0           → success
+#   - 1-126       → generic command failure
+#   - 127         → command not found
+#   - 128-254     → killed by signal (128 + signal_number)
+#   - 255         → catch-all error
+#   - "timeout"   → killed by our own `_run_foreground` deadline
+_BASH_EXIT_CODE_TOTAL = _register_once(
+    "tool_bash_exit_code_total",
+    lambda: Counter(
+        name="tool_bash_exit_code_total",
+        documentation="Bucketed bash tool exit codes",
+        labelnames=("exit_code",),
+    ),
+)
+
+
+def _bucket_exit_code(code: int | None, timed_out: bool) -> str:
+    """Map a raw exit code (or timeout flag) to the bucket label string."""
+    if timed_out:
+        return "timeout"
+    if code is None:
+        # Treat unknown as catch-all rather than skipping — the agent saw
+        # *some* outcome, we just couldn't read the exit code attribute.
+        return "255"
+    if code == 0:
+        return "0"
+    if code == 127:
+        return "127"
+    if code == 255:
+        return "255"
+    if 1 <= code <= 126:
+        return "1-126"
+    if 128 <= code <= 254:
+        return "128-254"
+    return "255"
+
+
+def _record_bash_exit_code(code: int | None, *, timed_out: bool) -> None:
+    """Increment the exit-code counter once per command completion. Non-fatal."""
+    try:
+        _BASH_EXIT_CODE_TOTAL.labels(
+            exit_code=_bucket_exit_code(code, timed_out=timed_out)
+        ).inc()
+    except Exception as e:  # noqa: BLE001
+        _metrics_log.warning(
+            "[metrics] bash exit_code inc failed",
+            error_type=type(e).__name__,
+        )
 
 
 @tool
@@ -77,10 +136,7 @@ async def bash(
         # the agent's reach. Same-user sandbox so it's not a cross-user
         # issue, but it makes prompt-injection drift much harder to bound.
         if not is_under_workspace(cwd):
-            return (
-                f"Error: cwd must be under {WORKSPACE_ROOT} "
-                f"(got {cwd!r})"
-            )
+            return f"Error: cwd must be under {WORKSPACE_ROOT} (got {cwd!r})"
 
     safe_emit(
         {
@@ -215,8 +271,6 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
             )
 
 
-
-
 def _decode_inline(
     body_b64: str, size_bytes: int, content_type: str | None
 ) -> str | None:
@@ -286,17 +340,31 @@ async def _run_foreground(
             session_id=session_id,
         )
 
-    result = await sbx.commands.run(  # type: ignore[attr-defined]
-        command,
-        cwd=cwd or WORKSPACE_ROOT,
-        timeout=timeout,
-        on_stdout=_on_stdout,
-        on_stderr=_on_stderr,
-    )
+    try:
+        result = await sbx.commands.run(  # type: ignore[attr-defined]
+            command,
+            cwd=cwd or WORKSPACE_ROOT,
+            timeout=timeout,
+            on_stdout=_on_stdout,
+            on_stderr=_on_stderr,
+        )
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        _record_bash_exit_code(None, timed_out=True)
+        raise
+    except Exception as e:
+        # The e2b SDK raises a CommandExitException whose class name carries
+        # "Timeout" when the timeout deadline fires. Match by name to avoid
+        # importing SDK-specific types at module load.
+        if "timeout" in type(e).__name__.lower():
+            _record_bash_exit_code(None, timed_out=True)
+        else:
+            _record_bash_exit_code(None, timed_out=False)
+        raise
 
     stdout = getattr(result, "stdout", "") or ""
     stderr = getattr(result, "stderr", "") or ""
     exit_code = getattr(result, "exit_code", None)
+    _record_bash_exit_code(exit_code, timed_out=False)
 
     await _persist_run_log(sbx, run_id, stdout, stderr)
 
