@@ -28,10 +28,17 @@ export function truncateResponse(
     return text;
   }
 
-  const suffix = conversationUrl
+  const FALLBACK_SUFFIX = "\n\n... (truncated)";
+  let suffix = conversationUrl
     ? `\n\n[View full response](${conversationUrl})`
-    : "\n\n... (truncated)";
-  const maxLen = limit - suffix.length;
+    : FALLBACK_SUFFIX;
+  // Defensive: if the URL suffix alone exceeds the platform cap (extremely
+  // long conversation URL), fall back to the short marker so we can still
+  // emit some content within the limit.
+  if (suffix.length >= limit) {
+    suffix = FALLBACK_SUFFIX.length < limit ? FALLBACK_SUFFIX : "";
+  }
+  const maxLen = Math.max(0, limit - suffix.length);
 
   let truncated = text.slice(0, maxLen);
   const lastSpace = truncated.lastIndexOf(" ");
