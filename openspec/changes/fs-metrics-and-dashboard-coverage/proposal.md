@@ -45,4 +45,4 @@ Both are addressable cheaply because every measurement already funnels through `
 - **Cardinality budget**: `fs_op_total` reuses existing label set (≤250 series). `fs_op_in_flight` is per-op (≤25 series). `fs_op_last_seen_unix_seconds` per-op (≤25 series). `sandbox_pool_size` is `kind × shard ≤ 2 × 8 = 16 series`. `tool_bash_exit_code_total` is 6 buckets. Total new series < 350.
 - **No new dependencies, no migrations, no new endpoints.**
 - **Risk**: `fs_op_in_flight` mutation lives inside `fs_timer`; an unbalanced enter/exit would leak. Guard with `try/finally` (already the structure of `fs_timer`).
-- **Dashboard rollback**: keep the v1 panels accessible by saving the old JSON to `fs-ops-v1.json.bak` for one release before deletion.
+- **Dashboard rollback**: git history is the rollback path — `git checkout <prior-sha> -- infra/docker/observability/grafana/provisioning/dashboards/fs-ops.json` restores v1 if the new layout has surprises.

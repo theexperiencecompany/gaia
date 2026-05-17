@@ -32,7 +32,7 @@
 
 ## 6. Dashboard v2
 
-- [x] 6.1 Copied current `fs-ops.json` to `fs-ops-v1.json.bak` in the same directory.
+- [x] 6.1 Rollback path is git history (`git checkout <prior-sha> -- fs-ops.json`); no sibling `.bak` shipped.
 - [x] 6.2 Rewrote `fs-ops.json` with: Overview row (lifetime totals table + in-flight ops + sandbox pool size), Latency row (mean / p50 / p95 / p99 at 30m windows), Errors+throughput row (error rate per op, byte throughput, bash exit codes pie), sbx_acquire by mode row. Empty rate panels wrapped with `or vector(0)` so they render zero instead of "No data".
 - [x] 6.3 Top-level: `time = {from: "now-1h", to: "now"}`, `refresh = "10s"`, `tags = ["gaia", "fs", "sandbox"]`, "GAIA Dashboards" links retained.
 - [x] 6.4 JSON validated via `python3 -m json.tool`. Live-stack panel rendering deferred to next batch.

@@ -103,7 +103,7 @@ The repo SHALL replace `infra/docker/observability/grafana/provisioning/dashboar
 
 The default dashboard time range SHALL be `now-1h`, refresh `10s`.
 
-The previous JSON SHALL be saved as `fs-ops-v1.json.bak` in the same directory and SHALL be removed in a future change after one release cycle of operator validation.
+The previous dashboard layout SHALL be recoverable via git history rather than a sibling `.bak` file; rollback uses `git checkout <prior-sha> -- infra/docker/observability/grafana/provisioning/dashboards/fs-ops.json`.
 
 #### Scenario: Lifetime totals always render
 - **WHEN** the dashboard loads in Grafana after any FS op has ever fired

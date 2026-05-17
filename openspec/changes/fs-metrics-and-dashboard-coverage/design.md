@@ -50,8 +50,8 @@ Empty panels in v1 (`Error rate per op`, `Byte throughput per op`, `sbx_acquire 
 **7. Default time range widens to `now-1h`.**
 Matches the wider rate windows and gives one full hour of context on first open. Considered: `now-24h`. Rejected — Prometheus scrape retention is 30 days but Grafana panel queries get expensive past an hour for high-cardinality histograms.
 
-**8. v1 JSON preserved as `fs-ops-v1.json.bak` for one release.**
-Recoverable rollback path. Considered: git history. Sufficient long-term, but a sibling `.bak` is one less command at recovery time.
+**8. Rollback via git history, not a sibling `.bak`.**
+The dashboard JSON is checked in; reverting is `git checkout <prior-sha> -- fs-ops.json`. A `.bak` file next to it just duplicates what git already tracks and creates a second source of truth that drifts.
 
 ## Risks / Trade-offs
 
@@ -64,15 +64,13 @@ Recoverable rollback path. Considered: git history. Sufficient long-term, but a 
 ## Migration Plan
 
 1. Ship the new collectors behind no flag. The wire signature of `record_fs_op` and `fs_timer` is unchanged from caller perspective; new collectors register at module load.
-2. Replace `fs-ops.json` in one PR. Old version saved as `fs-ops-v1.json.bak` next to it. Grafana picks up the new file on container restart.
+2. Replace `fs-ops.json` in one PR. Grafana picks up the new file on container restart.
 3. Validate with a fresh chat turn that:
    - Lifetime totals table populates.
    - "Last seen" column shows recent timestamp for ops that fired during the chat.
    - In-flight gauge briefly spikes during the chat and returns to zero.
    - Bash exit code stat shows `0:1` after a successful `echo`.
-4. After one release with no surprise empty-panel reports, delete `fs-ops-v1.json.bak`.
-
-Rollback: revert the JSON file (`fs-ops-v1.json.bak` → `fs-ops.json`). New collectors stay registered; they just aren't surfaced visually.
+Rollback: `git revert` the dashboard commit, or `git checkout <prior-sha> -- infra/docker/observability/grafana/provisioning/dashboards/fs-ops.json`. New collectors stay registered; they just aren't surfaced visually.
 
 ## Open Questions
 
