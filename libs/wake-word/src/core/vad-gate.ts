@@ -3,7 +3,7 @@ import type {
   InferenceSession,
   ModelSource,
   TypedTensor,
-} from "../types/index.js";
+} from "../types/index";
 
 /**
  * Silero VAD gate (v3/v4 signature, bundled with openWakeWord v0.5.1).

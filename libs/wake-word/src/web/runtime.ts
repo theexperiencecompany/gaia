@@ -12,7 +12,7 @@ import type {
   InferenceSession,
   ModelSource,
   TypedTensor,
-} from "../types/index.js";
+} from "../types/index";
 
 type OrtModule = typeof ortType;
 

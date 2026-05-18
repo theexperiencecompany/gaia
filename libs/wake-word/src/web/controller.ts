@@ -1,12 +1,12 @@
-import { WakeWordDetector } from "../core/detector.js";
+import { WakeWordDetector } from "../core/detector";
 import type {
   DetectionEvent,
   DetectorListener,
   DetectorOptions,
   DetectorState,
   WakeWordModelBundle,
-} from "../types/index.js";
-import { WebRuntime, type WebRuntimeOptions } from "./runtime.js";
+} from "../types/index";
+import { WebRuntime, type WebRuntimeOptions } from "./runtime";
 
 /**
  * High-level controller that owns the AudioContext, AudioWorklet, and detector

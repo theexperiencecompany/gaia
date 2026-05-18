@@ -6,7 +6,7 @@ import {
   type InferenceSession,
   MEL_FRAMES_PER_CHUNK,
   type WakeWordModelBundle,
-} from "../types/index.js";
+} from "../types/index";
 
 /**
  * openWakeWord-compatible 3-stage streaming pipeline.

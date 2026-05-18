@@ -1,4 +1,4 @@
-import { WakeWordDetector } from "../core/detector.js";
+import { WakeWordDetector } from "../core/detector";
 import {
   type DetectionEvent,
   type DetectorListener,
@@ -6,8 +6,8 @@ import {
   type DetectorState,
   SAMPLE_RATE,
   type WakeWordModelBundle,
-} from "../types/index.js";
-import { NativeRuntime } from "./runtime.js";
+} from "../types/index";
+import { NativeRuntime } from "./runtime";
 
 /**
  * React Native wake-word controller. Owns an audio-stream subscription and a

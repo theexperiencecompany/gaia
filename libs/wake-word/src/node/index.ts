@@ -10,7 +10,7 @@ import type {
   InferenceSession,
   ModelSource,
   TypedTensor,
-} from "../types/index.js";
+} from "../types/index";
 
 class NodeSession implements InferenceSession {
   constructor(private readonly s: ort.InferenceSession) {}

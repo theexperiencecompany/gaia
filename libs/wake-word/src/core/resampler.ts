@@ -1,4 +1,4 @@
-import { SAMPLE_RATE } from "../types/index.js";
+import { SAMPLE_RATE } from "../types/index";
 
 /**
  * Lightweight linear resampler. The wake-word model is trained at 16 kHz mono.

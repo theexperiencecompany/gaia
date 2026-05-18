@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DetectionEvent, DetectorState } from "../types/index.js";
+import type { DetectionEvent, DetectorState } from "../types/index";
 import {
   WakeWordController,
   type WakeWordControllerOptions,
-} from "./controller.js";
+} from "./controller";
 
 export interface UseWakeWordResult {
   state: DetectorState;

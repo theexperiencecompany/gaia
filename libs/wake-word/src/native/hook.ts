@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DetectionEvent, DetectorState } from "../types/index.js";
+import type { DetectionEvent, DetectorState } from "../types/index";
 import {
   WakeWordNativeController,
   type WakeWordNativeOptions,
-} from "./controller.js";
+} from "./controller";
 
 export interface UseWakeWordNativeResult {
   state: DetectorState;

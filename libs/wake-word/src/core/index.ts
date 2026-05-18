@@ -1,5 +1,5 @@
-export { WakeWordDetector } from "./detector.js";
-export { WakeWordPipeline } from "./pipeline.js";
-export { LinearResampler } from "./resampler.js";
-export { RingBuffer } from "./ring-buffer.js";
-export { VadGate } from "./vad-gate.js";
+export { WakeWordDetector } from "./detector";
+export { WakeWordPipeline } from "./pipeline";
+export { LinearResampler } from "./resampler";
+export { RingBuffer } from "./ring-buffer";
+export { VadGate } from "./vad-gate";

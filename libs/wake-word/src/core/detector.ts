@@ -7,9 +7,9 @@ import {
   FRAME_SAMPLES,
   type InferenceRuntime,
   type WakeWordModelBundle,
-} from "../types/index.js";
-import { WakeWordPipeline } from "./pipeline.js";
-import { VadGate } from "./vad-gate.js";
+} from "../types/index";
+import { WakeWordPipeline } from "./pipeline";
+import { VadGate } from "./vad-gate";
 
 const DEFAULT_OPTIONS: Required<DetectorOptions> = {
   threshold: 0.6,
