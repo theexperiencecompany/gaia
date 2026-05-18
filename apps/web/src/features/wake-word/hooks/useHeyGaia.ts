@@ -28,13 +28,10 @@ export function useHeyGaia(options: UseHeyGaiaOptions = {}) {
   const controllerOptions = useMemo(
     () => ({
       models: HEY_GAIA_MODEL_BUNDLE,
-      workletUrl: new URL(
-        // The worklet ships as part of @gaia/wake-word. Bundlers that support
-        // `new URL(..., import.meta.url)` (Next.js 16 Turbopack does) resolve
-        // this to a hashed asset under /_next/static/.
-        "@gaia/wake-word/worklet",
-        import.meta.url,
-      ),
+      // The worklet is shipped as a static asset under apps/web/public/ so
+      // any bundler (Turbopack/Webpack/Vite) can serve it without trying to
+      // resolve a workspace-package URL through their module graph.
+      workletUrl: "/wake-word/worklet.js",
       detector: { threshold, cooldownMs },
       runtime: { wasmPaths: "/wake-word/ort/" },
     }),
