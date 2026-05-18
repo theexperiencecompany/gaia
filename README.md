@@ -218,9 +218,16 @@ gaia
 │   ├── cli              → @heygaia/cli setup tool           npm install -g @heygaia/cli
 │   └── gaia-ui          → @heygaia/ui (wrapper)             https://ui.heygaia.io
 ├── libs
-│   └── shared
-│       ├── py           → gaia-shared Python package (used by api, voice-agent, bots)
-│       └── ts           → Shared TypeScript utilities
+│   ├── shared
+│   │   ├── py           → gaia-shared Python package (used by api, voice-agent, bots)
+│   │   └── ts           → Shared TypeScript utilities
+│   └── wake-word        → @gaia/wake-word — cross-platform on-device "Hey GAIA" detection
+│       │                  (122 KB ONNX, web + electron + react native, ~80 ms time-to-wake)
+│       ├── src/core     → platform-agnostic detector + 3-stage openWakeWord pipeline
+│       ├── src/web      → onnxruntime-web + AudioWorklet + React hook
+│       ├── src/native   → onnxruntime-react-native + audio capture + RN hook
+│       ├── models       → bundled ONNX artifacts (mel + embedding + VAD + classifier)
+│       └── training     → Python pipeline: Piper TTS synthesis + LibriSpeech negatives + MPS training
 └── infra
     └── docker           → Docker Compose configs (dev + prod)
 ```
