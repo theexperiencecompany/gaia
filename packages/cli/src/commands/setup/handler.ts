@@ -1,10 +1,12 @@
 import { render } from "ink";
 import React from "react";
+import { requireInteractive } from "../../lib/non-tty.js";
 import { App } from "../../ui/app.js";
 import { createStore } from "../../ui/store.js";
 import { runSetupFlow } from "./flow.js";
 
 export async function runSetup(): Promise<void> {
+  requireInteractive("setup");
   const store = createStore();
 
   const { unmount } = render(

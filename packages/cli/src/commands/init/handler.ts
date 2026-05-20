@@ -6,6 +6,7 @@
 
 import { render } from "ink";
 import React from "react";
+import { requireInteractive } from "../../lib/non-tty.js";
 import { App } from "../../ui/app.js";
 import { createStore } from "../../ui/store.js";
 import { runInitFlow } from "./flow.js";
@@ -18,6 +19,7 @@ import { runInitFlow } from "./flow.js";
 export async function runInit(
   options: { branch?: string } = {},
 ): Promise<void> {
+  requireInteractive("init");
   const store = createStore();
 
   const { unmount } = render(

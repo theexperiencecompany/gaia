@@ -1,5 +1,6 @@
 import { render } from "ink";
 import React from "react";
+import { attachPlainReporter, isInteractive } from "../../lib/non-tty.js";
 import type { StopServicesOptions } from "../../lib/service-starter.js";
 import { App } from "../../ui/app.js";
 import { createStore } from "../../ui/store.js";
@@ -7,6 +8,17 @@ import { runStopFlow } from "./flow.js";
 
 export async function runStop(options?: StopServicesOptions): Promise<void> {
   const store = createStore();
+
+  if (!isInteractive()) {
+    attachPlainReporter(store);
+    store.setAutoResolve("exit");
+    try {
+      await runStopFlow(store, options);
+    } catch (error) {
+      store.setError(error as Error);
+    }
+    process.exit(store.currentState.error ? 1 : 0);
+  }
 
   const { unmount } = render(
     React.createElement(App, { store, command: "stop" }),
