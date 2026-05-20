@@ -87,12 +87,18 @@ export async function startServices(
     if (isPull) upArgs.push("--pull", "always");
 
     // docker-compose.selfhost.yml has services with only `build:` defined
-    // (gaia-backend, arq_worker, seed-models). On the first start, docker
-    // compose builds those images implicitly even without --build, and
-    // building can easily take 10+ minutes on a slow link. Use the longer
-    // ceiling unconditionally — once images are cached, subsequent starts
-    // finish in seconds, so no real downside.
-    const timeoutMs = 30 * 60 * 1000;
+    // (gaia-backend, arq_worker, seed-models). On the first start docker
+    // compose has to build them implicitly even without --build, and on a
+    // resource-constrained VM (e.g. a 4 GB self-hosted box) the full Web
+    // production build alone can sit at 30+ minutes.
+    //
+    // Default ceiling: 60 minutes — long enough for the slow path, short
+    // enough to flag a stuck build. Override with GAIA_START_TIMEOUT_MIN
+    // when you genuinely need more (or 0 to disable).
+    const overrideMin = Number(process.env.GAIA_START_TIMEOUT_MIN);
+    const timeoutMin =
+      Number.isFinite(overrideMin) && overrideMin >= 0 ? overrideMin : 60;
+    const timeoutMs = timeoutMin === 0 ? undefined : timeoutMin * 60 * 1000;
 
     await runCommand(
       "docker",
