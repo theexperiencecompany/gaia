@@ -1,0 +1,81 @@
+so in onboarding the todo that we've run, it doesnt persist on page reload. why? also the last run, it just showed executing todo. so could you explore deeply what we're doing wrong. did it even execute? why did i not see it in the onboarding pae
+
+---
+
+are we complicating shit unnecessarily? is there no other way to do this?
+
+---
+
+also i do tink like like 1 2 3 and explain why we need 4 btw3
+
+---
+
+also i do tink like like 1 2 3 and explain why we need 4 btw. i guess i do want it like it is rn.
+
+---
+
+also i do tink like like 1 2 3 and explain why we need 4 btw. i guess i do want it like it is rn.
+
+---
+
+sure lets fix 1 2 and 3. and then explore the entire flow of todos and every single thing like execution
+
+---
+
+does this break existing functionality of streaming and normal chats?
+
+---
+
+i don't understand these changes and the implications of the changes. please explain better and what all places would need to be changed. dont give such long answers too.
+
+---
+
+but what if user sends any random uuid from frontend. i dont want to change our existing flow. this changes it too much
+
+---
+
+so what happens here
+
+---
+
+sure yeah. first explore deeply and help me create the tasks necessary. like the tasks related to cleanup and the new additions in place and what we did wrong previously that would need hcange
+
+---
+
+anything apart from this that needs to be done?
+
+---
+
+explain the first issue and how we would fix and the implications of it. also rn, the run now throaway convo showing  up in chat sidebar is fine! and reset onboarding should delete that throaway convo. then run now agent should receive system prompt context i thought we already did this. then mid stream reload i guess its fine this time. please explore, update your tasks, and tell me what next
+
+---
+
+is there anything we should be doing better?
+
+---
+
+so what all changes are needed ot be added. what changes need to be removed. walk me through them quickly. because i dont want any tech debt. no unnecessary params. i wnat the best final approach
+
+---
+
+are we overcomplicating things?
+
+---
+
+i'm asking overcomplicating things like in an illogical sense where it's not needed not the polishing.
+
+---
+
+sure
+
+---
+
+lmao its not a credits issue if it was then nothing would work. openrouter is just somethjing else. stop bullshitting. explore deeply.
+
+---
+
+are there any bullshit issues like this my gofd
+
+---
+
+so now tell me about the entire flow for todos onboarding  chat exeution. and the normal chat execution how are params added. from a surface level dont explain in exdtreme depth and overcomplicating it for me.
