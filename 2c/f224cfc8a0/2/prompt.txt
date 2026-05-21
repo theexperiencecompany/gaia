@@ -1,0 +1,41 @@
+just 1 card and button clicks for variant with dropdown to select diff options fo rthe house
+
+---
+
+its too small increase the width and height
+
+---
+
+show the color picker shit and randomise buttons too that is in other rendered places of holo carx
+
+---
+
+give me good tweet ideas for showcasing our holo card but like in a nonchalant designer way
+
+---
+
+can u do the gift stuff in the demo page for holo card.
+
+---
+
+nah mate use the gift box only once from the onboarding page, but in the demopage. dont let the select tab affect it
+
+---
+
+move this to a separate page like demo/holo-card
+
+---
+
+in our holo card the images, use the images from GAIA/gaia-ui like the images for frospeak, greenvale, bluehaven,  are all better used from there.
+
+---
+
+u can see here https://ui.heygaia.io/docs/components/holo-card
+
+---
+
+u can see here https://ui.heygaia.io/docs/components/holo-card
+
+---
+
+u can see here https://ui.heygaia.io/docs/components/holo-card

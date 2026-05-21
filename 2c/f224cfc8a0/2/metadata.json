@@ -1,9 +1,11 @@
 {
   "cli_version": "0.5.6",
   "checkpoint_id": "2cf224cfc8a0",
+  "session_id": "5a16268a-21e8-4648-a07e-7c65aa982733",
   "strategy": "manual-commit",
+  "created_at": "2026-05-21T19:57:30.024357Z",
   "branch": "onboarding-revamp",
-  "checkpoints_count": 14,
+  "checkpoints_count": 9,
   "files_touched": [
     "apps/api/app/agents/prompts/onboarding_prompts.py",
     "apps/api/app/helpers/message_helpers.py",
@@ -52,31 +54,94 @@
     "apps/web/src/services/syncService.ts",
     "apps/web/src/stores/userStore.ts"
   ],
-  "sessions": [
-    {
-      "metadata": "/2c/f224cfc8a0/0/metadata.json",
-      "transcript": "/2c/f224cfc8a0/0/full.jsonl",
-      "content_hash": "/2c/f224cfc8a0/0/content_hash.txt",
-      "prompt": "/2c/f224cfc8a0/0/prompt.txt"
-    },
-    {
-      "metadata": "/2c/f224cfc8a0/1/metadata.json",
-      "transcript": "/2c/f224cfc8a0/1/full.jsonl",
-      "content_hash": "/2c/f224cfc8a0/1/content_hash.txt",
-      "prompt": "/2c/f224cfc8a0/1/prompt.txt"
-    },
-    {
-      "metadata": "/2c/f224cfc8a0/2/metadata.json",
-      "transcript": "/2c/f224cfc8a0/2/full.jsonl",
-      "content_hash": "/2c/f224cfc8a0/2/content_hash.txt",
-      "prompt": "/2c/f224cfc8a0/2/prompt.txt"
-    }
-  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "6083daecb4fc",
   "token_usage": {
-    "input_tokens": 21186,
-    "cache_creation_tokens": 945390,
-    "cache_read_tokens": 21507553,
-    "output_tokens": 170521,
-    "api_call_count": 164
-  }
+    "input_tokens": 1508,
+    "cache_creation_tokens": 371837,
+    "cache_read_tokens": 10177828,
+    "output_tokens": 73032,
+    "api_call_count": 78
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-21T19:57:30.00726Z",
+    "agent_lines": 949,
+    "agent_removed": 174,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 949,
+    "total_lines_changed": 1123,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
 }
