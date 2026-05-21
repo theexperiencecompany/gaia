@@ -295,10 +295,12 @@ export const workflowApi = {
     );
   },
 
-  // Get available trigger schemas
+  // Get available trigger schemas. Non-critical display metadata — the UI
+  // falls back to the raw slug when this is missing, so a fetch failure must
+  // not surface a toast (e.g. transient backend blips during onboarding).
   getTriggerSchemas: async (): Promise<TriggerSchema[]> => {
     return apiService.get<TriggerSchema[]>("/triggers/schema", {
-      errorMessage: "Failed to fetch trigger schemas",
+      silent: true,
     });
   },
 

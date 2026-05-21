@@ -50,8 +50,10 @@ export function CompletedStageAccordion({
         }}
         itemClasses={{
           base: "px-0",
-          trigger: "px-3 py-2 rounded-2xl data-[hover=true]:bg-zinc-700/40",
-          titleWrapper: "py-0",
+          trigger:
+            "px-3 py-2 gap-2 rounded-2xl data-[hover=true]:bg-zinc-700/40",
+          titleWrapper: "py-0 min-w-0",
+          title: "min-w-0",
           content: "px-3 pt-2 pb-3",
         }}
       >

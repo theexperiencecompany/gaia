@@ -7,6 +7,7 @@ import { filterEmptyMessagePairs } from "@/features/chat/utils/messageContentUti
 
 interface UseChatLayoutReturn {
   hasMessages: boolean;
+  isWelcomeConversation: boolean;
   chatRef: React.RefObject<HTMLDivElement | null>;
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -61,8 +62,12 @@ export const useChatLayout = (): UseChatLayoutReturn => {
     conversation?.system_purpose,
   ]);
 
+  const isWelcomeConversation =
+    conversation?.is_onboarding_conversation === true;
+
   return {
     hasMessages,
+    isWelcomeConversation,
     chatRef,
     dummySectionRef,
     inputRef,

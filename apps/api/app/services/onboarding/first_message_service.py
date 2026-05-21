@@ -6,12 +6,16 @@ from typing import Optional
 from langchain_core.messages import HumanMessage
 from shared.py.wide_events import log
 
-from app.agents.prompts.onboarding_prompts import FIRST_MESSAGE_GENERATION_PROMPT
+from app.agents.prompts.onboarding_prompts import (
+    FIRST_MESSAGE_GENERATION_PROMPT_GMAIL,
+    FIRST_MESSAGE_GENERATION_PROMPT_NO_GMAIL,
+)
 from app.core.lazy_loader import providers
 from app.models.onboarding_models import (
     InboxTriage,
     WritingStyleProfile,
 )
+from app.services.onboarding.clarify_service import format_clarify_context
 
 
 async def generate_first_message(
@@ -22,33 +26,19 @@ async def generate_first_message(
     created_todos: list[dict],
     created_workflows: list[dict],
     writing_style: Optional[WritingStyleProfile],
+    has_gmail: bool,
     focus: str = "",
     executed_todos: Optional[list[dict]] = None,
+    clarify_answers: Optional[list[dict]] = None,
 ) -> str:
     """
     Generate GAIA's first message to a new user.
-    Single LLM call with all Phase 1+2 context.
+    Single LLM call with all Phase 1+2 context. Branches on `has_gmail`: the
+    no-Gmail prompt has no inbox section and forbids any email references,
+    anchoring the message on the user's focus + clarify answers instead.
     """
     t0 = time.monotonic()
     try:
-        writing_style_summary = (
-            writing_style.summary if writing_style else "not yet analyzed"
-        )
-
-        important_emails_text = ""
-        total_scanned = 0
-        total_unread = 0
-        patterns_text = ""
-
-        if triage:
-            total_scanned = triage.total_scanned
-            total_unread = triage.total_unread
-            patterns_text = "\n".join(f"- {p}" for p in triage.patterns)
-            for e in triage.important_emails[:8]:
-                important_emails_text += (
-                    f"- {e.sender} | {e.subject} | {e.why_important}\n"
-                )
-
         executed_ids = {t["id"] for t in (executed_todos or []) if t.get("id")}
         queued_todos = [t for t in created_todos if t.get("id") not in executed_ids]
         todos_text = (
@@ -63,19 +53,49 @@ async def generate_first_message(
             ", ".join(t["title"] for t in executed_todos) if executed_todos else "none"
         )
 
-        prompt = FIRST_MESSAGE_GENERATION_PROMPT.format(
-            name=name,
-            profession=profession,
-            focus=focus or "not stated",
-            writing_style_summary=writing_style_summary,
-            total_scanned=total_scanned,
-            total_unread=total_unread,
-            patterns=patterns_text or "no notable patterns",
-            important_emails=important_emails_text or "no emails analyzed",
-            todos_created=todos_text,
-            workflows_created=workflows_text,
-            todos_executed=todos_executed_text,
-        )
+        if has_gmail:
+            writing_style_summary = (
+                writing_style.summary if writing_style else "not yet analyzed"
+            )
+
+            important_emails_text = ""
+            total_scanned = 0
+            total_unread = 0
+            patterns_text = ""
+
+            if triage:
+                total_scanned = triage.total_scanned
+                total_unread = triage.total_unread
+                patterns_text = "\n".join(f"- {p}" for p in triage.patterns)
+                for e in triage.important_emails[:8]:
+                    important_emails_text += (
+                        f"- {e.sender} | {e.subject} | {e.why_important}\n"
+                    )
+
+            prompt = FIRST_MESSAGE_GENERATION_PROMPT_GMAIL.format(
+                name=name,
+                profession=profession,
+                focus=focus or "not stated",
+                writing_style_summary=writing_style_summary,
+                total_scanned=total_scanned,
+                total_unread=total_unread,
+                patterns=patterns_text or "no notable patterns",
+                important_emails=important_emails_text or "no emails analyzed",
+                todos_created=todos_text,
+                workflows_created=workflows_text,
+                todos_executed=todos_executed_text,
+            )
+        else:
+            clarify_context = format_clarify_context(clarify_answers) or "none shared"
+            prompt = FIRST_MESSAGE_GENERATION_PROMPT_NO_GMAIL.format(
+                name=name,
+                profession=profession,
+                focus=focus or "not stated",
+                clarify_context=clarify_context,
+                todos_created=todos_text,
+                workflows_created=workflows_text,
+                todos_executed=todos_executed_text,
+            )
 
         llm = await providers.aget("gemini_llm")
         if llm is None:

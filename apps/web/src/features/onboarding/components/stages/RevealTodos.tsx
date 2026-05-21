@@ -21,9 +21,13 @@ import { CheckmarkCircle02Icon, Mail01Icon } from "@icons";
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useCallback } from "react";
-import { REVEAL_TODOS_INTRO } from "../../constants/messages";
+import {
+  REVEAL_TODOS_INTRO_GMAIL,
+  REVEAL_TODOS_INTRO_NO_GMAIL,
+} from "../../constants/messages";
 import { MOTION_COMPOSER_CTA } from "../../constants/motion";
 import type { UseOnboardingChatReturn } from "../../hooks/useOnboardingChat";
+import { hasGmail } from "../../state/derive";
 import type { Action, OnboardingState } from "../../state/types";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
 import { OnboardingTodoCards } from "../OnboardingTodoCards";
@@ -45,20 +49,21 @@ function generateConvoId(): string {
   return `onboarding-todo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-interface SelectedTodoIndicatorProps {
+export interface SelectedTodoIndicatorProps {
   title: string;
   sourceEmail: { sender: string; subject: string } | null;
 }
 
 /** Static "selected todo" indicator rendered above the run-now demo stream.
  *  Replaces the previous chat-bubble-shaped TodoRunNowCard so the auto-sent
- *  user message never reads as a real conversation turn. */
-function SelectedTodoIndicator({
+ *  user message never reads as a real conversation turn. Exported for the
+ *  onboarding demo sandbox. */
+export function SelectedTodoIndicator({
   title,
   sourceEmail,
 }: SelectedTodoIndicatorProps) {
   return (
-    <div className="ml-10.75 rounded-2xl bg-zinc-900 p-3">
+    <div className="rounded-2xl bg-zinc-900 p-3">
       <Chip
         color="success"
         variant="flat"
@@ -132,7 +137,7 @@ export function RevealTodos({ state, dispatch, chat }: RevealTodosProps) {
     const selected = state.todoExecutionTodo;
     return (
       <m.div
-        className="mt-10 space-y-4 rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl"
+        className="mt-10 ml-10.75 space-y-4 rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
@@ -143,14 +148,18 @@ export function RevealTodos({ state, dispatch, chat }: RevealTodosProps) {
             sourceEmail={selected.sourceEmail}
           />
         )}
-        <OnboardingChatStream chat={chat} hideRunNowUserMessage />
+        <OnboardingChatStream chat={chat} hideRunNowUserMessage hideBotAvatar />
       </m.div>
     );
   }
 
+  const introText = hasGmail(state)
+    ? REVEAL_TODOS_INTRO_GMAIL
+    : REVEAL_TODOS_INTRO_NO_GMAIL;
+
   return (
     <div className="mt-3 space-y-4">
-      <RevealIntroBubble text={REVEAL_TODOS_INTRO}>
+      <RevealIntroBubble text={introText}>
         <OnboardingTodoCards
           todos={todos.map((t) => ({
             id: t.id,

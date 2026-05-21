@@ -8,6 +8,7 @@
 
 import { type Dispatch, useEffect, useRef } from "react";
 
+import { syncSingleConversation } from "@/services/syncService";
 import { getPersonalization } from "../api/onboardingApi";
 import type { Action, OnboardingState, Stage } from "../state/types";
 import type {
@@ -183,6 +184,17 @@ export function useBackendSync(
             phase: "personalization_complete",
           },
         });
+        // Prefetch the welcome conversation into IndexedDB while the user is
+        // still on the holo reveal stage. Without this the post-onboarding
+        // `/c/{id}` mount briefly renders the generic "How can I help?"
+        // starter before the local conversation list catches up and flips
+        // the layout to WelcomeChat. Fire and forget — failures fall back
+        // to the on-mount sync in ChatPage.
+        if (p.conversation_id) {
+          void syncSingleConversation(p.conversation_id).catch(() => {
+            // swallow — ChatPage's mount-time sync still runs
+          });
+        }
         closeWs();
       },
     };

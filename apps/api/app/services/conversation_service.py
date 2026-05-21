@@ -37,6 +37,7 @@ async def create_conversation_service(
         "is_system_generated": conversation.is_system_generated or False,
         "system_purpose": conversation.system_purpose,
         "is_unread": conversation.is_unread or False,
+        "is_onboarding_demo": conversation.is_onboarding_demo,
         "messages": [],
         "createdAt": created_at,
     }
@@ -76,6 +77,7 @@ async def get_conversations(user: dict, page: int = 1, limit: int = 10) -> dict:
         "description": 1,
         "starred": 1,
         "is_system_generated": 1,
+        "is_onboarding_conversation": 1,
         "system_purpose": 1,
         "is_unread": 1,
         "source": 1,
@@ -560,6 +562,7 @@ async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dic
                 "description": 1,
                 "starred": 1,
                 "is_system_generated": 1,
+                "is_onboarding_conversation": 1,
                 "system_purpose": 1,
                 "is_unread": 1,
                 "createdAt": 1,

@@ -56,6 +56,7 @@ class MessageRequestWithHistory(BaseModel):
     selectedWorkflow: Optional[SelectedWorkflowData] = None
     selectedCalendarEvent: Optional[SelectedCalendarEventData] = None
     replyToMessage: Optional[ReplyToMessageData] = None  # Message being replied to
+    is_onboarding_demo: bool = False
 
 
 class MessageRequest(BaseModel):

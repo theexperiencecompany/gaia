@@ -65,6 +65,16 @@ export function useOnboardingChat(
     }
   }, [isChatSending]);
 
+  useEffect(() => {
+    if (isTodoExecutionDone) return;
+    if (!conversationId || isChatSending) return;
+    if (
+      streamMessages.some((m) => m.role === "assistant" && m.status === "sent")
+    ) {
+      setIsTodoExecutionDone(true);
+    }
+  }, [isTodoExecutionDone, conversationId, isChatSending, streamMessages]);
+
   const sendChatMessage = useCallback(
     async (content: string) => {
       const trimmed = content.trim();
@@ -101,6 +111,8 @@ export function useOnboardingChat(
           null,
           userMessageId,
           null,
+          conversationId,
+          true,
         );
       } catch {
         // useChatStream handles error toasts internally

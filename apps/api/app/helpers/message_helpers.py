@@ -480,8 +480,11 @@ async def get_onboarding_system_prompt_if_applicable(
             return None
 
         if is_tagged_onboarding:
+            # The welcome conversation starts empty (no pre-seeded AI turn),
+            # so 7 messages = ~3 user turns + ~3 AI replies + one final turn
+            # — enough for the agent to flip the user to COMPLETED.
             message_count = len(conv.get("messages", [])) if conv else 0
-            if message_count >= 8:
+            if message_count >= 7:
                 await users_collection.update_one(
                     {"_id": ObjectId(user_id)},
                     {"$set": {"onboarding.phase": OnboardingPhase.COMPLETED}},

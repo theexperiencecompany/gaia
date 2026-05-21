@@ -25,8 +25,11 @@ export const STEP_BUILDING_PROFILE = "Building your profile";
 export const REVEAL_WRITING_STYLE_INTRO =
   "Here's what I learned about how you write:";
 
-export const REVEAL_TODOS_INTRO =
+export const REVEAL_TODOS_INTRO_GMAIL =
   "You can add todos and I will run them automatically. This keeps your todo list moving so it never piles up.<NEW_MESSAGE_BREAK>I drafted a few from your inbox that I think are worth doing. Try one:";
+
+export const REVEAL_TODOS_INTRO_NO_GMAIL =
+  "You can add todos and I will run them automatically. This keeps your todo list moving so it never piles up.<NEW_MESSAGE_BREAK>Based on what you want to get done, I drafted a few worth doing. Try one:";
 
 // ── Workflows stage copy ────────────────────────────────────────────────────
 

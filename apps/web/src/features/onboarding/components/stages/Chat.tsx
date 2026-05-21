@@ -84,9 +84,11 @@ const RUN_NOW_PREFIX = "Execute this todo for me: ";
 export function OnboardingChatStream({
   chat,
   hideRunNowUserMessage = false,
+  hideBotAvatar = false,
 }: {
   chat: UseOnboardingChatReturn;
   hideRunNowUserMessage?: boolean;
+  hideBotAvatar?: boolean;
 }) {
   const visibleMessages = hideRunNowUserMessage
     ? chat.streamMessages.filter(
@@ -121,6 +123,7 @@ export function OnboardingChatStream({
               memory_data={msg.memory_data ?? undefined}
               image_data={msg.image_data ?? undefined}
               date={msg.createdAt.toISOString()}
+              hideAvatar={hideBotAvatar}
             />
           )}
         </m.div>
@@ -137,6 +140,7 @@ export function OnboardingChatStream({
                 : "GAIA is thinking…"
             }
             loadingTextKey={0}
+            noPadding={hideRunNowUserMessage}
           />
         )}
     </>

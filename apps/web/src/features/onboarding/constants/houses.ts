@@ -1,10 +1,10 @@
 import type { House } from "@/features/onboarding/types/websocket";
 
 export const HOUSES: Record<House, { image: string }> = {
-  frostpeak: { image: "/images/wallpapers/holo/frostpeak.png" },
-  greenvale: { image: "/images/wallpapers/holo/greenvale.png" },
+  frostpeak: { image: "/images/wallpapers/holo/frostpeak.jpg" },
+  greenvale: { image: "/images/wallpapers/holo/greenvale.jpg" },
   mistgrove: { image: "/images/wallpapers/holo/mistgrove.png" },
-  bluehaven: { image: "/images/wallpapers/holo/bluehaven.webp" },
+  bluehaven: { image: "/images/wallpapers/holo/bluehaven.jpg" },
 };
 
 /**

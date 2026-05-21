@@ -60,6 +60,7 @@ async def create_conversation(
     selectedWorkflow: Optional[SelectedWorkflowData] | None = None,
     generate_description: bool = True,
     conversation_id: Optional[str] = None,
+    is_onboarding_demo: bool = False,
 ) -> dict:
     """
     Create a new conversation with optional description generation.
@@ -88,7 +89,9 @@ async def create_conversation(
     )
 
     conversation = ConversationModel(
-        conversation_id=str(uuid_value), description=description
+        conversation_id=str(uuid_value),
+        description=description,
+        is_onboarding_demo=is_onboarding_demo,
     )
 
     await create_conversation_service(conversation, user)

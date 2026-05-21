@@ -19,6 +19,16 @@ interface PersistedShape {
   clarifyCustomDrafts: Record<string, string>;
   clarifyOtherSelected: Record<string, boolean>;
   clarifySubmitted: boolean;
+  // Run-now demo state. todoExecutionMessage is intentionally omitted — it's a
+  // one-shot signal that the auto-send effect consumes and clears the moment
+  // it fires. Persisting it would cause a re-send on reload.
+  todoExecutionStarted: boolean;
+  todoExecutionConvoId: string | null;
+  todoExecutionTodo: {
+    id: string;
+    title: string;
+    sourceEmail: { sender: string; subject: string } | null;
+  } | null;
 }
 
 function pick(state: OnboardingState): PersistedShape {
@@ -38,6 +48,9 @@ function pick(state: OnboardingState): PersistedShape {
     clarifyCustomDrafts: state.clarifyCustomDrafts,
     clarifyOtherSelected: state.clarifyOtherSelected,
     clarifySubmitted: state.clarifySubmitted,
+    todoExecutionStarted: state.todoExecutionStarted,
+    todoExecutionConvoId: state.todoExecutionConvoId,
+    todoExecutionTodo: state.todoExecutionTodo,
   };
 }
 
@@ -64,6 +77,9 @@ export function loadPersisted(): Partial<OnboardingState> | null {
       clarifyCustomDrafts: parsed.clarifyCustomDrafts ?? {},
       clarifyOtherSelected: parsed.clarifyOtherSelected ?? {},
       clarifySubmitted: parsed.clarifySubmitted ?? false,
+      todoExecutionStarted: parsed.todoExecutionStarted ?? false,
+      todoExecutionConvoId: parsed.todoExecutionConvoId ?? null,
+      todoExecutionTodo: parsed.todoExecutionTodo ?? null,
     };
   } catch {
     return null;

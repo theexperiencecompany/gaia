@@ -26,6 +26,7 @@ from app.models.chat_models import (
     UpdateMessagesRequest,
     tool_fields,
 )
+from app.db.mongodb.collections import conversations_collection
 from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
 from app.services.conversation_service import update_messages
@@ -336,7 +337,16 @@ async def _run_chat_stream(
     todo_progress_accumulated: Dict[str, Any] = {}
     user_message_id = str(uuid4())
     bot_message_id = str(uuid4())
-    is_new_conversation = body.conversation_id is None
+    is_new_conversation = body.conversation_id is None or (
+        body.is_onboarding_demo
+        and not await conversations_collection.find_one(
+            {
+                "user_id": user.get("user_id"),
+                "conversation_id": body.conversation_id,
+            },
+            {"_id": 1},
+        )
+    )
     usage_metadata: Dict[str, Any] = {}
     follow_up_actions: List[str] = []
     is_cancelled = False
@@ -531,7 +541,8 @@ async def _initialize_new_conversation(
         selectedTool=body.selectedTool,
         selectedWorkflow=body.selectedWorkflow,
         generate_description=False,
-        conversation_id=conversation_id,  # Use provided ID
+        conversation_id=conversation_id,
+        is_onboarding_demo=body.is_onboarding_demo,
     )
 
     init_data = {

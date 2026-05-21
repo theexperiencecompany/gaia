@@ -28,6 +28,7 @@ import TextBubble, {
 export default function ChatBubbleBot(
   props: ChatBubbleBotProps & {
     disableActions?: boolean;
+    hideAvatar?: boolean;
     children?: ReactNode;
   },
 ) {
@@ -45,6 +46,7 @@ export default function ChatBubbleBot(
     follow_up_actions,
     isLastMessage,
     disableActions = false,
+    hideAvatar = false,
     children,
     onRetry,
     isRetrying,
@@ -113,27 +115,29 @@ export default function ChatBubbleBot(
         style={{ contentVisibility: "auto", containIntrinsicSize: "0 120px" }}
       >
         <div className="flex items-end gap-1">
-          <div className="relative bottom-0 min-w-10 shrink-0">
-            {showBubbleChrome && (
-              <m.div
-                className={`${isLoading && isLastMessage ? "animate-spin" : ""} relative z-5 transition duration-900`}
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{
-                  duration: MESSAGE_BREAK_DURATION_SECONDS,
-                  ease: MESSAGE_BREAK_EASE_OUT_QUART,
-                  delay: logoDelay,
-                }}
-              >
-                <Image
-                  alt="GAIA Logo"
-                  src={"/images/logos/logo.webp"}
-                  width={30}
-                  height={30}
-                />
-              </m.div>
-            )}
-          </div>
+          {!hideAvatar && (
+            <div className="relative bottom-0 min-w-10 shrink-0">
+              {showBubbleChrome && (
+                <m.div
+                  className={`${isLoading && isLastMessage ? "animate-spin" : ""} relative z-5 transition duration-900`}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{
+                    duration: MESSAGE_BREAK_DURATION_SECONDS,
+                    ease: MESSAGE_BREAK_EASE_OUT_QUART,
+                    delay: logoDelay,
+                  }}
+                >
+                  <Image
+                    alt="GAIA Logo"
+                    src={"/images/logos/logo.webp"}
+                    width={30}
+                    height={30}
+                  />
+                </m.div>
+              )}
+            </div>
+          )}
 
           <div className="chatbubblebot_parent flex-1">
             <div className="flex w-full flex-col gap-2">

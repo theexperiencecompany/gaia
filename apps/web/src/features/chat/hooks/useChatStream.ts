@@ -413,7 +413,13 @@ export const useChatStream = () => {
       useChatStore.getState().addOrUpdateMessage(botIMessage);
     }
     useChatStore.getState().clearOptimisticMessage();
-    window.history.replaceState({}, "", `/c/${conversation_id}`);
+    // Only rewrite the URL when the user is already on a /c path. Callers like
+    // the onboarding run-now demo stream into a throwaway conversation while
+    // sitting on /onboarding — hijacking that URL would strand them in the chat
+    // page on reload.
+    if (/^\/c(\/|$)/.test(window.location.pathname)) {
+      window.history.replaceState({}, "", `/c/${conversation_id}`);
+    }
     useChatStore.getState().setActiveConversationId(conversation_id);
     useChatStore.getState().setStreamingConversationId(conversation_id);
 
@@ -649,10 +655,7 @@ export const useChatStream = () => {
             stream_id: parsed.stream_id,
           };
 
-          if (
-            data.conversation_id &&
-            !useChatStore.getState().activeConversationId
-          ) {
+          if (data.conversation_id) {
             await handleNewConversation({
               conversation_id: data.conversation_id,
               conversation_description: data.conversation_description,
@@ -858,6 +861,8 @@ export const useChatStream = () => {
       content: string;
       role: "user" | "assistant";
     } | null = null,
+    conversationId?: string | null,
+    isOnboardingDemo: boolean = false,
   ) => {
     if (streamInProgressRef.current) {
       console.warn("[useChatStream] stream already in progress, skipping");
@@ -871,14 +876,15 @@ export const useChatStream = () => {
     streamInProgressRef.current = true;
 
     // Set global stream state with conversation ID for sync protection
-    const conversationId =
-      useChatStore.getState().activeConversationId ||
+    const effectiveConversationId =
+      conversationId ??
+      useChatStore.getState().activeConversationId ??
       refs.current.newConversation.id;
-    streamState.startStream(conversationId);
+    streamState.startStream(effectiveConversationId);
 
     // Track chat started event
     trackEvent(ANALYTICS_EVENTS.CHAT_STARTED, {
-      conversation_id: conversationId,
+      conversation_id: effectiveConversationId,
       is_new_conversation: !useChatStore.getState().activeConversationId,
     });
 
@@ -983,7 +989,7 @@ export const useChatStream = () => {
       await chatApi.fetchChatStream(
         inputText,
         [...refs.current.convoMessages, ...currentMessages],
-        undefined, // conversationId will be fetched from the URL
+        conversationId ?? undefined,
         handleStreamEvent,
         handleStreamClose,
         handleStreamError,
@@ -994,6 +1000,7 @@ export const useChatStream = () => {
         selectedWorkflow,
         selectedCalendarEvent,
         replyToMessage,
+        isOnboardingDemo,
       );
     } catch (error) {
       console.error("[useChatStream] Error initiating chat stream:", error);

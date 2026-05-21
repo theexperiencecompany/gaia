@@ -380,7 +380,9 @@ async def process_onboarding_intelligence(user_id: str) -> None:
             created_todos=todos,
             created_workflows=workflows,
             writing_style=writing_style,
+            has_gmail=has_gmail,
             focus=focus,
+            clarify_answers=clarify_answers,
         ),
         default="Welcome to GAIA. I'm here to help — what's on your mind?",
     )
@@ -427,7 +429,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
     t_final = time.monotonic()
     conversation_id, _, _ = await asyncio.gather(
-        _seed_conversation(user_id, first_message),
+        _seed_conversation(user_id),
         _persist_profiles(user_id, writing_style, triage),
         _social_then_holo(),
     )
@@ -1070,12 +1072,10 @@ async def _run_holo_card(
 # ── Terminal helpers ─────────────────────────────────────────────────────────
 
 
-async def _seed_conversation(user_id: str, first_message: str) -> Optional[str]:
+async def _seed_conversation(user_id: str) -> Optional[str]:
     t0 = time.monotonic()
     try:
-        cid = await seed_onboarding_conversation(
-            user_id=user_id, first_message=first_message
-        )
+        cid = await seed_onboarding_conversation(user_id=user_id)
     except Exception as e:
         log.error(
             "[intelligence] seed_conversation failed",

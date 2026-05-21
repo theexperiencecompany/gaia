@@ -2,14 +2,7 @@
 
 import { AnimatePresence } from "motion/react";
 import { useParams } from "next/navigation";
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import CreatedByGAIABanner from "@/features/chat/components/banners/CreatedByGAIABanner";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
@@ -29,7 +22,6 @@ import {
   isBotMessageEmpty,
 } from "@/features/chat/utils/messageContentUtils";
 import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
-import { useUserStore } from "@/stores/userStore";
 import type {
   ChatBubbleBotProps,
   SetImageDataType,
@@ -65,11 +57,13 @@ export default function ChatRenderer({
     );
   }, [conversations, convoIdParam]);
 
-  const welcomeConvoId = useUserStore(
-    (s) => s.onboarding?.first_message_conversation_id,
-  );
+  // Source of truth: the conversation's own `is_onboarding_conversation`
+  // tag, set by the backend when the welcome conversation is seeded. Reading
+  // it off the conversation (loaded fresh on each navigation) avoids the
+  // stale-userStore race where a same-session post-onboarding redirect lands
+  // before `/user/me` rehydrates.
   const isWelcomeConversation =
-    !!convoIdParam && !!welcomeConvoId && convoIdParam === welcomeConvoId;
+    conversation?.is_onboarding_conversation === true;
 
   // Handle retry callback
   const handleRetry = useCallback(
@@ -209,6 +203,7 @@ export default function ChatRenderer({
       />
       <SearchedImageDialog />
       <CreatedByGAIABanner show={conversation?.is_system_generated === true} />
+      {isWelcomeConversation && <WelcomeChat />}
       {messagesWithDeduplicatedToolCalls?.map(
         (message: MessageType, index: number) => {
           let messageProps = null;
@@ -224,33 +219,23 @@ export default function ChatRenderer({
 
           if (!messageProps) return null;
 
-          const bubble =
+          if (
             message.type === "bot" &&
-            !isBotMessageEmpty(messageProps as ChatBubbleBotProps) ? (
+            !isBotMessageEmpty(messageProps as ChatBubbleBotProps)
+          ) {
+            return (
               <ChatBubbleBot
                 key={message.message_id || index}
                 {...getMessageProps(message, "bot", messagePropsOptions)}
               />
-            ) : (
-              <ChatBubbleUser
-                key={message.message_id || index}
-                {...messageProps}
-              />
-            );
-
-          // In the post-onboarding welcome conversation, the first bot bubble
-          // is the onboarding wrap-up message which the user already saw inside
-          // the holo card reveal. Suppress it here so only the persona-tailored
-          // WelcomeChat (custom post-onboarding copy) is shown.
-          if (isWelcomeConversation && index === 0) {
-            return (
-              <Fragment key={`${message.message_id || index}-welcome-wrap`}>
-                <WelcomeChat />
-              </Fragment>
             );
           }
-
-          return bubble;
+          return (
+            <ChatBubbleUser
+              key={message.message_id || index}
+              {...messageProps}
+            />
+          );
         },
       )}
       {isLoading && (

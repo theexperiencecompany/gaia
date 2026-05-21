@@ -30,7 +30,7 @@ export const CARD_CLASSES = {
   CONTENT_WRAPPER:
     "pointer-events-none absolute z-2 flex h-full w-full flex-col items-start justify-end p-9 text-white transition",
   CONTENT_WRAPPER_BACK:
-    "pointer-events-none absolute z-2 flex h-full w-full flex-col items-start justify-between p-9 text-white",
+    "pointer-events-none absolute z-2 flex h-full w-full flex-col items-start justify-between gap-4 p-9 text-white",
   LOGO_BADGE: "font-serif text-xl font-light text-white",
   HOUSE_BADGE:
     "rounded-full bg-white/20 p-1 px-4 font-serif text-xl font-light text-white/70 backdrop-blur-md",
@@ -39,7 +39,7 @@ export const CARD_CLASSES = {
   INFO_BOX:
     "relative flex w-full flex-col gap-1 overflow-hidden rounded-2xl bg-black/20 p-3 backdrop-blur-md",
   INFO_BOX_BACK:
-    "relative overflow-hidden rounded-2xl bg-black/20 p-4 backdrop-blur-md",
+    "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-black/20 p-4 backdrop-blur-md",
   FOOTER_BOX:
-    "flex w-full items-center justify-between rounded-xl bg-black/20 p-3 backdrop-blur-md",
+    "flex w-full shrink-0 items-center justify-between rounded-xl bg-black/20 p-3 backdrop-blur-md",
 } as const;

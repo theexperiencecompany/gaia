@@ -114,6 +114,7 @@ class ConversationModel(BaseModel):
     system_purpose: Optional[SystemPurpose] = None
     is_unread: Optional[bool] = False
     source: Optional[ConversationSource] = None
+    is_onboarding_demo: bool = False
 
 
 class UpdateMessagesRequest(BaseModel):

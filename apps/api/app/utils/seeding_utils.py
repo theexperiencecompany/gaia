@@ -6,13 +6,10 @@ from shared.py.wide_events import log
 from app.db.mongodb.collections import conversations_collection, goals_collection
 from app.models.chat_models import (
     ConversationModel,
-    MessageModel,
-    UpdateMessagesRequest,
 )
 from app.models.todo_models import Priority, SubTask, TodoModel
 from app.services.conversation_service import (
     create_conversation_service,
-    update_messages,
 )
 from app.services.todos.sync_service import create_goal_project_and_todo
 from app.services.todos.todo_service import TodoService
@@ -236,14 +233,17 @@ async def seed_onboarding_todo(user_id: str) -> None:
         log.error(f"Failed to seed onboarding todo for user {user_id}: {e}")
 
 
-async def seed_onboarding_conversation(
-    user_id: str,
-    first_message: str,
-) -> Optional[str]:
+async def seed_onboarding_conversation(user_id: str) -> Optional[str]:
     """
-    Seed the onboarding first conversation with GAIA's dynamic first message.
-    Tags the conversation with is_onboarding_conversation=True.
-    Returns the conversation_id or None on failure.
+    Create the empty post-onboarding welcome conversation, tagged
+    `is_onboarding_conversation=True` so the agent picks up the onboarding
+    system prompt and the frontend can route to the `WelcomeChat` surface.
+
+    The LLM wrap-up text lives on `users.onboarding.first_message` (rendered
+    above the holo card during the onboarding reveal) and is intentionally
+    NOT mirrored into this conversation: the chat view replaces it with the
+    persona-tailored `WelcomeChat`, so duplicating the message here would
+    only create a hidden ghost row that the frontend has to suppress.
     """
     log.set(operation="seed_onboarding_conversation", user_id=user_id)
     try:
@@ -258,18 +258,6 @@ async def seed_onboarding_conversation(
         user_dict = {"user_id": user_id}
         await create_conversation_service(conversation, user_dict)
 
-        message = MessageModel(
-            type="ai",
-            response=first_message,
-            date=datetime.now(timezone.utc).isoformat(),
-        )
-
-        update_request = UpdateMessagesRequest(
-            conversation_id=conversation_id, messages=[message]
-        )
-        await update_messages(update_request, user_dict)
-
-        # Tag with is_onboarding_conversation so the agent uses the onboarding system prompt
         await conversations_collection.update_one(
             {"conversation_id": conversation_id},
             {"$set": {"is_onboarding_conversation": True}},

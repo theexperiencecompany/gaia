@@ -349,6 +349,15 @@ async def reset_onboarding(user_id: str) -> Dict[str, int]:
         except Exception as e:
             log.warning(f"[reset_onboarding] failed to delete conversation: {e}")
 
+    demo_conversations_deleted = 0
+    try:
+        demo_result = await conversations_collection.delete_many(
+            {"user_id": user_id, "is_onboarding_demo": True}
+        )
+        demo_conversations_deleted = demo_result.deleted_count
+    except Exception as e:
+        log.warning(f"[reset_onboarding] failed to delete demo conversations: {e}")
+
     integrations_disconnected = await _disconnect_user_integrations(user_id)
     memories_cleared = await _clear_user_memories(user_id)
 
@@ -364,6 +373,7 @@ async def reset_onboarding(user_id: str) -> Dict[str, int]:
         "workflows_deleted": workflows_deleted,
         "todos_deleted": todos_deleted,
         "conversation_deleted": conversation_deleted,
+        "demo_conversations_deleted": demo_conversations_deleted,
         "integrations_disconnected": integrations_disconnected,
         "memories_cleared": memories_cleared,
     }

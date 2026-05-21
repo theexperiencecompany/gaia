@@ -306,7 +306,7 @@ export const HoloCard = ({
               />
 
               <div className={CARD_CLASSES.CONTENT_WRAPPER_BACK}>
-                <div className="flex w-full flex-col gap-4">
+                <div className="flex min-h-0 w-full flex-1 flex-col gap-4">
                   <BackCardContent
                     name={name}
                     personalityPhrase={personality_phrase}
@@ -349,7 +349,7 @@ export const HoloCard = ({
               />
 
               <div className={CARD_CLASSES.CONTENT_WRAPPER_BACK}>
-                <div className="flex w-full flex-col gap-4">
+                <div className="flex min-h-0 w-full flex-1 flex-col gap-4">
                   <BackCardContent
                     name={name}
                     personalityPhrase={personality_phrase}

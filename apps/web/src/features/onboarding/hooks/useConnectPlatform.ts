@@ -95,7 +95,11 @@ export function useConnectPlatform(
           finish();
         }
       } catch {
-        finish();
+        // Connect failed (e.g. the platform's OAuth isn't configured — the
+        // endpoint returns 501). Surface a gentle message and leave the
+        // platform unconnected rather than falsely marking it connected.
+        const label = platform.charAt(0).toUpperCase() + platform.slice(1);
+        toast.error(`${label} isn't available to connect right now.`);
       }
     },
     [dispatch],
