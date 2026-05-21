@@ -1,0 +1,90 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "2cf224cfc8a0",
+  "session_id": "2d545202-e70e-40ba-bd38-dfc39395cc20",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-21T19:57:29.430669Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "apps/api/app/agents/prompts/onboarding_prompts.py",
+    "apps/api/app/helpers/message_helpers.py",
+    "apps/api/app/models/chat_models.py",
+    "apps/api/app/models/message_models.py",
+    "apps/api/app/services/chat_service.py",
+    "apps/api/app/services/conversation_service.py",
+    "apps/api/app/services/onboarding/first_message_service.py",
+    "apps/api/app/services/onboarding/intelligence_service.py",
+    "apps/api/app/services/onboarding/onboarding_service.py",
+    "apps/api/app/utils/chat_utils.py",
+    "apps/api/app/utils/seeding_utils.py",
+    "apps/web/src/app/[locale]/(main)/onboarding/demo/page.tsx",
+    "apps/web/src/components/layout/sidebar/ChatsList.tsx",
+    "apps/web/src/components/ui/holo-card/BackCardContent.tsx",
+    "apps/web/src/components/ui/holo-card/HoloCard.tsx",
+    "apps/web/src/components/ui/holo-card/constants.ts",
+    "apps/web/src/features/chat/api/chatApi.ts",
+    "apps/web/src/features/chat/components/bubbles/bot/ChatBubbleBot.tsx",
+    "apps/web/src/features/chat/components/interface/ChatPage.tsx",
+    "apps/web/src/features/chat/components/interface/ChatRenderer.tsx",
+    "apps/web/src/features/chat/components/interface/LoadingIndicator.tsx",
+    "apps/web/src/features/chat/components/interface/hooks/useChatLayout.ts",
+    "apps/web/src/features/chat/hooks/useChatStream.ts",
+    "apps/web/src/features/chat/hooks/useConversationList.ts",
+    "apps/web/src/features/chat/hooks/useInfiniteConversations.ts",
+    "apps/web/src/features/onboarding/components/CompletedStageAccordion.tsx",
+    "apps/web/src/features/onboarding/components/CompletedStagesTimeline.tsx",
+    "apps/web/src/features/onboarding/components/stages/Chat.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
+    "apps/web/src/features/onboarding/constants/messages.ts",
+    "apps/web/src/features/onboarding/effects/useBackendSync.ts",
+    "apps/web/src/features/onboarding/hooks/useConnectPlatform.ts",
+    "apps/web/src/features/onboarding/hooks/useOnboardingChat.ts",
+    "apps/web/src/features/onboarding/state/persist.ts",
+    "apps/web/src/features/workflows/api/workflowApi.ts",
+    "apps/web/src/lib/db/chatDb.ts",
+    "apps/web/src/services/syncService.ts",
+    "apps/web/src/stores/userStore.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "83b5f2e2b57d",
+  "token_usage": {
+    "input_tokens": 36,
+    "cache_creation_tokens": 167903,
+    "cache_read_tokens": 1221875,
+    "output_tokens": 9966,
+    "api_call_count": 18
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-21T19:57:29.397359Z",
+    "agent_lines": 839,
+    "agent_removed": 171,
+    "human_added": 110,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 949,
+    "total_lines_changed": 1123,
+    "agent_percentage": 89.93766696349064,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

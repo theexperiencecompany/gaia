@@ -1,0 +1,1 @@
+in onboarding, [Image #4] holo card above text in back of the card is too tall so it moves at the bottom like the second bottom card

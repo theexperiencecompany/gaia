@@ -1,0 +1,62 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "2cf224cfc8a0",
+  "strategy": "manual-commit",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "apps/api/app/agents/prompts/onboarding_prompts.py",
+    "apps/api/app/helpers/message_helpers.py",
+    "apps/api/app/models/chat_models.py",
+    "apps/api/app/models/message_models.py",
+    "apps/api/app/services/chat_service.py",
+    "apps/api/app/services/conversation_service.py",
+    "apps/api/app/services/onboarding/first_message_service.py",
+    "apps/api/app/services/onboarding/intelligence_service.py",
+    "apps/api/app/services/onboarding/onboarding_service.py",
+    "apps/api/app/utils/chat_utils.py",
+    "apps/api/app/utils/seeding_utils.py",
+    "apps/web/src/app/[locale]/(main)/onboarding/demo/page.tsx",
+    "apps/web/src/components/layout/sidebar/ChatsList.tsx",
+    "apps/web/src/components/ui/holo-card/BackCardContent.tsx",
+    "apps/web/src/components/ui/holo-card/HoloCard.tsx",
+    "apps/web/src/components/ui/holo-card/constants.ts",
+    "apps/web/src/features/chat/api/chatApi.ts",
+    "apps/web/src/features/chat/components/bubbles/bot/ChatBubbleBot.tsx",
+    "apps/web/src/features/chat/components/interface/ChatPage.tsx",
+    "apps/web/src/features/chat/components/interface/ChatRenderer.tsx",
+    "apps/web/src/features/chat/components/interface/LoadingIndicator.tsx",
+    "apps/web/src/features/chat/components/interface/hooks/useChatLayout.ts",
+    "apps/web/src/features/chat/hooks/useChatStream.ts",
+    "apps/web/src/features/chat/hooks/useConversationList.ts",
+    "apps/web/src/features/chat/hooks/useInfiniteConversations.ts",
+    "apps/web/src/features/onboarding/components/CompletedStageAccordion.tsx",
+    "apps/web/src/features/onboarding/components/CompletedStagesTimeline.tsx",
+    "apps/web/src/features/onboarding/components/stages/Chat.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
+    "apps/web/src/features/onboarding/constants/messages.ts",
+    "apps/web/src/features/onboarding/effects/useBackendSync.ts",
+    "apps/web/src/features/onboarding/hooks/useConnectPlatform.ts",
+    "apps/web/src/features/onboarding/hooks/useOnboardingChat.ts",
+    "apps/web/src/features/onboarding/state/persist.ts",
+    "apps/web/src/features/workflows/api/workflowApi.ts",
+    "apps/web/src/lib/db/chatDb.ts",
+    "apps/web/src/services/syncService.ts",
+    "apps/web/src/stores/userStore.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2c/f224cfc8a0/0/metadata.json",
+      "transcript": "/2c/f224cfc8a0/0/full.jsonl",
+      "content_hash": "/2c/f224cfc8a0/0/content_hash.txt",
+      "prompt": "/2c/f224cfc8a0/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 36,
+    "cache_creation_tokens": 167903,
+    "cache_read_tokens": 1221875,
+    "output_tokens": 9966,
+    "api_call_count": 18
+  }
+}
