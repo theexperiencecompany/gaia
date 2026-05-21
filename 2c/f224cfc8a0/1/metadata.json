@@ -1,9 +1,11 @@
 {
   "cli_version": "0.5.6",
   "checkpoint_id": "2cf224cfc8a0",
+  "session_id": "322ede01-9b92-4fa4-a929-a45dcd9b3ff0",
   "strategy": "manual-commit",
+  "created_at": "2026-05-21T19:57:29.76607Z",
   "branch": "onboarding-revamp",
-  "checkpoints_count": 5,
+  "checkpoints_count": 3,
   "files_touched": [
     "apps/api/app/agents/prompts/onboarding_prompts.py",
     "apps/api/app/helpers/message_helpers.py",
@@ -44,25 +46,52 @@
     "apps/web/src/services/syncService.ts",
     "apps/web/src/stores/userStore.ts"
   ],
-  "sessions": [
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "1b194dbf0159",
+  "token_usage": {
+    "input_tokens": 19642,
+    "cache_creation_tokens": 405650,
+    "cache_read_tokens": 10107850,
+    "output_tokens": 87523,
+    "api_call_count": 68
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-21T19:57:29.74339Z",
+    "agent_lines": 839,
+    "agent_removed": 171,
+    "human_added": 110,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 949,
+    "total_lines_changed": 1123,
+    "agent_percentage": 89.93766696349064,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
     {
-      "metadata": "/2c/f224cfc8a0/0/metadata.json",
-      "transcript": "/2c/f224cfc8a0/0/full.jsonl",
-      "content_hash": "/2c/f224cfc8a0/0/content_hash.txt",
-      "prompt": "/2c/f224cfc8a0/0/prompt.txt"
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
     },
     {
-      "metadata": "/2c/f224cfc8a0/1/metadata.json",
-      "transcript": "/2c/f224cfc8a0/1/full.jsonl",
-      "content_hash": "/2c/f224cfc8a0/1/content_hash.txt",
-      "prompt": "/2c/f224cfc8a0/1/prompt.txt"
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
     }
-  ],
-  "token_usage": {
-    "input_tokens": 19678,
-    "cache_creation_tokens": 573553,
-    "cache_read_tokens": 11329725,
-    "output_tokens": 97489,
-    "api_call_count": 86
-  }
+  ]
 }

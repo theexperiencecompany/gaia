@@ -1,0 +1,110 @@
+in onboardig i keep getting toasts failed to fetch trigger schemas in the workflwos section. what happened u can see file logs and figure out the issue
+
+---
+
+no remove this cors bs. i accessed it from http://localhost:3000/onboarding btw
+
+---
+
+dont assume things please./integrations/status failed: AxiosError: Network Error
+    at XMLHttpRequest.handleError (xhr.js:122:21)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async getIntegrationStatus (integrationsApi.ts:72:24)
+error @ intercept-console-error.ts:42
+intercept-console-error.ts:42 Failed to get integration status: AxiosError: Network Error
+    at XMLHttpRequest.handleError (xhr.js:122:21)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async getIntegrationStatus (integrationsApi.ts:72:24)
+error @ intercept-console-error.ts:42
+:8000/api/v1/integrations/status:1  Failed to load resource: net::ERR_EMPTY_RESPONSE
+intercept-console-error.ts:42 Axios Error: AxiosError: Network Error
+    at XMLHttpRequest.handleError (xhr.js:122:21)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async useTriggerSchemas.useQuery (useTriggerSchemas.ts:20:24) Pathname: /onboarding
+error @ intercept-console-error.ts:42
+intercept-console-error.ts:42 GET /triggers/schema failed: AxiosError: Network Error
+    at XMLHttpRequest.handleError (xhr.js:122:21)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async useTriggerSchemas.useQuery (useTriggerSchemas.ts:20:24)
+error @ intercept-console-error.ts:42
+:8000/api/v1/triggers/schema:1  Failed to load resource: net::ERR_EMPTY_RESPONSE
+intercept-console-error.ts:42 Axios Error: AxiosError: Network Error
+    at XMLHttpRequest.handleError (xhr.js:122:21)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async getIntegrationConfig (integrationsApi.ts:57:25) Pathname: /onboarding
+error @ intercept-console-error.ts:42
+intercept-console-error.ts:42 GET /integrations/config failed: AxiosError: Network Error
+    at XMLHttpRequest.handleError (xhr.js:122:21)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async getIntegrationConfig (integrationsApi.ts:57:25)
+error @ intercept-console-error.ts:42
+intercept-console-error.ts:42 Failed to get integration config: AxiosError: Network Error
+    at XMLHttpRequest.handleError (xhr.js:122:21)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async getIntegrationConfig (integrationsApi.ts:57:25)
+error @ intercept-console-error.ts:42
+:8000/api/v1/integrations/config:1  Failed to load resource: net::ERR_EMPTY_RESPONSE
+intercept-console-error.ts:42 Axios Error: AxiosError: Network Error
+    at XMLHttpRequest.handleError (xhr.js:122:21)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async useTriggerSchemas.useQuery (useTriggerSchemas.ts:20:24) Pathname: /onboarding
+error @ intercept-console-error.ts:42
+intercept-console-error.ts:42 GET /triggers/schema failed: AxiosError: Network Error
+    at XMLHttpRequest.handleError (xhr.js:122:21)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async useTriggerSchemas.useQuery (useTriggerSchemas.ts:20:24)
+error @ intercept-console-error.ts:42
+:8000/api/v1/triggers/schema:1  Failed to load resource: net::ERR_EMPTY_RESPONSE
+intercept-console-error.ts:42 Axios Error: AxiosError: Network Error
+    at XMLHttpRequest.handleError (xhr.js:122:21)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async getIntegrationConfig (integrationsApi.ts:57:25) Pathname: /onboarding
+error @ intercept-console-error.ts:42
+intercept-console-error.ts:42 GET /integrations/config failed: AxiosError: Network Error
+    at XMLHttpRequest.handleError (xhr.js:122:21)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async getIntegrationConfig (integrationsApi.ts:57:25)
+error @ intercept-console-error.ts:42
+intercept-console-error.ts:42 Failed to get integration config: AxiosError: Network Error
+    at XMLHttpRequest.handleError (xhr.js:122:21)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async getIntegrationConfig (integrationsApi.ts:57:25)
+error @ intercept-console-error.ts:42
+:8000/api/v1/integrations/config:1  Failed to load resource: net::ERR_EMPTY_RESPONSE
+intercept-console-error.ts:42 Axios Error: AxiosError: Network Error
+    at XMLHttpRequest.handleError (xhr.js:122:21)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async useTriggerSchemas.useQuery (useTriggerSchemas.ts:20:24) Pathname: /onboarding
+error @ intercept-console-error.ts:42
+intercept-console-error.ts:42 GET /triggers/schema failed: AxiosError: Network Error
+    at XMLHttpRequest.handleError (xhr.js:122:21)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async useTriggerSchemas.useQuery (useTriggerSchemas.ts:20:24)
+
+---
+
+yes do that
+
+---
+
+## Page Feedback: /onboarding
+**Viewport:** 1492×889
+1. <PopChildMeasure> <LazyMotion> <motion.section> <OnboardingChatStream> <motion.div> <ChatBubbleBot> flex items
+**Location:** .space-y-4 > div > #07fe0772-cbda-4bba-a786-9b9961632776 > .flex
+**Source:** _next/static/chunks/node_modules_agentation_dist_index_mjs_a4d7dd5f._.js:14068:23
+**React:** <PopChildMeasure> <LazyMotion> <motion.section> <OnboardingChatStream> <motion.div> <ChatBubbleBot>
+**Feedback:** in the "ran x todos" step in onboarding like the accordion, don't show the gaia avatar inside the accordion. and 2. when i clicked on slack button, it showed me internal server error idk why
