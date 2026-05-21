@@ -22,7 +22,7 @@ from shared.py.wide_events import log
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
 from dotenv import load_dotenv
-from pydantic import computed_field
+from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv()
@@ -89,6 +89,11 @@ class CommonSettings(BaseAppSettings):
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
+
+    @field_validator("HOST", "FRONTEND_URL", mode="after")
+    @classmethod
+    def _strip_trailing_slash(cls, v: str) -> str:
+        return v.rstrip("/") if isinstance(v, str) else v
 
     # ----------------------------------------------
     # Observability

@@ -64,7 +64,7 @@ async def write(
 
     try:
         async with fs_timer(FS_OPS.TOOL_WRITE), acquire_sandbox(user_id) as sbx:
-            await _atomic_write(sbx, abs_path, encoded)
+            real_mtime = await _atomic_write(sbx, abs_path, encoded)
         add_fs_bytes(FS_OPS.TOOL_WRITE, len(encoded))
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"
@@ -111,7 +111,7 @@ async def write(
                     ArtifactInfo(
                         path=rel,
                         size_bytes=len(encoded),
-                        mtime=time.time(),
+                        mtime=real_mtime,
                         content_type=content_type,
                     ),
                     body=inline_body,
@@ -121,15 +121,21 @@ async def write(
     return f"Wrote {len(encoded)} bytes to {abs_path}"
 
 
-async def _atomic_write(sbx: object, abs_path: str, content: bytes) -> None:
-    """Base64-pipe the content into a temp file then atomically rename."""
+async def _atomic_write(sbx: object, abs_path: str, content: bytes) -> float:
+    """Base64-pipe content into a temp file, atomically rename, return mtime.
+
+    Returns the real post-rename mtime (`stat -c%Y`) so the artifact-event
+    dedup signature `(event, path, size_bytes, mtime)` stays valid across
+    repeat writes. Falls back to wall-clock if stat is unparseable.
+    """
     parent = abs_path.rsplit("/", 1)[0] or "/"
     tmp_path = f"{abs_path}.gaia-tmp"
     payload = base64.b64encode(content).decode("ascii")
     cmd = (
         f"mkdir -p {sh_quote(parent)} && "
         f"printf %s {sh_quote(payload)} | base64 -d > {sh_quote(tmp_path)} && "
-        f"mv {sh_quote(tmp_path)} {sh_quote(abs_path)}"
+        f"mv {sh_quote(tmp_path)} {sh_quote(abs_path)} && "
+        f"stat -c%Y {sh_quote(abs_path)}"
     )
     result = await sbx.commands.run(cmd, timeout=30)  # type: ignore[attr-defined]
     if getattr(result, "exit_code", 1) != 0:
@@ -137,3 +143,7 @@ async def _atomic_write(sbx: object, abs_path: str, content: bytes) -> None:
             f"write failed (exit {getattr(result, 'exit_code', None)}): "
             f"{getattr(result, 'stderr', '')}"
         )
+    try:
+        return float((getattr(result, "stdout", "") or "").strip())
+    except ValueError:
+        return time.time()

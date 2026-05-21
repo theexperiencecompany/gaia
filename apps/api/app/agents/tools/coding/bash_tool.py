@@ -219,14 +219,15 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
     # NUL-delimited fields AND records. Filenames cannot contain NUL bytes on
     # Linux, so this delimitation is desync-proof even when the agent creates
     # artifacts whose names contain tabs or newlines. Each artifact emits
-    # exactly three NUL-terminated fields: <path>\0<size>\0<base64-body>\0.
-    # The body is only emitted when small + inlineable; content-type sniff
-    # happens host-side after.
+    # exactly four NUL-terminated fields: <path>\0<size>\0<mtime>\0<base64>\0.
+    # Real mtime is required so the chat-stream forwarder's
+    # (event,path,size_bytes,mtime) dedup actually skips unchanged files —
+    # using `time.time()` here would invalidate the signature on every push.
     max_inline = INLINE_ARTIFACT_MAX_BYTES
     enumerate_cmd = (
         f"find {sh_quote(artifacts_root)} -type f "
         f"! -name '*.gaia-tmp' "
-        f"-printf '%P\\0%s\\0' "
+        f"-printf '%P\\0%s\\0%T@\\0' "
         f"-exec sh -c '"
         f'  s=$(stat -c%s "$0"); '
         f'  if [ "$s" -le {max_inline} ]; then base64 -w0 "$0" 2>/dev/null; fi; '
@@ -241,18 +242,23 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
     stdout = getattr(res, "stdout", "") or ""
     fields = stdout.split("\0")
     # Last element after the trailing NUL is the empty tail — discard. Group
-    # the remainder in 3-tuples (path, size, body); a partial trailing group
-    # means find was interrupted mid-record and we skip it.
-    for i in range(0, len(fields) - (len(fields) % 3), 3):
+    # the remainder in 4-tuples (path, size, mtime, body); a partial trailing
+    # group means find was interrupted mid-record and we skip it.
+    for i in range(0, len(fields) - (len(fields) % 4), 4):
         rel = fields[i]
         size_str = fields[i + 1]
-        body_b64 = fields[i + 2]
+        mtime_str = fields[i + 2]
+        body_b64 = fields[i + 3]
         if not rel:
             continue
         try:
             size_bytes = int(size_str) if size_str else 0
         except ValueError:
             size_bytes = 0
+        try:
+            mtime = float(mtime_str) if mtime_str else time.time()
+        except ValueError:
+            mtime = time.time()
         content_type = detect_content_type(rel)
         inline_body = _decode_inline(body_b64, size_bytes, content_type)
         with contextlib.suppress(Exception):
@@ -263,7 +269,7 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
                     ArtifactInfo(
                         path=rel,
                         size_bytes=size_bytes,
-                        mtime=time.time(),
+                        mtime=mtime,
                         content_type=content_type,
                     ),
                     body=inline_body,

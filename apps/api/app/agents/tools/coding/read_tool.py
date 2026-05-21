@@ -65,16 +65,20 @@ async def _read_file(
     session_id: str | None,
 ) -> str:
     # Use `awk` to slice the requested range without loading the entire file.
+    # Signal "file missing" via a distinct exit code rather than an in-band
+    # marker — a file whose selected line range happens to equal the sentinel
+    # would otherwise be misreported as missing.
     start = max(1, offset) if offset > 0 else 1
     end = start + limit - 1
     cmd = (
-        f"if [ ! -f {sh_quote(abs_path)} ]; then echo __NOT_FOUND__; "
+        f"if [ ! -f {sh_quote(abs_path)} ]; then exit 44; "
         f"else awk 'NR>={start} && NR<={end}' {sh_quote(abs_path)}; fi"
     )
     result = await sbx.commands.run(cmd, timeout=15)  # type: ignore[attr-defined]
-    stdout = getattr(result, "stdout", "") or ""
-    if stdout.strip() == "__NOT_FOUND__":
+    exit_code = getattr(result, "exit_code", 0) or 0
+    if exit_code == 44:
         return f"Error: file not found at {abs_path}"
+    stdout = getattr(result, "stdout", "") or ""
 
     lines = stdout.splitlines()
     numbered = "\n".join(f"{start + i:>6}\t{line}" for i, line in enumerate(lines))
