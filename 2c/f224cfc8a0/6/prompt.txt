@@ -1,0 +1,24 @@
+I drafted a few from your inbox that I think are worth doing. Try one. so this text is shown for generated todos, even if the user hasn't conected gmail. basically non the no email flow. first explore and tell me the fix
+
+---
+
+do something related to saying like based on what you want to do
+
+---
+
+are there any other similiar issues related to text like htis
+
+---
+
+sure yeah how would we do this what all changes would be needed
+
+---
+
+## Page Feedback: /onboarding
+**Viewport:** 1492×889
+
+### 1. <Onboarding> <OnboardingShell> <motion.div> <RevealTodos> <motion.div> space rounded
+**Location:** .relative > .relative > div > .mt-10
+**Source:** _next/static/chunks/node_modules_agentation_dist_index_mjs_a4d7dd5f._.js:14068:23
+**React:** <Onboarding> <OnboardingShell> <motion.div> <RevealTodos> <motion.div>
+**Feedback:** add left padding so it aligns with the other components in the onboarding page.

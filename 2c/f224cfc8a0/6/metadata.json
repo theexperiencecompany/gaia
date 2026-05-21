@@ -1,0 +1,112 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "2cf224cfc8a0",
+  "session_id": "c4354956-213a-42da-a03c-5c4f92650fe7",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-21T19:57:31.488832Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "apps/api/app/agents/prompts/onboarding_prompts.py",
+    "apps/api/app/helpers/message_helpers.py",
+    "apps/api/app/models/chat_models.py",
+    "apps/api/app/models/message_models.py",
+    "apps/api/app/services/chat_service.py",
+    "apps/api/app/services/conversation_service.py",
+    "apps/api/app/services/onboarding/first_message_service.py",
+    "apps/api/app/services/onboarding/intelligence_service.py",
+    "apps/api/app/services/onboarding/onboarding_service.py",
+    "apps/api/app/utils/chat_utils.py",
+    "apps/api/app/utils/seeding_utils.py",
+    "apps/web/src/app/[locale]/(main)/onboarding/demo/page.tsx",
+    "apps/web/src/components/layout/sidebar/ChatsList.tsx",
+    "apps/web/src/features/chat/api/chatApi.ts",
+    "apps/web/src/features/chat/components/bubbles/bot/ChatBubbleBot.tsx",
+    "apps/web/src/features/chat/components/interface/ChatPage.tsx",
+    "apps/web/src/features/chat/components/interface/ChatRenderer.tsx",
+    "apps/web/src/features/chat/components/interface/LoadingIndicator.tsx",
+    "apps/web/src/features/chat/components/interface/hooks/useChatLayout.ts",
+    "apps/web/src/features/chat/hooks/useChatStream.ts",
+    "apps/web/src/features/chat/hooks/useConversationList.ts",
+    "apps/web/src/features/chat/hooks/useInfiniteConversations.ts",
+    "apps/web/src/features/onboarding/components/CompletedStageAccordion.tsx",
+    "apps/web/src/features/onboarding/components/stages/Chat.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
+    "apps/web/src/features/onboarding/constants/messages.ts",
+    "apps/web/src/features/onboarding/effects/useBackendSync.ts",
+    "apps/web/src/features/onboarding/hooks/useOnboardingChat.ts",
+    "apps/web/src/features/onboarding/state/persist.ts",
+    "apps/web/src/lib/db/chatDb.ts",
+    "apps/web/src/services/syncService.ts",
+    "apps/web/src/stores/userStore.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "5030f76afe0a",
+  "token_usage": {
+    "input_tokens": 99,
+    "cache_creation_tokens": 267282,
+    "cache_read_tokens": 5278669,
+    "output_tokens": 36542,
+    "api_call_count": 57
+  },
+  "session_metrics": {
+    "turn_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-21T19:57:31.47426Z",
+    "agent_lines": 818,
+    "agent_removed": 160,
+    "human_added": 131,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 949,
+    "total_lines_changed": 1123,
+    "agent_percentage": 87.08815672306322,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
