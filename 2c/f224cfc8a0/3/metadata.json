@@ -1,0 +1,95 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "2cf224cfc8a0",
+  "session_id": "6c949efe-d5da-477c-a224-4239a7ef7be5",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-21T19:57:30.295159Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "apps/api/app/helpers/message_helpers.py",
+    "apps/api/app/services/conversation_service.py",
+    "apps/api/app/services/onboarding/intelligence_service.py",
+    "apps/api/app/utils/seeding_utils.py",
+    "apps/web/src/app/[locale]/(main)/onboarding/demo/page.tsx",
+    "apps/web/src/components/layout/sidebar/ChatsList.tsx",
+    "apps/web/src/features/chat/api/chatApi.ts",
+    "apps/web/src/features/chat/components/bubbles/bot/ChatBubbleBot.tsx",
+    "apps/web/src/features/chat/components/interface/ChatPage.tsx",
+    "apps/web/src/features/chat/components/interface/ChatRenderer.tsx",
+    "apps/web/src/features/chat/components/interface/hooks/useChatLayout.ts",
+    "apps/web/src/features/chat/hooks/useConversationList.ts",
+    "apps/web/src/features/chat/hooks/useInfiniteConversations.ts",
+    "apps/web/src/features/onboarding/components/CompletedStageAccordion.tsx",
+    "apps/web/src/features/onboarding/components/stages/Chat.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
+    "apps/web/src/features/onboarding/effects/useBackendSync.ts",
+    "apps/web/src/lib/db/chatDb.ts",
+    "apps/web/src/services/syncService.ts",
+    "apps/web/src/stores/userStore.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "1e50c1b8724e",
+  "checkpoint_transcript_start": 179,
+  "transcript_lines_at_start": 179,
+  "token_usage": {
+    "input_tokens": 116,
+    "cache_creation_tokens": 471397,
+    "cache_read_tokens": 11621216,
+    "output_tokens": 40075,
+    "api_call_count": 81
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-21T19:57:30.274919Z",
+    "agent_lines": 621,
+    "agent_removed": 111,
+    "human_added": 265,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 886,
+    "total_lines_changed": 1059,
+    "agent_percentage": 69.12181303116147,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 608,
+      "agent_lines_removed": 95
+    }
+  ]
+}

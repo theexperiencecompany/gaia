@@ -1,0 +1,9 @@
+[Image #2] in the accordion, the text goes outside the accordion and arrow mvoes outside
+
+---
+
+render these all in onboarding demo ui please and give me url. and see what all is there in onboarding that should be in the demo
+
+---
+
+please show all
