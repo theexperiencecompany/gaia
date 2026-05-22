@@ -1,0 +1,1 @@
+please remove all bullshit comments in this entire branch work. like search smartly. figure out any docstrings we've overused and unnecessary commensts we've made and start with our current change sin git
