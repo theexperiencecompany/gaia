@@ -51,7 +51,7 @@ export class CLIStore extends EventEmitter {
   private emitTimer: ReturnType<typeof setTimeout> | null = null;
   private emitPending = false;
   // biome-ignore lint: Allow any for flexible auto-resolve values
-  private autoResolveInputs: Map<string, any> = new Map();
+  private readonly autoResolveInputs: Map<string, any> = new Map();
 
   /**
    * Mark an input request id as auto-resolved instead of blocking on a UI

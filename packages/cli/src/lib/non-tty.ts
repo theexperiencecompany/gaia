@@ -16,11 +16,9 @@ export function isInteractive(): boolean {
 export function requireInteractive(commandName: string): void {
   if (isInteractive()) return;
   const what = commandName ? `'gaia ${commandName}'` : "this command";
-  // biome-ignore lint/suspicious/noConsole: error reporting before the UI layer
   console.error(
     `Error: ${what} needs an interactive terminal (TTY) to prompt for input.`,
   );
-  // biome-ignore lint/suspicious/noConsole: error reporting before the UI layer
   console.error(
     `Re-run it from a regular shell session — not a pipe, redirect, or non-TTY environment.`,
   );
@@ -40,17 +38,14 @@ export function attachPlainReporter(store: CLIStore): void {
   store.on("change", (state) => {
     if (state.step && state.step !== lastStep) {
       lastStep = state.step;
-      // biome-ignore lint/suspicious/noConsole: this IS the UI layer in non-TTY mode
       console.log(`\n[${state.step}]`);
     }
     if (state.status && state.status !== lastStatus) {
       lastStatus = state.status;
-      // biome-ignore lint/suspicious/noConsole: this IS the UI layer in non-TTY mode
       console.log(`  ${state.status}`);
     }
     if (state.error && state.error.message !== lastErrorMsg) {
       lastErrorMsg = state.error.message;
-      // biome-ignore lint/suspicious/noConsole: this IS the UI layer in non-TTY mode
       console.error(`  Error: ${state.error.message}`);
     }
   });
