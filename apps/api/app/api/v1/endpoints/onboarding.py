@@ -120,7 +120,11 @@ async def get_clarify_questions(
     return {"questions": questions}
 
 
-@router.post("/reset", response_model=dict)
+@router.post(
+    "/reset",
+    response_model=dict,
+    responses={500: {"description": "Failed to reset onboarding"}},
+)
 async def reset_user_onboarding(user: dict = Depends(get_current_user)):
     """Fully reset onboarding so the user can run the flow again from scratch."""
     log.set(user={"id": user["user_id"]}, onboarding={"operation": "reset"})
@@ -441,7 +445,11 @@ class WritingStyleRegenerateRequest(BaseModel):
     profession: str = ""
 
 
-@router.post("/writing-style", response_model=dict)
+@router.post(
+    "/writing-style",
+    response_model=dict,
+    responses={500: {"description": "Failed to save writing style"}},
+)
 async def save_writing_style(
     request: WritingStyleEditRequest,
     user: dict = Depends(get_current_user),
@@ -457,7 +465,11 @@ async def save_writing_style(
         raise HTTPException(status_code=500, detail="Failed to save writing style")
 
 
-@router.post("/writing-style/regenerate-example", response_model=dict)
+@router.post(
+    "/writing-style/regenerate-example",
+    response_model=dict,
+    responses={500: {"description": "Failed to regenerate writing style example"}},
+)
 async def regenerate_writing_style_example(
     request: WritingStyleRegenerateRequest,
     user: dict = Depends(get_current_user),
@@ -493,7 +505,11 @@ class SocialProfilesConfirmRequest(BaseModel):
     profiles: list[SocialProfileItem]
 
 
-@router.post("/social-profiles", response_model=dict)
+@router.post(
+    "/social-profiles",
+    response_model=dict,
+    responses={500: {"description": "Failed to save social profiles"}},
+)
 async def confirm_social_profiles(
     request: SocialProfilesConfirmRequest,
     user: dict = Depends(get_current_user),

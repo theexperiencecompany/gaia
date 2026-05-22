@@ -131,6 +131,8 @@ _background_tasks: set[asyncio.Task] = set()
 
 _TRIAGE_EARLY_THRESHOLD = 100
 
+_NOT_SPECIFIED = "not specified"
+
 
 @dataclass
 class InboxScanContext:
@@ -196,6 +198,93 @@ class _WorkflowList(BaseModel):
         description="Exactly 4 workflow specs — no more, no fewer",
         min_length=4,
         max_length=4,
+    )
+
+
+async def _scan_then_enqueue_mem0(user_id: str, ctx: InboxScanContext) -> None:
+    """Run the visible inbox scan, then queue durable Mem0 ingestion so it
+    runs in parallel with triage/workflows and survives later failures."""
+    await _run_inbox_scanning(user_id, ctx)
+    try:
+        pool = await RedisPoolManager.get_pool()
+        await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
+        log.info(
+            "[intelligence] queued gmail->mem0 ingestion",
+            user_id=user_id,
+        )
+    except Exception as e:
+        log.warning(
+            "[intelligence] failed to queue gmail->mem0 ingestion",
+            user_id=user_id,
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+        )
+
+
+def _start_gmail_branch(
+    user_id: str,
+) -> tuple[InboxScanContext, asyncio.Task[None]]:
+    """Kick off the Gmail-only inbox scan + Mem0 ingestion task and the system
+    workflow provisioning task. Returns the shared inbox context and the
+    provision future."""
+    inbox_ctx = InboxScanContext()
+    scan_task = asyncio.create_task(_scan_then_enqueue_mem0(user_id, inbox_ctx))
+    _background_tasks.add(scan_task)
+    scan_task.add_done_callback(_background_tasks.discard)
+    provision_future = asyncio.create_task(_run_provision_gmail(user_id))
+    return inbox_ctx, provision_future
+
+
+async def _persist_completion(
+    user_id: str,
+    conversation_id: Optional[str],
+    provision_future: Optional[asyncio.Task[None]],
+) -> None:
+    """Write the unconditional end-of-pipeline phase transition and keep any
+    still-running provision task alive past pipeline return."""
+    completion_update: dict[str, object] = {
+        "onboarding.phase": OnboardingPhase.PERSONALIZATION_COMPLETE,
+        "updated_at": datetime.now(timezone.utc),
+    }
+    if conversation_id:
+        completion_update["onboarding.first_message_conversation_id"] = conversation_id
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": completion_update},
+    )
+
+    if provision_future is not None and not provision_future.done():
+        _background_tasks.add(provision_future)
+        provision_future.add_done_callback(_background_tasks.discard)
+
+
+async def _social_then_holo(
+    user_id: str,
+    name: str,
+    user_email: Optional[str],
+    user_doc: dict,
+    profession: str,
+    focus: str,
+    triage: Optional[InboxTriage],
+    writing_style: Optional[WritingStyleProfile],
+    clarify_answers: list[dict],
+    has_gmail: bool,
+) -> None:
+    """Extract social profiles (Gmail-only) then build the holo card."""
+    social_profiles: list[SocialProfile] = []
+    if has_gmail:
+        social_profiles = await _run_social_profiles_background(
+            user_id, name, user_email
+        )
+    await _run_holo_card(
+        user_id,
+        user_doc,
+        profession,
+        focus,
+        triage,
+        writing_style,
+        social_profiles,
+        clarify_answers,
     )
 
 
@@ -267,31 +356,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     provision_future: Optional[asyncio.Task[None]] = None
 
     if has_gmail:
-        inbox_ctx = InboxScanContext()
-
-        async def _scan_then_enqueue_mem0(ctx: InboxScanContext) -> None:
-            # Queue durable Mem0 ingestion right after the visible scan so it
-            # runs in parallel with triage/workflows and survives later failures.
-            await _run_inbox_scanning(user_id, ctx)
-            try:
-                pool = await RedisPoolManager.get_pool()
-                await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
-                log.info(
-                    "[intelligence] queued gmail->mem0 ingestion",
-                    user_id=user_id,
-                )
-            except Exception as e:
-                log.warning(
-                    "[intelligence] failed to queue gmail->mem0 ingestion",
-                    user_id=user_id,
-                    error=str(e)[:200],
-                    error_type=type(e).__name__,
-                )
-
-        scan_task = asyncio.create_task(_scan_then_enqueue_mem0(inbox_ctx))
-        _background_tasks.add(scan_task)
-        scan_task.add_done_callback(_background_tasks.discard)
-        provision_future = asyncio.create_task(_run_provision_gmail(user_id))
+        inbox_ctx, provision_future = _start_gmail_branch(user_id)
 
     writing_style_future: asyncio.Task[Optional[WritingStyleProfile]] = (
         asyncio.create_task(_run_writing_style(user_id, has_gmail, profession))
@@ -369,28 +434,22 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         {"$set": {"onboarding.first_message": first_message}},
     )
 
-    async def _social_then_holo() -> None:
-        social_profiles: list[SocialProfile] = []
-        if has_gmail:
-            social_profiles = await _run_social_profiles_background(
-                user_id, name, user_email
-            )
-        await _run_holo_card(
-            user_id,
-            user_doc,
-            profession,
-            focus,
-            triage,
-            writing_style,
-            social_profiles,
-            clarify_answers,
-        )
-
     t_final = time.monotonic()
     conversation_id, _, _ = await asyncio.gather(
         _seed_conversation(user_id),
         _persist_profiles(user_id, writing_style, triage),
-        _social_then_holo(),
+        _social_then_holo(
+            user_id=user_id,
+            name=name,
+            user_email=user_email,
+            user_doc=user_doc,
+            profession=profession,
+            focus=focus,
+            triage=triage,
+            writing_style=writing_style,
+            clarify_answers=clarify_answers,
+            has_gmail=has_gmail,
+        ),
     )
     log.info(
         "[intelligence] finalize gathered",
@@ -401,20 +460,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
     # Unconditional end-of-pipeline phase transition: guarantees the user
     # advances even if the holo leg (which also writes this) failed.
-    completion_update: dict[str, object] = {
-        "onboarding.phase": OnboardingPhase.PERSONALIZATION_COMPLETE,
-        "updated_at": datetime.now(timezone.utc),
-    }
-    if conversation_id:
-        completion_update["onboarding.first_message_conversation_id"] = conversation_id
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": completion_update},
-    )
-
-    if provision_future is not None and not provision_future.done():
-        _background_tasks.add(provision_future)
-        provision_future.add_done_callback(_background_tasks.discard)
+    await _persist_completion(user_id, conversation_id, provision_future)
 
     await _emit_stage(
         user_id,
@@ -1209,8 +1255,8 @@ async def _create_todos_from_triage(
 
     prompt = TRIAGE_TODOS_PROMPT.format(
         emails_context=emails_context,
-        profession=profession or "not specified",
-        focus=focus or "not specified",
+        profession=profession or _NOT_SPECIFIED,
+        focus=focus or _NOT_SPECIFIED,
         format_instructions="Return a JSON object with a 'todos' key containing a list of todo objects, each with 'title', 'description', 'source_sender', and 'source_subject'.",
     )
 
@@ -1345,17 +1391,15 @@ def _serialize_trigger_for_payload(trigger_config: TriggerConfig) -> dict:
     return payload
 
 
-async def _create_onboarding_workflows(
-    user_id: str,
+def _build_workflow_prompt_context(
     profession: str,
+    focus: str,
     has_gmail: bool,
-    focus: str = "",
-    user_timezone: str = "UTC",
-    triage: Optional[InboxTriage] = None,
-    writing_style: Optional[WritingStyleProfile] = None,
-    clarify_answers: list[dict] | None = None,
-) -> list[dict]:
-    """Create 4 LLM-generated workflows tailored to the user's context."""
+    triage: Optional[InboxTriage],
+    writing_style: Optional[WritingStyleProfile],
+    clarify_answers: list[dict] | None,
+) -> str:
+    """Render the workflow-creation prompt from the user's onboarding context."""
     inbox_patterns = (
         "; ".join(triage.patterns[:3])
         if triage and triage.patterns
@@ -1369,55 +1413,144 @@ async def _create_onboarding_workflows(
     writing_style_summary = (
         writing_style.summary[:150] if writing_style else "not analyzed"
     )
+    return WORKFLOW_CREATION_PROMPT.format(
+        profession=profession or "professional",
+        focus=focus or _NOT_SPECIFIED,
+        clarify_context=format_clarify_context(clarify_answers),
+        has_gmail=has_gmail,
+        inbox_patterns=inbox_patterns,
+        email_senders_summary=email_senders_summary,
+        writing_style_summary=writing_style_summary,
+    )
+
+
+async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
+    """Invoke the LLM up to 3 times until it returns exactly 4 workflow specs.
+    Raises if no valid result is produced after the retries."""
+    llm = await providers.aget("gemini_llm")
+    if llm is None:
+        raise RuntimeError("LLM provider not available")
+    structured_llm = llm.with_structured_output(_WorkflowList)
+
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            candidate: _WorkflowList = await structured_llm.ainvoke(
+                [HumanMessage(content=prompt)]
+            )
+            if len(candidate.workflows) == 4:
+                return candidate
+            log.warning(
+                "[intelligence] workflow specs wrong count, retrying",
+                user_id=user_id,
+                step="workflows_specs_llm",
+                attempt=attempt,
+                specs_count=len(candidate.workflows),
+            )
+        except Exception as e:
+            last_error = e
+            log.warning(
+                "[intelligence] workflow specs llm failed, retrying",
+                user_id=user_id,
+                step="workflows_specs_llm",
+                attempt=attempt,
+                error=str(e)[:200],
+            )
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("LLM did not return exactly 4 workflow specs after 3 attempts")
+
+
+async def _build_one_workflow(
+    user_id: str,
+    idx: int,
+    spec: _WorkflowSpec,
+    user_timezone: str,
+) -> Optional[dict]:
+    """Generate the prompt + trigger for a single spec and persist the workflow."""
+    t_spec = time.monotonic()
+    try:
+        t_prompt = time.monotonic()
+        gen_result = await WorkflowGenerationService.generate_workflow_prompt(
+            title=spec.title,
+            description=spec.description,
+        )
+        prompt_duration_s = round(time.monotonic() - t_prompt, 2)
+        workflow_prompt = (gen_result.get("prompt") or spec.description).strip()
+        suggested = gen_result.get("suggested_trigger")
+        suggested_dict = suggested.model_dump() if suggested is not None else None
+        trigger_config = _build_trigger_config_from_suggestion(suggested_dict)
+
+        request = CreateWorkflowRequest(
+            title=spec.title,
+            description=spec.description,
+            prompt=workflow_prompt,
+            trigger_config=trigger_config,
+            generate_immediately=True,
+        )
+        t_create = time.monotonic()
+        workflow = await WorkflowService.create_workflow(
+            request, user_id, user_timezone=user_timezone
+        )
+        create_duration_s = round(time.monotonic() - t_create, 2)
+        log.info(
+            "[intelligence] workflow spec done",
+            user_id=user_id,
+            step="workflows_spec",
+            spec_index=idx,
+            spec_title=spec.title[:60],
+            trigger_type=str(trigger_config.type),
+            workflow_id=str(workflow.id),
+            prompt_duration_s=prompt_duration_s,
+            create_duration_s=create_duration_s,
+            duration_s=round(time.monotonic() - t_spec, 2),
+        )
+        return {
+            "id": str(workflow.id),
+            "title": spec.title,
+            "description": spec.description,
+            "categories": spec.categories,
+            "trigger": _serialize_trigger_for_payload(workflow.trigger_config),
+        }
+    except Exception as e:
+        log.warning(
+            "[intelligence] workflow spec failed",
+            user_id=user_id,
+            step="workflows_spec",
+            spec_index=idx,
+            spec_title=spec.title[:60],
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t_spec, 2),
+        )
+        return None
+
+
+async def _create_onboarding_workflows(
+    user_id: str,
+    profession: str,
+    has_gmail: bool,
+    focus: str = "",
+    user_timezone: str = "UTC",
+    triage: Optional[InboxTriage] = None,
+    writing_style: Optional[WritingStyleProfile] = None,
+    clarify_answers: list[dict] | None = None,
+) -> list[dict]:
+    """Create 4 LLM-generated workflows tailored to the user's context."""
+    prompt = _build_workflow_prompt_context(
+        profession,
+        focus,
+        has_gmail,
+        triage,
+        writing_style,
+        clarify_answers,
+    )
 
     t0 = time.monotonic()
     try:
-        prompt = WORKFLOW_CREATION_PROMPT.format(
-            profession=profession or "professional",
-            focus=focus or "not specified",
-            clarify_context=format_clarify_context(clarify_answers),
-            has_gmail=has_gmail,
-            inbox_patterns=inbox_patterns,
-            email_senders_summary=email_senders_summary,
-            writing_style_summary=writing_style_summary,
-        )
-        llm = await providers.aget("gemini_llm")
-        if llm is None:
-            raise RuntimeError("LLM provider not available")
-        structured_llm = llm.with_structured_output(_WorkflowList)
         t_specs_llm = time.monotonic()
-        parsed: _WorkflowList | None = None
-        last_error: Exception | None = None
-        for attempt in range(3):
-            try:
-                candidate: _WorkflowList = await structured_llm.ainvoke(
-                    [HumanMessage(content=prompt)]
-                )
-                if len(candidate.workflows) == 4:
-                    parsed = candidate
-                    break
-                log.warning(
-                    "[intelligence] workflow specs wrong count, retrying",
-                    user_id=user_id,
-                    step="workflows_specs_llm",
-                    attempt=attempt,
-                    specs_count=len(candidate.workflows),
-                )
-            except Exception as e:
-                last_error = e
-                log.warning(
-                    "[intelligence] workflow specs llm failed, retrying",
-                    user_id=user_id,
-                    step="workflows_specs_llm",
-                    attempt=attempt,
-                    error=str(e)[:200],
-                )
-        if parsed is None:
-            if last_error is not None:
-                raise last_error
-            raise RuntimeError(
-                "LLM did not return exactly 4 workflow specs after 3 attempts"
-            )
+        parsed = await _generate_workflow_specs(user_id, prompt)
         specs_llm_duration_s = round(time.monotonic() - t_specs_llm, 2)
         log.info(
             "[intelligence] workflow specs generated",
@@ -1428,68 +1561,11 @@ async def _create_onboarding_workflows(
         )
         specs_total = len(parsed.workflows)
 
-        async def _build_one(idx: int, spec: _WorkflowSpec) -> Optional[dict]:
-            t_spec = time.monotonic()
-            try:
-                t_prompt = time.monotonic()
-                gen_result = await WorkflowGenerationService.generate_workflow_prompt(
-                    title=spec.title,
-                    description=spec.description,
-                )
-                prompt_duration_s = round(time.monotonic() - t_prompt, 2)
-                workflow_prompt = (gen_result.get("prompt") or spec.description).strip()
-                suggested = gen_result.get("suggested_trigger")
-                suggested_dict = (
-                    suggested.model_dump() if suggested is not None else None
-                )
-                trigger_config = _build_trigger_config_from_suggestion(suggested_dict)
-
-                request = CreateWorkflowRequest(
-                    title=spec.title,
-                    description=spec.description,
-                    prompt=workflow_prompt,
-                    trigger_config=trigger_config,
-                    generate_immediately=True,
-                )
-                t_create = time.monotonic()
-                workflow = await WorkflowService.create_workflow(
-                    request, user_id, user_timezone=user_timezone
-                )
-                create_duration_s = round(time.monotonic() - t_create, 2)
-                log.info(
-                    "[intelligence] workflow spec done",
-                    user_id=user_id,
-                    step="workflows_spec",
-                    spec_index=idx,
-                    spec_title=spec.title[:60],
-                    trigger_type=str(trigger_config.type),
-                    workflow_id=str(workflow.id),
-                    prompt_duration_s=prompt_duration_s,
-                    create_duration_s=create_duration_s,
-                    duration_s=round(time.monotonic() - t_spec, 2),
-                )
-                return {
-                    "id": str(workflow.id),
-                    "title": spec.title,
-                    "description": spec.description,
-                    "categories": spec.categories,
-                    "trigger": _serialize_trigger_for_payload(workflow.trigger_config),
-                }
-            except Exception as e:
-                log.warning(
-                    "[intelligence] workflow spec failed",
-                    user_id=user_id,
-                    step="workflows_spec",
-                    spec_index=idx,
-                    spec_title=spec.title[:60],
-                    error=str(e)[:200],
-                    error_type=type(e).__name__,
-                    duration_s=round(time.monotonic() - t_spec, 2),
-                )
-                return None
-
         results = await asyncio.gather(
-            *[_build_one(idx, spec) for idx, spec in enumerate(parsed.workflows)]
+            *[
+                _build_one_workflow(user_id, idx, spec, user_timezone)
+                for idx, spec in enumerate(parsed.workflows)
+            ]
         )
         created: list[dict] = [r for r in results if r is not None]
         specs_failed = specs_total - len(created)

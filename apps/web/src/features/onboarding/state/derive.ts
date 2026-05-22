@@ -77,43 +77,39 @@ function isStageReady(s: OnboardingState, stage: Stage): boolean {
 
 // revealWriting waits for revealTodos to be ready before it's marked done,
 // preserving the holding block on the writing-style card after the user acks.
+function isWritingStageDone(s: OnboardingState): boolean {
+  if (s.ackedWritingStyle && isStageReady(s, "revealTodos")) return true;
+  return (
+    s.completedStages.has("writing_style_ready") &&
+    !s.server?.writing_style?.style_summary
+  );
+}
+
+function isTodosStageDone(s: OnboardingState): boolean {
+  if (s.ackedTodos) return true;
+  return (
+    s.completedStages.has("todos_ready") && !s.server?.onboarding_todos?.length
+  );
+}
+
+function isWorkflowsStageDone(s: OnboardingState): boolean {
+  if (s.workflowsConfirmed) return true;
+  return (
+    s.completedStages.has("workflows_ready") &&
+    !s.server?.suggested_workflows?.length
+  );
+}
+
 function isStageDone(s: OnboardingState, stage: Stage): boolean {
-  const b = s.server;
   switch (stage) {
-    case "revealWriting": {
-      if (s.ackedWritingStyle && isStageReady(s, "revealTodos")) return true;
-      if (
-        s.completedStages.has("writing_style_ready") &&
-        !b?.writing_style?.style_summary
-      ) {
-        return true;
-      }
-      return false;
-    }
-    case "revealTodos": {
-      if (s.ackedTodos) return true;
-      if (
-        s.completedStages.has("todos_ready") &&
-        !b?.onboarding_todos?.length
-      ) {
-        return true;
-      }
-      return false;
-    }
-    case "workflows": {
-      if (s.workflowsConfirmed) return true;
-      if (
-        s.completedStages.has("workflows_ready") &&
-        !b?.suggested_workflows?.length
-      ) {
-        return true;
-      }
-      return false;
-    }
+    case "revealWriting":
+      return isWritingStageDone(s);
+    case "revealTodos":
+      return isTodosStageDone(s);
+    case "workflows":
+      return isWorkflowsStageDone(s);
     case "platforms":
       return s.platformsConfirmed;
-    case "chat":
-      return false;
     default:
       return false;
   }

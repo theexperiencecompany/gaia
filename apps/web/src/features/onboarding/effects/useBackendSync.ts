@@ -15,7 +15,24 @@ import type {
   OnboardingStage,
   PersonalizationData,
   StagePayloads,
+  WorkflowResults,
 } from "../types/websocket";
+
+type SuggestedWorkflows = NonNullable<
+  PersonalizationData["suggested_workflows"]
+>;
+
+function mapSuggestedWorkflows(
+  workflows: WorkflowResults["workflows"],
+): SuggestedWorkflows {
+  return workflows.map((w) => ({
+    id: w.id ?? "",
+    title: w.title,
+    description: w.description ?? "",
+    steps: (w.categories ?? []).map((c) => ({ category: c })),
+    trigger: w.trigger,
+  }));
+}
 
 const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_BASE_DELAY_MS = 1000;
@@ -128,15 +145,7 @@ export function useBackendSync(
       workflows_ready: (p) => {
         dispatchRef.current({
           type: "serverPatch",
-          patch: {
-            suggested_workflows: p.workflows.map((w) => ({
-              id: w.id ?? "",
-              title: w.title,
-              description: w.description ?? "",
-              steps: (w.categories ?? []).map((c) => ({ category: c })),
-              trigger: w.trigger,
-            })),
-          },
+          patch: { suggested_workflows: mapSuggestedWorkflows(p.workflows) },
         });
       },
       holo_ready: () => {
