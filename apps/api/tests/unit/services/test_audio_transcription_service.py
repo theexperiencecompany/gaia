@@ -20,15 +20,15 @@ from app.services.audio_transcription_service import (
 @pytest.mark.unit
 class TestValidateAudioPayload:
     def test_normalises_mime_type(self):
-        assert (
-            validate_audio_payload(content_type="audio/ogg", size=1024) == "audio/ogg"
-        )
+        result = validate_audio_payload(content_type="audio/ogg", size=1024)
+        assert result == "audio/ogg"
 
     def test_strips_parameters_from_mime_type(self):
-        assert (
-            validate_audio_payload(content_type="audio/ogg; codecs=opus", size=1024)
-            == "audio/ogg"
+        result = validate_audio_payload(
+            content_type="audio/ogg; codecs=opus",
+            size=1024,
         )
+        assert result == "audio/ogg"
 
     def test_rejects_oversize_payload(self):
         with pytest.raises(AudioTooLargeError):
@@ -68,9 +68,8 @@ class TestTranscribeAudio:
     @patch("app.services.audio_transcription_service.AsyncOpenAI")
     async def test_returns_trimmed_transcript(self, mock_client_cls: MagicMock):
         # AsyncOpenAI() returns a client whose .audio.transcriptions.create is async
-        mock_create = AsyncMock(
-            return_value=MagicMock(text="  buy milk on the way home  ")
-        )
+        transcript = MagicMock(text="  buy milk on the way home  ")
+        mock_create = AsyncMock(return_value=transcript)
         mock_instance = MagicMock()
         mock_instance.audio.transcriptions.create = mock_create
         mock_client_cls.return_value = mock_instance
@@ -92,13 +91,9 @@ class TestTranscribeAudio:
         assert kwargs["file"][2] == "audio/ogg"
 
     @patch("app.services.audio_transcription_service.AsyncOpenAI")
-    async def test_returns_empty_string_for_empty_response(
-        self, mock_client_cls: MagicMock
-    ):
+    async def test_returns_empty_string_for_empty_response(self, mock_client_cls: MagicMock):
         mock_instance = MagicMock()
-        mock_instance.audio.transcriptions.create = AsyncMock(
-            return_value=MagicMock(text=None)
-        )
+        mock_instance.audio.transcriptions.create = AsyncMock(return_value=MagicMock(text=None))
         mock_client_cls.return_value = mock_instance
 
         result = await transcribe_audio(
