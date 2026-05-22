@@ -1,0 +1,60 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "e4b17cfab171",
+  "session_id": "7cee335a-425c-45ad-8836-dbaa4ab84f59",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-22T12:49:52.903448Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "apps/web/src/config/openui/components/DocumentEditor.tsx",
+    "apps/web/src/features/bots/components/BotsPage.tsx",
+    "apps/web/src/features/bots/constants.ts",
+    "apps/web/src/features/onboarding/api/onboardingApi.ts",
+    "apps/web/src/features/onboarding/components/OnboardingProcessing.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx",
+    "apps/web/src/features/onboarding/components/stages/Workflows.tsx",
+    "apps/web/src/features/onboarding/hooks/useConnectPlatform.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "e54fae2db584",
+  "token_usage": {
+    "input_tokens": 86,
+    "cache_creation_tokens": 248789,
+    "cache_read_tokens": 3683948,
+    "output_tokens": 27189,
+    "api_call_count": 43
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-22T12:49:52.892929Z",
+    "agent_lines": 134,
+    "agent_removed": 208,
+    "human_added": 4,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 138,
+    "total_lines_changed": 375,
+    "agent_percentage": 91.2,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
