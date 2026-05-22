@@ -1,0 +1,478 @@
+Skip to content
+theexperiencecompany
+gaia
+Repository navigation
+Code
+Issues
+2
+ (2)
+Pull requests
+10
+ (10)
+Agents
+Discussions
+Actions
+Projects
+Wiki
+Security and quality
+258
+ (258)
+Insights
+Settings
+We are having a problem billing your account. Please update your payment method or call your payment provider for details on why the transaction failed.
+You can contact support with any questions.
+feat(onboarding): revamp flow with backend intelligence pipeline and card reveal sequence
+#580
+Open
+aryanranderiya
+wants to merge 76 commits into
+develop
+from
+onboarding-revamp
++23,405
+-13,034
+Lines changed: 23405 additions & 13034 deletions
+Conversation8 (8)
+Commits76 (76)
+Checks19 (19)
+Files changed226 (226)
+Open
+feat(onboarding): revamp flow with backend intelligence pipeline and card reveal sequence#580
+aryanranderiya
+wants to merge 76 commits into
+develop
+from
+onboarding-revamp
+Merge wake-word 'Hey GAIA' detection (#689) into onboarding-revamp
+Mintlify
+Vercel
+Cloudflare Workers and Pages
+SonarQubeCloud
+SonarCloud Code Analysis
+Quality Checks
+on: pull_request
+ 9
+PR Naming Conventions
+on: pull_request
+PR Naming Conventions
+on: pull_request
+SonarQubeCloud / SonarCloud Code Analysis
+failed 4 minutes ago in 4m 16s
+Quality Gate failed
+Failed conditions
+ 4 Security Hotspots
+ 4.4% Duplication on New Code (required ≤ 3%)
+
+See analysis details on SonarQube Cloud
+
+Annotations
+ Check warning on line 29 in apps/web/src/features/onboarding/components/CompletedStageAccordion.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4eEIl54X1I7tnf8rmQ&open=AZ4eEIl54X1I7tnf8rmQ&pullRequest=580
+ Check warning on line 67 in apps/web/src/features/onboarding/components/OnboardingPlatformPreview.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `globalThis` over `window`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4eDVgKhDyrYQQ8Su3O&open=AZ4eDVgKhDyrYQQ8Su3O&pullRequest=580
+ Check warning on line 49 in apps/web/src/features/onboarding/components/OnboardingMessages.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcC1l3gRAdSlWXRn&open=AZ4IRcC1l3gRAdSlWXRn&pullRequest=580
+ Check warning on line 496 in apps/api/app/api/v1/endpoints/onboarding.py 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Remove this redundant "response_model" parameter; it duplicates the return type annotation.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcNWl3gRAdSlWXSb&open=AZ4IRcNWl3gRAdSlWXSb&pullRequest=580
+ Check warning on line 965 in apps/web/src/features/workflows/components/WorkflowModal.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcHDl3gRAdSlWXSA&open=AZ4IRcHDl3gRAdSlWXSA&pullRequest=580
+ Check warning on line 140 in apps/web/src/features/onboarding/components/OnboardingTodoCards.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Extract this nested ternary operation into an independent statement.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcAul3gRAdSlWXRa&open=AZ4IRcAul3gRAdSlWXRa&pullRequest=580
+ Check failure on line 457 in apps/api/app/api/v1/endpoints/onboarding.py 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Document this HTTPException with status code 500 in the "responses" parameter.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcNWl3gRAdSlWXSX&open=AZ4IRcNWl3gRAdSlWXSX&pullRequest=580
+ Check failure on line 510 in apps/api/app/api/v1/endpoints/onboarding.py 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Document this HTTPException with status code 500 in the "responses" parameter.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcNWl3gRAdSlWXSd&open=AZ4IRcNWl3gRAdSlWXSd&pullRequest=580
+ Check warning on line 32 in apps/web/src/features/onboarding/components/reveal/WritingStyleRevealCard.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer using an optional chain expression instead, as it's more concise and easier to read.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcCNl3gRAdSlWXRf&open=AZ4IRcCNl3gRAdSlWXRf&pullRequest=580
+ Check warning on line 113 in apps/web/src/features/onboarding/components/OnboardingIntro.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `globalThis` over `window`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4dLzIqv3iWUg398nt-&open=AZ4dLzIqv3iWUg398nt-&pullRequest=580
+ Check warning on line 161 in apps/web/src/features/onboarding/components/reveal/HoloCardReveal.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Extract this nested ternary operation into an independent statement.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4dLzThv3iWUg398nuH&open=AZ4dLzThv3iWUg398nuH&pullRequest=580
+ Check warning on line 168 in apps/web/src/features/onboarding/components/reveal/HoloCardReveal.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Extract this nested ternary operation into an independent statement.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4dLzThv3iWUg398nuI&open=AZ4dLzThv3iWUg398nuI&pullRequest=580
+ Check warning on line 147 in apps/web/src/features/onboarding/components/OnboardingInput.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRb65l3gRAdSlWXRF&open=AZ4IRb65l3gRAdSlWXRF&pullRequest=580
+ Check warning on line 113 in apps/web/src/features/onboarding/components/OnboardingInput.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+'mode' PropType is defined but prop is never used
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRb65l3gRAdSlWXRC&open=AZ4IRb65l3gRAdSlWXRC&pullRequest=580
+ Check warning on line 56 in apps/web/src/features/onboarding/components/stages/Workflows.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4Y9sRUo2sMEbV_6zlx&open=AZ4Y9sRUo2sMEbV_6zlx&pullRequest=580
+ Check failure on line 482 in apps/api/app/api/v1/endpoints/onboarding.py 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Document this HTTPException with status code 500 in the "responses" parameter.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcNWl3gRAdSlWXSa&open=AZ4IRcNWl3gRAdSlWXSa&pullRequest=580
+ Check warning on line 1536 in apps/web/src/features/landing/components/iphone/ChatDemo.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4cEw12p1Ho-bCE7bRf&open=AZ4cEw12p1Ho-bCE7bRf&pullRequest=580
+ Check warning on line 11 in apps/web/src/features/onboarding/components/reveal/TodosRevealCard.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcBCl3gRAdSlWXRc&open=AZ4IRcBCl3gRAdSlWXRc&pullRequest=580
+ Check warning on line 36 in apps/web/src/features/onboarding/components/CompletedStagesTimeline.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4eEIlt4X1I7tnf8rmO&open=AZ4eEIlt4X1I7tnf8rmO&pullRequest=580
+ Check warning on line 22 in apps/web/src/components/ui/holo-card/RotatingExperienceLogo.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4dLza3v3iWUg398nuJ&open=AZ4dLza3v3iWUg398nuJ&pullRequest=580
+ Check warning on line 283 in apps/web/src/features/onboarding/components/OnboardingInput.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRb65l3gRAdSlWXRI&open=AZ4IRb65l3gRAdSlWXRI&pullRequest=580
+ Check failure on line 80 in apps/web/src/features/onboarding/state/derive.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Refactor this function to reduce its Cognitive Complexity from 17 to the 15 allowed.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4Y9sVBo2sMEbV_6zlz&open=AZ4Y9sVBo2sMEbV_6zlz&pullRequest=580
+ Check warning on line 444 in apps/api/app/api/v1/endpoints/onboarding.py 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Remove this redundant "response_model" parameter; it duplicates the return type annotation.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcNWl3gRAdSlWXSV&open=AZ4IRcNWl3gRAdSlWXSV&pullRequest=580
+ Check warning on line 48 in apps/web/src/features/onboarding/components/OnboardingTodoCards.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcAul3gRAdSlWXRZ&open=AZ4IRcAul3gRAdSlWXRZ&pullRequest=580
+ Check warning on line 84 in apps/web/src/features/onboarding/components/OnboardingPlatformPreview.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `globalThis` over `window`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4cExHrp1Ho-bCE7bRh&open=AZ4cExHrp1Ho-bCE7bRh&pullRequest=580
+ Check warning on line 160 in apps/web/src/features/onboarding/components/OnboardingIntro.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Do not use Array index in keys
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4dLzIqv3iWUg398nuA&open=AZ4dLzIqv3iWUg398nuA&pullRequest=580
+ Check failure on line 136 in apps/web/src/features/onboarding/effects/useBackendSync.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Refactor this code to not nest functions more than 4 levels deep.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcEkl3gRAdSlWXR6&open=AZ4IRcEkl3gRAdSlWXR6&pullRequest=580
+ Check warning on line 828 in apps/api/app/services/onboarding/intelligence_service.py 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Extract this nested conditional expression into an independent statement.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcLgl3gRAdSlWXSK&open=AZ4IRcLgl3gRAdSlWXSK&pullRequest=580
+ Check warning on line 76 in apps/web/src/app/[locale]/(main)/onboarding/page.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `globalThis` over `window`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4nZI-6V3FK4CNcU09V&open=AZ4nZI-6V3FK4CNcU09V&pullRequest=580
+ Check failure on line 134 in apps/api/app/api/v1/endpoints/onboarding.py 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Document this HTTPException with status code 500 in the "responses" parameter.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcNWl3gRAdSlWXSU&open=AZ4IRcNWl3gRAdSlWXSU&pullRequest=580
+ Check warning on line 749 in apps/web/src/features/landing/components/iphone/ChatDemo.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4cEw12p1Ho-bCE7bRd&open=AZ4cEw12p1Ho-bCE7bRd&pullRequest=580
+ Check warning on line 94 in apps/web/src/features/onboarding/components/CompletedStagesTimeline.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Extract this nested ternary operation into an independent statement.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4eEIlt4X1I7tnf8rmP&open=AZ4eEIlt4X1I7tnf8rmP&pullRequest=580
+ Check failure on line 202 in apps/api/app/services/onboarding/intelligence_service.py 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Refactor this function to reduce its Cognitive Complexity from 18 to the 15 allowed.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4nZIllV3FK4CNcU09S&open=AZ4nZIllV3FK4CNcU09S&pullRequest=580
+ Check warning on line 36 in apps/web/src/features/onboarding/components/stages/Clarify.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4tZvBdp7ViVAVMUeR3&open=AZ4tZvBdp7ViVAVMUeR3&pullRequest=580
+ Check warning on line 39 in apps/web/src/features/onboarding/components/reveal/WritingStyleRevealCard.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcCNl3gRAdSlWXRg&open=AZ4IRcCNl3gRAdSlWXRg&pullRequest=580
+ Check warning on line 29 in apps/web/src/features/todo/hooks/useTodoWorkflowGlobalListener.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `globalThis.window` over `window`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4Y9saVo2sMEbV_6zl0&open=AZ4Y9saVo2sMEbV_6zl0&pullRequest=580
+ Check warning on line 79 in apps/web/src/features/onboarding/state/reducer.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+The empty object is useless.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcETl3gRAdSlWXR2&open=AZ4IRcETl3gRAdSlWXR2&pullRequest=580
+ Check warning on line 92 in apps/web/src/features/onboarding/components/OnboardingPlatformPreview.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `globalThis` over `window`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4cExHrp1Ho-bCE7bRi&open=AZ4cExHrp1Ho-bCE7bRi&pullRequest=580
+ Check warning on line 133 in apps/web/src/features/onboarding/components/OnboardingProcessing.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcDSl3gRAdSlWXRr&open=AZ4IRcDSl3gRAdSlWXRr&pullRequest=580
+ Check warning on line 249 in apps/web/src/features/chat/components/interface/ChatPage.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Extract this nested ternary operation into an independent statement.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5MH9Fpfeo5CWxZDIXL&open=AZ5MH9Fpfeo5CWxZDIXL&pullRequest=580
+ Check warning on line 463 in apps/api/app/api/v1/endpoints/onboarding.py 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Use "Annotated" type hints for FastAPI dependency injection
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcNWl3gRAdSlWXSZ&open=AZ4IRcNWl3gRAdSlWXSZ&pullRequest=580
+ Check warning on line 37 in apps/web/src/features/todo/hooks/useTodoWorkflowGlobalListener.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Unexpected negated condition.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4Y9saVo2sMEbV_6zl2&open=AZ4Y9saVo2sMEbV_6zl2&pullRequest=580
+ Check warning on line 31 in apps/web/src/features/onboarding/components/OnboardingProgress.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcDJl3gRAdSlWXRp&open=AZ4IRcDJl3gRAdSlWXRp&pullRequest=580
+ Check failure on line 1348 in apps/api/app/services/onboarding/intelligence_service.py 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Refactor this function to reduce its Cognitive Complexity from 22 to the 15 allowed.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4Y9sAjo2sMEbV_6zls&open=AZ4Y9sAjo2sMEbV_6zls&pullRequest=580
+ Check warning on line 216 in apps/web/src/features/onboarding/components/OnboardingInput.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRb65l3gRAdSlWXRH&open=AZ4IRb65l3gRAdSlWXRH&pullRequest=580
+ Check warning on line 55 in apps/web/src/features/onboarding/components/OnboardingProgress.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Extract this nested ternary operation into an independent statement.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcDJl3gRAdSlWXRq&open=AZ4IRcDJl3gRAdSlWXRq&pullRequest=580
+ Check failure on line 1212 in apps/api/app/services/onboarding/intelligence_service.py 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Define a constant instead of duplicating this literal "not specified" 3 times.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4IRcLgl3gRAdSlWXSH&open=AZ4IRcLgl3gRAdSlWXSH&pullRequest=580
+ Check warning on line 31 in apps/web/src/features/onboarding/components/stages/Platforms.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Mark the props of the component as read-only.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4Y9sRyo2sMEbV_6zly&open=AZ4Y9sRyo2sMEbV_6zly&pullRequest=580
+ Check warning on line 26 in apps/web/src/features/onboarding/components/stages/Workflows.tsx 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+'state' PropType is defined but prop is never used
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ4Y9sRUo2sMEbV_6zlv&open=AZ4Y9sRUo2sMEbV_6zlv&pullRequest=580
+View more details on SonarQubeCloud
+Footer
+© 2026 GitHub, Inc.
+Footer navigation
+Terms
+Privacy
+Security
+Status
+Community
+Docs
+Contact
+Manage cookies
+Do not share my personal information
+ please fix all the ERRORS. not warnings. errors. use an agent to filter things out and fix properly.
+
+---
+
+do these changes break anything anything regressed after these current changes? ultrathink
