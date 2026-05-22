@@ -1,0 +1,55 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "98b8f0c46c8f",
+  "session_id": "b9ebc46c-d1c4-4fdd-a8d4-1eeb8489705e",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-22T18:12:04.871563Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/api/app/agents/prompts/mail_prompts.py",
+    "apps/api/app/constants/todos.py",
+    "apps/api/app/services/onboarding/inbox_scan_cache.py",
+    "apps/api/app/utils/chat_utils.py",
+    "apps/api/app/utils/profile_card.py",
+    "apps/api/app/utils/seeding_utils.py",
+    "apps/api/tests/unit/utils/test_profile_card.py",
+    "apps/api/vulture_whitelist.py"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "44654ce3e553",
+  "checkpoint_transcript_start": 122,
+  "transcript_lines_at_start": 122,
+  "token_usage": {
+    "input_tokens": 1784,
+    "cache_creation_tokens": 443243,
+    "cache_read_tokens": 14241315,
+    "output_tokens": 95719,
+    "api_call_count": 78
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-22T18:12:04.85109Z",
+    "agent_lines": 7,
+    "agent_removed": 292,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 7,
+    "total_lines_changed": 299,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
