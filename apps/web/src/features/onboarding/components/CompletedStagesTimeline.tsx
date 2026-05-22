@@ -21,7 +21,7 @@ import { OnboardingPlatformConnect } from "./OnboardingPlatformConnect";
 import { OnboardingTodoCards } from "./OnboardingTodoCards";
 import { OnboardingWorkflowCards } from "./OnboardingWorkflowCards";
 import { WritingStyleRevealCard } from "./reveal/WritingStyleRevealCard";
-import { OnboardingChatStream } from "./stages/Chat";
+import { OnboardingChatStream } from "./stages/ChatStream";
 
 interface CompletedStagesTimelineProps {
   state: OnboardingState;
