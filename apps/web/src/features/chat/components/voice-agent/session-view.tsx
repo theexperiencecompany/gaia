@@ -193,6 +193,7 @@ export const SessionView = ({
 
       return () => clearTimeout(timeout);
     }
+    return undefined;
   }, [agentState, sessionStarted, room]);
 
   return (

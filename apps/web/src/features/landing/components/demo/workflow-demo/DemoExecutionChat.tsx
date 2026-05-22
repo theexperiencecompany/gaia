@@ -80,6 +80,7 @@ export default function DemoExecutionChat({
       });
       return () => staggerTimers.forEach(clearTimeout);
     }
+    return undefined;
   }, [phase]);
 
   // Typing effect for response
@@ -97,6 +98,7 @@ export default function DemoExecutionChat({
       }, 18);
       return () => clearInterval(tick);
     }
+    return undefined;
   }, [phase]);
 
   // Reset between cycles
