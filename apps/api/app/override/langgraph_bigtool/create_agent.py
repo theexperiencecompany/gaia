@@ -19,6 +19,7 @@ Replace library import in build_graph.py:
 ```python
 # Change this:
 from langgraph_bigtool import create_agent
+
 # To this:
 from app.override.langgraph_bigtool.create_agent import create_agent
 ```
@@ -26,8 +27,8 @@ from app.override.langgraph_bigtool.create_agent import create_agent
 NOTE: Type/linting errors in this file are expected since it's copied from external library.
 """
 
-from collections.abc import Mapping, Sequence
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models import LanguageModelLike
@@ -69,8 +70,7 @@ def create_agent(
     filter: dict[str, Any] | None = None,
     namespace_prefix: tuple[str, ...] = ("tools",),
     retrieve_tools_function: Callable[..., RetrieveToolsResponse] | None = None,
-    retrieve_tools_coroutine: Callable[..., Awaitable[RetrieveToolsResponse]]
-    | None = None,
+    retrieve_tools_coroutine: Callable[..., Awaitable[RetrieveToolsResponse]] | None = None,
     initial_tool_ids: list[str] | None = None,
     disable_retrieve_tools: bool = False,
     context_schema=None,
@@ -131,8 +131,8 @@ def create_agent(
     store_arg = None
     if not disable_retrieve_tools:
         if retrieve_tools_function is None and retrieve_tools_coroutine is None:
-            retrieve_tools_function, retrieve_tools_coroutine = (
-                get_default_retrieval_tool(namespace_prefix, limit=limit, filter=filter)
+            retrieve_tools_function, retrieve_tools_coroutine = get_default_retrieval_tool(
+                namespace_prefix, limit=limit, filter=filter
             )
         retrieve_tools = StructuredTool.from_function(
             func=retrieve_tools_function, coroutine=retrieve_tools_coroutine
@@ -170,9 +170,7 @@ def create_agent(
 
         return {"messages": [response]}  # type: ignore[return-value]
 
-    async def acall_model(
-        state: State, config: RunnableConfig, *, store: BaseStore
-    ) -> State:
+    async def acall_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         """Async model invocation with middleware support."""
         state = await execute_hooks(pre_model_hooks, state, config, store)
 
@@ -247,13 +245,9 @@ def create_agent(
                 result[key] = value
         return result  # type: ignore[return-value]
 
-    def select_tools(
-        tool_calls: list[dict], config: RunnableConfig, *, store: BaseStore
-    ) -> State:
+    def select_tools(tool_calls: list[dict], config: RunnableConfig, *, store: BaseStore) -> State:
         if retrieve_tools is None:
-            raise RuntimeError(
-                "retrieve_tools is disabled and select_tools should not be called"
-            )
+            raise RuntimeError("retrieve_tools is disabled and select_tools should not be called")
 
         selected_tools = {}
         response_tools = {}
@@ -276,9 +270,7 @@ def create_agent(
                     if isinstance(tool_id, str)
                 ]
                 response = [
-                    tool_id
-                    for tool_id in result.get("response", [])
-                    if isinstance(tool_id, str)
+                    tool_id for tool_id in result.get("response", []) if isinstance(tool_id, str)
                 ]
             else:
                 tools_to_bind = [
@@ -290,9 +282,7 @@ def create_agent(
 
             # Filter out subagent: prefixed tools from binding
             filtered_bind = [
-                tool_id
-                for tool_id in tools_to_bind
-                if not tool_id.startswith("subagent:")
+                tool_id for tool_id in tools_to_bind if not tool_id.startswith("subagent:")
             ]
             selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
             response_tools[tool_call["id"]] = dedupe_str_list(response)
@@ -305,9 +295,7 @@ def create_agent(
         tool_calls: list[dict], config: RunnableConfig, *, store: BaseStore
     ) -> State:
         if retrieve_tools is None:
-            raise RuntimeError(
-                "retrieve_tools is disabled and aselect_tools should not be called"
-            )
+            raise RuntimeError("retrieve_tools is disabled and aselect_tools should not be called")
 
         selected_tools = {}
         response_tools = {}
@@ -330,9 +318,7 @@ def create_agent(
                     if isinstance(tool_id, str)
                 ]
                 response = [
-                    tool_id
-                    for tool_id in result.get("response", [])
-                    if isinstance(tool_id, str)
+                    tool_id for tool_id in result.get("response", []) if isinstance(tool_id, str)
                 ]
             else:
                 tools_to_bind = [
@@ -344,9 +330,7 @@ def create_agent(
 
             # Filter out subagent: prefixed tools from binding
             filtered_bind = [
-                tool_id
-                for tool_id in tools_to_bind
-                if not tool_id.startswith("subagent:")
+                tool_id for tool_id in tools_to_bind if not tool_id.startswith("subagent:")
             ]
             selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
             response_tools[tool_call["id"]] = dedupe_str_list(response)
@@ -401,9 +385,7 @@ def create_agent(
         ]
         return {"messages": messages}  # type: ignore[return-value]
 
-    async def areject_unbound_tools(
-        tool_calls: list[dict], *, store: BaseStore
-    ) -> State:
+    async def areject_unbound_tools(tool_calls: list[dict], *, store: BaseStore) -> State:
         return reject_unbound_tools(tool_calls, store=store)
 
     def should_continue(state: State, *, store: BaseStore):
@@ -411,44 +393,41 @@ def create_agent(
         last_message = messages[-1]
         if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
             return "end_graph_hooks" if end_graph_hooks else END
-        else:
-            bound_names = _get_bound_tool_names(state)
-            destinations = []
-            unbound_calls: list[ToolCall] = []
+        bound_names = _get_bound_tool_names(state)
+        destinations = []
+        unbound_calls: list[ToolCall] = []
 
-            finish_calls: list[ToolCall] = [
-                call
-                for call in last_message.tool_calls
-                if call.get("name") == FINISH_TASK_NAME
-            ]
-            if finish_calls:
-                return Send(FINISH_TASK_NAME, finish_calls)
+        finish_calls: list[ToolCall] = [
+            call for call in last_message.tool_calls if call.get("name") == FINISH_TASK_NAME
+        ]
+        if finish_calls:
+            return Send(FINISH_TASK_NAME, finish_calls)
 
-            for call in last_message.tool_calls:
-                if retrieve_tools is not None and call["name"] == retrieve_tools.name:
-                    destinations.append(Send("select_tools", [call]))
-                elif call["name"] not in bound_names:
-                    # Tool was not bound — collect for rejection
-                    unbound_calls.append(call)
-                else:
-                    # Wrap each tool call with ToolCallWithContext so that
-                    # ToolNode receives the full state dict (including
-                    # "todos") for InjectedState injection.
-                    destinations.append(
-                        Send(
-                            "tools",
-                            ToolCallWithContext(
-                                __type="tool_call_with_context",
-                                tool_call=call,
-                                state=state,
-                            ),
-                        )
+        for call in last_message.tool_calls:
+            if retrieve_tools is not None and call["name"] == retrieve_tools.name:
+                destinations.append(Send("select_tools", [call]))
+            elif call["name"] not in bound_names:
+                # Tool was not bound — collect for rejection
+                unbound_calls.append(call)
+            else:
+                # Wrap each tool call with ToolCallWithContext so that
+                # ToolNode receives the full state dict (including
+                # "todos") for InjectedState injection.
+                destinations.append(
+                    Send(
+                        "tools",
+                        ToolCallWithContext(
+                            __type="tool_call_with_context",
+                            tool_call=call,
+                            state=state,
+                        ),
                     )
+                )
 
-            if unbound_calls:
-                destinations.append(Send("reject_unbound_tools", unbound_calls))
+        if unbound_calls:
+            destinations.append(Send("reject_unbound_tools", unbound_calls))
 
-            return destinations
+        return destinations
 
     def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:
         messages = []
@@ -465,9 +444,7 @@ def create_agent(
             )
         return {"messages": messages}  # type: ignore[return-value]
 
-    async def afinish_task_node(
-        tool_calls: list[ToolCall], *, store: BaseStore
-    ) -> State:
+    async def afinish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:
         return finish_task_node(tool_calls, store=store)
 
     builder = StateGraph(State, context_schema=context_schema)
@@ -481,8 +458,7 @@ def create_agent(
             select_tools_node = aselect_tools  # type: ignore[assignment]
         else:
             raise ValueError(
-                "One of retrieve_tools_function or retrieve_tools_coroutine must be "
-                "provided."
+                "One of retrieve_tools_function or retrieve_tools_coroutine must be provided."
             )
 
     tool_node = DynamicToolNode(
@@ -515,9 +491,7 @@ def create_agent(
     if end_graph_hooks:
         builder.add_node(
             "end_graph_hooks",
-            RunnableCallable(
-                execute_end_graph_hooks_node, aexecute_end_graph_hooks_node
-            ),
+            RunnableCallable(execute_end_graph_hooks_node, aexecute_end_graph_hooks_node),
         )
         builder.add_edge("end_graph_hooks", END)
         path_map.append("end_graph_hooks")

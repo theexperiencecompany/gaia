@@ -11,8 +11,8 @@ scraping when the host isn't in `PROVIDERS` or the oEmbed call fails.
 from dataclasses import dataclass
 from urllib.parse import quote, urlparse
 
-import httpx
 from bs4 import BeautifulSoup
+import httpx
 
 
 @dataclass(frozen=True)
@@ -25,23 +25,15 @@ class OEmbedProvider:
 # Hostname (without leading "www.") -> provider config.
 # Only includes providers verified to return JSON with a usable title field.
 PROVIDERS: dict[str, OEmbedProvider] = {
-    "youtube.com": OEmbedProvider(
-        "https://www.youtube.com/oembed?format=json&url={url}"
-    ),
+    "youtube.com": OEmbedProvider("https://www.youtube.com/oembed?format=json&url={url}"),
     "youtu.be": OEmbedProvider("https://www.youtube.com/oembed?format=json&url={url}"),
     # publish.twitter.com only resolves twitter.com URLs — x.com gets rewritten below.
-    "twitter.com": OEmbedProvider(
-        "https://publish.twitter.com/oembed?format=json&url={url}"
-    ),
+    "twitter.com": OEmbedProvider("https://publish.twitter.com/oembed?format=json&url={url}"),
     "x.com": OEmbedProvider("https://publish.twitter.com/oembed?format=json&url={url}"),
     "open.spotify.com": OEmbedProvider("https://open.spotify.com/oembed?url={url}"),
-    "soundcloud.com": OEmbedProvider(
-        "https://soundcloud.com/oembed?format=json&url={url}"
-    ),
+    "soundcloud.com": OEmbedProvider("https://soundcloud.com/oembed?format=json&url={url}"),
     "reddit.com": OEmbedProvider("https://www.reddit.com/oembed?url={url}"),
-    "flickr.com": OEmbedProvider(
-        "https://www.flickr.com/services/oembed?format=json&url={url}"
-    ),
+    "flickr.com": OEmbedProvider("https://www.flickr.com/services/oembed?format=json&url={url}"),
     "pinterest.com": OEmbedProvider("https://www.pinterest.com/oembed.json?url={url}"),
     "ted.com": OEmbedProvider("https://www.ted.com/services/v1/oembed.json?url={url}"),
     "scribd.com": OEmbedProvider("https://www.scribd.com/services/oembed?url={url}"),

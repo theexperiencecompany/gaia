@@ -93,9 +93,7 @@ class TestConvertMarkdownToPlainText:
         assert result == "This is italic text"
 
     def test_converts_links(self):
-        result = convert_markdown_to_plain_text(
-            "[Click here](http://example.com)"
-        )  # NOSONAR
+        result = convert_markdown_to_plain_text("[Click here](http://example.com)")  # NOSONAR
         assert result == "Click here"
 
     def test_strips_code_blocks(self):

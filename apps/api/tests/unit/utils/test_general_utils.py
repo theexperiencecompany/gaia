@@ -1,7 +1,7 @@
 """Unit tests for general utility functions."""
 
 import base64
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import mock_open, patch
 
 import pytest
@@ -13,7 +13,6 @@ from app.utils.general_utils import (
     get_project_info,
     transform_gmail_message,
 )
-
 
 # ---------------------------------------------------------------------------
 # get_context_window
@@ -86,9 +85,7 @@ class TestGetContextWindow:
         "chars_before,chars_after",
         [(0, 0), (0, 10), (10, 0)],
     )
-    def test_zero_padding_still_returns_query(
-        self, chars_before: int, chars_after: int
-    ) -> None:
+    def test_zero_padding_still_returns_query(self, chars_before: int, chars_after: int) -> None:
         text = "before NEEDLE after"
         result = get_context_window(
             text, "NEEDLE", chars_before=chars_before, chars_after=chars_after
@@ -121,7 +118,7 @@ class TestTransformGmailMessage:
     Gmail API message formats into a unified frontend-friendly dict."""
 
     def test_composio_format_basic(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "messageId": "msg-123",
             "messageText": "Hello there",
             "threadId": "thread-1",
@@ -143,7 +140,7 @@ class TestTransformGmailMessage:
         assert result["isThread"] is True
 
     def test_composio_format_snippet_fallback_to_messageText(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "messageId": "id1",
             "messageText": "fallback text",
         }
@@ -152,7 +149,7 @@ class TestTransformGmailMessage:
         assert result["body"] == "fallback text"
 
     def test_composio_format_sender_fallback_to_sender_field(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "messageId": "id1",
             "messageText": "text",
             "sender": "sender@example.com",
@@ -161,7 +158,7 @@ class TestTransformGmailMessage:
         assert result["from"] == "sender@example.com"
 
     def test_composio_format_sender_empty_when_missing(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "messageId": "id1",
             "messageText": "text",
         }
@@ -169,7 +166,7 @@ class TestTransformGmailMessage:
         assert result["from"] == ""
 
     def test_composio_format_messageTimestamp_used_when_no_date(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "messageId": "id1",
             "messageText": "text",
             "messageTimestamp": "2024-06-15T14:30:00Z",
@@ -179,7 +176,7 @@ class TestTransformGmailMessage:
         assert "14:30" in result["time"]
 
     def test_composio_format_messageTimestamp_unparseable_returned_raw(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "messageId": "id1",
             "messageText": "text",
             "messageTimestamp": "not-a-date",
@@ -188,7 +185,7 @@ class TestTransformGmailMessage:
         assert result["time"] == "not-a-date"
 
     def test_composio_format_isThread_false_when_no_labelIds(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "messageId": "id1",
             "messageText": "text",
             "threadId": "thread-1",
@@ -198,7 +195,7 @@ class TestTransformGmailMessage:
         assert result["isThread"] is False
 
     def test_composio_format_isThread_false_when_no_threadId(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "messageId": "id1",
             "messageText": "text",
             "labelIds": ["INBOX"],
@@ -209,7 +206,7 @@ class TestTransformGmailMessage:
     def test_gmail_api_format_basic(self) -> None:
         body_text = "Hello from Gmail"
         encoded_body = base64.urlsafe_b64encode(body_text.encode()).decode()
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "id": "gmail-1",
             "threadId": "thread-2",
             "snippet": "Hello from...",
@@ -238,7 +235,7 @@ class TestTransformGmailMessage:
         assert result["body"] == body_text
 
     def test_gmail_api_format_uses_internalDate_for_time(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "internalDate": "1705305600000",
             "payload": {"headers": []},
         }
@@ -247,7 +244,7 @@ class TestTransformGmailMessage:
         assert "2024" in result["time"]
 
     def test_gmail_api_format_invalid_internalDate_returns_string(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "internalDate": "not_a_number",
             "payload": {"headers": []},
         }
@@ -255,7 +252,7 @@ class TestTransformGmailMessage:
         assert result["time"] == "not_a_number"
 
     def test_gmail_api_format_missing_headers(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "payload": {"headers": []},
         }
         result = transform_gmail_message(msg)
@@ -264,21 +261,21 @@ class TestTransformGmailMessage:
         assert result["subject"] == ""
 
     def test_gmail_api_format_missing_payload(self) -> None:
-        msg: Dict[str, Any] = {}
+        msg: dict[str, Any] = {}
         result = transform_gmail_message(msg)
         assert result["from"] == ""
         assert result["to"] == ""
         assert result["body"] is None  # decode_message_body returns None
 
     def test_gmail_api_format_no_time_fields_returns_empty(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "payload": {"headers": []},
         }
         result = transform_gmail_message(msg)
         assert result["time"] == ""
 
     def test_gmail_api_format_isThread_true(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "threadId": "t-1",
             "labelIds": ["INBOX", "IMPORTANT"],
             "payload": {"headers": []},
@@ -287,7 +284,7 @@ class TestTransformGmailMessage:
         assert result["isThread"] is True
 
     def test_gmail_api_format_isThread_false_empty_labels(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "threadId": "t-1",
             "labelIds": [],
             "payload": {"headers": []},
@@ -297,7 +294,7 @@ class TestTransformGmailMessage:
 
     def test_composio_preserves_extra_keys(self) -> None:
         """The **m spread should keep original keys in the result."""
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "messageId": "id1",
             "messageText": "text",
             "customField": "custom_value",
@@ -306,7 +303,7 @@ class TestTransformGmailMessage:
         assert result["customField"] == "custom_value"
 
     def test_gmail_api_preserves_extra_keys(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "payload": {"headers": []},
             "historyId": "12345",
         }
@@ -314,7 +311,7 @@ class TestTransformGmailMessage:
         assert result["historyId"] == "12345"
 
     def test_composio_date_field_takes_priority(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "messageId": "id1",
             "messageText": "text",
             "date": "2024-01-01 09:00",
@@ -338,7 +335,7 @@ class TestDecodeMessageBody:
     def test_single_part_with_data(self) -> None:
         text = "Hello, World!"
         encoded = base64.urlsafe_b64encode(text.encode()).decode()
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "payload": {
                 "body": {"data": encoded},
             }
@@ -347,7 +344,7 @@ class TestDecodeMessageBody:
         assert result == text
 
     def test_single_part_no_data_returns_none(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "payload": {
                 "body": {"data": ""},
             }
@@ -356,12 +353,12 @@ class TestDecodeMessageBody:
         assert result is None
 
     def test_single_part_no_body_key_returns_none(self) -> None:
-        msg: Dict[str, Any] = {"payload": {}}
+        msg: dict[str, Any] = {"payload": {}}
         result = decode_message_body(msg)
         assert result is None
 
     def test_no_payload_returns_none(self) -> None:
-        msg: Dict[str, Any] = {}
+        msg: dict[str, Any] = {}
         result = decode_message_body(msg)
         assert result is None
 
@@ -370,7 +367,7 @@ class TestDecodeMessageBody:
         plain = "Hello"
         html_encoded = base64.urlsafe_b64encode(html.encode()).decode()
         plain_encoded = base64.urlsafe_b64encode(plain.encode()).decode()
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "payload": {
                 "parts": [
                     {
@@ -390,7 +387,7 @@ class TestDecodeMessageBody:
     def test_multipart_plain_only(self) -> None:
         plain = "Just plain text"
         plain_encoded = base64.urlsafe_b64encode(plain.encode()).decode()
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "payload": {
                 "parts": [
                     {
@@ -406,7 +403,7 @@ class TestDecodeMessageBody:
     def test_multipart_html_only(self) -> None:
         html = "<p>Only HTML</p>"
         html_encoded = base64.urlsafe_b64encode(html.encode()).decode()
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "payload": {
                 "parts": [
                     {
@@ -420,7 +417,7 @@ class TestDecodeMessageBody:
         assert result == html
 
     def test_multipart_no_data_in_parts_returns_none(self) -> None:
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "payload": {
                 "parts": [
                     {
@@ -439,7 +436,7 @@ class TestDecodeMessageBody:
 
     def test_multipart_empty_parts_list_falls_to_single_part_path(self) -> None:
         # Empty parts list → treated as single-part → checks payload.body.data
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "payload": {
                 "parts": [],
                 "body": {"data": ""},
@@ -451,7 +448,7 @@ class TestDecodeMessageBody:
     def test_multipart_unknown_mime_type_ignored(self) -> None:
         data = "attachment data"
         encoded = base64.urlsafe_b64encode(data.encode()).decode()
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "payload": {
                 "parts": [
                     {
@@ -471,7 +468,7 @@ class TestDecodeMessageBody:
         # replace logic is correct (double-replace shouldn't corrupt).
         text = "Test with special chars: +/="
         encoded = base64.urlsafe_b64encode(text.encode()).decode()
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "payload": {
                 "body": {"data": encoded},
             }
@@ -482,7 +479,7 @@ class TestDecodeMessageBody:
     def test_handles_utf8_content(self) -> None:
         text = "Bonjour le monde! Schone Grusse! \u3053\u3093\u306b\u3061\u306f"
         encoded = base64.urlsafe_b64encode(text.encode("utf-8")).decode()
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "payload": {
                 "body": {"data": encoded},
             }
@@ -575,24 +572,24 @@ class TestDescribeStructure:
     nested dict/list structure as a flat list of dotted-path strings."""
 
     def test_flat_dict(self) -> None:
-        obj: Dict[str, Any] = {"a": 1, "b": "two", "c": True}
+        obj: dict[str, Any] = {"a": 1, "b": "two", "c": True}
         result = describe_structure(obj)
         assert result == ["a", "b", "c"]
 
     def test_nested_dict(self) -> None:
-        obj: Dict[str, Any] = {"a": {"b": {"c": 1}}}
+        obj: dict[str, Any] = {"a": {"b": {"c": 1}}}
         result = describe_structure(obj)
         assert "a" in result
         assert "a.b" in result
         assert "a.b.c" in result
 
     def test_dict_with_list_value(self) -> None:
-        obj: Dict[str, Any] = {"items": [1, 2, 3]}
+        obj: dict[str, Any] = {"items": [1, 2, 3]}
         result = describe_structure(obj)
         assert "items: [3 items]" in result
 
     def test_dict_with_list_of_dicts(self) -> None:
-        obj: Dict[str, Any] = {
+        obj: dict[str, Any] = {
             "users": [{"name": "Alice"}, {"name": "Bob"}],
         }
         result = describe_structure(obj)
@@ -600,7 +597,7 @@ class TestDescribeStructure:
         assert "users.0.name" in result
 
     def test_dict_with_list_of_lists(self) -> None:
-        obj: Dict[str, Any] = {
+        obj: dict[str, Any] = {
             "matrix": [[1, 2], [3, 4]],
         }
         result = describe_structure(obj)
@@ -618,19 +615,19 @@ class TestDescribeStructure:
         assert result == [": [0 items]"]
 
     def test_top_level_list(self) -> None:
-        obj: List[Any] = [{"a": 1}, {"b": 2}]
+        obj: list[Any] = [{"a": 1}, {"b": 2}]
         result = describe_structure(obj)
         assert ": [2 items]" in result
         assert ".0.a" in result
 
     def test_top_level_list_with_parent(self) -> None:
-        obj: List[Any] = [{"x": 10}]
+        obj: list[Any] = [{"x": 10}]
         result = describe_structure(obj, parent="root")
         assert "root: [1 items]" in result
         assert "root.0.x" in result
 
     def test_top_level_list_of_scalars(self) -> None:
-        obj: List[Any] = [1, 2, 3]
+        obj: list[Any] = [1, 2, 3]
         result = describe_structure(obj)
         # Non-empty list but first element is not dict/list → no recursion
         assert result == [": [3 items]"]
@@ -645,7 +642,7 @@ class TestDescribeStructure:
         assert result == [""]
 
     def test_mixed_types_in_dict(self) -> None:
-        obj: Dict[str, Any] = {
+        obj: dict[str, Any] = {
             "name": "test",
             "config": {"debug": True, "level": 5},
             "tags": ["a", "b"],
@@ -661,7 +658,7 @@ class TestDescribeStructure:
         assert "nested_list.0.id" in result
 
     def test_deeply_nested_structure(self) -> None:
-        obj: Dict[str, Any] = {"a": {"b": {"c": {"d": "leaf"}}}}
+        obj: dict[str, Any] = {"a": {"b": {"c": {"d": "leaf"}}}}
         result = describe_structure(obj)
         assert "a" in result
         assert "a.b" in result
@@ -669,16 +666,16 @@ class TestDescribeStructure:
         assert "a.b.c.d" in result
 
     def test_parent_parameter_propagates(self) -> None:
-        obj: Dict[str, Any] = {"key": "value"}
+        obj: dict[str, Any] = {"key": "value"}
         result = describe_structure(obj, parent="root")
         assert result == ["root.key"]
 
     def test_dict_with_empty_list_value(self) -> None:
-        obj: Dict[str, Any] = {"empty": []}
+        obj: dict[str, Any] = {"empty": []}
         result = describe_structure(obj)
         assert "empty: [0 items]" in result
 
     def test_dict_with_none_value(self) -> None:
-        obj: Dict[str, Any] = {"field": None}
+        obj: dict[str, Any] = {"field": None}
         result = describe_structure(obj)
         assert "field" in result

@@ -60,9 +60,7 @@ class TestChromaClientGetClient:
 class TestChromaClientGetLangchainClient:
     @pytest.mark.asyncio
     @patch(f"{MODULE}.providers")
-    async def test_default_client_no_collection(
-        self, mock_providers: MagicMock
-    ) -> None:
+    async def test_default_client_no_collection(self, mock_providers: MagicMock) -> None:
         mock_default = MagicMock()
         mock_embeddings = MagicMock()
 
@@ -92,9 +90,7 @@ class TestChromaClientGetLangchainClient:
 
         from app.db.chroma.chromadb import ChromaClient
 
-        with pytest.raises(
-            RuntimeError, match="Default Langchain Chroma client not initialized"
-        ):
+        with pytest.raises(RuntimeError, match="Default Langchain Chroma client not initialized"):
             await ChromaClient.get_langchain_client()
 
     @pytest.mark.asyncio
@@ -117,9 +113,7 @@ class TestChromaClientGetLangchainClient:
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.providers")
-    async def test_existing_provider_none_raises(
-        self, mock_providers: MagicMock
-    ) -> None:
+    async def test_existing_provider_none_raises(self, mock_providers: MagicMock) -> None:
         mock_providers.is_initialized.return_value = True
 
         async def _aget(name: str) -> Any:
@@ -193,9 +187,7 @@ class TestChromaClientGetClientWithRequest:
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.providers")
-    async def test_get_client_ignores_request_param(
-        self, mock_providers: MagicMock
-    ) -> None:
+    async def test_get_client_ignores_request_param(self, mock_providers: MagicMock) -> None:
         """The request parameter is accepted but not used; client comes from providers."""
         mock_client = MagicMock()
         mock_providers.aget = AsyncMock(return_value=mock_client)
@@ -225,9 +217,7 @@ class TestChromaClientGetLangchainClientWithEmbedding:
         from app.db.chroma.chromadb import ChromaClient
 
         custom_embed = MagicMock()
-        result = await ChromaClient.get_langchain_client(
-            embedding_function=custom_embed
-        )
+        result = await ChromaClient.get_langchain_client(embedding_function=custom_embed)
         assert result is mock_default
         # google_embeddings provider should not be fetched when custom embedding passed
         calls = [c.args[0] for c in mock_providers.aget.call_args_list]

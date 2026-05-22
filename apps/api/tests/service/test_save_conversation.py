@@ -129,9 +129,7 @@ class TestSaveConversationAsyncReal:
         )
 
         tool_data = {
-            "tool_data": [
-                {"tool_name": "web_search", "data": {"query": "cats"}, "timestamp": "t"}
-            ]
+            "tool_data": [{"tool_name": "web_search", "data": {"query": "cats"}, "timestamp": "t"}]
         }
 
         with patch(
@@ -181,6 +179,4 @@ class TestSaveConversationAsyncReal:
             )
 
         doc = await conversations_collection.find_one({"conversation_id": conv_id})
-        assert len(doc["messages"]) == 2, (
-            "Messages must save even if token processing fails"
-        )
+        assert len(doc["messages"]) == 2, "Messages must save even if token processing fails"

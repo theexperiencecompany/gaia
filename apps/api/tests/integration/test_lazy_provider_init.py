@@ -17,7 +17,6 @@ from app.core.lazy_loader import (
 )
 from app.utils.exceptions import ConfigurationError
 
-
 # ---------------------------------------------------------------------------
 # Fake providers used across tests — simple classes that track init/teardown
 # ---------------------------------------------------------------------------

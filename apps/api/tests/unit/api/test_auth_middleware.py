@@ -12,7 +12,6 @@ from starlette.testclient import TestClient
 
 from app.api.v1.middleware.auth import WorkOSAuthMiddleware, get_current_user
 
-
 # ---------------------------------------------------------------------------
 # get_current_user dependency
 # ---------------------------------------------------------------------------
@@ -81,9 +80,7 @@ class TestWorkOSAuthMiddlewareExcludedPaths:
         assert resp.json() == {"ok": True}
 
     def test_custom_exclude_paths(self) -> None:
-        app = _build_test_app(
-            middleware_kwargs={"exclude_paths": ["/health", "/api/v1/protected"]}
-        )
+        app = _build_test_app(middleware_kwargs={"exclude_paths": ["/health", "/api/v1/protected"]})
         client = TestClient(app)
         resp = client.get("/api/v1/protected")
         assert resp.status_code == 200
@@ -114,9 +111,7 @@ class TestWorkOSAuthMiddlewareSessionAuth:
             return_value=(user_info, None),
         ):
             client = TestClient(app)
-            resp = client.get(
-                "/api/v1/protected", cookies={"wos_session": "sealed_tok"}
-            )
+            resp = client.get("/api/v1/protected", cookies={"wos_session": "sealed_tok"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["authenticated"] is True

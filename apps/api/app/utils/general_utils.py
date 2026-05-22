@@ -1,14 +1,10 @@
 import base64
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
-
 import tomllib
 
 
-def get_context_window(
-    text: str, query: str, chars_before: int = 15, chars_after: int = 30
-) -> str:
+def get_context_window(text: str, query: str, chars_before: int = 15, chars_after: int = 30) -> str:
     """
     Get text window around the search query with specified characters before and after.
 
@@ -45,7 +41,7 @@ def get_context_window(
     return context
 
 
-def transform_gmail_message(msg) -> Dict:
+def transform_gmail_message(msg) -> dict:
     """Transform Gmail API message to frontend-friendly format while keeping all raw data for debugging."""
     """
     Transform a Gmail/Composio message to a frontend-friendly format.
@@ -94,9 +90,7 @@ def transform_gmail_message(msg) -> Dict:
         }
 
     def transform_gmail_api(m):
-        headers = {
-            h["name"]: h["value"] for h in m.get("payload", {}).get("headers", [])
-        }
+        headers = {h["name"]: h["value"] for h in m.get("payload", {}).get("headers", [])}
         labels = m.get("labelIds", [])
         return {
             **m,
@@ -129,9 +123,9 @@ def decode_message_body(msg):
     if not parts:
         body_data = payload.get("body", {}).get("data", "")
         if body_data:
-            return base64.urlsafe_b64decode(
-                body_data.replace("-", "+").replace("_", "/")
-            ).decode("utf-8", errors="ignore")
+            return base64.urlsafe_b64decode(body_data.replace("-", "+").replace("_", "/")).decode(
+                "utf-8", errors="ignore"
+            )
         return None
 
     # For multipart messages, prioritize HTML over plain text

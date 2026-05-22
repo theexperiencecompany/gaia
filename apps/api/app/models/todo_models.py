@@ -1,8 +1,8 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Annotated
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Priority(str, Enum):
@@ -17,10 +17,8 @@ class SubTask(BaseModel):
 
     id: str = Field(default="", description="Unique identifier for the subtask")
     title: str = Field(..., description="Title of the subtask")
-    completed: bool = Field(
-        default=False, description="Whether the subtask is completed"
-    )
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    completed: bool = Field(default=False, description="Whether the subtask is completed")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # Base model with all shared todo fields
@@ -29,40 +27,32 @@ class TodoBase(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    title: Annotated[
-        str, Field(min_length=1, max_length=200, description="Title of the todo item")
-    ]
+    title: Annotated[str, Field(min_length=1, max_length=200, description="Title of the todo item")]
     description: str | None = Field(
         default=None, max_length=2000, description="Description of the todo item"
     )
     labels: list[str] = Field(
         default_factory=list, max_length=10, description="Labels for categorization"
     )
-    due_date: datetime | None = Field(
-        default=None, description="Due date for the todo item"
-    )
+    due_date: datetime | None = Field(default=None, description="Due date for the todo item")
     due_date_timezone: str | None = Field(
         default=None, description="Timezone for the due date (e.g., 'America/New_York')"
     )
     priority: Priority = Field(default=Priority.NONE, description="Priority level")
-    project_id: str | None = Field(
-        default=None, description="Project ID the todo belongs to"
-    )
+    project_id: str | None = Field(default=None, description="Project ID the todo belongs to")
     completed: bool = Field(default=False, description="Whether the todo is completed")
     subtasks: list[SubTask] = Field(
         default_factory=list, max_length=50, description="List of subtasks"
     )
-    workflow_id: str | None = Field(
-        default=None, description="ID of the associated workflow"
-    )
+    workflow_id: str | None = Field(default=None, description="ID of the associated workflow")
 
 
 # For creating new todos
 class TodoModel(TodoBase):
     """Model for creating todos"""
 
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # For updating todos - all fields optional
@@ -106,9 +96,7 @@ class ProjectBase(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    name: Annotated[
-        str, Field(min_length=1, max_length=100, description="Name of the project")
-    ]
+    name: Annotated[str, Field(min_length=1, max_length=100, description="Name of the project")]
     description: str | None = Field(
         default=None, max_length=500, description="Description of the project"
     )
@@ -128,8 +116,8 @@ class ProjectCreate(ProjectBase):
 class ProjectModel(ProjectBase):
     """Model with timestamps"""
 
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class UpdateProjectRequest(BaseModel):
@@ -147,9 +135,7 @@ class ProjectResponse(ProjectBase):
 
     id: str = Field(..., description="Unique identifier")
     user_id: str = Field(..., description="User ID who owns the project")
-    is_default: bool = Field(
-        default=False, description="Whether this is the default Inbox project"
-    )
+    is_default: bool = Field(default=False, description="Whether this is the default Inbox project")
     todo_count: int = Field(default=0, description="Number of todos in this project")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")

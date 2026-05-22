@@ -8,22 +8,19 @@ fan-outs into N concurrent pipelines whose interleaved stage events corrupt
 the frontend's stage cursor.
 """
 
-from typing import Optional
-
 from arq.constants import abort_jobs_ss
 from arq.jobs import Job, JobStatus
 from arq.utils import timestamp_ms
 from bson import ObjectId
-from shared.py.wide_events import log
 
 from app.db.mongodb.collections import todos_collection, users_collection
 from app.utils.redis_utils import RedisPoolManager
-
+from shared.py.wide_events import log
 
 _INTELLIGENCE_TASK = "process_onboarding_intelligence_task"
 
 
-async def _get_active_job_id(user_id: str) -> Optional[str]:
+async def _get_active_job_id(user_id: str) -> str | None:
     doc = await users_collection.find_one(
         {"_id": ObjectId(user_id)},
         {"onboarding.intelligence_job_id": 1},
@@ -103,9 +100,7 @@ async def abort_active_intelligence_job(user_id: str) -> bool:
 
 async def _purge_stale_onboarding_todos(user_id: str) -> int:
     try:
-        result = await todos_collection.delete_many(
-            {"user_id": user_id, "labels": "onboarding"}
-        )
+        result = await todos_collection.delete_many({"user_id": user_id, "labels": "onboarding"})
         return result.deleted_count
     except Exception as e:
         log.warning(
@@ -116,7 +111,7 @@ async def _purge_stale_onboarding_todos(user_id: str) -> int:
         return 0
 
 
-async def enqueue_intelligence_job(user_id: str) -> Optional[str]:
+async def enqueue_intelligence_job(user_id: str) -> str | None:
     """Enqueue the intelligence pipeline, aborting any in-flight job first.
     Returns the new job id, or None if enqueue failed."""
     await abort_active_intelligence_job(user_id)

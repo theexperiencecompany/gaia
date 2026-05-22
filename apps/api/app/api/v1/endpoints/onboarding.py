@@ -1,9 +1,8 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
-from shared.py.wide_events import log
 
 from app.api.v1.dependencies.oauth_dependencies import (
     GET_USER_TZ_TYPE,
@@ -38,6 +37,7 @@ from app.services.onboarding.writing_style_service import (
     save_generated_example,
     save_user_edited_summary,
 )
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -90,7 +90,7 @@ async def complete_user_onboarding(
     except HTTPException as e:
         raise e
     except Exception as e:
-        log.error(f"Error completing onboarding: {str(e)}", exc_info=True)
+        log.error(f"Error completing onboarding: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to complete onboarding")
 
 
@@ -134,7 +134,7 @@ async def reset_user_onboarding(user: dict = Depends(get_current_user)):
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error resetting onboarding: {str(e)}", exc_info=True)
+        log.error(f"Error resetting onboarding: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to reset onboarding")
 
 
@@ -149,13 +149,11 @@ async def get_onboarding_status(user: dict = Depends(get_current_user)):
     )
     try:
         status = await get_user_onboarding_status(user["user_id"])
-        is_complete = (
-            status.get("is_complete", False) if isinstance(status, dict) else False
-        )
+        is_complete = status.get("is_complete", False) if isinstance(status, dict) else False
         log.set(onboarding={"operation": "get_status", "is_complete": is_complete})
         return status
     except Exception as e:
-        log.error(f"Error getting onboarding status: {str(e)}", exc_info=True)
+        log.error(f"Error getting onboarding status: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get onboarding status")
 
 
@@ -180,24 +178,20 @@ async def update_onboarding_phase(
             log.error("[update_onboarding_phase] user_id is missing or not a string")
             raise HTTPException(status_code=400, detail="Invalid user_id")
 
-        log.info(
-            f"[update_onboarding_phase] Updating phase to {phase} for user {user_id}"
-        )
+        log.info(f"[update_onboarding_phase] Updating phase to {phase} for user {user_id}")
 
         result = await users_collection.update_one(
             {"_id": ObjectId(user_id)},
             {
                 "$set": {
                     "onboarding.phase": request.phase.value,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
         )
 
         if result.matched_count == 0:
-            log.warning(
-                f"[update_onboarding_phase] No document found for user {user_id}"
-            )
+            log.warning(f"[update_onboarding_phase] No document found for user {user_id}")
             raise HTTPException(status_code=404, detail="User not found")
 
         log.info(
@@ -216,9 +210,7 @@ async def update_onboarding_phase(
                 f"[update_onboarding_phase] Sent WebSocket notification for phase update to {phase}"
             )
         except Exception as ws_error:
-            log.warning(
-                f"[update_onboarding_phase] Failed to send WebSocket update: {ws_error}"
-            )
+            log.warning(f"[update_onboarding_phase] Failed to send WebSocket update: {ws_error}")
 
         return {
             "success": True,
@@ -229,7 +221,7 @@ async def update_onboarding_phase(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error updating onboarding phase: {str(e)}", exc_info=True)
+        log.error(f"Error updating onboarding phase: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update onboarding phase")
 
 
@@ -257,7 +249,7 @@ async def update_user_preferences(
     except HTTPException as e:
         raise e
     except Exception as e:
-        log.error(f"Error updating preferences: {str(e)}", exc_info=True)
+        log.error(f"Error updating preferences: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update preferences")
 
 
@@ -274,9 +266,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             user={"id": user_id},
             onboarding={"operation": "get_personalization"},
         )
-        log.info(
-            f"[get_onboarding_personalization] Fetching personalization for user {user_id}"
-        )
+        log.info(f"[get_onboarding_personalization] Fetching personalization for user {user_id}")
         user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
 
         if not user_doc:
@@ -300,9 +290,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
         if not account_number or not member_since:
             created_at = user_doc.get("created_at")
             if created_at:
-                count = await users_collection.count_documents(
-                    {"created_at": {"$lt": created_at}}
-                )
+                count = await users_collection.count_documents({"created_at": {"$lt": created_at}})
                 account_number = count + 1
             else:
                 account_number = 1
@@ -310,7 +298,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             member_since = (
                 created_at.strftime("%b %d, %Y")
                 if created_at
-                else datetime.now(timezone.utc).strftime("%b %d, %Y")
+                else datetime.now(UTC).strftime("%b %d, %Y")
             )
 
         workflow_ids = onboarding.get("suggested_workflows", [])
@@ -318,8 +306,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
         if workflow_ids:
             try:
                 query_ids = [
-                    ObjectId(wf_id) if ObjectId.is_valid(wf_id) else wf_id
-                    for wf_id in workflow_ids
+                    ObjectId(wf_id) if ObjectId.is_valid(wf_id) else wf_id for wf_id in workflow_ids
                 ]
                 cursor = workflows_collection.find({"_id": {"$in": query_ids}})
                 wf_docs = {str(wf["_id"]): wf async for wf in cursor}
@@ -335,7 +322,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
                             }
                         )
             except Exception as e:
-                log.error(f"Error fetching workflows: {str(e)}", exc_info=True)
+                log.error(f"Error fetching workflows: {e!s}", exc_info=True)
 
         bio_status = onboarding.get("bio_status", "pending")
         display_bio = user_bio
@@ -349,9 +336,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             )
             has_gmail = connection_status.get("gmail", False)
             if has_gmail:
-                display_bio = (
-                    "Processing your insights... Please check back in a moment."
-                )
+                display_bio = "Processing your insights... Please check back in a moment."
             else:
                 display_bio = "Setting up your profile..."
 
@@ -368,9 +353,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             if resolved_summary:
                 writing_style_payload = {
                     "style_summary": resolved_summary,
-                    "example": _normalize_example_blocks(
-                        raw_writing_style.get("example")
-                    ),
+                    "example": _normalize_example_blocks(raw_writing_style.get("example")),
                 }
         raw_social_profiles = onboarding.get("social_profiles", [])
         triage_summary = onboarding.get("triage_summary")
@@ -401,9 +384,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             "phase": phase,
             "has_personalization": has_personalization,
             "house": onboarding.get("house", "Bluehaven"),
-            "personality_phrase": onboarding.get(
-                "personality_phrase", "Curious Adventurer"
-            ),
+            "personality_phrase": onboarding.get("personality_phrase", "Curious Adventurer"),
             "user_bio": display_bio,
             "account_number": account_number,
             "member_since": member_since,
@@ -412,9 +393,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             "suggested_workflows": workflows,
             "name": user_doc.get("name", "User"),
             "holo_card_id": str(user_doc["_id"]),
-            "first_message_conversation_id": onboarding.get(
-                "first_message_conversation_id"
-            ),
+            "first_message_conversation_id": onboarding.get("first_message_conversation_id"),
             "first_message": onboarding.get("first_message"),
             "writing_style": writing_style_payload,
             "social_profiles": [
@@ -430,10 +409,8 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error fetching personalization: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail="Failed to fetch personalization data"
-        )
+        log.error(f"Error fetching personalization: {e!s}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch personalization data")
 
 
 class WritingStyleEditRequest(BaseModel):
@@ -491,9 +468,7 @@ async def regenerate_writing_style_example(
             f"[onboarding] Failed to regenerate writing style example: {e}",
             exc_info=True,
         )
-        raise HTTPException(
-            status_code=500, detail="Failed to regenerate writing style example"
-        )
+        raise HTTPException(status_code=500, detail="Failed to regenerate writing style example")
 
 
 class SocialProfileItem(BaseModel):

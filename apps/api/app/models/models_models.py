@@ -1,6 +1,5 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -29,47 +28,35 @@ class ModelConfig(BaseModel):
     model_id: str = Field(..., description="Unique identifier for the model")
     name: str = Field(..., description="Display name of the model")
     model_provider: ModelProvider = Field(description="Model provider (new field)")
-    inference_provider: ModelProvider = Field(
-        description="Inference provider (new field)"
-    )
-    provider_model_name: str = Field(
-        ..., description="Model name as used by the provider"
-    )
-    description: Optional[str] = Field(None, description="Model description")
-    logo_url: Optional[str] = Field(
-        None, description="URL to the model's logo (not provider logo)"
-    )
+    inference_provider: ModelProvider = Field(description="Inference provider (new field)")
+    provider_model_name: str = Field(..., description="Model name as used by the provider")
+    description: str | None = Field(None, description="Model description")
+    logo_url: str | None = Field(None, description="URL to the model's logo (not provider logo)")
     max_tokens: int = Field(..., description="Maximum token limit")
-    supports_streaming: bool = Field(
-        default=True, description="Whether model supports streaming"
-    )
+    supports_streaming: bool = Field(default=True, description="Whether model supports streaming")
     supports_function_calling: bool = Field(
         default=True, description="Whether model supports function calling"
     )
-    available_in_plans: List[PlanType] = Field(
+    available_in_plans: list[PlanType] = Field(
         ..., description="Plans where this model is available"
     )
     lowest_tier: PlanType = Field(
         ..., description="Lowest pricing tier where this model is available"
     )
-    is_active: bool = Field(
-        default=True, description="Whether model is currently active"
-    )
-    is_default: bool = Field(
-        default=False, description="Whether this is a default model"
-    )
-    pricing_per_1k_input_tokens: Optional[float] = Field(
+    is_active: bool = Field(default=True, description="Whether model is currently active")
+    is_default: bool = Field(default=False, description="Whether this is a default model")
+    pricing_per_1k_input_tokens: float | None = Field(
         None, description="Cost per 1K input tokens in USD"
     )
-    pricing_per_1k_output_tokens: Optional[float] = Field(
+    pricing_per_1k_output_tokens: float | None = Field(
         None, description="Cost per 1K output tokens in USD"
     )
-    pricing_per_1k_cached_input_tokens: Optional[float] = Field(
+    pricing_per_1k_cached_input_tokens: float | None = Field(
         None,
         description="Cost per 1K cached input tokens in USD. Defaults to 25% of input.",
     )
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ModelResponse(BaseModel):
@@ -77,24 +64,18 @@ class ModelResponse(BaseModel):
 
     model_id: str = Field(..., description="Unique identifier for the model")
     name: str = Field(..., description="Display name of the model")
-    model_provider: Optional[ModelProvider] = Field(
-        None, description="Model provider (new field)"
-    )
-    inference_provider: Optional[ModelProvider] = Field(
+    model_provider: ModelProvider | None = Field(None, description="Model provider (new field)")
+    inference_provider: ModelProvider | None = Field(
         None, description="Inference provider (new field)"
     )
-    description: Optional[str] = Field(None, description="Model description")
-    logo_url: Optional[str] = Field(
-        None, description="URL to the model's logo (not provider logo)"
-    )
+    description: str | None = Field(None, description="Model description")
+    logo_url: str | None = Field(None, description="URL to the model's logo (not provider logo)")
     max_tokens: int = Field(..., description="Maximum token limit")
-    supports_streaming: bool = Field(
-        ..., description="Whether model supports streaming"
-    )
+    supports_streaming: bool = Field(..., description="Whether model supports streaming")
     supports_function_calling: bool = Field(
         ..., description="Whether model supports function calling"
     )
-    available_in_plans: List[PlanType] = Field(
+    available_in_plans: list[PlanType] = Field(
         ..., description="Plans where this model is available"
     )
     lowest_tier: PlanType = Field(

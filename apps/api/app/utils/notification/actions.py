@@ -1,11 +1,9 @@
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
-import httpx
 from fastapi import Request
+import httpx
 
-from shared.py.wide_events import log
 from app.models.notification.notification_models import (
     ActionResult,
     ActionType,
@@ -13,6 +11,7 @@ from app.models.notification.notification_models import (
     NotificationRecord,
     NotificationStatus,
 )
+from shared.py.wide_events import log
 
 
 class ActionHandler(ABC):
@@ -33,7 +32,7 @@ class ActionHandler(ABC):
         action: NotificationAction,
         notification: NotificationRecord,
         user_id: str,
-        request: Optional[Request],
+        request: Request | None,
     ) -> ActionResult:
         pass
 
@@ -54,7 +53,7 @@ class ApiCallActionHandler(ActionHandler):
         action: NotificationAction,
         notification: NotificationRecord,
         user_id: str,
-        request: Optional[Request],
+        request: Request | None,
     ) -> ActionResult:
         api_config = action.config.api_call
         log.set(
@@ -105,9 +104,7 @@ class ApiCallActionHandler(ActionHandler):
                     headers=headers,
                     json=payload,
                     timeout=30.0,
-                    cookies=(
-                        request.cookies if request and api_config.is_internal else None
-                    ),
+                    cookies=(request.cookies if request and api_config.is_internal else None),
                 )
 
                 response.raise_for_status()
@@ -115,34 +112,33 @@ class ApiCallActionHandler(ActionHandler):
 
                 return ActionResult(
                     success=True,
-                    message=api_config.success_message
-                    or "Action completed successfully",
+                    message=api_config.success_message or "Action completed successfully",
                     data=result_data,
                     update_notification={
                         "status": NotificationStatus.ARCHIVED,
                     },
                     update_action={
                         "executed": True,
-                        "executed_at": datetime.now(timezone.utc).isoformat(),
+                        "executed_at": datetime.now(UTC).isoformat(),
                     },
                 )
 
         except httpx.HTTPError as e:
             log.error(
-                f"API call failed for action {action.id} in notification {notification.id}: {str(e)}"
+                f"API call failed for action {action.id} in notification {notification.id}: {e!s}"
             )
             return ActionResult(
                 success=False,
-                message=api_config.error_message or f"API call failed: {str(e)}",
+                message=api_config.error_message or f"API call failed: {e!s}",
                 error_code="API_ERROR",
             )
         except Exception as e:
             log.error(
-                f"Unexpected error during API call for action {action.id} in notification {notification.id}: {str(e)}"
+                f"Unexpected error during API call for action {action.id} in notification {notification.id}: {e!s}"
             )
             return ActionResult(
                 success=False,
-                message=api_config.error_message or f"Unexpected error: {str(e)}",
+                message=api_config.error_message or f"Unexpected error: {e!s}",
                 error_code="UNKNOWN_ERROR",
             )
 
@@ -162,7 +158,7 @@ class RedirectActionHandler(ActionHandler):
         action: NotificationAction,
         notification: NotificationRecord,
         user_id: str,
-        request: Optional[Request],
+        request: Request | None,
     ) -> ActionResult:
         redirect_config = action.config.redirect
 
@@ -184,11 +180,7 @@ class RedirectActionHandler(ActionHandler):
                 "open_in_new_tab": redirect_config.open_in_new_tab,
             },
             update_notification={
-                "status": (
-                    NotificationStatus.READ
-                    if redirect_config.close_notification
-                    else None
-                )
+                "status": (NotificationStatus.READ if redirect_config.close_notification else None)
             },
         )
 
@@ -208,7 +200,7 @@ class ModalActionHandler(ActionHandler):
         action: NotificationAction,
         notification: NotificationRecord,
         user_id: str,
-        request: Optional[Request],
+        request: Request | None,
     ) -> ActionResult:
         modal_config = action.config.modal
 
@@ -236,7 +228,7 @@ class ModalActionHandler(ActionHandler):
             },
             update_action={
                 "executed": True,
-                "executed_at": datetime.now(timezone.utc).isoformat(),
+                "executed_at": datetime.now(UTC).isoformat(),
             },
         )
 

@@ -20,7 +20,6 @@ import pytest
 
 from app.decorators.profiling import profile_function
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -1188,9 +1187,7 @@ class TestSlowFunctionThresholdParametrized:
         ],
         ids=["zero", "exactly-1s", "just-over", "5s"],
     )
-    async def test_async_slow_threshold(
-        self, duration: float, expect_warning: bool
-    ) -> None:
+    async def test_async_slow_threshold(self, duration: float, expect_warning: bool) -> None:
         mock_profiler_instance = _make_mock_profiler()
         mock_profiler_cls = MagicMock(return_value=mock_profiler_instance)
 

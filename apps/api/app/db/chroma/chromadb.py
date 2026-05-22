@@ -1,13 +1,12 @@
-from typing import Optional
-
 import chromadb
-from app.config.settings import settings
-from shared.py.wide_events import log
-from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from chromadb.api import AsyncClientAPI
 from chromadb.config import Settings
 from fastapi import Request
 from langchain_chroma import Chroma
+
+from app.config.settings import settings
+from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from shared.py.wide_events import log
 
 
 class ChromaClient:
@@ -20,7 +19,7 @@ class ChromaClient:
     """
 
     @classmethod
-    async def get_client(cls, request: Optional[Request] = None) -> AsyncClientAPI:
+    async def get_client(cls, request: Request | None = None) -> AsyncClientAPI:
         """
         Get the ChromaDB client from the application state or from lazy providers.
 
@@ -46,7 +45,7 @@ class ChromaClient:
     @classmethod
     async def get_langchain_client(
         cls,
-        collection_name: Optional[str] = None,
+        collection_name: str | None = None,
         embedding_function=None,
         create_if_not_exists: bool = True,
     ) -> Chroma:
@@ -182,9 +181,7 @@ async def init_chromadb_client():
     for collection_name in collection_names:
         if collection_name not in existing_collection_names:
             log.debug(f"Creating collection '{collection_name}'")
-            await client.create_collection(
-                name=collection_name, metadata={"hnsw:space": "cosine"}
-            )
+            await client.create_collection(name=collection_name, metadata={"hnsw:space": "cosine"})
             log.debug(f"Collection '{collection_name}' created")
         else:
             log.debug(f"Collection '{collection_name}' exists")

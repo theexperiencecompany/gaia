@@ -68,6 +68,8 @@ const GoogleDocsSection: React.FC<GoogleDocsSectionProps> = ({
       </div>
     );
   }
+
+  return null;
 };
 
 export default GoogleDocsSection;

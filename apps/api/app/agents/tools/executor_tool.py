@@ -4,17 +4,18 @@ import asyncio
 from datetime import datetime
 from typing import Annotated
 
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
+
 from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
 from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
-from shared.py.wide_events import log
 from app.decorators.rate_limiting import LangChainRateLimitException
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
+from shared.py.wide_events import log
 
 
 @tool
@@ -43,17 +44,13 @@ async def call_executor(
                 tool_registry = await get_tool_registry()
                 loaded = await tool_registry.load_user_mcp_tools(user_id)
                 if loaded:
-                    log.info(
-                        f"Loaded MCP tools for user {user_id}: {list(loaded.keys())}"
-                    )
+                    log.info(f"Loaded MCP tools for user {user_id}: {list(loaded.keys())}")
             except Exception as e:
                 log.warning(f"Failed to load user MCP tools: {e}")
 
         # Parse user time
         user_time_str = configurable.get("user_time", "")
-        user_time = (
-            datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
-        )
+        user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
 
         # Prepare execution context using shared function
         ctx, error = await prepare_executor_execution(
@@ -87,7 +84,7 @@ async def call_executor(
         return f"Rate limit exceeded for {feature or 'this feature'}. The user has been shown an upgrade prompt."
     except Exception as e:
         log.error(f"Error calling executor: {e}")
-        return f"Error executing task: {str(e)}"
+        return f"Error executing task: {e!s}"
 
 
 tools = [call_executor]

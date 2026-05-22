@@ -1,10 +1,10 @@
 """Unit tests for image service operations."""
 
 import json
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException, UploadFile
+import pytest
 
 from app.services.image_service import (
     api_generate_image,
@@ -12,7 +12,6 @@ from app.services.image_service import (
     generate_public_id,
     image_to_text_endpoint,
 )
-
 
 # ---------------------------------------------------------------------------
 # generate_public_id

@@ -1,8 +1,8 @@
 """Unit tests for profile card utilities."""
 
-import random
 from datetime import datetime
-from typing import Any, Dict
+import random
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -15,7 +15,6 @@ from app.utils.profile_card import (
     get_user_metadata,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helper factories
 # ---------------------------------------------------------------------------
@@ -26,9 +25,9 @@ def _make_user(
     profession: str = "developer",
     created_at: Any = None,
     email_memory_processed: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build a fake MongoDB user document."""
-    user: Dict[str, Any] = {
+    user: dict[str, Any] = {
         "name": name,
         "onboarding": {"preferences": {"profession": profession}},
         "email_memory_processed": email_memory_processed,
@@ -242,9 +241,7 @@ class TestGetUserMetadata:
     @pytest.mark.asyncio
     async def test_exception_returns_defaults(self) -> None:
         mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(
-            side_effect=Exception("DB connection lost")
-        )
+        mock_collection.find_one = AsyncMock(side_effect=Exception("DB connection lost"))
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
             result = await get_user_metadata(
@@ -265,9 +262,7 @@ class TestGetUserMetadata:
                 "507f1f77bcf86cd799439011"  # pragma: allowlist secret
             )
 
-        mock_collection.count_documents.assert_awaited_once_with(
-            {"created_at": {"$lt": dt}}
-        )
+        mock_collection.count_documents.assert_awaited_once_with({"created_at": {"$lt": dt}})
         assert result["account_number"] == 1
         assert result["member_since"] == "Mar 10, 2025"
 

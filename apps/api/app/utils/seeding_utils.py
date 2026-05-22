@@ -1,8 +1,6 @@
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import conversations_collection
 from app.models.chat_models import (
     ConversationModel,
@@ -12,6 +10,7 @@ from app.services.conversation_service import (
     create_conversation_service,
 )
 from app.services.todos.todo_service import TodoService
+from shared.py.wide_events import log
 
 
 async def seed_onboarding_todo(user_id: str) -> None:
@@ -21,7 +20,7 @@ async def seed_onboarding_todo(user_id: str) -> None:
     """
     log.set(operation="seed_onboarding_todo", user_id=user_id)
     try:
-        due_date = datetime.now(timezone.utc) + timedelta(days=1)
+        due_date = datetime.now(UTC) + timedelta(days=1)
 
         # Create subtasks that guide users through all todo features
         subtasks = [
@@ -97,7 +96,7 @@ async def seed_onboarding_todo(user_id: str) -> None:
         log.error(f"Failed to seed onboarding todo for user {user_id}: {e}")
 
 
-async def seed_onboarding_conversation(user_id: str) -> Optional[str]:
+async def seed_onboarding_conversation(user_id: str) -> str | None:
     """Create the empty welcome conversation tagged is_onboarding_conversation=True.
 
     Left empty on purpose: the frontend renders WelcomeChat instead, so mirroring

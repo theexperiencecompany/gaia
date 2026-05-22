@@ -8,12 +8,12 @@ Run with:
     uv run pytest tests/integration/test_composio_hooks.py -v
 """
 
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 from langchain_core.tools import ToolException
+import pytest
 
 from app.services.composio.custom_tools.context_tool import (
     PROVIDER_TOOLS,
@@ -55,7 +55,7 @@ from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
 
 
 def _make_params(
-    arguments: Dict[str, Any] | None = None,
+    arguments: dict[str, Any] | None = None,
     user_id: str = "",
     entity_id: str = "",
 ) -> ToolExecuteParams:
@@ -71,7 +71,7 @@ def _make_params(
 def _make_tool_schema(
     slug: str = "TEST_TOOL",
     description: str = "A test tool",
-    input_parameters: Dict[str, Any] | None = None,
+    input_parameters: dict[str, Any] | None = None,
 ) -> Tool:
     """Build a minimal Tool object for schema modifier tests."""
     tool = MagicMock(spec=Tool)
@@ -91,7 +91,7 @@ def _make_execution_response(
     error: str | None = None,
 ) -> ToolExecutionResponse:
     """Build a ToolExecutionResponse dict."""
-    resp: Dict[str, Any] = {
+    resp: dict[str, Any] = {
         "data": data if data is not None else {},
         "successful": successful,
     }
@@ -111,11 +111,9 @@ class TestHookRegistry:
 
     def test_register_and_execute_before_hook(self) -> None:
         registry = ComposioHookRegistry()
-        call_log: List[str] = []
+        call_log: list[str] = []
 
-        def hook(
-            tool: str, toolkit: str, params: ToolExecuteParams
-        ) -> ToolExecuteParams:
+        def hook(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             call_log.append(f"before:{tool}")
             params["arguments"]["injected"] = True
             return params
@@ -129,7 +127,7 @@ class TestHookRegistry:
 
     def test_register_and_execute_after_hook(self) -> None:
         registry = ComposioHookRegistry()
-        call_log: List[str] = []
+        call_log: list[str] = []
 
         def hook(tool: str, toolkit: str, response: Any) -> Any:
             call_log.append(f"after:{tool}")
@@ -158,18 +156,14 @@ class TestHookRegistry:
     def test_multiple_before_hooks_chain(self) -> None:
         """Multiple before hooks run in registration order, each seeing the previous result."""
         registry = ComposioHookRegistry()
-        execution_order: List[int] = []
+        execution_order: list[int] = []
 
-        def hook_1(
-            tool: str, toolkit: str, params: ToolExecuteParams
-        ) -> ToolExecuteParams:
+        def hook_1(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             execution_order.append(1)
             params["arguments"]["step_1"] = True
             return params
 
-        def hook_2(
-            tool: str, toolkit: str, params: ToolExecuteParams
-        ) -> ToolExecuteParams:
+        def hook_2(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             execution_order.append(2)
             # Verify hook_1 already ran
             assert params["arguments"].get("step_1") is True
@@ -207,14 +201,10 @@ class TestHookRegistry:
         """A failing before hook logs an error but the chain continues."""
         registry = ComposioHookRegistry()
 
-        def bad_hook(
-            tool: str, toolkit: str, params: ToolExecuteParams
-        ) -> ToolExecuteParams:
+        def bad_hook(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             raise RuntimeError("boom")
 
-        def good_hook(
-            tool: str, toolkit: str, params: ToolExecuteParams
-        ) -> ToolExecuteParams:
+        def good_hook(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             params["arguments"]["survived"] = True
             return params
 
@@ -274,7 +264,7 @@ class TestConditionalHookDecorators:
     def test_before_hook_runs_only_for_targeted_tool(self) -> None:
         """A hook registered for specific tools only fires for those tools."""
         registry = ComposioHookRegistry()
-        call_log: List[str] = []
+        call_log: list[str] = []
 
         # Simulate what @register_before_hook(tools=["TARGET_TOOL"]) does internally
         target_tools = ["TARGET_TOOL"]
@@ -305,7 +295,7 @@ class TestConditionalHookDecorators:
     def test_after_hook_runs_only_for_targeted_toolkit(self) -> None:
         """A hook registered for a specific toolkit only fires for that toolkit."""
         registry = ComposioHookRegistry()
-        call_log: List[str] = []
+        call_log: list[str] = []
 
         target_toolkits = ["gmail"]
 
@@ -318,9 +308,7 @@ class TestConditionalHookDecorators:
         registry.register_after_hook(conditional_hook)
 
         # Should fire
-        result1 = registry.execute_after_hooks(
-            "GMAIL_SEND_EMAIL", "gmail", {"raw": True}
-        )
+        result1 = registry.execute_after_hooks("GMAIL_SEND_EMAIL", "gmail", {"raw": True})
         assert result1 == {"gmail_processed": True}
 
         # Should NOT fire
@@ -332,9 +320,7 @@ class TestConditionalHookDecorators:
         registry = ComposioHookRegistry()
         call_count = 0
 
-        def universal_hook(
-            tool: str, toolkit: str, params: ToolExecuteParams
-        ) -> ToolExecuteParams:
+        def universal_hook(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             nonlocal call_count
             call_count += 1
             return params
@@ -360,11 +346,9 @@ class TestMasterHooks:
 
         original_hooks = hook_registry._before_hooks[:]
         try:
-            call_log: List[str] = []
+            call_log: list[str] = []
 
-            def test_hook(
-                tool: str, toolkit: str, params: ToolExecuteParams
-            ) -> ToolExecuteParams:
+            def test_hook(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
                 call_log.append(f"{toolkit}:{tool}")
                 return params
 
@@ -381,7 +365,7 @@ class TestMasterHooks:
 
         original_hooks = hook_registry._after_hooks[:]
         try:
-            call_log: List[str] = []
+            call_log: list[str] = []
 
             def test_hook(tool: str, toolkit: str, response: Any) -> Any:
                 call_log.append(f"{toolkit}:{tool}")
@@ -399,7 +383,7 @@ class TestMasterHooks:
 
         original_mods = hook_registry._schema_modifiers[:]
         try:
-            call_log: List[str] = []
+            call_log: list[str] = []
 
             def test_mod(tool: str, toolkit: str, schema: Tool) -> Tool:
                 call_log.append(tool)
@@ -475,9 +459,7 @@ class TestGmailBeforeHooks:
             }
         )
 
-        with patch(
-            "app.utils.composio_hooks.gmail_hooks.get_stream_writer"
-        ) as mock_writer:
+        with patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer") as mock_writer:
             mock_writer.return_value = MagicMock()
             result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "gmail", params)
 
@@ -576,9 +558,7 @@ class TestGmailAfterHooks:
                     "resultSize": 1,
                 },
             ) as mock_process:
-                result = gmail_fetch_after_hook(
-                    "GMAIL_FETCH_EMAILS", "gmail", raw_response
-                )
+                result = gmail_fetch_after_hook("GMAIL_FETCH_EMAILS", "gmail", raw_response)
 
         mock_process.assert_called_once_with(raw_response["data"])
         assert "messages" in result
@@ -600,9 +580,7 @@ class TestGmailAfterHooks:
                 "app.utils.composio_hooks.gmail_hooks.process_list_messages_response",
                 side_effect=Exception("parse error"),
             ):
-                result = gmail_fetch_after_hook(
-                    "GMAIL_FETCH_EMAILS", "gmail", raw_response
-                )
+                result = gmail_fetch_after_hook("GMAIL_FETCH_EMAILS", "gmail", raw_response)
 
         # Should fall back to raw data on error
         assert result == raw_response["data"]
@@ -642,9 +620,7 @@ class TestGmailAfterHooks:
             "successful": True,
         }
 
-        result = gmail_attachment_after_hook(
-            "GMAIL_FETCH_ATTACHMENT", "gmail", raw_response
-        )
+        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", raw_response)
 
         assert result["attachmentId"] == "att1"
         assert result["filename"] == "test.pdf"
@@ -688,9 +664,7 @@ class TestGmailSchemaModifiers:
             },
         )
 
-        result = gmail_fetch_emails_schema_modifier(
-            "GMAIL_FETCH_EMAILS", "gmail", schema
-        )
+        result = gmail_fetch_emails_schema_modifier("GMAIL_FETCH_EMAILS", "gmail", schema)
 
         props = result.input_parameters["properties"]
         assert props["max_results"]["default"] == 10
@@ -820,9 +794,7 @@ class TestEndToEndHookChain:
         registry = ComposioHookRegistry()
 
         # Before hook: extract user_id and add a tracking field
-        def before_hook(
-            tool: str, toolkit: str, params: ToolExecuteParams
-        ) -> ToolExecuteParams:
+        def before_hook(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             params["user_id"] = "test_user"
             params["arguments"]["processed_by_before"] = True
             return params
@@ -839,9 +811,7 @@ class TestEndToEndHookChain:
 
         # BEFORE phase
         params = _make_params(arguments={"query": "search term"})
-        modified_params = registry.execute_before_hooks(
-            "GMAIL_FETCH_EMAILS", "gmail", params
-        )
+        modified_params = registry.execute_before_hooks("GMAIL_FETCH_EMAILS", "gmail", params)
 
         assert modified_params["user_id"] == "test_user"
         assert modified_params["arguments"]["processed_by_before"] is True
@@ -854,9 +824,7 @@ class TestEndToEndHookChain:
         }
 
         # AFTER phase
-        final_result = registry.execute_after_hooks(
-            "GMAIL_FETCH_EMAILS", "gmail", raw_api_response
-        )
+        final_result = registry.execute_after_hooks("GMAIL_FETCH_EMAILS", "gmail", raw_api_response)
 
         assert final_result["summary"] == "Got 3 items"
         assert final_result["tool_used"] == "GMAIL_FETCH_EMAILS"
@@ -914,9 +882,7 @@ class TestCustomToolsRegistry:
 
         with contextlib.ExitStack() as stack:
             for func_name, return_val in _patches:
-                stack.enter_context(
-                    patch(f"{_mod}.{func_name}", return_value=return_val)
-                )
+                stack.enter_context(patch(f"{_mod}.{func_name}", return_value=return_val))
             registry.initialize(composio_mock)
 
         assert registry.is_initialized
@@ -982,9 +948,7 @@ class TestTwitterHooks:
             description="Search recent tweets",
         )
 
-        result = twitter_search_schema_modifier(
-            "TWITTER_RECENT_SEARCH", "twitter", schema
-        )
+        result = twitter_search_schema_modifier("TWITTER_RECENT_SEARCH", "twitter", schema)
         assert "from:username" in result.description
         assert "SEARCH SYNTAX" in result.description
 
@@ -1020,9 +984,7 @@ class TestTwitterHooks:
             "app.utils.composio_hooks.twitter_hooks.get_stream_writer",
             return_value=MagicMock(),
         ):
-            result = twitter_search_after_hook(
-                "TWITTER_RECENT_SEARCH", "twitter", raw_response
-            )
+            result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "twitter", raw_response)
 
         assert "tweets" in result
         assert result["tweets"][0]["id"] == "tweet1"
@@ -1153,9 +1115,7 @@ class TestHookFailurePropagation:
         """The registry's execute_before_hooks catches generic errors per hook."""
         registry = ComposioHookRegistry()
 
-        def exploding_hook(
-            tool: str, toolkit: str, params: ToolExecuteParams
-        ) -> ToolExecuteParams:
+        def exploding_hook(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
             raise ValueError("unexpected error in hook")
 
         registry.register_before_hook(exploding_hook)
@@ -1206,13 +1166,9 @@ class TestContextToolNamespace:
     def test_tool_namespace_extraction(self) -> None:
         """tool_namespace extracts the provider from a tool slug."""
 
-        assert (
-            tool_namespace("GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT") == "googlecalendar"
-        )
+        assert tool_namespace("GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT") == "googlecalendar"
         assert tool_namespace("GMAIL_CUSTOM_GATHER_CONTEXT") == "gmail"
-        assert (
-            tool_namespace("MICROSOFT_TEAMS_CUSTOM_GATHER_CONTEXT") == "microsoft_teams"
-        )
+        assert tool_namespace("MICROSOFT_TEAMS_CUSTOM_GATHER_CONTEXT") == "microsoft_teams"
 
     def test_provider_tools_map_completeness(self) -> None:
         """PROVIDER_TOOLS map has entries for all expected providers."""

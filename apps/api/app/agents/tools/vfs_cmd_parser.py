@@ -16,9 +16,11 @@ Blocked commands (for safety):
 import argparse
 import asyncio
 import contextlib
-import shlex
 from dataclasses import dataclass
-from typing import Any, NoReturn, Optional
+import shlex
+from typing import Any, NoReturn
+
+from langgraph.config import get_stream_writer
 
 from app.agents.tools.vfs_constants import (
     USER_VISIBLE_FOLDER,
@@ -26,14 +28,13 @@ from app.agents.tools.vfs_constants import (
     is_user_visible_path,
 )
 from app.services.vfs import MongoVFS, VFSAccessError, get_vfs
-from shared.py.wide_events import log
 from app.services.vfs.path_resolver import (
     get_agent_root,
     normalize_path,
     validate_user_access,
 )
 from app.utils.command_parsing import extract_output_redirect
-from langgraph.config import get_stream_writer
+from shared.py.wide_events import log
 
 
 class CommandParseError(Exception):
@@ -110,48 +111,32 @@ class VFSCommandParser:
         ls_parser = _VFSArgumentParser(prog="ls", add_help=False, exit_on_error=False)
         ls_parser.add_argument("path", nargs="?", default=".")
         ls_parser.add_argument("-l", "--long", action="store_true", help="Long format")
-        ls_parser.add_argument(
-            "-a", "--all", action="store_true", help="Show hidden files"
-        )
-        ls_parser.add_argument(
-            "-R", "--recursive", action="store_true", help="Recursive listing"
-        )
+        ls_parser.add_argument("-a", "--all", action="store_true", help="Show hidden files")
+        ls_parser.add_argument("-R", "--recursive", action="store_true", help="Recursive listing")
         parsers["ls"] = ls_parser
 
         # tree parser
-        tree_parser = _VFSArgumentParser(
-            prog="tree", add_help=False, exit_on_error=False
-        )
+        tree_parser = _VFSArgumentParser(prog="tree", add_help=False, exit_on_error=False)
         tree_parser.add_argument("path", nargs="?", default=".")
         tree_parser.add_argument("-L", "--level", type=int, default=3, help="Max depth")
         parsers["tree"] = tree_parser
 
         # find parser
-        find_parser = _VFSArgumentParser(
-            prog="find", add_help=False, exit_on_error=False
-        )
+        find_parser = _VFSArgumentParser(prog="find", add_help=False, exit_on_error=False)
         find_parser.add_argument("path", nargs="?", default=".")
         find_parser.add_argument("-name", dest="name", help="Name pattern")
-        find_parser.add_argument(
-            "-iname", dest="iname", help="Case-insensitive name pattern"
-        )
-        find_parser.add_argument(
-            "-type", dest="type", choices=["f", "d"], help="File type"
-        )
+        find_parser.add_argument("-iname", dest="iname", help="Case-insensitive name pattern")
+        find_parser.add_argument("-type", dest="type", choices=["f", "d"], help="File type")
         parsers["find"] = find_parser
 
         # grep parser
-        grep_parser = _VFSArgumentParser(
-            prog="grep", add_help=False, exit_on_error=False
-        )
+        grep_parser = _VFSArgumentParser(prog="grep", add_help=False, exit_on_error=False)
         grep_parser.add_argument("pattern", help="Search pattern")
         grep_parser.add_argument("path", nargs="?", default=".", help="Path to search")
         grep_parser.add_argument(
             "-i", "--ignore-case", action="store_true", help="Case insensitive"
         )
-        grep_parser.add_argument(
-            "-r", "--recursive", action="store_true", help="Recursive search"
-        )
+        grep_parser.add_argument("-r", "--recursive", action="store_true", help="Recursive search")
         grep_parser.add_argument(
             "-n",
             "--line-number",
@@ -159,9 +144,7 @@ class VFSCommandParser:
             default=True,
             help="Show line numbers",
         )
-        grep_parser.add_argument(
-            "-c", "--count", action="store_true", help="Count matches only"
-        )
+        grep_parser.add_argument("-c", "--count", action="store_true", help="Count matches only")
         grep_parser.add_argument(
             "-l",
             "--files-with-matches",
@@ -173,9 +156,7 @@ class VFSCommandParser:
         # cat parser
         cat_parser = _VFSArgumentParser(prog="cat", add_help=False, exit_on_error=False)
         cat_parser.add_argument("path", help="File to display")
-        cat_parser.add_argument(
-            "-n", "--number", action="store_true", help="Number lines"
-        )
+        cat_parser.add_argument("-n", "--number", action="store_true", help="Number lines")
         parsers["cat"] = cat_parser
 
         # pwd parser
@@ -183,16 +164,12 @@ class VFSCommandParser:
         parsers["pwd"] = pwd_parser
 
         # stat parser
-        stat_parser = _VFSArgumentParser(
-            prog="stat", add_help=False, exit_on_error=False
-        )
+        stat_parser = _VFSArgumentParser(prog="stat", add_help=False, exit_on_error=False)
         stat_parser.add_argument("path", help="File to stat")
         parsers["stat"] = stat_parser
 
         # echo parser - simple, we handle redirect separately
-        echo_parser = _VFSArgumentParser(
-            prog="echo", add_help=False, exit_on_error=False
-        )
+        echo_parser = _VFSArgumentParser(prog="echo", add_help=False, exit_on_error=False)
         echo_parser.add_argument("text", nargs="*", help="Text to echo")
         parsers["echo"] = echo_parser
 
@@ -210,7 +187,7 @@ class VFSCommandParser:
             self._vfs = await get_vfs()
         return self._vfs
 
-    def _extract_redirect(self, command_str: str) -> tuple[str, Optional[RedirectInfo]]:
+    def _extract_redirect(self, command_str: str) -> tuple[str, RedirectInfo | None]:
         """
         Extract redirect operator from command string.
 
@@ -236,7 +213,7 @@ class VFSCommandParser:
 
     def _parse_command(
         self, command_str: str
-    ) -> tuple[str, argparse.Namespace, Optional[RedirectInfo]]:
+    ) -> tuple[str, argparse.Namespace, RedirectInfo | None]:
         """
         Parse a command string into command name, args namespace, and redirect.
 
@@ -361,9 +338,7 @@ class VFSCommandParser:
         # .user-visible/ paths map to the current session
         if path.startswith(f"{USER_VISIBLE_FOLDER}/") or path == USER_VISIBLE_FOLDER:
             if not conversation_id:
-                log.warning(
-                    "No conversation_id for .user-visible path, falling back to files/"
-                )
+                log.warning("No conversation_id for .user-visible path, falling back to files/")
                 agent_root = get_agent_root(user_id, agent_name)
                 relative = (
                     path[len(f"{USER_VISIBLE_FOLDER}/") :]
@@ -376,9 +351,7 @@ class VFSCommandParser:
 
             agent_root = get_agent_root(user_id, agent_name)
             relative = (
-                path[len(USER_VISIBLE_FOLDER) :]
-                if len(path) > len(USER_VISIBLE_FOLDER)
-                else ""
+                path[len(USER_VISIBLE_FOLDER) :] if len(path) > len(USER_VISIBLE_FOLDER) else ""
             )
             return normalize_path(
                 f"{agent_root}/sessions/{conversation_id}/{USER_VISIBLE_FOLDER}{relative}"
@@ -409,7 +382,7 @@ class VFSCommandParser:
     async def _cmd_pwd(
         self,
         args: argparse.Namespace,
-        redirect: Optional[RedirectInfo],
+        redirect: RedirectInfo | None,
         user_id: str,
         agent_name: str,
         conversation_id: str | None = None,
@@ -437,7 +410,7 @@ class VFSCommandParser:
     async def _cmd_ls(
         self,
         args: argparse.Namespace,
-        redirect: Optional[RedirectInfo],
+        redirect: RedirectInfo | None,
         user_id: str,
         agent_name: str,
         conversation_id: str | None = None,
@@ -580,17 +553,12 @@ class VFSCommandParser:
                 type_char = "d" if item.node_type.value == "folder" else "-"
                 perms = "rwxr-xr-x" if item.node_type.value == "folder" else "rw-r--r--"
                 size = self._format_size(item.size_bytes or 0)
-                date = (
-                    item.updated_at.strftime("%Y-%m-%d %H:%M")
-                    if item.updated_at
-                    else ""
-                )
+                date = item.updated_at.strftime("%Y-%m-%d %H:%M") if item.updated_at else ""
                 name = item.name + ("/" if item.node_type.value == "folder" else "")
                 lines.append(f"{type_char}{perms}  {size:>8}  {date}  {name}")
         else:
             names = [
-                item.name + ("/" if item.node_type.value == "folder" else "")
-                for item in items
+                item.name + ("/" if item.node_type.value == "folder" else "") for item in items
             ]
             lines.append("  ".join(names))
 
@@ -625,7 +593,7 @@ class VFSCommandParser:
     async def _cmd_tree(
         self,
         args: argparse.Namespace,
-        redirect: Optional[RedirectInfo],
+        redirect: RedirectInfo | None,
         user_id: str,
         agent_name: str,
         conversation_id: str | None = None,
@@ -688,7 +656,7 @@ class VFSCommandParser:
     async def _cmd_find(
         self,
         args: argparse.Namespace,
-        redirect: Optional[RedirectInfo],
+        redirect: RedirectInfo | None,
         user_id: str,
         agent_name: str,
         conversation_id: str | None = None,
@@ -755,7 +723,7 @@ class VFSCommandParser:
     async def _cmd_grep(
         self,
         args: argparse.Namespace,
-        redirect: Optional[RedirectInfo],
+        redirect: RedirectInfo | None,
         user_id: str,
         agent_name: str,
         conversation_id: str | None = None,
@@ -786,24 +754,19 @@ class VFSCommandParser:
 
             if info.node_type.value == "file":
                 files_to_search = [resolved_path]
+            # It's a directory
+            elif args.recursive:
+                search_result = await vfs.search("*", user_id=user_id, base_path=resolved_path)
+                files_to_search = [
+                    m.path for m in search_result.matches if m.node_type.value == "file"
+                ]
             else:
-                # It's a directory
-                if args.recursive:
-                    search_result = await vfs.search(
-                        "*", user_id=user_id, base_path=resolved_path
-                    )
-                    files_to_search = [
-                        m.path
-                        for m in search_result.matches
-                        if m.node_type.value == "file"
-                    ]
-                else:
-                    list_result = await vfs.list_dir(resolved_path, user_id=user_id)
-                    files_to_search = [
-                        f"{resolved_path}/{item.name}"
-                        for item in list_result.items
-                        if item.node_type.value == "file"
-                    ]
+                list_result = await vfs.list_dir(resolved_path, user_id=user_id)
+                files_to_search = [
+                    f"{resolved_path}/{item.name}"
+                    for item in list_result.items
+                    if item.node_type.value == "file"
+                ]
         except Exception as e:
             return f"grep: error accessing '{args.path}': {e}"
 
@@ -845,9 +808,7 @@ class VFSCommandParser:
                                 display_line += "..."
 
                             if args.line_number:
-                                file_matches.append(
-                                    f"{rel_path}:{line_num}: {display_line}"
-                                )
+                                file_matches.append(f"{rel_path}:{line_num}: {display_line}")
                             else:
                                 file_matches.append(f"{rel_path}: {display_line}")
 
@@ -894,9 +855,7 @@ class VFSCommandParser:
             result_lines = matches
             total_matches = sum(match_counts.values())
             if total_matches > self.MAX_GREP_MATCHES:
-                result_lines.append(
-                    f"... and {total_matches - self.MAX_GREP_MATCHES} more matches"
-                )
+                result_lines.append(f"... and {total_matches - self.MAX_GREP_MATCHES} more matches")
             output = "\n".join(result_lines)
 
         if truncated_files:
@@ -919,7 +878,7 @@ class VFSCommandParser:
     async def _cmd_cat(
         self,
         args: argparse.Namespace,
-        redirect: Optional[RedirectInfo],
+        redirect: RedirectInfo | None,
         user_id: str,
         agent_name: str,
         conversation_id: str | None = None,
@@ -966,7 +925,7 @@ class VFSCommandParser:
     async def _cmd_stat(
         self,
         args: argparse.Namespace,
-        redirect: Optional[RedirectInfo],
+        redirect: RedirectInfo | None,
         user_id: str,
         agent_name: str,
         conversation_id: str | None = None,
@@ -1025,7 +984,7 @@ class VFSCommandParser:
     async def _cmd_echo(
         self,
         args: argparse.Namespace,
-        redirect: Optional[RedirectInfo],
+        redirect: RedirectInfo | None,
         user_id: str,
         agent_name: str,
         conversation_id: str | None = None,
@@ -1053,7 +1012,7 @@ class VFSCommandParser:
     async def _cmd_mv(
         self,
         args: argparse.Namespace,
-        redirect: Optional[RedirectInfo],
+        redirect: RedirectInfo | None,
         user_id: str,
         agent_name: str,
         conversation_id: str | None = None,
@@ -1094,9 +1053,7 @@ class VFSCommandParser:
 
         if conversation_id:
             agent_root = get_agent_root(user_id, agent_name)
-            current_session_root = normalize_path(
-                f"{agent_root}/sessions/{conversation_id}"
-            )
+            current_session_root = normalize_path(f"{agent_root}/sessions/{conversation_id}")
 
             for label, candidate in (
                 ("source", resolved_source),
@@ -1180,28 +1137,25 @@ class VFSCommandParser:
                 if is_user_visible_path(resolved_path):
                     await self._emit_artifact_event(resolved_path, user_id)
                 return f"Appended to {redirect.filepath}"
-            else:
-                # Provenance metadata for writes via echo redirect
-                if not written_by:
-                    raise ValueError(
-                        "VFS redirect write requires 'written_by' (subagent_id or agent_name)"
-                    )
-                metadata: dict[str, Any] = {
-                    "agent_name": agent_name,
-                    "written_by": written_by,
-                }
-                if conversation_id:
-                    metadata["conversation_id"] = conversation_id
-                if agent_thread_id:
-                    metadata["agent_thread_id"] = agent_thread_id
-                if vfs_session_id:
-                    metadata["vfs_session_id"] = vfs_session_id
-                await vfs.write(
-                    resolved_path, content, user_id=user_id, metadata=metadata
+            # Provenance metadata for writes via echo redirect
+            if not written_by:
+                raise ValueError(
+                    "VFS redirect write requires 'written_by' (subagent_id or agent_name)"
                 )
-                if is_user_visible_path(resolved_path):
-                    await self._emit_artifact_event(resolved_path, user_id)
-                return f"Wrote to {redirect.filepath}"
+            metadata: dict[str, Any] = {
+                "agent_name": agent_name,
+                "written_by": written_by,
+            }
+            if conversation_id:
+                metadata["conversation_id"] = conversation_id
+            if agent_thread_id:
+                metadata["agent_thread_id"] = agent_thread_id
+            if vfs_session_id:
+                metadata["vfs_session_id"] = vfs_session_id
+            await vfs.write(resolved_path, content, user_id=user_id, metadata=metadata)
+            if is_user_visible_path(resolved_path):
+                await self._emit_artifact_event(resolved_path, user_id)
+            return f"Wrote to {redirect.filepath}"
         except Exception as e:
             return f"Error writing to '{redirect.filepath}': {e}"
 
@@ -1211,16 +1165,15 @@ class VFSCommandParser:
         """Format size in human-readable form."""
         if size_bytes < 1024:
             return f"{size_bytes}B"
-        elif size_bytes < 1024 * 1024:
+        if size_bytes < 1024 * 1024:
             return f"{size_bytes / 1024:.1f}KB"
-        elif size_bytes < 1024 * 1024 * 1024:
+        if size_bytes < 1024 * 1024 * 1024:
             return f"{size_bytes / (1024 * 1024):.1f}MB"
-        else:
-            return f"{size_bytes / (1024 * 1024 * 1024):.1f}GB"
+        return f"{size_bytes / (1024 * 1024 * 1024):.1f}GB"
 
 
 # Singleton instance
-_parser: Optional[VFSCommandParser] = None
+_parser: VFSCommandParser | None = None
 
 
 def get_vfs_command_parser() -> VFSCommandParser:

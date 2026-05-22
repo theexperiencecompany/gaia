@@ -10,7 +10,7 @@ To add a new trigger:
 3. Add the class to the TriggerConfigData union
 """
 
-from typing import Annotated, List, Literal, Union
+from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Discriminator, Field
 
@@ -30,7 +30,7 @@ class CalendarEventCreatedConfig(BaseTriggerConfigData):
     """Config for calendar_event_created trigger."""
 
     trigger_name: Literal["calendar_event_created"] = "calendar_event_created"
-    calendar_ids: List[str] = Field(
+    calendar_ids: list[str] = Field(
         default=["primary"],
         description="Calendar IDs to monitor. Use ['all'] for all calendars.",
     )
@@ -39,10 +39,8 @@ class CalendarEventCreatedConfig(BaseTriggerConfigData):
 class CalendarEventStartingSoonConfig(BaseTriggerConfigData):
     """Config for calendar_event_starting_soon trigger."""
 
-    trigger_name: Literal["calendar_event_starting_soon"] = (
-        "calendar_event_starting_soon"
-    )
-    calendar_ids: List[str] = Field(
+    trigger_name: Literal["calendar_event_starting_soon"] = "calendar_event_starting_soon"
+    calendar_ids: list[str] = Field(
         default=["primary"],
         description="Calendar IDs to monitor. Use ['all'] for all calendars.",
     )
@@ -52,9 +50,7 @@ class CalendarEventStartingSoonConfig(BaseTriggerConfigData):
         le=1440,
         description="Minutes before event start to trigger",
     )
-    include_all_day: bool = Field(
-        default=False, description="Whether to include all-day events"
-    )
+    include_all_day: bool = Field(default=False, description="Whether to include all-day events")
 
 
 # =============================================================================
@@ -95,7 +91,7 @@ class GitHubCommitEventConfig(BaseTriggerConfigData):
     """Config for github_commit_event trigger."""
 
     trigger_name: Literal["github_commit_event"] = "github_commit_event"
-    repos: List[str] = Field(
+    repos: list[str] = Field(
         default_factory=list,
         description="List of repositories in owner/repo format",
     )
@@ -105,7 +101,7 @@ class GitHubPrEventConfig(BaseTriggerConfigData):
     """Config for github_pr_event trigger."""
 
     trigger_name: Literal["github_pr_event"] = "github_pr_event"
-    repos: List[str] = Field(
+    repos: list[str] = Field(
         default_factory=list,
         description="List of repositories in owner/repo format",
     )
@@ -115,7 +111,7 @@ class GitHubStarAddedConfig(BaseTriggerConfigData):
     """Config for github_star_added trigger."""
 
     trigger_name: Literal["github_star_added"] = "github_star_added"
-    repos: List[str] = Field(
+    repos: list[str] = Field(
         default_factory=list,
         description="List of repositories in owner/repo format",
     )
@@ -125,7 +121,7 @@ class GitHubIssueAddedConfig(BaseTriggerConfigData):
     """Config for github_issue_added trigger."""
 
     trigger_name: Literal["github_issue_added"] = "github_issue_added"
-    repos: List[str] = Field(
+    repos: list[str] = Field(
         default_factory=list,
         description="List of repositories in owner/repo format",
     )
@@ -145,17 +141,13 @@ class GoogleDocsNewDocumentConfig(BaseTriggerConfigData):
 class GoogleDocsDocumentDeletedConfig(BaseTriggerConfigData):
     """Config for google_docs_document_deleted trigger."""
 
-    trigger_name: Literal["google_docs_document_deleted"] = (
-        "google_docs_document_deleted"
-    )
+    trigger_name: Literal["google_docs_document_deleted"] = "google_docs_document_deleted"
 
 
 class GoogleDocsDocumentUpdatedConfig(BaseTriggerConfigData):
     """Config for google_docs_document_updated trigger."""
 
-    trigger_name: Literal["google_docs_document_updated"] = (
-        "google_docs_document_updated"
-    )
+    trigger_name: Literal["google_docs_document_updated"] = "google_docs_document_updated"
 
 
 # =============================================================================
@@ -167,11 +159,11 @@ class GoogleSheetsNewRowConfig(BaseTriggerConfigData):
     """Config for google_sheets_new_row trigger."""
 
     trigger_name: Literal["google_sheets_new_row"] = "google_sheets_new_row"
-    spreadsheet_ids: List[str] = Field(
+    spreadsheet_ids: list[str] = Field(
         default_factory=list,
         description="List of spreadsheet IDs to monitor",
     )
-    sheet_names: List[str] = Field(
+    sheet_names: list[str] = Field(
         default_factory=list,
         description="List of sheet names to monitor (requires spreadsheet_ids)",
     )
@@ -181,7 +173,7 @@ class GoogleSheetsNewSheetConfig(BaseTriggerConfigData):
     """Config for google_sheets_new_sheet trigger."""
 
     trigger_name: Literal["google_sheets_new_sheet"] = "google_sheets_new_sheet"
-    spreadsheet_ids: List[str] = Field(
+    spreadsheet_ids: list[str] = Field(
         default_factory=list,
         description="List of spreadsheet IDs to monitor",
     )
@@ -231,7 +223,7 @@ class NotionNewPageInDbConfig(BaseTriggerConfigData):
     """Config for notion_new_page_in_db trigger."""
 
     trigger_name: Literal["notion_new_page_in_db"] = "notion_new_page_in_db"
-    database_ids: List[str] = Field(
+    database_ids: list[str] = Field(
         default_factory=list,
         description="List of Notion database IDs to monitor",
     )
@@ -241,7 +233,7 @@ class NotionPageUpdatedConfig(BaseTriggerConfigData):
     """Config for notion_page_updated trigger."""
 
     trigger_name: Literal["notion_page_updated"] = "notion_page_updated"
-    page_ids: List[str] = Field(
+    page_ids: list[str] = Field(
         default_factory=list,
         description="List of Notion page IDs to monitor",
     )
@@ -262,7 +254,7 @@ class SlackNewMessageConfig(BaseTriggerConfigData):
     """Config for slack_new_message trigger."""
 
     trigger_name: Literal["slack_new_message"] = "slack_new_message"
-    channel_ids: List[str] = Field(
+    channel_ids: list[str] = Field(
         default_factory=list,
         description="List of Slack channel IDs to monitor (optional)",
     )

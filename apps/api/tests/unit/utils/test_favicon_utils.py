@@ -17,7 +17,6 @@ from app.utils.favicon_utils import (
     fetch_favicon_from_url,
 )
 
-
 # ---------------------------------------------------------------------------
 # _get_domain_cache_key
 # ---------------------------------------------------------------------------
@@ -318,9 +317,7 @@ class TestValidateFaviconUrl:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "app.utils.favicon_utils.httpx.AsyncClient", return_value=mock_client
-        ):
+        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=mock_client):
             result = await _validate_favicon_url("https://example.com/favicon.png")
         assert result is True
 
@@ -336,16 +333,12 @@ class TestValidateFaviconUrl:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "app.utils.favicon_utils.httpx.AsyncClient", return_value=mock_client
-        ):
+        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=mock_client):
             result = await _validate_favicon_url("https://example.com/favicon.png")
         assert result is False
 
     @patch("app.utils.favicon_utils.log")
-    async def test_non_image_content_type_returns_false(
-        self, _mock_log: MagicMock
-    ) -> None:
+    async def test_non_image_content_type_returns_false(self, _mock_log: MagicMock) -> None:
         """200 response with non-image content-type returns False."""
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -356,9 +349,7 @@ class TestValidateFaviconUrl:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "app.utils.favicon_utils.httpx.AsyncClient", return_value=mock_client
-        ):
+        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=mock_client):
             result = await _validate_favicon_url("https://example.com/favicon.png")
         assert result is False
 
@@ -370,9 +361,7 @@ class TestValidateFaviconUrl:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "app.utils.favicon_utils.httpx.AsyncClient", return_value=mock_client
-        ):
+        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=mock_client):
             result = await _validate_favicon_url("https://example.com/favicon.png")
         assert result is False
 
@@ -388,9 +377,7 @@ class TestValidateFaviconUrl:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "app.utils.favicon_utils.httpx.AsyncClient", return_value=mock_client
-        ):
+        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=mock_client):
             result = await _validate_favicon_url("https://example.com/favicon.ico")
         assert result is True
 
@@ -501,9 +488,7 @@ class TestFetchFaviconImpl:
     @patch("app.utils.favicon_utils._try_html_link_parsing", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._try_standard_favicon", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._try_favicon_library", new_callable=AsyncMock)
-    @patch(
-        "app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock
-    )
+    @patch("app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils.tldextract.extract")
     async def test_smithery_tries_google_first(
         self,
@@ -518,9 +503,7 @@ class TestFetchFaviconImpl:
         mock_result = MagicMock()
         mock_result.top_domain_under_public_suffix = "smithery.ai"
         mock_extract.return_value = mock_result
-        mock_google.return_value = (
-            "https://google.com/s2/favicons?domain=smithery.ai&sz=256"
-        )
+        mock_google.return_value = "https://google.com/s2/favicons?domain=smithery.ai&sz=256"
 
         result = await _fetch_favicon_impl("https://smithery.ai/server/test")
 
@@ -536,9 +519,7 @@ class TestFetchFaviconImpl:
     @patch("app.utils.favicon_utils._validate_favicon_url", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._is_known_favicon_url")
     @patch("app.utils.favicon_utils._try_favicon_library", new_callable=AsyncMock)
-    @patch(
-        "app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock
-    )
+    @patch("app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils.tldextract.extract")
     async def test_smithery_falls_back_to_favicon_library(
         self,
@@ -570,9 +551,7 @@ class TestFetchFaviconImpl:
     @patch("app.utils.favicon_utils._try_standard_favicon", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._validate_favicon_url", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._try_favicon_library", new_callable=AsyncMock)
-    @patch(
-        "app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock
-    )
+    @patch("app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils.tldextract.extract")
     async def test_smithery_favicon_lib_result_validated_if_unknown_ext(
         self,
@@ -602,9 +581,7 @@ class TestFetchFaviconImpl:
     @patch("app.utils.favicon_utils._try_standard_favicon", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._validate_favicon_url", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._try_favicon_library", new_callable=AsyncMock)
-    @patch(
-        "app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock
-    )
+    @patch("app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils.tldextract.extract")
     async def test_smithery_favicon_lib_fails_validation_falls_to_standard(
         self,
@@ -634,9 +611,7 @@ class TestFetchFaviconImpl:
     @patch("app.utils.favicon_utils._try_html_link_parsing", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._try_standard_favicon", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._try_favicon_library", new_callable=AsyncMock)
-    @patch(
-        "app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock
-    )
+    @patch("app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils.tldextract.extract")
     async def test_smithery_falls_back_to_html_parsing(
         self,
@@ -666,9 +641,7 @@ class TestFetchFaviconImpl:
     @patch("app.utils.favicon_utils._try_html_link_parsing", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._try_standard_favicon", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._try_favicon_library", new_callable=AsyncMock)
-    @patch(
-        "app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock
-    )
+    @patch("app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils.tldextract.extract")
     async def test_smithery_html_result_with_known_ext_skips_validation(
         self,
@@ -699,9 +672,7 @@ class TestFetchFaviconImpl:
     @patch("app.utils.favicon_utils._try_html_link_parsing", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._try_standard_favicon", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._try_favicon_library", new_callable=AsyncMock)
-    @patch(
-        "app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock
-    )
+    @patch("app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils.tldextract.extract")
     async def test_smithery_html_result_unknown_ext_validated(
         self,
@@ -733,9 +704,7 @@ class TestFetchFaviconImpl:
     @patch("app.utils.favicon_utils._try_html_link_parsing", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._try_standard_favicon", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._try_favicon_library", new_callable=AsyncMock)
-    @patch(
-        "app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock
-    )
+    @patch("app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils.tldextract.extract")
     async def test_smithery_all_strategies_fail_returns_none(
         self,
@@ -765,9 +734,7 @@ class TestFetchFaviconImpl:
     @patch("app.utils.favicon_utils._try_html_link_parsing", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._try_standard_favicon", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils._try_favicon_library", new_callable=AsyncMock)
-    @patch(
-        "app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock
-    )
+    @patch("app.utils.favicon_utils._try_google_favicon_service", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils.tldextract.extract")
     async def test_smithery_html_result_fails_validation_returns_none(
         self,

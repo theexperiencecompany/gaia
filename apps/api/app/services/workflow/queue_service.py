@@ -1,10 +1,9 @@
 """Unified workflow queue service for background job management."""
 
-from datetime import datetime
-from typing import Optional
+from datetime import UTC, datetime
 
-from shared.py.wide_events import log
 from app.utils.redis_utils import RedisPoolManager
+from shared.py.wide_events import log
 
 
 class WorkflowQueueService:
@@ -16,35 +15,28 @@ class WorkflowQueueService:
         try:
             pool = await RedisPoolManager.get_pool()
 
-            job = await pool.enqueue_job(
-                "generate_workflow_steps", workflow_id, user_id
-            )
+            job = await pool.enqueue_job("generate_workflow_steps", workflow_id, user_id)
 
             if job:
                 log.set(workflow={"id": workflow_id, "status": "generation_queued"})
-                log.info(
-                    f"Queued workflow generation for {workflow_id} with job ID {job.job_id}"
-                )
+                log.info(f"Queued workflow generation for {workflow_id} with job ID {job.job_id}")
                 return True
-            else:
-                log.error(f"Failed to queue workflow generation for {workflow_id}")
-                return False
+            log.error(f"Failed to queue workflow generation for {workflow_id}")
+            return False
 
         except Exception as e:
-            log.error(f"Error queuing workflow generation for {workflow_id}: {str(e)}")
+            log.error(f"Error queuing workflow generation for {workflow_id}: {e!s}")
             return False
 
     @staticmethod
     async def queue_workflow_execution(
-        workflow_id: str, user_id: str, context: Optional[dict] = None
+        workflow_id: str, user_id: str, context: dict | None = None
     ) -> bool:
         """Queue workflow execution as a background task."""
         try:
             pool = await RedisPoolManager.get_pool()
 
-            job = await pool.enqueue_job(
-                "execute_workflow_by_id", workflow_id, context or {}
-            )
+            job = await pool.enqueue_job("execute_workflow_by_id", workflow_id, context or {})
 
             if job:
                 log.set(
@@ -53,26 +45,21 @@ class WorkflowQueueService:
                     queue_mode="immediate",
                     defer_seconds=0,
                 )
-                log.info(
-                    f"Queued workflow execution for {workflow_id} with job ID {job.job_id}"
-                )
+                log.info(f"Queued workflow execution for {workflow_id} with job ID {job.job_id}")
                 return True
-            else:
-                log.error(f"Failed to queue workflow execution for {workflow_id}")
-                return False
+            log.error(f"Failed to queue workflow execution for {workflow_id}")
+            return False
 
         except Exception as e:
-            log.error(f"Error queuing workflow execution for {workflow_id}: {str(e)}")
+            log.error(f"Error queuing workflow execution for {workflow_id}: {e!s}")
             return False
 
     @staticmethod
     async def queue_scheduled_workflow_execution(
-        workflow_id: str, scheduled_at: datetime, context: Optional[dict] = None
+        workflow_id: str, scheduled_at: datetime, context: dict | None = None
     ) -> bool:
         """Queue a scheduled workflow execution with defer_until."""
         try:
-            from datetime import timezone as _tz
-
             pool = await RedisPoolManager.get_pool()
 
             tz_was_naive = scheduled_at.tzinfo is None
@@ -81,8 +68,8 @@ class WorkflowQueueService:
                     f"queue_scheduled_workflow_execution: naive scheduled_at for "
                     f"{workflow_id}, assuming UTC — check caller",
                 )
-                scheduled_at = scheduled_at.replace(tzinfo=_tz.utc)
-            now = datetime.now(_tz.utc)
+                scheduled_at = scheduled_at.replace(tzinfo=UTC)
+            now = datetime.now(UTC)
             defer_seconds = int((scheduled_at - now).total_seconds())
 
             job = await pool.enqueue_job(
@@ -105,16 +92,11 @@ class WorkflowQueueService:
                     f"Queued scheduled workflow execution for {workflow_id} at {scheduled_at} with job ID {job.job_id}"
                 )
                 return True
-            else:
-                log.error(
-                    f"Failed to queue scheduled workflow execution for {workflow_id}"
-                )
-                return False
+            log.error(f"Failed to queue scheduled workflow execution for {workflow_id}")
+            return False
 
         except Exception as e:
-            log.error(
-                f"Error queuing scheduled workflow execution for {workflow_id}: {str(e)}"
-            )
+            log.error(f"Error queuing scheduled workflow execution for {workflow_id}: {e!s}")
             return False
 
     @staticmethod
@@ -138,18 +120,13 @@ class WorkflowQueueService:
 
             if job:
                 log.set(workflow={"id": workflow_id, "status": "regeneration_queued"})
-                log.info(
-                    f"Queued workflow regeneration for {workflow_id} with job ID {job.job_id}"
-                )
+                log.info(f"Queued workflow regeneration for {workflow_id} with job ID {job.job_id}")
                 return True
-            else:
-                log.error(f"Failed to queue workflow regeneration for {workflow_id}")
-                return False
+            log.error(f"Failed to queue workflow regeneration for {workflow_id}")
+            return False
 
         except Exception as e:
-            log.error(
-                f"Error queuing workflow regeneration for {workflow_id}: {str(e)}"
-            )
+            log.error(f"Error queuing workflow regeneration for {workflow_id}: {e!s}")
             return False
 
     @staticmethod
@@ -184,16 +161,13 @@ class WorkflowQueueService:
                     ex=300,  # 5 minute TTL
                 )
 
-                log.info(
-                    f"Queued todo workflow generation for {todo_id} with job ID {job.job_id}"
-                )
+                log.info(f"Queued todo workflow generation for {todo_id} with job ID {job.job_id}")
                 return True
-            else:
-                log.error(f"Failed to queue todo workflow generation for {todo_id}")
-                return False
+            log.error(f"Failed to queue todo workflow generation for {todo_id}")
+            return False
 
         except Exception as e:
-            log.error(f"Error queuing todo workflow generation for {todo_id}: {str(e)}")
+            log.error(f"Error queuing todo workflow generation for {todo_id}: {e!s}")
             return False
 
     @staticmethod

@@ -6,14 +6,14 @@ Test coverage:
 - Security / access-control scenarios
 """
 
-import json
 from contextlib import asynccontextmanager
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
-import pytest
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import httpx
+import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
@@ -31,7 +31,6 @@ from app.api.v1.endpoints.vfs import (
 from app.models.chat_models import tool_fields
 from app.models.vfs_models import VFSNodeType
 from app.services.chat_service import extract_tool_data
-
 
 # ---------------------------------------------------------------------------
 # Pure-unit tests: constants / utilities
@@ -61,9 +60,7 @@ def test_detect_artifact_content_type_defaults_to_text_plain() -> None:
 
 def test_is_user_visible_path_detects_only_session_visible_files() -> None:
     """Only paths under /.user-visible/ should be treated as visible artifacts."""
-    assert is_user_visible_path(
-        "/users/u1/global/executor/sessions/conv1/.user-visible/report.md"
-    )
+    assert is_user_visible_path("/users/u1/global/executor/sessions/conv1/.user-visible/report.md")
     assert not is_user_visible_path("/users/u1/global/executor/files/report.md")
 
 
@@ -377,13 +374,9 @@ async def test_vfs_user_cannot_read_other_users_file() -> None:
     async with await _make_http_client(user=user_b) as client:
         with (
             patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", col),
-            patch(
-                "app.api.v1.endpoints.vfs.get_vfs", new=AsyncMock(return_value=real_vfs)
-            ),
+            patch("app.api.v1.endpoints.vfs.get_vfs", new=AsyncMock(return_value=real_vfs)),
         ):
-            response = await client.get(
-                "/api/v1/vfs/read", params={"path": user_a_path}
-            )
+            response = await client.get("/api/v1/vfs/read", params={"path": user_a_path})
 
     # Access-control violation → 403; path might also normalise to 404
     assert response.status_code in (403, 404), (
@@ -421,12 +414,9 @@ async def test_vfs_path_traversal_blocked() -> None:
                     new=AsyncMock(return_value=real_vfs),
                 ),
             ):
-                response = await client.get(
-                    "/api/v1/vfs/read", params={"path": traversal_path}
-                )
+                response = await client.get("/api/v1/vfs/read", params={"path": traversal_path})
             assert response.status_code in (400, 403, 422), (
-                f"Path traversal '{traversal_path}' should be rejected, "
-                f"got {response.status_code}"
+                f"Path traversal '{traversal_path}' should be rejected, got {response.status_code}"
             )
 
 
@@ -534,6 +524,4 @@ async def test_vfs_delete_removes_file() -> None:
             # Now read through the HTTP endpoint — MongoDB returns None → 404
             response = await client.get("/api/v1/vfs/read", params={"path": file_path})
 
-    assert response.status_code == 404, (
-        f"Expected 404 after delete, got {response.status_code}"
-    )
+    assert response.status_code == 404, f"Expected 404 after delete, got {response.status_code}"

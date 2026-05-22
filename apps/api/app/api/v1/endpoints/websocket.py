@@ -1,9 +1,10 @@
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+
 from app.api.v1.dependencies.oauth_dependencies import get_current_user_ws
-from shared.py.wide_events import log
 from app.core.websocket_manager import (
     websocket_manager as connection_manager,
 )
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+from shared.py.wide_events import log
 
 router = APIRouter(prefix="/ws", tags=["WebSocket"])
 
@@ -53,7 +54,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         # Handle any other exceptions
         log.set(disconnect_reason="server_error")
-        log.error(f"WebSocket error for user {user_id}: {str(e)}")
+        log.error(f"WebSocket error for user {user_id}: {e!s}")
         connection_manager.remove_connection(user_id=user_id, websocket=websocket)
         try:
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR)

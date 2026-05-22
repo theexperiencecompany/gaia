@@ -7,10 +7,10 @@ when using msgpack encoding, preventing serialization errors.
 
 from typing import Any
 
-import ormsgpack
 from langchain_core.messages import BaseMessage
 from langgraph.checkpoint.serde import jsonplus
 from langgraph.checkpoint.serde.jsonplus import _msgpack_default, _option
+import ormsgpack
 
 
 def message_to_dict(msg):
@@ -20,28 +20,25 @@ def message_to_dict(msg):
     # Handles HumanMessage, AIMessage, ToolMessage, etc.
     if isinstance(msg, BaseMessage):
         return msg.model_dump()
-    elif hasattr(msg, "to_dict"):
+    if hasattr(msg, "to_dict"):
         return msg.to_dict()
-    elif isinstance(msg, dict):
+    if isinstance(msg, dict):
         # Recursively convert dict values
         return {k: message_to_dict(v) for k, v in msg.items()}
-    elif isinstance(msg, (list, tuple)):
+    if isinstance(msg, (list, tuple)):
         # Recursively convert each item
         return [message_to_dict(x) for x in msg]
-    elif isinstance(msg, (str, int, float, bool, type(None))):
+    if isinstance(msg, (str, int, float, bool, type(None))):
         return msg
-    else:
-        # Fallback: try to extract content and role
-        return {
-            "role": getattr(msg, "role", "user"),
-            "content": str(getattr(msg, "content", msg)),
-        }
+    # Fallback: try to extract content and role
+    return {
+        "role": getattr(msg, "role", "user"),
+        "content": str(getattr(msg, "content", msg)),
+    }
 
 
 def _msgpack_enc(data: Any) -> bytes:
-    return ormsgpack.packb(
-        message_to_dict(data), default=_msgpack_default, option=_option
-    )
+    return ormsgpack.packb(message_to_dict(data), default=_msgpack_default, option=_option)
 
 
-setattr(jsonplus, "_msgpack_enc", _msgpack_enc)
+jsonplus._msgpack_enc = _msgpack_enc

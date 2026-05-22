@@ -8,14 +8,14 @@ Provides:
 - Reusable fake user and auth fixtures
 """
 
-import os
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+import pytest
 
 # ---------------------------------------------------------------------------
 # Environment setup — runs at import time, before any app module is loaded.
@@ -188,12 +188,8 @@ def pytest_configure(config):
         "markers",
         "service: Service integration tests (require real Postgres/Redis/MongoDB)",
     )
-    config.addinivalue_line(
-        "markers", "e2e: End-to-end tests (real or near-real services)"
-    )
-    config.addinivalue_line(
-        "markers", "composio: Composio integration tests (require credentials)"
-    )
+    config.addinivalue_line("markers", "e2e: End-to-end tests (real or near-real services)")
+    config.addinivalue_line("markers", "composio: Composio integration tests (require credentials)")
     config.addinivalue_line("markers", "slow: Slow tests")
 
 

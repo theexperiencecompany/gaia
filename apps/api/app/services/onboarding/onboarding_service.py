@@ -1,7 +1,10 @@
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 
-from shared.py.wide_events import log
+from bson import ObjectId
+from fastapi import BackgroundTasks, HTTPException
+from pymongo import ReturnDocument
+
 from app.db.mongodb.collections import (
     conversations_collection,
     todos_collection,
@@ -24,12 +27,10 @@ from app.services.onboarding.intelligence_job import (
 )
 from app.services.onboarding.post_onboarding_service import seed_initial_user_data
 from app.services.workflow.service import WorkflowService
-from bson import ObjectId
-from fastapi import BackgroundTasks, HTTPException
-from pymongo import ReturnDocument
+from shared.py.wide_events import log
 
 
-def _serialize_user(user_doc: Dict[str, Any]) -> Dict[str, Any]:
+def _serialize_user(user_doc: dict[str, Any]) -> dict[str, Any]:
     """Stringify `_id` / `user_id` so the doc is JSON-serializable."""
     user_doc["_id"] = str(user_doc["_id"])
     user_doc["user_id"] = user_doc["_id"]
@@ -40,7 +41,7 @@ async def complete_onboarding(
     user_id: str,
     onboarding_data: OnboardingRequest,
     background_tasks: BackgroundTasks,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Complete a user's onboarding submission. Idempotent under concurrent
     retries via an atomic `onboarding: {$exists: false}` gate."""
     log.set(auth={"user_id": user_id})
@@ -54,14 +55,14 @@ async def complete_onboarding(
             custom_instructions=None,
         )
 
-        update_fields: Dict[str, Any] = {
+        update_fields: dict[str, Any] = {
             "name": onboarding_data.name.strip(),
             "onboarding.completed": True,
-            "onboarding.completed_at": datetime.now(timezone.utc),
+            "onboarding.completed_at": datetime.now(UTC),
             "onboarding.phase": OnboardingPhase.PERSONALIZATION_PENDING,
             "onboarding.bio_status": BioStatus.PENDING,
             "onboarding.preferences": preferences.model_dump(),
-            "updated_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(UTC),
         }
 
         if onboarding_data.timezone:
@@ -135,13 +136,11 @@ async def complete_onboarding(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(
-            f"Error completing onboarding for user {user_id}: {str(e)}", exc_info=True
-        )
+        log.error(f"Error completing onboarding for user {user_id}: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to complete onboarding")
 
 
-async def get_user_onboarding_status(user_id: str) -> Dict[str, Any]:
+async def get_user_onboarding_status(user_id: str) -> dict[str, Any]:
     """
     Get user's onboarding status and preferences.
 
@@ -165,16 +164,14 @@ async def get_user_onboarding_status(user_id: str) -> Dict[str, Any]:
             "completed_at": onboarding_data.get("completed_at"),
             "phase": onboarding_data.get("phase"),
             "preferences": onboarding_data.get("preferences", {}),
-            "first_message_conversation_id": onboarding_data.get(
-                "first_message_conversation_id"
-            ),
+            "first_message_conversation_id": onboarding_data.get("first_message_conversation_id"),
         }
 
     except HTTPException:
         raise
     except Exception as e:
         log.error(
-            f"Error getting onboarding status for user {user_id}: {str(e)}",
+            f"Error getting onboarding status for user {user_id}: {e!s}",
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="An internal error occurred")
@@ -182,7 +179,7 @@ async def get_user_onboarding_status(user_id: str) -> Dict[str, Any]:
 
 async def update_onboarding_preferences(
     user_id: str, preferences: OnboardingPreferences
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Update user's onboarding preferences (for settings page).
     Uses atomic operations for data consistency.
@@ -217,7 +214,7 @@ async def update_onboarding_preferences(
             {
                 "$set": {
                     "onboarding.preferences": sanitized_preferences,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
             return_document=ReturnDocument.AFTER,
@@ -238,13 +235,13 @@ async def update_onboarding_preferences(
         raise
     except Exception as e:
         log.error(
-            f"Error updating onboarding preferences for user {user_id}: {str(e)}",
+            f"Error updating onboarding preferences for user {user_id}: {e!s}",
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Failed to update preferences")
 
 
-async def reset_onboarding(user_id: str) -> Dict[str, int]:
+async def reset_onboarding(user_id: str) -> dict[str, int]:
     """Fully reset a user's onboarding so they can run the flow from scratch.
     Returns counts of what was deleted."""
     log.set(auth={"user_id": user_id}, onboarding={"operation": "reset"})
@@ -315,7 +312,7 @@ async def reset_onboarding(user_id: str) -> Dict[str, int]:
         {"_id": user_object_id},
         {
             "$unset": {"onboarding": ""},
-            "$set": {"updated_at": datetime.now(timezone.utc)},
+            "$set": {"updated_at": datetime.now(UTC)},
         },
     )
 
@@ -334,9 +331,7 @@ async def reset_onboarding(user_id: str) -> Dict[str, int]:
 
 async def _disconnect_user_integrations(user_id: str) -> int:
     try:
-        cursor = user_integrations_collection.find(
-            {"user_id": user_id}, {"integration_id": 1}
-        )
+        cursor = user_integrations_collection.find({"user_id": user_id}, {"integration_id": 1})
         integration_ids = [doc["integration_id"] async for doc in cursor]
     except Exception as e:
         log.warning(f"[reset_onboarding] failed to list user integrations: {e}")
@@ -348,9 +343,7 @@ async def _disconnect_user_integrations(user_id: str) -> int:
             await disconnect_integration(user_id, integration_id)
             disconnected += 1
         except Exception as e:
-            log.warning(
-                f"[reset_onboarding] failed to disconnect {integration_id}: {e}"
-            )
+            log.warning(f"[reset_onboarding] failed to disconnect {integration_id}: {e}")
     return disconnected
 
 

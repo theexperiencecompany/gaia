@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from google.api_core.exceptions import (
     DeadlineExceeded,
@@ -6,16 +7,6 @@ from google.api_core.exceptions import (
     ResourceExhausted,
     ServiceUnavailable,
 )
-from shared.py.wide_events import log
-from app.config.settings import settings
-from app.constants.llm import (
-    DEFAULT_GEMINI_FREE_MODEL_NAME,
-    DEFAULT_GEMINI_MODEL_NAME,
-    DEFAULT_GROK_MODEL_NAME,
-    GEMINI_FREE_FALLBACK_MODELS,
-    OPENROUTER_BASE_URL,
-)
-from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
@@ -26,6 +17,16 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from typing_extensions import TypedDict
 
+from app.config.settings import settings
+from app.constants.llm import (
+    DEFAULT_GEMINI_FREE_MODEL_NAME,
+    DEFAULT_GEMINI_MODEL_NAME,
+    DEFAULT_GROK_MODEL_NAME,
+    GEMINI_FREE_FALLBACK_MODELS,
+    OPENROUTER_BASE_URL,
+)
+from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from shared.py.wide_events import log
 
 # Exception types we retry at the LLM layer. All of these are transient /
 # infrastructure errors that are safe to retry and tend to succeed on a
@@ -87,9 +88,7 @@ def init_openai_llm():
         streaming=True,
         stream_usage=True,
     ).configurable_fields(
-        model_name=ConfigurableField(
-            id="model", name="Model", description="Which model to use"
-        ),
+        model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
     )
 
 
@@ -106,9 +105,7 @@ def init_gemini_llm():
         temperature=0.1,
         streaming=True,
     ).configurable_fields(
-        model=ConfigurableField(
-            id="model_name", name="Model", description="Which model to use"
-        ),
+        model=ConfigurableField(id="model_name", name="Model", description="Which model to use"),
     )
     return _wrap_with_retry(llm)
 
@@ -139,14 +136,12 @@ def init_openrouter_llm():
             }
         },
     ).configurable_fields(
-        model_name=ConfigurableField(
-            id="model", name="Model", description="Which model to use"
-        ),
+        model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
     )
 
 
 def init_llm(
-    preferred_provider: Optional[str] = None,
+    preferred_provider: str | None = None,
     fallback_enabled: bool = True,
 ):
     """
@@ -196,9 +191,7 @@ def init_llm(
 
     log.set(
         llm={
-            "model": PROVIDER_MODELS.get(
-                primary_provider["name"], primary_provider["name"]
-            ),
+            "model": PROVIDER_MODELS.get(primary_provider["name"], primary_provider["name"]),
             "provider": primary_provider["name"],
             "is_free": False,
         }
@@ -206,7 +199,7 @@ def init_llm(
     return _create_configurable_llm(primary_provider, alternative_providers)
 
 
-def _get_available_providers() -> Dict[str, Any]:
+def _get_available_providers() -> dict[str, Any]:
     """
     Retrieve available LLM provider instances from global providers registry.
 
@@ -230,10 +223,10 @@ def _get_available_providers() -> Dict[str, Any]:
 
 
 def _get_ordered_providers(
-    available_providers: Dict[str, Any],
-    preferred_provider: Optional[str],
+    available_providers: dict[str, Any],
+    preferred_provider: str | None,
     fallback_enabled: bool,
-) -> List[LLMProvider]:
+) -> list[LLMProvider]:
     """
     Determine the order of providers based on preferences and availability.
 
@@ -265,15 +258,13 @@ def _get_ordered_providers(
             provider_name = PROVIDER_PRIORITY[priority]
             if provider_name in remaining_providers:
                 ordered.append(
-                    LLMProvider(
-                        name=provider_name, instance=remaining_providers[provider_name]
-                    )
+                    LLMProvider(name=provider_name, instance=remaining_providers[provider_name])
                 )
 
     return ordered
 
 
-def _create_configurable_llm(primary: LLMProvider, alternatives: List[LLMProvider]):
+def _create_configurable_llm(primary: LLMProvider, alternatives: list[LLMProvider]):
     """
     Create a configurable LLM instance with alternatives.
 
@@ -308,7 +299,7 @@ def register_llm_providers():
     init_openrouter_llm()
 
 
-def get_free_llm_chain() -> List[BaseChatModel]:
+def get_free_llm_chain() -> list[BaseChatModel]:
     """
     Get a chain of free/low-cost LLMs for auxiliary tasks with fallback support.
 
@@ -319,7 +310,7 @@ def get_free_llm_chain() -> List[BaseChatModel]:
     Returns:
         List of LLM instances to try in order
     """
-    llms: List[BaseChatModel] = []
+    llms: list[BaseChatModel] = []
 
     # Primary: OpenRouter free model with automatic model fallback
     if settings.OPENROUTER_API_KEY:
@@ -358,9 +349,9 @@ def get_free_llm_chain() -> List[BaseChatModel]:
 
 
 async def invoke_with_fallback(
-    llm_chain: List[BaseChatModel],
+    llm_chain: list[BaseChatModel],
     messages: Sequence[BaseMessage],
-    config: Optional[RunnableConfig] = None,
+    config: RunnableConfig | None = None,
 ) -> BaseMessage:
     """
     Invoke LLMs in sequence until one succeeds.
@@ -379,7 +370,7 @@ async def invoke_with_fallback(
     Raises:
         RuntimeError: If all LLMs in the chain fail
     """
-    last_error: Optional[Exception] = None
+    last_error: Exception | None = None
 
     for i, llm in enumerate(llm_chain):
         try:
@@ -388,9 +379,7 @@ async def invoke_with_fallback(
             provider_name = type(llm).__name__
             last_error = e
             if i < len(llm_chain) - 1:
-                log.warning(
-                    f"LLM {provider_name} failed, falling back to next provider: {e}"
-                )
+                log.warning(f"LLM {provider_name} failed, falling back to next provider: {e}")
             else:
                 log.error(f"All LLM providers failed. Last error: {e}")
 

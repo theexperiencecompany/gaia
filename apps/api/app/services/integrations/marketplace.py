@@ -1,9 +1,9 @@
 """Marketplace integration functions - get_all_integrations, get_integration_details."""
 
 import asyncio
-from typing import Optional
 
-from shared.py.wide_events import log
+from bson import ObjectId
+
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.mongodb.collections import integrations_collection, users_collection
 from app.models.integration_models import (
@@ -14,17 +14,15 @@ from app.models.integration_models import (
 )
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
-from bson import ObjectId
+from shared.py.wide_events import log
 
 
 async def get_all_integrations(
-    category: Optional[str] = None,
+    category: str | None = None,
     include_custom_public: bool = True,
 ) -> MarketplaceResponse:
     """Get all available integrations for the marketplace."""
-    log.set(
-        integration={"provider": category or "all", "action": "get_all_integrations"}
-    )
+    log.set(integration={"provider": category or "all", "action": "get_all_integrations"})
     tools_store = get_mcp_tools_store()
 
     async def fetch_mcp_tools() -> dict[str, dict]:
@@ -43,9 +41,7 @@ async def get_all_integrations(
         async for doc in cursor:
             try:
                 integration = Integration(**doc)
-                custom_integrations.append(
-                    IntegrationResponse.from_integration(integration)
-                )
+                custom_integrations.append(IntegrationResponse.from_integration(integration))
             except Exception as e:
                 log.warning(f"Failed to parse custom integration: {e}")
 
@@ -68,9 +64,7 @@ async def get_all_integrations(
         # Hydrate tools from global store (SSoT format: {"tools": [...], "name": ..., "icon_url": ...})
         stored_data = all_mcp_tools.get(oauth_int.id, {})
         stored_tools = (
-            stored_data.get("tools", [])
-            if isinstance(stored_data, dict)
-            else stored_data
+            stored_data.get("tools", []) if isinstance(stored_data, dict) else stored_data
         )
         if stored_tools:
             response.tools = [
@@ -92,11 +86,9 @@ async def get_all_integrations(
     )
 
 
-async def get_integration_details(integration_id: str) -> Optional[IntegrationResponse]:
+async def get_integration_details(integration_id: str) -> IntegrationResponse | None:
     """Get single integration details by ID."""
-    log.set(
-        integration={"provider": integration_id, "action": "get_integration_details"}
-    )
+    log.set(integration={"provider": integration_id, "action": "get_integration_details"})
     tools_store = get_mcp_tools_store()
     stored_tools = await tools_store.get_tools(integration_id)
 
@@ -105,9 +97,7 @@ async def get_integration_details(integration_id: str) -> Optional[IntegrationRe
         return None
 
     if resolved.platform_integration:
-        response = IntegrationResponse.from_oauth_integration(
-            resolved.platform_integration
-        )
+        response = IntegrationResponse.from_oauth_integration(resolved.platform_integration)
     elif resolved.custom_doc:
         try:
             integration = Integration(**resolved.custom_doc)
@@ -120,8 +110,7 @@ async def get_integration_details(integration_id: str) -> Optional[IntegrationRe
 
     if stored_tools and not response.tools:
         response.tools = [
-            IntegrationTool(name=t["name"], description=t.get("description"))
-            for t in stored_tools
+            IntegrationTool(name=t["name"], description=t.get("description")) for t in stored_tools
         ]
 
     if response.created_by:

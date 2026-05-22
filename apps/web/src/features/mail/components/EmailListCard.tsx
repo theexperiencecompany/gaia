@@ -175,4 +175,6 @@ export default function EmailListCard({
       </CollapsibleListWrapper>
     );
   }
+
+  return null;
 }

@@ -34,8 +34,8 @@ Usage:
         --add-metrics Moderation,Readability
 """
 
-import json
 from datetime import datetime
+import json
 from pathlib import Path
 from typing import Any
 
@@ -45,25 +45,28 @@ from app.patches.opik_patch import apply_opik_patch
 
 apply_opik_patch()
 
-import opik  # noqa: E402
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage  # noqa: E402
-from opik.evaluation import evaluate  # noqa: E402
-from opik.evaluation import evaluate_experiment  # noqa: E402
-from opik.evaluation.metrics import (  # noqa: E402
+import opik  # noqa: E402
+from opik.evaluation import (
+    evaluate,  # noqa: E402
+    evaluate_experiment,  # noqa: E402
+)
+from opik.evaluation.metrics import (  # noqa: E402  # noqa: E402
     AnswerRelevance,
     Equals,
     GEval,
     Hallucination,
     IsJson,
-    LLMJuriesJudge,
     LevenshteinRatio,
+    LLMJuriesJudge,
     Moderation,
     Readability,
     Sentiment,
     Tone,
     Usefulness,
+    base_metric,
+    score_result,
 )
-from opik.evaluation.metrics import base_metric, score_result  # noqa: E402
 
 from app.agents.llm.client import init_llm  # noqa: E402
 from app.config.settings import settings  # noqa: E402
@@ -243,9 +246,7 @@ def compute_pass_rate(
     for r in test_results:
         if r.score_results:
             valid_scores = [
-                s.value
-                for s in r.score_results
-                if s.name.lower() not in NON_STANDARD_RANGE_METRICS
+                s.value for s in r.score_results if s.name.lower() not in NON_STANDARD_RANGE_METRICS
             ]
             if not valid_scores:
                 continue
@@ -503,9 +504,7 @@ class GenericEvaluator:
             config=runnable_config,
         )
 
-        final_messages = [
-            m for m in result.get("messages", []) if isinstance(m, AIMessage)
-        ]
+        final_messages = [m for m in result.get("messages", []) if isinstance(m, AIMessage)]
         output = str(final_messages[-1].content) if final_messages else ""
 
         # Build trajectory summary
@@ -514,9 +513,7 @@ class GenericEvaluator:
             if isinstance(msg, AIMessage) and msg.tool_calls:
                 for tc in msg.tool_calls:
                     trajectory_parts.append(f"tool: {tc.get('name', 'unknown')}")
-        trajectory = (
-            ", ".join(trajectory_parts) if trajectory_parts else "no tool calls"
-        )
+        trajectory = ", ".join(trajectory_parts) if trajectory_parts else "no tool calls"
 
         return output, trajectory
 
@@ -549,8 +546,7 @@ class GenericEvaluator:
                         "trajectory": trajectory,
                         "reference": expected,
                     }
-                else:
-                    output = run_async(evaluator._call_llm_prompt_mode(query))
+                output = run_async(evaluator._call_llm_prompt_mode(query))
 
             return {
                 "input": query,
@@ -574,13 +570,9 @@ class GenericEvaluator:
             await self.create_dataset()
             dataset = self.opik_client.get_dataset(name=self.config.dataset_name)
 
-        experiment_name = (
-            f"generic_{self.config.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        )
+        experiment_name = f"generic_{self.config.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        log.info(
-            f"Running experiment: {experiment_name} with {len(self.metrics)} metrics"
-        )
+        log.info(f"Running experiment: {experiment_name} with {len(self.metrics)} metrics")
 
         eval_results = evaluate(
             experiment_name=experiment_name,
@@ -635,10 +627,7 @@ class GenericEvaluator:
                 status = "PASS" if mean_val >= self.config.pass_threshold else "FAIL"
                 print(f"  {metric_name}: {mean_val:.3f} [{status}]")
 
-        if (
-            hasattr(eval_results, "experiment_scores")
-            and eval_results.experiment_scores
-        ):
+        if hasattr(eval_results, "experiment_scores") and eval_results.experiment_scores:
             print("\nExperiment-level scores:")
             for es in eval_results.experiment_scores:
                 print(f"  {es.name}: {es.value:.3f} — {es.reason}")
@@ -747,14 +736,10 @@ async def evaluate_generic(
     """
     config = get_generic_config(eval_type)
     if not config:
-        raise ValueError(
-            f"Unknown eval type: {eval_type}. Available: {list_generic_eval_types()}"
-        )
+        raise ValueError(f"Unknown eval type: {eval_type}. Available: {list_generic_eval_types()}")
 
     if mode == "full" and not config.supports_mode_a:
-        log.warning(
-            f"{config.name} doesn't support full graph mode, falling back to prompt mode"
-        )
+        log.warning(f"{config.name} doesn't support full graph mode, falling back to prompt mode")
         mode = "prompt"
 
     evaluator = GenericEvaluator(config, mode=mode, system_prompt=system_prompt)

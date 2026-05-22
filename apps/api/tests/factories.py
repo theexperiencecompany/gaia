@@ -1,6 +1,6 @@
 """Test data factories for GAIA API tests."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.agents.core.state import State
@@ -11,7 +11,7 @@ def make_user(**overrides) -> dict:
         "user_id": str(uuid4()),
         "email": "test@example.com",
         "name": "Test User",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "is_active": True,
         "plan": "free",
         "onboarding_completed": True,
@@ -26,8 +26,8 @@ def make_conversation(user_id: str | None = None, **overrides) -> dict:
         "user_id": user_id or str(uuid4()),
         "description": "Test conversation",
         "messages": [],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
     }
     defaults.update(overrides)
     return defaults
@@ -37,7 +37,7 @@ def make_state(**overrides) -> State:
     defaults = {
         "query": "Hello, how are you?",
         "messages": [],
-        "current_datetime": datetime.now(timezone.utc).isoformat(),
+        "current_datetime": datetime.now(UTC).isoformat(),
         "mem0_user_id": str(uuid4()),
         "memories": [],
         "memories_stored": False,
@@ -95,7 +95,7 @@ def make_integration(provider: str, **overrides) -> dict:
             "access_token": f"test_token_{uuid4().hex[:8]}",
             "refresh_token": f"test_refresh_{uuid4().hex[:8]}",
         },
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
     defaults.update(overrides)
     return defaults

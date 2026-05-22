@@ -64,9 +64,7 @@ def create_fake_llm_with_tool_calls(
 def assert_tool_called(messages: list[BaseMessage], tool_name: str) -> None:
     tool_calls = extract_tool_calls(messages)
     names = [tc["name"] for tc in tool_calls]
-    assert tool_name in names, (
-        f"Tool '{tool_name}' not found in tool calls. Found: {names}"
-    )
+    assert tool_name in names, f"Tool '{tool_name}' not found in tool calls. Found: {names}"
 
 
 def extract_tool_calls(messages: list[BaseMessage]) -> list[dict[str, Any]]:

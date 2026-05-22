@@ -1,26 +1,26 @@
 """Tools service for managing and retrieving tool information."""
 
 import asyncio
-from typing import Any, Dict, Optional
+from typing import Any
 
 from app.agents.tools.core.registry import get_tool_registry
-from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.mongodb.collections import user_integrations_collection
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from app.utils.request_coalescing import coalesce_request
+from shared.py.wide_events import log
 
-_INTEGRATION_NAME_MAP: Dict[str, str] = {
+_INTEGRATION_NAME_MAP: dict[str, str] = {
     integration.id.lower(): integration.name for integration in OAUTH_INTEGRATIONS
 }
 
 
-def get_integration_name(integration_id: str) -> Optional[str]:
+def get_integration_name(integration_id: str) -> str | None:
     return _INTEGRATION_NAME_MAP.get(integration_id.lower())
 
 
-async def get_available_tools(user_id: Optional[str] = None) -> ToolsListResponse:
+async def get_available_tools(user_id: str | None = None) -> ToolsListResponse:
     """Get list of all available tools with their metadata.
 
     Uses request coalescing for global tools to prevent thundering herd.
@@ -31,7 +31,7 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
     return await _build_tools_response(user_id)
 
 
-async def _fetch_user_mcp_integrations(user_id: Optional[str]) -> list[dict]:
+async def _fetch_user_mcp_integrations(user_id: str | None) -> list[dict]:
     """Fetch all MCP integrations connected by user that have tools stored.
 
     Includes both custom MCP integrations (source='custom') and platform
@@ -68,16 +68,14 @@ async def _fetch_user_mcp_integrations(user_id: Optional[str]) -> list[dict]:
         return []
 
 
-async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListResponse:
+async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse:
     tool_infos: list[ToolInfo] = []
     categories: set[str] = set()
     seen_integrations: set[str] = set()
     seen_tool_names: set[str] = set()
 
     tool_registry = await get_tool_registry()
-    _categories = tool_registry.get_all_category_objects(
-        ignore_categories=["delegation"]
-    )
+    _categories = tool_registry.get_all_category_objects(ignore_categories=["delegation"])
 
     for category, category_obj in _categories.items():
         if category_obj.integration_name:
@@ -93,8 +91,7 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
             tool_info = ToolInfo(
                 name=tool.name,
                 category=category,
-                display_name=integration_display_name
-                or category.replace("_", " ").title(),
+                display_name=integration_display_name or category.replace("_", " ").title(),
                 icon_url=None,
                 requires_integration=category_obj.require_integration,
             )
@@ -129,14 +126,10 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
         for tool_dict in custom_tools:
             tool_name = tool_dict.get("name")
             if not tool_name:
-                log.warning(
-                    f"Skipping tool with missing 'name' from custom MCP {integration_id}"
-                )
+                log.warning(f"Skipping tool with missing 'name' from custom MCP {integration_id}")
                 continue
             if tool_name in seen_tool_names:
-                log.debug(
-                    f"Skipping duplicate tool from custom MCP {integration_id}: {tool_name}"
-                )
+                log.debug(f"Skipping duplicate tool from custom MCP {integration_id}: {tool_name}")
                 continue
             seen_tool_names.add(tool_name)
 
@@ -144,8 +137,7 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
                 ToolInfo(
                     name=tool_name,
                     category=integration_id,
-                    display_name=custom_name
-                    or integration_id.replace("_", " ").title(),
+                    display_name=custom_name or integration_id.replace("_", " ").title(),
                     icon_url=icon_url,
                 )
             )
@@ -214,18 +206,15 @@ async def get_tools_by_category(category: str) -> ToolsCategoryResponse:
         tool_info = ToolInfo(
             name=tool.name,
             category=category,
-            display_name=get_integration_name(category)
-            or category.replace("_", " ").title(),
+            display_name=get_integration_name(category) or category.replace("_", " ").title(),
         )
         tool_infos.append(tool_info)
 
-    return ToolsCategoryResponse(
-        category=category, tools=tool_infos, count=len(tool_infos)
-    )
+    return ToolsCategoryResponse(category=category, tools=tool_infos, count=len(tool_infos))
 
 
-async def get_tool_categories() -> Dict[str, int]:
-    category_counts: Dict[str, int] = {}
+async def get_tool_categories() -> dict[str, int]:
+    category_counts: dict[str, int] = {}
     tool_registry = await get_tool_registry()
     all_categories = tool_registry.get_all_category_objects()
 
@@ -272,9 +261,7 @@ async def get_user_mcp_tools(user_id: str) -> list[ToolInfo]:
             },
         ]
 
-        mcp_integrations = await user_integrations_collection.aggregate(
-            pipeline
-        ).to_list(None)
+        mcp_integrations = await user_integrations_collection.aggregate(pipeline).to_list(None)
 
         for mcp_integration in mcp_integrations:
             integration_id = mcp_integration.get("integration_id")
@@ -295,15 +282,12 @@ async def get_user_mcp_tools(user_id: str) -> list[ToolInfo]:
                     ToolInfo(
                         name=tool_name,
                         category=integration_id,
-                        display_name=display_name
-                        or integration_id.replace("_", " ").title(),
+                        display_name=display_name or integration_id.replace("_", " ").title(),
                         icon_url=icon_url,
                     )
                 )
 
-            log.debug(
-                f"Fetched {len(integration_tools)} tools from MCP {integration_id}"
-            )
+            log.debug(f"Fetched {len(integration_tools)} tools from MCP {integration_id}")
 
     except Exception as e:
         log.warning(f"Failed to fetch user MCP tools: {e}")
@@ -320,9 +304,7 @@ def merge_tools_responses(
         return global_tools
 
     custom_tool_names = {tool.name for tool in custom_tools}
-    filtered_global = [
-        tool for tool in global_tools.tools if tool.name not in custom_tool_names
-    ]
+    filtered_global = [tool for tool in global_tools.tools if tool.name not in custom_tool_names]
     merged_tools = custom_tools + filtered_global
 
     categories = set(global_tools.categories)

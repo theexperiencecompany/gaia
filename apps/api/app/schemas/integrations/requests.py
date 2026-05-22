@@ -5,7 +5,7 @@ These models define the expected input for integration API endpoints.
 Re-exported from the original location for backwards compatibility.
 """
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -20,13 +20,13 @@ class CreateCustomIntegrationRequest(BaseModel):
     """Request to create a custom MCP integration."""
 
     name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = Field(None, min_length=1, max_length=500)
+    description: str | None = Field(None, min_length=1, max_length=500)
     category: str = Field(default="custom")
     server_url: str = Field(..., description="MCP server URL")
     requires_auth: bool = Field(False)
-    auth_type: Optional[Literal["none", "oauth", "bearer"]] = Field(None)
+    auth_type: Literal["none", "oauth", "bearer"] | None = Field(None)
     is_public: bool = Field(False)
-    bearer_token: Optional[str] = Field(None)
+    bearer_token: str | None = Field(None)
 
     @model_validator(mode="after")
     def validate_auth_type(self):
@@ -38,12 +38,12 @@ class CreateCustomIntegrationRequest(BaseModel):
 class UpdateCustomIntegrationRequest(BaseModel):
     """Request to update a custom integration (partial update)."""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = Field(None, min_length=1, max_length=500)
-    server_url: Optional[str] = None
-    requires_auth: Optional[bool] = None
-    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
-    is_public: Optional[bool] = None
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = Field(None, min_length=1, max_length=500)
+    server_url: str | None = None
+    requires_auth: bool | None = None
+    auth_type: Literal["none", "oauth", "bearer"] | None = None
+    is_public: bool | None = None
 
 
 class ConnectIntegrationRequest(BaseModel):
@@ -53,4 +53,4 @@ class ConnectIntegrationRequest(BaseModel):
         default="/integrations",
         description="Frontend path to redirect after OAuth completes",
     )
-    bearer_token: Optional[str] = Field(None)
+    bearer_token: str | None = Field(None)

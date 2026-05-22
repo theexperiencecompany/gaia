@@ -272,7 +272,7 @@ function DesktopSection() {
   };
 
   const renderSecondaryButtons = () => {
-    const buttons = [];
+    const buttons: ReactNode[] = [];
 
     if (!isMac) buttons.push(<MacDownloadButton key="mac" />);
 

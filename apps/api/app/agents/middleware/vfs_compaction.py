@@ -15,19 +15,21 @@ Two independent compaction triggers:
 - Always: Tool is in always_persist_tools list
 """
 
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 import hashlib
 import json
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, cast
+from typing import Any, cast
 
-from shared.py.wide_events import log
-from app.constants.summarization import MIN_COMPACTION_SIZE
-from app.services.vfs import MongoVFS, get_vfs
-from app.services.vfs.path_resolver import get_session_path
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
+
+from app.constants.summarization import MIN_COMPACTION_SIZE
+from app.services.vfs import MongoVFS, get_vfs
+from app.services.vfs.path_resolver import get_session_path
+from shared.py.wide_events import log
 
 
 class VFSCompactionMiddleware(AgentMiddleware):
@@ -108,9 +110,7 @@ class VFSCompactionMiddleware(AgentMiddleware):
 
         # Get tool info
         tool_call = request.tool_call
-        tool_name = (
-            tool_call.get("name", "") if isinstance(tool_call, dict) else tool_call.name
-        )
+        tool_name = tool_call.get("name", "") if isinstance(tool_call, dict) else tool_call.name
 
         # Get context usage from state if available
         context_usage = self._get_context_usage(request)
@@ -201,13 +201,9 @@ class VFSCompactionMiddleware(AgentMiddleware):
 
         tool_call = request.tool_call
         tool_name = (
-            tool_call.get("name", "unknown")
-            if isinstance(tool_call, dict)
-            else tool_call.name
+            tool_call.get("name", "unknown") if isinstance(tool_call, dict) else tool_call.name
         )
-        tool_call_id = (
-            tool_call.get("id", "") if isinstance(tool_call, dict) else tool_call.id
-        )
+        tool_call_id = tool_call.get("id", "") if isinstance(tool_call, dict) else tool_call.id
 
         # Extract user context from runtime
         runtime = request.runtime
@@ -235,14 +231,10 @@ class VFSCompactionMiddleware(AgentMiddleware):
             )
 
         # Generate storage path
-        content_hash = hashlib.md5(
-            content_str.encode(), usedforsecurity=False
-        ).hexdigest()[:8]  # noqa: S324
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        content_hash = hashlib.md5(content_str.encode(), usedforsecurity=False).hexdigest()[:8]  # noqa: S324
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         session_path = get_session_path(user_id, conversation_id)
-        vfs_path = (
-            f"{session_path}/tool_outputs/{tool_name}_{timestamp}_{content_hash}.json"
-        )
+        vfs_path = f"{session_path}/tool_outputs/{tool_name}_{timestamp}_{content_hash}.json"
 
         # Store in VFS
         vfs = await self._get_vfs()
@@ -250,11 +242,9 @@ class VFSCompactionMiddleware(AgentMiddleware):
         output_data: dict[str, Any] = {
             "tool_name": tool_name,
             "tool_call_id": tool_call_id,
-            "args": tool_call.get("args", {})
-            if isinstance(tool_call, dict)
-            else tool_call.args,
+            "args": tool_call.get("args", {}) if isinstance(tool_call, dict) else tool_call.args,
             "content": content,
-            "stored_at": datetime.now(timezone.utc).isoformat(),
+            "stored_at": datetime.now(UTC).isoformat(),
             "compaction_reason": reason,
         }
 
@@ -311,7 +301,7 @@ class VFSCompactionMiddleware(AgentMiddleware):
                 # Show first few items for context
                 preview = data[:3] if len(data) > 3 else data
                 return f"[{tool_name}] Returned {len(data)} items. Preview: {json.dumps(preview, default=str)[:200]}..."
-            elif isinstance(data, dict):
+            if isinstance(data, dict):
                 keys = list(data.keys())[:5]
                 return f"[{tool_name}] Returned object with keys: {keys}..."
         except (json.JSONDecodeError, TypeError):

@@ -9,21 +9,19 @@ All emails use Jinja2 templates for HTML generation and Resend for email deliver
 """
 
 import base64
-import os
+from datetime import UTC, datetime
 from html import unescape
-from typing import Optional
+import os
 
-import resend
 from bs4 import BeautifulSoup
 from bson import ObjectId
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+import resend
 
-from shared.py.wide_events import log
 from app.config.settings import settings
-from app.models.support_models import SupportEmailNotification, SupportRequestType
 from app.db.mongodb.collections import users_collection
-from datetime import datetime, timezone
-
+from app.models.support_models import SupportEmailNotification, SupportRequestType
+from shared.py.wide_events import log
 
 # Initialize Resend with API key
 resend.api_key = settings.RESEND_API_KEY
@@ -77,9 +75,9 @@ async def send_support_team_notification(
                 )
                 log.info(f"Support notification sent to {support_email}")
             except Exception as e:
-                log.error(f"Failed to send support email to {support_email}: {str(e)}")
+                log.error(f"Failed to send support email to {support_email}: {e!s}")
     except Exception as e:
-        log.error(f"Error sending support team notifications: {str(e)}")
+        log.error(f"Error sending support team notifications: {e!s}")
         raise
 
 
@@ -109,7 +107,7 @@ async def send_support_to_user_email(
         )
         log.info(f"Confirmation email sent to user {notification_data.user_email}")
     except Exception as e:
-        log.error(f"Failed to send confirmation email to user: {str(e)}")
+        log.error(f"Failed to send confirmation email to user: {e!s}")
         raise
 
 
@@ -130,9 +128,7 @@ def generate_support_team_email_html(data: SupportEmailNotification) -> str:
         template = jinja_env.get_template("support_to_admin.html")
 
         request_type_label = (
-            "Support Request"
-            if data.type == SupportRequestType.SUPPORT
-            else "Feature Request"
+            "Support Request" if data.type == SupportRequestType.SUPPORT else "Feature Request"
         )
 
         # Render template with data
@@ -149,7 +145,7 @@ def generate_support_team_email_html(data: SupportEmailNotification) -> str:
 
         return html_content
     except Exception as e:
-        log.error(f"Error generating support team email HTML: {str(e)}")
+        log.error(f"Error generating support team email HTML: {e!s}")
         raise
 
 
@@ -170,9 +166,7 @@ def generate_support_to_user_email_html(data: SupportEmailNotification) -> str:
         template = jinja_env.get_template("support_to_user.html")
 
         request_type_label = (
-            "Support Request"
-            if data.type == SupportRequestType.SUPPORT
-            else "Feature Request"
+            "Support Request" if data.type == SupportRequestType.SUPPORT else "Feature Request"
         )
 
         # Render template with data
@@ -188,7 +182,7 @@ def generate_support_to_user_email_html(data: SupportEmailNotification) -> str:
 
         return html_content
     except Exception as e:
-        log.error(f"Error generating support to user email HTML: {str(e)}")
+        log.error(f"Error generating support to user email HTML: {e!s}")
         raise
 
 
@@ -220,11 +214,11 @@ async def send_pro_subscription_email(
         )
         log.info(f"Pro subscription welcome email sent to {user_email}")
     except Exception as e:
-        log.error(f"Failed to send pro subscription email to {user_email}: {str(e)}")
+        log.error(f"Failed to send pro subscription email to {user_email}: {e!s}")
         raise
 
 
-async def send_welcome_email(user_email: str, user_name: Optional[str] = None) -> None:
+async def send_welcome_email(user_email: str, user_name: str | None = None) -> None:
     """Send welcome email to new user using Jinja2 template."""
     try:
         subject = "From the founder of GAIA, personally"
@@ -244,13 +238,11 @@ async def send_welcome_email(user_email: str, user_name: Optional[str] = None) -
         )
         log.info(f"Welcome email sent to {user_email}")
     except Exception as e:
-        log.error(f"Failed to send welcome email to {user_email}: {str(e)}")
+        log.error(f"Failed to send welcome email to {user_email}: {e!s}")
         raise
 
 
-async def add_contact_to_resend(
-    user_email: str, user_name: Optional[str] = None
-) -> None:
+async def add_contact_to_resend(user_email: str, user_name: str | None = None) -> None:
     """Add new user contact to Resend audience."""
     if not settings.RESEND_AUDIENCE_ID:
         return
@@ -275,13 +267,11 @@ async def add_contact_to_resend(
         resend.Contacts.create(params)
         log.info(f"Contact added to Resend audience: {user_email}")
     except Exception as e:
-        log.error(
-            f"Failed to add contact to Resend audience for {user_email}: {str(e)}"
-        )
+        log.error(f"Failed to add contact to Resend audience for {user_email}: {e!s}")
         # Don't raise exception - user creation should still succeed even if contact addition fails
 
 
-def generate_welcome_email_html(user_name: Optional[str] = None) -> str | None:
+def generate_welcome_email_html(user_name: str | None = None) -> str | None:
     """Generate HTML email content for welcome email using Jinja2 template."""
     try:
         template = jinja_env.get_template("welcome.html")
@@ -297,12 +287,12 @@ def generate_welcome_email_html(user_name: Optional[str] = None) -> str | None:
 
         return html_content
     except Exception as e:
-        log.error(f"Error generating welcome email HTML: {str(e)}")
+        log.error(f"Error generating welcome email HTML: {e!s}")
         raise
 
 
 async def send_inactive_user_email(
-    user_email: str, user_name: Optional[str] = None, user_id: Optional[str] = None
+    user_email: str, user_name: str | None = None, user_id: str | None = None
 ) -> bool:
     """
     Send email to inactive user and track when sent to prevent spam.
@@ -324,15 +314,15 @@ async def send_inactive_user_email(
                 log.error(f"User {user_id} not found")
                 return False
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             last_active = user.get("last_active_at")
             last_email_sent = user.get("last_inactive_email_sent")
 
             # Ensure datetimes are timezone-aware for comparison
             if last_active and last_active.tzinfo is None:
-                last_active = last_active.replace(tzinfo=timezone.utc)
+                last_active = last_active.replace(tzinfo=UTC)
             if last_email_sent and last_email_sent.tzinfo is None:
-                last_email_sent = last_email_sent.replace(tzinfo=timezone.utc)
+                last_email_sent = last_email_sent.replace(tzinfo=UTC)
 
             # Check if user is inactive long enough (7+ days)
             if not last_active or (now - last_active).days < 7:
@@ -364,14 +354,14 @@ async def send_inactive_user_email(
         if user_id:
             await users_collection.update_one(
                 {"_id": ObjectId(user_id)},
-                {"$set": {"last_inactive_email_sent": datetime.now(timezone.utc)}},
+                {"$set": {"last_inactive_email_sent": datetime.now(UTC)}},
             )
 
         log.info(f"Inactive user email sent to {user_email}")
         return True
 
     except Exception as e:
-        log.error(f"Failed to send inactive user email to {user_email}: {str(e)}")
+        log.error(f"Failed to send inactive user email to {user_email}: {e!s}")
         raise
 
 
@@ -389,11 +379,11 @@ def generate_pro_subscription_html(
         )
         return html_content
     except Exception as e:
-        log.error(f"Error generating pro subscription email HTML: {str(e)}")
+        log.error(f"Error generating pro subscription email HTML: {e!s}")
         raise
 
 
-def generate_inactive_user_email_html(user_name: Optional[str] = None) -> str:
+def generate_inactive_user_email_html(user_name: str | None = None) -> str:
     """Generate HTML email content for inactive user email using Jinja2 template."""
     try:
         template = jinja_env.get_template("inactive.html")
@@ -406,7 +396,7 @@ def generate_inactive_user_email_html(user_name: Optional[str] = None) -> str:
 
         return html_content
     except Exception as e:
-        log.error(f"Error generating inactive user email HTML: {str(e)}")
+        log.error(f"Error generating inactive user email HTML: {e!s}")
         raise
 
 

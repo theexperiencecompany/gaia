@@ -238,9 +238,7 @@ class TestSearchAgentMemories:
         mock_client.search = AsyncMock(
             return_value={
                 "results": [{"id": "m1", "memory": "data", "score": 0.8}],
-                "relations": [
-                    {"source": "gaia", "relation": "supports", "destination": "MCP"}
-                ],
+                "relations": [{"source": "gaia", "relation": "supports", "destination": "MCP"}],
             }
         )
 
@@ -300,9 +298,7 @@ class TestGetAllMemories:
                     {"id": "m1", "memory": "Likes Python"},
                     {"id": "m2", "memory": "Uses Mac"},
                 ],
-                "relations": [
-                    {"source": "user", "relation": "uses", "destination": "Mac"}
-                ],
+                "relations": [{"source": "user", "relation": "uses", "destination": "Mac"}],
             }
         )
 

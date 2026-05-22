@@ -2,8 +2,8 @@
 
 from datetime import datetime, timedelta
 
-import pytest
 from pydantic import ValidationError
+import pytest
 
 from app.models.calendar_models import (
     AddRecurrenceInput,
@@ -95,9 +95,7 @@ class TestCalendarEventsQueryRequest:
 
     def test_invalid_date_value(self):
         with pytest.raises(ValidationError):
-            CalendarEventsQueryRequest(
-                selected_calendars=["cal1"], start_date="2025-02-30"
-            )
+            CalendarEventsQueryRequest(selected_calendars=["cal1"], start_date="2025-02-30")
 
     def test_max_results_boundaries(self):
         m = CalendarEventsQueryRequest(selected_calendars=["cal1"], max_results=1)
@@ -248,9 +246,7 @@ class TestRecurrenceRule:
             RecurrenceRule(frequency="DAILY", unknown_field="x")
 
     def test_exclude_dates_valid(self):
-        m = RecurrenceRule(
-            frequency="DAILY", exclude_dates=["2025-01-01", "2025-06-15"]
-        )
+        m = RecurrenceRule(frequency="DAILY", exclude_dates=["2025-01-01", "2025-06-15"])
         assert m.exclude_dates == ["2025-01-01", "2025-06-15"]
 
     def test_include_dates_valid(self):
@@ -339,9 +335,7 @@ class TestRecurrenceData:
         assert result[0].startswith("RRULE:")
 
     def test_to_google_calendar_format_with_include_dates(self):
-        rule = RecurrenceRule(
-            frequency="DAILY", include_dates=["2025-06-01", "2025-07-01"]
-        )
+        rule = RecurrenceRule(frequency="DAILY", include_dates=["2025-06-01", "2025-07-01"])
         m = RecurrenceData(rrule=rule)
         result = m.to_google_calendar_format()
         assert len(result) == 2
@@ -554,9 +548,7 @@ class TestCalendarEventToolRequestProcessTimes:
         assert result.is_all_day is True
 
     def test_relative_time(self):
-        m = CalendarEventToolRequest(
-            summary="Later", time_str="+02:00", duration_minutes=45
-        )
+        m = CalendarEventToolRequest(summary="Later", time_str="+02:00", duration_minutes=45)
         user_time = "2025-06-01T10:00:00+05:30"
         result = m.process_times(user_time)
         assert isinstance(result, EventCreateRequest)

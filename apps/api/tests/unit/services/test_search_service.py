@@ -1,12 +1,11 @@
 """Unit tests for search service operations."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
+import pytest
 
 from app.services.search_service import search_messages
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -154,9 +153,7 @@ class TestSearchMessagesHappyPath:
         sample_notes_results,
     ):
         conv_cursor = MagicMock()
-        conv_cursor.to_list = AsyncMock(
-            return_value=[{"messages": [], "conversations": []}]
-        )
+        conv_cursor.to_list = AsyncMock(return_value=[{"messages": [], "conversations": []}])
         mock_conversations_collection.aggregate.return_value = conv_cursor
 
         notes_cursor = MagicMock()
@@ -205,9 +202,7 @@ class TestSearchMessagesEmpty:
         mock_get_context_window,
     ):
         conv_cursor = MagicMock()
-        conv_cursor.to_list = AsyncMock(
-            return_value=[{"messages": [], "conversations": []}]
-        )
+        conv_cursor.to_list = AsyncMock(return_value=[{"messages": [], "conversations": []}])
         mock_conversations_collection.aggregate.return_value = conv_cursor
 
         notes_cursor = MagicMock()
@@ -274,15 +269,11 @@ class TestSearchMessagesErrors:
         mock_get_context_window,
     ):
         conv_cursor = MagicMock()
-        conv_cursor.to_list = AsyncMock(
-            return_value=[{"messages": [], "conversations": []}]
-        )
+        conv_cursor.to_list = AsyncMock(return_value=[{"messages": [], "conversations": []}])
         mock_conversations_collection.aggregate.return_value = conv_cursor
 
         notes_cursor = MagicMock()
-        notes_cursor.to_list = AsyncMock(
-            side_effect=Exception("Notes collection error")
-        )
+        notes_cursor.to_list = AsyncMock(side_effect=Exception("Notes collection error"))
         mock_notes_collection.aggregate.return_value = notes_cursor
 
         with pytest.raises(HTTPException) as exc_info:
@@ -322,9 +313,7 @@ class TestSearchMessagesEdgeCases:
         mock_get_context_window,
     ):
         conv_cursor = MagicMock()
-        conv_cursor.to_list = AsyncMock(
-            return_value=[{"messages": [], "conversations": []}]
-        )
+        conv_cursor.to_list = AsyncMock(return_value=[{"messages": [], "conversations": []}])
         mock_conversations_collection.aggregate.return_value = conv_cursor
 
         notes_cursor = MagicMock()
@@ -348,9 +337,7 @@ class TestSearchMessagesEdgeCases:
     ):
         """Ensure special characters in query don't crash the service."""
         conv_cursor = MagicMock()
-        conv_cursor.to_list = AsyncMock(
-            return_value=[{"messages": [], "conversations": []}]
-        )
+        conv_cursor.to_list = AsyncMock(return_value=[{"messages": [], "conversations": []}])
         mock_conversations_collection.aggregate.return_value = conv_cursor
 
         notes_cursor = MagicMock()
@@ -382,9 +369,7 @@ class TestSearchMessagesEdgeCases:
         ]
 
         conv_cursor = MagicMock()
-        conv_cursor.to_list = AsyncMock(
-            return_value=[{"messages": [], "conversations": []}]
-        )
+        conv_cursor.to_list = AsyncMock(return_value=[{"messages": [], "conversations": []}])
         mock_conversations_collection.aggregate.return_value = conv_cursor
 
         notes_cursor = MagicMock()

@@ -371,6 +371,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
+      - uses: actions/checkout@v4
       - name: Verdict
         env:
           # Lane results passed through env to avoid inline-expansion injection.
@@ -412,25 +413,20 @@ jobs:
                  python-ruff python-mypy python-interrogate python-xenon python-security)
 
           # ---------------------------------------------------------------
-          # RATCHET: only lanes listed in ENFORCED can fail the gate. Every
-          # other lane is reported but never blocks merge. Each follow-up PR
-          # fixes one lane's existing violations on develop, then moves that
-          # lane name into ENFORCED below. When all 15 are listed, the gate
-          # enforces the full strict rule set. Order does not matter here,
-          # only membership.
-          #
-          # Lanes still informational (need a resolution PR each): biome,
-          # deps, types-location, components-per-file, type-check,
-          # python-ruff, python-mypy, python-security.
-          ENFORCED=(
-            duplicates
-            type-coverage
-            file-size
-            package-hygiene
-            python-xenon
-            python-interrogate
-            circular
-          )
+          # RATCHET: a lane is ENFORCED (can fail this gate) iff the marker
+          # file .github/quality-gate/enforced/<lane> exists. Every other
+          # lane is reported but never blocks merge. Each resolution PR adds
+          # its own marker file — separate paths never merge-conflict the way
+          # editing one shared list does. When all 15 markers exist, the full
+          # strict rule set is enforced.
+          # ---------------------------------------------------------------
+          ENFORCED=()
+          if [ -d .github/quality-gate/enforced ]; then
+            for marker in .github/quality-gate/enforced/*; do
+              [ -e "$marker" ] || continue
+              ENFORCED+=("$(basename "$marker")")
+            done
+          fi
           # ---------------------------------------------------------------
 
           is_enforced() { local l; for l in "${ENFORCED[@]}"; do [[ "$l" == "$1" ]] && return 0; done; return 1; }

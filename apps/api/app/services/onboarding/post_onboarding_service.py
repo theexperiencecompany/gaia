@@ -1,13 +1,14 @@
 """Post-onboarding personalization service."""
 
-from datetime import datetime, timezone
-from typing import Any, List
+from datetime import UTC, datetime
+from typing import Any
 
-from shared.py.wide_events import log
+from bson import ObjectId
+
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import BioStatus, OnboardingPhase
 from app.utils.seeding_utils import seed_onboarding_todo
-from bson import ObjectId
+from shared.py.wide_events import log
 
 
 async def save_personalization_data(
@@ -16,7 +17,7 @@ async def save_personalization_data(
     personality_phrase: str,
     user_bio: str,
     bio_status: BioStatus,
-    workflow_ids: List[str],
+    workflow_ids: list[str],
     account_number: int,
     member_since: str,
     overlay_color: str,
@@ -48,7 +49,7 @@ async def save_personalization_data(
             "onboarding.member_since": member_since,
             "onboarding.overlay_color": overlay_color,
             "onboarding.overlay_opacity": overlay_opacity,
-            "updated_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(UTC),
         }
         if workflow_ids:
             update_fields["onboarding.suggested_workflows"] = workflow_ids

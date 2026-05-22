@@ -7,7 +7,9 @@ only need `user_id` from `auth_credentials`.
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
-from typing import Any, Dict, List
+from typing import Any
+
+from composio import Composio
 
 from app.decorators.documentation import with_doc
 from app.models.common_models import GatherContextInput
@@ -38,7 +40,6 @@ from app.utils.linkedin_utils import (
     upload_document_from_url,
     upload_image_from_url,
 )
-from composio import Composio
 
 LINKEDIN_API_BASE = "https://api.linkedin.com/v2"
 LINKEDIN_VERSION = "202401"
@@ -49,14 +50,14 @@ _REST_HEADERS = {
 }
 
 
-def _user_id(auth_credentials: Dict[str, Any]) -> str:
+def _user_id(auth_credentials: dict[str, Any]) -> str:
     user_id = auth_credentials.get("user_id")
     if not user_id:
         raise ValueError("Missing user_id in auth_credentials")
     return user_id
 
 
-def register_linkedin_custom_tools(composio: Composio) -> List[str]:
+def register_linkedin_custom_tools(composio: Composio) -> list[str]:
     """Register LinkedIn tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="LINKEDIN")
@@ -64,25 +65,21 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_CREATE_POST(
         request: CreatePostInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Create a LinkedIn post with optional media (image, document, or article)."""
         user_id = _user_id(auth_credentials)
 
         author_urn = get_author_urn(user_id, request.organization_id)
 
         media_type = "text"
-        content: Dict[str, Any] | None = None
+        content: dict[str, Any] | None = None
 
         if request.document_url:
             media_type = "document"
             if not request.document_title:
-                raise ValueError(
-                    "document_title is required when document_url is provided"
-                )
-            document_urn = upload_document_from_url(
-                user_id, request.document_url, author_urn
-            )
+                raise ValueError("document_title is required when document_url is provided")
+            document_urn = upload_document_from_url(user_id, request.document_url, author_urn)
             if not document_urn:
                 raise RuntimeError("Failed to upload document to LinkedIn")
             content = {
@@ -117,13 +114,11 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
                 }
             else:
                 media_type = "carousel"
-                content = {
-                    "multiImage": {"images": [{"id": urn} for urn in image_urns]}
-                }
+                content = {"multiImage": {"images": [{"id": urn} for urn in image_urns]}}
 
         elif request.article_url:
             media_type = "article"
-            article_content: Dict[str, Any] = {
+            article_content: dict[str, Any] = {
                 "source": request.article_url,
             }
             if request.article_title:
@@ -131,14 +126,12 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
             if request.article_description:
                 article_content["description"] = request.article_description
             if request.thumbnail_url:
-                thumbnail_urn = upload_image_from_url(
-                    user_id, request.thumbnail_url, author_urn
-                )
+                thumbnail_urn = upload_image_from_url(user_id, request.thumbnail_url, author_urn)
                 if thumbnail_urn:
                     article_content["thumbnail"] = thumbnail_urn
             content = {"article": article_content}
 
-        post_data: Dict[str, Any] = {
+        post_data: dict[str, Any] = {
             "author": author_urn,
             "commentary": request.commentary,
             "visibility": request.visibility,
@@ -177,15 +170,15 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_ADD_COMMENT(
         request: AddCommentInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Add a comment to a LinkedIn post."""
         user_id = _user_id(auth_credentials)
 
         author_urn = get_author_urn(user_id)
         encoded_urn = request.post_urn.replace(":", "%3A")
 
-        comment_data: Dict[str, Any] = {
+        comment_data: dict[str, Any] = {
             "actor": author_urn,
             "message": {
                 "text": request.comment_text,
@@ -205,10 +198,9 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
         )
 
         body = response.get("data") or {}
-        comment_id = (
-            (body.get("id") if isinstance(body, dict) else None)
-            or response.get("headers", {}).get("x-restli-id", "")
-        )
+        comment_id = (body.get("id") if isinstance(body, dict) else None) or response.get(
+            "headers", {}
+        ).get("x-restli-id", "")
 
         return {
             "comment_id": comment_id,
@@ -221,20 +213,23 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_GET_POST_COMMENTS(
         request: GetPostCommentsInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Retrieve comments on a LinkedIn post."""
         user_id = _user_id(auth_credentials)
         encoded_urn = request.post_urn.replace(":", "%3A")
 
-        result = proxy_request_sync(
-            user_id=user_id,
-            toolkit=LINKEDIN_TOOLKIT,
-            endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/comments",
-            method="GET",
-            query={"count": request.count, "start": request.start},
-            headers=_REST_HEADERS,
-        ) or {}
+        result = (
+            proxy_request_sync(
+                user_id=user_id,
+                toolkit=LINKEDIN_TOOLKIT,
+                endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/comments",
+                method="GET",
+                query={"count": request.count, "start": request.start},
+                headers=_REST_HEADERS,
+            )
+            or {}
+        )
 
         comments = result.get("elements", [])
 
@@ -261,8 +256,8 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_REACT_TO_POST(
         request: ReactToPostInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Add a reaction to a LinkedIn post."""
         user_id = _user_id(auth_credentials)
 
@@ -289,8 +284,8 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_DELETE_REACTION(
         request: DeleteReactionInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Remove your reaction from a LinkedIn post."""
         user_id = _user_id(auth_credentials)
 
@@ -302,8 +297,7 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
             user_id=user_id,
             toolkit=LINKEDIN_TOOLKIT,
             endpoint=(
-                f"{LINKEDIN_REST_BASE}/socialActions/"
-                f"{encoded_post_urn}/likes/{encoded_author_urn}"
+                f"{LINKEDIN_REST_BASE}/socialActions/{encoded_post_urn}/likes/{encoded_author_urn}"
             ),
             method="DELETE",
             headers=_REST_HEADERS,
@@ -319,20 +313,23 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_GET_POST_REACTIONS(
         request: GetPostReactionsInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Retrieve reactions on a LinkedIn post."""
         user_id = _user_id(auth_credentials)
         encoded_urn = request.post_urn.replace(":", "%3A")
 
-        result = proxy_request_sync(
-            user_id=user_id,
-            toolkit=LINKEDIN_TOOLKIT,
-            endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/likes",
-            method="GET",
-            query={"count": request.count},
-            headers=_REST_HEADERS,
-        ) or {}
+        result = (
+            proxy_request_sync(
+                user_id=user_id,
+                toolkit=LINKEDIN_TOOLKIT,
+                endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/likes",
+                method="GET",
+                query={"count": request.count},
+                headers=_REST_HEADERS,
+            )
+            or {}
+        )
 
         reactions = result.get("elements", [])
 
@@ -356,8 +353,8 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get LinkedIn context snapshot: authenticated user profile info and recent posts.
 
         Zero required parameters. Returns user identity information and up to 5
@@ -365,31 +362,37 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
         """
         user_id = _user_id(auth_credentials)
 
-        data = proxy_request_sync(
-            user_id=user_id,
-            toolkit=LINKEDIN_TOOLKIT,
-            endpoint=f"{LINKEDIN_API_BASE}/userinfo",
-            method="GET",
-        ) or {}
+        data = (
+            proxy_request_sync(
+                user_id=user_id,
+                toolkit=LINKEDIN_TOOLKIT,
+                endpoint=f"{LINKEDIN_API_BASE}/userinfo",
+                method="GET",
+            )
+            or {}
+        )
 
         person_id = data.get("sub", "")
         person_urn = f"urn:li:person:{person_id}"
 
-        posts: List[Dict[str, Any]] = []
+        posts: list[dict[str, Any]] = []
         if person_id:
             try:
                 encoded_urn = person_urn.replace(":", "%3A")
-                posts_data = proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=LINKEDIN_TOOLKIT,
-                    endpoint=f"{LINKEDIN_API_BASE}/ugcPosts",
-                    method="GET",
-                    query={
-                        "q": "authors",
-                        "authors": f"List({encoded_urn})",
-                        "count": 5,
-                    },
-                ) or {}
+                posts_data = (
+                    proxy_request_sync(
+                        user_id=user_id,
+                        toolkit=LINKEDIN_TOOLKIT,
+                        endpoint=f"{LINKEDIN_API_BASE}/ugcPosts",
+                        method="GET",
+                        query={
+                            "q": "authors",
+                            "authors": f"List({encoded_urn})",
+                            "count": 5,
+                        },
+                    )
+                    or {}
+                )
                 posts = posts_data.get("elements", [])
             except Exception:
                 posts = []

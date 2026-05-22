@@ -1,19 +1,19 @@
 """Unit tests for conversation service CRUD operations."""
 
-import pytest
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timezone
 
 from bson import ObjectId
 from fastapi import HTTPException
+import pytest
 
 from app.models.chat_models import ConversationModel, SystemPurpose
 from app.services.conversation_service import (
     _convert_datetime_to_iso,
     _convert_ids,
     create_conversation_service,
-    delete_conversation,
     delete_all_conversations,
+    delete_conversation,
     get_conversation,
     get_conversations,
     mark_conversation_as_read,
@@ -26,9 +26,7 @@ from app.services.conversation_service import (
 @pytest.fixture
 def mock_collection():
     """Provide a mocked conversations_collection."""
-    with patch(
-        "app.services.conversation_service.conversations_collection"
-    ) as mock_col:
+    with patch("app.services.conversation_service.conversations_collection") as mock_col:
         yield mock_col
 
 
@@ -39,9 +37,7 @@ def test_user():
 
 @pytest.mark.unit
 class TestCreateConversationService:
-    async def test_creates_conversation_with_correct_data(
-        self, mock_collection, test_user
-    ):
+    async def test_creates_conversation_with_correct_data(self, mock_collection, test_user):
         mock_result = MagicMock()
         mock_result.acknowledged = True
         mock_collection.insert_one = AsyncMock(return_value=mock_result)
@@ -90,9 +86,7 @@ class TestCreateConversationService:
         assert exc_info.value.status_code == 500
 
     async def test_raises_500_on_exception(self, mock_collection, test_user):
-        mock_collection.insert_one = AsyncMock(
-            side_effect=Exception("DB connection failed")
-        )
+        mock_collection.insert_one = AsyncMock(side_effect=Exception("DB connection failed"))
 
         conversation = ConversationModel(
             conversation_id="conv_abc",
@@ -246,9 +240,7 @@ class TestUpdateDescription:
         mock_result.modified_count = 1
         mock_collection.update_one = AsyncMock(return_value=mock_result)
 
-        result = await update_conversation_description(
-            "conv_abc", "New Description", test_user
-        )
+        result = await update_conversation_description("conv_abc", "New Description", test_user)
 
         assert result["description"] == "New Description"
         assert result["conversation_id"] == "conv_abc"
@@ -310,7 +302,7 @@ class TestMarkAsReadUnread:
 @pytest.mark.unit
 class TestHelperFunctions:
     def test_convert_datetime_to_iso(self):
-        dt = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         obj = {"createdAt": dt, "name": "test"}
         _convert_datetime_to_iso(obj, "createdAt")
 
@@ -374,9 +366,7 @@ class TestListConversations:
         count_filter = mock_collection.count_documents.call_args[0][0]
         assert count_filter.get("user_id") == "user_abc"
 
-    async def test_list_conversations_different_users_see_only_their_own(
-        self, mock_collection
-    ):
+    async def test_list_conversations_different_users_see_only_their_own(self, mock_collection):
         """Queries for two different users must carry distinct user_id values."""
         mock_collection.find.return_value = self._make_cursor([])
         mock_collection.count_documents = AsyncMock(return_value=0)
@@ -397,9 +387,7 @@ class TestListConversations:
         for f in calls_user_2:
             assert f.get("user_id") == "user_2"
 
-    async def test_list_conversations_pagination_skip_and_limit_applied(
-        self, mock_collection
-    ):
+    async def test_list_conversations_pagination_skip_and_limit_applied(self, mock_collection):
         """Skip and limit must reflect the requested page and limit values."""
         user = {"user_id": "user_abc"}
 
@@ -414,9 +402,7 @@ class TestListConversations:
         non_starred_cursor.skip.assert_called_once_with(10)
         non_starred_cursor.limit.assert_called_once_with(5)
 
-    async def test_list_conversations_sorted_by_created_at_descending(
-        self, mock_collection
-    ):
+    async def test_list_conversations_sorted_by_created_at_descending(self, mock_collection):
         """Results must be sorted newest-first (createdAt descending = -1)."""
         user = {"user_id": "user_abc"}
 
@@ -431,9 +417,7 @@ class TestListConversations:
         for cursor in [starred_cursor, non_starred_cursor]:
             cursor.sort.assert_called_once_with("createdAt", -1)
 
-    async def test_list_conversations_returns_pagination_metadata(
-        self, mock_collection
-    ):
+    async def test_list_conversations_returns_pagination_metadata(self, mock_collection):
         """Response must include total, page, limit and total_pages fields."""
         user = {"user_id": "user_abc"}
 
@@ -476,8 +460,8 @@ class TestListConversations:
 @pytest.mark.unit
 class TestUpdateMessages:
     async def test_updates_messages_successfully(self, mock_collection, test_user):
+        from app.models.chat_models import MessageModel, UpdateMessagesRequest
         from app.services.conversation_service import update_messages
-        from app.models.chat_models import UpdateMessagesRequest, MessageModel
 
         mock_result = MagicMock()
         mock_result.modified_count = 1
@@ -496,11 +480,9 @@ class TestUpdateMessages:
         assert result["modified_count"] == 1
         assert len(result["message_ids"]) == 1
 
-    async def test_raises_404_when_conversation_not_found(
-        self, mock_collection, test_user
-    ):
+    async def test_raises_404_when_conversation_not_found(self, mock_collection, test_user):
+        from app.models.chat_models import MessageModel, UpdateMessagesRequest
         from app.services.conversation_service import update_messages
-        from app.models.chat_models import UpdateMessagesRequest, MessageModel
 
         mock_result = MagicMock()
         mock_result.modified_count = 0
@@ -518,8 +500,8 @@ class TestUpdateMessages:
         assert exc_info.value.status_code == 404
 
     async def test_strips_none_values_from_messages(self, mock_collection, test_user):
+        from app.models.chat_models import MessageModel, UpdateMessagesRequest
         from app.services.conversation_service import update_messages
-        from app.models.chat_models import UpdateMessagesRequest, MessageModel
 
         mock_result = MagicMock()
         mock_result.modified_count = 1
@@ -738,9 +720,7 @@ class TestGetOrCreateSystemConversation:
         }
         mock_collection.find_one = AsyncMock(return_value=existing)
 
-        result = await get_or_create_system_conversation(
-            "user_123", SystemPurpose.EMAIL_PROCESSING
-        )
+        result = await get_or_create_system_conversation("user_123", SystemPurpose.EMAIL_PROCESSING)
 
         assert result["conversation_id"] == "conv_sys"
         assert isinstance(result["_id"], str)
@@ -753,9 +733,7 @@ class TestGetOrCreateSystemConversation:
         mock_result.acknowledged = True
         mock_collection.insert_one = AsyncMock(return_value=mock_result)
 
-        result = await get_or_create_system_conversation(
-            "user_123", SystemPurpose.EMAIL_PROCESSING
-        )
+        result = await get_or_create_system_conversation("user_123", SystemPurpose.EMAIL_PROCESSING)
 
         assert result["is_system_generated"] is True
         assert result["description"] == "Email Actions & Notifications"
@@ -797,8 +775,8 @@ class TestGetOrCreateSystemConversation:
 @pytest.mark.unit
 class TestBatchSyncConversations:
     async def test_returns_empty_when_no_user_id(self, mock_collection):
-        from app.services.conversation_service import batch_sync_conversations
         from app.models.chat_models import BatchSyncRequest
+        from app.services.conversation_service import batch_sync_conversations
 
         request = BatchSyncRequest(conversations=[])
         with pytest.raises(HTTPException) as exc_info:
@@ -806,11 +784,9 @@ class TestBatchSyncConversations:
 
         assert exc_info.value.status_code == 403
 
-    async def test_returns_empty_for_empty_conversations(
-        self, mock_collection, test_user
-    ):
-        from app.services.conversation_service import batch_sync_conversations
+    async def test_returns_empty_for_empty_conversations(self, mock_collection, test_user):
         from app.models.chat_models import BatchSyncRequest
+        from app.services.conversation_service import batch_sync_conversations
 
         request = BatchSyncRequest(conversations=[])
         result = await batch_sync_conversations(request, test_user)
@@ -818,8 +794,8 @@ class TestBatchSyncConversations:
         assert result == {"conversations": []}
 
     async def test_returns_updated_conversations(self, mock_collection, test_user):
-        from app.services.conversation_service import batch_sync_conversations
         from app.models.chat_models import BatchSyncRequest, ConversationSyncItem
+        from app.services.conversation_service import batch_sync_conversations
 
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(
@@ -852,8 +828,8 @@ class TestBatchSyncConversations:
         assert result["conversations"][0]["conversation_id"] == "conv_1"
 
     async def test_handles_no_last_updated(self, mock_collection, test_user):
-        from app.services.conversation_service import batch_sync_conversations
         from app.models.chat_models import BatchSyncRequest, ConversationSyncItem
+        from app.services.conversation_service import batch_sync_conversations
 
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
@@ -877,8 +853,8 @@ class TestBatchSyncConversations:
         assert "conversations" in result
 
     async def test_handles_invalid_timestamp(self, mock_collection, test_user):
-        from app.services.conversation_service import batch_sync_conversations
         from app.models.chat_models import BatchSyncRequest, ConversationSyncItem
+        from app.services.conversation_service import batch_sync_conversations
 
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
@@ -902,10 +878,10 @@ class TestBatchSyncConversations:
         assert "conversations" in result
 
     async def test_converts_datetime_in_messages(self, mock_collection, test_user):
-        from app.services.conversation_service import batch_sync_conversations
         from app.models.chat_models import BatchSyncRequest, ConversationSyncItem
+        from app.services.conversation_service import batch_sync_conversations
 
-        dt = datetime(2024, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(
             return_value=[

@@ -2,12 +2,11 @@
 Cron utilities for reminder scheduling.
 """
 
+from datetime import UTC, datetime, timedelta, timezone, tzinfo
 import re
-from datetime import datetime, timedelta, timezone, tzinfo
-from typing import Optional
 
-import pytz
 from croniter import croniter
+import pytz
 
 from shared.py.wide_events import log
 
@@ -37,7 +36,7 @@ def parse_timezone(user_timezone: str) -> tzinfo:
         ValueError: If the timezone string cannot be parsed
     """
     if not user_timezone or user_timezone == "UTC":
-        return timezone.utc
+        return UTC
 
     # Check if it's an offset string like "+05:30" or "-08:00"
     offset_match = re.match(r"^([+-])(\d{2}):(\d{2})$", user_timezone)
@@ -74,8 +73,8 @@ def validate_cron_expression(cron_expr: str) -> bool:
 
 def get_next_run_time(
     cron_expr: str,
-    base_time: Optional[datetime] = None,
-    user_timezone: Optional[str] = None,
+    base_time: datetime | None = None,
+    user_timezone: str | None = None,
 ) -> datetime:
     """
     Get the next scheduled run time based on cron expression.
@@ -104,7 +103,7 @@ def get_next_run_time(
             if base_time is None:
                 base_time = datetime.now(tz)
             elif base_time.tzinfo is None:
-                base_time = base_time.replace(tzinfo=timezone.utc).astimezone(tz)
+                base_time = base_time.replace(tzinfo=UTC).astimezone(tz)
             else:
                 base_time = base_time.astimezone(tz)
 
@@ -113,17 +112,17 @@ def get_next_run_time(
             next_time = cron.get_next(datetime)
 
             # Convert to UTC for storage
-            return next_time.astimezone(timezone.utc)
+            return next_time.astimezone(UTC)
 
         except Exception as e:
             log.debug(f"Timezone conversion failed, falling back to UTC: {e}")
 
     # Default UTC calculation
     if base_time is None:
-        base_time = datetime.now(timezone.utc)
+        base_time = datetime.now(UTC)
     elif base_time.tzinfo is None:
         # Assume UTC if no timezone info
-        base_time = base_time.replace(tzinfo=timezone.utc)
+        base_time = base_time.replace(tzinfo=UTC)
 
     try:
         cron = croniter(cron_expr, base_time)
@@ -131,16 +130,14 @@ def get_next_run_time(
 
         # Ensure we return UTC timezone-aware datetime
         if next_time.tzinfo is None:  # type: ignore
-            next_time = next_time.replace(tzinfo=timezone.utc)  # type: ignore
+            next_time = next_time.replace(tzinfo=UTC)  # type: ignore
 
         return next_time  # type: ignore
     except Exception as e:
-        raise CronError(f"Failed to calculate next run time: {str(e)}")
+        raise CronError(f"Failed to calculate next run time: {e!s}")
 
 
-def get_previous_run_time(
-    cron_expr: str, base_time: Optional[datetime] = None
-) -> datetime:
+def get_previous_run_time(cron_expr: str, base_time: datetime | None = None) -> datetime:
     """
     Get the previous scheduled run time based on cron expression.
 
@@ -158,24 +155,24 @@ def get_previous_run_time(
         raise CronError(f"Invalid cron expression: {cron_expr}")
 
     if base_time is None:
-        base_time = datetime.now(timezone.utc)
+        base_time = datetime.now(UTC)
     elif base_time.tzinfo is None:
-        base_time = base_time.replace(tzinfo=timezone.utc)
+        base_time = base_time.replace(tzinfo=UTC)
 
     try:
         cron = croniter(cron_expr, base_time)
         prev_time = cron.get_prev(datetime)
 
         if prev_time.tzinfo is None:
-            prev_time = prev_time.replace(tzinfo=timezone.utc)
+            prev_time = prev_time.replace(tzinfo=UTC)
 
         return prev_time
     except Exception as e:
-        raise CronError(f"Failed to calculate previous run time: {str(e)}")
+        raise CronError(f"Failed to calculate previous run time: {e!s}")
 
 
 def calculate_next_occurrences(
-    cron_expr: str, count: int, base_time: Optional[datetime] = None
+    cron_expr: str, count: int, base_time: datetime | None = None
 ) -> list[datetime]:
     """
     Calculate the next N occurrences of a cron expression.
@@ -198,9 +195,9 @@ def calculate_next_occurrences(
         return []
 
     if base_time is None:
-        base_time = datetime.now(timezone.utc)
+        base_time = datetime.now(UTC)
     elif base_time.tzinfo is None:
-        base_time = base_time.replace(tzinfo=timezone.utc)
+        base_time = base_time.replace(tzinfo=UTC)
 
     try:
         cron = croniter(cron_expr, base_time)
@@ -209,17 +206,15 @@ def calculate_next_occurrences(
         for _ in range(count):
             next_time = cron.get_next(datetime)
             if next_time.tzinfo is None:  # type: ignore
-                next_time = next_time.replace(tzinfo=timezone.utc)  # type: ignore
+                next_time = next_time.replace(tzinfo=UTC)  # type: ignore
             occurrences.append(next_time)
 
         return occurrences
     except Exception as e:
-        raise CronError(f"Failed to calculate next occurrences: {str(e)}")
+        raise CronError(f"Failed to calculate next occurrences: {e!s}")
 
 
-def is_time_in_future(
-    target_time: datetime, reference_time: Optional[datetime] = None
-) -> bool:
+def is_time_in_future(target_time: datetime, reference_time: datetime | None = None) -> bool:
     """
     Check if a target time is in the future relative to a reference time.
 
@@ -231,13 +226,13 @@ def is_time_in_future(
         True if target_time is in the future
     """
     if reference_time is None:
-        reference_time = datetime.now(timezone.utc)
+        reference_time = datetime.now(UTC)
 
     # Ensure both times are timezone-aware
     if target_time.tzinfo is None:
-        target_time = target_time.replace(tzinfo=timezone.utc)
+        target_time = target_time.replace(tzinfo=UTC)
     if reference_time.tzinfo is None:
-        reference_time = reference_time.replace(tzinfo=timezone.utc)
+        reference_time = reference_time.replace(tzinfo=UTC)
 
     return target_time > reference_time
 

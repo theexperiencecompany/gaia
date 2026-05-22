@@ -6,10 +6,11 @@ import email.message
 import email.parser
 import email.policy
 from html import unescape
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+from bs4 import BeautifulSoup
 
 from shared.py.wide_events import log
-from bs4 import BeautifulSoup
 
 # ============================================================================
 # GmailMessageParser - Class-based email parsing using email.parser
@@ -30,7 +31,7 @@ class GmailMessageParser:
             gmail_message (dict): Gmail API message object
         """
         self.gmail_message = gmail_message
-        self.email_message: Optional[email.message.EmailMessage] = None
+        self.email_message: email.message.EmailMessage | None = None
         self._parsed = False
 
     def parse(self) -> bool:
@@ -40,9 +41,7 @@ class GmailMessageParser:
         Returns:
             bool: True if parsing succeeded, False otherwise
         """
-        message_id = self.gmail_message.get("id") or self.gmail_message.get(
-            "messageId", ""
-        )
+        message_id = self.gmail_message.get("id") or self.gmail_message.get("messageId", "")
         log.set(gmail_message_id=message_id, mail_op="parse_gmail_message")
         try:
             self.email_message = self._parse_with_email_parser()
@@ -54,7 +53,7 @@ class GmailMessageParser:
             self._parsed = False
             return False
 
-    def _parse_with_email_parser(self) -> Optional[email.message.EmailMessage]:
+    def _parse_with_email_parser(self) -> email.message.EmailMessage | None:
         """Parse Gmail message using manual parsing of payload structure."""
         # Try raw email data first (most reliable)
         raw_data = self.gmail_message.get("raw")
@@ -70,9 +69,7 @@ class GmailMessageParser:
 
         return None
 
-    def _parse_payload_manually(
-        self, payload: dict
-    ) -> Optional[email.message.EmailMessage]:
+    def _parse_payload_manually(self, payload: dict) -> email.message.EmailMessage | None:
         """Parse Gmail payload structure manually into EmailMessage."""
         msg = email.message.EmailMessage()
 
@@ -139,16 +136,12 @@ class GmailMessageParser:
                     # Remove existing Content-Disposition header if present
                     if "Content-Disposition" in part:
                         del part["Content-Disposition"]
-                    part.add_header(
-                        "Content-Disposition", "attachment", filename=filename
-                    )
+                    part.add_header("Content-Disposition", "attachment", filename=filename)
 
             # Attach part to main message
             msg.attach(part)
 
-    def _parse_single_part_payload(
-        self, msg: email.message.EmailMessage, payload: dict
-    ):
+    def _parse_single_part_payload(self, msg: email.message.EmailMessage, payload: dict):
         """Parse single part payload content."""
         body_data = payload.get("body", {}).get("data", "")
         mime_type = payload.get("mimeType", "text/plain")
@@ -238,7 +231,7 @@ class GmailMessageParser:
                     payload = part.get_payload(decode=True)
                     if isinstance(payload, bytes):
                         return payload.decode("utf-8", errors="ignore")
-                    elif isinstance(payload, str):
+                    if isinstance(payload, str):
                         return payload
 
         # If no text/plain, extract from HTML
@@ -270,7 +263,7 @@ class GmailMessageParser:
                     payload = part.get_payload(decode=True)
                     if isinstance(payload, bytes):
                         return payload.decode("utf-8", errors="ignore")
-                    elif isinstance(payload, str):
+                    if isinstance(payload, str):
                         return payload
 
         return ""
@@ -281,7 +274,7 @@ class GmailMessageParser:
         return {"text": self.text_content, "html": self.html_content}
 
     @property
-    def attachments(self) -> List[dict]:
+    def attachments(self) -> list[dict]:
         """Get email attachments."""
         attachments = []
 
@@ -319,7 +312,7 @@ class GmailMessageParser:
         return attachments
 
     @property
-    def labels(self) -> List[str]:
+    def labels(self) -> list[str]:
         """Get Gmail labels."""
         return self.gmail_message.get("labelIds", [])
 
@@ -345,8 +338,8 @@ def _get_text_from_html(html_content):
 
 # Template for minimal message representation
 def minimal_message_template(
-    email_data: Dict[str, Any], short_body=True, include_both_formats=False
-) -> Dict[str, Any]:
+    email_data: dict[str, Any], short_body=True, include_both_formats=False
+) -> dict[str, Any]:
     """
     Convert a Gmail message to a minimal representation with only essential fields.
 
@@ -364,9 +357,9 @@ def minimal_message_template(
 
     content = parser.content if include_both_formats else None
 
-    body_content = (
-        content["text"] if content else parser.text_content
-    ) or email_data.get("messageText", "")
+    body_content = (content["text"] if content else parser.text_content) or email_data.get(
+        "messageText", ""
+    )
     labels = parser.labels
 
     result = {
@@ -394,7 +387,7 @@ def minimal_message_template(
 
 
 # Template for message details (when a single message needs more detail)
-def detailed_message_template(email_data: Dict[str, Any]) -> Dict[str, Any]:
+def detailed_message_template(email_data: dict[str, Any]) -> dict[str, Any]:
     """
     Convert a Gmail message to a detailed but optimized representation including both text and HTML content.
 
@@ -429,7 +422,7 @@ def detailed_message_template(email_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # Template for thread information
-def thread_template(thread_data: Dict[str, Any]) -> Dict[str, Any]:
+def thread_template(thread_data: dict[str, Any]) -> dict[str, Any]:
     """
     Convert a Gmail thread to a minimal representation.
 
@@ -450,7 +443,7 @@ def thread_template(thread_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # Template for draft information
-def draft_template(draft_data: Dict[str, Any]) -> Dict[str, Any]:
+def draft_template(draft_data: dict[str, Any]) -> dict[str, Any]:
     """
     Convert a Gmail draft to a minimal representation including both text and HTML content.
 
@@ -481,7 +474,7 @@ def draft_template(draft_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # Process tool responses
-def process_list_messages_response(response: Dict[str, Any]) -> Dict[str, Any]:
+def process_list_messages_response(response: dict[str, Any]) -> dict[str, Any]:
     """Process the response from list_gmail_messages tool to minimize data."""
     processed_response = {
         "nextPageToken": response.get("nextPageToken"),
@@ -490,8 +483,7 @@ def process_list_messages_response(response: Dict[str, Any]) -> Dict[str, Any]:
 
     if "messages" in response:
         processed_response["messages"] = [
-            minimal_message_template(msg, short_body=False)
-            for msg in response.get("messages", [])
+            minimal_message_template(msg, short_body=False) for msg in response.get("messages", [])
         ]
 
     if "error" in response:
@@ -500,7 +492,7 @@ def process_list_messages_response(response: Dict[str, Any]) -> Dict[str, Any]:
     return processed_response
 
 
-def process_list_drafts_response(response: Dict[str, Any]) -> Dict[str, Any]:
+def process_list_drafts_response(response: dict[str, Any]) -> dict[str, Any]:
     """Process the response from list_email_drafts tool to minimize data."""
     processed_response = {
         "nextPageToken": response.get("nextPageToken"),
@@ -518,6 +510,6 @@ def process_list_drafts_response(response: Dict[str, Any]) -> Dict[str, Any]:
     return processed_response
 
 
-def process_get_thread_response(response: Dict[str, Any]) -> Dict[str, Any]:
+def process_get_thread_response(response: dict[str, Any]) -> dict[str, Any]:
     """Process the response from get_email_thread tool to minimize data."""
     return thread_template(response)

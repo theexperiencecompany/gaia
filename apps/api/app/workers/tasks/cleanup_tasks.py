@@ -1,14 +1,14 @@
 """ARQ cleanup tasks for stuck/failed background processes."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.db.mongodb.collections import users_collection
-from shared.py.wide_events import log, wide_task
 from app.models.user_models import OnboardingPhase
 from app.services.onboarding.intelligence_job import (
     enqueue_intelligence_job,
     is_intelligence_job_live,
 )
+from shared.py.wide_events import log, wide_task
 
 
 async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
@@ -17,13 +17,9 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
     Skips users whose ARQ job is still live so a slow-but-healthy pipeline is
     never aborted. Keep max_age_minutes >= ARQ job_timeout.
     """
-    async with wide_task(
-        "cleanup_stuck_personalization", max_age_minutes=max_age_minutes
-    ):
+    async with wide_task("cleanup_stuck_personalization", max_age_minutes=max_age_minutes):
         try:
-            cutoff_time = datetime.now(timezone.utc) - timedelta(
-                minutes=max_age_minutes
-            )
+            cutoff_time = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
 
             stuck_candidates = await users_collection.find(
                 {

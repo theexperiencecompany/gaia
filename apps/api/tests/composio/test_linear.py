@@ -16,7 +16,7 @@ with an ImportError, satisfying the requirement that the tests must import and
 call the actual tool code.
 """
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -48,13 +48,13 @@ AUTH = {"user_id": "test_linear_user"}
 EXECUTE_REQUEST = MagicMock()  # not used by any of the current tools
 
 
-def _capture_tools() -> Dict[str, Any]:
+def _capture_tools() -> dict[str, Any]:
     """
     Run `register_linear_custom_tools` with a fake Composio object whose
     `tools.custom_tool` decorator simply stores the decorated functions
     keyed by their __name__, then returns the collected dict.
     """
-    captured: Dict[str, Any] = {}
+    captured: dict[str, Any] = {}
 
     def fake_custom_tool(toolkit: str):
         def decorator(fn):
@@ -231,9 +231,7 @@ class TestResolveContext:
             side_effect=Exception("Unauthorized"),
         ):
             with pytest.raises(Exception, match="Unauthorized"):
-                _TOOLS["CUSTOM_RESOLVE_CONTEXT"](
-                    ResolveContextInput(), EXECUTE_REQUEST, AUTH
-                )
+                _TOOLS["CUSTOM_RESOLVE_CONTEXT"](ResolveContextInput(), EXECUTE_REQUEST, AUTH)
 
 
 # ===========================================================================
@@ -331,8 +329,7 @@ class TestGetMyTasks:
     def test_limit_respected(self):
         """Result set is capped at the requested limit."""
         many_issues = [
-            {**ISSUE_NODE, "id": f"issue-{i}", "identifier": f"ENG-{i}"}
-            for i in range(30)
+            {**ISSUE_NODE, "id": f"issue-{i}", "identifier": f"ENG-{i}"} for i in range(30)
         ]
         issues_response = {"issues": {"nodes": many_issues}}
         result, _ = _call(
@@ -1002,9 +999,7 @@ class TestGetIssueActivity:
         """Raises ValueError when neither issue_id nor issue_identifier is given."""
         with patch("app.agents.tools.integrations.linear_tool.graphql_request"):
             with pytest.raises(ValueError, match="Could not resolve issue"):
-                _TOOLS["CUSTOM_GET_ISSUE_ACTIVITY"](
-                    GetIssueActivityInput(), EXECUTE_REQUEST, AUTH
-                )
+                _TOOLS["CUSTOM_GET_ISSUE_ACTIVITY"](GetIssueActivityInput(), EXECUTE_REQUEST, AUTH)
 
     @pytest.mark.composio
     def test_activity_by_identifier(self):
@@ -1314,11 +1309,7 @@ class TestGetNotifications:
             "CUSTOM_GET_NOTIFICATIONS",
             GetNotificationsInput(),
             return_values=[
-                {
-                    "notifications": {
-                        "nodes": [NOTIFICATION_NODE_UNREAD, NOTIFICATION_NODE_READ]
-                    }
-                }
+                {"notifications": {"nodes": [NOTIFICATION_NODE_UNREAD, NOTIFICATION_NODE_READ]}}
             ],
         )
         assert result["count"] == 1
@@ -1332,11 +1323,7 @@ class TestGetNotifications:
             "CUSTOM_GET_NOTIFICATIONS",
             GetNotificationsInput(include_read=True),
             return_values=[
-                {
-                    "notifications": {
-                        "nodes": [NOTIFICATION_NODE_UNREAD, NOTIFICATION_NODE_READ]
-                    }
-                }
+                {"notifications": {"nodes": [NOTIFICATION_NODE_UNREAD, NOTIFICATION_NODE_READ]}}
             ],
         )
         assert result["count"] == 2

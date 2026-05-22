@@ -19,23 +19,24 @@ Pattern deletion:
     await delete_cache("user:*")  # Delete all user keys
 """
 
-from typing import Any, Optional
+from typing import Any
 
+from pydantic import TypeAdapter
+from pydantic.type_adapter import TypeAdapter as TypeAdapterType
 import redis.asyncio as redis
+
 from app.config.settings import settings
-from shared.py.wide_events import log
 from app.constants.cache import (
     DEFAULT_CACHE_TTL,
     ONE_YEAR_TTL,
 )
-from pydantic import TypeAdapter
-from pydantic.type_adapter import TypeAdapter as TypeAdapterType
+from shared.py.wide_events import log
 
 # Re-export for backwards compatibility
 CACHE_TTL = DEFAULT_CACHE_TTL
 
 
-def serialize_any(data: Any, model: Optional[type] = None) -> str:
+def serialize_any(data: Any, model: type | None = None) -> str:
     """
     Serialize Python objects to JSON string using Pydantic TypeAdapter.
 
@@ -61,7 +62,7 @@ def serialize_any(data: Any, model: Optional[type] = None) -> str:
     return adapter.dump_json(data).decode()
 
 
-def deserialize_any(json_str: str, model: Optional[type] = None) -> Any:
+def deserialize_any(json_str: str, model: type | None = None) -> Any:
     """
     Deserialize JSON string back to Python objects with optional type validation.
 
@@ -108,7 +109,7 @@ class RedisCache:
         else:
             log.warning("REDIS_URL is not set. Caching will be disabled.")
 
-    async def get(self, key: str, model: Optional[type] = None):
+    async def get(self, key: str, model: type | None = None):
         """
         Retrieve cached value by key with optional type validation.
 
@@ -141,9 +142,7 @@ class RedisCache:
             log.error(f"Error accessing Redis for key {key}: {e}")
             return None
 
-    async def set(
-        self, key: str, value: Any, ttl: int = 3600, model: Optional[type] = None
-    ):
+    async def set(self, key: str, value: Any, ttl: int = 3600, model: type | None = None):
         """
         Store value in cache with TTL and optional type validation.
 
@@ -203,7 +202,7 @@ redis_cache = RedisCache()
 
 
 # Wrappers for RedisCache instance methods
-async def get_cache(key: str, model: Optional[type] = None):
+async def get_cache(key: str, model: type | None = None):
     """
     Convenience wrapper for retrieving cached values.
 
@@ -220,9 +219,7 @@ async def get_cache(key: str, model: Optional[type] = None):
     return await redis_cache.get(key, model)
 
 
-async def set_cache(
-    key: str, value: Any, ttl: int = ONE_YEAR_TTL, model: Optional[type] = None
-):
+async def set_cache(key: str, value: Any, ttl: int = ONE_YEAR_TTL, model: type | None = None):
     """
     Convenience wrapper for storing cached values.
 

@@ -1,7 +1,7 @@
 """Unit tests for document generation utilities."""
 
 import os
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -13,7 +13,6 @@ from app.utils.document_utils import (
     generate_formatted_document,
     generate_plain_text_document,
 )
-
 
 # ---------------------------------------------------------------------------
 # DocumentProcessor.__init__
@@ -38,7 +37,7 @@ class TestDocumentProcessorInit:
 
     def test_custom_values(self):
         pdf_cfg: PDFConfig = {"margins": "1in", "font_family": "Arial"}
-        meta: Dict[str, Any] = {"author": "Test", "date": "2026-01-01"}
+        meta: dict[str, Any] = {"author": "Test", "date": "2026-01-01"}
         proc = DocumentProcessor(
             filename="essay",
             format="pdf",
@@ -200,9 +199,7 @@ class TestGenerateFormattedDocumentConvenience:
 
     async def test_with_metadata(self):
         meta = {"author": "John", "date": "2026-01-01"}
-        proc = DocumentProcessor(
-            filename="doc", format="docx", is_plain_text=False, metadata=meta
-        )
+        proc = DocumentProcessor(filename="doc", format="docx", is_plain_text=False, metadata=meta)
         with patch("app.utils.document_utils.pypandoc.convert_text") as mock_pandoc:
             await proc._generate_formatted_document("/tmp/doc.docx", "Content")
             call_args = mock_pandoc.call_args
@@ -371,9 +368,7 @@ class TestConfigurePdfArgs:
             "table_of_contents": True,
             "number_sections": True,
         }
-        proc = DocumentProcessor(
-            filename="doc", format="pdf", font_size=16, pdf_config=cfg
-        )
+        proc = DocumentProcessor(filename="doc", format="pdf", font_size=16, pdf_config=cfg)
         args: list[str] = []
         await proc._configure_pdf_args(args)
 
@@ -395,9 +390,7 @@ class TestConfigurePdfArgs:
 @pytest.mark.unit
 class TestUploadToCloudinary:
     async def test_upload_success(self):
-        proc = DocumentProcessor(
-            filename="doc", format="pdf", upload_to_cloudinary=True
-        )
+        proc = DocumentProcessor(filename="doc", format="pdf", upload_to_cloudinary=True)
         with patch(
             "app.utils.document_utils.upload_file_to_cloudinary",
             return_value="https://res.cloudinary.com/test/doc.pdf",
@@ -406,9 +399,7 @@ class TestUploadToCloudinary:
             assert result == "https://res.cloudinary.com/test/doc.pdf"
 
     async def test_upload_failure_raises(self):
-        proc = DocumentProcessor(
-            filename="doc", format="pdf", upload_to_cloudinary=True
-        )
+        proc = DocumentProcessor(filename="doc", format="pdf", upload_to_cloudinary=True)
         with patch(
             "app.utils.document_utils.upload_file_to_cloudinary",
             side_effect=Exception("Network error"),
@@ -417,9 +408,7 @@ class TestUploadToCloudinary:
                 await proc._upload_to_cloudinary("/tmp/doc.pdf")
 
     async def test_upload_uses_unique_public_id(self):
-        proc = DocumentProcessor(
-            filename="doc", format="pdf", upload_to_cloudinary=True
-        )
+        proc = DocumentProcessor(filename="doc", format="pdf", upload_to_cloudinary=True)
         with patch(
             "app.utils.document_utils.upload_file_to_cloudinary",
             return_value="https://example.com/url",
@@ -479,9 +468,7 @@ class TestGenerateDocument:
                 assert proc.cloudinary_url == "https://cdn.example.com/test.txt"
 
     async def test_without_upload(self, tmp_path):
-        proc = DocumentProcessor(
-            filename="test", format="txt", upload_to_cloudinary=False
-        )
+        proc = DocumentProcessor(filename="test", format="txt", upload_to_cloudinary=False)
         with patch("tempfile.gettempdir", return_value=str(tmp_path)):
             result = await proc.generate_document("Content")
             assert "cloudinary_url" not in result

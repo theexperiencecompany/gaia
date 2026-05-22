@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -464,7 +463,5 @@ class TestCancelStreamEndpoint:
 
     async def test_cancel_stream_requires_auth(self, unauthenticated_client):
         """POST /api/v1/cancel-stream/{id} without auth must return 401."""
-        response = await unauthenticated_client.post(
-            "/api/v1/cancel-stream/some-stream-id"
-        )
+        response = await unauthenticated_client.post("/api/v1/cancel-stream/some-stream-id")
         assert response.status_code == 401

@@ -2,22 +2,21 @@
 Tools API router for retrieving available tools and their metadata.
 """
 
-from typing import Dict
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
-from shared.py.wide_events import log
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.decorators.caching import Cacheable
 from app.db.redis import get_cache
-from app.models.tools_models import ToolsListResponse, ToolsCategoryResponse
+from app.decorators.caching import Cacheable
+from app.models.tools_models import ToolsCategoryResponse, ToolsListResponse
 from app.services.tools.tools_service import (
     get_available_tools,
-    get_tools_by_category,
     get_tool_categories,
+    get_tools_by_category,
     get_user_mcp_tools,
     merge_tools_responses,
 )
 from app.services.tools.tools_warmup import GLOBAL_TOOLS_CACHE_KEY
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -68,16 +67,14 @@ async def list_available_tools(
         log.set(outcome="success")
         return result
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve tools: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve tools: {e!s}")
 
 
 @router.get("/tools/categories")
 @Cacheable(smart_hash=True, ttl=21600)  # 6 hours
 async def list_tool_categories(
     user: dict = Depends(get_current_user),
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """
     Get all tool categories with their counts.
 
@@ -91,9 +88,7 @@ async def list_tool_categories(
         log.set(outcome="success")
         return result
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve tool categories: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve tool categories: {e!s}")
 
 
 @router.get("/tools/category/{category_name}", response_model=ToolsCategoryResponse)
@@ -124,5 +119,5 @@ async def get_tools_in_category(
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to retrieve tools for category '{category_name}': {str(e)}",
+            detail=f"Failed to retrieve tools for category '{category_name}': {e!s}",
         )

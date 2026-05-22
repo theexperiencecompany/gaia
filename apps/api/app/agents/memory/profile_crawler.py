@@ -12,15 +12,13 @@ Flow:
 import asyncio
 import time
 import traceback
-from typing import Dict
 
-from shared.py.wide_events import log
 from crawl4ai import AsyncWebCrawler
 
+from shared.py.wide_events import log
 
-async def crawl_profile_url(
-    url: str, platform: str, semaphore: asyncio.Semaphore
-) -> Dict:
+
+async def crawl_profile_url(url: str, platform: str, semaphore: asyncio.Semaphore) -> dict:
     """
     Crawl a single profile URL using crawl4ai.
 
@@ -53,9 +51,7 @@ async def crawl_profile_url(
 
                 elapsed = time.time() - start_time
                 content_size = len(result.markdown)
-                log.info(
-                    f"Successfully crawled {url} in {elapsed:.2f}s ({content_size:,} chars)"
-                )
+                log.info(f"Successfully crawled {url} in {elapsed:.2f}s ({content_size:,} chars)")
                 return {
                     "url": url,
                     "platform": platform,
@@ -68,11 +64,9 @@ async def crawl_profile_url(
             error_msg = str(e) if str(e) else "No error message"
 
             if not error_msg or error_msg == "No error message":
-                error_msg = f"{error_type}: {repr(e)}"
+                error_msg = f"{error_type}: {e!r}"
 
-            log.error(
-                f"Failed to crawl {url} after {elapsed:.2f}s: {error_type}: {error_msg}"
-            )
+            log.error(f"Failed to crawl {url} after {elapsed:.2f}s: {error_type}: {error_msg}")
             log.debug(f"Full traceback for {url}:\n{traceback.format_exc()}")
 
             return {

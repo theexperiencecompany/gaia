@@ -12,15 +12,15 @@ Uses fire-and-forget pattern - node returns immediately with zero latency.
 """
 
 import asyncio
-from typing import Dict, List, Optional
 
-from shared.py.wide_events import log
-from app.config.oauth_config import get_memory_extraction_prompt
-from app.override.langgraph_bigtool.utils import State
-from app.services.memory_service import memory_service
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
+
+from app.config.oauth_config import get_memory_extraction_prompt
+from app.override.langgraph_bigtool.utils import State
+from app.services.memory_service import memory_service
+from shared.py.wide_events import log
 
 MAX_TOOL_OUTPUT_SIZE = 500
 
@@ -34,22 +34,22 @@ def _task_done_callback(task: asyncio.Task) -> None:
     _background_tasks.discard(task)
 
 
-def _get_user_id(config: RunnableConfig) -> Optional[str]:
+def _get_user_id(config: RunnableConfig) -> str | None:
     """Extract user_id from config for user memory namespace."""
     return config.get("configurable", {}).get("user_id")
 
 
-def _get_subagent_id(config: RunnableConfig) -> Optional[str]:
+def _get_subagent_id(config: RunnableConfig) -> str | None:
     """Extract subagent ID from config for memory namespace."""
     return config.get("configurable", {}).get("subagent_id")
 
 
-def _get_session_id(config: RunnableConfig) -> Optional[str]:
+def _get_session_id(config: RunnableConfig) -> str | None:
     """Extract session/thread ID for memory correlation."""
     return config.get("configurable", {}).get("thread_id")
 
 
-def _check_worth_learning(messages: List[AnyMessage]) -> tuple[bool, str]:
+def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
     """Check if conversation has enough content for memory extraction.
 
     We skip trivial conversations to avoid noise in memory storage.
@@ -62,9 +62,7 @@ def _check_worth_learning(messages: List[AnyMessage]) -> tuple[bool, str]:
 
     # Count tool calls - simple interactions don't need memory
     tool_calls = sum(
-        len(msg.tool_calls)
-        for msg in messages
-        if isinstance(msg, AIMessage) and msg.tool_calls
+        len(msg.tool_calls) for msg in messages if isinstance(msg, AIMessage) and msg.tool_calls
     )
 
     if tool_calls < 2:
@@ -74,8 +72,8 @@ def _check_worth_learning(messages: List[AnyMessage]) -> tuple[bool, str]:
 
 
 def _format_messages_for_user_memory(
-    messages: List[AnyMessage],
-) -> List[Dict[str, str]]:
+    messages: list[AnyMessage],
+) -> list[dict[str, str]]:
     """Convert messages to mem0 format for user memory extraction.
 
     Key design decisions:
@@ -98,9 +96,7 @@ def _format_messages_for_user_memory(
         elif isinstance(msg, AIMessage):
             if msg.tool_calls:
                 for call in msg.tool_calls:
-                    tool_content = (
-                        f"[TOOL CALL: {call['name']}({call.get('args', {})})]"
-                    )
+                    tool_content = f"[TOOL CALL: {call['name']}({call.get('args', {})})]"
                     formatted.append({"role": "assistant", "content": tool_content})
             elif msg.content:
                 formatted.append({"role": "assistant", "content": str(msg.content)})
@@ -110,9 +106,7 @@ def _format_messages_for_user_memory(
             content = str(msg.content)
             if len(content) > MAX_TOOL_OUTPUT_SIZE:
                 content = content[:MAX_TOOL_OUTPUT_SIZE] + "... [truncated]"
-            formatted.append(
-                {"role": "assistant", "content": f"[TOOL RESULT: {content}]"}
-            )
+            formatted.append({"role": "assistant", "content": f"[TOOL RESULT: {content}]"})
 
     return formatted
 
@@ -138,11 +132,11 @@ def _extract_text_content(content) -> str:
 
 
 async def _store_user_memory_background(
-    messages: List[AnyMessage],
+    messages: list[AnyMessage],
     user_id: str,
-    session_id: Optional[str],
-    extraction_prompt: Optional[str],
-    subagent_id: Optional[str],
+    session_id: str | None,
+    extraction_prompt: str | None,
+    subagent_id: str | None,
 ) -> None:
     """Background task - stores USER memory (user_id namespace).
 
@@ -175,9 +169,7 @@ async def _store_user_memory_background(
         )
 
         if success:
-            log.info(
-                f"[{subagent_id or 'agent'}] User memory stored for {user_id[:8]}..."
-            )
+            log.info(f"[{subagent_id or 'agent'}] User memory stored for {user_id[:8]}...")
     except Exception as e:
         log.error(f"[{subagent_id or 'agent'}] User memory storage failed: {e}")
 
@@ -206,9 +198,7 @@ async def memory_node(
     session_id = _get_session_id(config)
 
     # Look up extraction prompt from registry using subagent_id
-    extraction_prompt = (
-        get_memory_extraction_prompt(subagent_id) if subagent_id else None
-    )
+    extraction_prompt = get_memory_extraction_prompt(subagent_id) if subagent_id else None
 
     # Quick validation - skip trivial conversations
     should_learn, reason = _check_worth_learning(messages)
@@ -230,8 +220,6 @@ async def memory_node(
 
         _background_tasks.add(task)
         task.add_done_callback(_task_done_callback)
-        log.debug(
-            f"[{subagent_id or 'agent'}] Memory learning spawned: {task.get_name()}"
-        )
+        log.debug(f"[{subagent_id or 'agent'}] Memory learning spawned: {task.get_name()}")
 
     return state

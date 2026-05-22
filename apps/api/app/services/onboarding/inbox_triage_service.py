@@ -1,14 +1,13 @@
 """Triage inbox emails for onboarding — find what matters and interesting patterns."""
 
 import time
-from typing import Optional
 
 from langchain_core.messages import HumanMessage
-from shared.py.wide_events import log
 
 from app.agents.prompts.onboarding_prompts import INBOX_TRIAGE_PROMPT
 from app.core.lazy_loader import providers
 from app.models.onboarding_models import InboxTriage, InboxTriageOutput
+from shared.py.wide_events import log
 
 _NOISE_SENDERS = (
     "noreply@",
@@ -32,9 +31,7 @@ _MEANINGFUL_LABELS = {
 def _is_noise_email(email: dict) -> bool:
     sender = email.get("sender", "").lower()
     snippet = email.get("snippet", "").lower()[:200]
-    return any(sender.startswith(prefix) for prefix in _NOISE_SENDERS) or (
-        "unsubscribe" in snippet
-    )
+    return any(sender.startswith(prefix) for prefix in _NOISE_SENDERS) or ("unsubscribe" in snippet)
 
 
 def _format_labels(email: dict) -> str:
@@ -51,7 +48,7 @@ async def triage_inbox(
     emails: list[dict],
     profession: str = "",
     focus: str = "",
-) -> Optional[InboxTriage]:
+) -> InboxTriage | None:
     """Triage a list of emails to surface what's important."""
     if not emails:
         return InboxTriage(
@@ -91,9 +88,7 @@ async def triage_inbox(
             focus=focus or "not specified",
         )
         t_llm = time.monotonic()
-        result: InboxTriageOutput = await structured_llm.ainvoke(
-            [HumanMessage(content=prompt)]
-        )
+        result: InboxTriageOutput = await structured_llm.ainvoke([HumanMessage(content=prompt)])
         llm_duration_s = round(time.monotonic() - t_llm, 2)
 
         total_unread = len(unread)

@@ -86,9 +86,7 @@ def format_selected_tools(
                 if isinstance(tool_registry[result], BaseTool):
                     tool_names.append(tool_registry[result].name)
                 else:
-                    tool_names.append(
-                        getattr(tool_registry[result], "__name__", result)
-                    )
+                    tool_names.append(getattr(tool_registry[result], "__name__", result))
             else:
                 # Handle tools not in registry (e.g., subagent: prefixed)
                 tool_names.append(result)

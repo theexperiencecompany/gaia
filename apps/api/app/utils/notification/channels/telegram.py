@@ -7,9 +7,11 @@ Sends are done as plain text + entity objects — the correct Telegram approach
 that works regardless of special characters in the content.
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 import aiohttp
+from telegramify_markdown import convert, split_entities
+
 from app.config.settings import settings
 from app.constants.notifications import CHANNEL_TYPE_TELEGRAM, TELEGRAM_BOT_API_BASE
 from app.models.notification.notification_models import (
@@ -18,7 +20,6 @@ from app.models.notification.notification_models import (
 )
 from app.utils.notification.channels.base import SendFn
 from app.utils.notification.channels.external import ExternalPlatformAdapter
-from telegramify_markdown import convert, split_entities
 
 
 class TelegramChannelAdapter(ExternalPlatformAdapter):
@@ -49,7 +50,7 @@ class TelegramChannelAdapter(ExternalPlatformAdapter):
     def _get_bot_token(self) -> str | None:
         return settings.TELEGRAM_BOT_TOKEN
 
-    def _session_kwargs(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
+    def _session_kwargs(self, ctx: dict[str, Any]) -> dict[str, Any]:
         return {}
 
     # ------------------------------------------------------------------
@@ -57,15 +58,13 @@ class TelegramChannelAdapter(ExternalPlatformAdapter):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _md_to_entities(text: str) -> tuple[str, List[Dict[str, Any]]]:
+    def _md_to_entities(text: str) -> tuple[str, list[dict[str, Any]]]:
         """Convert Markdown to (plain_text, entity_dicts) via telegramify-markdown."""
         plain, entities = convert(text, latex_escape=False)
         return plain, [e.to_dict() for e in entities]
 
     @staticmethod
-    def _chunks_from_md(
-        text: str, max_len: int
-    ) -> list[tuple[str, List[Dict[str, Any]]]]:
+    def _chunks_from_md(text: str, max_len: int) -> list[tuple[str, list[dict[str, Any]]]]:
         """Convert Markdown and split into chunks within Telegram's length limit.
 
         Uses split_entities() so formatting entities are correctly clipped at
@@ -74,16 +73,14 @@ class TelegramChannelAdapter(ExternalPlatformAdapter):
         plain, entities = convert(text, latex_escape=False)
         return [
             (chunk_text, [e.to_dict() for e in chunk_ents])
-            for chunk_text, chunk_ents in split_entities(
-                plain, entities, max_utf16_len=max_len
-            )
+            for chunk_text, chunk_ents in split_entities(plain, entities, max_utf16_len=max_len)
         ]
 
     # ------------------------------------------------------------------
     # Transform — produce plain strings (entities added at send time)
     # ------------------------------------------------------------------
 
-    async def transform(self, notification: NotificationRequest) -> Dict[str, Any]:
+    async def transform(self, notification: NotificationRequest) -> dict[str, Any]:
         """Produce plain-text content dict. Markdown → entities conversion
         happens in _deliver_content so split_entities can respect the chunk limit.
         """
@@ -98,9 +95,7 @@ class TelegramChannelAdapter(ExternalPlatformAdapter):
             conversation_id = rich.get("conversation_id", "")
             app_url = settings.FRONTEND_URL
             footer = (
-                f"🔗 [View full results]({app_url}/c/{conversation_id})"
-                if conversation_id
-                else ""
+                f"🔗 [View full results]({app_url}/c/{conversation_id})" if conversation_id else ""
             )
             return {
                 "type": "workflow_messages",
@@ -121,13 +116,13 @@ class TelegramChannelAdapter(ExternalPlatformAdapter):
     async def _send_message(
         self,
         session: aiohttp.ClientSession,
-        ctx: Dict[str, Any],
+        ctx: dict[str, Any],
         text: str,
-        entities: List[Dict[str, Any]],
+        entities: list[dict[str, Any]],
     ) -> str | None:
         """POST a single sendMessage call. Returns error text or None on success."""
         url = f"{TELEGRAM_BOT_API_BASE}{ctx['token']}/sendMessage"
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "chat_id": ctx["platform_user_id"],
             "text": text,
         }
@@ -139,7 +134,7 @@ class TelegramChannelAdapter(ExternalPlatformAdapter):
         return None
 
     async def _setup_sender(
-        self, session: aiohttp.ClientSession, ctx: Dict[str, Any]
+        self, session: aiohttp.ClientSession, ctx: dict[str, Any]
     ) -> tuple[SendFn | None, ChannelDeliveryStatus | None]:
         """Return a per-delivery sender closure bound to the current session/context."""
 
@@ -149,7 +144,7 @@ class TelegramChannelAdapter(ExternalPlatformAdapter):
         return send_plain, None
 
     async def _send_markdown(
-        self, session: aiohttp.ClientSession, ctx: Dict[str, Any], text: str
+        self, session: aiohttp.ClientSession, ctx: dict[str, Any], text: str
     ) -> str | None:
         """Convert Markdown to entities and send chunked messages safely."""
         for chunk_text, chunk_entities in self._chunks_from_md(
@@ -161,19 +156,13 @@ class TelegramChannelAdapter(ExternalPlatformAdapter):
                 return err
         return None
 
-    async def deliver(
-        self, content: Dict[str, Any], user_id: str
-    ) -> ChannelDeliveryStatus:
+    async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
         """Deliver content without storing any per-request state on ``self``."""
         ctx, context_err = await self._get_platform_context(user_id)
         if context_err:
             return context_err
-        if (
-            ctx is None
-        ):  # guaranteed by _get_platform_context invariant; guard for type narrowing
-            raise RuntimeError(
-                "ctx is None despite no error — this should never happen"
-            )
+        if ctx is None:  # guaranteed by _get_platform_context invariant; guard for type narrowing
+            raise RuntimeError("ctx is None despite no error — this should never happen")
 
         try:
             async with aiohttp.ClientSession(**self._session_kwargs(ctx)) as session:

@@ -39,12 +39,12 @@ Usage:
 """
 
 import asyncio
-import json
+from collections.abc import AsyncGenerator
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict, Optional
+from datetime import UTC, datetime
+import json
+from typing import Any
 
-from shared.py.wide_events import log
 from app.constants.cache import (
     STREAM_CHANNEL_PREFIX,
     STREAM_PROGRESS_PREFIX,
@@ -57,6 +57,7 @@ from app.constants.streaming import (
     STREAM_ERROR_SIGNAL,
 )
 from app.db.redis import redis_cache
+from shared.py.wide_events import log
 
 
 @dataclass
@@ -70,13 +71,11 @@ class StreamProgress:
     conversation_id: str
     user_id: str
     complete_message: str = ""
-    tool_data: Dict[str, Any] = field(default_factory=dict)
-    started_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    tool_data: dict[str, Any] = field(default_factory=dict)
+    started_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     is_cancelled: bool = False
     is_complete: bool = False
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class StreamManager:
@@ -181,7 +180,7 @@ class StreamManager:
         cls,
         stream_id: str,
         keepalive_interval: float = 15,
-        start_event: Optional[asyncio.Event] = None,
+        start_event: asyncio.Event | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Subscribe to stream channel and yield chunks.
@@ -341,7 +340,7 @@ class StreamManager:
         cls,
         stream_id: str,
         message_chunk: str = "",
-        tool_data: Optional[Dict[str, Any]] = None,
+        tool_data: dict[str, Any] | None = None,
     ) -> None:
         """
         Update streaming progress in Redis.
@@ -378,7 +377,7 @@ class StreamManager:
         await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
 
     @classmethod
-    async def get_progress(cls, stream_id: str) -> Optional[Dict[str, Any]]:
+    async def get_progress(cls, stream_id: str) -> dict[str, Any] | None:
         """
         Get current stream progress.
 

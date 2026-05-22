@@ -13,12 +13,12 @@ Tests cover:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 if TYPE_CHECKING:
     from app.agents.skills.models import Skill
@@ -40,7 +40,7 @@ _DISABLE_SKILL = "app.api.v1.endpoints.skills.disable_skill"
 _UNINSTALL_SKILL = "app.api.v1.endpoints.skills.uninstall_skill_full"
 
 
-def _make_skill_mock(**overrides) -> "Skill":
+def _make_skill_mock(**overrides) -> Skill:
     from app.agents.skills.models import Skill
 
     base: dict[str, object] = {
@@ -58,7 +58,7 @@ def _make_skill_mock(**overrides) -> "Skill":
         "enabled": True,
         "source": "github",
         "source_url": "https://github.com/org/repo",
-        "installed_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+        "installed_at": datetime(2025, 1, 1, tzinfo=UTC),
         "updated_at": None,
         "files": ["SKILL.md"],
     }
@@ -276,9 +276,7 @@ class TestInstallInline:
 
         assert response.status_code == 201
 
-    async def test_create_inline_skill_missing_name_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_create_inline_skill_missing_name_returns_422(self, client: AsyncClient):
         response = await client.post(
             INSTALL_INLINE_URL,
             json={
@@ -288,9 +286,7 @@ class TestInstallInline:
         )
         assert response.status_code == 422
 
-    async def test_create_inline_skill_missing_description_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_create_inline_skill_missing_description_returns_422(self, client: AsyncClient):
         response = await client.post(
             INSTALL_INLINE_URL,
             json={
@@ -300,9 +296,7 @@ class TestInstallInline:
         )
         assert response.status_code == 422
 
-    async def test_create_inline_skill_missing_instructions_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_create_inline_skill_missing_instructions_returns_422(self, client: AsyncClient):
         response = await client.post(
             INSTALL_INLINE_URL,
             json={
@@ -312,9 +306,7 @@ class TestInstallInline:
         )
         assert response.status_code == 422
 
-    async def test_create_inline_skill_value_error_returns_400(
-        self, client: AsyncClient
-    ):
+    async def test_create_inline_skill_value_error_returns_400(self, client: AsyncClient):
         with patch(
             _INSTALL_INLINE,
             new_callable=AsyncMock,
@@ -331,9 +323,7 @@ class TestInstallInline:
 
         assert response.status_code == 400
 
-    async def test_create_inline_skill_service_error_returns_500(
-        self, client: AsyncClient
-    ):
+    async def test_create_inline_skill_service_error_returns_500(self, client: AsyncClient):
         with patch(
             _INSTALL_INLINE,
             new_callable=AsyncMock,

@@ -20,10 +20,9 @@ DELETE ``app/agents/core/nodes/manage_system_prompts.py`` → these tests FAIL.
 DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
 """
 
-import pytest
-from tests.helpers import BindableToolsFakeModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
+import pytest
 
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from tests.e2e.conftest import (
@@ -32,7 +31,7 @@ from tests.e2e.conftest import (
     make_mock_store,
     make_node_config,
 )
-from tests.helpers import assert_tool_called, extract_tool_calls
+from tests.helpers import BindableToolsFakeModel, assert_tool_called, extract_tool_calls
 
 # ---------------------------------------------------------------------------
 # NOTE: The three tests below (test_manage_system_prompts_keeps_only_latest_*,
@@ -87,9 +86,7 @@ class TestManageSystemPromptsNodeUnit:
 
         result = manage_system_prompts_node(state, config, store)
 
-        system_messages = [
-            m for m in result["messages"] if isinstance(m, SystemMessage)
-        ]
+        system_messages = [m for m in result["messages"] if isinstance(m, SystemMessage)]
         assert len(system_messages) == 1, (
             "manage_system_prompts_node must keep only the latest non-memory system prompt"
         )
@@ -115,15 +112,11 @@ class TestManageSystemPromptsNodeUnit:
 
         result = manage_system_prompts_node(state, config, store)
 
-        system_messages = [
-            m for m in result["messages"] if isinstance(m, SystemMessage)
-        ]
+        system_messages = [m for m in result["messages"] if isinstance(m, SystemMessage)]
         assert len(system_messages) == 2, (
             "manage_system_prompts_node must keep memory messages AND the latest non-memory prompt"
         )
-        memory_msgs = [
-            m for m in system_messages if m.additional_kwargs.get("memory_message")
-        ]
+        memory_msgs = [m for m in system_messages if m.additional_kwargs.get("memory_message")]
         assert len(memory_msgs) == 1
         assert memory_msgs[0].content == "User prefers concise answers."
         non_memory_msgs = [
@@ -305,9 +298,7 @@ class TestMultiToolScenario:
         - No NEW tool calls were introduced by the graph run (the model
           responded with plain text, not another tool invocation).
         """
-        fake_llm = BindableToolsFakeModel(
-            responses=[AIMessage(content="All cleaned up.")]
-        )
+        fake_llm = BindableToolsFakeModel(responses=[AIMessage(content="All cleaned up.")])
 
         graph = build_gaia_test_graph(
             fake_llm=fake_llm,
@@ -320,9 +311,7 @@ class TestMultiToolScenario:
         old_system = SystemMessage(content="Old system prompt - should be removed")
         dangling_ai = AIMessage(
             content="",
-            tool_calls=[
-                {"id": "stale_tc", "name": "get_weather", "args": {"city": "X"}}
-            ],
+            tool_calls=[{"id": "stale_tc", "name": "get_weather", "args": {"city": "X"}}],
         )
         new_system = SystemMessage(content="Current system prompt - should be kept")
 
@@ -342,13 +331,10 @@ class TestMultiToolScenario:
 
         # The model must have responded — hooks ran without crashing
         ai_responses = [
-            m
-            for m in final_messages
-            if isinstance(m, AIMessage) and m.content == "All cleaned up."
+            m for m in final_messages if isinstance(m, AIMessage) and m.content == "All cleaned up."
         ]
         assert len(ai_responses) == 1, (
-            "Graph must produce the model's response. "
-            "If hooks crashed, no AIMessage would appear."
+            "Graph must produce the model's response. If hooks crashed, no AIMessage would appear."
         )
 
         # The model's final AIMessage must not contain tool calls

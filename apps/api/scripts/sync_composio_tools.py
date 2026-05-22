@@ -23,34 +23,31 @@ from __future__ import annotations
 
 import argparse
 import ast
+from collections import defaultdict
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 import difflib
 import json
 import os
+from pathlib import Path
 import re
 import sys
-from collections import defaultdict
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
-
 BACKEND_DIR = Path(__file__).parent.parent
-DEFAULT_OUTPUT_DIR = (
-    BACKEND_DIR.parent.parent / ".agents" / "plans" / "composio_tools_output"
-)
+DEFAULT_OUTPUT_DIR = BACKEND_DIR.parent.parent / ".agents" / "plans" / "composio_tools_output"
 sys.path.insert(0, str(BACKEND_DIR))
 
 if not os.getenv("ENV"):
     os.environ["ENV"] = "development"
 
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS  # noqa: E402
-from app.config.settings import settings  # noqa: E402
 from composio import Composio  # noqa: E402
 
+from app.config.oauth_config import OAUTH_INTEGRATIONS  # noqa: E402
+from app.config.settings import settings  # noqa: E402
 
 TOOL_NAME_PATTERN = re.compile(r"\b([A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+)\b")
 CUSTOM_TOOL_FILE_PATTERNS = [
@@ -96,8 +93,7 @@ def parse_args() -> argparse.Namespace:
         "--output-dir",
         default=str(DEFAULT_OUTPUT_DIR),
         help=(
-            "Output directory (absolute or relative to apps/api). "
-            f"Default: {DEFAULT_OUTPUT_DIR}"
+            f"Output directory (absolute or relative to apps/api). Default: {DEFAULT_OUTPUT_DIR}"
         ),
     )
     parser.add_argument(
@@ -144,9 +140,7 @@ def resolve_toolkits_to_scan(
         resolved = integration_to_toolkit.get(integration_id.lower())
         if not resolved:
             valid = ", ".join(sorted(integration_to_toolkit))
-            raise ValueError(
-                f"Unknown integration '{integration_id}'. Valid ids: {valid}"
-            )
+            raise ValueError(f"Unknown integration '{integration_id}'. Valid ids: {valid}")
         selected.add(resolved)
 
     for toolkit in toolkit_filters:
@@ -312,9 +306,7 @@ def collect_skill_tool_references(
         try:
             metadata = parse_skill_frontmatter(content)
         except yaml.YAMLError as exc:
-            parse_errors.append(
-                {"file": rel_path, "error": f"Invalid frontmatter YAML: {exc}"}
-            )
+            parse_errors.append({"file": rel_path, "error": f"Invalid frontmatter YAML: {exc}"})
             metadata = {}
         skill_name = str(metadata.get("name") or skill_path.parent.name)
         target = str(metadata.get("target") or "executor")
@@ -489,15 +481,13 @@ def main() -> int:
 
     known_prefixes = selected_set | set(custom_tools_by_toolkit)
 
-    inventory_toolkits = sorted(
-        set(composio_tools_by_toolkit) | set(custom_tools_by_toolkit)
-    )
+    inventory_toolkits = sorted(set(composio_tools_by_toolkit) | set(custom_tools_by_toolkit))
 
     output_dir = (BACKEND_DIR / args.output_dir).resolve()
     toolkits_dir = output_dir / "toolkits"
     verification_dir = output_dir / "verification"
 
-    generated_at = datetime.now(timezone.utc).isoformat()
+    generated_at = datetime.now(UTC).isoformat()
 
     all_available_tools: set[str] = set()
     toolkit_summaries: dict[str, dict[str, Any]] = {}

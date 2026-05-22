@@ -1,7 +1,7 @@
 """Unit tests for weather Pydantic models."""
 
-import pytest
 from pydantic import ValidationError
+import pytest
 
 from app.models.weather_models import (
     ForecastDay,
@@ -280,11 +280,7 @@ class TestWeatherData:
             name="London",
             cod=200,
             coord={"lon": -0.1257, "lat": 51.5085},
-            weather=[
-                WeatherCondition(
-                    id=800, main="Clear", description="clear sky", icon="01d"
-                )
-            ],
+            weather=[WeatherCondition(id=800, main="Clear", description="clear sky", icon="01d")],
             base="stations",
             main=WeatherMain(
                 temp=15.0,
@@ -331,9 +327,7 @@ class TestWeatherData:
     def test_nested_weather_conditions(self):
         conditions = [
             WeatherCondition(id=800, main="Clear", description="clear sky", icon="01d"),
-            WeatherCondition(
-                id=801, main="Clouds", description="few clouds", icon="02d"
-            ),
+            WeatherCondition(id=801, main="Clouds", description="few clouds", icon="02d"),
         ]
         m = WeatherData(weather=conditions)
         assert len(m.weather) == 2  # type: ignore[arg-type]
@@ -348,9 +342,7 @@ class TestWeatherData:
                 temp_min=15.0 + i,
                 temp_max=25.0 + i,
                 humidity=50 + i,
-                weather=ForecastDayWeather(
-                    main="Clear", description="clear sky", icon="01d"
-                ),
+                weather=ForecastDayWeather(main="Clear", description="clear sky", icon="01d"),
             )
             for i in range(1, 6)
         ]
@@ -363,8 +355,6 @@ class TestWeatherData:
         assert m.coord["lat"] == pytest.approx(40.73)  # type: ignore[index]
 
     def test_location_nested(self):
-        m = WeatherData(
-            location=WeatherLocation(city="Tokyo", country="JP", region="Kanto")
-        )
+        m = WeatherData(location=WeatherLocation(city="Tokyo", country="JP", region="Kanto"))
         assert m.location.city == "Tokyo"  # type: ignore[union-attr]
         assert m.location.region == "Kanto"  # type: ignore[union-attr]

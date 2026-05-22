@@ -1,13 +1,13 @@
 """ARQ worker task for post-onboarding personalization."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from bson import ObjectId
-from shared.py.wide_events import log, wide_task
 
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import OnboardingPhase
 from app.services.onboarding.intelligence_job import clear_active_intelligence_job
+from shared.py.wide_events import log, wide_task
 
 
 async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
@@ -32,13 +32,11 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
                     {
                         "$set": {
                             "onboarding.phase": OnboardingPhase.PERSONALIZATION_COMPLETE,
-                            "updated_at": datetime.now(timezone.utc),
+                            "updated_at": datetime.now(UTC),
                         }
                     },
                 )
-                log.info(
-                    f"Set phase to PERSONALIZATION_COMPLETE after failure for user {user_id}"
-                )
+                log.info(f"Set phase to PERSONALIZATION_COMPLETE after failure for user {user_id}")
             except Exception as db_err:
                 log.error(
                     f"Failed to update onboarding phase after error for user {user_id}: {db_err}",
@@ -51,8 +49,7 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
                     await clear_active_intelligence_job(user_id, job_id)
                 except Exception as clear_err:
                     log.warning(
-                        "Failed to clear intelligence job id "
-                        f"for user {user_id}: {clear_err}"
+                        f"Failed to clear intelligence job id for user {user_id}: {clear_err}"
                     )
 
         message = f"Onboarding intelligence completed for user {user_id}"

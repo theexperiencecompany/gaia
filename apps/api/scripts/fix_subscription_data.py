@@ -33,21 +33,22 @@ Script options (interactive):
 """
 
 import asyncio
-import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+import sys
 
 # Add the backend directory to Python path so we can import from app
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from shared.py.wide_events import log as logger  # noqa: E402
+from bson import ObjectId  # noqa: E402
+
 from app.db.mongodb.collections import (  # noqa: E402
     plans_collection,
     subscriptions_collection,
 )
 from app.db.mongodb.mongodb import init_mongodb  # noqa: E402
-from bson import ObjectId  # noqa: E402
+from shared.py.wide_events import log as logger  # noqa: E402
 
 
 async def find_invalid_subscriptions():
@@ -72,9 +73,7 @@ async def find_invalid_subscriptions():
             plan_id = subscription.get("plan_id")
             if plan_id not in valid_plan_ids:
                 invalid_subscriptions.append(subscription)
-                print(
-                    f"❌ Invalid subscription: {subscription['_id']} -> plan_id: {plan_id}"
-                )
+                print(f"❌ Invalid subscription: {subscription['_id']} -> plan_id: {plan_id}")
             else:
                 valid_subscriptions.append(subscription)
 
@@ -100,9 +99,7 @@ async def cleanup_invalid_subscriptions(invalid_subscriptions):
 
         # Delete invalid subscriptions
         invalid_ids = [sub["_id"] for sub in invalid_subscriptions]
-        result = await subscriptions_collection.delete_many(
-            {"_id": {"$in": invalid_ids}}
-        )
+        result = await subscriptions_collection.delete_many({"_id": {"$in": invalid_ids}})
 
         print(f"✅ Deleted {result.deleted_count} invalid subscriptions")
 
@@ -134,7 +131,7 @@ async def update_invalid_subscriptions(invalid_subscriptions, target_plan_id):
             {
                 "$set": {
                     "plan_id": target_plan_id,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
         )
@@ -182,9 +179,7 @@ async def main():
         print("\n✅ All subscriptions have valid plan_ids! No action needed.")
         return
 
-    print(
-        f"\n🤔 What would you like to do with the {len(invalid_subs)} invalid subscriptions?"
-    )
+    print(f"\n🤔 What would you like to do with the {len(invalid_subs)} invalid subscriptions?")
     print("1. Delete them (cleanup)")
     print("2. Update them to point to GAIA Pro Monthly")
     print("3. Update them to point to GAIA Pro Yearly")

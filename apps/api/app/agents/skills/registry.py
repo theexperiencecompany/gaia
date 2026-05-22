@@ -13,17 +13,16 @@ Write operations (install/uninstall/enable/disable) invalidate
 both the per-agent user skills cache and the composed skills text cache.
 """
 
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.agents.skills.models import Skill, SkillSource
-from shared.py.wide_events import log
 from app.constants.cache import (
     USER_SKILLS_CACHE_KEY,
     USER_SKILLS_CACHE_TTL,
 )
 from app.decorators.caching import Cacheable, CacheInvalidator
+from shared.py.wide_events import log
 
 COLLECTION_NAME = "skills"
 
@@ -69,13 +68,13 @@ async def install_skill(
     target: str,
     vfs_path: str,
     source: SkillSource,
-    source_url: Optional[str] = None,
-    body_content: Optional[str] = None,
-    files: Optional[List[str]] = None,
-    license: Optional[str] = None,
-    compatibility: Optional[str] = None,
-    metadata: Optional[dict[str, str]] = None,
-    allowed_tools: Optional[List[str]] = None,
+    source_url: str | None = None,
+    body_content: str | None = None,
+    files: list[str] | None = None,
+    license: str | None = None,
+    compatibility: str | None = None,
+    metadata: dict[str, str] | None = None,
+    allowed_tools: list[str] | None = None,
 ) -> Skill:
     """Register a newly installed skill in the registry.
 
@@ -136,15 +135,14 @@ async def install_skill(
         body_content=body_content,
         files=files or [],
         enabled=True,
-        installed_at=datetime.now(timezone.utc),
+        installed_at=datetime.now(UTC),
     )
 
     doc = _skill_to_doc(skill)
     await collection.insert_one(doc)
 
     log.info(
-        f"[skills] Installed '{name}' for user {user_id} "
-        f"(target={target}, source={source.value})"
+        f"[skills] Installed '{name}' for user {user_id} (target={target}, source={source.value})"
     )
     return skill
 
@@ -171,7 +169,7 @@ async def uninstall_skill(user_id: str, skill_id: str) -> bool:
     return False
 
 
-async def get_skill(user_id: str, skill_id: str) -> Optional[Skill]:
+async def get_skill(user_id: str, skill_id: str) -> Skill | None:
     """Get a single installed skill by ID."""
     collection = _get_collection()
     doc = await collection.find_one({"_id": skill_id, "user_id": user_id})
@@ -179,8 +177,8 @@ async def get_skill(user_id: str, skill_id: str) -> Optional[Skill]:
 
 
 async def get_skill_by_name(
-    user_id: str, skill_name: str, target: Optional[str] = None
-) -> Optional[Skill]:
+    user_id: str, skill_name: str, target: str | None = None
+) -> Skill | None:
     """Get an installed skill by name (and optionally target)."""
     collection = _get_collection()
     query: dict = {"user_id": user_id, "name": skill_name}
@@ -192,9 +190,9 @@ async def get_skill_by_name(
 
 async def list_skills(
     user_id: str,
-    target: Optional[str] = None,
+    target: str | None = None,
     enabled_only: bool = False,
-) -> List[Skill]:
+) -> list[Skill]:
     """List installed skills for a user.
 
     Args:
@@ -218,7 +216,7 @@ async def list_skills(
 
 
 @Cacheable(key_pattern=USER_SKILLS_CACHE_KEY, ttl=USER_SKILLS_CACHE_TTL)
-async def get_skills_for_agent(user_id: str, agent_name: str) -> List[Skill]:
+async def get_skills_for_agent(user_id: str, agent_name: str) -> list[Skill]:
     """Get all enabled skills available to a specific agent.
 
     Returns skills where target matches the agent_name exactly.
@@ -262,7 +260,7 @@ async def enable_skill(user_id: str, skill_id: str) -> bool:
         {
             "$set": {
                 "enabled": True,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(UTC).isoformat(),
             }
         },
     )
@@ -278,7 +276,7 @@ async def disable_skill(user_id: str, skill_id: str) -> bool:
         {
             "$set": {
                 "enabled": False,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(UTC).isoformat(),
             }
         },
     )

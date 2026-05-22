@@ -1,6 +1,6 @@
 """OAuth integration models."""
 
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, model_validator
 
@@ -31,9 +31,9 @@ class IntegrationFAQ(BaseModel):
 class IntegrationContent(BaseModel):
     """Rich marketplace content shown only on the integration detail page."""
 
-    use_cases: List[str] = []
-    how_it_works: List[IntegrationHowItWorksStep] = []
-    faqs: List[IntegrationFAQ] = []
+    use_cases: list[str] = []
+    how_it_works: list[IntegrationHowItWorksStep] = []
+    faqs: list[IntegrationFAQ] = []
 
 
 class OAuthIntegration(BaseModel):
@@ -44,21 +44,21 @@ class OAuthIntegration(BaseModel):
     description: str
     category: str
     provider: str
-    scopes: List[OAuthScope]
+    scopes: list[OAuthScope]
     available: bool = True
-    oauth_endpoints: Optional[Dict[str, str]] = None
+    oauth_endpoints: dict[str, str] | None = None
     is_special: bool = False
     display_priority: int = 0
-    included_integrations: List[str] = []
+    included_integrations: list[str] = []
     is_featured: bool = False
-    short_name: Optional[str] = None
+    short_name: str | None = None
     managed_by: Literal["self", "composio", "mcp", "internal"]
-    composio_config: Optional[ComposioConfig] = None
-    mcp_config: Optional[MCPConfig] = None
-    associated_triggers: List[TriggerConfig] = []
-    subagent_config: Optional[SubAgentConfig] = None
-    metadata_config: Optional[ProviderMetadataConfig] = None
-    content: Optional[IntegrationContent] = None
+    composio_config: ComposioConfig | None = None
+    mcp_config: MCPConfig | None = None
+    associated_triggers: list[TriggerConfig] = []
+    subagent_config: SubAgentConfig | None = None
+    metadata_config: ProviderMetadataConfig | None = None
+    content: IntegrationContent | None = None
 
     @model_validator(mode="after")
     def _enforce_composio_invariant(self) -> "OAuthIntegration":
@@ -73,8 +73,7 @@ class OAuthIntegration(BaseModel):
             )
         if self.managed_by == "composio" and self.composio_config is None:
             raise ValueError(
-                f"Integration {self.id!r} has managed_by='composio' but "
-                f"no composio_config."
+                f"Integration {self.id!r} has managed_by='composio' but no composio_config."
             )
         return self
 
@@ -90,8 +89,8 @@ class IntegrationConfigResponse(BaseModel):
     available: bool
     isSpecial: bool
     displayPriority: int
-    includedIntegrations: List[str]
+    includedIntegrations: list[str]
     isFeatured: bool
     managedBy: Literal["self", "composio", "mcp", "internal"]
-    authType: Optional[Literal["none", "oauth", "bearer"]] = None
+    authType: Literal["none", "oauth", "bearer"] | None = None
     source: Literal["platform"] = "platform"

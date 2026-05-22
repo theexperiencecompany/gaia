@@ -13,7 +13,6 @@ import pytest
 
 from app.db.mongodb.mongodb import MongoDB, init_mongodb
 
-
 # ---------------------------------------------------------------------------
 # MongoDB class — __init__
 # ---------------------------------------------------------------------------
@@ -57,13 +56,9 @@ class TestMongoDBInit:
 
         assert exc_info.value.code == 1
 
-    @patch(
-        "app.db.mongodb.mongodb.AsyncIOMotorClient", side_effect=Exception("conn error")
-    )
+    @patch("app.db.mongodb.mongodb.AsyncIOMotorClient", side_effect=Exception("conn error"))
     @patch("app.db.mongodb.mongodb.log")
-    def test_motor_exception_exits(
-        self, mock_log: MagicMock, mock_motor: MagicMock
-    ) -> None:
+    def test_motor_exception_exits(self, mock_log: MagicMock, mock_motor: MagicMock) -> None:
         """Exception during Motor client creation should log error and exit."""
         with pytest.raises(SystemExit) as exc_info:
             MongoDB(uri="mongodb://bad-host:27017", db_name="test_db")
@@ -210,9 +205,7 @@ class TestInitMongodb:
 
     @patch("app.db.mongodb.mongodb.MongoDB")
     @patch("app.db.mongodb.mongodb.log")
-    def test_creates_instance_and_pings(
-        self, mock_log: MagicMock, mock_class: MagicMock
-    ) -> None:
+    def test_creates_instance_and_pings(self, mock_log: MagicMock, mock_class: MagicMock) -> None:
         """init_mongodb should create a MongoDB instance, call ping, and return it."""
         # Clear LRU cache from previous runs
         init_mongodb.cache_clear()
@@ -320,9 +313,7 @@ class TestCollectionsLazyLoading:
         mock_instance = MagicMock()
         col_a = MagicMock(name="col_a")
         col_b = MagicMock(name="col_b")
-        mock_instance.get_collection.side_effect = lambda n: (
-            col_a if n == "a" else col_b
-        )
+        mock_instance.get_collection.side_effect = lambda n: col_a if n == "a" else col_b
 
         with patch(
             "app.db.mongodb.collections._get_mongodb_instance",
@@ -480,9 +471,7 @@ class TestCreateAllIndexes:
                 p.stop()
 
     @patch("app.db.mongodb.indexes.log")
-    async def test_create_all_indexes_partial_failure(
-        self, mock_log: MagicMock
-    ) -> None:
+    async def test_create_all_indexes_partial_failure(self, mock_log: MagicMock) -> None:
         """Some index creators failing should be reported as exceptions, not crash."""
         index_creators = [
             "create_user_indexes",
@@ -542,9 +531,7 @@ class TestCreateAllIndexes:
                 p.stop()
 
     @patch("app.db.mongodb.indexes.log")
-    async def test_create_all_indexes_critical_error_propagates(
-        self, mock_log: MagicMock
-    ) -> None:
+    async def test_create_all_indexes_critical_error_propagates(self, mock_log: MagicMock) -> None:
         """A critical error in the orchestration itself should propagate."""
 
         async def _gather_explodes(*coros, **_kwargs):
@@ -667,10 +654,7 @@ class TestIndividualIndexCreators:
             text_calls = [
                 c
                 for c in mock_collection.create_index.call_args_list
-                if any(
-                    isinstance(arg, list) and any(t == "text" for _, t in arg)
-                    for arg in c.args
-                )
+                if any(isinstance(arg, list) and any(t == "text" for _, t in arg) for arg in c.args)
             ]
             assert len(text_calls) >= 1
 
@@ -679,9 +663,7 @@ class TestIndividualIndexCreators:
         mock_collection = AsyncMock()
 
         with (
-            patch(
-                "app.db.mongodb.indexes.processed_webhooks_collection", mock_collection
-            ),
+            patch("app.db.mongodb.indexes.processed_webhooks_collection", mock_collection),
             patch("app.db.mongodb.indexes.log"),
         ):
             from app.db.mongodb.indexes import create_processed_webhook_indexes
@@ -710,9 +692,7 @@ class TestIndexStatus:
         """get_index_status should return a dict mapping collection names to index names."""
         mock_collection = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[{"name": "idx_1"}, {"name": "idx_2"}]
-        )
+        mock_cursor.to_list = AsyncMock(return_value=[{"name": "idx_1"}, {"name": "idx_2"}])
         mock_collection.list_indexes.return_value = mock_cursor
 
         # Patch all collections used in get_index_status

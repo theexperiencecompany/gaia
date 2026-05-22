@@ -8,17 +8,17 @@ Usage:
 """
 
 import asyncio
-import sys
 from pathlib import Path
+import sys
 
 # Add the backend directory to Python path so we can import from app
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
 from app.agents.tools.core.store import init_embeddings  # noqa: E402
-from shared.py.wide_events import log as logger  # noqa: E402
 from app.db.chroma.chromadb import ChromaClient, init_chromadb_constructor  # noqa: E402
 from app.db.mongodb.collections import workflows_collection  # noqa: E402
+from shared.py.wide_events import log as logger  # noqa: E402
 
 
 async def index_workflows():
@@ -30,9 +30,7 @@ async def index_workflows():
         init_embeddings()
         init_chromadb_constructor()
 
-        chroma = await ChromaClient.get_langchain_client(
-            "workflows", create_if_not_exists=True
-        )
+        chroma = await ChromaClient.get_langchain_client("workflows", create_if_not_exists=True)
 
         workflows = await workflows_collection.find({}).to_list(length=None)
         logger.info(f"Found {len(workflows)} workflows to index")

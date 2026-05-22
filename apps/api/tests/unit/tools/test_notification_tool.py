@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.notification_tool."""
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,12 +14,12 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.notification_tool"
 
 
-def _make_config(user_id: str = FAKE_USER_ID) -> Dict[str, Any]:
+def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
     """Return a minimal RunnableConfig-like dict with metadata.user_id."""
     return {"metadata": {"user_id": user_id}}
 
 
-def _make_config_no_user() -> Dict[str, Any]:
+def _make_config_no_user() -> dict[str, Any]:
     """Config with no user_id to trigger auth errors."""
     return {"metadata": {}}
 
@@ -32,7 +32,7 @@ def _make_notification(
     notification_id: str = "notif-1",
     title: str = "Test Notification",
     body: str = "This is a test",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create a sample notification dict."""
     return {
         "id": notification_id,
@@ -102,9 +102,7 @@ class TestGetNotifications:
     ) -> None:
         """Service exception returns error response."""
         mock_writer_factory.return_value = _writer_mock()
-        mock_service.get_user_notifications = AsyncMock(
-            side_effect=Exception("DB error")
-        )
+        mock_service.get_user_notifications = AsyncMock(side_effect=Exception("DB error"))
 
         from app.agents.tools.notification_tool import get_notifications
 
@@ -132,13 +130,9 @@ class TestGetNotifications:
 
         await get_notifications.coroutine(config=_make_config())
 
-        notif_calls = [
-            c for c in writer.call_args_list if "notification_data" in c[0][0]
-        ]
+        notif_calls = [c for c in writer.call_args_list if "notification_data" in c[0][0]]
         assert len(notif_calls) == 1
-        assert (
-            notif_calls[0][0][0]["notification_data"]["notifications"] == notifications
-        )
+        assert notif_calls[0][0][0]["notification_data"]["notifications"] == notifications
 
 
 # ---------------------------------------------------------------------------
@@ -369,9 +363,7 @@ class TestMarkNotificationsRead:
         mock_service: MagicMock,
     ) -> None:
         """Marks multiple notifications as read using bulk action."""
-        mock_service.bulk_actions = AsyncMock(
-            return_value={"notif-1": True, "notif-2": True}
-        )
+        mock_service.bulk_actions = AsyncMock(return_value={"notif-1": True, "notif-2": True})
 
         from app.agents.tools.notification_tool import mark_notifications_read
 

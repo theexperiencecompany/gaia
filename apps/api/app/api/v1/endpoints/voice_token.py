@@ -1,16 +1,16 @@
 import json
 import uuid
-from typing import Optional
+
+from fastapi import APIRouter, Depends
+from fastapi.exceptions import HTTPException
+from livekit import api
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
 )
-from shared.py.wide_events import log
 from app.api.v1.middleware.agent_auth import create_agent_token
 from app.config.settings import settings
-from fastapi import APIRouter, Depends
-from fastapi.exceptions import HTTPException
-from livekit import api
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -18,7 +18,7 @@ router = APIRouter()
 @router.get("/token")
 def get_token(
     user: dict = Depends(get_current_user),
-    conversationId: Optional[str] = None,
+    conversationId: str | None = None,
 ):
     user_id = user.get("user_id")
     user_email: str = user.get("email", "")
@@ -61,9 +61,7 @@ def get_token(
             )
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to generate voice token: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to generate voice token: {e!s}")
 
     log.set(outcome="success")
     return {

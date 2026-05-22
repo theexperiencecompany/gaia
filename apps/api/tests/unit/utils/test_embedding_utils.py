@@ -1,12 +1,12 @@
 """Unit tests for app.utils.embedding_utils — embedding cache and similarity search."""
 
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from bson import ObjectId
 from langchain_core.documents import Document
+import pytest
 
 from app.utils.embedding_utils import (
     get_or_compute_embeddings,
@@ -14,7 +14,6 @@ from app.utils.embedding_utils import (
     search_documents_by_similarity,
     search_notes_by_similarity,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -45,7 +44,7 @@ def _make_tool(
 
 def _make_document(
     page_content: str,
-    metadata: Dict[str, Any],
+    metadata: dict[str, Any],
 ) -> Document:
     return Document(page_content=page_content, metadata=metadata)
 
@@ -116,10 +115,7 @@ class TestGetOrComputeEmbeddings:
         # Should cache with 7-day TTL
         mock_redis.set.assert_awaited_once()
         call_args = mock_redis.set.call_args
-        assert (
-            call_args[1].get("ttl", call_args[0][2] if len(call_args[0]) > 2 else None)
-            == 604800
-        )
+        assert call_args[1].get("ttl", call_args[0][2] if len(call_args[0]) > 2 else None) == 604800
 
     async def test_tool_with_no_name_uses_fallback(
         self, mock_redis: AsyncMock, mock_embeddings: MagicMock
@@ -184,9 +180,7 @@ class TestGetOrComputeEmbeddings:
                 side_effect=TypeError("not a module"),
             ),
         ):
-            result_embeddings, _ = await get_or_compute_embeddings(
-                [tool], mock_embeddings
-            )
+            result_embeddings, _ = await get_or_compute_embeddings([tool], mock_embeddings)
 
         assert result_embeddings == [[0.1, 0.2], [0.3, 0.4]]
 
@@ -287,9 +281,7 @@ class TestGetOrComputeEmbeddings:
         with (
             patch("app.utils.embedding_utils.redis_cache", mock_redis),
         ):
-            result_embeddings, _ = await get_or_compute_embeddings(
-                [tool], mock_embeddings
-            )
+            result_embeddings, _ = await get_or_compute_embeddings([tool], mock_embeddings)
 
         assert result_embeddings == [[0.1, 0.2], [0.3, 0.4]]
 
@@ -310,9 +302,7 @@ class TestSearchBySimilarity:
             metadata={"note_id": "abc123", "user_id": "user1"},
         )
         mock_collection = AsyncMock()
-        mock_collection.asimilarity_search_with_score = AsyncMock(
-            return_value=[(doc, 0.25)]
-        )
+        mock_collection.asimilarity_search_with_score = AsyncMock(return_value=[(doc, 0.25)])
 
         with (
             patch(
@@ -362,9 +352,7 @@ class TestSearchBySimilarity:
             metadata={"note_id": "f1", "user_id": "user1"},
         )
         mock_collection = AsyncMock()
-        mock_collection.asimilarity_search_with_score = AsyncMock(
-            return_value=[(doc, 0.1)]
-        )
+        mock_collection.asimilarity_search_with_score = AsyncMock(return_value=[(doc, 0.1)])
 
         with (
             patch(
@@ -419,9 +407,7 @@ class TestSearchBySimilarity:
             metadata={"note_id": note_id, "user_id": "user1"},
         )
         mock_collection = AsyncMock()
-        mock_collection.asimilarity_search_with_score = AsyncMock(
-            return_value=[(doc, 0.15)]
-        )
+        mock_collection.asimilarity_search_with_score = AsyncMock(return_value=[(doc, 0.15)])
 
         created = datetime(2026, 1, 1, 12, 0, 0)
         updated = datetime(2026, 1, 2, 12, 0, 0)
@@ -471,9 +457,7 @@ class TestSearchBySimilarity:
             metadata={"note_id": "n1", "user_id": "user1"},
         )
         mock_collection = AsyncMock()
-        mock_collection.asimilarity_search_with_score = AsyncMock(
-            return_value=[(doc, 0.3)]
-        )
+        mock_collection.asimilarity_search_with_score = AsyncMock(return_value=[(doc, 0.3)])
 
         with (
             patch(
@@ -563,9 +547,7 @@ class TestSearchBySimilarity:
             for i in range(10)
         ]
         mock_collection = AsyncMock()
-        mock_collection.asimilarity_search_with_score = AsyncMock(
-            return_value=docs_with_scores
-        )
+        mock_collection.asimilarity_search_with_score = AsyncMock(return_value=docs_with_scores)
 
         with (
             patch(
@@ -624,9 +606,7 @@ class TestSearchBySimilarity:
             metadata={"file_id": file_id, "user_id": "user1"},
         )
         mock_collection = AsyncMock()
-        mock_collection.asimilarity_search_with_score = AsyncMock(
-            return_value=[(doc, 0.2)]
-        )
+        mock_collection.asimilarity_search_with_score = AsyncMock(return_value=[(doc, 0.2)])
 
         mock_mongo_cursor = AsyncMock()
         mock_mongo_cursor.to_list = AsyncMock(
@@ -675,9 +655,7 @@ class TestSearchBySimilarity:
             metadata={"file_id": file_id, "user_id": "user1"},
         )
         mock_collection = AsyncMock()
-        mock_collection.asimilarity_search_with_score = AsyncMock(
-            return_value=[(doc, 0.2)]
-        )
+        mock_collection.asimilarity_search_with_score = AsyncMock(return_value=[(doc, 0.2)])
 
         mock_mongo_cursor = AsyncMock()
         mock_mongo_cursor.to_list = AsyncMock(
@@ -722,9 +700,7 @@ class TestSearchBySimilarity:
             metadata={"note_id": note_id, "user_id": "user1"},
         )
         mock_collection = AsyncMock()
-        mock_collection.asimilarity_search_with_score = AsyncMock(
-            return_value=[(doc, 0.1)]
-        )
+        mock_collection.asimilarity_search_with_score = AsyncMock(return_value=[(doc, 0.1)])
 
         mock_mongo_cursor = AsyncMock()
         mock_mongo_cursor.to_list = AsyncMock(return_value=[])  # nothing found
@@ -763,15 +739,11 @@ class TestSearchBySimilarity:
             metadata={"note_id": note_id, "user_id": "user1"},
         )
         mock_collection = AsyncMock()
-        mock_collection.asimilarity_search_with_score = AsyncMock(
-            return_value=[(doc, 0.1)]
-        )
+        mock_collection.asimilarity_search_with_score = AsyncMock(return_value=[(doc, 0.1)])
 
         mock_mongo_cursor = AsyncMock()
         mock_mongo_cursor.to_list = AsyncMock(
-            return_value=[
-                {"_id": ObjectId(note_id), "user_id": "user1", "title": "No Dates"}
-            ]
+            return_value=[{"_id": ObjectId(note_id), "user_id": "user1", "title": "No Dates"}]
         )
         mock_notes_col = MagicMock()
         mock_notes_col.find = MagicMock(return_value=mock_mongo_cursor)
@@ -838,7 +810,7 @@ class TestSearchNotesBySimilarity:
 
     async def test_delegates_to_search_by_similarity(self) -> None:
         """Calls search_by_similarity with collection='notes' and fetch_mongo_details=True."""
-        expected: List[Dict[str, Any]] = [{"id": "n1", "content": "note"}]
+        expected: list[dict[str, Any]] = [{"id": "n1", "content": "note"}]
 
         with patch(
             "app.utils.embedding_utils.search_by_similarity",
@@ -870,7 +842,7 @@ class TestSearchDocumentsBySimilarity:
 
     async def test_without_conversation_id(self) -> None:
         """Without conversation_id, additional_filters is None."""
-        expected: List[Dict[str, Any]] = [{"id": "d1", "content": "doc"}]
+        expected: list[dict[str, Any]] = [{"id": "d1", "content": "doc"}]
 
         with patch(
             "app.utils.embedding_utils.search_by_similarity",
@@ -894,7 +866,7 @@ class TestSearchDocumentsBySimilarity:
 
     async def test_with_conversation_id(self) -> None:
         """With conversation_id, additional_filters includes the conversation_id."""
-        expected: List[Dict[str, Any]] = [{"id": "d2", "content": "doc in convo"}]
+        expected: list[dict[str, Any]] = [{"id": "d2", "content": "doc in convo"}]
 
         with patch(
             "app.utils.embedding_utils.search_by_similarity",

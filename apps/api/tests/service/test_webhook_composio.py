@@ -13,8 +13,8 @@ import hmac
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import ASGITransport, AsyncClient
+import pytest
 
 
 def _make_composio_payload(event_type: str = "GMAIL_NEW_GMAIL_MESSAGE") -> dict:
@@ -83,9 +83,7 @@ def _make_composio_client() -> AsyncClient:
 
     limiter.enabled = False
 
-    return AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://testserver"
-    )  # NOSONAR
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver")  # NOSONAR
 
 
 @pytest.mark.service
@@ -131,9 +129,7 @@ class TestComposioWebhookIdempotency:
         assert ttl > 0, "Deduplication key must have a positive TTL"
         assert ttl <= 3600, "TTL must not exceed 3600 seconds"
 
-    async def test_deduplication_endpoint_returns_success_on_duplicate(
-        self, real_redis
-    ):
+    async def test_deduplication_endpoint_returns_success_on_duplicate(self, real_redis):
         """POST with a repeated webhook-id must return 200 with duplicate message."""
         webhook_id = "dedup-endpoint-001"
         key = f"webhook:composio:{webhook_id}"
@@ -146,9 +142,7 @@ class TestComposioWebhookIdempotency:
         signature = _sign_composio(webhook_id, timestamp, body, "test-secret")
 
         async with _make_composio_client() as client:
-            with patch(
-                "app.config.settings.settings.COMPOSIO_WEBHOOK_SECRET", "test-secret"
-            ):
+            with patch("app.config.settings.settings.COMPOSIO_WEBHOOK_SECRET", "test-secret"):
                 response = await client.post(
                     "/api/v1/webhook/composio",
                     content=body,
@@ -175,9 +169,7 @@ class TestComposioWebhookRouting:
         payload = _make_composio_payload()
 
         async with _make_composio_client() as client:
-            with patch(
-                "app.config.settings.settings.COMPOSIO_WEBHOOK_SECRET", "test-secret"
-            ):
+            with patch("app.config.settings.settings.COMPOSIO_WEBHOOK_SECRET", "test-secret"):
                 response = await client.post(
                     "/api/v1/webhook/composio",
                     json=payload,
@@ -192,9 +184,7 @@ class TestComposioWebhookRouting:
         body = json.dumps(payload).encode()
 
         async with _make_composio_client() as client:
-            with patch(
-                "app.config.settings.settings.COMPOSIO_WEBHOOK_SECRET", "test-secret"
-            ):
+            with patch("app.config.settings.settings.COMPOSIO_WEBHOOK_SECRET", "test-secret"):
                 response = await client.post(
                     "/api/v1/webhook/composio",
                     content=body,
@@ -244,9 +234,7 @@ class TestComposioWebhookRouting:
         data = response.json()
         assert data["status"] == "success"
 
-    async def test_valid_signature_with_handler_returns_handler_result(
-        self, real_redis
-    ):
+    async def test_valid_signature_with_handler_returns_handler_result(self, real_redis):
         """Valid signature with a matching handler must return the handler's result."""
         webhook_id = "handled-event-001"
         payload = _make_composio_payload(event_type="GMAIL_NEW_GMAIL_MESSAGE")

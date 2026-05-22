@@ -13,12 +13,15 @@ This module consolidates middleware creation to:
 from collections.abc import Mapping
 from typing import Any
 
+from langchain_core.language_models import BaseChatModel, LanguageModelLike
+from langchain_core.tools import BaseTool
+from langchain_google_genai import ChatGoogleGenerativeAI
+
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.vfs_compaction import VFSCompactionMiddleware
 from app.agents.middleware.vfs_summarization import VFSArchivingSummarizationMiddleware
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
-from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.summarization import (
     COMPACTION_THRESHOLD,
@@ -27,9 +30,7 @@ from app.constants.summarization import (
     SUMMARIZATION_MODEL,
     SUMMARIZATION_TRIGGER_FRACTION,
 )
-from langchain_core.language_models import BaseChatModel, LanguageModelLike
-from langchain_core.tools import BaseTool
-from langchain_google_genai import ChatGoogleGenerativeAI
+from shared.py.wide_events import log
 
 VFS_TOOL_NAMES = {"vfs_read", "vfs_write", "vfs_cmd"}
 SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}

@@ -42,6 +42,4 @@ class NotionFetchDataData(BaseModel):
 
     def get_items(self) -> list[NotionItem]:
         """Get items as typed models."""
-        return [
-            NotionItem.model_validate(v) for v in self.values if isinstance(v, dict)
-        ]
+        return [NotionItem.model_validate(v) for v in self.values if isinstance(v, dict)]

@@ -1,10 +1,9 @@
 """Comprehensive unit tests for ChromaStore (app/db/chroma/chroma_store.py)."""
 
+from datetime import UTC, datetime
 import pickle
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from langgraph.store.base import (
     GetOp,
     ListNamespacesOp,
@@ -12,9 +11,9 @@ from langgraph.store.base import (
     PutOp,
     SearchOp,
 )
+import pytest
 
 from app.db.chroma.chroma_store import ChromaStore, _NoOpEmbeddingFunction
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -202,7 +201,7 @@ class TestBatch:
 class TestGetItem:
     async def test_returns_item(self):
         value = {"name": "test"}
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         col = _make_collection(
             ids=["ns::key"],
             metadatas=[{"created_at": now, "updated_at": now}],
@@ -360,18 +359,14 @@ class TestFilterItems:
             documents=[_pickled({"v": 1}), _pickled({"v": 2})],
         )
         store = _make_store(collection=col)
-        op = SearchOp(
-            namespace_prefix=("a",), filter=None, query=None, limit=10, offset=0
-        )
+        op = SearchOp(namespace_prefix=("a",), filter=None, query=None, limit=10, offset=0)
         result = await store._filter_items(op, col)
         assert result == ["a::key1"]
 
     async def test_returns_empty_when_no_ids(self):
         col = _make_collection()
         store = _make_store(collection=col)
-        op = SearchOp(
-            namespace_prefix=("a",), filter=None, query=None, limit=10, offset=0
-        )
+        op = SearchOp(namespace_prefix=("a",), filter=None, query=None, limit=10, offset=0)
         result = await store._filter_items(op, col)
         assert result == []
 
@@ -379,9 +374,7 @@ class TestFilterItems:
         col = AsyncMock()
         col.get = AsyncMock(side_effect=Exception("fail"))
         store = _make_store(collection=col)
-        op = SearchOp(
-            namespace_prefix=("a",), filter=None, query=None, limit=10, offset=0
-        )
+        op = SearchOp(namespace_prefix=("a",), filter=None, query=None, limit=10, offset=0)
         result = await store._filter_items(op, col)
         assert result == []
 
@@ -649,7 +642,7 @@ class TestPutOps:
 @pytest.mark.unit
 class TestAbatch:
     async def test_get_op(self):
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         value = {"data": "hello"}
         col = _make_collection(
             ids=["ns::k"],
@@ -664,9 +657,7 @@ class TestAbatch:
     async def test_put_op(self):
         col = _make_collection()
         store = _make_store(collection=col)
-        results = await store.abatch(
-            [PutOp(namespace=("ns",), key="k", value={"x": 1})]
-        )
+        results = await store.abatch([PutOp(namespace=("ns",), key="k", value={"x": 1})])
         col.upsert.assert_called_once()
         assert results[0] is None  # PutOp returns None in results
 
@@ -677,7 +668,7 @@ class TestAbatch:
             await store.abatch(["not_an_op"])
 
     async def test_search_op_without_query(self):
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         value = {"data": "test"}
         col = _make_collection(
             ids=["ns::k1"],
@@ -699,7 +690,7 @@ class TestAbatch:
         assert isinstance(results[0], list)
 
     async def test_search_op_with_query_and_embeddings(self):
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         value = {"data": "result"}
         col = _make_collection(
             ids=["ns::k1"],
@@ -788,7 +779,7 @@ class TestBatchSearch:
         assert results[0] == []
 
     async def test_search_with_filter_and_namespace(self):
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         value = {"status": "active"}
         col = _make_collection(
             ids=["ns::k1"],

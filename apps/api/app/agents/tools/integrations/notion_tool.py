@@ -9,7 +9,10 @@ These tools wrap existing Composio Notion tools and add markdown conversion:
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
-from typing import Any, Dict, List
+from typing import Any
+
+from composio import Composio
+from composio.core.models.tools import ToolExecutionResponse
 
 from app.decorators import with_doc
 from app.models.common_models import GatherContextInput
@@ -29,8 +32,6 @@ from app.templates.docstrings.notion_tool_docs import (
 from app.utils.context_utils import execute_tool
 from app.utils.errors import AppError
 from app.utils.notion_md import blocks_to_markdown, markdown_to_notion_blocks
-from composio import Composio
-from composio.core.models.tools import ToolExecutionResponse
 from shared.py.wide_events import log
 
 NOTION_API_BASE = "https://api.notion.com/v1"
@@ -38,14 +39,14 @@ NOTION_TOOLKIT = "NOTION"
 _NOTION_HEADERS = {"Notion-Version": "2022-06-28"}
 
 
-def _user_id(auth_credentials: Dict[str, Any]) -> str:
+def _user_id(auth_credentials: dict[str, Any]) -> str:
     user_id = auth_credentials.get("user_id")
     if not user_id:
         raise ValueError("Missing user_id in auth_credentials")
     return user_id
 
 
-def register_notion_custom_tools(composio: Composio) -> List[str]:
+def register_notion_custom_tools(composio: Composio) -> list[str]:
     """Register Notion tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="NOTION")
@@ -53,8 +54,8 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
     def MOVE_PAGE(
         request: MovePageInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         log.set(tool={"integration": "notion", "action": "move_page"})
         # Build parent object based on type
         if request.parent_type == "page_id":
@@ -80,8 +81,8 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
     def FETCH_PAGE_AS_MARKDOWN(
         request: FetchPageAsMarkdownInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         log.set(tool={"integration": "notion", "action": "fetch_page_as_markdown"})
         # Get page title using NOTION_GET_PAGE_PROPERTY_ACTION
         title = ""
@@ -140,9 +141,7 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
 
         # Convert to markdown (with block IDs for insertion positioning)
         if isinstance(blocks, list):
-            markdown = blocks_to_markdown(
-                blocks, include_block_ids=request.include_block_ids
-            )
+            markdown = blocks_to_markdown(blocks, include_block_ids=request.include_block_ids)
         else:
             markdown = ""
 
@@ -162,16 +161,14 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
     def INSERT_MARKDOWN(
         request: InsertMarkdownInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         log.set(tool={"integration": "notion", "action": "insert_markdown"})
         # Convert markdown to Notion blocks
         all_blocks = markdown_to_notion_blocks(request.markdown)
 
         if not all_blocks:
-            raise ValueError(
-                "No content to insert - markdown conversion produced no blocks"
-            )
+            raise ValueError("No content to insert - markdown conversion produced no blocks")
 
         blocks_added = 0
         first_inserted = True
@@ -180,7 +177,7 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
             is_table = block.get("type") == "table"
 
             if is_table:
-                params: Dict[str, Any] = {
+                params: dict[str, Any] = {
                     "block_id": request.parent_block_id,
                     "table_width": block["table_width"],
                     "has_column_header": block.get("has_column_header", True),
@@ -216,9 +213,7 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
                 )
 
                 if not response["successful"]:
-                    raise ValueError(
-                        f"Failed to insert markdown: {response.get('error')}"
-                    )
+                    raise ValueError(f"Failed to insert markdown: {response.get('error')}")
 
                 blocks_added += 1
 
@@ -236,15 +231,15 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
     def FETCH_DATA(
         request: FetchDataInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Fetch databases or pages from Notion workspace."""
         log.set(tool={"integration": "notion", "action": "fetch_data"})
         user_id = _user_id(auth_credentials)
 
         search_filter = {"property": "object", "value": request.fetch_type.rstrip("s")}
 
-        search_body: Dict[str, Any] = {
+        search_body: dict[str, Any] = {
             "filter": search_filter,
             "page_size": min(request.page_size, 100),
         }
@@ -253,14 +248,17 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
             search_body["query"] = request.query
 
         try:
-            search_results = proxy_request_sync(
-                user_id=user_id,
-                toolkit=NOTION_TOOLKIT,
-                endpoint=f"{NOTION_API_BASE}/search",
-                method="POST",
-                body=search_body,
-                headers=_NOTION_HEADERS,
-            ) or {}
+            search_results = (
+                proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=NOTION_TOOLKIT,
+                    endpoint=f"{NOTION_API_BASE}/search",
+                    method="POST",
+                    body=search_body,
+                    headers=_NOTION_HEADERS,
+                )
+                or {}
+            )
 
             results = search_results.get("results", [])
             values = []
@@ -294,28 +292,24 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
 
         except AppError as e:
             log.error(f"Notion API error: {e.message}")
-            raise RuntimeError(
-                f"Failed to fetch {request.fetch_type}: {e.message}"
-            )
+            raise RuntimeError(f"Failed to fetch {request.fetch_type}: {e.message}")
         except Exception as e:
             log.error(f"Error fetching Notion {request.fetch_type}: {e}")
-            raise RuntimeError(f"Failed to fetch {request.fetch_type}: {str(e)}")
+            raise RuntimeError(f"Failed to fetch {request.fetch_type}: {e!s}")
 
     @composio.tools.custom_tool(toolkit="NOTION")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get Notion workspace context: recently edited pages and databases.
 
         Zero required parameters. Returns recently modified content for situational awareness.
         """
         log.set(tool={"integration": "notion", "action": "gather_context"})
         user_id = _user_id(auth_credentials)
-        data = execute_tool(
-            "NOTION_SEARCH_NOTION_PAGE", {"query": "", "page_size": 10}, user_id
-        )
+        data = execute_tool("NOTION_SEARCH_NOTION_PAGE", {"query": "", "page_size": 10}, user_id)
         pages = data.get("results", data.get("pages", []))
         return {"relevant_pages": pages}
 

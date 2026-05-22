@@ -2,7 +2,6 @@ import asyncio
 import sys
 
 from app.core.lazy_loader import providers
-from shared.py.wide_events import log
 from app.core.websocket_consumer import (
     start_websocket_consumer,
     stop_websocket_consumer,
@@ -11,6 +10,7 @@ from app.db.postgresql import close_postgresql_db
 from app.db.rabbitmq import get_rabbitmq_publisher
 from app.services.reminder_service import reminder_scheduler
 from app.services.workflow.scheduler import workflow_scheduler
+from shared.py.wide_events import log
 
 
 def setup_event_loop_policy() -> None:

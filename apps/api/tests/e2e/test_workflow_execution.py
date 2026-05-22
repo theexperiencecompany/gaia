@@ -25,15 +25,15 @@ DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-import pytest
-from tests.helpers import BindableToolsFakeModel
 from langchain_core.messages import AIMessage, HumanMessage
-from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph.message import add_messages
 from langgraph.store.memory import InMemoryStore
+import pytest
 
 from app.override.langgraph_bigtool.utils import _replace_todos, dedupe_str_list
 from tests.e2e.conftest import build_gaia_test_graph
+from tests.helpers import BindableToolsFakeModel
 
 
 @pytest.mark.e2e
@@ -59,9 +59,7 @@ class TestWorkflowExecution:
             "_replace_todos must return the right-hand (newest) list, "
             "not the left-hand one or a merge of both."
         )
-        assert "Buy milk" not in result, (
-            "Previous todos must be fully replaced, not merged."
-        )
+        assert "Buy milk" not in result, "Previous todos must be fully replaced, not merged."
 
     def test_selected_tool_ids_channel_deduplicates(self):
         """dedupe_str_list must remove duplicate tool IDs while preserving order.
@@ -112,9 +110,7 @@ class TestWorkflowExecution:
         'selected_tool_ids' — channels that exist only in the GAIA State schema,
         not in generic LangGraph MessagesState.
         """
-        fake_llm = BindableToolsFakeModel(
-            responses=[AIMessage(content="Workflow complete.")]
-        )
+        fake_llm = BindableToolsFakeModel(responses=[AIMessage(content="Workflow complete.")])
 
         graph = build_gaia_test_graph(
             fake_llm=fake_llm,
@@ -240,12 +236,8 @@ class TestWorkflowExecution:
             store=in_memory_store,
         )
 
-        config_a = {
-            "configurable": {"thread_id": "thread-alpha", "user_id": str(uuid4())}
-        }
-        config_b = {
-            "configurable": {"thread_id": "thread-beta", "user_id": str(uuid4())}
-        }
+        config_a = {"configurable": {"thread_id": "thread-alpha", "user_id": str(uuid4())}}
+        config_b = {"configurable": {"thread_id": "thread-beta", "user_id": str(uuid4())}}
 
         await graph_a.ainvoke(
             {"messages": [HumanMessage(content=f"Message for alpha: {sentinel_a}")]},
@@ -288,9 +280,7 @@ class TestWorkflowExecution:
         # Import the real build_comms_graph from production code
         from app.agents.core.graph_builder.build_graph import build_comms_graph
 
-        fake_llm = BindableToolsFakeModel(
-            responses=[AIMessage(content="Comms agent response.")]
-        )
+        fake_llm = BindableToolsFakeModel(responses=[AIMessage(content="Comms agent response.")])
 
         async def _noop_follow_up(  # NOSONAR — async required for LangGraph hook interface
             state, config, store
@@ -318,9 +308,7 @@ class TestWorkflowExecution:
                 new=_noop_follow_up,
             ),
         ):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 # The graph must be a compiled LangGraph object
                 assert graph is not None
                 assert hasattr(graph, "ainvoke"), (
@@ -341,12 +329,8 @@ class TestWorkflowExecution:
                         }
                     },
                 )
-                assert isinstance(result, dict), (
-                    "ainvoke must return a dict of state values"
-                )
-                assert "messages" in result, (
-                    "Comms graph result must contain 'messages' key"
-                )
+                assert isinstance(result, dict), "ainvoke must return a dict of state values"
+                assert "messages" in result, "Comms graph result must contain 'messages' key"
 
     async def test_build_executor_graph_accepts_in_memory_checkpointer_flag(self):
         """build_executor_graph must compile with in_memory_checkpointer=True.
@@ -359,9 +343,7 @@ class TestWorkflowExecution:
         from app.agents.core.graph_builder.build_graph import build_executor_graph
         from app.agents.tools.todo_tools import TODO_TOOL_NAMES
 
-        fake_llm = BindableToolsFakeModel(
-            responses=[AIMessage(content="Executor agent response.")]
-        )
+        fake_llm = BindableToolsFakeModel(responses=[AIMessage(content="Executor agent response.")])
 
         from langchain_core.tools import tool as lc_tool
 
@@ -384,16 +366,12 @@ class TestWorkflowExecution:
             raw_ids: list[str] = ast.literal_eval(src[bracket_start:bracket_end])
         else:
             raw_ids = []
-        tool_dict = {
-            tid: _make_stub(tid) for tid in raw_ids if tid not in injected_by_graph
-        }
+        tool_dict = {tid: _make_stub(tid) for tid in raw_ids if tid not in injected_by_graph}
 
         mock_registry = MagicMock()
         mock_registry.get_tool_dict.return_value = tool_dict
 
-        async def _fake_retrieve_tools(
-            store, config, query=None, exact_tool_names=None
-        ):
+        async def _fake_retrieve_tools(store, config, query=None, exact_tool_names=None):
             """Minimal stub with proper signature for StructuredTool.from_function."""
             return {"tools_to_bind": [], "response": []}
 
@@ -433,11 +411,7 @@ class TestWorkflowExecution:
                 # Invoke the graph to prove it actually runs, not just compiles
                 thread_id = str(uuid4())
                 result = await graph.ainvoke(
-                    {
-                        "messages": [
-                            HumanMessage(content="Hello from executor graph test")
-                        ]
-                    },
+                    {"messages": [HumanMessage(content="Hello from executor graph test")]},
                     config={
                         "configurable": {
                             "thread_id": thread_id,
@@ -445,9 +419,5 @@ class TestWorkflowExecution:
                         }
                     },
                 )
-                assert isinstance(result, dict), (
-                    "ainvoke must return a dict of state values"
-                )
-                assert "messages" in result, (
-                    "Executor graph result must contain 'messages' key"
-                )
+                assert isinstance(result, dict), "ainvoke must return a dict of state values"
+                assert "messages" in result, "Executor graph result must contain 'messages' key"
