@@ -3,14 +3,30 @@
   "checkpoint_id": "e4b17cfab171",
   "strategy": "manual-commit",
   "branch": "onboarding-revamp",
-  "checkpoints_count": 1,
+  "checkpoints_count": 4,
   "files_touched": [
-    "apps/web/src/features/onboarding/components/OnboardingProcessing.tsx"
+    "apps/web/src/config/openui/components/DocumentEditor.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingProcessing.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx",
+    "apps/web/src/features/onboarding/components/stages/Workflows.tsx"
   ],
   "sessions": [
     {
       "metadata": "/e4/b17cfab171/0/metadata.json",
       "prompt": ""
+    },
+    {
+      "metadata": "/e4/b17cfab171/1/metadata.json",
+      "transcript": "/e4/b17cfab171/1/full.jsonl",
+      "content_hash": "/e4/b17cfab171/1/content_hash.txt",
+      "prompt": "/e4/b17cfab171/1/prompt.txt"
     }
-  ]
+  ],
+  "token_usage": {
+    "input_tokens": 58,
+    "cache_creation_tokens": 106329,
+    "cache_read_tokens": 2126569,
+    "output_tokens": 23448,
+    "api_call_count": 29
+  }
 }
