@@ -73,3 +73,57 @@ Args:
 Returns:
     Success status of the operation
 """
+
+SEND_NOTIFICATION = """
+Send a notification to the user on their connected channels (WhatsApp, Telegram, in-app, etc.).
+
+Use this tool to proactively alert the user about something important that happened or
+completed — especially when they are away from the app or the event is time-sensitive.
+
+—WHEN TO USE (use sparingly)—
+- A long-running task or workflow just finished and the user asked to be notified
+- A critical event occurred that the user explicitly asked to be alerted about
+- The user is expecting a result and would miss it without an explicit ping
+
+—WHEN NOT TO USE (do not overnotify)—
+- Routine task completions the user can see in the chat
+- Every step of a multi-step workflow — only notify at the end
+- Informational updates the user did not ask to be pinged about
+- More than 1-2 times per session unless the user explicitly requests it
+
+—CHANNEL SELECTION—
+- Omit `channels` to send on ALL user-enabled channels automatically (recommended default)
+- Pass specific channel names ("whatsapp", "telegram", "discord", "inapp") to target specific channels
+- Use get_notification_preferences first if you need to know what channels are available
+
+—NOTIFICATION TYPE—
+- "info" (default) — general update
+- "success" — task completed successfully
+- "warning" — something needs attention
+- "error" — something failed
+
+Args:
+    message: Required notification body text (keep it concise and actionable)
+    title: Optional short title — defaults to "GAIA" if omitted
+    channels: Optional list of channel names to target (omit for all enabled channels)
+    notification_type: Optional type — "info", "success", "warning", or "error"
+
+Returns:
+    Delivery status including which channels received the notification
+"""
+
+GET_NOTIFICATION_PREFERENCES = """
+Get the user's current notification channel preferences.
+
+Returns which channels (WhatsApp, Telegram, Discord, in-app) are enabled or disabled
+for the user. Use this before calling send_notification when you need to know which
+channels are available, or when the user asks about their notification settings.
+
+When to use:
+- Before targeting a specific channel to verify it is enabled
+- When user asks "which notification channels do I have set up?"
+- When you want to inform the user about their notification settings
+
+Returns:
+    Dictionary of channel names mapped to their enabled/disabled state
+"""
