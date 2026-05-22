@@ -8,11 +8,7 @@
  */
 
 // Base types and interfaces
-export type {
-  BaseTriggerConfig,
-  TriggerFieldSchema,
-  TriggerSchema,
-} from "./base";
+export type { TriggerFieldSchema, TriggerSchema } from "./base";
 
 // =============================================================================
 // FLEXIBLE TRIGGER CONFIG TYPE
@@ -35,19 +31,6 @@ export interface TriggerConfig {
   [key: string]: unknown;
 }
 
-/**
- * All possible trigger type literals.
- * These MUST match the backend TriggerType enum values.
- */
-export type TriggerType = "manual" | "schedule" | "integration" | string; // Allow any string for new triggers
-
-/**
- * Type guard to check if a string is a known trigger type.
- */
-export const isKnownTriggerType = (type: string): type is TriggerType => {
-  return ["manual", "schedule", "integration"].includes(type);
-};
-
 // =============================================================================
 // HELPER TYPE GUARDS (for handler-specific logic)
 // =============================================================================
@@ -57,20 +40,6 @@ export const isKnownTriggerType = (type: string): type is TriggerType => {
  */
 export const isIntegrationTrigger = (config: TriggerConfig): boolean => {
   return config.type === "integration";
-};
-
-/**
- * Check if trigger is schedule type.
- */
-export const isScheduleTrigger = (config: TriggerConfig): boolean => {
-  return config.type === "schedule";
-};
-
-/**
- * Check if trigger is manual type.
- */
-export const isManualTrigger = (config: TriggerConfig): boolean => {
-  return config.type === "manual";
 };
 
 // =============================================================================

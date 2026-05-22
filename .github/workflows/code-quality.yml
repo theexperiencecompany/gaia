@@ -319,15 +319,15 @@ jobs:
           echo "::endgroup::"
           echo "pip-audit: informational — review CVEs above (does not fail CI)"
 
-  # --- Dead code detection (knip + vulture) — informational only ----------
-  # Baseline is large; flag as a warning in CI but do not fail. Strict
-  # enforcement requires a baseline-diff strategy (TODO) to avoid blocking
-  # PRs on pre-existing dead code.
+  # --- Dead code detection (knip + vulture) — enforced ---------------------
+  # Runs in --strict mode: any knip (TS) or vulture (Python) finding fails the
+  # lane. The scan is tightened to drop systematic false positives (tests,
+  # Pydantic/dynamic-dispatch, framework-consumed files) — see knip.config.ts
+  # and apps/api/scripts/vulture-whitelist.py.
   dead-code:
-    name: Dead code report (knip + vulture, informational)
+    name: Dead code (knip + vulture, strict)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
@@ -340,12 +340,12 @@ jobs:
           echo "::group::uv tool install vulture"
           uv tool install vulture
           echo "::endgroup::"
-      - name: knip (TypeScript) + vulture (Python) dead-code report
+      - name: knip (TypeScript) + vulture (Python) dead-code scan (strict)
         run: |
           echo "::group::dead-code scan"
-          bash scripts/dead-code-check.sh
+          bash scripts/dead-code-check.sh --strict
           echo "::endgroup::"
-          echo "Dead code: informational — see report above (does not fail CI)"
+          echo "Dead code: OK (no unused TS or Python code)"
 
   # --- Quality gate (single required status check) -------------------------
   quality-gate:
@@ -367,7 +367,7 @@ jobs:
       - python-interrogate
       - python-xenon
       - python-security
-      # dead-code is informational (continue-on-error)
+      - dead-code
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -390,6 +390,7 @@ jobs:
           PYTHON_INTERROGATE: ${{ needs.python-interrogate.result }}
           PYTHON_XENON: ${{ needs.python-xenon.result }}
           PYTHON_SECURITY: ${{ needs.python-security.result }}
+          DEAD_CODE: ${{ needs.dead-code.result }}
         run: |
           declare -A RESULT=(
             [biome]="$BIOME"
@@ -407,10 +408,12 @@ jobs:
             [python-interrogate]="$PYTHON_INTERROGATE"
             [python-xenon]="$PYTHON_XENON"
             [python-security]="$PYTHON_SECURITY"
+            [dead-code]="$DEAD_CODE"
           )
           LANES=(biome deps circular file-size types-location components-per-file \
                  duplicates type-coverage package-hygiene type-check \
-                 python-ruff python-mypy python-interrogate python-xenon python-security)
+                 python-ruff python-mypy python-interrogate python-xenon python-security \
+                 dead-code)
 
           # ---------------------------------------------------------------
           # RATCHET: a lane is ENFORCED (can fail this gate) iff the marker

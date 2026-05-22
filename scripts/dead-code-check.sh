@@ -120,10 +120,19 @@ run_vulture() {
   local whitelist_args=()
   [[ -f "apps/api/scripts/vulture-whitelist.py" ]] && whitelist_args=("apps/api/scripts/vulture-whitelist.py")
 
+  # Test files are excluded: pytest fixtures, mock attributes, and
+  # parametrize/conftest-injected names read as "unused" to vulture but are
+  # consumed by pytest at runtime. Scanning them produces only false positives.
+  local exclude_globs="*/tests/*,*/test_*.py,*_test.py,*/conftest.py"
+
   local raw_output
-  # Use 60% confidence for broader detection (includes some false positives)
-  # Vulture is conservative - won't catch decorator-registered functions or dynamic access
-  raw_output=$(vulture "${py_dirs[@]}" "${whitelist_args[@]}" --min-confidence 60 2>&1) || true
+  # min-confidence 70 is vulture's reliable tier. The 60% tier is dominated by
+  # Pydantic model fields, BaseSettings config, @field_validator methods, and
+  # Composio/dispatch-table functions that vulture cannot see are used (dynamic
+  # access). Enforcing at 60% would require whitelisting hundreds of names; 70%
+  # keeps the high-signal findings (genuinely unused vars/funcs) while dropping
+  # that systematic false-positive class.
+  raw_output=$(vulture "${py_dirs[@]}" "${whitelist_args[@]}" --exclude "$exclude_globs" --min-confidence 70 2>&1) || true
 
   if [[ -z "$raw_output" ]]; then
     echo -e "  ${GREEN}No unused code found.${RESET}"

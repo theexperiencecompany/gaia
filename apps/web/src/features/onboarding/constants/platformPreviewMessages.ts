@@ -50,9 +50,7 @@ const PROFESSION_TO_ARCHETYPE: Record<string, ProfessionArchetype> = {
   other: "default",
 };
 
-export function getArchetype(
-  profession: string | undefined,
-): ProfessionArchetype {
+function getArchetype(profession: string | undefined): ProfessionArchetype {
   if (!profession) return "default";
   return PROFESSION_TO_ARCHETYPE[profession.toLowerCase()] ?? "default";
 }

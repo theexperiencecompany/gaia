@@ -21,6 +21,18 @@ import pytest  # noqa
 _.fixture  # noqa
 _.mark  # noqa
 
+# Composio hook modules — imported only for their decorator side effects in
+# app/utils/composio_hooks/all_hooks.py. Removing them breaks hook registration.
+gmail_hooks  # noqa
+reddit_hooks  # noqa
+slack_hooks  # noqa
+twitter_hooks  # noqa
+user_id_hooks  # noqa
+
+# Parameters kept for API compatibility / framework callback signatures.
+todo_source  # noqa - create_subagent_middleware: kept for API compatibility (see docstring)
+old_md  # noqa - LiveKit participant_metadata_changed callback signature (p, old_md, new_md)
+
 # Custom tool functions - registered dynamically via Composio
 _.CUSTOM_SHARE_SPREADSHEET  # noqa
 _.CUSTOM_CREATE_PIVOT_TABLE  # noqa

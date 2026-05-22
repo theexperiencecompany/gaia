@@ -14,7 +14,7 @@ import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
  * Sitemap IDs for different content types.
  * Each ID generates a separate sitemap file, accessible at /sitemap/{id}.xml
  */
-export const SITEMAP_IDS = {
+const SITEMAP_IDS = {
   STATIC: 0,
   BLOG: 1,
   EXPLORE: 2,

@@ -8,19 +8,6 @@ import fs from "fs";
 import simpleGit from "simple-git";
 
 /**
- * Progress information during git clone operation.
- * @internal Used internally for progress tracking
- */
-export interface CloneProgress {
-  /** Current progress percentage (0-100) */
-  progress: number;
-  /** Current phase of the clone operation */
-  phase: "counting" | "compressing" | "receiving" | "resolving" | "complete";
-  /** Optional details about the current operation */
-  details?: string;
-}
-
-/**
  * Progress callback function type.
  * @param progress - Current progress percentage (0-100)
  * @param phase - Optional description of the current phase
