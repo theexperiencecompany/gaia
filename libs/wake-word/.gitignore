@@ -1,0 +1,25 @@
+node_modules
+dist
+coverage
+*.tsbuildinfo
+.venv*
+__pycache__
+.pytest_cache
+.ruff_cache
+.vitest-cache
+
+# Pretrained openWakeWord ONNX models — fetched at install / test time via
+# scripts/fetch-models.sh. Too large for git (>500 KB each).
+models/melspectrogram.onnx
+models/embedding_model.onnx
+models/silero_vad.onnx
+models/hey_mycroft_v0.1.onnx
+models/hey_jarvis_v0.1.onnx
+models/*.validation.json
+# NOTE: models/hey_gaia.onnx + hey_gaia.meta.json ARE committed — they are
+# the production-trained artifacts (124 KB classifier head, well under the
+# 500 KB cap).
+
+# Training data — synthetic + real audio corpora are multi-GB.
+training/data/
+training/.venv*

@@ -7,3 +7,8 @@
 
 # Accidentally created plugin directories
 C\:*
+
+# ORT-Web WASM bundles — auto-copied from node_modules at build time (~40 MB).
+# Each developer can re-stage via: bash scripts/copy-ort-wasm.sh
+public/wake-word/ort/*.wasm
+public/wake-word/ort/*.mjs
