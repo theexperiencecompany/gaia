@@ -54,9 +54,15 @@ export function useWakeWordBase<C extends WakeWordControllerLike>(
     onCreate?.(controller);
     try {
       await controller.start();
+      // If stop() (or a restart) ran while we were starting, this controller is
+      // now detached — shut it down instead of leaving it running.
+      if (controllerRef.current !== controller) {
+        await controller.stop();
+      }
     } catch (err) {
       setError(err as Error);
-      controllerRef.current = null;
+      // Only clear the ref if it still points at this (failed) controller.
+      if (controllerRef.current === controller) controllerRef.current = null;
     }
   }, [createController, onCreate]);
 

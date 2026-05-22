@@ -169,12 +169,12 @@ type WakeWordState = ReturnType<typeof useHeyGaia>["state"];
 function controlLabel(enabled: boolean, state: WakeWordState): string {
   if (!enabled) return "Start listening";
   if (state === "listening") return "Stop listening";
-  if (state === "idle") return "Loading models…";
-  return `${state}…`;
+  if (state === "idle") return "Loading models...";
+  return `${state}...`;
 }
 
 function formatMs(value: number | null): string {
-  if (value === null) return "—";
+  if (value === null) return "-";
   return `${Math.round(value)} ms`;
 }
 
@@ -349,9 +349,9 @@ function ControlBar({
       </div>
 
       <p className="ml-auto max-w-sm text-xs text-zinc-500">
-        Try: &ldquo;<span className="text-zinc-300">Hey GAIA</span>&rdquo; —
-        then try a confuser like &ldquo;Hey Google&rdquo; or &ldquo;Hey
-        Kayla&rdquo; and confirm it doesn&rsquo;t fire.
+        Try: &ldquo;<span className="text-zinc-300">Hey GAIA</span>&rdquo;. Then
+        try a confuser like &ldquo;Hey Google&rdquo; or &ldquo;Hey Kayla&rdquo;
+        and confirm it doesn&rsquo;t fire.
       </p>
     </div>
   );
@@ -389,7 +389,7 @@ function MetricsGrid({
       />
       <MetricCard
         label="last score"
-        value={enabled ? lastScore.toFixed(3) : "—"}
+        value={enabled ? lastScore.toFixed(3) : "-"}
         hint="probability in [0, 1]"
         accent={state === "listening" && lastScore > 0.4}
       />
