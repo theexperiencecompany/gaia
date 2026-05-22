@@ -44,7 +44,10 @@ const DEFAULT_START_TIMEOUT_MIN = 60;
  * need more (or set it to 0 to disable the timeout entirely).
  */
 function resolveStartTimeoutMs(): number | undefined {
-  const overrideMin = Number(process.env.GAIA_START_TIMEOUT_MIN);
+  // Number("") and Number("  ") are 0, which would silently disable the
+  // timeout. Treat a blank value as unset and fall back to the default.
+  const raw = process.env.GAIA_START_TIMEOUT_MIN?.trim();
+  const overrideMin = raw ? Number(raw) : Number.NaN;
   const timeoutMin =
     Number.isFinite(overrideMin) && overrideMin >= 0
       ? overrideMin

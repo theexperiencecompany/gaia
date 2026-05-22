@@ -46,12 +46,19 @@ function printStatusSnapshot(store: CLIStore): void {
   printDocker(docker);
 }
 
+function statusTag(status: PlainService["status"]): string {
+  if (status === "up") return "UP";
+  if (status === "down") return "DOWN";
+  return "UNKNOWN";
+}
+
 function printServices(services: PlainService[]): void {
   if (services.length === 0) return;
   console.log("\nServices:");
   for (const service of services) {
-    const tag = service.status === "up" ? "UP" : "DOWN";
-    const latency = service.latency ? `${service.latency}ms` : "--";
+    const tag = statusTag(service.status);
+    const latency =
+      service.latency === undefined ? "--" : `${service.latency}ms`;
     const name = service.name.padEnd(12);
     console.log(`  ${name} :${service.port}  ${tag}  ${latency}`);
   }

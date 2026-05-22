@@ -118,6 +118,29 @@ async function runInk(store: CLIStore, runtime: CommandRuntime): Promise<void> {
   exitForStore(store);
 }
 
-function exitForStore(store: CLIStore): never {
-  process.exit(store.currentState.error ? 1 : 0);
+/**
+ * Exit with status 1 when the store ended in an error, else 0 — but let any
+ * buffered stdout/stderr drain first. process.exit() can terminate mid-write
+ * and truncate piped (non-TTY) output, so we only force-exit once the streams
+ * are flushed. (Setting process.exitCode and returning instead would let the
+ * undici keep-alive sockets from the health checks delay exit by several
+ * seconds, so we force-exit after the drain.)
+ */
+function exitForStore(store: CLIStore): void {
+  const code = store.currentState.error ? 1 : 0;
+  const pending = [process.stdout, process.stderr].filter(
+    (stream) => stream.writableLength > 0,
+  );
+
+  if (pending.length === 0) {
+    process.exit(code);
+  }
+
+  let remaining = pending.length;
+  for (const stream of pending) {
+    stream.once("drain", () => {
+      remaining -= 1;
+      if (remaining === 0) process.exit(code);
+    });
+  }
 }

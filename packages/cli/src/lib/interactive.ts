@@ -123,7 +123,10 @@ export async function runConcurrentInteractiveCommands(
           code === 130 ||
           code === 143 ||
           stopping;
-        const exitedCleanly = code === null || code === 0 || sigExit;
+        // A signal-terminated child reports code === null, so only treat that
+        // as clean when it's an expected shutdown (sigExit). An unexpected
+        // SIGKILL/SIGSEGV must still surface as an error.
+        const exitedCleanly = code === 0 || sigExit;
         if (!exitedCleanly && !settled) {
           settled = true;
           cleanupSignalHandlers();
