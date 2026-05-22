@@ -1,8 +1,7 @@
 """Publish/unpublish service for community marketplace."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from shared.py.wide_events import log
 from app.db.chroma.public_integrations_store import (
     index_public_integration,
     remove_public_integration,
@@ -17,6 +16,7 @@ from app.services.integrations.category_inference_service import (
     infer_integration_category,
 )
 from app.services.integrations.publish_validator import PublishIntegrationValidator
+from shared.py.wide_events import log
 
 
 class PublishError(Exception):
@@ -38,9 +38,7 @@ async def publish_custom_integration(
     Raises PublishError on failure.
     """
     log.set(integration={"provider": integration_id, "action": "publish"})
-    integration = await integrations_collection.find_one(
-        {"integration_id": integration_id}
-    )
+    integration = await integrations_collection.find_one({"integration_id": integration_id})
     if not integration:
         raise PublishError("Integration not found", 404)
 
@@ -82,7 +80,7 @@ async def publish_custom_integration(
         collection=integrations_collection,
     )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     update_result = await integrations_collection.update_one(
         {
             "integration_id": integration_id,
@@ -135,9 +133,7 @@ async def unpublish_custom_integration(
     Raises PublishError on failure.
     """
     log.set(integration={"provider": integration_id, "action": "unpublish"})
-    integration = await integrations_collection.find_one(
-        {"integration_id": integration_id}
-    )
+    integration = await integrations_collection.find_one({"integration_id": integration_id})
     if not integration:
         raise PublishError("Integration not found", 404)
 

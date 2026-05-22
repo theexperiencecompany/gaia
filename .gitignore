@@ -1,5 +1,6 @@
 .history
 .claude/worktrees
+.claude/scheduled_tasks.lock
 venv
 api/__pycache__
 */__pycache__/*
@@ -127,11 +128,31 @@ docs/plans/
 .coverage
 i18n.cache
 .worktrees/
+
+docs/superpowers
 superpowers/
-.claude/scheduled_tasks.lock
+
+.beads/
+
+.nx/polygraph
+.claude/settings.local.json
+
+~/
+
+# Local prod config (secrets, credentials, etc.) — runbooks should be tracked
+ops/*.env
+ops/secrets/
+ops/**/*.key
+ops/**/*.pem
+ops/**/*.p12
+ops/**/*.pfx
+chrome/
 
 # Claude Code / agent session transcripts (top-level, dated)
 /20[0-9][0-9]-[0-1][0-9]-[0-3][0-9]-*.txt
 .claude/sessions/
 
 skills-lock.json
+
+# JSCPD copy-paste reports
+.jscpd-report/

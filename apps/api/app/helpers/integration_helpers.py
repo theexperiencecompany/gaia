@@ -194,10 +194,7 @@ def format_public_integration_response(doc: dict) -> dict:
         "icon_url": doc.get("icon_url"),
         "creator": creator,
         "mcp_config": mcp_config,
-        "tools": [
-            {"name": t.get("name", ""), "description": t.get("description")}
-            for t in tools
-        ],
+        "tools": [{"name": t.get("name", ""), "description": t.get("description")} for t in tools],
         "clone_count": doc.get("clone_count", 0),
         "tool_count": len(tools),
         "published_at": doc.get("published_at"),

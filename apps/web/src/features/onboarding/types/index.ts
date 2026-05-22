@@ -1,9 +1,8 @@
-import type { UserInfo } from "@/features/auth/api/authApi";
-
 export interface Message {
   id: string;
   type: "bot" | "user";
   content: string;
+  questionFieldName?: string;
 }
 
 export interface Question {
@@ -12,19 +11,7 @@ export interface Question {
   placeholder: string;
   fieldName: string;
   chipOptions?: { label: string; value: string }[];
-}
-
-export interface OnboardingState {
-  messages: Message[];
-  currentQuestionIndex: number;
-  currentInputs: {
-    text: string;
-    selectedProfession: string | null;
-  };
-  userResponses: Record<string, string>;
-  isProcessing: boolean;
-  isOnboardingComplete: boolean;
-  hasAnsweredCurrentQuestion: boolean;
+  optional?: boolean;
 }
 
 export interface ProfessionOption {
@@ -32,8 +19,18 @@ export interface ProfessionOption {
   value: string;
 }
 
-export interface OnboardingResponse {
-  success: boolean;
-  message: string;
-  user?: UserInfo;
+export type ClarifyQuestionKind = "scope" | "blocker" | "constraint";
+
+export interface ClarifyQuestion {
+  id: string;
+  kind: ClarifyQuestionKind;
+  question: string;
+  options: string[];
+}
+
+export type ClarifyAnswerKind = "option" | "custom" | "skip";
+
+export interface ClarifyAnswer {
+  kind: ClarifyAnswerKind;
+  value: string | null;
 }

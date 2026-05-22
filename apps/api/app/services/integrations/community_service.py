@@ -1,8 +1,7 @@
 """Community marketplace service functions."""
 
-from typing import Any, Optional
+from typing import Any
 
-from shared.py.wide_events import log
 from app.constants.cache import COMMUNITY_CACHE_TTL
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.mongodb.collections import integrations_collection
@@ -12,6 +11,7 @@ from app.services.integrations.integration_service import (
     build_creator_lookup_stages,
     format_community_integrations,
 )
+from shared.py.wide_events import log
 
 
 async def list_community_integrations(
@@ -19,7 +19,7 @@ async def list_community_integrations(
     category: str = "all",
     limit: int = 20,
     offset: int = 0,
-    search: Optional[str] = None,
+    search: str | None = None,
 ) -> CommunityListResponse:
     """List public integrations for the community marketplace."""
     log.set(
@@ -32,9 +32,7 @@ async def list_community_integrations(
 
     # Search path - semantic search first, fallback to MongoDB
     if search and search.strip():
-        return await _search_community_integrations(
-            search.strip(), category, limit, offset
-        )
+        return await _search_community_integrations(search.strip(), category, limit, offset)
 
     # Browse path - cached MongoDB query
     return await _browse_community_integrations(sort, category, limit, offset)
@@ -54,9 +52,7 @@ async def _search_community_integrations(
         category=category if category != "all" else None,
     )
 
-    integration_ids = [
-        r.get("integration_id") for r in search_results if r.get("integration_id")
-    ]
+    integration_ids = [r.get("integration_id") for r in search_results if r.get("integration_id")]
 
     if integration_ids:
         pipeline = [

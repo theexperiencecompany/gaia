@@ -23,7 +23,7 @@ async function loadComboTranslations(
   const locale = localeOverride ?? (await getLocale());
   return loadFeatureTranslations<Record<string, TranslationOverrides>>(
     locale,
-    (l) => import(`../i18n/${l}.json`),
+    "integrations",
   );
 }
 
@@ -33,9 +33,11 @@ export const getTranslatedCombo = cache(
     slug: string,
     locale?: string,
   ): Promise<IntegrationCombo | undefined> => {
-    const base = getCombo(slug);
+    const [base, translations] = await Promise.all([
+      getCombo(slug),
+      loadComboTranslations(locale),
+    ]);
     if (!base) return undefined;
-    const translations = await loadComboTranslations(locale);
     const t = translations[slug];
     if (!t) return base;
     return { ...base, ...t };
@@ -45,8 +47,11 @@ export const getTranslatedCombo = cache(
 export async function getTranslatedCombos(
   locale?: string,
 ): Promise<IntegrationCombo[]> {
-  const translations = await loadComboTranslations(locale);
-  return getAllCombos().map((combo) => {
+  const [all, translations] = await Promise.all([
+    getAllCombos(),
+    loadComboTranslations(locale),
+  ]);
+  return all.map((combo) => {
     const t = translations[combo.slug];
     return t ? { ...combo, ...t } : combo;
   });

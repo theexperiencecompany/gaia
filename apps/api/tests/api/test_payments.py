@@ -9,7 +9,7 @@ Covers:
 - POST /webhooks/dodo — webhook signature verification
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
@@ -19,7 +19,7 @@ from tests.conftest import FAKE_USER
 PAYMENT_SVC = "app.api.v1.endpoints.payments.payment_service"
 WEBHOOK_SVC = "app.api.v1.endpoints.payments.payment_webhook_service"
 
-_NOW = datetime.now(timezone.utc)
+_NOW = datetime.now(UTC)
 
 
 class TestGetPlans:
@@ -71,9 +71,7 @@ class TestCreateSubscription:
         assert resp.status_code == 200
         assert "payment_link" in resp.json()
 
-    async def test_create_subscription_requires_auth(
-        self, unauthed_client: AsyncClient
-    ):
+    async def test_create_subscription_requires_auth(self, unauthed_client: AsyncClient):
         resp = await unauthed_client.post(
             "/api/v1/payments/subscriptions",
             json={"product_id": "prod_123", "quantity": 1},

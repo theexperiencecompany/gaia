@@ -73,7 +73,7 @@ const BUILD_DATE = new Date().toISOString();
 type ChangeFreq = "daily" | "weekly" | "monthly" | "yearly";
 type StaticPage = { path: string; freq: ChangeFreq; priority: number };
 
-const TRANSLATED_STATIC_PAGES: Array<StaticPage> = [
+const TRANSLATED_STATIC_PAGES: StaticPage[] = [
   { path: "/compare", freq: "weekly", priority: 0.9 },
   { path: "/alternative-to", freq: "weekly", priority: 0.9 },
   { path: "/automate", freq: "weekly", priority: 0.8 },
@@ -81,7 +81,7 @@ const TRANSLATED_STATIC_PAGES: Array<StaticPage> = [
   { path: "/learn", freq: "weekly", priority: 0.8 },
 ];
 
-const UNTRANSLATED_STATIC_PAGES: Array<StaticPage> = [
+const UNTRANSLATED_STATIC_PAGES: StaticPage[] = [
   { path: "", freq: "daily", priority: 1.0 },
   { path: "/pricing", freq: "weekly", priority: 0.9 },
   { path: "/marketplace", freq: "weekly", priority: 0.9 },
@@ -327,8 +327,10 @@ async function getIntegrationPages(
 /**
  * Comparison pages (GAIA vs competitors)
  */
-function getComparisonPages(baseUrl: string): MetadataRoute.Sitemap {
-  const slugs = getAllComparisonSlugs();
+async function getComparisonPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const slugs = await getAllComparisonSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/compare/${slug}`,
     lastModified: BUILD_DATE,
@@ -361,7 +363,7 @@ async function getPersonaPages(
     const { getAllPersonaSlugs } = await import(
       "@/features/personas/data/personasData"
     );
-    const slugs = getAllPersonaSlugs();
+    const slugs = await getAllPersonaSlugs();
     return slugs.map((slug) => ({
       url: `${baseUrl}/for/${slug}`,
       lastModified: BUILD_DATE,
@@ -377,8 +379,10 @@ async function getPersonaPages(
 /**
  * Glossary term pages (AI/productivity concepts)
  */
-function getGlossaryPages(baseUrl: string): MetadataRoute.Sitemap {
-  const slugs = getAllGlossaryTermSlugs();
+async function getGlossaryPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const slugs = await getAllGlossaryTermSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/learn/${slug}`,
     lastModified: BUILD_DATE,
@@ -390,8 +394,10 @@ function getGlossaryPages(baseUrl: string): MetadataRoute.Sitemap {
 /**
  * Alternative-to pages (GAIA as alternative to competitors)
  */
-function getAlternativePages(baseUrl: string): MetadataRoute.Sitemap {
-  const slugs = getAllAlternativeSlugs();
+async function getAlternativePages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const slugs = await getAllAlternativeSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/alternative-to/${slug}`,
     lastModified: BUILD_DATE,
@@ -403,8 +409,10 @@ function getAlternativePages(baseUrl: string): MetadataRoute.Sitemap {
 /**
  * Integration combo pages ([toolA] + [toolB] automation)
  */
-function getIntegrationComboPages(baseUrl: string): MetadataRoute.Sitemap {
-  const allCombos = getAllCombos();
+async function getIntegrationComboPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const allCombos = await getAllCombos();
   return allCombos
     .filter((c) => !c.canonicalSlug)
     .map((combo) => ({
@@ -449,15 +457,15 @@ export async function getSitemapEntries(
     case SITEMAP_IDS.INTEGRATIONS:
       return getIntegrationPages(baseUrl);
     case SITEMAP_IDS.COMPARISONS:
-      return withLocaleUrls(getComparisonPages(baseUrl), baseUrl);
+      return withLocaleUrls(await getComparisonPages(baseUrl), baseUrl);
     case SITEMAP_IDS.PERSONAS:
       return withLocaleUrls(await getPersonaPages(baseUrl), baseUrl);
     case SITEMAP_IDS.GLOSSARY:
-      return withLocaleUrls(getGlossaryPages(baseUrl), baseUrl);
+      return withLocaleUrls(await getGlossaryPages(baseUrl), baseUrl);
     case SITEMAP_IDS.ALTERNATIVES:
-      return withLocaleUrls(getAlternativePages(baseUrl), baseUrl);
+      return withLocaleUrls(await getAlternativePages(baseUrl), baseUrl);
     case SITEMAP_IDS.INTEGRATION_COMBOS:
-      return withLocaleUrls(getIntegrationComboPages(baseUrl), baseUrl);
+      return withLocaleUrls(await getIntegrationComboPages(baseUrl), baseUrl);
     case SITEMAP_IDS.NATIVE_INTEGRATIONS:
       return [];
     default:

@@ -24,10 +24,9 @@ DELETE ``app/agents/core/nodes/filter_messages.py`` → these tests FAIL.
 DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
 """
 
-import pytest
-from tests.helpers import BindableToolsFakeModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
+import pytest
 
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from tests.e2e.conftest import (
@@ -36,7 +35,7 @@ from tests.e2e.conftest import (
     make_mock_store,
     make_node_config,
 )
-from tests.helpers import assert_tool_called
+from tests.helpers import BindableToolsFakeModel, assert_tool_called
 
 
 @tool
@@ -163,11 +162,7 @@ class TestSendEmailFlow:
         )
 
         result = await graph.ainvoke(
-            {
-                "messages": [
-                    HumanMessage(content="Send an email to carol about the project")
-                ]
-            },
+            {"messages": [HumanMessage(content="Send an email to carol about the project")]},
             config=thread_config,
         )
 
@@ -191,9 +186,7 @@ class TestSendEmailFlow:
         in addition to 'messages'. This confirms the graph is using the real
         GAIA State from app.override.langgraph_bigtool.utils, not a generic state.
         """
-        fake_llm = BindableToolsFakeModel(
-            responses=[AIMessage(content="No tool needed here.")]
-        )
+        fake_llm = BindableToolsFakeModel(responses=[AIMessage(content="No tool needed here.")])
 
         graph = build_gaia_test_graph(
             fake_llm=fake_llm,

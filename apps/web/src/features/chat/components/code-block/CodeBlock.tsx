@@ -8,9 +8,20 @@ import { useLoading } from "@/features/chat/hooks/useLoading";
 
 import CopyButton from "./CopyButton";
 import DownloadButton from "./DownloadButton";
-import StandardCodeBlock from "./StandardCodeBlock";
 
-// Dynamic import for MermaidTabs with loading fallback
+// Dynamic imports — keep heavy syntax/diagram deps out of the SSR bundle.
+// On Cloudflare Workers via OpenNext, every server-rendered import lands in
+// handler.mjs (no runtime chunk loading). Forcing ssr:false here means the
+// initial HTML is a tiny placeholder; Prism + refractor + mermaid only load
+// on the client. The mermaid SDK init now lives in FlowchartPreview so the
+// `import("mermaid")` is unreachable from any server-render code path.
+const StandardCodeBlock = dynamic(() => import("./StandardCodeBlock"), {
+  ssr: false,
+  loading: () => (
+    <pre className="my-2 overflow-x-auto rounded-xl bg-zinc-900 p-4 text-xs text-zinc-400" />
+  ),
+});
+
 const MermaidTabs = dynamic(() => import("./MermaidTabs"), {
   ssr: false,
   loading: () => (
@@ -20,100 +31,30 @@ const MermaidTabs = dynamic(() => import("./MermaidTabs"), {
   ),
 });
 
-// Type for mermaid instance
-interface MermaidInstance {
-  initialize: (config: object) => void;
-  contentLoaded: () => void;
-}
-
-// Module-level guard: mermaid SDK should only be initialized once per app load,
-// not per component mount (advanced-init-once pattern).
-let mermaidInstance: MermaidInstance | null = null;
-let mermaidInitPromise: Promise<MermaidInstance> | null = null;
-
-function getMermaidInstance(): Promise<MermaidInstance> {
-  if (mermaidInstance) return Promise.resolve(mermaidInstance);
-  if (mermaidInitPromise) return mermaidInitPromise;
-
-  mermaidInitPromise = import("mermaid").then((mermaidModule) => {
-    mermaidModule.default.initialize({
-      startOnLoad: true,
-      theme: "dark",
-      flowchart: {
-        useMaxWidth: true,
-        htmlLabels: true,
-        curve: "linear",
-      },
-      // Disable unused diagram types to reduce bundle size
-      gantt: {
-        useMaxWidth: false,
-      },
-      journey: {
-        useMaxWidth: false,
-      },
-      timeline: {
-        useMaxWidth: false,
-      },
-      // Disable cytoscape layouts to prevent loading cytoscape
-      elk: {
-        mergeEdges: false,
-      },
-    });
-    mermaidInstance = mermaidModule.default;
-    return mermaidInstance;
-  });
-
-  return mermaidInitPromise;
-}
-
-// Dynamic import for mermaid library
-const useMermaid = () => {
-  const [mermaid, setMermaid] = useState<MermaidInstance | null>(
-    mermaidInstance,
-  );
-
-  useEffect(() => {
-    if (mermaid) return;
-    let cancelled = false;
-    getMermaidInstance().then((instance) => {
-      if (!cancelled) setMermaid(instance);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [mermaid]);
-
-  return mermaid;
-};
-
 interface CodeBlockProps extends React.HTMLAttributes<HTMLElement> {
   inline?: boolean;
   className?: string;
   children: ReactNode;
+  hideToolbar?: boolean;
 }
 
 const CodeBlock: React.FC<CodeBlockProps> = ({
   inline,
   className,
   children,
+  hideToolbar,
   ...props
 }) => {
   const { isLoading } = useLoading();
   const [activeTab, setActiveTab] = useState("code");
   const [copied, setCopied] = useState(false);
-  const mermaid = useMermaid();
 
   const match = /language-(\w+)/.exec(className || "");
   const isMermaid = match && match[1] === "mermaid";
 
-  // When loading or tab changes, reload mermaid diagrams.
-  useEffect(() => {
-    if (mermaid) {
-      mermaid.contentLoaded();
-    }
-  }, [isLoading, activeTab, mermaid]);
-
   // Automatically switch to preview mode once loading is done.
+  // FlowchartPreview re-runs `mermaid.contentLoaded()` whenever its children
+  // change, so we no longer need to call it from here.
   useEffect(() => {
     if (!isLoading) setActiveTab("preview");
   }, [isLoading]);
@@ -129,14 +70,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
       <div className="relative my-3 flex w-[40vw] max-w-[30vw] flex-col gap-0 overflow-x-visible rounded-t-[10px]! bg-zinc-900 pb-0!">
         <MermaidTabs
           activeTab={activeTab}
-          onTabChange={(key) => {
-            setActiveTab(key);
-            setTimeout(() => {
-              if (mermaid) {
-                mermaid.contentLoaded();
-              }
-            }, 10);
-          }}
+          onTabChange={setActiveTab}
           isLoading={isLoading}
           syntaxHighlighterProps={{
             ...props,
@@ -163,6 +97,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
           className={className}
           copied={copied}
           onCopy={handleCopy}
+          hideToolbar={hideToolbar}
         >
           {children}
         </StandardCodeBlock>

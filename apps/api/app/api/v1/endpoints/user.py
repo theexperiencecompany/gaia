@@ -1,16 +1,5 @@
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
-import pytz
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from shared.py.wide_events import log
-from app.config.settings import settings
-from app.constants.auth import WOS_SESSION_COOKIE
-from app.db.mongodb.collections import users_collection
-from app.models.user_models import UserUpdateResponse
-from app.services.analytics_service import track_logout
-from app.services.onboarding.onboarding_service import get_user_onboarding_status
-from app.services.user_service import update_user_profile
 from bson import ObjectId
 from fastapi import (
     APIRouter,
@@ -23,13 +12,22 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import JSONResponse
+import pytz
 from workos import WorkOSClient
+
+from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.config.settings import settings
+from app.constants.auth import WOS_SESSION_COOKIE
+from app.db.mongodb.collections import users_collection
+from app.models.user_models import UserUpdateResponse
+from app.services.analytics_service import track_logout
+from app.services.onboarding.onboarding_service import get_user_onboarding_status
+from app.services.user_service import update_user_profile
+from shared.py.wide_events import log
 
 router = APIRouter()
 
-workos = WorkOSClient(
-    api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID
-)
+workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
 
 
 @router.get("/me", response_model=dict)
@@ -63,8 +61,8 @@ async def get_me(
 
 @router.patch("/me", response_model=UserUpdateResponse)
 async def update_me(
-    name: Optional[str] = Form(None),
-    picture: Optional[UploadFile] = File(None),
+    name: str | None = Form(None),
+    picture: UploadFile | None = File(None),
     user: dict = Depends(get_current_user),
 ):
     """
@@ -99,17 +97,13 @@ async def update_me(
         # Validate file size (max 5MB)
         max_size = 5 * 1024 * 1024  # 5MB
         if picture.size > max_size:
-            raise HTTPException(
-                status_code=400, detail="File size too large. Maximum size is 5MB"
-            )
+            raise HTTPException(status_code=400, detail="File size too large. Maximum size is 5MB")
 
         picture_data = await picture.read()
         log.set(picture_size_bytes=picture.size)
 
     # Update user profile
-    updated_user = await update_user_profile(
-        user_id=user_id, name=name, picture_data=picture_data
-    )
+    updated_user = await update_user_profile(user_id=user_id, name=name, picture_data=picture_data)
 
     log.set(outcome="success")
     return UserUpdateResponse(**updated_user)
@@ -136,7 +130,7 @@ async def update_user_name(
     except HTTPException as e:
         raise e
     except Exception as e:
-        log.error(f"Error updating user name: {str(e)}", exc_info=True)
+        log.error(f"Error updating user name: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update name")
 
 
@@ -173,7 +167,7 @@ async def update_user_timezone(
             {
                 "$set": {
                     "timezone": user_timezone.strip(),
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
         )
@@ -190,7 +184,7 @@ async def update_user_timezone(
     except HTTPException as e:
         raise e
     except Exception as e:
-        log.error(f"Error updating timezone: {str(e)}", exc_info=True)
+        log.error(f"Error updating timezone: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update timezone")
 
 
@@ -225,15 +219,15 @@ async def get_public_holo_card(card_id: str):
         if not account_number or not member_since:
             created_at = user_doc.get("created_at")
             if created_at:
-                count = await users_collection.count_documents(
-                    {"created_at": {"$lt": created_at}}
-                )
+                count = await users_collection.count_documents({"created_at": {"$lt": created_at}})
                 account_number = count + 1
             else:
                 account_number = 1
 
             member_since = (
-                created_at.strftime("%b %d, %Y") if created_at else "Nov 21, 2024"
+                created_at.strftime("%b %d, %Y")
+                if created_at
+                else datetime.now(UTC).strftime("%b %d, %Y")
             )
 
         log.set(outcome="success")
@@ -251,7 +245,7 @@ async def get_public_holo_card(card_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error fetching holo card: {str(e)}", exc_info=True)
+        log.error(f"Error fetching holo card: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch holo card data")
 
 
@@ -277,9 +271,7 @@ async def update_holo_card_colors(
 
         # Validate opacity range
         if not 0 <= overlay_opacity <= 100:
-            raise HTTPException(
-                status_code=400, detail="Opacity must be between 0 and 100"
-            )
+            raise HTTPException(status_code=400, detail="Opacity must be between 0 and 100")
 
         # Update user's onboarding data
         result = await users_collection.update_one(
@@ -288,7 +280,7 @@ async def update_holo_card_colors(
                 "$set": {
                     "onboarding.overlay_color": overlay_color,
                     "onboarding.overlay_opacity": overlay_opacity,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
         )
@@ -307,7 +299,7 @@ async def update_holo_card_colors(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error updating holo card colors: {str(e)}", exc_info=True)
+        log.error(f"Error updating holo card colors: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update holo card colors")
 
 
@@ -335,16 +327,14 @@ async def logout(
         if not session:
             raise HTTPException(status_code=401, detail="Invalid session")
 
-        user_email: Optional[str] = user.get("email")
-        user_id: Optional[str] = user.get("user_id")
+        user_email: str | None = user.get("email")
+        user_id: str | None = user.get("user_id")
 
         if user_email:
             try:
                 track_logout(user_id=user_id or user_email, email=user_email)
             except Exception as analytics_error:
-                log.warning(
-                    f"Failed to track logout analytics for {user_email}: {analytics_error}"
-                )
+                log.warning(f"Failed to track logout analytics for {user_email}: {analytics_error}")
 
         logout_url = session.get_logout_url()
 

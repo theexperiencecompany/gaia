@@ -1,6 +1,6 @@
 """Pydantic models for LinkedIn custom tools."""
 
-from typing import List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -28,49 +28,49 @@ class CreatePostInput(BaseModel):
         "PUBLIC",
         description="Post visibility: 'PUBLIC' for everyone, 'CONNECTIONS' for 1st degree connections only",
     )
-    organization_id: Optional[str] = Field(
+    organization_id: str | None = Field(
         None,
         description="Organization URN to post on behalf of (e.g., 'urn:li:organization:12345'). If omitted, posts as the authenticated user.",
     )
 
     # ===== Image Media Fields =====
-    image_url: Optional[str] = Field(
+    image_url: str | None = Field(
         None,
         description="URL of a single image to include. Use image_urls for multi-image carousel posts.",
     )
-    image_urls: Optional[List[str]] = Field(
+    image_urls: list[str] | None = Field(
         None,
         description="List of image URLs for a multi-image carousel post (max 20 images). Takes priority over image_url if both provided.",
     )
-    image_title: Optional[str] = Field(
+    image_title: str | None = Field(
         None,
         description="Optional title for single-image posts (not used for carousels)",
     )
 
     # ===== Document Media Fields =====
-    document_url: Optional[str] = Field(
+    document_url: str | None = Field(
         None,
         description="URL of a document to share (PDF, PPT, etc. - must be publicly accessible). Use for document posts.",
     )
-    document_title: Optional[str] = Field(
+    document_title: str | None = Field(
         None,
         description="Title for the document (required if document_url is provided)",
     )
 
     # ===== Article/Link Media Fields =====
-    article_url: Optional[str] = Field(
+    article_url: str | None = Field(
         None,
         description="URL of an article or external link to share. Use for sharing web content with link preview.",
     )
-    article_title: Optional[str] = Field(
+    article_title: str | None = Field(
         None,
         description="Custom title for the article preview (overrides auto-fetched title)",
     )
-    article_description: Optional[str] = Field(
+    article_description: str | None = Field(
         None,
         description="Custom description for the article preview (overrides auto-fetched description)",
     )
-    thumbnail_url: Optional[str] = Field(
+    thumbnail_url: str | None = Field(
         None,
         description="Custom thumbnail image URL for the article preview",
     )
@@ -89,7 +89,7 @@ class AddCommentInput(BaseModel):
         min_length=1,
         max_length=1250,
     )
-    parent_comment_urn: Optional[str] = Field(
+    parent_comment_urn: str | None = Field(
         None,
         description="URN of parent comment for nested replies (e.g., 'urn:li:comment:12345')",
     )
@@ -122,9 +122,7 @@ class ReactToPostInput(BaseModel):
         ...,
         description="URN of the post to react to (e.g., 'urn:li:share:12345')",
     )
-    reaction_type: Literal[
-        "LIKE", "CELEBRATE", "SUPPORT", "LOVE", "INSIGHTFUL", "FUNNY"
-    ] = Field(
+    reaction_type: Literal["LIKE", "CELEBRATE", "SUPPORT", "LOVE", "INSIGHTFUL", "FUNNY"] = Field(
         "LIKE",
         description="Type of reaction to add",
     )

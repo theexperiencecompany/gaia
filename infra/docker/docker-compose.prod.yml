@@ -1,295 +1,450 @@
-name: gaia-prod
+# Production stack — deployed via `docker stack deploy`.
+# Secrets are mounted as files under /run/secrets/*; scripts/docker-entrypoint.sh
+# (baked into each image) reads them and exports env vars before exec.
+# This file can also be used with `docker compose` for local rehearsal — see
+# scripts/swarm/lab-rehearsal.sh.
+
+secrets:
+  gaia_infisical_token:
+    external: true
+  gaia_infisical_machine_identity_client_id:
+    external: true
+  gaia_infisical_machine_identity_client_secret:
+    external: true
+  gaia_infisical_project_id:
+    external: true
+  gaia_metrics_token:
+    external: true
+  gaia_grafana_admin_password:
+    external: true
+  gaia_postgres_password:
+    external: true
+    name: gaia_postgres_password_v2
+  gaia_rabbitmq_default_pass:
+    external: true
+    name: gaia_rabbitmq_default_pass_v2
 
 services:
-  # FastAPI Application
+  # ---------------------------------------------------------------------------
+  # API
+  # ---------------------------------------------------------------------------
+
   gaia-backend:
-    container_name: gaia-backend
     image: ghcr.io/theexperiencecompany/gaia:latest
     working_dir: /app/apps/api
-    command:
-      [
-        "python",
-        "-m",
-        "uvicorn",
-        "app.main:app",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "80",
-        "--no-access-log",
-        "--workers",
-        "1",
-        "--timeout-keep-alive",
-        "65",
-        "--timeout-graceful-shutdown",
-        "30",
-        "--h11-max-incomplete-event-size",
-        "16777216",
-      ]
+    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 80 --no-access-log --workers 1 --timeout-keep-alive 65 --timeout-graceful-shutdown 30 --h11-max-incomplete-event-size 16777216
     environment:
-      PYTHONUNBUFFERED: 1
-      FORCE_COLOR: 0
+      PYTHONUNBUFFERED: "1"
+      FORCE_COLOR: "0"
       WORKER_TYPE: main_app
-      PYTHONDONTWRITEBYTECODE: 1
+      PYTHONDONTWRITEBYTECODE: "1"
       PYTHONPATH: /app/apps/api
       PYTHONIOENCODING: utf-8
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
-    env_file:
-      - ../../apps/api/.env
+      ENV: production
+      INFISICAL_ENV: prod
+    secrets:
+      - gaia_infisical_token
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_project_id
+      - gaia_metrics_token
     ports:
-      - "8000:80"
-    restart: on-failure
-    tty: true
-    stdin_open: true
-    depends_on:
-      chromadb:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      # Published on the host so the host's Nginx can proxy api.heygaia.io here.
+      # NOTE: Swarm `mode: host` does NOT enforce `host_ip` (see moby/moby#32299),
+      # so this binds to 0.0.0.0:8000. The Hetzner Cloud Firewall only allows
+      # 22/80/443 from the public internet, so 8000 is only reachable from
+      # localhost (Nginx) in practice. Do not remove the firewall rule.
+      - target: 80
+        published: 8000
+        protocol: tcp
+        mode: host
     networks:
-      - gaia_network
+      gaia-prod-shared:
+        aliases:
+          - gaia-backend
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/health"]
       interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 120s
     deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+        failure_action: rollback
+        monitor: 45s
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
       resources:
         limits:
           memory: 4G
 
-  # ChromaDB Service
+  # ---------------------------------------------------------------------------
+  # ARQ Worker
+  # ---------------------------------------------------------------------------
+
+  arq_worker:
+    image: ghcr.io/theexperiencecompany/gaia:latest
+    working_dir: /app/apps/api
+    command: python -m arq app.worker.WorkerSettings
+    environment:
+      WORKER_TYPE: arq_worker
+      PYTHONPATH: /app/apps/api
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
+      ARQ_METRICS_PORT: "9100"
+      ENV: production
+      INFISICAL_ENV: prod
+    secrets:
+      - gaia_infisical_token
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_project_id
+      - gaia_metrics_token
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - arq_worker
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('redis', 6379), timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+        failure_action: rollback
+        monitor: 45s
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          memory: 2G
+
+  # ---------------------------------------------------------------------------
+  # Bots
+  # ---------------------------------------------------------------------------
+
+  discord-bot:
+    image: ghcr.io/theexperiencecompany/gaia-bot-discord:latest
+    environment:
+      BOT_SERVER_PORT: "3200"
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
+      ENV: production
+      INFISICAL_ENV: prod
+    secrets:
+      - gaia_infisical_token
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_project_id
+    ports:
+      # Nginx proxies /bots/discord/* from the public internet.
+      - target: 3200
+        published: 3200
+        protocol: tcp
+        mode: host
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - discord-bot
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3200/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+      restart_policy:
+        condition: any
+        delay: 5s
+
+  slack-bot:
+    image: ghcr.io/theexperiencecompany/gaia-bot-slack:latest
+    environment:
+      BOT_SERVER_PORT: "3201"
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
+      ENV: production
+      INFISICAL_ENV: prod
+    secrets:
+      - gaia_infisical_token
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_project_id
+    ports:
+      # Nginx proxies /bots/slack/* from the public internet.
+      - target: 3201
+        published: 3201
+        protocol: tcp
+        mode: host
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - slack-bot
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3201/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+      restart_policy:
+        condition: any
+        delay: 5s
+
+  telegram-bot:
+    image: ghcr.io/theexperiencecompany/gaia-bot-telegram:latest
+    environment:
+      BOT_SERVER_PORT: "3202"
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
+      ENV: production
+      INFISICAL_ENV: prod
+    secrets:
+      - gaia_infisical_token
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_project_id
+    ports:
+      # Nginx proxies /bots/telegram/* from the public internet.
+      - target: 3202
+        published: 3202
+        protocol: tcp
+        mode: host
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - telegram-bot
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3202/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+      restart_policy:
+        condition: any
+        delay: 5s
+
+  whatsapp-bot:
+    image: ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest
+    environment:
+      BOT_SERVER_PORT: "3203"
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
+      ENV: production
+      INFISICAL_ENV: prod
+    secrets:
+      - gaia_infisical_token
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_project_id
+    ports:
+      # Nginx proxies /api/v1/webhook/whatsapp + /bots/whatsapp/*.
+      - target: 3203
+        published: 3203
+        protocol: tcp
+        mode: host
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - whatsapp-bot
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3203/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+      restart_policy:
+        condition: any
+        delay: 5s
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure
+  # ---------------------------------------------------------------------------
+
   chromadb:
+    # No `ports:` block — Chroma has no auth and must never be reachable from the host.
+    # Swarm `mode: host` ignores `host_ip`, so publishing at all would expose it on 0.0.0.0.
+    # The backend reaches it via the overlay network alias below.
     image: chromadb/chroma:1.5.1
-    container_name: chromadb
     volumes:
       - chroma_data:/chroma/chroma
     environment:
-      - PERSIST_DIRECTORY=/chroma/chroma
-      - CHROMA_SERVER_HOST=0.0.0.0
-      - CHROMA_SERVER_PORT=8000
-    ports:
-      - "8080:8000"
-    restart: on-failure
+      PERSIST_DIRECTORY: /chroma/chroma
+      CHROMA_SERVER_HOST: 0.0.0.0
+      CHROMA_SERVER_PORT: "8000"
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - chromadb
     healthcheck:
-      test:
-        ["CMD", "/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/8000"]
+      test: ["CMD", "/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/8000"]
       interval: 10s
       timeout: 10s
       retries: 5
-    networks:
-      - gaia_network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      placement:
+        constraints:
+          - node.labels.type == storage
 
-  # Postgres Service
   postgres:
+    # No `ports:` block — Postgres stays internal to the swarm.
+    # Swarm `mode: host` ignores `host_ip`, so publishing would bind to 0.0.0.0.
+    # Backend and langgraph-checkpointer reach it via the overlay network alias.
     image: postgres:18-alpine
-    container_name: postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres # pragma: allowlist secret
+      # Password is read from the Swarm secret file at /run/secrets/gaia_postgres_password.
+      # The official postgres image supports *_FILE variants for secrets-on-disk.
+      POSTGRES_PASSWORD_FILE: /run/secrets/gaia_postgres_password
       POSTGRES_DB: langgraph
-    ports:
-      - "5432:5432"
+    secrets:
+      - gaia_postgres_password
     volumes:
-      - pgdata:/var/lib/postgresql/data
-    restart: on-failure
+      - pgdata:/var/lib/postgresql
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - postgres
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 10s
       timeout: 10s
       retries: 5
-    networks:
-      - gaia_network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      placement:
+        constraints:
+          - node.labels.type == storage
 
-  # Redis Service
   redis:
     image: redis:8-alpine
-    container_name: redis
     command: >
       redis-server
       --maxmemory 2gb
       --maxmemory-policy allkeys-lru
       --save 60 1000
       --appendonly yes
-    ports:
-      - "6379:6379"
-    restart: always
     volumes:
       - redis_data:/data
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - redis
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 10s
       retries: 5
-    networks:
-      - gaia_network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      placement:
+        constraints:
+          - node.labels.type == storage
 
-  # RabbitMQ Service
   rabbitmq:
+    # No `ports:` block — RabbitMQ (AMQP, mgmt UI, Prometheus) stays overlay-only.
+    # Swarm `mode: host` ignores `host_ip`, so publishing would bind to 0.0.0.0.
+    # Backend uses the `rabbitmq:5672` alias; Prometheus scrapes `rabbitmq:15692` via overlay.
+    # For disaster-recovery access to the mgmt UI, temporarily `docker exec` or SSH-tunnel.
     image: rabbitmq:4.1.8-management
-    container_name: rabbitmq
-    ports:
-      - "5672:5672" # AMQP protocol
-      - "15672:15672" # Management UI
-      - "15692:15692" # Prometheus metrics
+    # RabbitMQ 4.x deprecated RABBITMQ_DEFAULT_USER/PASS env vars. Users are
+    # managed via `rabbitmqctl` against the running broker and persist in the
+    # data volume. The Swarm secret `gaia_rabbitmq_default_pass` exists for
+    # disaster recovery / fresh volume bootstrapping — see docs/deployment/secrets.mdx.
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - ./observability/rabbitmq-enabled-plugins:/etc/rabbitmq/enabled_plugins:ro
-    restart: always
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmqctl", "status"]
       interval: 30s
       timeout: 10s
       retries: 5
-    networks:
-      - gaia_network
-
-  # Arq Worker
-  arq_worker:
-    container_name: arq_worker
-    image: ghcr.io/theexperiencecompany/gaia:latest
-    working_dir: /app/apps/api
-    env_file:
-      - ../../apps/api/.env
-    environment:
-      - WORKER_TYPE=arq_worker
-      - PYTHONPATH=/app/apps/api
-      - LOG_FORMAT=json
-      - LOG_COLORIZE=false
-      - ARQ_METRICS_PORT=9100
-    command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
-    restart: always
-    depends_on:
-      redis:
-        condition: service_healthy
-    networks:
-      - gaia_network
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import socket; socket.create_connection(('redis', 6379), timeout=5)",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
     deploy:
-      resources:
-        limits:
-          memory: 2G
-
-  # Discord Bot (optional - enable with --profile bots)
-  discord-bot:
-    container_name: discord-bot
-    profiles: ["bots"]
-    image: ghcr.io/theexperiencecompany/gaia-bot-discord:latest
-    env_file:
-      - ../../apps/bots/.env
-    environment:
-      - BOT_SERVER_PORT=3200
-      - LOG_FORMAT=json
-      - LOG_COLORIZE=false
-    ports:
-      - "127.0.0.1:${DISCORD_BOT_PORT:-3200}:3200"
-    restart: always
-    depends_on:
-      gaia-backend:
-        condition: service_healthy
-    networks:
-      - gaia_network
-
-  # Slack Bot (optional - enable with --profile bots)
-  slack-bot:
-    container_name: slack-bot
-    profiles: ["bots"]
-    image: ghcr.io/theexperiencecompany/gaia-bot-slack:latest
-    env_file:
-      - ../../apps/bots/.env
-    environment:
-      - BOT_SERVER_PORT=3201
-      - LOG_FORMAT=json
-      - LOG_COLORIZE=false
-    ports:
-      - "127.0.0.1:${SLACK_BOT_PORT:-3201}:3201"
-    restart: always
-    depends_on:
-      gaia-backend:
-        condition: service_healthy
-    networks:
-      - gaia_network
-
-  # Telegram Bot (optional - enable with --profile bots)
-  telegram-bot:
-    container_name: telegram-bot
-    profiles: ["bots"]
-    image: ghcr.io/theexperiencecompany/gaia-bot-telegram:latest
-    env_file:
-      - ../../apps/bots/.env
-    environment:
-      - BOT_SERVER_PORT=3202
-      - LOG_FORMAT=json
-      - LOG_COLORIZE=false
-    ports:
-      - "127.0.0.1:${TELEGRAM_BOT_PORT:-3202}:3202"
-    restart: always
-    depends_on:
-      gaia-backend:
-        condition: service_healthy
-    networks:
-      - gaia_network
-
-  # WhatsApp Bot (optional - enable with --profile bots)
-  # Serves both /health and /webhook (Kapso) on the same port.
-  whatsapp-bot:
-    container_name: whatsapp-bot
-    profiles: ["bots"]
-    image: ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest
-    env_file:
-      - ../../apps/bots/.env
-    environment:
-      - BOT_SERVER_PORT=3203
-      - LOG_FORMAT=json
-      - LOG_COLORIZE=false
-    ports:
-      - "127.0.0.1:${WHATSAPP_BOT_PORT:-3203}:3203"
-    restart: always
-    depends_on:
-      gaia-backend:
-        condition: service_healthy
-    networks:
-      - gaia_network
-
-  # Voice Agent Worker (optional - enable with --profile voice-agent)
-  voice-agent-worker:
-    container_name: voice-agent-worker
-    image: ghcr.io/theexperiencecompany/gaia-voice-agent:latest
-    profiles: ["voice-agent"]
-    working_dir: /app/apps/voice-agent
-    environment:
-      PYTHONUNBUFFERED: 1
-      FORCE_COLOR: 1
-      WORKER_TYPE: voice_agent_worker
-      PYTHONDONTWRITEBYTECODE: 1
-      HF_HUB_OFFLINE: "1"
-      HF_HUB_ENABLE_HF_TRANSFER: "1"
-      HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
-    env_file:
-      - ../../apps/api/.env
-    volumes:
-      - voice_agent_models:/home/appuser/.cache/huggingface
-    restart: always
-    depends_on:
-      gaia-backend:
-        condition: service_healthy
-    networks:
-      - gaia_network
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      placement:
+        constraints:
+          - node.labels.type == storage
 
   # ---------------------------------------------------------------------------
   # Metrics exporters
@@ -297,32 +452,49 @@ services:
 
   postgres_exporter:
     image: prometheuscommunity/postgres-exporter:v0.17.0
-    container_name: postgres_exporter
+    # The exporter composes DATA_SOURCE_NAME from URI + USER + PASS. Only the
+    # password is secret — user and host are safe to commit. PASS_FILE reads
+    # the secret contents as the password.
     environment:
-      DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/langgraph?sslmode=disable" # pragma: allowlist secret
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
+      DATA_SOURCE_URI: "postgres:5432/langgraph?sslmode=disable"
+      DATA_SOURCE_USER: "postgres"
+      DATA_SOURCE_PASS_FILE: /run/secrets/gaia_postgres_password
+    secrets:
+      - gaia_postgres_password
     networks:
-      - gaia_network
+      - gaia-prod-shared
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      placement:
+        constraints:
+          - node.role == manager
 
   redis_exporter:
     image: oliver006/redis_exporter:v1.66.0
-    container_name: redis_exporter
     environment:
       REDIS_ADDR: "redis://redis:6379"
-    restart: unless-stopped
-    depends_on:
-      redis:
-        condition: service_healthy
     networks:
-      - gaia_network
+      - gaia-prod-shared
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      placement:
+        constraints:
+          - node.role == manager
 
-  # Container metrics (CPU, memory, network, disk I/O per container)
   cadvisor:
+    # No `ports:` block — Prometheus scrapes `cadvisor:8080` via the overlay network.
+    # Previously `mode: global` + host-published 8081 so Prometheus could scrape each
+    # Swarm node individually. The host port was bound to 0.0.0.0 (Swarm host-mode
+    # ignores host_ip) which leaked a trove of container/cgroup metrics publicly.
+    # Single-node swarm today — if we scale out, switch back to `mode: global` and
+    # plumb scraping through Prometheus's overlay DNS of each replica.
     image: gcr.io/cadvisor/cadvisor:v0.54.1
-    container_name: cadvisor
     privileged: true
     volumes:
       - /:/rootfs:ro
@@ -333,95 +505,137 @@ services:
     command:
       - "--docker_only=true"
       - "--housekeeping_interval=30s"
-    restart: unless-stopped
     networks:
-      - gaia_network
+      gaia-prod-shared:
+        aliases:
+          - cadvisor
     deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
       resources:
         limits:
           memory: 256m
           cpus: "0.25"
+      placement:
+        constraints:
+          - node.role == manager
 
-  # Host machine metrics (CPU, memory, disk, network)
   node_exporter:
+    # No `ports:` block — Prometheus scrapes `node_exporter:9100` via the overlay network.
+    # Was previously `mode: global` + host-published 9100 which leaked full host metrics
+    # (kernel version, interfaces, mounts, load) publicly because Swarm host-mode ignores
+    # host_ip. Single-node swarm today; scale-out note in cadvisor's comment applies here too.
     image: prom/node-exporter:v1.8.2
-    container_name: node_exporter
     pid: host
     command:
       - "--path.rootfs=/host"
     volumes:
       - /:/host:ro,rslave
-    restart: unless-stopped
     networks:
-      - gaia_network
+      gaia-prod-shared:
+        aliases:
+          - node_exporter
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:9100/metrics || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      placement:
+        constraints:
+          - node.role == manager
 
-  # HTTP probe for services without native Prometheus metrics (e.g. ChromaDB)
   blackbox_exporter:
     image: prom/blackbox-exporter:v0.25.0
-    container_name: blackbox_exporter
     volumes:
       - ./observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
-    restart: unless-stopped
     networks:
-      - gaia_network
+      - gaia-prod-shared
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      placement:
+        constraints:
+          - node.role == manager
 
   prometheus:
     image: prom/prometheus:v3.1.0
-    container_name: prometheus
+    user: root  # needed to read /var/run/docker.sock for Swarm SD
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./observability/metrics_token:/etc/prometheus/metrics_token:ro
       - prometheus_data:/prometheus
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=30d"
-    restart: unless-stopped
+    secrets:
+      - gaia_metrics_token
     networks:
-      - gaia_network
-    mem_limit: 512m
-    cpus: "0.5"
+      - gaia-prod-shared
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+      placement:
+        constraints:
+          - node.role == manager
 
   # ---------------------------------------------------------------------------
-  # Observability stack — Loki (log store) + Promtail (shipper) + Grafana (UI)
-  # Access Grafana at http://<server-ip>:3000  (admin / see GRAFANA_ADMIN_PASSWORD)
+  # Observability — Loki + Promtail + Grafana
   # ---------------------------------------------------------------------------
 
   loki:
+    # No `ports:` block — Loki has no auth. Overlay-only.
+    # Grafana and Promtail reach it at `loki:3100` via the overlay network.
     image: grafana/loki:3.3.2
-    container_name: loki
     volumes:
       - ./observability/loki-config.yaml:/etc/loki/local-config.yaml
       - loki_data:/loki
     command: -config.file=/etc/loki/local-config.yaml
-    ports:
-      - "127.0.0.1:${LOKI_HOST_PORT:-3100}:3100"
-    restart: unless-stopped
     networks:
-      - gaia_network
+      gaia-prod-shared:
+        aliases:
+          - loki
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1",
-        ]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-    mem_limit: 512m
-    cpus: "0.5"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+      placement:
+        constraints:
+          - node.role == manager
 
   promtail:
     image: grafana/promtail:3.3.2
-    container_name: promtail
-    # Run as root so Promtail can read the Docker socket (owned by root:docker).
-    # Promtail 3.x defaults to uid 10001 which lacks socket access.
+    # mode: global — runs one instance per swarm node to collect all container logs
     user: root
-    # Disable Docker logging for Promtail itself — it collects other containers'
-    # logs via the Docker socket, so its own stdout should never be captured.
-    # Without this, a JSON parse error → debug log → Docker capture feedback
-    # loop can fill the disk (35 GB in one incident).
-    logging:
-      driver: "none"
     volumes:
       - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
@@ -429,42 +643,93 @@ services:
     command: -config.file=/etc/promtail/config.yaml -config.expand-env=true
     environment:
       LOKI_PUSH_URL: ${LOKI_PUSH_URL:-http://loki:3100/loki/api/v1/push}
-    restart: unless-stopped
-    depends_on:
-      loki:
-        condition: service_healthy
     networks:
-      - gaia_network
-    mem_limit: 128m
-    cpus: "0.25"
+      - gaia-prod-shared
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:9080/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      mode: global
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.25"
 
   grafana:
     image: grafana/grafana:11.4.0
-    container_name: grafana
     ports:
-      - "${GRAFANA_HOST_PORT:-4000}:3000"
+      # Loopback only — Nginx on the host proxies logs.heygaia.io to this.
+      - target: 3000
+        published: "${GRAFANA_HOST_PORT:-4000}"
+        protocol: tcp
+        mode: host
     volumes:
       - grafana_data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning
     environment:
-      # IMPORTANT: Set GRAFANA_ADMIN_PASSWORD in your .env file before deploying.
-      # The default "changeme" is intentionally obvious — change it for production.
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-changeme}
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/gaia_grafana_admin_password
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
-      # Set GRAFANA_ROOT_URL if Grafana is behind a reverse proxy (e.g. https://grafana.example.com)
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
-      # Slack webhook for alert notifications (leave empty to disable)
-      SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-}
+      SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL}
       SLACK_ALERT_CHANNEL: ${SLACK_ALERT_CHANNEL:-#alerts}
-    restart: unless-stopped
-    depends_on:
-      loki:
-        condition: service_healthy
+    secrets:
+      - gaia_grafana_admin_password
     networks:
-      - gaia_network
-    mem_limit: 256m
-    cpus: "0.5"
+      - gaia-prod-shared
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
+      placement:
+        constraints:
+          - node.role == manager
+
+  # ---------------------------------------------------------------------------
+  # Voice agent (deploy manually or via separate workflow — not part of hot path)
+  # ---------------------------------------------------------------------------
+
+  voice-agent-worker:
+    image: ghcr.io/theexperiencecompany/gaia-voice-agent:latest
+    working_dir: /app/apps/voice-agent
+    environment:
+      PYTHONUNBUFFERED: "1"
+      FORCE_COLOR: "1"
+      WORKER_TYPE: voice_agent_worker
+      PYTHONDONTWRITEBYTECODE: "1"
+      HF_HUB_OFFLINE: "1"
+      HF_HUB_ENABLE_HF_TRANSFER: "1"
+      HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
+    volumes:
+      - voice_agent_models:/home/appuser/.cache/huggingface
+    networks:
+      - gaia-prod-shared
+    deploy:
+      # replicas: 0 — not started by default; scale up manually when needed:
+      #   docker --context gaia-prod service scale gaia-prod_voice-agent-worker=1
+      replicas: 0
+      restart_policy:
+        condition: any
+        delay: 5s
+      placement:
+        constraints:
+          - node.role == manager
 
 volumes:
   chroma_data:
@@ -478,5 +743,6 @@ volumes:
   promtail_positions:
 
 networks:
-  gaia_network:
-    driver: bridge
+  gaia-prod-shared:
+    external: true
+    name: gaia-prod-shared

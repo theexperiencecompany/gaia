@@ -1,12 +1,12 @@
 """Agent-specific fixtures for unit tests."""
 
-import pytest
 from langchain_core.messages import (
     AIMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
+import pytest
 
 HELPFUL_ASSISTANT_SYSTEM_PROMPT = "You are a helpful assistant."
 WEATHER_QUERY = "What is the weather today?"

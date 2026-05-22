@@ -1,0 +1,53 @@
+name: Set up Docker Swarm context
+description: >
+  Configures SSH access to the production VM and creates a Docker
+  context pointing at it. The private key, host, and username are pulled
+  from GitHub secrets.
+
+inputs:
+  ssh_key:
+    description: Private SSH key for the production VM
+    required: true
+  ssh_host:
+    description: Hostname or IP of the production VM
+    required: true
+  ssh_user:
+    description: SSH username on the production VM
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Configure SSH and Docker context
+      shell: bash
+      env:
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
+      run: |
+        set -euo pipefail
+
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+
+        printf '%s\n' "$SSH_KEY" > ~/.ssh/prod_vm_key
+        chmod 600 ~/.ssh/prod_vm_key
+
+        # Trust the host (avoid interactive prompt) and pin the key to this host.
+        ssh-keyscan -T 10 "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+        cat >> ~/.ssh/config <<EOF
+        Host $SSH_HOST
+          User $SSH_USER
+          IdentityFile ~/.ssh/prod_vm_key
+          IdentitiesOnly yes
+          StrictHostKeyChecking accept-new
+        EOF
+        chmod 600 ~/.ssh/config
+
+        # Sanity check — fail fast if the VM is unreachable.
+        ssh -o BatchMode=yes "$SSH_USER@$SSH_HOST" "docker info >/dev/null"
+
+        docker context create prod \
+          --docker "host=ssh://$SSH_USER@$SSH_HOST" \
+          --description "Production VM (Docker Swarm)"

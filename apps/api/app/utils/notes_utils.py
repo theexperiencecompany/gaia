@@ -1,10 +1,10 @@
 from langchain_core.documents import Document
 
-from shared.py.wide_events import log
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import notes_collection
 from app.db.redis import delete_cache, set_cache
 from app.models.notes_models import NoteModel, NoteResponse
+from shared.py.wide_events import log
 
 
 async def insert_note(
@@ -15,9 +15,7 @@ async def insert_note(
     log.set(user_id=user_id, auto_created=auto_created, operation="insert_note")
     log.info(f"Creating new note for user: {user_id}")
 
-    langchain_chroma_client = await ChromaClient.get_langchain_client(
-        collection_name="notes"
-    )
+    langchain_chroma_client = await ChromaClient.get_langchain_client(collection_name="notes")
 
     note_data = note.model_dump()
     note_data["user_id"] = user_id

@@ -2,7 +2,18 @@
 Router module for file upload functionality with RAG integration.
 """
 
-from shared.py.wide_events import log
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    UploadFile,
+    status,
+)
+
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.decorators import tiered_rate_limit
 from app.models.message_models import FileData
@@ -11,16 +22,7 @@ from app.services.file_service import (
     update_file_service,
     upload_file_service,
 )
-from fastapi import (
-    APIRouter,
-    Body,
-    Depends,
-    File,
-    Form,
-    HTTPException,
-    UploadFile,
-    status,
-)
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -30,6 +32,7 @@ router = APIRouter()
 async def upload_file_endpoint(
     file: UploadFile = File(...),
     conversation_id: str = Form(None),
+    content_length: int | None = Header(default=None, alias="content-length"),
     user: dict = Depends(get_current_user),
 ):
     """
@@ -41,20 +44,24 @@ async def upload_file_endpoint(
     Args:
         file: The file to upload
         conversation_id: Optional ID of conversation to associate with the file
+        content_length: HTTP Content-Length header, used to reject oversize uploads pre-flight
         user: The authenticated user information
 
     Returns:
         File metadata including ID, URL, and auto-generated description
     """
-    user_id = user.get("user_id", None)
+    user_id = user.get("user_id")
     if not user_id:
-        return {"error": "User ID is required"}
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required."
+        )
 
     try:
         result = await upload_file_service(
             file=file,
             user_id=user_id,
             conversation_id=conversation_id,
+            content_length=content_length,
         )
 
         log.set(
@@ -72,8 +79,11 @@ async def upload_file_endpoint(
             message="File uploaded successfully",
             type=result.get("type", "file"),
         )
+    except HTTPException:
+        # Preserve 4xx from validation (413 oversize, 415 bad type, 400 bad filename, etc.)
+        raise
     except Exception as e:
-        log.error(f"Error uploading file: {str(e)}")
+        log.error(f"Error uploading file: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to upload file",
@@ -100,7 +110,7 @@ async def update_file_endpoint(
     Returns:
         Updated file metadata
     """
-    user_id = user.get("user_id", None)
+    user_id = user.get("user_id")
     if not user_id:
         return {"error": "User ID is required"}
 
@@ -111,12 +121,10 @@ async def update_file_endpoint(
             update_data=update_data,
         )
 
-        log.set(
-            user={"id": user_id}, operation="update", file_id=file_id, outcome="success"
-        )
+        log.set(user={"id": user_id}, operation="update", file_id=file_id, outcome="success")
         return result
     except Exception as e:
-        log.error(f"Error updating file {file_id}: {str(e)}")
+        log.error(f"Error updating file {file_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update file",
@@ -143,7 +151,7 @@ async def delete_file_endpoint(
     try:
         result = await delete_file_service(
             file_id=file_id,
-            user_id=user.get("user_id", None),
+            user_id=user.get("user_id"),
         )
 
         log.set(
@@ -154,7 +162,7 @@ async def delete_file_endpoint(
         )
         return result
     except Exception as e:
-        log.error(f"Error deleting file {file_id}: {str(e)}")
+        log.error(f"Error deleting file {file_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete file",

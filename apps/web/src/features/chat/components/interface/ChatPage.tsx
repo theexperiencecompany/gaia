@@ -1,9 +1,25 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useRef, useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
-import { VoiceApp } from "@/features/chat/components/composer/VoiceModeOverlay";
+
+// ssr:false — VoiceModeOverlay imports `livekit-client` (~1.5 MB raw bundled
+// with @bufbuild/protobuf). Voice is opt-in, so the CLIENT bundle is split
+// and livekit only fetches on demand. This does NOT remove livekit from the
+// Cloudflare worker handler.mjs — OpenNext concatenates every chunk because
+// CF Workers can't load chunks at runtime. The client-side win (no livekit
+// in the initial JS download for chat users who don't use voice) is still
+// worth keeping.
+const VoiceApp = dynamic(
+  () =>
+    import("@/features/chat/components/composer/VoiceModeOverlay").then(
+      (m) => m.VoiceApp,
+    ),
+  { ssr: false },
+);
+
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { useChatLayout } from "@/features/chat/components/interface/hooks/useChatLayout";
 import { useScrollBehavior } from "@/features/chat/components/interface/hooks/useScrollBehavior";
@@ -80,6 +96,7 @@ const ChatPage = React.memo(function MainChat() {
 
   const {
     hasMessages,
+    isWelcomeConversation,
     chatRef,
     dummySectionRef,
     inputRef,
@@ -89,6 +106,8 @@ const ChatPage = React.memo(function MainChat() {
     appendToInputRef,
     convoIdParam,
   } = useChatLayout();
+
+  const useMessagesLayout = hasMessages || isWelcomeConversation;
 
   // Set active conversation ID and mark as read when opening
   useEffect(() => {
@@ -197,7 +216,7 @@ const ChatPage = React.memo(function MainChat() {
             setVoiceModeActive(false);
           }}
         />
-      ) : hasMessages ? (
+      ) : useMessagesLayout ? (
         <>
           <ChatWithMessages
             scrollContainerRef={scrollContainerRef}

@@ -2,9 +2,8 @@
 Google Docs trigger handler.
 """
 
-from typing import Any, Dict, List, Set
+from typing import Any
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import GoogleDocsPageAddedPayload
 from app.models.trigger_configs import (
@@ -15,6 +14,7 @@ from app.models.trigger_configs import (
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.wide_events import log
 
 
 class GoogleDocsTriggerHandler(TriggerHandler):
@@ -39,11 +39,11 @@ class GoogleDocsTriggerHandler(TriggerHandler):
     }
 
     @property
-    def trigger_names(self) -> List[str]:
+    def trigger_names(self) -> list[str]:
         return self.SUPPORTED_TRIGGERS
 
     @property
-    def event_types(self) -> Set[str]:
+    def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
     async def register(
@@ -52,7 +52,7 @@ class GoogleDocsTriggerHandler(TriggerHandler):
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-    ) -> List[str]:
+    ) -> list[str]:
         """Register Google Docs triggers.
 
         Raises:
@@ -79,7 +79,7 @@ class GoogleDocsTriggerHandler(TriggerHandler):
                 f"but got {type(trigger_data).__name__}"
             )
 
-        composio_trigger_config: Dict[str, Any] = {}
+        composio_trigger_config: dict[str, Any] = {}
 
         # Use the base class helper for consistent error handling
         return await self._register_triggers_parallel(
@@ -90,8 +90,8 @@ class GoogleDocsTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: Dict[str, Any]
-    ) -> List[Workflow]:
+        self, event_type: str, trigger_id: str, data: dict[str, Any]
+    ) -> list[Workflow]:
         """Find workflows matching a Google Docs trigger event."""
         log.set(trigger={"provider": "google_docs", "event": event_type})
         try:
@@ -109,7 +109,7 @@ class GoogleDocsTriggerHandler(TriggerHandler):
                 log.debug(f"Google Docs payload validation failed: {e}")
 
             cursor = workflows_collection.find(query)
-            workflows: List[Workflow] = []
+            workflows: list[Workflow] = []
 
             async for workflow_doc in cursor:
                 try:

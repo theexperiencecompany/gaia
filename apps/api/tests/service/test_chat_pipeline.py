@@ -8,12 +8,12 @@ Real: stream_manager (real Redis), _save_conversation_async -> update_messages
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import json
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from bson import ObjectId
+import pytest
 
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat_service import run_chat_stream_background
@@ -74,7 +74,7 @@ class TestChatPipelineReal:
                 stream_id=f"stream_{ObjectId()}",
                 body=body,
                 user={"user_id": "pipe-user-1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id=conv_id,
             )
 
@@ -120,7 +120,7 @@ class TestChatPipelineReal:
                 stream_id=stream_id,
                 body=body,
                 user={"user_id": "pipe-user-3"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id=conv_id,
             )
 
@@ -155,7 +155,7 @@ class TestChatPipelineReal:
                 stream_id=stream_id,
                 body=body,
                 user={"user_id": "pipe-user-4"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id=conv_id,
             )
 

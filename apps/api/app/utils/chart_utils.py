@@ -4,8 +4,8 @@ import base64
 import io
 import re
 import time
+from typing import Any
 import uuid
-from typing import Dict, List, Any
 
 import cloudinary.uploader
 
@@ -55,18 +55,17 @@ async def upload_chart_to_cloudinary(
         if image_url:
             log.info(f"Chart uploaded successfully. URL: {image_url}")
             return image_url
-        else:
-            log.error("Missing secure_url in Cloudinary upload response")
-            return None
+        log.error("Missing secure_url in Cloudinary upload response")
+        return None
 
     except Exception as e:
-        log.error(f"Failed to upload chart to Cloudinary: {str(e)}", exc_info=True)
+        log.error(f"Failed to upload chart to Cloudinary: {e!s}", exc_info=True)
         return None
 
 
 async def process_chart_results(
-    execution_results: List, user_id: str = "anonymous"
-) -> tuple[List[Dict[str, Any]], List[str]]:
+    execution_results: list, user_id: str = "anonymous"
+) -> tuple[list[dict[str, Any]], list[str]]:
     """
     Process execution results to extract and upload charts.
 
@@ -77,8 +76,8 @@ async def process_chart_results(
     Returns:
         Tuple of (charts_list, error_messages)
     """
-    charts: List[Dict[str, Any]] = []
-    chart_errors: List[str] = []
+    charts: list[dict[str, Any]] = []
+    chart_errors: list[str] = []
 
     if not execution_results:
         log.info("No execution results to process for charts")
@@ -87,9 +86,7 @@ async def process_chart_results(
     log.info(f"Processing {len(execution_results)} execution results for charts")
 
     for i, result in enumerate(execution_results):
-        log.info(
-            f"Processing result {i}: type={type(result)}, attributes={dir(result)}"
-        )
+        log.info(f"Processing result {i}: type={type(result)}, attributes={dir(result)}")
         log.info(
             f"Processing result {i}: has_png={hasattr(result, 'png')}, has_chart={hasattr(result, 'chart')}"
         )
@@ -102,9 +99,7 @@ async def process_chart_results(
         if hasattr(result, "png") and result.png:
             try:
                 chart_bytes = base64.b64decode(result.png)
-                chart_url = await upload_chart_to_cloudinary(
-                    chart_bytes, f"chart_{i}", user_id
-                )
+                chart_url = await upload_chart_to_cloudinary(chart_bytes, f"chart_{i}", user_id)
                 if chart_url:
                     charts.append(
                         {
@@ -122,7 +117,7 @@ async def process_chart_results(
                     chart_errors.append(error_msg)
                     log.warning(error_msg)
             except Exception as e:
-                error_msg = f"Failed to process static chart {i + 1}: {str(e)}"
+                error_msg = f"Failed to process static chart {i + 1}: {e!s}"
                 chart_errors.append(error_msg)
                 log.error(error_msg, exc_info=True)
 
@@ -159,18 +154,16 @@ async def process_chart_results(
                         },
                     }
                 )
-                log.info(
-                    f"Successfully processed interactive chart {i + 1}: {chart_type}"
-                )
+                log.info(f"Successfully processed interactive chart {i + 1}: {chart_type}")
             except Exception as e:
-                error_msg = f"Failed to process interactive chart {i + 1}: {str(e)}"
+                error_msg = f"Failed to process interactive chart {i + 1}: {e!s}"
                 chart_errors.append(error_msg)
                 log.error(error_msg, exc_info=True)
 
     return charts, chart_errors
 
 
-def validate_chart_data(charts: List[Dict]) -> List[Dict]:
+def validate_chart_data(charts: list[dict]) -> list[dict]:
     """
     Validate and sanitize chart data.
 

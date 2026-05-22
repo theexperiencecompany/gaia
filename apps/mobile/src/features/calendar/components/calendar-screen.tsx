@@ -1,8 +1,9 @@
-import { Divider, SkeletonGroup, Surface } from "heroui-native";
+import { SkeletonGroup, Surface } from "heroui-native";
 import { useCallback, useState } from "react";
 import { RefreshControl, SectionList, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text } from "@/components/ui/text";
+import { Divider } from "@/shared/components/ui/divider";
 import { useUpcomingEvents } from "../hooks/use-calendar";
 import type { CalendarEvent, CalendarSection } from "../types/calendar-types";
 import { EventItem } from "./event-item";

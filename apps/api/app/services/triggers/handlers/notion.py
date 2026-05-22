@@ -5,9 +5,8 @@ Handles Notion-specific trigger logic.
 """
 
 import asyncio
-from typing import Any, Dict, List, Literal, Optional, Set, TypedDict
+from typing import Any, Literal, TypedDict
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import (
     NotionAllPageEventsPayload,
@@ -25,6 +24,7 @@ from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.wide_events import log
 
 
 class NotionTitleProperty(TypedDict):
@@ -37,23 +37,23 @@ class NotionRichText(TypedDict):
 
 class NotionProperty(TypedDict):
     type: str
-    title: Optional[List[NotionTitleProperty]]  # For title property
+    title: list[NotionTitleProperty] | None  # For title property
 
 
 class NotionSearchResult(TypedDict):
     id: str
     object: str  # 'page' or 'database'
     url: str
-    properties: Dict[
+    properties: dict[
         str, Any
     ]  # Properties are complex, typing loosely for now but checking types in logic
-    title: Optional[List[NotionRichText]]  # For databases, title is top level
+    title: list[NotionRichText] | None  # For databases, title is top level
 
 
 class NotionResponseData(TypedDict):
-    results: List[NotionSearchResult]
+    results: list[NotionSearchResult]
     has_more: bool
-    next_cursor: Optional[str]
+    next_cursor: str | None
 
 
 class NotionTriggerHandler(TriggerHandler):
@@ -78,11 +78,11 @@ class NotionTriggerHandler(TriggerHandler):
     }
 
     @property
-    def trigger_names(self) -> List[str]:
+    def trigger_names(self) -> list[str]:
         return self.SUPPORTED_TRIGGERS
 
     @property
-    def event_types(self) -> Set[str]:
+    def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
     async def get_config_options(
@@ -91,9 +91,9 @@ class NotionTriggerHandler(TriggerHandler):
         field_name: str,
         user_id: str,
         integration_id: str,
-        parent_ids: Optional[List[str]] = None,
+        parent_ids: list[str] | None = None,
         **kwargs: Any,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get dynamic options for Notion trigger config fields."""
         try:
             composio_service = get_composio_service()
@@ -123,9 +123,7 @@ class NotionTriggerHandler(TriggerHandler):
 
             log.debug(f"Notion fetch input: {input_model.model_dump()}")
 
-            result = await asyncio.to_thread(
-                tool.invoke, input_model.model_dump(exclude_none=True)
-            )
+            result = await asyncio.to_thread(tool.invoke, input_model.model_dump(exclude_none=True))
 
             if not result["successful"]:
                 log.error(f"Notion API error: {result['error']}")
@@ -156,7 +154,7 @@ class NotionTriggerHandler(TriggerHandler):
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-    ) -> List[str]:
+    ) -> list[str]:
         """Register Notion triggers with parallel execution and rollback.
 
         If any trigger registration fails, all successfully created triggers
@@ -175,7 +173,7 @@ class NotionTriggerHandler(TriggerHandler):
         trigger_data = trigger_config.trigger_data
 
         # Build list of configs to register based on trigger type
-        configs: List[Dict[str, Any]] = []
+        configs: list[dict[str, Any]] = []
 
         if trigger_name == "notion_new_page_in_db":
             if not isinstance(trigger_data, NotionNewPageInDbConfig):
@@ -208,9 +206,7 @@ class NotionTriggerHandler(TriggerHandler):
                 configs.append({"page_id": page_id})
 
         elif trigger_name == "notion_all_page_events":
-            if trigger_data is not None and not isinstance(
-                trigger_data, NotionAllPageEventsConfig
-            ):
+            if trigger_data is not None and not isinstance(trigger_data, NotionAllPageEventsConfig):
                 raise TypeError(
                     f"Expected NotionAllPageEventsConfig for trigger '{trigger_name}', "
                     f"but got {type(trigger_data).__name__}"
@@ -232,8 +228,8 @@ class NotionTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: Dict[str, Any]
-    ) -> List[Workflow]:
+        self, event_type: str, trigger_id: str, data: dict[str, Any]
+    ) -> list[Workflow]:
         """Find workflows matching a Notion trigger event."""
         log.set(trigger={"provider": "notion", "event": event_type})
         try:
@@ -258,7 +254,7 @@ class NotionTriggerHandler(TriggerHandler):
                 log.debug(f"Notion payload validation failed: {e}")
 
             cursor = workflows_collection.find(query)
-            workflows: List[Workflow] = []
+            workflows: list[Workflow] = []
 
             async for workflow_doc in cursor:
                 try:

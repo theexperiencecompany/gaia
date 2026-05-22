@@ -1,12 +1,8 @@
-import { Avatar, Card } from "heroui-native";
-import { View } from "react-native";
-import {
-  AppIcon,
-  Call02Icon,
-  Mail01Icon,
-  UserSearch01Icon,
-} from "@/components/icons";
+import { ScrollView, View } from "react-native";
+import { AppIcon, Call02Icon, Mail01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { CollapsibleCard } from "@/features/chat/tool-data/primitives";
+import { GmailIcon } from "./gmail-icon";
 
 export interface PeopleSearchData {
   name?: string;
@@ -17,115 +13,81 @@ export interface PeopleSearchData {
   resource_name?: string;
 }
 
-function getInitials(name?: string): string {
-  if (!name) return "?";
-  const parts = name.trim().split(" ");
-  if (parts.length >= 2) {
-    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-  }
-  return name[0].toUpperCase();
-}
-
-function PersonItem({ person }: { person: PeopleSearchData }) {
-  const initials = getInitials(person.name);
-  const subtitle =
-    person.role && person.organization
-      ? `${person.role} · ${person.organization}`
-      : person.role || person.organization;
-
+// PersonRow mirrors web's row 1:1 (apps/web/src/features/mail/components/PeopleSearchCard.tsx):
+//   - Container: items-start gap-4 p-3, no press state (web is cursor-default)
+//   - Name column: w-40, text-sm font-medium text-zinc-300 (= web's text-gray-300)
+//   - Details column: flex-1, icons at 14px zinc-400 (= web's text-gray-400), text-sm
+function PersonRow({ person }: { person: PeopleSearchData }) {
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        padding: 12,
-        gap: 10,
-      }}
-    >
-      <Avatar
-        alt={person.name ?? initials}
-        size="sm"
-        className="bg-[#00bbff]/20"
-      >
-        <Avatar.Fallback className="text-[#00bbff] text-xs font-semibold">
-          {initials}
-        </Avatar.Fallback>
-      </Avatar>
-      <View className="flex-1 min-w-0">
-        <Text
-          style={{ fontSize: 14, color: "#e4e4e7", fontWeight: "500" }}
-          numberOfLines={1}
-        >
-          {person.name || "Unknown"}
+    <View className="flex-row items-start gap-4 p-3">
+      {/* Name column — fixed width matches web's w-40 */}
+      <View className="w-40 shrink-0">
+        <Text className="text-sm font-medium text-zinc-300" numberOfLines={1}>
+          {person.name}
         </Text>
-        {!!subtitle && (
-          <Text style={{ fontSize: 12, color: "#8e8e93" }} numberOfLines={1}>
-            {subtitle}
-          </Text>
+      </View>
+
+      {/* Details column — email + phone */}
+      <View className="flex-1 min-w-0 gap-1">
+        {!!person.email && (
+          <View className="flex-row items-center gap-2">
+            <AppIcon icon={Mail01Icon} size={14} color="#9ca3af" />
+            <Text className="flex-1 text-sm text-zinc-400" numberOfLines={1}>
+              {person.email}
+            </Text>
+          </View>
         )}
-        <View className="flex-row flex-wrap gap-x-3 mt-0.5">
-          {person.email && (
-            <View className="flex-row items-center gap-1">
-              <AppIcon icon={Mail01Icon} size={11} color="#8e8e93" />
-              <Text
-                style={{ fontSize: 12, color: "#8e8e93" }}
-                numberOfLines={1}
-              >
-                {person.email}
-              </Text>
-            </View>
-          )}
-          {person.phone && (
-            <View className="flex-row items-center gap-1">
-              <AppIcon icon={Call02Icon} size={11} color="#8e8e93" />
-              <Text style={{ fontSize: 12, color: "#8e8e93" }}>
-                {person.phone}
-              </Text>
-            </View>
-          )}
-        </View>
+        {!!person.phone && (
+          <View className="flex-row items-center gap-2">
+            <AppIcon icon={Call02Icon} size={14} color="#9ca3af" />
+            <Text className="text-sm text-zinc-400">{person.phone}</Text>
+          </View>
+        )}
       </View>
     </View>
   );
 }
 
 export function PeopleSearchCard({ data }: { data: PeopleSearchData[] }) {
+  const count = data.length;
+  // Matches web CollapsibleListWrapper.getCountLabel for "Person/People" label:
+  //   `${count} ${count === 1 ? "Person" : "People"}`
+  const label = count === 1 ? "Person" : "People";
+
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        <View className="flex-row items-center gap-2 mb-3">
-          <AppIcon icon={UserSearch01Icon} size={14} color="#8e8e93" />
-          <Text className="text-xs text-[#8e8e93]">People Search</Text>
-          <View className="rounded-full bg-white/10 px-2 py-0.5 ml-auto">
-            <Text className="text-[10px] text-[#8e8e93]">
-              {data.length} {data.length === 1 ? "result" : "results"}
-            </Text>
-          </View>
+    <CollapsibleCard
+      customIcon={<GmailIcon width={20} height={20} />}
+      iconSize={20}
+      title={(open) => `${open ? "Hide" : "Show"} ${count} ${label}`}
+      titleTone="muted"
+      radius="3xl"
+    >
+      {count > 0 ? (
+        // Outer container mirrors web's `w-full max-w-2xl rounded-3xl bg-zinc-800 p-3`
+        <View className="rounded-3xl bg-zinc-800 p-3">
+          <ScrollView
+            style={{ maxHeight: 400 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {data.map((person, index) => (
+              <View
+                key={
+                  person.resource_name ||
+                  person.email ||
+                  person.name ||
+                  String(index)
+                }
+              >
+                {/* Divider between rows — matches web's divide-y divide-zinc-700 */}
+                {index > 0 && <View className="h-px bg-zinc-700" />}
+                <PersonRow person={person} />
+              </View>
+            ))}
+          </ScrollView>
         </View>
-        <View className="rounded-xl bg-white/5 border border-white/8 overflow-hidden">
-          {data.map((person, index) => (
-            <View
-              key={
-                person.email ||
-                person.resource_name ||
-                person.name ||
-                String(index)
-              }
-            >
-              {index > 0 && (
-                <View
-                  style={{
-                    height: 1,
-                    backgroundColor: "rgba(255,255,255,0.07)",
-                    marginVertical: 4,
-                  }}
-                />
-              )}
-              <PersonItem person={person} />
-            </View>
-          ))}
-        </View>
-      </Card.Body>
-    </Card>
+      ) : (
+        <Text className="py-3 text-sm text-zinc-500">No people found</Text>
+      )}
+    </CollapsibleCard>
   );
 }

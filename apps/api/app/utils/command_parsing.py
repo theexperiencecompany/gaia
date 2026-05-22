@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from typing import Optional
-
 
 def extract_output_redirect(
     command_str: str,
-) -> tuple[str, Optional[tuple[str, str]]]:
+) -> tuple[str, tuple[str, str] | None]:
     """Extract a trailing output redirect.
 
     Supports:

@@ -22,7 +22,7 @@ interface RightSidebarState {
   close: () => void;
 }
 
-export const useRightSidebar = create<RightSidebarState>((set, get) => ({
+export const useRightSidebar = create<RightSidebarState>((set) => ({
   content: null,
   isOpen: false,
   variant: "sidebar",

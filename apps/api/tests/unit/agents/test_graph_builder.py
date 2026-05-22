@@ -44,16 +44,10 @@ def _apply_patches(stack: ExitStack, overrides: dict | None = None):
         f"{_MOD}.init_llm": MagicMock(return_value=mock_llm),
         f"{_MOD}.get_tools_store": AsyncMock(return_value=MagicMock(name="store")),
         f"{_MOD}.get_tool_registry": AsyncMock(
-            return_value=MagicMock(
-                get_tool_dict=MagicMock(return_value={"tool_a": MagicMock()})
-            ),
+            return_value=MagicMock(get_tool_dict=MagicMock(return_value={"tool_a": MagicMock()})),
         ),
-        f"{_MOD}.create_todo_tools": MagicMock(
-            return_value=[MagicMock(name="plan_tasks")]
-        ),
-        f"{_MOD}.create_todo_pre_model_hook": MagicMock(
-            return_value=MagicMock(name="todo_hook")
-        ),
+        f"{_MOD}.create_todo_tools": MagicMock(return_value=[MagicMock(name="plan_tasks")]),
+        f"{_MOD}.create_todo_pre_model_hook": MagicMock(return_value=MagicMock(name="todo_hook")),
         f"{_MOD}.create_executor_middleware": MagicMock(return_value=[]),
         f"{_MOD}.create_comms_middleware": MagicMock(return_value=[]),
         f"{_MOD}.build_executor_child_tool_runtime_config": MagicMock(return_value={}),
@@ -83,10 +77,13 @@ def _apply_patches(stack: ExitStack, overrides: dict | None = None):
 # ===================================================================
 
 
+_TEST_DB_URL = "postgresql://localhost/test"
+
+
 class TestCheckpointerManager:
     """Tests for CheckpointerManager lifecycle."""
 
-    def _make_manager(self, conninfo: str = "postgresql://test:test@localhost/test"):
+    def _make_manager(self, conninfo: str = _TEST_DB_URL):
         from app.agents.core.graph_builder.checkpointer_manager import (
             CheckpointerManager,
         )
@@ -95,7 +92,7 @@ class TestCheckpointerManager:
 
     def test_init_defaults(self):
         mgr = self._make_manager()
-        assert mgr.conninfo == "postgresql://test:test@localhost/test"
+        assert mgr.conninfo == _TEST_DB_URL
         assert mgr.max_pool_size == 5
         assert mgr.pool is None
         assert mgr.checkpointer is None
@@ -151,9 +148,7 @@ class TestCheckpointerManager:
     @patch(f"{_CM_MOD}.AsyncPostgresStore")
     @patch(f"{_CM_MOD}.AsyncPostgresSaver")
     @patch(f"{_CM_MOD}.AsyncConnectionPool")
-    async def test_setup_returns_self(
-        self, mock_pool_cls, mock_saver_cls, mock_store_cls
-    ):
+    async def test_setup_returns_self(self, mock_pool_cls, mock_saver_cls, mock_store_cls):
         mock_pool_cls.return_value = AsyncMock()
         mock_saver_cls.return_value = AsyncMock()
         mock_store_ctx = AsyncMock()
@@ -259,11 +254,7 @@ class TestBuildCommsGraph:
         with ExitStack() as stack:
             deps = _apply_patches(
                 stack,
-                {
-                    f"{_MOD}.get_checkpointer_manager": AsyncMock(
-                        return_value=fake_manager
-                    )
-                },
+                {f"{_MOD}.get_checkpointer_manager": AsyncMock(return_value=fake_manager)},
             )
             from app.agents.core.graph_builder.build_graph import build_comms_graph
 
@@ -294,9 +285,7 @@ class TestBuildCommsGraph:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_comms_graph
 
-            async with build_comms_graph(
-                chat_llm=None, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=None, in_memory_checkpointer=True) as graph:
                 assert graph is deps["compiled"]
 
             deps["mocks"][f"{_MOD}.init_llm"].assert_called_once()
@@ -306,9 +295,7 @@ class TestBuildCommsGraph:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_comms_graph
 
-            async with build_comms_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             mock_ca = deps["mocks"][f"{_MOD}.create_agent"]
@@ -325,9 +312,7 @@ class TestBuildCommsGraph:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_comms_graph
 
-            async with build_comms_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
@@ -339,9 +324,7 @@ class TestBuildCommsGraph:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_comms_graph
 
-            async with build_comms_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
@@ -355,9 +338,7 @@ class TestBuildCommsGraph:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_comms_graph
 
-            async with build_comms_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
@@ -374,9 +355,7 @@ class TestBuildCommsGraph:
             )
             from app.agents.core.graph_builder.build_graph import build_comms_graph
 
-            async with build_comms_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
@@ -409,11 +388,7 @@ class TestBuildExecutorGraph:
         with ExitStack() as stack:
             deps = _apply_patches(
                 stack,
-                {
-                    f"{_MOD}.get_checkpointer_manager": AsyncMock(
-                        return_value=fake_manager
-                    )
-                },
+                {f"{_MOD}.get_checkpointer_manager": AsyncMock(return_value=fake_manager)},
             )
             from app.agents.core.graph_builder.build_graph import build_executor_graph
 
@@ -440,9 +415,7 @@ class TestBuildExecutorGraph:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_executor_graph
 
-            async with build_executor_graph(
-                chat_llm=None, in_memory_checkpointer=True
-            ) as _:
+            async with build_executor_graph(chat_llm=None, in_memory_checkpointer=True) as _:
                 pass
 
             deps["mocks"][f"{_MOD}.init_llm"].assert_called_once()
@@ -452,9 +425,7 @@ class TestBuildExecutorGraph:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_executor_graph
 
-            async with build_executor_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             mock_ca = deps["mocks"][f"{_MOD}.create_agent"]
@@ -469,9 +440,7 @@ class TestBuildExecutorGraph:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_executor_graph
 
-            async with build_executor_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
@@ -482,9 +451,7 @@ class TestBuildExecutorGraph:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_executor_graph
 
-            async with build_executor_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
@@ -501,17 +468,11 @@ class TestBuildExecutorGraph:
         with ExitStack() as stack:
             deps = _apply_patches(
                 stack,
-                {
-                    f"{_MOD}.create_executor_middleware": MagicMock(
-                        return_value=[mock_sub_mw]
-                    )
-                },
+                {f"{_MOD}.create_executor_middleware": MagicMock(return_value=[mock_sub_mw])},
             )
             from app.agents.core.graph_builder.build_graph import build_executor_graph
 
-            async with build_executor_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
         mock_sub_mw.set_llm.assert_called_once_with(deps["llm"])
@@ -524,9 +485,7 @@ class TestBuildExecutorGraph:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_executor_graph
 
-            async with build_executor_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             mock_log = deps["mocks"][f"{_MOD}.log"]
@@ -540,9 +499,7 @@ class TestBuildExecutorGraph:
             deps["llm"].model_name = "gpt-4"
             from app.agents.core.graph_builder.build_graph import build_executor_graph
 
-            async with build_executor_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             mock_log = deps["mocks"][f"{_MOD}.log"]
@@ -579,9 +536,7 @@ class TestBuildExecutorGraph:
             )
             from app.agents.core.graph_builder.build_graph import build_executor_graph
 
-            async with build_executor_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
@@ -592,17 +547,11 @@ class TestBuildExecutorGraph:
         with ExitStack() as stack:
             deps = _apply_patches(
                 stack,
-                {
-                    f"{_MOD}.get_retrieve_tools_function": MagicMock(
-                        return_value=mock_retrieve
-                    )
-                },
+                {f"{_MOD}.get_retrieve_tools_function": MagicMock(return_value=mock_retrieve)},
             )
             from app.agents.core.graph_builder.build_graph import build_executor_graph
 
-            async with build_executor_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
@@ -694,9 +643,7 @@ class TestBuildCommsAgent:
 
     @patch(f"{_MOD}.build_comms_graph")
     @patch(f"{_MOD}.log")
-    async def test_init_comms_agent_calls_build_comms_graph(
-        self, mock_log, mock_build_comms_graph
-    ):
+    async def test_init_comms_agent_calls_build_comms_graph(self, mock_log, mock_build_comms_graph):
         """The underlying init_checkpointer_manager coroutine invokes build_comms_graph."""
         compiled = MagicMock(name="compiled")
 
@@ -761,9 +708,7 @@ class TestCompileKwargs:
             )
             from app.agents.core.graph_builder.build_graph import build_comms_graph
 
-            async with build_comms_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             call_kwargs = deps["builder"].compile.call_args.kwargs
@@ -778,9 +723,7 @@ class TestCompileKwargs:
             )
             from app.agents.core.graph_builder.build_graph import build_executor_graph
 
-            async with build_executor_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             call_kwargs = deps["builder"].compile.call_args.kwargs
@@ -794,10 +737,99 @@ class TestCompileKwargs:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_comms_graph
 
-            async with build_comms_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=True
-            ) as _:
+            async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
             call_kwargs = deps["builder"].compile.call_args.kwargs
             assert isinstance(call_kwargs["checkpointer"], InMemorySaver)
+
+
+# ===================================================================
+# RetryPolicy wiring
+# ===================================================================
+
+
+class TestRetryPolicyWiring:
+    """Verify _AGENT_RETRY_POLICY is passed to create_agent for both graphs."""
+
+    async def test_comms_graph_passes_retry_policy(self):
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import (
+                _AGENT_RETRY_POLICY,
+                build_comms_graph,
+            )
+
+            async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+            assert kwargs["agent_retry_policy"] is _AGENT_RETRY_POLICY
+
+    async def test_executor_graph_passes_retry_policy(self):
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import (
+                _AGENT_RETRY_POLICY,
+                build_executor_graph,
+            )
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+            assert kwargs["agent_retry_policy"] is _AGENT_RETRY_POLICY
+
+    def test_retry_policy_configuration(self):
+        """_AGENT_RETRY_POLICY has expected max_attempts and intervals."""
+        from app.agents.core.graph_builder.build_graph import _AGENT_RETRY_POLICY
+
+        assert _AGENT_RETRY_POLICY.max_attempts == 3
+        assert _AGENT_RETRY_POLICY.initial_interval == pytest.approx(1.0)
+        assert _AGENT_RETRY_POLICY.backoff_factor == pytest.approx(2.0)
+        assert _AGENT_RETRY_POLICY.max_interval == pytest.approx(30.0)
+        assert _AGENT_RETRY_POLICY.jitter is True
+
+    def test_retry_on_retryable_exceptions(self):
+        """retry_on returns True for every type in _LLM_RETRYABLE_EXCEPTIONS."""
+        from google.api_core.exceptions import (
+            DeadlineExceeded,
+            InternalServerError,
+            ResourceExhausted,
+            ServiceUnavailable,
+        )
+
+        from app.agents.core.graph_builder.build_graph import _AGENT_RETRY_POLICY
+        from app.agents.llm.client import _LLM_RETRYABLE_EXCEPTIONS
+
+        retry_on = _AGENT_RETRY_POLICY.retry_on
+        assert callable(retry_on)
+
+        retryable_instances = [
+            ResourceExhausted("quota exceeded"),
+            ServiceUnavailable("service down"),
+            DeadlineExceeded("timeout"),
+            InternalServerError("server error"),
+            ConnectionError("connection reset"),
+            TimeoutError("timed out"),
+        ]
+        for exc in retryable_instances:
+            assert retry_on(exc) is True, f"Expected {type(exc).__name__} to be retryable"
+
+        assert all(isinstance(exc, _LLM_RETRYABLE_EXCEPTIONS) for exc in retryable_instances)
+
+    def test_retry_on_non_retryable_exceptions(self):
+        """retry_on returns False for non-retryable exception types."""
+        from app.agents.core.graph_builder.build_graph import _AGENT_RETRY_POLICY
+
+        retry_on = _AGENT_RETRY_POLICY.retry_on
+        assert callable(retry_on)
+
+        non_retryable = [
+            ValueError("bad input"),
+            TypeError("wrong type"),
+            KeyError("missing key"),
+            RuntimeError("logic error"),
+        ]
+        for exc in non_retryable:
+            assert retry_on(exc) is False, f"Expected {type(exc).__name__} to NOT be retryable"

@@ -57,6 +57,12 @@ const nextConfig = {
     // and:  https://nextjs-forum.com/post/1471409705514569798
     resolveAlias: {
       "@icons": "@theexperiencecompany/gaia-icons/solid-rounded",
+      // Stub out unused heavy deps (mirrors the webpack hook below). Webpack's
+      // `alias: false` doesn't exist for Turbopack — we point to a tiny empty
+      // module that exports a no-op proxy.
+      cytoscape: "./scripts/empty-module.mjs",
+      "cytoscape-cose-bilkent": "./scripts/empty-module.mjs",
+      "cytoscape-fcose": "./scripts/empty-module.mjs",
       "node:inspector": "inspector",
       "node:fs": "fs",
       "node:fs/promises": "fs/promises",
@@ -86,10 +92,12 @@ const nextConfig = {
   },
   serverExternalPackages: ["moment", "moment-timezone"],
   experimental: {
-    // Inline critical CSS via critters so the first paint doesn't wait on a
-    // separate CSS round-trip. Object form (e.g. `{ fonts: true, preload: "swap" }`)
-    // silently no-ops in Next 16.1.6 — stick with the boolean.
-    optimizeCss: true,
+    // optimizeCss disabled: @opennextjs/aws unconditionally cpSyncs
+    // .next/static/css when this is on, but Next 16 + Turbopack does not
+    // emit that directory in this build (no separate CSS chunks), so the
+    // bundle step crashes with ENOENT. Bug exists across @opennextjs/aws
+    // 3.9.16 → main; critters has nothing to inline anyway, so this was
+    // a no-op.
     optimizePackageImports: [
       "mermaid",
       "react-syntax-highlighter",
@@ -170,7 +178,19 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
   },
-  pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
+  // Files named *.dev.tsx / *.dev.ts are only routable in development. In
+  // production builds Next never registers them as routes, so their pages,
+  // layouts, and everything they import are completely absent from the
+  // build graph — no chunks emitted, no compile time spent. Used by the
+  // demo and debug routes under `app/[locale]/dev/*`.
+  pageExtensions: [
+    "js",
+    "jsx",
+    "mdx",
+    "ts",
+    "tsx",
+    ...(process.env.NODE_ENV === "development" ? ["dev.ts", "dev.tsx"] : []),
+  ],
   async headers() {
     return [
       {
@@ -257,7 +277,10 @@ export default withSentryConfig(
   // side errors will fail.
   // tunnelRoute: "/monitoring",
 
-  // Disable auto-instrumentation to prevent @sentry/node-core + OpenTelemetry from leaking into the bundle
+  // Sentry's autoInstrument* flags are only honored under `webpack:` and are
+  // explicitly "Not supported with Turbopack" per the deprecation warning.
+  // We rely on bundleSizeOptimizations.excludeTracing/PerformanceMonitoring
+  // instead (those work for both bundlers).
   webpack: {
     autoInstrumentServerFunctions: false,
     autoInstrumentMiddleware: false,
@@ -267,11 +290,18 @@ export default withSentryConfig(
     },
   },
 
-  // Strip unused Sentry features from the client bundle
+  // Strip unused Sentry features from the bundle.
+  // - excludeTracing kills the @opentelemetry + @sentry/node-core + protobuf
+  //   tracing chunk (~1.5 MB raw on the server). Server-side Sentry is not
+  //   initialized in this app (sentry.server.config.ts is intentionally empty)
+  //   so dropping the tracing pipeline is safe.
+  // - excludePerformanceMonitoring drops the rest of the perf SDK.
   bundleSizeOptimizations: {
     excludeDebugStatements: true,
     excludeReplayShadowDom: true,
     excludeReplayIframe: true,
     excludeReplayWorker: true,
+    excludeTracing: true,
+    excludePerformanceMonitoring: true,
   },
 });

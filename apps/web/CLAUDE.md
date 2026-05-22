@@ -94,13 +94,18 @@ Types are split into three directories:
 - `config.ts` — locale list (`en`, `es`, `fr`, `de`, `ja`, `ko`, `pt-BR`) and `defaultLocale = "en"`
 - `routing.ts` — `localePrefix: "as-needed"` (default locale has no prefix in URL)
 - `request.ts` — server-side locale resolution passed to `createNextIntlPlugin`
-- `navigation.ts` — typed `Link`, `useRouter`, `usePathname` wrappers; always import navigation helpers from here, not from `next/navigation`
+- `navigation.ts` — locale-aware `Link`, `useRouter`, `usePathname`, `redirect` wrappers
+
+**When to use `@/i18n/navigation` vs `next/navigation`:**
+
+- **`@/i18n/navigation`** — only for SEO/landing/marketing pages under `(landing)/` that are crawled in multiple locales. These wrappers auto-prepend the locale prefix for non-default locales (e.g. `/fr/pricing`).
+- **`next/navigation`** — for the authenticated app under `(main)/` (chat, onboarding, settings, todos, etc.). These routes are not indexed and always run in the default locale. Use `next/navigation` directly here — it's simpler and consistent with the rest of the app.
 
 Use `loadFeatureTranslations` to lazy-load per-feature message files rather than bundling all translations upfront.
 
 ## Non-obvious Patterns
 
-**Icons** — import from `@icons` (aliased to `@theexperiencecompany/gaia-icons/solid-rounded`). The alias is set in both `next.config.mjs` (webpack + turbopack) and `tsconfig.json`. To swap the icon variant globally, change the alias value in `next.config.mjs` — one place changes everything.
+**Icons** — import from `@icons` (aliased to `@theexperiencecompany/gaia-icons/solid-rounded`). The alias is set in both `next.config.mjs` (webpack + turbopack) and `tsconfig.json`. To swap the icon variant globally, change the alias value in `next.config.mjs` — one place changes everything. Exception: use `ChevronRight` from `@/components/shared/icons` for chevron indicators — `@icons` does not have a chevron-right equivalent.
 
 **Standalone output** — `output: "standalone"` is required so the Electron desktop app can bundle the Next.js build. Do not remove it.
 

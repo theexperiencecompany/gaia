@@ -9,9 +9,7 @@ def goal_helper(goal, has_roadmap=True) -> dict:
         created_at = created_at.isoformat()
 
     nodes = goal.get("roadmap", {}).get("nodes", [])
-    completed_nodes = len(
-        [node for node in nodes if node.get("data", {}).get("isComplete", False)]
-    )
+    completed_nodes = len([node for node in nodes if node.get("data", {}).get("isComplete", False)])
     total_nodes = len(nodes)
     progress = int((completed_nodes / total_nodes) * 100) if total_nodes > 0 else 0
 

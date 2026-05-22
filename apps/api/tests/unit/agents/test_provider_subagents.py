@@ -10,6 +10,23 @@ from app.models.oauth_models import OAuthIntegration
 from app.models.subagent_models import Subagent
 
 
+@pytest.fixture(autouse=True)
+def _clear_user_subagent_cache():
+    """Reset the in-memory per-user subagent graph cache between tests.
+
+    ``create_subagent_for_user`` memoises compiled graphs in a module-level
+    dict keyed by ``(integration_id, user_id)`` so repeat handoffs skip the
+    expensive rebuild. Tests deliberately simulate failure/success modes for
+    the same key, so the cache must be wiped between tests or the second
+    test would read the first test's cached MagicMock.
+    """
+    from app.agents.core.subagents import provider_subagents as _ps
+
+    _ps._USER_SUBAGENT_CACHE.clear()
+    yield
+    _ps._USER_SUBAGENT_CACHE.clear()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -93,9 +110,7 @@ def _make_subagent(
 
 # Shared mock patches
 _BASE_PATCHES = {
-    "app.agents.core.subagents.provider_subagents.init_llm": MagicMock(
-        return_value=MagicMock()
-    ),
+    "app.agents.core.subagents.provider_subagents.init_llm": MagicMock(return_value=MagicMock()),
 }
 
 
@@ -846,9 +861,7 @@ class TestRegisterSubagentProviders:
                 "app.agents.core.subagents.provider_subagents.all_subagents",
                 return_value=(subagent,),
             ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.providers"
-            ) as mock_providers,
+            patch("app.agents.core.subagents.provider_subagents.providers") as mock_providers,
         ):
             count = register_subagent_providers()
 
@@ -884,15 +897,11 @@ class TestRegisterSubagentProviders:
 
         sa1 = _make_subagent(
             integration_id="int1",
-            subagent_config=_make_subagent_config(
-                has_subagent=True, agent_name="agent_1"
-            ),
+            subagent_config=_make_subagent_config(has_subagent=True, agent_name="agent_1"),
         )
         sa2 = _make_subagent(
             integration_id="int2",
-            subagent_config=_make_subagent_config(
-                has_subagent=True, agent_name="agent_2"
-            ),
+            subagent_config=_make_subagent_config(has_subagent=True, agent_name="agent_2"),
         )
 
         with (

@@ -1,64 +1,65 @@
 """LinkedIn utility functions for API operations.
 
-This module provides helper functions for LinkedIn API interactions including:
-- Access token extraction
-- Header generation
-- Author URN resolution
-- Image and document uploads
+These helpers wrap LinkedIn REST/v2 calls behind Composio's proxy. Composio
+attaches the user's OAuth token server-side; callers only supply `user_id`.
+
+Binary uploads (images, documents) use the proxy's `binary_body={"url": ...}`
+shape: Composio fetches the source URL and forwards the bytes to LinkedIn's
+upload endpoint with the authenticated headers.
 """
 
-from typing import Any, Dict
+from typing import Any
 
-import httpx
-
+from app.services.composio.proxy_client import proxy_request_sync
 from shared.py.wide_events import log
 
 LINKEDIN_API_BASE = "https://api.linkedin.com/v2"
 LINKEDIN_REST_BASE = "https://api.linkedin.com/rest"
-
-# LinkedIn API version - use a recent stable version
 LINKEDIN_VERSION = "202401"
-
-# Reusable sync HTTP client
-_http_client = httpx.Client(timeout=60)
+LINKEDIN_TOOLKIT = "LINKEDIN"
 
 
-def get_access_token(auth_credentials: Dict[str, Any]) -> str:
-    """Extract access token from auth_credentials."""
-    token = auth_credentials.get("access_token")
-    if not token:
-        raise ValueError("Missing access_token in auth_credentials")
-    return token
-
-
-def linkedin_headers(access_token: str) -> Dict[str, str]:
-    """Return headers for LinkedIn API v2 requests."""
+def _restli_headers() -> dict[str, str]:
     return {
-        "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
         "X-Restli-Protocol-Version": "2.0.0",
         "LinkedIn-Version": LINKEDIN_VERSION,
     }
 
 
-def get_author_urn(access_token: str, organization_id: str | None = None) -> str:
+def _proxy(
+    user_id: str,
+    *,
+    endpoint: str,
+    method: str,
+    body: dict[str, Any] | None = None,
+    query: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    binary_body: dict[str, str] | None = None,
+) -> Any:
+    return proxy_request_sync(
+        user_id=user_id,
+        toolkit=LINKEDIN_TOOLKIT,
+        endpoint=endpoint,
+        method=method,  # type: ignore[arg-type]
+        body=body,
+        query=query,
+        headers=headers,
+        binary_body=binary_body,
+    )
+
+
+def get_author_urn(user_id: str, organization_id: str | None = None) -> str:
     """Get the author URN (person or organization)."""
     log.set(operation="get_author_urn", organization_id=organization_id)
     if organization_id:
-        # If org ID provided, use it directly
         if organization_id.startswith("urn:li:organization:"):
             return organization_id
         return f"urn:li:organization:{organization_id}"
 
-    # Get the authenticated user's URN
     try:
-        resp = _http_client.get(
-            f"{LINKEDIN_API_BASE}/userinfo",
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        sub = data.get("sub")
+        data = _proxy(user_id, endpoint=f"{LINKEDIN_API_BASE}/userinfo", method="GET")
+        sub = (data or {}).get("sub")
         if sub:
             return f"urn:li:person:{sub}"
     except Exception as e:
@@ -68,55 +69,38 @@ def get_author_urn(access_token: str, organization_id: str | None = None) -> str
 
 
 def upload_image_from_url(
-    access_token: str,
+    user_id: str,
     image_url: str,
     author_urn: str,
 ) -> str | None:
-    """Download image from URL and upload to LinkedIn, returning the asset URN."""
+    """Initialize a LinkedIn image upload and stream the source URL into it.
+
+    Returns the LinkedIn image URN on success, or None on failure.
+    """
     log.set(operation="upload_image", image_url=image_url, author_urn=author_urn)
-    headers = linkedin_headers(access_token)
 
     try:
-        # Step 1: Initialize upload
-        init_data = {
-            "initializeUploadRequest": {
-                "owner": author_urn,
-            }
-        }
-
-        init_resp = _http_client.post(
-            f"{LINKEDIN_REST_BASE}/images?action=initializeUpload",
-            headers=headers,
-            json=init_data,
+        init_result = _proxy(
+            user_id,
+            endpoint=f"{LINKEDIN_REST_BASE}/images?action=initializeUpload",
+            method="POST",
+            body={"initializeUploadRequest": {"owner": author_urn}},
+            headers=_restli_headers(),
         )
-        init_resp.raise_for_status()
-        init_result = init_resp.json()
 
-        upload_url = init_result.get("value", {}).get("uploadUrl")
-        image_urn = init_result.get("value", {}).get("image")
+        upload_url = (init_result or {}).get("value", {}).get("uploadUrl")
+        image_urn = (init_result or {}).get("value", {}).get("image")
 
         if not upload_url or not image_urn:
             log.error("Failed to get upload URL from LinkedIn")
             return None
 
-        # Step 2: Download image from URL
-        img_resp = _http_client.get(image_url, follow_redirects=True)
-        img_resp.raise_for_status()
-        image_data = img_resp.content
-        content_type = img_resp.headers.get("content-type", "image/jpeg")
-
-        # Step 3: Upload to LinkedIn
-        upload_headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": content_type,
-        }
-        upload_resp = _http_client.put(
-            upload_url,
-            headers=upload_headers,
-            content=image_data,
+        _proxy(
+            user_id,
+            endpoint=upload_url,
+            method="PUT",
+            binary_body={"url": image_url},
         )
-        upload_resp.raise_for_status()
-
         return image_urn
 
     except Exception as e:
@@ -125,57 +109,38 @@ def upload_image_from_url(
 
 
 def upload_document_from_url(
-    access_token: str,
+    user_id: str,
     document_url: str,
     author_urn: str,
 ) -> str | None:
-    """Download document from URL and upload to LinkedIn, returning the asset URN."""
-    log.set(
-        operation="upload_document", document_url=document_url, author_urn=author_urn
-    )
-    headers = linkedin_headers(access_token)
+    """Initialize a LinkedIn document upload and stream the source URL into it.
+
+    Returns the LinkedIn document URN on success, or None on failure.
+    """
+    log.set(operation="upload_document", document_url=document_url, author_urn=author_urn)
 
     try:
-        # Step 1: Initialize upload
-        init_data = {
-            "initializeUploadRequest": {
-                "owner": author_urn,
-            }
-        }
-
-        init_resp = _http_client.post(
-            f"{LINKEDIN_REST_BASE}/documents?action=initializeUpload",
-            headers=headers,
-            json=init_data,
+        init_result = _proxy(
+            user_id,
+            endpoint=f"{LINKEDIN_REST_BASE}/documents?action=initializeUpload",
+            method="POST",
+            body={"initializeUploadRequest": {"owner": author_urn}},
+            headers=_restli_headers(),
         )
-        init_resp.raise_for_status()
-        init_result = init_resp.json()
 
-        upload_url = init_result.get("value", {}).get("uploadUrl")
-        document_urn = init_result.get("value", {}).get("document")
+        upload_url = (init_result or {}).get("value", {}).get("uploadUrl")
+        document_urn = (init_result or {}).get("value", {}).get("document")
 
         if not upload_url or not document_urn:
             log.error("Failed to get upload URL from LinkedIn")
             return None
 
-        # Step 2: Download document from URL
-        doc_resp = _http_client.get(document_url, follow_redirects=True)
-        doc_resp.raise_for_status()
-        document_data = doc_resp.content
-        content_type = doc_resp.headers.get("content-type", "application/pdf")
-
-        # Step 3: Upload to LinkedIn
-        upload_headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": content_type,
-        }
-        upload_resp = _http_client.put(
-            upload_url,
-            headers=upload_headers,
-            content=document_data,
+        _proxy(
+            user_id,
+            endpoint=upload_url,
+            method="PUT",
+            binary_body={"url": document_url},
         )
-        upload_resp.raise_for_status()
-
         return document_urn
 
     except Exception as e:

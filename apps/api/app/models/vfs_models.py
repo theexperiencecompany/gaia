@@ -18,9 +18,9 @@ Supports the folder structure:
         └── files/
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -41,45 +41,37 @@ class VFSNode(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    id: Optional[str] = Field(None, description="MongoDB ObjectId as string")
+    id: str | None = Field(None, description="MongoDB ObjectId as string")
     user_id: str = Field(..., description="Owner user ID")
-    path: str = Field(
-        ..., description="Full normalized path (e.g., /users/{user_id}/global/...)"
-    )
+    path: str = Field(..., description="Full normalized path (e.g., /users/{user_id}/global/...)")
     name: str = Field(..., description="Node name (filename or folder name)")
     node_type: VFSNodeType = Field(..., description="Type: folder or file")
-    parent_path: Optional[str] = Field(None, description="Parent folder path")
+    parent_path: str | None = Field(None, description="Parent folder path")
 
     # File-specific fields
-    content: Optional[str] = Field(
-        None, description="Inline content for small files (<1MB)"
-    )
-    gridfs_id: Optional[str] = Field(
-        None, description="GridFS reference for large files (>=1MB)"
-    )
+    content: str | None = Field(None, description="Inline content for small files (<1MB)")
+    gridfs_id: str | None = Field(None, description="GridFS reference for large files (>=1MB)")
     content_type: str = Field(default="text/plain", description="MIME type")
     size_bytes: int = Field(default=0, description="File size in bytes")
 
     # Extensible metadata
-    metadata: Dict[str, Any] = Field(
+    metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Extensible metadata (tool_call_id, agent_name, conversation_id, etc.)",
     )
 
     # Timestamps
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    accessed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    accessed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class VFSNodeCreate(BaseModel):
     """Model for creating a new VFS node."""
 
     path: str = Field(..., description="Target path for the file/folder")
-    content: Optional[str] = Field(None, description="File content (for files)")
-    metadata: Dict[str, Any] = Field(
-        default_factory=dict, description="Optional metadata"
-    )
+    content: str | None = Field(None, description="File content (for files)")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Optional metadata")
 
 
 class VFSNodeResponse(BaseModel):
@@ -90,16 +82,16 @@ class VFSNodeResponse(BaseModel):
     node_type: VFSNodeType
     size_bytes: int = 0
     content_type: str = "text/plain"
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class VFSListResponse(BaseModel):
     """Response model for directory listing."""
 
     path: str
-    items: List[VFSNodeResponse]
+    items: list[VFSNodeResponse]
     total_count: int
 
 
@@ -110,7 +102,7 @@ class VFSTreeNode(BaseModel):
     path: str
     node_type: VFSNodeType
     size_bytes: int = 0
-    children: List["VFSTreeNode"] = Field(default_factory=list)
+    children: list["VFSTreeNode"] = Field(default_factory=list)
 
 
 # Allow self-referential model
@@ -120,7 +112,7 @@ VFSTreeNode.model_rebuild()
 class VFSSearchResult(BaseModel):
     """Result of a file search operation."""
 
-    matches: List[VFSNodeResponse]
+    matches: list[VFSNodeResponse]
     total_count: int
     pattern: str
     base_path: str
@@ -131,8 +123,6 @@ class VFSSessionInfo(BaseModel):
 
     conversation_id: str
     path: str
-    agents: List[str] = Field(
-        default_factory=list, description="Agents with files in this session"
-    )
+    agents: list[str] = Field(default_factory=list, description="Agents with files in this session")
     file_count: int = 0
     total_size_bytes: int = 0

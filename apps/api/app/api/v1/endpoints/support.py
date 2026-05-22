@@ -1,8 +1,5 @@
 """Support API router for handling support requests."""
 
-from typing import List, Optional
-
-from shared.py.wide_events import log
 from fastapi import (
     APIRouter,
     Depends,
@@ -27,6 +24,7 @@ from app.services.support_service import (
     create_support_request_with_attachments,
     get_user_support_requests,
 )
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -82,9 +80,7 @@ async def submit_support_request(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to submit support request: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to submit support request: {e!s}")
 
 
 @router.post(
@@ -100,7 +96,7 @@ async def submit_support_request_with_attachments(
     type: str = Form(...),
     title: str = Form(...),
     description: str = Form(...),
-    attachments: List[UploadFile] = File(default=[]),
+    attachments: list[UploadFile] = File(default=[]),
     current_user: dict = Depends(get_current_user),
 ) -> SupportRequestSubmissionResponse:
     """
@@ -162,9 +158,7 @@ async def submit_support_request_with_attachments(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to submit support request: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to submit support request: {e!s}")
 
 
 @router.get(
@@ -172,16 +166,12 @@ async def submit_support_request_with_attachments(
     summary="Get user's support requests",
     description="Retrieve all support requests created by the current user with pagination.",
 )
-@limiter.limit(
-    "30/minute"
-)  # Rate limit: 30 requests per minute for fetching support requests
+@limiter.limit("30/minute")  # Rate limit: 30 requests per minute for fetching support requests
 async def get_my_support_requests(
     request: Request,
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(10, ge=1, le=50, description="Items per page"),
-    status: Optional[SupportRequestStatus] = Query(
-        None, description="Filter by status"
-    ),
+    status: SupportRequestStatus | None = Query(None, description="Filter by status"),
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -211,9 +201,7 @@ async def get_my_support_requests(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to fetch support requests: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to fetch support requests: {e!s}")
 
 
 @router.get(
@@ -244,6 +232,4 @@ async def get_support_rate_limit_status(
         log.set(outcome="success")
         return result
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get rate limit status: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get rate limit status: {e!s}")

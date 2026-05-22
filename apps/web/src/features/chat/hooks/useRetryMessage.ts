@@ -74,6 +74,7 @@ export const useRetryMessage = () => {
         // (optimistic UI, IndexedDB persistence, streaming, etc.)
         // Loading state is managed by useChatStream (sets isLoading to false when done)
         await sendMessage(userMessage.content, {
+          conversationId,
           files: userMessage.fileData ?? undefined,
           selectedTool: userMessage.toolName,
           selectedToolCategory: userMessage.toolCategory,

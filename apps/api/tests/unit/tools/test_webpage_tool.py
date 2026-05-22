@@ -1,7 +1,6 @@
 """Unit tests for app.agents.tools.webpage_tool."""
 
-import asyncio
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,7 +14,7 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.webpage_tool"
 
 
-def _make_config(user_id: str = FAKE_USER_ID) -> Dict[str, Any]:
+def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
     """Return a minimal RunnableConfig-like dict."""
     return {"metadata": {"user_id": user_id}}
 
@@ -214,7 +213,7 @@ class TestWebSearchTool:
     ) -> None:
         """Timeout error returns user-friendly message."""
         mock_writer_factory.return_value = _writer_mock()
-        mock_search.side_effect = asyncio.TimeoutError()
+        mock_search.side_effect = TimeoutError()
 
         from app.agents.tools.webpage_tool import web_search_tool
 

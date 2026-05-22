@@ -53,12 +53,6 @@ export interface UserStats {
   integration_count: number;
 }
 
-export interface ChannelPreferences {
-  telegram: boolean;
-  discord: boolean;
-  whatsapp: boolean;
-}
-
 export const settingsApi = {
   getProfile(): Promise<UserProfile> {
     return apiService.get<UserProfile>("/user/me");
@@ -93,22 +87,6 @@ export const settingsApi = {
       params.append("feature_key", featureKey);
     }
     return apiService.get<UsageHistoryEntry[]>(`/usage/history?${params}`);
-  },
-
-  getChannelPreferences(): Promise<ChannelPreferences> {
-    return apiService.get<ChannelPreferences>(
-      "/notifications/preferences/channels",
-    );
-  },
-
-  updateChannelPreference(
-    platform: "telegram" | "discord" | "whatsapp",
-    enabled: boolean,
-  ): Promise<UpdatePreferencesResponse> {
-    return apiService.put<UpdatePreferencesResponse>(
-      "/notifications/preferences/channels",
-      { [platform]: enabled },
-    );
   },
 
   updateHoloCardColors(colors: HoloCardColors): Promise<UserProfile> {

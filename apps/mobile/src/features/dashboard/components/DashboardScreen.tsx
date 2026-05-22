@@ -1,6 +1,6 @@
 import { useQueries } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { Button, Divider, Skeleton, SkeletonGroup } from "heroui-native";
+import { Button, Skeleton, SkeletonGroup } from "heroui-native";
 import { useCallback } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +14,7 @@ import {
 import { Text } from "@/components/ui/text";
 import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useResponsive } from "@/lib/responsive";
+import { Divider } from "@/shared/components/ui/divider";
 import { dashboardApi } from "../api/dashboard-api";
 import { DashboardCard } from "./DashboardCard";
 import { DashboardTodoItem } from "./DashboardTodoItem";
@@ -129,7 +130,7 @@ export function DashboardScreen() {
   const activeWorkflowCount = workflowsQuery.data ?? 0;
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#0b0c0f" }}>
+    <View style={{ flex: 1, backgroundColor: "#111111" }}>
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top + spacing.md,
@@ -189,14 +190,14 @@ export function DashboardScreen() {
               style={{ padding: spacing.md, gap: spacing.sm }}
             >
               <SkeletonGroup.Item
-                className="h-8 w-full rounded-lg"
+                className="h-8 w-full rounded-xl"
                 style={{ marginBottom: spacing.xs }}
               />
               <SkeletonGroup.Item
-                className="h-8 w-4/5 rounded-lg"
+                className="h-8 w-4/5 rounded-xl"
                 style={{ marginBottom: spacing.xs }}
               />
-              <SkeletonGroup.Item className="h-8 w-3/4 rounded-lg" />
+              <SkeletonGroup.Item className="h-8 w-3/4 rounded-xl" />
             </SkeletonGroup>
           ) : todayTodos.length > 0 ? (
             <>
@@ -249,10 +250,10 @@ export function DashboardScreen() {
               style={{ padding: spacing.md, gap: spacing.sm }}
             >
               <SkeletonGroup.Item
-                className="h-10 w-full rounded-lg"
+                className="h-10 w-full rounded-xl"
                 style={{ marginBottom: spacing.xs }}
               />
-              <SkeletonGroup.Item className="h-10 w-4/5 rounded-lg" />
+              <SkeletonGroup.Item className="h-10 w-4/5 rounded-xl" />
             </SkeletonGroup>
           ) : reminders.length > 0 ? (
             reminders.map((reminder, index) => (
@@ -337,14 +338,14 @@ export function DashboardScreen() {
               style={{ padding: spacing.md, gap: spacing.sm }}
             >
               <SkeletonGroup.Item
-                className="h-8 w-full rounded-lg"
+                className="h-8 w-full rounded-xl"
                 style={{ marginBottom: spacing.xs }}
               />
               <SkeletonGroup.Item
-                className="h-8 w-3/4 rounded-lg"
+                className="h-8 w-3/4 rounded-xl"
                 style={{ marginBottom: spacing.xs }}
               />
-              <SkeletonGroup.Item className="h-8 w-4/5 rounded-lg" />
+              <SkeletonGroup.Item className="h-8 w-4/5 rounded-xl" />
             </SkeletonGroup>
           ) : conversations.length > 0 ? (
             conversations.map((conv, index) => (

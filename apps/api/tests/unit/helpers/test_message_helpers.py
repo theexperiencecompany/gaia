@@ -2,8 +2,8 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import SystemMessage
+import pytest
 
 from app.helpers.message_helpers import (
     _get_gaia_knowledge_section,
@@ -23,31 +23,48 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 
-
 # ---------------------------------------------------------------------------
 # create_system_message
 # ---------------------------------------------------------------------------
 
 
 class TestCreateSystemMessage:
-    def test_comms_agent(self) -> None:
-        msg = create_system_message(user_name="Alice", agent_type="comms")
-        assert isinstance(msg, SystemMessage)
-        assert "Alice" in msg.content
+    """The main system prompt must be byte-identical across users/channels so
+    implicit LLM caching hits. No `{user_name}` interpolation lives here —
+    dynamic context flows via build_dynamic_context_message."""
 
-    def test_executor_agent(self) -> None:
-        msg = create_system_message(user_name="Bob", agent_type="executor")
-        assert isinstance(msg, SystemMessage)
-        # Executor template may or may not include user_name; just verify it rendered
-        assert len(msg.content) > 0
+    def test_comms_agent_static_is_per_channel(self) -> None:
+        """Different user_name must produce identical content on the same
+        channel (byte-stable prefix). Different channels produce different
+        content (OpenUI on web, platform restrictions on WhatsApp)."""
+        web_a = create_system_message(user_name="Foo", agent_type="comms", source="web")
+        web_b = create_system_message(user_name="Bar", agent_type="comms", source="web")
+        whatsapp = create_system_message(user_name="Foo", agent_type="comms", source="whatsapp")
+        assert isinstance(web_a, SystemMessage)
+        assert web_a.content == web_b.content
+        assert web_a.content != whatsapp.content
+        # Output-format addenda should be inline in the static per-channel
+        # prompt — web has OpenUI, text-only has platform restrictions.
+        assert ":::openui" in web_a.content
+        assert "Platform Context" in whatsapp.content
 
-    def test_default_name(self) -> None:
+    def test_executor_agent_is_static(self) -> None:
+        msg_a = create_system_message(user_name="Bob", agent_type="executor")
+        msg_b = create_system_message(user_name="Dana", agent_type="executor")
+        assert isinstance(msg_a, SystemMessage)
+        assert msg_a.content == msg_b.content
+        assert len(msg_a.content) > 0
+
+    def test_default_name_not_injected(self) -> None:
         msg = create_system_message()
-        assert "there" in msg.content
+        # "there" used to be injected as user_name fallback; no longer.
+        assert "{user_name}" not in msg.content
 
     def test_unknown_agent_type_defaults_to_comms(self) -> None:
         msg = create_system_message(user_name="X", agent_type="unknown")  # type: ignore[arg-type]
+        comms = create_system_message(agent_type="comms")
         assert isinstance(msg, SystemMessage)
+        assert msg.content == comms.content
 
 
 # ---------------------------------------------------------------------------
@@ -147,9 +164,7 @@ class TestGetGaiaKnowledgeSection:
     @pytest.mark.asyncio
     async def test_exception_returns_empty(self) -> None:
         with patch("app.helpers.message_helpers.gaia_knowledge_service") as mock_svc:
-            mock_svc.search_knowledge = AsyncMock(
-                side_effect=RuntimeError("chroma fail")
-            )
+            mock_svc.search_knowledge = AsyncMock(side_effect=RuntimeError("chroma fail"))
             result = await _get_gaia_knowledge_section("q")
 
         assert result == ""
@@ -196,6 +211,10 @@ class TestGetMemoryMessage:
 
     @pytest.mark.asyncio
     async def test_no_optional_fields(self) -> None:
+        """With no user name/timezone/preferences and no memories, the
+        dynamic context is empty. The clock lives in a separate
+        HumanMessage (see ``build_current_time_message``) — not here.
+        """
         with (
             patch(
                 "app.helpers.message_helpers._get_user_memories_section",
@@ -214,7 +233,8 @@ class TestGetMemoryMessage:
             )
 
         assert isinstance(msg, SystemMessage)
-        assert "UTC" in msg.content
+        # Clock is NOT in this message any more.
+        assert "UTC" not in msg.content
 
     @pytest.mark.asyncio
     async def test_invalid_timezone(self) -> None:
@@ -241,6 +261,10 @@ class TestGetMemoryMessage:
 
     @pytest.mark.asyncio
     async def test_error_returns_minimal_context(self) -> None:
+        """On error, the fallback path still produces a SystemMessage — the
+        clock minimum content is there as a rough sanity check, since the
+        fallback branch still builds one even though the happy path doesn't.
+        """
         with patch(
             "app.helpers.message_helpers.format_user_preferences_for_agent",
             side_effect=RuntimeError("boom"),
@@ -252,7 +276,6 @@ class TestGetMemoryMessage:
             )
 
         assert isinstance(msg, SystemMessage)
-        assert "UTC" in msg.content
 
 
 # ---------------------------------------------------------------------------

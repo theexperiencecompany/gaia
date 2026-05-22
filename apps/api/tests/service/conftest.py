@@ -12,16 +12,15 @@ Redis connection.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import os
-from datetime import datetime, timezone
 
-import pytest
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
+import pytest
 from redis.asyncio import Redis
 
 from tests.helpers import worker_redis_url
-
 
 # ---------------------------------------------------------------------------
 # Session-scoped connections (one per test run)
@@ -128,8 +127,8 @@ def make_conversation(conversations_collection):
             "conversation_id": conv_id,
             "messages": [],
             "description": "Test conversation",
-            "createdAt": datetime.now(timezone.utc),
-            "updatedAt": datetime.now(timezone.utc),
+            "createdAt": datetime.now(UTC),
+            "updatedAt": datetime.now(UTC),
             **overrides,
         }
         await conversations_collection.insert_one(doc)

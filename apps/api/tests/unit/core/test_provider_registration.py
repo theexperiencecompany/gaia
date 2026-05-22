@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # setup_warnings
 # ---------------------------------------------------------------------------
@@ -164,16 +163,10 @@ class TestSpawnBackgroundServices:
 class TestUnifiedStartup:
     @pytest.mark.asyncio
     @patch("app.core.provider_registration.warmup_tools_cache", new_callable=AsyncMock)
-    @patch(
-        "app.core.provider_registration.init_websocket_consumer", new_callable=AsyncMock
-    )
+    @patch("app.core.provider_registration.init_websocket_consumer", new_callable=AsyncMock)
     @patch("app.core.provider_registration.get_vfs", new_callable=AsyncMock)
-    @patch(
-        "app.core.provider_registration.init_workflow_service", new_callable=AsyncMock
-    )
-    @patch(
-        "app.core.provider_registration.init_reminder_service", new_callable=AsyncMock
-    )
+    @patch("app.core.provider_registration.init_workflow_service", new_callable=AsyncMock)
+    @patch("app.core.provider_registration.init_reminder_service", new_callable=AsyncMock)
     @patch("app.core.provider_registration.init_mongodb_async", new_callable=AsyncMock)
     @patch("app.core.provider_registration.providers")
     @patch("app.core.provider_registration._process_results")
@@ -222,12 +215,8 @@ class TestUnifiedStartup:
     @pytest.mark.asyncio
     @patch("app.core.provider_registration.warmup_tools_cache", new_callable=AsyncMock)
     @patch("app.core.provider_registration.get_vfs", new_callable=AsyncMock)
-    @patch(
-        "app.core.provider_registration.init_workflow_service", new_callable=AsyncMock
-    )
-    @patch(
-        "app.core.provider_registration.init_reminder_service", new_callable=AsyncMock
-    )
+    @patch("app.core.provider_registration.init_workflow_service", new_callable=AsyncMock)
+    @patch("app.core.provider_registration.init_reminder_service", new_callable=AsyncMock)
     @patch("app.core.provider_registration.init_mongodb_async", new_callable=AsyncMock)
     @patch("app.core.provider_registration.providers")
     @patch("app.core.provider_registration._process_results")
@@ -275,16 +264,10 @@ class TestUnifiedStartup:
     @patch("app.core.provider_registration._spawn_background_services")
     @patch("app.core.provider_registration.warmup_tools_cache", new_callable=AsyncMock)
     @patch("app.core.provider_registration.get_vfs", new_callable=AsyncMock)
-    @patch(
-        "app.core.provider_registration.init_workflow_service", new_callable=AsyncMock
-    )
-    @patch(
-        "app.core.provider_registration.init_reminder_service", new_callable=AsyncMock
-    )
+    @patch("app.core.provider_registration.init_workflow_service", new_callable=AsyncMock)
+    @patch("app.core.provider_registration.init_reminder_service", new_callable=AsyncMock)
     @patch("app.core.provider_registration.init_mongodb_async", new_callable=AsyncMock)
-    @patch(
-        "app.core.provider_registration.init_websocket_consumer", new_callable=AsyncMock
-    )
+    @patch("app.core.provider_registration.init_websocket_consumer", new_callable=AsyncMock)
     @patch("app.core.provider_registration.providers")
     @patch("app.core.provider_registration.settings")
     async def test_background_warmup_when_lazy_loading_disabled(
@@ -330,12 +313,8 @@ class TestUnifiedStartup:
     @pytest.mark.asyncio
     @patch("app.core.provider_registration.warmup_tools_cache", new_callable=AsyncMock)
     @patch("app.core.provider_registration.get_vfs", new_callable=AsyncMock)
-    @patch(
-        "app.core.provider_registration.init_workflow_service", new_callable=AsyncMock
-    )
-    @patch(
-        "app.core.provider_registration.init_reminder_service", new_callable=AsyncMock
-    )
+    @patch("app.core.provider_registration.init_workflow_service", new_callable=AsyncMock)
+    @patch("app.core.provider_registration.init_reminder_service", new_callable=AsyncMock)
     @patch("app.core.provider_registration.init_mongodb_async", new_callable=AsyncMock)
     @patch("app.core.provider_registration.providers")
     @patch(
@@ -389,9 +368,7 @@ class TestUnifiedStartup:
 
 class TestUnifiedShutdown:
     @pytest.mark.asyncio
-    @patch(
-        "app.core.provider_registration.close_mcp_client_pool", new_callable=AsyncMock
-    )
+    @patch("app.core.provider_registration.close_mcp_client_pool", new_callable=AsyncMock)
     @patch(
         "app.core.provider_registration.close_checkpointer_manager",
         new_callable=AsyncMock,
@@ -404,15 +381,9 @@ class TestUnifiedShutdown:
         "app.core.provider_registration.close_reminder_scheduler",
         new_callable=AsyncMock,
     )
-    @patch(
-        "app.core.provider_registration.close_postgresql_async", new_callable=AsyncMock
-    )
-    @patch(
-        "app.core.provider_registration.close_websocket_async", new_callable=AsyncMock
-    )
-    @patch(
-        "app.core.provider_registration.close_publisher_async", new_callable=AsyncMock
-    )
+    @patch("app.core.provider_registration.close_postgresql_async", new_callable=AsyncMock)
+    @patch("app.core.provider_registration.close_websocket_async", new_callable=AsyncMock)
+    @patch("app.core.provider_registration.close_publisher_async", new_callable=AsyncMock)
     async def test_main_app_shutdown(
         self,
         mock_pub: AsyncMock,
@@ -431,9 +402,7 @@ class TestUnifiedShutdown:
         mock_pg.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch(
-        "app.core.provider_registration.close_mcp_client_pool", new_callable=AsyncMock
-    )
+    @patch("app.core.provider_registration.close_mcp_client_pool", new_callable=AsyncMock)
     @patch(
         "app.core.provider_registration.close_checkpointer_manager",
         new_callable=AsyncMock,
@@ -446,9 +415,7 @@ class TestUnifiedShutdown:
         "app.core.provider_registration.close_reminder_scheduler",
         new_callable=AsyncMock,
     )
-    @patch(
-        "app.core.provider_registration.close_postgresql_async", new_callable=AsyncMock
-    )
+    @patch("app.core.provider_registration.close_postgresql_async", new_callable=AsyncMock)
     async def test_arq_worker_shutdown_no_websocket(
         self,
         mock_pg: AsyncMock,
@@ -463,9 +430,7 @@ class TestUnifiedShutdown:
         mock_pg.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch(
-        "app.core.provider_registration.close_mcp_client_pool", new_callable=AsyncMock
-    )
+    @patch("app.core.provider_registration.close_mcp_client_pool", new_callable=AsyncMock)
     @patch(
         "app.core.provider_registration.close_checkpointer_manager",
         new_callable=AsyncMock,

@@ -12,7 +12,6 @@ from fastapi.responses import JSONResponse, UJSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
-from shared.py.wide_events import log as wide_log
 
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.routes import router as api_router
@@ -20,6 +19,7 @@ from app.config.settings import settings
 from app.core.lifespan import lifespan
 from app.core.middleware import configure_middleware
 from app.utils.errors import AppError
+from shared.py.wide_events import log as wide_log
 
 
 def create_app() -> FastAPI:
@@ -29,6 +29,9 @@ def create_app() -> FastAPI:
     Returns:
         FastAPI: Configured FastAPI application
     """
+    # In production, disable the OpenAPI schema entirely so /openapi.json,
+    # /docs, and /redoc all 404 — no endpoint listing or model shapes leak.
+    is_prod = settings.ENV == "production"
     app = FastAPI(
         lifespan=lifespan,
         title="GAIA API",
@@ -38,8 +41,9 @@ def create_app() -> FastAPI:
             "url": "http://heygaia.io",
             "email": "hi@heygaia.io",
         },
-        docs_url=None if settings.ENV == "production" else "/docs",
-        redoc_url=None if settings.ENV == "production" else "/redoc",
+        openapi_url=None if is_prod else "/openapi.json",
+        docs_url=None if is_prod else "/docs",
+        redoc_url=None if is_prod else "/redoc",
         default_response_class=UJSONResponse,
     )
 
@@ -55,18 +59,15 @@ def create_app() -> FastAPI:
         def _verify_metrics_token(
             credentials: HTTPAuthorizationCredentials = Depends(_bearer),
         ) -> None:
-            if not secrets.compare_digest(
-                credentials.credentials, settings.METRICS_TOKEN
-            ):
+            if not secrets.compare_digest(credentials.credentials, settings.METRICS_TOKEN):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
 
         instrumentator.expose(
             app, include_in_schema=False, dependencies=[Depends(_verify_metrics_token)]
         )
-    else:
-        # No token configured — only expose in non-production environments.
-        if settings.ENV != "production":
-            instrumentator.expose(app, include_in_schema=False)
+    # No token configured — only expose in non-production environments.
+    elif settings.ENV != "production":
+        instrumentator.expose(app, include_in_schema=False)
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
@@ -97,9 +98,7 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(Exception)
-    async def unhandled_exception_handler(
-        request: Request, exc: Exception
-    ) -> JSONResponse:
+    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         """Catch all unhandled exceptions, log them, and return 500."""
         wide_log.error(
             "unhandled_exception",

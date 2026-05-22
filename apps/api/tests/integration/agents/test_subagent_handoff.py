@@ -17,23 +17,22 @@ Real production classes and functions are imported so tests fail if code moves.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-import pytest
 from langchain_core.messages import (
     AIMessage,
     AIMessageChunk,
     HumanMessage,
     SystemMessage,
 )
+from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.store.memory import InMemoryStore
-
-from langchain_core.tools import tool
+import pytest
 
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.core.subagents.subagent_runner import (
@@ -45,7 +44,6 @@ from app.agents.core.subagents.subagent_runner import (
 from tests.factories import make_user
 from tests.helpers import create_fake_llm
 from tests.integration.conftest import SimpleState
-
 
 # ---------------------------------------------------------------------------
 # Stub LangChain tools (DynamicToolNode requires real tool objects, not MagicMock)
@@ -121,9 +119,7 @@ class TestSubAgentCanBeInstantiated:
         from app.agents.core.subagents.base_subagent import SubAgentFactory
 
         method = getattr(SubAgentFactory, "create_provider_subagent", None)
-        assert method is not None, (
-            "create_provider_subagent not found on SubAgentFactory"
-        )
+        assert method is not None, "create_provider_subagent not found on SubAgentFactory"
         assert callable(method)
 
     async def test_create_provider_subagent_compiles_graph(self):
@@ -226,9 +222,7 @@ class TestHandoffToolStructure:
         import inspect
 
         underlying = (
-            getattr(handoff, "coroutine", None)
-            or getattr(handoff, "func", None)
-            or handoff
+            getattr(handoff, "coroutine", None) or getattr(handoff, "func", None) or handoff
         )
         sig = inspect.signature(underlying)
         param_names = set(sig.parameters.keys())
@@ -236,21 +230,18 @@ class TestHandoffToolStructure:
         assert "subagent_id" in param_names, (
             f"handoff must accept 'subagent_id'; found params: {param_names}"
         )
-        assert "task" in param_names, (
-            f"handoff must accept 'task'; found params: {param_names}"
-        )
+        assert "task" in param_names, f"handoff must accept 'task'; found params: {param_names}"
 
     def test_handoff_tool_is_async(self):
         """handoff must be an async function (coroutine function)."""
         import inspect
+
         from app.agents.core.subagents.handoff_tools import handoff
 
         # For async @tool-decorated functions LangChain stores the original coroutine
         # in `.coroutine`; `.func` is used for sync tools.
         underlying = (
-            getattr(handoff, "coroutine", None)
-            or getattr(handoff, "func", None)
-            or handoff
+            getattr(handoff, "coroutine", None) or getattr(handoff, "func", None) or handoff
         )
         assert inspect.iscoroutinefunction(underlying), "handoff tool must be async"
 
@@ -259,9 +250,7 @@ class TestHandoffToolStructure:
         from app.agents.core.subagents.handoff_tools import handoff
 
         description = handoff.description
-        assert description and len(description) > 10, (
-            "handoff tool description must be informative"
-        )
+        assert description and len(description) > 10, "handoff tool description must be informative"
 
 
 # ---------------------------------------------------------------------------
@@ -351,9 +340,7 @@ class TestSubagentExecutionContext:
 
         # stream_id is set — execute_subagent_stream reads ctx.stream_id to check
         # cancellation; mock stream_manager so it does not raise
-        with patch(
-            "app.agents.core.subagents.subagent_runner.stream_manager"
-        ) as mock_sm:
+        with patch("app.agents.core.subagents.subagent_runner.stream_manager") as mock_sm:
             mock_sm.is_cancelled = AsyncMock(return_value=False)
             result = await execute_subagent_stream(ctx=ctx, stream_writer=None)
 
@@ -419,9 +406,7 @@ class TestSubagentThreadIsolation:
         eligible = [
             i
             for i in integrations
-            if not (
-                i.managed_by == "mcp" and i.mcp_config and i.mcp_config.requires_auth
-            )
+            if not (i.managed_by == "mcp" and i.mcp_config and i.mcp_config.requires_auth)
         ]
         if len(eligible) < 2:
             pytest.skip("Need at least two non-auth-required subagent integrations")
@@ -434,9 +419,7 @@ class TestSubagentThreadIsolation:
         mock_graph = _make_minimal_subagent_graph()
 
         with (
-            patch(
-                "app.agents.core.subagents.subagent_runner.providers"
-            ) as mock_providers,
+            patch("app.agents.core.subagents.subagent_runner.providers") as mock_providers,
             patch("app.helpers.agent_helpers.providers") as mock_helpers_providers,
             patch(
                 "app.agents.core.subagents.subagent_runner.create_subagent_system_message",
@@ -454,23 +437,19 @@ class TestSubagentThreadIsolation:
                 subagent_id=integ_a.id,
                 task="test task",
                 user=user,
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id=parent_thread,
             )
             ctx_b, err_b = await prepare_subagent_execution(
                 subagent_id=integ_b.id,
                 task="test task",
                 user=user,
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id=parent_thread,
             )
 
-        assert err_a is None, (
-            f"prepare_subagent_execution failed for {integ_a.id}: {err_a}"
-        )
-        assert err_b is None, (
-            f"prepare_subagent_execution failed for {integ_b.id}: {err_b}"
-        )
+        assert err_a is None, f"prepare_subagent_execution failed for {integ_a.id}: {err_a}"
+        assert err_b is None, f"prepare_subagent_execution failed for {integ_b.id}: {err_b}"
 
         thread_a = ctx_a.config["configurable"]["thread_id"]
         thread_b = ctx_b.config["configurable"]["thread_id"]
@@ -496,12 +475,8 @@ class TestSubagentThreadIsolation:
         config_x = {"configurable": {"thread_id": f"thread-x-{uuid4()}"}}
         config_y = {"configurable": {"thread_id": f"thread-y-{uuid4()}"}}
 
-        await graph.ainvoke(
-            {"messages": [HumanMessage(content="From X")]}, config=config_x
-        )
-        await graph.ainvoke(
-            {"messages": [HumanMessage(content="From Y")]}, config=config_y
-        )
+        await graph.ainvoke({"messages": [HumanMessage(content="From X")]}, config=config_x)
+        await graph.ainvoke({"messages": [HumanMessage(content="From Y")]}, config=config_y)
 
         state_x = await graph.aget_state(config_x)
         state_y = await graph.aget_state(config_y)
@@ -534,9 +509,7 @@ class TestSubagentRun:
         eligible = [
             i
             for i in integrations
-            if not (
-                i.managed_by == "mcp" and i.mcp_config and i.mcp_config.requires_auth
-            )
+            if not (i.managed_by == "mcp" and i.mcp_config and i.mcp_config.requires_auth)
         ]
         if not eligible:
             pytest.skip("No non-auth-required subagent integrations available")
@@ -547,15 +520,11 @@ class TestSubagentRun:
         real_graph = _make_minimal_subagent_graph()
 
         with (
-            patch(
-                "app.agents.core.subagents.subagent_runner.providers"
-            ) as mock_providers,
+            patch("app.agents.core.subagents.subagent_runner.providers") as mock_providers,
             patch("app.helpers.agent_helpers.providers") as mock_helpers_providers,
             patch(
                 "app.agents.core.subagents.subagent_runner.create_subagent_system_message",
-                new=AsyncMock(
-                    return_value=SystemMessage(content="You are a test agent.")
-                ),
+                new=AsyncMock(return_value=SystemMessage(content="You are a test agent.")),
             ),
             patch(
                 "app.agents.core.subagents.subagent_runner.create_agent_context_message",
@@ -569,7 +538,7 @@ class TestSubagentRun:
                 subagent_id=first.id,
                 task="Do some work",
                 user=user,
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id=conversation_id,
             )
 
@@ -616,9 +585,7 @@ class TestSubagentRun:
             user_id="user-1",
         )
 
-        with patch(
-            "app.agents.core.subagents.subagent_runner.stream_manager"
-        ) as mock_sm:
+        with patch("app.agents.core.subagents.subagent_runner.stream_manager") as mock_sm:
             mock_sm.is_cancelled = AsyncMock(return_value=False)
             result = await execute_subagent_stream(ctx=ctx, stream_writer=None)
 
@@ -639,9 +606,7 @@ class TestSubagentRun:
             initial_state={"messages": [], "todos": []},
         )
 
-        with patch(
-            "app.agents.core.subagents.subagent_runner.stream_manager"
-        ) as mock_sm:
+        with patch("app.agents.core.subagents.subagent_runner.stream_manager") as mock_sm:
             mock_sm.is_cancelled = AsyncMock(return_value=False)
             result = await execute_subagent_stream(ctx=ctx, stream_writer=None)
 
@@ -671,9 +636,7 @@ class TestSubagentRun:
         def capture_writer(event: Any) -> None:
             written_events.append(event)
 
-        with patch(
-            "app.agents.core.subagents.subagent_runner.stream_manager"
-        ) as mock_sm:
+        with patch("app.agents.core.subagents.subagent_runner.stream_manager") as mock_sm:
             mock_sm.is_cancelled = AsyncMock(return_value=False)
             await execute_subagent_stream(ctx=ctx, stream_writer=capture_writer)
 
@@ -701,9 +664,7 @@ class TestSubagentRun:
             initial_state={"messages": []},
         )
 
-        with patch(
-            "app.agents.core.subagents.subagent_runner.stream_manager"
-        ) as mock_sm:
+        with patch("app.agents.core.subagents.subagent_runner.stream_manager") as mock_sm:
             mock_sm.is_cancelled = AsyncMock(return_value=False)
             result = await execute_subagent_stream(ctx=ctx, stream_writer=None)
 
@@ -726,9 +687,7 @@ class TestSubagentProviderRegistration:
             register_subagent_providers,
         )
 
-        with patch(
-            "app.agents.core.subagents.provider_subagents.providers"
-        ) as mock_providers:
+        with patch("app.agents.core.subagents.provider_subagents.providers") as mock_providers:
             mock_providers.register = MagicMock()
             count = register_subagent_providers()
 
@@ -742,9 +701,7 @@ class TestSubagentProviderRegistration:
             register_subagent_providers,
         )
 
-        with patch(
-            "app.agents.core.subagents.provider_subagents.providers"
-        ) as mock_providers:
+        with patch("app.agents.core.subagents.provider_subagents.providers") as mock_providers:
             registered_names: list[str] = []
             mock_providers.register = MagicMock(
                 side_effect=lambda name, **_: registered_names.append(name)
@@ -755,9 +712,7 @@ class TestSubagentProviderRegistration:
         auth_mcp_names = [
             sa.config.agent_name
             for sa in all_subagents()
-            if (
-                sa.managed_by == "mcp" and sa.mcp_config and sa.mcp_config.requires_auth
-            )
+            if (sa.managed_by == "mcp" and sa.mcp_config and sa.mcp_config.requires_auth)
         ]
 
         for name in auth_mcp_names:
@@ -781,21 +736,15 @@ class TestSubagentProviderRegistration:
         registerable = [
             i
             for i in all_available
-            if not (
-                i.managed_by == "mcp" and i.mcp_config and i.mcp_config.requires_auth
-            )
+            if not (i.managed_by == "mcp" and i.mcp_config and i.mcp_config.requires_auth)
         ]
         if not registerable:
-            pytest.skip(
-                "No non-auth-required subagent integrations available in registry"
-            )
+            pytest.skip("No non-auth-required subagent integrations available in registry")
 
         target = registerable[0]
         expected_agent_name = target.config.agent_name
 
-        with patch(
-            "app.agents.core.subagents.provider_subagents.providers"
-        ) as mock_providers:
+        with patch("app.agents.core.subagents.provider_subagents.providers") as mock_providers:
             registered_names: list[str] = []
             mock_providers.register = MagicMock(
                 side_effect=lambda name, **_: registered_names.append(name)
@@ -803,17 +752,13 @@ class TestSubagentProviderRegistration:
             count = register_subagent_providers(integration_ids=[target.id])
 
         # Exactly one provider must be registered for the single requested integration
-        assert count == 1, (
-            f"Expected exactly 1 registered provider for '{target.id}', got {count}"
-        )
+        assert count == 1, f"Expected exactly 1 registered provider for '{target.id}', got {count}"
         assert expected_agent_name in registered_names, (
-            f"Expected agent '{expected_agent_name}' to be registered; "
-            f"got: {registered_names}"
+            f"Expected agent '{expected_agent_name}' to be registered; got: {registered_names}"
         )
         # No other agents should have been registered
         assert registered_names == [expected_agent_name], (
-            f"Only '{expected_agent_name}' should be registered; "
-            f"got: {registered_names}"
+            f"Only '{expected_agent_name}' should be registered; got: {registered_names}"
         )
 
 
@@ -830,9 +775,7 @@ class TestSubagentRunnerHelpers:
         """all_subagents must return a non-empty tuple from the registry."""
         integrations = all_subagents()
         assert isinstance(integrations, tuple)
-        assert len(integrations) > 0, (
-            "Expected at least one configured subagent integration"
-        )
+        assert len(integrations) > 0, "Expected at least one configured subagent integration"
 
     def test_get_subagent_by_id_resolves_known_id(self):
         """get_subagent_by_id must resolve a known integration ID."""
@@ -865,9 +808,7 @@ class TestSubagentRunnerHelpers:
     def test_all_subagent_integrations_have_agent_name(self):
         """Every subagent integration must have a non-empty agent_name."""
         for sa in all_subagents():
-            assert sa.config.agent_name, (
-                f"Integration '{sa.id}' has empty agent_name in config"
-            )
+            assert sa.config.agent_name, f"Integration '{sa.id}' has empty agent_name in config"
 
     def test_all_subagent_integrations_have_tool_space(self):
         """Every subagent integration must declare a non-empty tool_space."""
@@ -891,7 +832,7 @@ class TestBuildInitialMessages:
         configurable = {
             "thread_id": str(uuid4()),
             "user_id": str(uuid4()),
-            "user_time": datetime.now(timezone.utc).isoformat(),
+            "user_time": datetime.now(UTC).isoformat(),
         }
 
         with patch(
@@ -993,7 +934,7 @@ class TestPrepareSubagentExecutionErrors:
             subagent_id="definitely_nonexistent_agent_xyz",
             task="do something",
             user=user,
-            user_time=datetime.now(timezone.utc),
+            user_time=datetime.now(UTC),
             conversation_id=str(uuid4()),
         )
 
@@ -1011,9 +952,7 @@ class TestPrepareSubagentExecutionErrors:
         first = integrations[0]
         user = make_user()
 
-        with patch(
-            "app.agents.core.subagents.subagent_runner.providers"
-        ) as mock_providers:
+        with patch("app.agents.core.subagents.subagent_runner.providers") as mock_providers:
             mock_providers.aget = AsyncMock(return_value=None)
 
             with patch(
@@ -1024,7 +963,7 @@ class TestPrepareSubagentExecutionErrors:
                     subagent_id=first.id,
                     task="test task",
                     user=user,
-                    user_time=datetime.now(timezone.utc),
+                    user_time=datetime.now(UTC),
                     conversation_id=str(uuid4()),
                 )
 
@@ -1092,9 +1031,7 @@ class TestHandoffFunctionDirectly:
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.create_subagent_system_message",
-                new=AsyncMock(
-                    return_value=SystemMessage(content="You are Gmail agent.")
-                ),
+                new=AsyncMock(return_value=SystemMessage(content="You are Gmail agent.")),
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.build_initial_messages",
@@ -1133,9 +1070,7 @@ class TestHandoffFunctionDirectly:
         mock_execute.assert_awaited_once()
         # Verify the execution context passed to execute_subagent_stream has
         # correct agent_name and integration_id
-        ctx_arg = (
-            mock_execute.call_args.kwargs.get("ctx") or mock_execute.call_args.args[0]
-        )
+        ctx_arg = mock_execute.call_args.kwargs.get("ctx") or mock_execute.call_args.args[0]
         assert ctx_arg.agent_name == "gmail_agent"
         assert ctx_arg.integration_id == "gmail"
 
@@ -1159,9 +1094,7 @@ class TestHandoffFunctionDirectly:
         with (
             patch(
                 "app.agents.core.subagents.handoff_tools._resolve_subagent",
-                new=AsyncMock(
-                    return_value=(MagicMock(), "notion_agent", "notion", False)
-                ),
+                new=AsyncMock(return_value=(MagicMock(), "notion_agent", "notion", False)),
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.create_subagent_system_message",
@@ -1350,9 +1283,7 @@ class TestCustomMCPPath:
         mock_create.assert_awaited_once_with(custom_id, user_id)
         assert result == "custom mcp result"
         # Verify the execution context has is_custom reflected in agent_name
-        ctx_arg = (
-            mock_execute.call_args.kwargs.get("ctx") or mock_execute.call_args.args[0]
-        )
+        ctx_arg = mock_execute.call_args.kwargs.get("ctx") or mock_execute.call_args.args[0]
         assert ctx_arg.agent_name == f"custom_mcp_{custom_id}"
         assert ctx_arg.integration_id == custom_id
 
@@ -1392,10 +1323,7 @@ class TestCustomMCPPath:
         assert graph is None
         assert agent_name is None
         assert error_or_id is not None
-        assert (
-            "requires authentication" in error_or_id.lower()
-            or "sign in" in error_or_id.lower()
-        )
+        assert "requires authentication" in error_or_id.lower() or "sign in" in error_or_id.lower()
 
     async def test_custom_mcp_path_returns_error_when_create_fails(self):
         """If create_subagent_for_user returns None, _resolve_subagent must
@@ -1505,9 +1433,7 @@ class TestHandoffThreadIsolation:
             # Handoff to "gmail"
             with patch(
                 "app.agents.core.subagents.handoff_tools._resolve_subagent",
-                new=AsyncMock(
-                    return_value=(MagicMock(), "gmail_agent", "gmail", False)
-                ),
+                new=AsyncMock(return_value=(MagicMock(), "gmail_agent", "gmail", False)),
             ):
                 await underlying(
                     subagent_id="gmail",
@@ -1518,9 +1444,7 @@ class TestHandoffThreadIsolation:
             # Handoff to "notion"
             with patch(
                 "app.agents.core.subagents.handoff_tools._resolve_subagent",
-                new=AsyncMock(
-                    return_value=(MagicMock(), "notion_agent", "notion", False)
-                ),
+                new=AsyncMock(return_value=(MagicMock(), "notion_agent", "notion", False)),
             ):
                 await underlying(
                     subagent_id="notion",
@@ -1531,9 +1455,7 @@ class TestHandoffThreadIsolation:
         assert len(captured_thread_ids) == 2
         thread_a, thread_b = captured_thread_ids
         # Thread IDs must differ for different subagents sharing the same parent thread
-        assert thread_a != thread_b, (
-            f"Thread A ({thread_a}) must differ from Thread B ({thread_b})"
-        )
+        assert thread_a != thread_b, f"Thread A ({thread_a}) must differ from Thread B ({thread_b})"
         # Both must embed the parent thread_id
         assert parent_thread_id in thread_a
         assert parent_thread_id in thread_b

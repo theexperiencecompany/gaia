@@ -3,9 +3,9 @@
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from bson import ObjectId
 from fastapi import HTTPException
+import pytest
 
 from app.models.goals_models import GoalCreate, GoalResponse, UpdateNodeRequest
 from app.services.goals_service import (
@@ -162,12 +162,8 @@ class TestCreateGoalService:
         assert exc_info.value.status_code == 403
         assert "Not authenticated" in exc_info.value.detail
 
-    async def test_insertion_failure_raises_500(
-        self, mock_goals_collection, authenticated_user
-    ):
-        mock_goals_collection.insert_one = AsyncMock(
-            side_effect=Exception("DB connection lost")
-        )
+    async def test_insertion_failure_raises_500(self, mock_goals_collection, authenticated_user):
+        mock_goals_collection.insert_one = AsyncMock(side_effect=Exception("DB connection lost"))
         goal_input = GoalCreate(title="Broken Insert")
 
         with pytest.raises(HTTPException) as exc_info:
@@ -280,9 +276,7 @@ class TestGetGoalService:
     ):
         mock_get, mock_set = mock_cache
         mock_get.return_value = None
-        mock_goals_collection.find_one = AsyncMock(
-            return_value=sample_goal_doc_no_roadmap
-        )
+        mock_goals_collection.find_one = AsyncMock(return_value=sample_goal_doc_no_roadmap)
 
         result = await get_goal_service(FAKE_GOAL_ID, authenticated_user)
 
@@ -558,9 +552,7 @@ class TestUpdateNodeStatusService:
 
         assert result["id"] == FAKE_GOAL_ID
         mock_goals_collection.find_one_and_update.assert_awaited_once()
-        mock_sync_node.assert_awaited_once_with(
-            FAKE_GOAL_ID, "node1", True, FAKE_USER_ID
-        )
+        mock_sync_node.assert_awaited_once_with(FAKE_GOAL_ID, "node1", True, FAKE_USER_ID)
         mock_invalidate_caches.assert_awaited_once_with(FAKE_USER_ID, FAKE_GOAL_ID)
 
     async def test_goal_not_found_raises_404(
@@ -574,9 +566,7 @@ class TestUpdateNodeStatusService:
         update_data = UpdateNodeRequest(is_complete=True)
 
         with pytest.raises(HTTPException) as exc_info:
-            await update_node_status_service(
-                FAKE_GOAL_ID, "node1", update_data, authenticated_user
-            )
+            await update_node_status_service(FAKE_GOAL_ID, "node1", update_data, authenticated_user)
 
         assert exc_info.value.status_code == 404
         assert "Goal not found" in exc_info.value.detail
@@ -621,20 +611,14 @@ class TestUpdateNodeStatusService:
     ):
         """Verify the service correctly passes is_complete=False to the update."""
         mock_goals_collection.find_one = AsyncMock(return_value=sample_goal_doc)
-        mock_goals_collection.find_one_and_update = AsyncMock(
-            return_value=sample_goal_doc
-        )
+        mock_goals_collection.find_one_and_update = AsyncMock(return_value=sample_goal_doc)
 
         update_data = UpdateNodeRequest(is_complete=False)
-        await update_node_status_service(
-            FAKE_GOAL_ID, "node1", update_data, authenticated_user
-        )
+        await update_node_status_service(FAKE_GOAL_ID, "node1", update_data, authenticated_user)
 
         update_call = mock_goals_collection.find_one_and_update.call_args
         assert update_call[0][1] == {"$set": {"roadmap.nodes.$.data.isComplete": False}}
-        mock_sync_node.assert_awaited_once_with(
-            FAKE_GOAL_ID, "node1", False, FAKE_USER_ID
-        )
+        mock_sync_node.assert_awaited_once_with(FAKE_GOAL_ID, "node1", False, FAKE_USER_ID)
 
 
 # ---------------------------------------------------------------------------
@@ -677,9 +661,7 @@ class TestUpdateGoalWithRoadmapService:
         self,
         mock_goals_collection,
     ):
-        mock_goals_collection.find_one = AsyncMock(
-            side_effect=Exception("Connection refused")
-        )
+        mock_goals_collection.find_one = AsyncMock(side_effect=Exception("Connection refused"))
 
         result = await update_goal_with_roadmap_service(FAKE_GOAL_ID, {"nodes": []})
 
@@ -700,9 +682,7 @@ class TestUpdateGoalWithRoadmapService:
         mock_goals_collection.find_one = AsyncMock(return_value=goal_no_user)
         mock_create_project_todo.return_value = "proj_456"
 
-        result = await update_goal_with_roadmap_service(
-            FAKE_GOAL_ID, {"nodes": [], "edges": []}
-        )
+        result = await update_goal_with_roadmap_service(FAKE_GOAL_ID, {"nodes": [], "edges": []})
 
         assert result is True
         mock_invalidate_caches.assert_not_awaited()
@@ -792,17 +772,13 @@ class TestGenerateRoadmapWithLlmStream:
 
         # Should have at least one progress update with character count
         progress_msgs = [
-            r
-            for r in results
-            if "progress" in r and "characters" in r.get("progress", "")
+            r for r in results if "progress" in r and "characters" in r.get("progress", "")
         ]
         assert len(progress_msgs) >= 1
 
         # Should have "Processing" message
         processing = [
-            r
-            for r in results
-            if "progress" in r and "Processing" in r.get("progress", "")
+            r for r in results if "progress" in r and "Processing" in r.get("progress", "")
         ]
         assert len(processing) == 1
 

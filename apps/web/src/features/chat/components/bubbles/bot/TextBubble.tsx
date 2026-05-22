@@ -14,7 +14,21 @@ function getTypedData<K extends ToolName>(
 
 import { Chip } from "@heroui/chip";
 import { Alert01Icon } from "@icons";
+import {
+  parseOpenUISegments,
+  splitByBreaksPreservingFences,
+  splitMessageByBreaks,
+} from "@shared/utils";
+import * as m from "motion/react-m";
+import dynamic from "next/dynamic";
 import React, { useId } from "react";
+
+export const MESSAGE_BREAK_STAGGER_SECONDS = 0.08;
+export const MESSAGE_BREAK_DURATION_SECONDS = 0.25;
+export const MESSAGE_BREAK_EASE_OUT_QUART: [number, number, number, number] = [
+  0.25, 1, 0.5, 1,
+];
+
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
   GROUPED_TOOLS,
@@ -35,12 +49,7 @@ import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubbl
 import ToolCallsSection from "@/features/chat/components/bubbles/bot/ToolCallsSection";
 import { MCPAppRenderer } from "@/features/chat/components/tools/MCPAppRenderer";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
-import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
-import {
-  parseOpenUISegments,
-  splitByBreaksPreservingFences,
-} from "@/features/chat/utils/openUIParser";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import { IntegrationListSection } from "@/features/integrations/components/IntegrationListSection";
 import type {
@@ -98,7 +107,11 @@ import type {
 } from "@/types/features/twitterTypes";
 import type { WeatherData } from "@/types/features/weatherTypes";
 import MarkdownRenderer from "../../interface/MarkdownRenderer";
-import OpenUIRenderer from "../../interface/OpenUIRenderer";
+
+const OpenUIRenderer = dynamic(() => import("../../interface/OpenUIRenderer"), {
+  ssr: false,
+});
+
 import { CalendarDeleteSection } from "./CalendarDeleteSection";
 import { CalendarEditSection } from "./CalendarEditSection";
 import CalendarEventSection from "./CalendarEventSection";
@@ -652,10 +665,17 @@ export default function TextBubble({
                   }
 
                   return (
-                    <div
+                    <m.div
                       // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
                       key={`${baseId}-text-part-${index}`}
                       className={`${bubbleClassName} ${groupedClasses}`}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{
+                        duration: MESSAGE_BREAK_DURATION_SECONDS,
+                        ease: MESSAGE_BREAK_EASE_OUT_QUART,
+                        delay: index * MESSAGE_BREAK_STAGGER_SECONDS,
+                      }}
                     >
                       <div className={textClass}>
                         <div className="flex flex-col gap-3">
@@ -681,7 +701,7 @@ export default function TextBubble({
                           )}
                         </div>
                       </div>
-                    </div>
+                    </m.div>
                   );
                 }
 
@@ -697,8 +717,18 @@ export default function TextBubble({
                 );
 
                 return (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
-                  <React.Fragment key={`${baseId}-text-part-${index}`}>
+                  <m.div
+                    // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
+                    key={`${baseId}-text-part-${index}`}
+                    className="flex flex-col"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: MESSAGE_BREAK_DURATION_SECONDS,
+                      ease: MESSAGE_BREAK_EASE_OUT_QUART,
+                      delay: index * MESSAGE_BREAK_STAGGER_SECONDS,
+                    }}
+                  >
                     {segments.map((seg, segIdx) => {
                       const segKey = `${baseId}-seg-${index}-${segIdx}`;
                       if (seg.type === "openui") {
@@ -742,7 +772,7 @@ export default function TextBubble({
                         </div>
                       );
                     })}
-                  </React.Fragment>
+                  </m.div>
                 );
               })}
             </div>

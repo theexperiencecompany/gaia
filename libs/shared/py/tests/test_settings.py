@@ -3,11 +3,10 @@
 import os
 from unittest.mock import patch
 
-import pytest
 from pydantic import ValidationError
+import pytest
 
 from shared.py.settings.base import BaseAppSettings, CommonSettings
-
 
 # ---------------------------------------------------------------------------
 # BaseAppSettings — defaults
@@ -120,7 +119,11 @@ class TestCommonSettingsDefaults:
         assert settings.SHOW_MISSING_KEY_WARNINGS is True
 
     def test_env_override(self):
-        with patch.dict(os.environ, {"HOST": "http://localhost:8000", "FRONTEND_URL": "http://localhost:3000"}, clear=True):
+        with patch.dict(
+            os.environ,
+            {"HOST": "http://localhost:8000", "FRONTEND_URL": "http://localhost:3000"},
+            clear=True,
+        ):
             settings = CommonSettings()
         assert settings.HOST == "http://localhost:8000"
         assert settings.FRONTEND_URL == "http://localhost:3000"

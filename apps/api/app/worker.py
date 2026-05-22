@@ -10,11 +10,11 @@ from app.workers.tasks import (
     execute_workflow_by_id,
     generate_workflow_steps,
     process_gmail_emails_to_memory,
-    process_personalization_task,
+    process_onboarding_intelligence_task,
     process_reminder,
     process_workflow_generation_task,
-    store_memories_batch,
     regenerate_workflow_steps,
+    store_memories_batch,
 )
 
 # Wrap every task with the Prometheus histogram instrumentation so arq-worker.json
@@ -28,7 +28,7 @@ _execute_workflow_by_id = instrument_task(execute_workflow_by_id)
 _regenerate_workflow_steps = instrument_task(regenerate_workflow_steps)
 _generate_workflow_steps = instrument_task(generate_workflow_steps)
 _process_gmail_emails_to_memory = instrument_task(process_gmail_emails_to_memory)
-_process_personalization_task = instrument_task(process_personalization_task)
+_process_onboarding_intelligence_task = instrument_task(process_onboarding_intelligence_task)
 _store_memories_batch = instrument_task(store_memories_batch)
 _cleanup_stuck_personalization = instrument_task(cleanup_stuck_personalization)
 
@@ -41,7 +41,7 @@ WorkerSettings.functions = [
     _regenerate_workflow_steps,
     _generate_workflow_steps,
     _process_gmail_emails_to_memory,
-    _process_personalization_task,
+    _process_onboarding_intelligence_task,
     _store_memories_batch,
     _cleanup_stuck_personalization,
 ]

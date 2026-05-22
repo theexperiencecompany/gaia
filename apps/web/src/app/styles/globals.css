@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @source "../../../src";
 @source "../../../../../libs/shared/ts/src/**/*.{js,ts,jsx,tsx}";
+@source inline("row-span-2 row-span-3 row-span-4");
+@source inline("col-span-2 col-span-3 col-span-4");
+@source inline("grid-rows-3 grid-rows-4 grid-cols-3 grid-cols-4");
 
 /* HeroUI */
 @source "../../../../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
@@ -208,6 +211,15 @@
   }
   100% {
     transform: translateX(100%);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 
@@ -518,6 +530,29 @@
     display: none;
   }
 
+  .scrollbar-faint {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  }
+
+  .scrollbar-faint::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+  }
+
+  .scrollbar-faint::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-faint::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 100px;
+  }
+
+  .scrollbar-faint::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
   .heroimage {
     image-rendering: crisp-edges;
   }
@@ -625,27 +660,30 @@
     border-radius: 20px;
   }
 
-  .imessage-bubble::before,
-  .imessage-bubble::after {
+  /*
+   * Tail rendered as a single pseudo-element with clip-path tracing the
+   * exact iMessage tail silhouette. The clipped path matches the visible
+   * region produced by the previous ::before/::after bg-color trick — same
+   * shape, but a real cutout, so it composites correctly over any
+   * background (image, gradient, transparent, etc.).
+   *
+   * Geometry: 20px × 18px box anchored to the bubble's bottom-left
+   * (from-them) or bottom-right (from-me, mirrored).
+   */
+  .imessage-bubble::before {
     content: "";
     position: absolute;
     bottom: 0;
+    width: 20px;
     height: 18px;
   }
 
-  .imessage-grouped-first {
-    border-radius: 20px 20px 20px 20px;
-  }
-
-  .imessage-grouped-last {
-    border-radius: 20px 20px 20px 20px;
-  }
-
+  .imessage-grouped-first,
+  .imessage-grouped-last,
   .imessage-grouped-middle {
-    border-radius: 20px 20px 20px 20px;
+    border-radius: 20px;
   }
 
-  /* Bot messages (from-them style) */
   .imessage-from-them {
     background: #27272a;
     align-self: flex-start;
@@ -653,19 +691,12 @@
 
   .imessage-from-them::before {
     left: -7px;
-    width: 20px;
     background-color: #27272a;
-    border-bottom-right-radius: 16px;
+    clip-path: path(
+      "M 20 0 L 20 2 A 16 16 0 0 1 4 18 L 0 18 L 0 17.54 A 10 10 0 0 0 7 8 L 7 0 Z"
+    );
   }
 
-  .imessage-from-them::after {
-    left: -26px;
-    width: 26px;
-    background-color: var(--color-primary-bg);
-    border-bottom-right-radius: 10px;
-  }
-
-  /* User messages (from-me style) */
   .imessage-from-me {
     color: black;
     background: #00bbff;
@@ -674,24 +705,15 @@
 
   .imessage-from-me::before {
     right: -7px;
-    width: 20px;
     background-color: #00bbff;
-    border-bottom-left-radius: 16px 14px;
+    clip-path: path(
+      "M 0 0 L 0 2 A 16 16 0 0 0 16 18 L 20 18 L 20 17.54 A 10 10 0 0 1 13 8 L 13 0 Z"
+    );
   }
 
-  .imessage-from-me::after {
-    right: -26px;
-    width: 26px;
-    background-color: var(--color-primary-bg);
-    border-bottom-left-radius: 10px;
-  }
-
-  /* Grouped iMessage bubbles for NEW_MESSAGE_BREAK */
   /* Hide tails for grouped messages except the last one */
   .imessage-grouped-first::before,
-  .imessage-grouped-first::after,
-  .imessage-grouped-middle::before,
-  .imessage-grouped-middle::after {
+  .imessage-grouped-middle::before {
     display: none;
   }
 
@@ -1075,4 +1097,34 @@
   margin-bottom: 1.25rem;
   border: none;
   border-top: 1px solid rgb(39 39 42 / 0.7); /* zinc-800/70 */
+}
+
+/* Landing bots-showcase chat bubble pop-in */
+@keyframes chat-bubble-pop {
+  from {
+    transform: scale(0.96) translateY(4px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+.chat-bubble-pop {
+  animation: chat-bubble-pop 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: bottom;
+}
+
+/* Landing bots-showcase typing-indicator dots */
+@keyframes chat-demo-typing {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 0.9;
+  }
 }

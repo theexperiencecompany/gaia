@@ -235,7 +235,8 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
 };
 
 export async function generateStaticParams() {
-  return getAllPersonaSlugs().map((persona) => ({ persona }));
+  const slugs = await getAllPersonaSlugs();
+  return slugs.map((persona) => ({ persona }));
 }
 
 export async function generateMetadata({

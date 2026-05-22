@@ -10,9 +10,14 @@ Subagent identity/metadata comes from agents/core/subagents/registry.py
 (unified view of OAuth-derived + builtin subagents).
 """
 
-import re
 from datetime import datetime
-from typing import Annotated, Optional
+import re
+from typing import Annotated
+
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
+from langgraph.store.base import BaseStore, PutOp
 
 from app.agents.core.subagents.provider_subagents import create_subagent_for_user
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
@@ -24,7 +29,6 @@ from app.agents.core.subagents.subagent_runner import (
     build_initial_messages,
     execute_subagent_stream,
 )
-from shared.py.wide_events import log
 from app.constants.cache import SUBAGENT_CACHE_PREFIX, SUBAGENT_CACHE_TTL
 from app.core.lazy_loader import providers
 from app.db.mongodb.collections import integrations_collection
@@ -38,10 +42,7 @@ from app.services.oauth.oauth_service import (
 )
 from app.services.provider_metadata_service import get_provider_metadata
 from app.utils.agent_utils import parse_subagent_id
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
-from langgraph.store.base import BaseStore, PutOp
+from shared.py.wide_events import log
 
 SUBAGENTS_NAMESPACE = ("subagents",)
 
@@ -85,7 +86,7 @@ def _sanitize_task_user_reference(
 async def check_integration_connection(
     integration_id: str,
     user_id: str,
-) -> Optional[str]:
+) -> str | None:
     """Check if integration is connected and return error message if not."""
     try:
         subagent = get_subagent_by_id(integration_id)
@@ -221,9 +222,7 @@ async def index_custom_mcp_as_subagent(
         f"Examples: fetch data, scrape, query, automate"
     )
 
-    tool_namespace = derive_integration_namespace(
-        integration_id, server_url, is_custom=True
-    )
+    tool_namespace = derive_integration_namespace(integration_id, server_url, is_custom=True)
 
     put_op = PutOp(
         namespace=SUBAGENTS_NAMESPACE,
@@ -244,8 +243,8 @@ async def index_custom_mcp_as_subagent(
 
 async def _resolve_subagent(
     subagent_id: str,
-    user_id: Optional[str],
-) -> tuple[Optional[object], Optional[str], Optional[str], bool]:
+    user_id: str | None,
+) -> tuple[object | None, str | None, str | None, bool]:
     """
     Resolve subagent from ID and get the graph.
 
@@ -307,11 +306,7 @@ async def _resolve_subagent(
     int_id = subagent.id
 
     # Handle auth-required MCP integrations specially
-    if (
-        subagent.managed_by == "mcp"
-        and subagent.mcp_config
-        and subagent.mcp_config.requires_auth
-    ):
+    if subagent.managed_by == "mcp" and subagent.mcp_config and subagent.mcp_config.requires_auth:
         if not user_id:
             return (
                 None,
@@ -409,11 +404,7 @@ async def handoff(
             is_custom,
         ) = await _resolve_subagent(subagent_id, user_id)
 
-        if (
-            subagent_graph is None
-            or resolved_agent_name is None
-            or int_id_or_error is None
-        ):
+        if subagent_graph is None or resolved_agent_name is None or int_id_or_error is None:
             return int_id_or_error or "Unknown error resolving subagent"
 
         # Type assertion after null check - these are guaranteed to be str at this point
@@ -438,9 +429,7 @@ async def handoff(
             "name": configurable.get("user_name"),
         }
         user_time_str = configurable.get("user_time", "")
-        user_time = (
-            datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
-        )
+        user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
 
         subagent_config = build_agent_config(
             conversation_id=thread_id,
@@ -466,9 +455,7 @@ async def handoff(
         platform_subagent = get_subagent_by_id(int_id)
         if platform_subagent and platform_subagent.provider and user_id:
             provider_name = platform_subagent.provider
-            provider_meta = await get_provider_metadata(
-                user_id, platform_subagent.provider
-            )
+            provider_meta = await get_provider_metadata(user_id, platform_subagent.provider)
         service_username = _extract_service_username(provider_meta)
         integration_usernames: dict[str, str] = {}
         if provider_name and service_username:
@@ -537,4 +524,4 @@ async def handoff(
 
     except Exception as e:
         log.error(f"Error in handoff to {subagent_id}: {e}", exc_info=True)
-        return f"Error executing task: {str(e)}"
+        return f"Error executing task: {e!s}"

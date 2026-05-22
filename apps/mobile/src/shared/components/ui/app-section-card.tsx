@@ -39,7 +39,7 @@ export function AppSectionCard({
       {...cardProps}
       variant={variant}
       animation={animation}
-      className={cn("rounded-3xl", className)}
+      className={cn("rounded-2xl", className)}
     >
       {hasHeader ? (
         <Card.Header className={cn("pb-0", headerClassName)}>

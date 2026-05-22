@@ -16,31 +16,36 @@ Both are stored in separate mem0 namespaces and don't interfere.
 import asyncio
 from typing import cast
 
+from langchain_core.language_models import LanguageModelLike
+from langchain_core.tools import BaseTool
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph.state import CompiledStateGraph
+
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.agents.core.nodes import (
     manage_system_prompts_node,
     memory_node,
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.llm.retry_policies import SUBAGENT_RETRY_POLICY
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
+from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.core.tool_runtime_config import (
     build_child_tool_runtime_config,
     build_create_agent_tool_kwargs,
     build_provider_parent_tool_runtime_config,
 )
-from app.agents.tools.memory_tools import search_memory
 from app.agents.tools.finish_task_tool import finish_task
-from app.constants.general import FINISH_TASK_NAME
+from app.agents.tools.memory_tools import search_memory
+from app.agents.tools.research_tool import deep_research
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.vfs_tools import vfs_cmd, vfs_read
-from shared.py.wide_events import log
+from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
+from app.constants.general import FINISH_TASK_NAME
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
-from langchain_core.language_models import LanguageModelLike
-from langchain_core.tools import BaseTool
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.graph.state import CompiledStateGraph
+from shared.py.wide_events import log
 
 
 class SubAgentFactory:
@@ -81,19 +86,13 @@ class SubAgentFactory:
         Returns:
             Compiled LangGraph agent with tool registry, retrieval, and checkpointer
         """
-        from app.agents.tools.core.registry import get_tool_registry
-        from app.agents.tools.research_tool import deep_research
-        from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
-
         log.set(subagent={"name": name, "provider": provider})
         log.info(
             f"Creating {provider} sub-agent graph using tool space '{tool_space}' with "
             + ("direct tools binding" if use_direct_tools else "retrieve tools")
         )
 
-        store, tool_registry = await asyncio.gather(
-            get_tools_store(), get_tool_registry()
-        )
+        store, tool_registry = await asyncio.gather(get_tools_store(), get_tool_registry())
 
         # Build scoped tool_dict containing only tools for this subagent's tool_space
         # This ensures subagents can only access their own integration's tools
@@ -165,21 +164,16 @@ class SubAgentFactory:
                 todo_hook,
             ],
             "end_graph_hooks": [memory_node],
+            "agent_retry_policy": SUBAGENT_RETRY_POLICY,
         }
 
         valid_auto_bind = (
-            [
-                tool_name
-                for tool_name in auto_bind_tools
-                if tool_name in scoped_tool_dict
-            ]
+            [tool_name for tool_name in auto_bind_tools if tool_name in scoped_tool_dict]
             if auto_bind_tools
             else None
         )
         if valid_auto_bind:
-            log.info(
-                f"Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}"
-            )
+            log.info(f"Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}")
 
         parent_tool_runtime = build_provider_parent_tool_runtime_config(
             provider_tool_names=initial_tool_ids,
@@ -226,9 +220,7 @@ class SubAgentFactory:
             )
             checkpointer = InMemorySaver()
 
-        subagent_graph = builder.compile(
-            store=store, name=name, checkpointer=checkpointer
-        )
+        subagent_graph = builder.compile(store=store, name=name, checkpointer=checkpointer)
 
         log.info(f"Successfully created {provider} sub-agent graph with checkpointer")
         return subagent_graph

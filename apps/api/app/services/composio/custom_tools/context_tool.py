@@ -3,10 +3,8 @@
 Maps provider keys to their Composio CUSTOM_GATHER_CONTEXT tool slugs.
 """
 
-from typing import Dict
-
 # Flat registry: provider key → Composio tool slug
-PROVIDER_TOOLS: Dict[str, str] = {
+PROVIDER_TOOLS: dict[str, str] = {
     "calendar": "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT",
     "gmail": "GMAIL_CUSTOM_GATHER_CONTEXT",
     "slack": "SLACK_CUSTOM_GATHER_CONTEXT",

@@ -64,10 +64,7 @@ class TestConvertToSlackMrkdwn:
         assert convert_to_slack_mrkdwn("**bold**") == "*bold*"
 
     def test_links_use_angle_bracket_syntax(self) -> None:
-        assert (
-            convert_to_slack_mrkdwn("[Gaia](https://heygaia.io)")
-            == "<https://heygaia.io|Gaia>"
-        )
+        assert convert_to_slack_mrkdwn("[Gaia](https://heygaia.io)") == "<https://heygaia.io|Gaia>"
 
     def test_headings_become_bold(self) -> None:
         assert convert_to_slack_mrkdwn("## Section") == "*Section*"
@@ -88,7 +85,5 @@ class TestConvertToSlackMrkdwn:
         (convert_to_slack_mrkdwn, "a **b** c", "a *b* c"),
     ],
 )
-def test_converters_handle_plain_and_simple_bold(
-    converter, given: str, expected: str
-) -> None:
+def test_converters_handle_plain_and_simple_bold(converter, given: str, expected: str) -> None:
     assert converter(given) == expected

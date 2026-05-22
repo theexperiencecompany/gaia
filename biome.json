@@ -44,6 +44,7 @@
       "!!.mise",
       "!!.opencode",
       "!!.worktrees",
+      "!!.jscpd-report",
       "!**/pnpm-lock.yaml",
       "!**/*.lock",
       "!**/.env*",
@@ -77,28 +78,68 @@
         "useKeyWithMouseEvents": "off"
       },
       "complexity": {
-        "noBannedTypes": "off",
+        "noBannedTypes": "error",
         "noForEach": "off",
         "noStaticOnlyClass": "off",
         "noUselessEmptyExport": "off",
-        "useLiteralKeys": "off"
+        "useLiteralKeys": "off",
+        "noUselessFragments": "error",
+        "noUselessTypeConstraint": "error",
+        "noUselessLoneBlockStatements": "error",
+        "noExcessiveCognitiveComplexity": {
+          "level": "warn",
+          "options": { "maxAllowedComplexity": 25 }
+        }
       },
       "correctness": {
-        "noUnusedVariables": "warn",
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error",
+        "noUnusedFunctionParameters": "error",
+        "noUnusedPrivateClassMembers": "error",
+        "noUnusedLabels": "error",
         "useExhaustiveDependencies": "off",
         "useHookAtTopLevel": "error"
       },
       "style": {
         "noNonNullAssertion": "off",
-        "useImportType": "warn",
+        "useImportType": "error",
         "useNodejsImportProtocol": "off",
-        "noParameterAssign": "off"
+        "noParameterAssign": "off",
+        "noNamespace": "error",
+        "useConsistentArrayType": {
+          "level": "error",
+          "options": { "syntax": "shorthand" }
+        },
+        "useShorthandFunctionType": "error"
       },
       "suspicious": {
         "noArrayIndexKey": "error",
         "noExplicitAny": "error",
-        "noConsole": "off",
-        "useIterableCallbackReturn": "off"
+        "noConsole": {
+          "level": "warn",
+          "options": { "allow": ["error", "warn", "info", "debug"] }
+        },
+        "useIterableCallbackReturn": "off",
+        "noEmptyBlockStatements": "warn",
+        "noEvolvingTypes": "error",
+        "noDebugger": "error",
+        "noShadowRestrictedNames": "error",
+        "noSparseArray": "error",
+        "noUnsafeDeclarationMerging": "error",
+        "noVar": "error",
+        "useDefaultSwitchClauseLast": "error",
+        "noMisleadingInstantiator": "error",
+        "noMisrefactoredShorthandAssign": "error"
+      },
+      "performance": {
+        "noBarrelFile": "off",
+        "noReExportAll": "warn",
+        "noAccumulatingSpread": "error",
+        "noDelete": "error"
+      },
+      "security": {
+        "noDangerouslySetInnerHtmlWithChildren": "error",
+        "noGlobalEval": "error"
       }
     }
   },
@@ -146,6 +187,46 @@
         "apps/web/src/app/**/index.tsx"
       ],
       "plugins": ["./rules/no-barrel-reexport.grit"]
+    },
+    {
+      "includes": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx",
+        "**/__tests__/**",
+        "**/__mocks__/**",
+        "**/*.stories.tsx",
+        "**/*.config.{ts,js,mjs,cjs}",
+        "**/scripts/**"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off",
+            "noExplicitAny": "warn"
+          },
+          "correctness": {
+            "noUnusedFunctionParameters": "off"
+          },
+          "performance": {
+            "noReExportAll": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/types.ts", "**/types/**", "**/*.types.ts", "**/*.d.ts"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noReExportAll": "off"
+          },
+          "correctness": {
+            "noUnusedVariables": "off"
+          }
+        }
+      }
     }
   ]
 }

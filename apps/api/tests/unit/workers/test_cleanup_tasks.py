@@ -1,8 +1,9 @@
 """Unit tests for cleanup_tasks ARQ worker."""
 
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from app.workers.tasks.cleanup_tasks import cleanup_stuck_personalization
 
@@ -13,7 +14,7 @@ def _make_stuck_user(
     updated_at_minutes_ago: int = 60,
 ) -> dict:
     """Build a minimal stuck-user document as returned by MongoDB."""
-    updated_at = datetime.now(timezone.utc) - timedelta(minutes=updated_at_minutes_ago)
+    updated_at = datetime.now(UTC) - timedelta(minutes=updated_at_minutes_ago)
     return {
         "_id": MagicMock(__str__=lambda s: user_id),
         "onboarding": {"bio_status": bio_status, "completed": True},
@@ -131,9 +132,7 @@ class TestCleanupStuckPersonalization:
         assert "50 users re-queued" in result
         assert "50 stuck users" in result
 
-    async def test_pagination_limit_does_not_exceed_50_even_with_large_mock_return(
-        self, ctx
-    ):
+    async def test_pagination_limit_does_not_exceed_50_even_with_large_mock_return(self, ctx):
         """Simulate the cursor honouring the limit by returning only 50 of 100
         users.  The task itself must enqueue exactly the users it received."""
         # The cursor mock returns only 50 — mirroring MongoDB honouring length=50
@@ -222,9 +221,7 @@ class TestCleanupStuckPersonalization:
 
             await cleanup_stuck_personalization(ctx)
 
-        mock_pool.enqueue_job.assert_awaited_once_with(
-            "process_personalization_task", "id_1"
-        )
+        mock_pool.enqueue_job.assert_awaited_once_with("process_personalization_task", "id_1")
 
     # ------------------------------------------------------------------
     # Error counting
@@ -322,9 +319,9 @@ class TestCleanupStuckPersonalization:
 
         with patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col:
             mock_col.find = MagicMock(return_value=mock_cursor)
-            before_call = datetime.now(timezone.utc)
+            before_call = datetime.now(UTC)
             await cleanup_stuck_personalization(ctx, max_age_minutes=60)
-            after_call = datetime.now(timezone.utc)
+            after_call = datetime.now(UTC)
 
         query = mock_col.find.call_args[0][0]
         # The $or clause contains the updated_at cutoff
@@ -336,9 +333,7 @@ class TestCleanupStuckPersonalization:
         expected_lower = before_call - timedelta(minutes=60)
         expected_upper = after_call - timedelta(minutes=60)
         assert (
-            expected_lower - timedelta(seconds=5)
-            <= cutoff
-            <= expected_upper + timedelta(seconds=5)
+            expected_lower - timedelta(seconds=5) <= cutoff <= expected_upper + timedelta(seconds=5)
         )
 
     async def test_query_only_looks_at_onboarding_completed_users(self, ctx):

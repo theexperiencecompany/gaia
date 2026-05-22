@@ -55,7 +55,7 @@ export function ImageGenerationCard({
         variant="secondary"
         animation="disable-all"
         style={{ width: cardWidth, overflow: "hidden" }}
-        className="rounded-[20px] border border-white/[0.07] bg-[#18181b]"
+        className="rounded-3xl bg-zinc-900"
       >
         <Card.Body className="p-0">
           {/* Image / skeleton area */}
@@ -102,7 +102,7 @@ export function ImageGenerationCard({
                   fontSize: fontSize.sm,
                   color: "#a1a1aa",
                   lineHeight: 18,
-                  fontStyle: "italic",
+                  fontStyle: "normal",
                 }}
                 numberOfLines={2}
               >

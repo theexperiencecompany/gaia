@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.integration_tool."""
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,11 +23,11 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.integration_tool"
 
 
-def _cfg(user_id: str = FAKE_USER_ID) -> Dict[str, Any]:
+def _cfg(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
     return {"configurable": {"user_id": user_id}}
 
 
-def _cfg_no_user() -> Dict[str, Any]:
+def _cfg_no_user() -> dict[str, Any]:
     return {"configurable": {}}
 
 
@@ -174,9 +174,7 @@ class TestListIntegrations:
         side_effect=RuntimeError("err"),
     )
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [_make_integration()])
-    async def test_service_error(
-        self, mock_status: AsyncMock, mock_gsw: MagicMock
-    ) -> None:
+    async def test_service_error(self, mock_status: AsyncMock, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
 
         from app.agents.tools.integration_tool import list_integrations
@@ -229,9 +227,7 @@ class TestConnectIntegration:
         f"{MODULE}.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
-    async def test_initiates_connection(
-        self, mock_check: AsyncMock, mock_gsw: MagicMock
-    ) -> None:
+    async def test_initiates_connection(self, mock_check: AsyncMock, mock_gsw: MagicMock) -> None:
         w = _writer()
         mock_gsw.return_value = w
 
@@ -257,9 +253,7 @@ class TestConnectIntegration:
         f"{MODULE}.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
-    async def test_already_connected(
-        self, mock_check: AsyncMock, mock_gsw: MagicMock
-    ) -> None:
+    async def test_already_connected(self, mock_check: AsyncMock, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
 
         from app.agents.tools.integration_tool import connect_integration
@@ -326,9 +320,7 @@ class TestConnectIntegration:
         f"{MODULE}.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
-    async def test_service_error(
-        self, mock_check: AsyncMock, mock_gsw: MagicMock
-    ) -> None:
+    async def test_service_error(self, mock_check: AsyncMock, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
 
         from app.agents.tools.integration_tool import connect_integration

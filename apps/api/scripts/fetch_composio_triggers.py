@@ -16,8 +16,8 @@ Requirements:
 
 import json
 import os
-import sys
 from pathlib import Path
+import sys
 from typing import Any
 
 # Add the app directory to the path for imports
@@ -40,9 +40,7 @@ def load_integrations() -> list[dict[str, Any]]:
                     "id": integration.id,
                     "name": integration.name,
                     "toolkit": integration.composio_config.toolkit,
-                    "existing_triggers": [
-                        t.slug for t in integration.associated_triggers
-                    ],
+                    "existing_triggers": [t.slug for t in integration.associated_triggers],
                 }
             )
     return integrations
@@ -145,9 +143,7 @@ def main():
         from app.config.settings import settings
 
         if not settings.COMPOSIO_KEY:
-            print(
-                "ERROR: COMPOSIO_API_KEY not set. Please set the environment variable."
-            )
+            print("ERROR: COMPOSIO_API_KEY not set. Please set the environment variable.")
             sys.exit(1)
 
         from composio import Composio
@@ -224,9 +220,7 @@ def main():
 
     # Summary
     total_available = sum(len(triggers) for triggers in all_triggers.values())
-    total_configured = sum(
-        len(integration["existing_triggers"]) for integration in integrations
-    )
+    total_configured = sum(len(integration["existing_triggers"]) for integration in integrations)
 
     print("=" * 80)
     print("SUMMARY")

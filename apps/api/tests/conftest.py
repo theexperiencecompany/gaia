@@ -8,14 +8,14 @@ Provides:
 - Reusable fake user and auth fixtures
 """
 
-import os
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+import pytest
 
 # ---------------------------------------------------------------------------
 # Environment setup — runs at import time, before any app module is loaded.
@@ -188,12 +188,8 @@ def pytest_configure(config):
         "markers",
         "service: Service integration tests (require real Postgres/Redis/MongoDB)",
     )
-    config.addinivalue_line(
-        "markers", "e2e: End-to-end tests (real or near-real services)"
-    )
-    config.addinivalue_line(
-        "markers", "composio: Composio integration tests (require credentials)"
-    )
+    config.addinivalue_line("markers", "e2e: End-to-end tests (real or near-real services)")
+    config.addinivalue_line("markers", "composio: Composio integration tests (require credentials)")
     config.addinivalue_line("markers", "slow: Slow tests")
 
 
@@ -284,3 +280,24 @@ def user_id(request):
 def skip_destructive(request):
     """Whether to skip destructive tests."""
     return request.config.getoption("--skip-destructive")
+
+
+@pytest.fixture
+def fake_auth_credentials() -> dict:
+    """Auth credentials shape that matches the post-migration contract.
+
+    Composio no longer returns `access_token` in connected-account credentials.
+    The patched `CustomTool.__call__` injects only `user_id`. Tests that exercise
+    custom tools should use this fixture instead of hand-rolling a bearer token.
+    """
+    return {"user_id": "test_user_123"}
+
+
+# Note: There is intentionally no shared `mock_proxy_request_sync` fixture.
+# Every consumer does `from app.services.composio.proxy_client import
+# proxy_request_sync`, which binds the symbol at the call-site module's
+# namespace. A fixture that patches `app.services.composio.proxy_client.
+# proxy_request_sync` would NOT intercept those bindings — the tests would
+# pass without exercising the mock. Tests must patch the call site directly
+# (e.g. `app.services.calendar_service.proxy_request_sync`,
+# `app.utils.twitter_utils.proxy_request_sync`).

@@ -2,18 +2,19 @@
 
 from typing import Annotated
 
-from shared.py.wide_events import log
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
+
 from app.decorators import with_doc
-from app.templates.docstrings.support_tool_docs import (
-    CREATE_SUPPORT_TICKET,
-)
 from app.models.support_models import (
     SupportRequestType,
 )
 from app.services import user_service
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
+from app.templates.docstrings.support_tool_docs import (
+    CREATE_SUPPORT_TICKET,
+)
+from shared.py.wide_events import log
 
 
 @tool
@@ -24,9 +25,7 @@ async def create_support_ticket(
         SupportRequestType,
         "Type of support request: 'support' for technical issues/help, 'feature' for enhancement requests",
     ],
-    title: Annotated[
-        str, "Brief, descriptive title of the issue or request (1-200 characters)"
-    ],
+    title: Annotated[str, "Brief, descriptive title of the issue or request (1-200 characters)"],
     description: Annotated[
         str,
         "Detailed explanation of the issue, steps to reproduce, or feature details (10-5000 characters)",
@@ -88,15 +87,13 @@ async def create_support_ticket(
 
         # Return confirmation message
         ticket_type_display = (
-            "feature request"
-            if request_type == SupportRequestType.FEATURE
-            else "support ticket"
+            "feature request" if request_type == SupportRequestType.FEATURE else "support ticket"
         )
         return f"I've prepared a {ticket_type_display} draft for you to review. Please check the details and click 'Submit Ticket' when you're ready to send it to our support team."
 
     except Exception as e:
-        log.error(f"Error preparing support ticket: {str(e)}")
-        return f"Sorry, I encountered an error while preparing your support ticket: {str(e)}"
+        log.error(f"Error preparing support ticket: {e!s}")
+        return f"Sorry, I encountered an error while preparing your support ticket: {e!s}"
 
 
 # Export tools list for registry

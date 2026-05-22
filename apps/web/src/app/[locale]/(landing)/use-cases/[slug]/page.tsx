@@ -35,17 +35,10 @@ export async function generateStaticParams() {
 
     if (isDev) {
       const resp = await workflowApi.getExploreWorkflows(50, 0);
-      console.log(
-        `[SSG Use Cases] Generating ${resp.workflows.length} pages (dev mode)`,
-      );
-      return resp.workflows.map((w) => ({ slug: w.slug }));
+      return resp.workflows.flatMap((w) => (w.slug ? [{ slug: w.slug }] : []));
     }
 
-    const exploreLimit = 1000;
-    const exploreResp = await workflowApi.getExploreWorkflows(exploreLimit, 0);
-    const exploreParams = exploreResp.workflows.map((w) => ({
-      slug: w.slug,
-    }));
+    const exploreResp = await workflowApi.getExploreWorkflows(1000, 0);
 
     const { fetchAllPaginated } = await import("@/lib/fetchAll");
     const communityWorkflows = await fetchAllPaginated(
@@ -59,12 +52,10 @@ export async function generateStaticParams() {
       },
       100,
     );
-    const communityParams = communityWorkflows.map((w) => ({
-      slug: w.slug,
-    }));
 
-    const allParams = [...exploreParams, ...communityParams];
-    return allParams;
+    return [...exploreResp.workflows, ...communityWorkflows].flatMap((w) =>
+      w.slug ? [{ slug: w.slug }] : [],
+    );
   } catch (error) {
     console.error("Error generating static params for use-cases:", error);
     return [];

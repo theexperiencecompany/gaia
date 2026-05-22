@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Union
 
-import httpx
-from shared.py.wide_events import log
+from fastapi import HTTPException
+
 from app.db.mongodb.collections import get_sync_collection
 from app.models.calendar_models import (
     EventCreateRequest,
@@ -10,76 +10,73 @@ from app.models.calendar_models import (
     EventLookupRequest,
     EventUpdateRequest,
 )
-from fastapi import HTTPException
+from app.services.composio.proxy_client import proxy_request_sync
+from app.utils.errors import AppError
+from shared.py.wide_events import log
 
-# Sync HTTP client for all calendar operations
-http_client = httpx.Client(timeout=30)
+CALENDAR_TOOLKIT = "GOOGLECALENDAR"
+CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
 
 # Sync MongoDB collection for calendar preferences
 calendars_collection = get_sync_collection("calendar")
 
 
-def fetch_calendar_list(access_token: str, short: bool = False) -> Any:
+def _proxy(
+    user_id: str,
+    *,
+    endpoint: str,
+    method: str,
+    body: dict[str, Any] | None = None,
+    query: dict[str, Any] | None = None,
+) -> Any:
+    """Wrapper that converts Composio proxy errors to FastAPI HTTPException.
+
+    Calendar callers (FastAPI endpoints, custom tools) historically expect
+    HTTPException-shaped failures, so we normalize AppError here.
     """
-    Fetch the list of calendars for the authenticated user.
-
-    Args:
-        access_token (str): The access token.
-        short (bool): If True, returns only key fields per calendar.
-
-    Returns:
-        Any: Full or filtered calendar data.
-    """
-    url = "https://www.googleapis.com/calendar/v3/users/me/calendarList"
-    headers = {"Authorization": f"Bearer {access_token}"}
-
     try:
-        response = http_client.get(url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-
-        if short:
-            return [
-                {
-                    "id": c.get("id"),
-                    "summary": c.get("summary"),
-                    "description": c.get("description"),
-                    "backgroundColor": c.get("backgroundColor"),
-                }
-                for c in data.get("items", [])
-            ]
-
-        return data
-
-    except httpx.HTTPStatusError as exc:
-        error_detail = "Unknown error"
-        error_json = exc.response.json()
-        if isinstance(error_json, dict):
-            error_message = error_json.get("error", {})
-            if isinstance(error_message, dict):
-                error_detail = error_message.get("message", "Unknown error")
-
-        raise HTTPException(
-            status_code=exc.response.status_code,
-            detail=f"Error fetching list of calendars: {error_detail}",
+        return proxy_request_sync(
+            user_id=user_id,
+            toolkit=CALENDAR_TOOLKIT,
+            endpoint=endpoint,
+            method=method,  # type: ignore[arg-type]
+            body=body,
+            query=query,
         )
-    except httpx.RequestError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"An error occurred while requesting the calendar list: {exc}",
-        )
+    except AppError as exc:
+        provider_response = exc.meta.get("provider_response")
+        detail: Any = exc.message
+        if isinstance(provider_response, dict):
+            error_message = provider_response.get("error", {})
+            if isinstance(error_message, dict) and error_message.get("message"):
+                detail = error_message["message"]
+        raise HTTPException(status_code=exc.status_code, detail=detail) from exc
 
 
-def filter_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Filter out unwanted events from the provided list.
+def fetch_calendar_list(user_id: str, short: bool = False) -> Any:
+    """Fetch the list of calendars for the authenticated user."""
+    data = _proxy(
+        user_id,
+        endpoint=f"{CALENDAR_API_BASE}/users/me/calendarList",
+        method="GET",
+    )
 
-    Args:
-        events (list): List of events.
+    if short:
+        return [
+            {
+                "id": c.get("id"),
+                "summary": c.get("summary"),
+                "description": c.get("description"),
+                "backgroundColor": c.get("backgroundColor"),
+            }
+            for c in (data or {}).get("items", [])
+        ]
 
-    Returns:
-        list: Filtered events excluding birthdays and events missing a valid start time.
-    """
+    return data
+
+
+def filter_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Filter out birthdays and events missing a valid start time."""
     return [
         event
         for event in events
@@ -91,84 +88,50 @@ def filter_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def fetch_calendar_events(
     calendar_id: str,
-    access_token: str,
-    page_token: Optional[str] = None,
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
+    user_id: str,
+    page_token: str | None = None,
+    time_min: str | None = None,
+    time_max: str | None = None,
     max_results: int = 20,
-) -> Dict[str, Any]:
-    """
-    Fetch events for a specific calendar.
-
-    Args:
-        calendar_id (str): Calendar identifier.
-        access_token (str): Access token.
-        page_token (Optional[str]): Pagination token.
-        time_min (Optional[str]): Start time filter.
-        time_max (Optional[str]): End time filter.
-        max_results (int): Maximum number of events to return (default: 20).
-
-    Returns:
-        dict: The events data.
-    """
-    url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
-    headers = {"Authorization": f"Bearer {access_token}"}
-
-    params: Dict[str, Union[str, int, bool]] = {
+) -> dict[str, Any]:
+    """Fetch events for a specific calendar."""
+    query: dict[str, Any] = {
         "maxResults": max_results,
-        "singleEvents": True,
+        "singleEvents": "true",
         "orderBy": "startTime",
     }
     if time_min:
-        params["timeMin"] = time_min
+        query["timeMin"] = time_min
     if time_max:
-        params["timeMax"] = time_max
+        query["timeMax"] = time_max
     if page_token:
-        params["pageToken"] = page_token
+        query["pageToken"] = page_token
 
-    try:
-        response = http_client.get(url, headers=headers, params=params)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            error_detail = (
-                response.json().get("error", {}).get("message", "Unknown error")
-            )
-            raise HTTPException(status_code=response.status_code, detail=error_detail)
-    except httpx.RequestError as e:
-        raise HTTPException(status_code=500, detail=f"HTTP request failed: {e}")
+    return _proxy(
+        user_id,
+        endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
+        method="GET",
+        query=query,
+    )
 
 
 def fetch_all_calendar_events(
     calendar_id: str,
-    access_token: str,
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
-    max_per_page: int = 250,  # Google's max per request
-) -> Dict[str, Any]:
-    """
-    Fetch ALL events from a calendar within a date range by internally handling pagination.
-    This is useful for calendar page views where you want to show all events in a month/range.
-
-    Args:
-        calendar_id (str): Calendar identifier.
-        access_token (str): Access token.
-        time_min (Optional[str]): Start time filter.
-        time_max (Optional[str]): End time filter.
-        max_per_page (int): Events per API request (max 250 per Google's limits).
-
-    Returns:
-        dict: Combined events data with 'items' array and 'truncated' boolean.
-    """
-    all_items = []
-    next_page_token = None
+    user_id: str,
+    time_min: str | None = None,
+    time_max: str | None = None,
+    max_per_page: int = 250,
+) -> dict[str, Any]:
+    """Fetch all events from a calendar within a date range, handling pagination."""
+    all_items: list[dict[str, Any]] = []
+    next_page_token: str | None = None
     page_count = 0
-    max_pages = 20  # Safety limit: 20 pages * 250 events = 5000 events max
+    max_pages = 20
 
     while page_count < max_pages:
         page_data = fetch_calendar_events(
             calendar_id=calendar_id,
-            access_token=access_token,
+            user_id=user_id,
             page_token=next_page_token,
             time_min=time_min,
             time_max=time_max,
@@ -181,17 +144,14 @@ def fetch_all_calendar_events(
         next_page_token = page_data.get("nextPageToken")
         page_count += 1
 
-        # Stop if no more pages
         if not next_page_token:
             break
 
-        # Log if we're fetching many pages
         if page_count > 5:
             log.info(
                 f"Calendar {calendar_id} has many events - fetched {len(all_items)} so far, page {page_count}"
             )
 
-    # Check if we hit the safety limit
     truncated = page_count >= max_pages and next_page_token is not None
     if truncated:
         log.warning(
@@ -206,57 +166,29 @@ def fetch_all_calendar_events(
 
 
 def list_calendars(
-    access_token: str, short: bool = False
-) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
-    """
-    Retrieve the user's calendar list. If the access token is invalid,
-    it will get a new token from the token repository.
-
-    Args:
-        user_id (str): User ID to get tokens from repository.
-        access_token (Optional[str]): Optional access token (if not provided, will fetch from repository).
-        short (bool): If True, returns only key fields per calendar.
-
-    Returns:
-        Optional[Dict[str, Any]]: Calendar list data or None if retrieval fails.
-    """
-    # Token refresh will be handled by the decorator if needed
-    return fetch_calendar_list(access_token, short)
+    user_id: str, short: bool = False
+) -> Union[list[dict[str, Any]], dict[str, Any]]:
+    """Retrieve the user's calendar list."""
+    return fetch_calendar_list(user_id, short)
 
 
-def initialize_calendar_preferences(
-    user_id: str,
-    access_token: str,
-) -> None:
-    """
-    Initialize calendar preferences for a user who just connected their Google Calendar.
-    Fetches all available calendars and sets them as selected by default.
-
-    Args:
-        user_id (str): The user's ID
-        access_token (str): Valid Google OAuth access token
-    """
+def initialize_calendar_preferences(user_id: str) -> None:
+    """Initialize calendar preferences for a newly-connected user."""
     try:
-        # Check if user already has calendar preferences
         existing_preferences = calendars_collection.find_one({"user_id": user_id})
         if existing_preferences and existing_preferences.get("selected_calendars"):
-            log.info(
-                f"User {user_id} already has calendar preferences, skipping initialization"
-            )
+            log.info(f"User {user_id} already has calendar preferences, skipping initialization")
             return
 
-        # Fetch all available calendars
-        calendar_data = fetch_calendar_list(access_token)
+        calendar_data = fetch_calendar_list(user_id)
         calendars = calendar_data.get("items", [])
 
         if not calendars:
             log.warning(f"No calendars found for user {user_id}")
             return
 
-        # Select all calendars by default
         all_calendar_ids = [cal["id"] for cal in calendars]
 
-        # Save preferences to database
         calendars_collection.update_one(
             {"user_id": user_id},
             {"$set": {"selected_calendars": all_calendar_ids}},
@@ -276,21 +208,13 @@ def initialize_calendar_preferences(
 
 
 def get_calendar_metadata_map(
-    access_token: str,
-) -> tuple[Dict[str, str], Dict[str, str]]:
-    """
-    Fetch calendar list and return color/name mappings.
+    user_id: str,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Fetch calendar list and return color/name mappings."""
+    calendars = list_calendars(user_id=user_id, short=True)
 
-    Args:
-        access_token (str): The access token.
-
-    Returns:
-        tuple: (calendar_color_map, calendar_name_map)
-    """
-    calendars = list_calendars(access_token=access_token, short=True)
-
-    color_map: Dict[str, str] = {}
-    name_map: Dict[str, str] = {}
+    color_map: dict[str, str] = {}
+    name_map: dict[str, str] = {}
 
     if calendars and isinstance(calendars, list):
         for cal in calendars:
@@ -304,21 +228,11 @@ def get_calendar_metadata_map(
 
 
 def format_event_for_frontend(
-    event: Dict[str, Any],
-    calendar_color_map: Dict[str, str],
-    calendar_name_map: Dict[str, str],
-) -> Dict[str, Any]:
-    """
-    Format a calendar event for frontend display.
-
-    Args:
-        event: Raw calendar event from Google API
-        calendar_color_map: Mapping of calendar_id to backgroundColor
-        calendar_name_map: Mapping of calendar_id to calendar name
-
-    Returns:
-        Formatted event dict with essential frontend fields
-    """
+    event: dict[str, Any],
+    calendar_color_map: dict[str, str],
+    calendar_name_map: dict[str, str],
+) -> dict[str, Any]:
+    """Format a calendar event for frontend display."""
     start_time = ""
     end_time = ""
 
@@ -345,17 +259,9 @@ def format_event_for_frontend(
     }
 
 
-def extract_unique_dates(calendar_options: List[Dict[str, Any]]) -> Dict[str, str]:
-    """
-    Extract unique dates with timezone offsets from calendar options.
-
-    Args:
-        calendar_options: List of calendar event options
-
-    Returns:
-        Dict mapping date strings to timezone offsets (e.g., {"2025-10-25": "+05:30"})
-    """
-    event_dates_info = {}
+def extract_unique_dates(calendar_options: list[dict[str, Any]]) -> dict[str, str]:
+    """Extract unique dates with timezone offsets from calendar options."""
+    event_dates_info: dict[str, str] = {}
     for option in calendar_options:
         start_time = option.get("start", "")
         if start_time:
@@ -374,28 +280,16 @@ def extract_unique_dates(calendar_options: List[Dict[str, Any]]) -> Dict[str, st
 
 
 def fetch_same_day_events(
-    event_dates_info: Dict[str, str],
-    access_token: str,
+    event_dates_info: dict[str, str],
     user_id: str,
-) -> List[Dict[str, Any]]:
-    """
-    Fetch events for each unique date.
-
-    Args:
-        event_dates_info: Dict mapping date strings to timezone offsets
-        access_token: Access token for calendar API
-        user_id: User identifier
-
-    Returns:
-        List of events across all specified dates
-    """
-    same_day_events = []
+) -> list[dict[str, Any]]:
+    """Fetch events for each unique date."""
+    same_day_events: list[dict[str, Any]] = []
     for event_date, tz_offset in event_dates_info.items():
         time_min = f"{event_date}T00:00:00{tz_offset}"
         time_max = f"{event_date}T23:59:59{tz_offset}"
         try:
             result = get_calendar_events(
-                access_token=access_token,
                 user_id=user_id,
                 time_min=time_min,
                 time_max=time_max,
@@ -409,22 +303,11 @@ def fetch_same_day_events(
 
 
 def enrich_calendar_options_with_metadata(
-    calendar_options: List[Dict[str, Any]],
-    access_token: str,
+    calendar_options: list[dict[str, Any]],
     user_id: str,
-) -> List[Dict[str, Any]]:
-    """
-    Add calendar colors, names, and same-day events to calendar options.
-
-    Args:
-        calendar_options: List of calendar event options to enrich
-        access_token: Access token for calendar API
-        user_id: User identifier
-
-    Returns:
-        Enriched calendar options with metadata
-    """
-    color_map, name_map = get_calendar_metadata_map(access_token)
+) -> list[dict[str, Any]]:
+    """Add calendar colors, names, and same-day events to calendar options."""
+    color_map, name_map = get_calendar_metadata_map(user_id)
 
     for option in calendar_options:
         calendar_id = option.get("calendar_id", "primary")
@@ -432,7 +315,7 @@ def enrich_calendar_options_with_metadata(
         option["calendar_name"] = name_map.get(calendar_id, "Calendar")
 
     event_dates_info = extract_unique_dates(calendar_options)
-    same_day_events = fetch_same_day_events(event_dates_info, access_token, user_id)
+    same_day_events = fetch_same_day_events(event_dates_info, user_id)
 
     for event in same_day_events:
         calendar_id = event.get("calendarId") or ""
@@ -446,43 +329,18 @@ def enrich_calendar_options_with_metadata(
 
 def get_calendar_events(
     user_id: str,
-    access_token: str,
-    page_token: Optional[str] = None,
-    selected_calendars: Optional[List[str]] = None,
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
-    max_results: Optional[int] = 20,
+    page_token: str | None = None,
+    selected_calendars: list[str] | None = None,
+    time_min: str | None = None,
+    time_max: str | None = None,
+    max_results: int | None = 20,
     fetch_all: bool = False,
-) -> Dict[str, Any]:
-    """
-    Get events from the user's selected calendars with date-based pagination.
-    Uses token repository to manage access tokens.
-
-    Args:
-        user_id (str): User identifier.
-        access_token (Optional[str]): Optional access token (if not provided, will fetch from repository).
-        page_token (Optional[str]): Pagination token (ignored for multiple calendars).
-        selected_calendars (Optional[List[str]]): List of selected calendar IDs.
-        time_min (Optional[str]): Start time filter (ISO format).
-        time_max (Optional[str]): End time filter (ISO format).
-        max_results (Optional[int]): Maximum events per calendar. If None/0, fetches all. (default: 20).
-        fetch_all (bool): If True, fetches ALL events in date range by internally handling pagination.
-
-    Returns:
-        dict: A dictionary containing:
-            - events: List of events
-            - selectedCalendars: List of calendar IDs
-            - has_more: Boolean indicating if any calendar was truncated
-            - calendars_truncated: List of calendar IDs that hit limits
-    """
-    # Fetch the calendar list - token refresh will be handled by the decorator if needed
-    calendar_data = fetch_calendar_list(access_token)
-
+) -> dict[str, Any]:
+    """Get events from the user's selected calendars with date-based pagination."""
+    calendar_data = fetch_calendar_list(user_id)
     calendars = calendar_data.get("items", [])
 
-    # Determine selected calendars: update preferences if provided,
-    # otherwise load from the database or default to all available calendars.
-    user_selected_calendars: List[str] = []
+    user_selected_calendars: list[str] = []
     if selected_calendars is not None:
         user_selected_calendars = selected_calendars
         calendars_collection.update_one(
@@ -495,7 +353,6 @@ def get_calendar_events(
         if preferences and preferences.get("selected_calendars"):
             user_selected_calendars = preferences["selected_calendars"]
         else:
-            # Default: select all available calendars
             user_selected_calendars = [cal["id"] for cal in calendars]
             calendars_collection.update_one(
                 {"user_id": user_id},
@@ -503,33 +360,19 @@ def get_calendar_events(
                 upsert=True,
             )
 
-    # Filter the calendars to only those that are selected.
-    selected_cal_objs = [
-        cal for cal in calendars if cal["id"] in user_selected_calendars
-    ]
+    selected_cal_objs = [cal for cal in calendars if cal["id"] in user_selected_calendars]
 
-    # Determine fetch strategy based on parameters
-    # If fetch_all=True or max_results is None/0, fetch ALL events in date range
-    # Otherwise, fetch up to max_results per calendar
-    token_str = access_token
-
-    all_events = []
-    seen_event_ids = set()  # Track unique event IDs for deduplication
-    calendars_truncated = []  # Track which calendars hit limits
+    all_events: list[dict[str, Any]] = []
+    seen_event_ids: set = set()
+    calendars_truncated: list[str] = []
 
     if fetch_all or not max_results:
-        # Full fetch mode: Get ALL events in date range for each calendar
-        log.info(
-            f"Fetching ALL events for {len(selected_cal_objs)} calendars in date range"
-        )
+        log.info(f"Fetching ALL events for {len(selected_cal_objs)} calendars in date range")
         for cal in selected_cal_objs:
             try:
-                result = fetch_all_calendar_events(
-                    cal["id"], token_str, time_min, time_max
-                )
+                result = fetch_all_calendar_events(cal["id"], user_id, time_min, time_max)
                 events = result.get("items", [])
 
-                # Track if this calendar was truncated
                 if result.get("truncated", False):
                     calendars_truncated.append(cal["id"])
                     log.warning(
@@ -548,11 +391,10 @@ def get_calendar_events(
             except Exception as e:
                 log.error(f"Error fetching events for calendar {cal['id']}: {e}")
     else:
-        # Limited fetch mode: Get up to max_results per calendar
         for cal in selected_cal_objs:
             try:
                 result = fetch_calendar_events(
-                    cal["id"], token_str, None, time_min, time_max, max_results
+                    cal["id"], user_id, None, time_min, time_max, max_results
                 )
                 events = result.get("items", [])
 
@@ -568,11 +410,8 @@ def get_calendar_events(
             except Exception as e:
                 log.error(f"Error fetching events for calendar {cal['id']}: {e}")
 
-    # Sort all events by start time for consistent ordering
     all_events.sort(
-        key=lambda e: (
-            e.get("start", {}).get("dateTime") or e.get("start", {}).get("date") or ""
-        )
+        key=lambda e: e.get("start", {}).get("dateTime") or e.get("start", {}).get("date") or ""
     )
 
     log.set(
@@ -583,42 +422,25 @@ def get_calendar_events(
             "calendars_truncated": len(calendars_truncated),
         }
     )
-    log.info(
-        f"Fetched {len(all_events)} total events from {len(selected_cal_objs)} calendars"
-    )
+    log.info(f"Fetched {len(all_events)} total events from {len(selected_cal_objs)} calendars")
 
     return {
         "events": all_events,
         "selectedCalendars": user_selected_calendars,
-        "has_more": len(calendars_truncated) > 0,  # True if any calendar hit limits
-        "calendars_truncated": calendars_truncated,  # List of calendar IDs that were truncated
+        "has_more": len(calendars_truncated) > 0,
+        "calendars_truncated": calendars_truncated,
     }
 
 
 def get_calendar_events_by_id(
     calendar_id: str,
-    access_token: str,
-    page_token: Optional[str] = None,
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Fetch events for a specific calendar by its ID.
-
-    Args:
-        calendar_id (str): The calendar identifier.
-        access_token (str): The access token.
-        user_id (Optional[str]): User ID for token refresh if needed.
-        page_token (Optional[str]): Pagination token.
-        time_min (Optional[str]): Start time filter.
-        time_max (Optional[str]): End time filter.
-
-    Returns:
-        dict: A dictionary containing the events and a nextPageToken if available.
-    """
-    events_data = fetch_calendar_events(
-        calendar_id, access_token, page_token, time_min, time_max
-    )
+    user_id: str,
+    page_token: str | None = None,
+    time_min: str | None = None,
+    time_max: str | None = None,
+) -> dict[str, Any]:
+    """Fetch events for a specific calendar by its ID."""
+    events_data = fetch_calendar_events(calendar_id, user_id, page_token, time_min, time_max)
 
     events = filter_events(events_data.get("items", []))
     return {
@@ -628,90 +450,56 @@ def get_calendar_events_by_id(
 
 
 def find_event_for_action(
-    access_token: str,
-    event_lookup_data: EventLookupRequest,
     user_id: str,
-) -> Optional[dict]:
-    """
-    Find a specific event given either:
-    - query (searches for the first matching event)
-    - both calendar_id and event_id (fetches by ID)
-    Returns the event dict or None if not found.
-    Raises HTTPException for invalid input.
-    """
+    event_lookup_data: EventLookupRequest,
+) -> dict | None:
+    """Find a specific event by query or by (calendar_id, event_id)."""
     if event_lookup_data.query:
         search_results = search_calendar_events_native(
             query=event_lookup_data.query,
             user_id=user_id,
-            access_token=access_token,
         )
         matching_events = search_results.get("matching_events", [])
         if not matching_events:
             return None
         return matching_events[0]
-    else:
-        url = f"https://www.googleapis.com/calendar/v3/calendars/{event_lookup_data.calendar_id}/events/{event_lookup_data.event_id}"
-        headers = {"Authorization": f"Bearer {access_token}"}
-        response = http_client.get(url, headers=headers)
-        if response.status_code == 200:
-            return response.json()
-        return None
+
+    try:
+        return _proxy(
+            user_id,
+            endpoint=(
+                f"{CALENDAR_API_BASE}/calendars/"
+                f"{event_lookup_data.calendar_id}/events/{event_lookup_data.event_id}"
+            ),
+            method="GET",
+        )
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return None
+        raise
 
 
 def create_calendar_event(
     event: EventCreateRequest,
-    access_token: str,
-    user_id: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Create a new calendar event using the Google Calendar API.
-    The function normalizes the provided timezone and ensures the event datetimes are timezone-aware.
-    Supports full-day events, recurring events, and custom calendar selection.
-
-    Args:
-        event (EventCreateRequest): The event details, including optional recurrence rules.
-        access_token (str): The access token.
-        user_id (Optional[str]): User ID for token refresh.
-
-    Returns:
-        dict: The newly created event details.
-
-    Raises:
-        HTTPException: If event creation fails.
-    """
-    # Determine which calendar to use (default to primary if not specified)
+    user_id: str,
+) -> dict[str, Any]:
+    """Create a new calendar event using the Google Calendar API."""
     calendar_id = event.calendar_id or "primary"
-    url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
 
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
-
-    # Create the basic event payload
     event_payload: dict[str, Any] = {
         "summary": event.summary,
         "description": event.description,
     }
 
-    # Handle different event types (all-day vs. time-specific)
     if event.is_all_day:
-        # For all-day events, use date format without time component
         if event.start and event.end:
-            # If start and end dates are provided, extract the date parts
-            start_date = (
-                event.start.split("T")[0] if "T" in event.start else event.start
-            )
+            start_date = event.start.split("T")[0] if "T" in event.start else event.start
             end_date = event.end.split("T")[0] if "T" in event.end else event.end
         elif event.start:
-            # If only start date is provided, end date is the next day
-            start_date = (
-                event.start.split("T")[0] if "T" in event.start else event.start
-            )
+            start_date = event.start.split("T")[0] if "T" in event.start else event.start
             start_dt = datetime.strptime(start_date, "%Y-%m-%d")
             end_date = (start_dt + timedelta(days=1)).strftime("%Y-%m-%d")
         else:
-            # If no dates provided, default to today for start and tomorrow for end
             today = datetime.now()
             start_date = today.strftime("%Y-%m-%d")
             end_date = (today + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -719,19 +507,14 @@ def create_calendar_event(
         event_payload["start"] = {"date": start_date}
         event_payload["end"] = {"date": end_date}
     else:
-        # For time-specific events, use datetime with timezone
         try:
-            # Both start and end times are required for time-specific events
             if not event.start or not event.end:
                 raise HTTPException(
                     status_code=400,
                     detail="Start and end times are required for time-specific events",
                 )
 
-            # Get timezone from event or use default
             timezone = getattr(event, "timezone", None) or "UTC"
-
-            # Ensure times have timezone indicator if they don't
             start_time = event.start
             end_time = event.end
 
@@ -741,7 +524,6 @@ def create_calendar_event(
                 and "+" not in start_time
                 and "-" not in start_time[-6:]
             ):
-                # No timezone info, add Z for UTC
                 start_time = start_time + "Z"
             if (
                 end_time
@@ -751,29 +533,18 @@ def create_calendar_event(
             ):
                 end_time = end_time + "Z"
 
-            # The calendar tool has already processed times - use them directly
-            event_payload["start"] = {
-                "dateTime": start_time,
-                "timeZone": timezone,
-            }
-            event_payload["end"] = {
-                "dateTime": end_time,
-                "timeZone": timezone,
-            }
+            event_payload["start"] = {"dateTime": start_time, "timeZone": timezone}
+            event_payload["end"] = {"dateTime": end_time, "timeZone": timezone}
+        except HTTPException:
+            raise
         except Exception as e:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid datetime format: {str(e)}"
-            )
+            raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}")
 
-    # Handle recurrence rules if provided
     if event.recurrence:
         try:
-            # Convert recurrence data to Google Calendar format
             recurrence_rules = event.recurrence.to_google_calendar_format()
             event_payload["recurrence"] = recurrence_rules
 
-            # For recurring events, preserve the user's timezone instead of forcing UTC
-            # This ensures recurring events appear at the correct time in the user's timezone
             if not event.is_all_day:
                 timezone = getattr(event, "timezone", None) or "UTC"
                 if "timeZone" in event_payload.get("start", {}):
@@ -782,16 +553,12 @@ def create_calendar_event(
                     event_payload["end"]["timeZone"] = timezone
 
         except Exception as e:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid recurrence rule format: {str(e)}"
-            )
+            raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
 
-    # Handle attendees if provided
     if event.attendees:
         event_payload["attendees"] = [{"email": e} for e in event.attendees]
 
-    # Handle Google Meet creation if requested
-    query_params: dict[str, str] = {"sendUpdates": "all"} if event.attendees else {}
+    query_params: dict[str, Any] = {"sendUpdates": "all"} if event.attendees else {}
     if event.create_meeting_room:
         event_payload["conferenceData"] = {
             "createRequest": {
@@ -801,89 +568,35 @@ def create_calendar_event(
         }
         query_params["conferenceDataVersion"] = "1"
 
-    # Send request to create the event
-    try:
-        response = http_client.post(
-            url,
-            headers=headers,
-            json=event_payload,
-            params=query_params if query_params else None,
-        )
+    response_data = _proxy(
+        user_id,
+        endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
+        method="POST",
+        body=event_payload,
+        query=query_params or None,
+    )
 
-        # Handle response
-        if response.status_code in (200, 201):
-            response_data = response.json()
-            log.set(
-                calendar={
-                    "action": "create_event",
-                    "calendar_id": calendar_id,
-                    "summary": event.summary,
-                    "event_id": response_data.get("id"),
-                }
-            )
-            return response_data
-        elif response.status_code == 403:
-            raise HTTPException(
-                status_code=403,
-                detail="Insufficient authentication scopes. Please ensure your token includes the required scopes.",
-            )
-        elif response.status_code == 401:
-            # The decorator will handle token refresh, but we need to raise a 401 to trigger it
-            raise HTTPException(status_code=401, detail="Authentication failed")
-        else:
-            try:
-                response_json = response.json()
-                if isinstance(response_json, dict):
-                    error_detail = response_json.get("error", {}).get(
-                        "message", "Unknown error"
-                    )
-                else:
-                    error_detail = "Unknown error"
-            except Exception:
-                error_detail = "Unknown error, could not parse response"
-
-            raise HTTPException(status_code=response.status_code, detail=error_detail)
-    except httpx.RequestError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create event: {str(e)}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+    log.set(
+        calendar={
+            "action": "create_event",
+            "calendar_id": calendar_id,
+            "summary": event.summary,
+            "event_id": response_data.get("id") if isinstance(response_data, dict) else None,
+        }
+    )
+    return response_data
 
 
-def get_user_calendar_preferences(user_id: str) -> Dict[str, List[str]]:
-    """
-    Retrieve the user's selected calendar preferences from the database.
-
-    Args:
-        user_id (str): The ID of the user whose preferences are being retrieved.
-
-    Returns:
-        Dict[str, List[str]]: A dictionary with the user's selected calendar IDs.
-
-    Raises:
-        HTTPException: If preferences are not found for the user.
-    """
+def get_user_calendar_preferences(user_id: str) -> dict[str, list[str]]:
+    """Retrieve the user's selected calendar preferences from the database."""
     preferences = calendars_collection.find_one({"user_id": user_id})
     if preferences and "selected_calendars" in preferences:
         return {"selectedCalendars": preferences["selected_calendars"]}
-    else:
-        raise HTTPException(status_code=404, detail="Calendar preferences not found")
+    raise HTTPException(status_code=404, detail="Calendar preferences not found")
 
 
-def update_user_calendar_preferences(
-    user_id: str, selected_calendars: List[str]
-) -> Dict[str, str]:
-    """
-    Update the user's selected calendar preferences in the database.
-
-    Args:
-        user_id (str): The ID of the user whose preferences are being updated.
-        selected_calendars (List[str]): The list of selected calendar IDs to save.
-
-    Returns:
-        Dict[str, str]: A message indicating the result of the update operation.
-    """
+def update_user_calendar_preferences(user_id: str, selected_calendars: list[str]) -> dict[str, str]:
+    """Update the user's selected calendar preferences in the database."""
     result = calendars_collection.update_one(
         {"user_id": user_id},
         {"$set": {"selected_calendars": selected_calendars}},
@@ -891,77 +604,48 @@ def update_user_calendar_preferences(
     )
     if result.modified_count or result.upserted_id:
         return {"message": "Calendar preferences updated successfully"}
-    else:
-        return {"message": "No changes made to calendar preferences"}
+    return {"message": "No changes made to calendar preferences"}
 
 
 def search_calendar_events_native(
     query: str,
     user_id: str,
-    access_token: str,
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Search calendar events using Google Calendar API's native search functionality.
-    This is much more efficient than fetching all events and filtering locally.
-
-    Args:
-        query (str): Search query string
-        user_id (str): User identifier
-        access_token (str): Access token
-        time_min (Optional[str]): Start time filter
-        time_max (Optional[str]): End time filter
-
-    Returns:
-        dict: Search results with matching events
-    """
-
-    # Get user's selected calendars - token refresh will be handled by the decorator
-    calendar_list_data = fetch_calendar_list(access_token)
-    valid_token = access_token
+    time_min: str | None = None,
+    time_max: str | None = None,
+) -> dict[str, Any]:
+    """Search calendar events using Google Calendar API's native search."""
+    calendar_list_data = fetch_calendar_list(user_id)
     calendars = calendar_list_data.get("items", [])
 
-    # Get user's calendar preferences
-    user_selected_calendars: List[str] = []
+    user_selected_calendars: list[str] = []
     preferences = calendars_collection.find_one({"user_id": user_id})
     if preferences and preferences.get("selected_calendars"):
         user_selected_calendars = preferences["selected_calendars"]
         log.info(f"User has calendar preferences: {user_selected_calendars}")
     else:
-        # Default: select all available calendars
         user_selected_calendars = [cal["id"] for cal in calendars]
         log.info(
             f"No preferences found, defaulting to all calendars: {len(user_selected_calendars)} calendars"
         )
 
-    # Filter the calendars to only those that are selected
-    selected_cal_objs = [
-        cal for cal in calendars if cal["id"] in user_selected_calendars
-    ]
+    selected_cal_objs = [cal for cal in calendars if cal["id"] in user_selected_calendars]
 
     log.info(
         f"Searching in {len(selected_cal_objs)} calendars: {[cal['summary'] for cal in selected_cal_objs]}"
     )
 
-    # If no calendars are selected, search all available calendars
     if not selected_cal_objs:
         log.info("No selected calendars found, searching all available calendars")
         selected_cal_objs = calendars
 
-    all_matching_events = []
+    all_matching_events: list[dict[str, Any]] = []
     total_events_searched = 0
 
-    # Search each calendar sequentially
     for cal in selected_cal_objs:
         try:
-            result = search_events_in_calendar(
-                cal["id"], query, valid_token, time_min, time_max
-            )
+            result = search_events_in_calendar(cal["id"], query, user_id, time_min, time_max)
             events = result.get("items", [])
-            log.info(
-                f"Found {len(events)} events in calendar '{cal.get('summary', cal['id'])}'"
-            )
+            log.info(f"Found {len(events)} events in calendar '{cal.get('summary', cal['id'])}'")
 
             for event in events:
                 event["calendarId"] = cal["id"]
@@ -979,15 +663,12 @@ def search_calendar_events_native(
 
     log.info(f"Total matching events across all calendars: {len(all_matching_events)}")
 
-    # If no events found in selected calendars, try searching all calendars
     if not all_matching_events and selected_cal_objs != calendars:
         log.info("No events found in selected calendars, searching all calendars...")
 
         for cal in calendars:
             try:
-                result = search_events_in_calendar(
-                    cal["id"], query, valid_token, time_min, time_max
-                )
+                result = search_events_in_calendar(cal["id"], query, user_id, time_min, time_max)
                 events = result.get("items", [])
 
                 if events:
@@ -1017,167 +698,72 @@ def search_calendar_events_native(
 def search_events_in_calendar(
     calendar_id: str,
     query: str,
-    access_token: str,
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Search events in a specific calendar using Google Calendar API's native search.
-
-    Args:
-        calendar_id (str): Calendar identifier
-        query (str): Search query string
-        access_token (str): Access token
-        time_min (Optional[str]): Start time filter
-        time_max (Optional[str]): End time filter
-
-    Returns:
-        dict: Search results from the specific calendar
-    """
-    url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
-    headers = {"Authorization": f"Bearer {access_token}"}
-
-    params: Dict[str, Union[str, int, bool]] = {
-        "q": query,  # This is the key parameter for native search
+    user_id: str,
+    time_min: str | None = None,
+    time_max: str | None = None,
+) -> dict[str, Any]:
+    """Search events in a specific calendar using Google Calendar API's native search."""
+    params: dict[str, Any] = {
+        "q": query,
         "maxResults": 50,
-        "singleEvents": True,
+        "singleEvents": "true",
         "orderBy": "startTime",
     }
-
-    # Only add time filters if they are explicitly provided
     if time_min:
         params["timeMin"] = time_min
     if time_max:
         params["timeMax"] = time_max
 
-    try:
-        log.info(
-            f"Searching calendar {calendar_id} with query '{query}' and params: {params}"
-        )
-        response = http_client.get(url, headers=headers, params=params)
-        if response.status_code == 200:
-            result = response.json()
-            event_count = len(result.get("items", []))
-            log.info(f"Calendar {calendar_id} search returned {event_count} events")
-            return result
-        else:
-            error_detail = (
-                response.json().get("error", {}).get("message", "Unknown error")
-            )
-            log.error(
-                f"Calendar {calendar_id} search failed: {response.status_code} - {error_detail}"
-            )
-            raise HTTPException(status_code=response.status_code, detail=error_detail)
-    except httpx.RequestError as e:
-        log.error(f"HTTP search request failed for calendar {calendar_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"HTTP search request failed: {e}")
+    log.info(f"Searching calendar {calendar_id} with query '{query}' and params: {params}")
+    result = _proxy(
+        user_id,
+        endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
+        method="GET",
+        query=params,
+    )
+    event_count = len(result.get("items", []))
+    log.info(f"Calendar {calendar_id} search returned {event_count} events")
+    return result
 
 
 def delete_calendar_event(
     event: EventDeleteRequest,
-    access_token: str,
-    user_id: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Delete a calendar event using the Google Calendar API.
-
-    Args:
-        event (EventDeleteRequest): The event deletion request details.
-        access_token (str): The access token.
-        user_id (Optional[str]): User ID for token refresh if needed.
-
-    Returns:
-        dict: Confirmation of deletion.
-
-    Raises:
-        HTTPException: If event deletion fails.
-    """
+    user_id: str,
+) -> dict[str, Any]:
+    """Delete a calendar event using the Google Calendar API."""
     calendar_id = event.calendar_id or "primary"
-    url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events/{event.event_id}"
-
-    headers = {"Authorization": f"Bearer {access_token}"}
 
     try:
-        response = http_client.delete(url, headers=headers)
-
-        if response.status_code == 204:
-            return {"success": True, "message": "Event deleted successfully"}
-        elif response.status_code == 404:
-            raise HTTPException(
-                status_code=404, detail="Event not found or already deleted"
-            )
-        elif response.status_code == 401:
-            # The decorator will handle token refresh, but we need to raise a 401 to trigger it
-            raise HTTPException(status_code=401, detail="Authentication failed")
-        else:
-            error_msg = "Unknown error occurred during deletion"
-            if response.content:
-                try:
-                    error_json = response.json()
-                    if isinstance(error_json, dict):
-                        error_msg = error_json.get("error", {}).get(
-                            "message", error_msg
-                        )
-                except Exception as json_error:
-                    log.warning(
-                        f"Failed to parse error response JSON: {str(json_error)}"
-                    )
-            raise HTTPException(status_code=response.status_code, detail=error_msg)
-    except httpx.RequestError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete event: {str(e)}")
+        _proxy(
+            user_id,
+            endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events/{event.event_id}",
+            method="DELETE",
+        )
+        return {"success": True, "message": "Event deleted successfully"}
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Event not found or already deleted")
+        raise
 
 
 def update_calendar_event(
     event: EventUpdateRequest,
-    access_token: str,
-    user_id: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Update a calendar event using the Google Calendar API.
-
-    Args:
-        event (EventUpdateRequest): The event update request details.
-        access_token (str): The access token.
-        user_id (Optional[str]): User ID for token refresh if needed.
-
-    Returns:
-        dict: The updated event details.
-
-    Raises:
-        HTTPException: If event update fails.
-    """
+    user_id: str,
+) -> dict[str, Any]:
+    """Update a calendar event using the Google Calendar API."""
     calendar_id = event.calendar_id or "primary"
-    url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events/{event.event_id}"
+    endpoint = f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events/{event.event_id}"
 
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
-
-    # First, get the existing event to preserve fields that weren't updated
     try:
-        get_response = http_client.get(
-            url, headers={"Authorization": f"Bearer {access_token}"}
-        )
+        existing_event = _proxy(user_id, endpoint=endpoint, method="GET")
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Event not found or access denied")
+        raise
 
-        if get_response.status_code != 200:
-            raise HTTPException(
-                status_code=404, detail="Event not found or access denied"
-            )
-
-        existing_event = get_response.json()
-
-    except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to fetch existing event: {str(e)}"
-        )
-
-    # Create the update payload, preserving existing values for unspecified fields
-    event_payload = {
+    event_payload: dict[str, Any] = {
         "summary": (
-            event.summary
-            if event.summary is not None
-            else existing_event.get("summary", "")
+            event.summary if event.summary is not None else existing_event.get("summary", "")
         ),
         "description": (
             event.description
@@ -1186,22 +772,16 @@ def update_calendar_event(
         ),
     }
 
-    # Handle recurrence updates if provided
     if event.recurrence is not None:
         try:
-            # Convert recurrence data to Google Calendar format
             recurrence_rules = event.recurrence.to_google_calendar_format()
             event_payload["recurrence"] = recurrence_rules
         except Exception as e:
             log.error(f"Error processing recurrence rules: {e}")
-            raise HTTPException(
-                status_code=400, detail=f"Invalid recurrence rule format: {str(e)}"
-            )
+            raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
     elif "recurrence" in existing_event:
-        # Preserve existing recurrence if not being updated
         event_payload["recurrence"] = existing_event.get("recurrence", [])
 
-    # Handle time updates
     if event.start is not None or event.end is not None or event.is_all_day is not None:
         is_all_day = (
             event.is_all_day
@@ -1210,11 +790,8 @@ def update_calendar_event(
         )
 
         if is_all_day:
-            # Handle all-day event updates
             if event.start is not None:
-                start_date = (
-                    event.start.split("T")[0] if "T" in event.start else event.start
-                )
+                start_date = event.start.split("T")[0] if "T" in event.start else event.start
             else:
                 start_date = existing_event.get("start", {}).get("date", "")
 
@@ -1226,41 +803,31 @@ def update_calendar_event(
             event_payload["start"] = {"date": start_date}
             event_payload["end"] = {"date": end_date}
         else:
-            # Handle time-specific event updates
             try:
-                # Use processed times directly from calendar tool
                 if event.start is not None:
                     start_time = event.start
                 else:
-                    # Keep existing start time
                     start_time = existing_event.get("start", {}).get("dateTime", "")
 
                 if event.end is not None:
                     end_time = event.end
                 else:
-                    # Keep existing end time
                     end_time = existing_event.get("end", {}).get("dateTime", "")
 
-                # Preserve the timezone from the request or existing event
-                timezone = None
+                timezone: str | None = None
                 if event.timezone:
-                    # Use timezone from the request
                     timezone = event.timezone
                 elif hasattr(event, "timezone_offset") and event.timezone_offset:
-                    # If timezone_offset is provided, use it (though we prefer full timezone names)
                     timezone = event.timezone_offset
                 elif existing_event.get("start", {}).get("timeZone"):
-                    # Preserve existing timezone
                     timezone = existing_event.get("start", {}).get("timeZone")
 
-                # Ensure times have timezone indicator if they don't
                 if (
                     start_time
                     and not start_time.endswith("Z")
                     and "+" not in start_time
                     and "-" not in start_time[-6:]
                 ):
-                    # No timezone info, add Z for UTC
                     start_time = start_time + "Z"
                 if (
                     end_time
@@ -1270,8 +837,8 @@ def update_calendar_event(
                 ):
                     end_time = end_time + "Z"
 
-                start_payload = {"dateTime": start_time}
-                end_payload = {"dateTime": end_time}
+                start_payload: dict[str, str] = {"dateTime": start_time}
+                end_payload: dict[str, str] = {"dateTime": end_time}
 
                 if timezone:
                     start_payload["timeZone"] = timezone
@@ -1280,39 +847,18 @@ def update_calendar_event(
                 event_payload["start"] = start_payload
                 event_payload["end"] = end_payload
             except Exception as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid datetime format: {str(e)}",
-                )
+                raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}")
     else:
-        # Preserve existing start/end times
         event_payload["start"] = existing_event.get("start", {})
         event_payload["end"] = existing_event.get("end", {})
 
-    # Send request to update the event
     try:
-        response = http_client.put(url, headers=headers, json=event_payload)
+        updated_event = _proxy(user_id, endpoint=endpoint, method="PUT", body=event_payload)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Event not found or access denied")
+        raise
 
-        if response.status_code == 200:
-            updated_event = response.json()
-            # Add calendarId to match the format of fetched events
-            updated_event["calendarId"] = calendar_id
-            return updated_event
-        elif response.status_code == 404:
-            raise HTTPException(
-                status_code=404, detail="Event not found or access denied"
-            )
-        elif response.status_code == 401:
-            # The decorator will handle token refresh, but we need to raise a 401 to trigger it
-            raise HTTPException(status_code=401, detail="Authentication failed")
-        else:
-            response_json = response.json()
-            if isinstance(response_json, dict):
-                error_detail = response_json.get("error", {}).get(
-                    "message", "Unknown error"
-                )
-            else:
-                error_detail = "Unknown error"
-            raise HTTPException(status_code=response.status_code, detail=error_detail)
-    except httpx.RequestError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update event: {str(e)}")
+    if isinstance(updated_event, dict):
+        updated_event["calendarId"] = calendar_id
+    return updated_event

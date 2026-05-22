@@ -1,5 +1,9 @@
 import type { BottomSheetBackdropProps } from "@gorhom/bottom-sheet";
-import GorhomBottomSheet, { BottomSheetBackdrop } from "@gorhom/bottom-sheet";
+import {
+  BottomSheetBackdrop,
+  BottomSheetModal,
+  useBottomSheetSpringConfigs,
+} from "@gorhom/bottom-sheet";
 import {
   createContext,
   type ReactNode,
@@ -14,7 +18,7 @@ import { View } from "react-native";
 // ─── Context ─────────────────────────────────────────────────────────────────
 
 interface BottomSheetContextValue {
-  sheetRef: React.RefObject<GorhomBottomSheet | null>;
+  sheetRef: React.RefObject<BottomSheetModal | null>;
   snapPoints: Array<string | number>;
   enableDynamicSizing: boolean;
   enablePanDownToClose: boolean;
@@ -47,13 +51,13 @@ function BottomSheetRoot({
   onOpenChange,
   children,
 }: BottomSheetRootProps) {
-  const sheetRef = useRef<GorhomBottomSheet | null>(null);
+  const sheetRef = useRef<BottomSheetModal | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      sheetRef.current?.expand();
+      sheetRef.current?.present();
     } else {
-      sheetRef.current?.close();
+      sheetRef.current?.dismiss();
     }
   }, [isOpen]);
 
@@ -73,6 +77,12 @@ function BottomSheetRoot({
 }
 
 // ─── Portal (pass-through wrapper) ───────────────────────────────────────────
+//
+// BottomSheetModal portals its content through the BottomSheetModalProvider
+// mounted at the app root (see apps/mobile/src/app/_layout.tsx). This keeps
+// the sheet's gesture handler tree at root level — sibling to (not nested
+// inside) sibling DrawerLayout/Stack gesture trees. Portal here is a logical
+// no-op kept for API parity.
 
 interface PortalProps {
   children: ReactNode;
@@ -95,6 +105,7 @@ interface ContentProps {
   snapPoints?: Array<string | number>;
   enableDynamicSizing?: boolean;
   enablePanDownToClose?: boolean;
+  enableContentPanningGesture?: boolean;
   backgroundStyle?: StyleProp<ViewStyle>;
   handleIndicatorStyle?: StyleProp<ViewStyle>;
   keyboardBehavior?: string;
@@ -107,11 +118,18 @@ function Content({
   snapPoints = ["50%"],
   enableDynamicSizing = false,
   enablePanDownToClose = true,
+  enableContentPanningGesture = true,
   backgroundStyle,
   handleIndicatorStyle,
 }: ContentProps) {
   const { sheetRef: sheetRefCtx, onOpenChange } = useBottomSheetContext();
-  const sheetRef = sheetRefCtx as React.RefObject<GorhomBottomSheet>;
+  const sheetRef = sheetRefCtx as React.RefObject<BottomSheetModal>;
+
+  const animationConfigs = useBottomSheetSpringConfigs({
+    damping: 20,
+    stiffness: 200,
+    mass: 1,
+  });
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -125,37 +143,33 @@ function Content({
     [],
   );
 
-  const handleChange = useCallback(
-    (index: number) => {
-      if (index === -1) {
-        onOpenChange?.(false);
-      }
-    },
-    [onOpenChange],
-  );
+  const handleDismiss = useCallback(() => {
+    onOpenChange?.(false);
+  }, [onOpenChange]);
 
   return (
-    <GorhomBottomSheet
+    <BottomSheetModal
       ref={sheetRef}
-      index={-1}
       snapPoints={enableDynamicSizing ? undefined : snapPoints}
       enableDynamicSizing={enableDynamicSizing}
       enablePanDownToClose={enablePanDownToClose}
+      enableContentPanningGesture={enableContentPanningGesture}
       backdropComponent={renderBackdrop}
+      animationConfigs={animationConfigs}
       backgroundStyle={
         backgroundStyle
           ? (backgroundStyle as StyleProp<ViewStyle>)
-          : { backgroundColor: "#1c1c1e" }
+          : { backgroundColor: "#18181b" }
       }
       handleIndicatorStyle={
         handleIndicatorStyle
           ? (handleIndicatorStyle as StyleProp<ViewStyle>)
           : { backgroundColor: "#4b5563" }
       }
-      onChange={handleChange}
+      onDismiss={handleDismiss}
     >
       <View style={{ flex: 1 }}>{children}</View>
-    </GorhomBottomSheet>
+    </BottomSheetModal>
   );
 }
 

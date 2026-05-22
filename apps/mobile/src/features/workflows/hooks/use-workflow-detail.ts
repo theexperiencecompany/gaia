@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { workflowApi } from "../api/workflow-api";
+import { WORKFLOW_EXECUTIONS_PAGE_SIZE } from "../constants/timing";
 import type { Workflow, WorkflowExecution } from "../types/workflow-types";
 
 interface UseWorkflowDetailState {
@@ -18,8 +19,6 @@ interface UseWorkflowDetailReturn extends UseWorkflowDetailState {
   loadMoreExecutions: () => Promise<void>;
 }
 
-const EXECUTIONS_PAGE_SIZE = 10;
-
 export function useWorkflowDetail(
   workflowId: string | null,
 ): UseWorkflowDetailReturn {
@@ -32,6 +31,12 @@ export function useWorkflowDetail(
     isLoadingExecutions: false,
     error: null,
   });
+
+  // Track current pagination offset in a ref so the callback identity stays
+  // stable as new executions arrive (item 1 in the workflows-rebuild plan —
+  // including state.executions.length in deps caused the callback to be
+  // recreated on every fetch and re-trigger the effect).
+  const executionsOffsetRef = useRef(0);
 
   const fetchWorkflow = useCallback(async () => {
     if (!workflowId) return;
@@ -56,12 +61,13 @@ export function useWorkflowDetail(
     async (reset = true) => {
       if (!workflowId) return;
       setState((prev) => ({ ...prev, isLoadingExecutions: true }));
+      const offset = reset ? 0 : executionsOffsetRef.current;
       try {
-        const offset = reset ? 0 : state.executions.length;
         const response = await workflowApi.getWorkflowExecutions(workflowId, {
-          limit: EXECUTIONS_PAGE_SIZE,
+          limit: WORKFLOW_EXECUTIONS_PAGE_SIZE,
           offset,
         });
+        executionsOffsetRef.current = offset + response.executions.length;
         setState((prev) => ({
           ...prev,
           executions: reset
@@ -75,14 +81,14 @@ export function useWorkflowDetail(
         setState((prev) => ({ ...prev, isLoadingExecutions: false }));
       }
     },
-    [workflowId, state.executions.length],
+    [workflowId],
   );
 
   useEffect(() => {
+    executionsOffsetRef.current = 0;
     void fetchWorkflow();
     void fetchExecutions(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workflowId]);
+  }, [fetchWorkflow, fetchExecutions]);
 
   const loadMoreExecutions = useCallback(async () => {
     if (!state.isLoadingExecutions && state.hasMoreExecutions) {
@@ -90,10 +96,15 @@ export function useWorkflowDetail(
     }
   }, [state.isLoadingExecutions, state.hasMoreExecutions, fetchExecutions]);
 
+  const refetchExecutions = useCallback(
+    () => fetchExecutions(true),
+    [fetchExecutions],
+  );
+
   return {
     ...state,
     refetch: fetchWorkflow,
-    refetchExecutions: () => fetchExecutions(true),
+    refetchExecutions,
     loadMoreExecutions,
   };
 }

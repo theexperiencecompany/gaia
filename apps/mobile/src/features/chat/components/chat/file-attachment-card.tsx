@@ -161,7 +161,7 @@ interface FileAttachmentCardProps {
 }
 
 export function FileAttachmentCard({ attachment }: FileAttachmentCardProps) {
-  const { spacing, fontSize, moderateScale } = useResponsive();
+  const { spacing, fontSize } = useResponsive();
 
   const fileType = detectFileType(attachment.mimeType, attachment.fileName);
   const config = FILE_TYPE_CONFIGS[fileType];
@@ -176,12 +176,12 @@ export function FileAttachmentCard({ attachment }: FileAttachmentCardProps) {
   return (
     <PressableFeedback
       onPress={() => void handleOpen()}
-      style={{ maxWidth: 280 }}
+      style={{ width: "100%" }}
     >
       <Card
         variant="secondary"
         animation="disable-all"
-        className="rounded-xl border border-white/[0.08] bg-white/[0.05]"
+        className="rounded-2xl bg-zinc-800"
       >
         <Card.Body
           style={{
@@ -196,7 +196,7 @@ export function FileAttachmentCard({ attachment }: FileAttachmentCardProps) {
             style={{
               width: 44,
               height: 44,
-              borderRadius: moderateScale(10, 0.5),
+              borderRadius: 12,
               backgroundColor: config.bgColor,
               alignItems: "center",
               justifyContent: "center",

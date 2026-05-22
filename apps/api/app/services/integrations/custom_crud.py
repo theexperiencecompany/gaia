@@ -1,12 +1,12 @@
 """Custom integration CRUD operations."""
 
-import uuid
 from datetime import UTC, datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
+import uuid
 
 from mcp_use.client.exceptions import OAuthAuthenticationError
+from sqlalchemy import delete
 
-from shared.py.wide_events import log
 from app.db.chroma.chroma_cleanup import cleanup_integration_chroma_data
 from app.db.chroma.public_integrations_store import remove_public_integration
 from app.db.mongodb.collections import (
@@ -29,7 +29,7 @@ from app.services.integrations.user_integration_status import (
 from app.services.integrations.user_integrations import add_user_integration
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.favicon_utils import fetch_favicon_from_url
-from sqlalchemy import delete
+from shared.py.wide_events import log
 
 
 async def create_custom_integration(
@@ -38,9 +38,7 @@ async def create_custom_integration(
     icon_url: str | None = None,
 ) -> Integration:
     """Create a custom MCP integration."""
-    log.set(
-        integration={"provider": request.name, "action": "create_custom_integration"}
-    )
+    log.set(integration={"provider": request.name, "action": "create_custom_integration"})
     # uuid4 collision probability is negligible (~10^-36); no orphan check needed.
     integration_id = str(uuid.uuid4())
 
@@ -82,11 +80,9 @@ async def update_custom_integration(
     user_id: str,
     integration_id: str,
     request: UpdateCustomIntegrationRequest,
-) -> Optional[Integration]:
+) -> Integration | None:
     """Update a custom integration (creator only)."""
-    log.set(
-        integration={"provider": integration_id, "action": "update_custom_integration"}
-    )
+    log.set(integration={"provider": integration_id, "action": "update_custom_integration"})
     doc = await integrations_collection.find_one(
         {
             "integration_id": integration_id,
@@ -98,7 +94,7 @@ async def update_custom_integration(
     if not doc:
         return None
 
-    update_data: Dict[str, Any] = {}
+    update_data: dict[str, Any] = {}
     if request.name is not None:
         update_data["name"] = request.name
     if request.description is not None:
@@ -115,13 +111,9 @@ async def update_custom_integration(
             # Clean up old ChromaDB namespace when server_url changes
             if old_server_url and old_server_url != request.server_url:
                 try:
-                    await cleanup_integration_chroma_data(
-                        integration_id, old_server_url
-                    )
+                    await cleanup_integration_chroma_data(integration_id, old_server_url)
                 except Exception as e:
-                    log.warning(
-                        f"Failed to clean old namespace for {integration_id}: {e}"
-                    )
+                    log.warning(f"Failed to clean old namespace for {integration_id}: {e}")
 
         if request.requires_auth is not None:
             current_config["requires_auth"] = request.requires_auth
@@ -136,17 +128,13 @@ async def update_custom_integration(
         {"$set": update_data},
     )
 
-    updated_doc = await integrations_collection.find_one(
-        {"integration_id": integration_id}
-    )
+    updated_doc = await integrations_collection.find_one({"integration_id": integration_id})
     return Integration(**updated_doc) if updated_doc else None
 
 
 async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
     """Delete or remove a custom integration based on ownership."""
-    log.set(
-        integration={"provider": integration_id, "action": "delete_custom_integration"}
-    )
+    log.set(integration={"provider": integration_id, "action": "delete_custom_integration"})
     doc = await integrations_collection.find_one(
         {"integration_id": integration_id, "source": "custom"}
     )
@@ -186,9 +174,7 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
             )
             affected_user_ids = [d["user_id"] async for d in affected_users_cursor]
 
-            await user_integrations_collection.delete_many(
-                {"integration_id": integration_id}
-            )
+            await user_integrations_collection.delete_many({"integration_id": integration_id})
 
             for affected_user_id in affected_user_ids:
                 try:
@@ -199,9 +185,7 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
             try:
                 async with get_db_session() as session:
                     await session.execute(
-                        delete(MCPCredential).where(
-                            MCPCredential.integration_id == integration_id
-                        )
+                        delete(MCPCredential).where(MCPCredential.integration_id == integration_id)
                     )
                     await session.commit()
             except Exception as e:
@@ -221,35 +205,34 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
 
             return True
         return False
-    else:
-        result = await user_integrations_collection.delete_one(
-            {"user_id": user_id, "integration_id": integration_id}
-        )
+    result = await user_integrations_collection.delete_one(
+        {"user_id": user_id, "integration_id": integration_id}
+    )
 
-        if result.deleted_count > 0:
-            await delete_cache_by_pattern(f"tools:user:{user_id}:*")
+    if result.deleted_count > 0:
+        await delete_cache_by_pattern(f"tools:user:{user_id}:*")
 
-            try:
-                async with get_db_session() as session:
-                    await session.execute(
-                        delete(MCPCredential).where(
-                            MCPCredential.integration_id == integration_id,
-                            MCPCredential.user_id == user_id,
-                        )
+        try:
+            async with get_db_session() as session:
+                await session.execute(
+                    delete(MCPCredential).where(
+                        MCPCredential.integration_id == integration_id,
+                        MCPCredential.user_id == user_id,
                     )
-                    await session.commit()
-            except Exception as e:
-                log.debug(f"MCP credential deletion failed for {integration_id}: {e}")
+                )
+                await session.commit()
+        except Exception as e:
+            log.debug(f"MCP credential deletion failed for {integration_id}: {e}")
 
-            return True
-        return False
+        return True
+    return False
 
 
 async def create_and_connect_custom_integration(
     user_id: str,
     request: CreateCustomIntegrationRequest,
     mcp_client: Any,
-) -> Tuple[Integration, dict]:
+) -> tuple[Integration, dict]:
     """Create a custom integration and attempt connection."""
     log.set(
         integration={
@@ -284,7 +267,7 @@ async def create_and_connect_custom_integration(
     return await _connect_without_auth(integration, mcp_client)
 
 
-async def _fetch_icon_safely(server_url: str) -> Optional[str]:
+async def _fetch_icon_safely(server_url: str) -> str | None:
     """Fetch favicon with error handling."""
     try:
         return await fetch_favicon_from_url(server_url)
@@ -292,7 +275,7 @@ async def _fetch_icon_safely(server_url: str) -> Optional[str]:
         return None
 
 
-async def _probe_connection_safely(mcp_client: Any, server_url: str) -> Dict[str, Any]:
+async def _probe_connection_safely(mcp_client: Any, server_url: str) -> dict[str, Any]:
     """Probe connection with error handling."""
     try:
         return await mcp_client.probe_connection(server_url)
@@ -302,7 +285,7 @@ async def _probe_connection_safely(mcp_client: Any, server_url: str) -> Dict[str
 
 async def _connect_with_bearer_token(
     user_id: str, integration_id: str, bearer_token: str, mcp_client: Any
-) -> Tuple[Any, dict]:
+) -> tuple[Any, dict]:
     """Store bearer token and attempt connection."""
     token_store = MCPTokenStore(user_id)
     await token_store.store_bearer_token(integration_id, bearer_token)
@@ -323,7 +306,7 @@ async def _connect_with_bearer_token(
 
 async def _connect_without_auth(
     integration: Integration, mcp_client: Any
-) -> Tuple[Integration, dict]:
+) -> tuple[Integration, dict]:
     """Attempt connection without authentication."""
     try:
         tools = await mcp_client.connect(integration.integration_id)
@@ -335,14 +318,12 @@ async def _connect_without_auth(
         await mcp_client.update_integration_auth_status(
             integration.integration_id, requires_auth=True, auth_type="oauth"
         )
-        return integration, await _build_oauth_result(
-            mcp_client, integration.integration_id
-        )
+        return integration, await _build_oauth_result(mcp_client, integration.integration_id)
     except Exception as e:
         return integration, {"status": "failed", "error": str(e)}
 
 
-async def _get_integration(integration_id: str) -> Optional[Integration]:
+async def _get_integration(integration_id: str) -> Integration | None:
     """Fetch integration from database."""
     doc = await integrations_collection.find_one({"integration_id": integration_id})
     return Integration(**doc) if doc else None

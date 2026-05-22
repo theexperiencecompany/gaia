@@ -1,28 +1,23 @@
 """Marketplace integration routes."""
 
-from typing import Optional
+from fastapi import APIRouter, HTTPException
 
-from shared.py.wide_events import log
 from app.schemas.integrations.responses import IntegrationResponse, MarketplaceResponse
 from app.services.integrations.marketplace import (
     get_all_integrations,
     get_integration_details,
 )
-from fastapi import APIRouter, HTTPException
+from shared.py.wide_events import log
 
 router = APIRouter()
 
 
 @router.get("", response_model=MarketplaceResponse)
-async def list_marketplace_integrations(category: Optional[str] = None):
+async def list_marketplace_integrations(category: str | None = None):
     try:
         log.set(operation="list_marketplace_integrations", category=category)
         result = await get_all_integrations(category=category)
-        log.set(
-            result_count=len(result.integrations)
-            if hasattr(result, "integrations")
-            else 0
-        )
+        log.set(result_count=len(result.integrations) if hasattr(result, "integrations") else 0)
         log.set(outcome="success")
         return result
     except Exception as e:

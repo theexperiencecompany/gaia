@@ -15,7 +15,6 @@ from app.agents.memory.profile_extractor import (
     validate_username,
 )
 
-
 # ---------------------------------------------------------------------------
 # filter_emails_by_platform
 # ---------------------------------------------------------------------------
@@ -58,9 +57,7 @@ class TestFilterEmailsByPlatform:
         assert result == []
 
     def test_respects_max_limit(self) -> None:
-        emails = [
-            {"sender": "noreply@github.com", "subject": f"Email {i}"} for i in range(30)
-        ]
+        emails = [{"sender": "noreply@github.com", "subject": f"Email {i}"} for i in range(30)]
         result = filter_emails_by_platform(emails, "github")
         assert len(result) == 20  # MAX_EMAILS_PER_PLATFORM
 
@@ -225,12 +222,8 @@ class TestDeduplicateEmails:
 
     def test_keeps_different_emails(self) -> None:
         emails = [
-            {
-                "messageText": "Welcome to GitHub! Your account is ready. Start coding today."
-            },
-            {
-                "messageText": "New security alert for your repository. Please review immediately."
-            },
+            {"messageText": "Welcome to GitHub! Your account is ready. Start coding today."},
+            {"messageText": "New security alert for your repository. Please review immediately."},
         ]
         result = _deduplicate_emails(emails)
         assert len(result) == 2
@@ -274,9 +267,7 @@ class TestExtractUsernameWithLLM:
         assert result == "NOT_FOUND"
 
     async def test_unknown_platform_returns_not_found(self) -> None:
-        result = await extract_username_with_llm(
-            "unknown_platform", [{"messageText": "hi"}]
-        )
+        result = await extract_username_with_llm("unknown_platform", [{"messageText": "hi"}])
         assert result == "NOT_FOUND"
 
     @patch("app.agents.memory.profile_extractor.settings")

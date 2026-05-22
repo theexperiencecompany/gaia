@@ -16,6 +16,7 @@
     },
     "android": {
       "package": "io.heygaia.gaiamobile",
+      "newArchEnabled": false,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED",
@@ -41,6 +42,17 @@
         {
           "action": "VIEW",
           "data": [
+            {
+              "scheme": "gaia",
+              "host": "integrations",
+              "pathPrefix": "/callback"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        },
+        {
+          "action": "VIEW",
+          "data": [
             { "scheme": "gaia", "host": "chat" },
             { "scheme": "gaia", "host": "todos" },
             { "scheme": "gaia", "host": "notifications" },
@@ -52,6 +64,15 @@
       ]
     },
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",
@@ -87,9 +108,9 @@
         "root": "./src/app"
       },
       "eas": {
-        "projectId": "d40e3b70-3315-4212-9f89-c3efb7f1ef85"
+        "projectId": "15038dfe-abcf-4ac3-92d8-9a4854b29dd1"
       }
     },
-    "owner": "aryanranderiya"
+    "owner": "gaiamobile"
   }
 }

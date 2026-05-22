@@ -1,17 +1,19 @@
-from typing import Optional
-
-import html2text
-import httpx
 from bs4 import BeautifulSoup
 from firecrawl import FirecrawlApp
+import html2text
+import httpx
 from langgraph.config import get_stream_writer
 from tavily import TavilyClient
 
-from shared.py.wide_events import log
 from app.config.settings import settings
-from app.constants.cache import ONE_HOUR_TTL
+from app.constants.cache import (
+    ONE_HOUR_TTL,
+    WEB_SEARCH_CACHE_TTL,
+    WEBPAGE_FETCH_CACHE_TTL,
+)
 from app.decorators.caching import Cacheable
 from app.utils.exceptions import FetchError
+from shared.py.wide_events import log
 
 _HTTPX_HEADERS = {
     "User-Agent": (
@@ -59,7 +61,7 @@ async def fetch_tavily_search(
     query: str,
     count: int,
     search_topic: str = "general",
-    extra_params: Optional[dict] = None,
+    extra_params: dict | None = None,
 ) -> dict:
     """
     Call Tavily API with Redis caching.
@@ -105,7 +107,11 @@ async def fetch_tavily_search(
         return {}
 
 
-@Cacheable(key_pattern="search:{query}:{count}", ttl=ONE_HOUR_TTL, namespace="search")
+@Cacheable(
+    key_pattern="search:{query}:{count}",
+    ttl=WEB_SEARCH_CACHE_TTL,
+    namespace="search",
+)
 async def perform_search(query: str, count: int) -> dict:
     """
     Perform Tavily search and return comprehensive results.
@@ -149,7 +155,9 @@ async def perform_search(query: str, count: int) -> dict:
 
 
 @Cacheable(
-    key_pattern="firecrawl:{url}:{use_stealth}", ttl=ONE_HOUR_TTL, namespace="web"
+    key_pattern="firecrawl:{url}:{use_stealth}",
+    ttl=WEBPAGE_FETCH_CACHE_TTL,
+    namespace="web",
 )
 async def fetch_with_firecrawl(url: str, use_stealth: bool = False) -> str:
     """
@@ -176,8 +184,7 @@ async def fetch_with_firecrawl(url: str, use_stealth: bool = False) -> str:
             if result and hasattr(result, "markdown") and result.markdown:
                 writer({"progress": "Successfully fetched URL with Firecrawl"})
                 return result.markdown
-            else:
-                raise FetchError("No markdown content returned from Firecrawl", url=url)
+            raise FetchError("No markdown content returned from Firecrawl", url=url)
 
         except Exception as e:
             # If normal mode fails and we haven't tried stealth yet, retry with stealth
@@ -187,31 +194,24 @@ async def fetch_with_firecrawl(url: str, use_stealth: bool = False) -> str:
                     status in error_msg
                     for status in ["401", "403", "500", "blocked", "bot", "timeout"]
                 ):
-                    writer(
-                        {
-                            "progress": "Normal mode failed, retrying with stealth mode..."
-                        }
-                    )
+                    writer({"progress": "Normal mode failed, retrying with stealth mode..."})
 
                     # Retry with stealth mode - use proxy parameter
                     result = app.scrape(url, formats=["markdown"], proxy="stealth")
 
                     if result and hasattr(result, "markdown") and result.markdown:
-                        writer(
-                            {"progress": "Successfully fetched URL with stealth mode"}
-                        )
+                        writer({"progress": "Successfully fetched URL with stealth mode"})
                         return result.markdown
-                    else:
-                        raise FetchError(
-                            "No markdown content returned from Firecrawl stealth mode",
-                            url=url,
-                        )
+                    raise FetchError(
+                        "No markdown content returned from Firecrawl stealth mode",
+                        url=url,
+                    )
             raise e
 
     except ValueError as ve:
-        raise FetchError(f"Configuration error: {str(ve)}", url=url) from ve
+        raise FetchError(f"Configuration error: {ve!s}", url=url) from ve
     except Exception as e:
-        raise FetchError(f"Firecrawl error: {str(e)}", url=url) from e
+        raise FetchError(f"Firecrawl error: {e!s}", url=url) from e
 
 
 @Cacheable(key_pattern="httpx:{url}", ttl=ONE_HOUR_TTL, namespace="web")
@@ -263,7 +263,7 @@ async def fetch_with_httpx(url: str) -> str:
     except httpx.HTTPStatusError as e:
         raise FetchError(f"HTTP {e.response.status_code}", url=url) from e
     except Exception as e:
-        raise FetchError(f"httpx error: {str(e)}", url=url) from e
+        raise FetchError(f"httpx error: {e!s}", url=url) from e
 
 
 @Cacheable(key_pattern="ddg:{query}:{count}", ttl=ONE_HOUR_TTL, namespace="search")

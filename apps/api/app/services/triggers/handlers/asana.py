@@ -2,14 +2,14 @@
 Asana trigger handler.
 """
 
-from typing import Any, Dict, List, Set
+from typing import Any
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.trigger_configs import AsanaTaskTriggerConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.wide_events import log
 
 
 class AsanaTriggerHandler(TriggerHandler):
@@ -24,11 +24,11 @@ class AsanaTriggerHandler(TriggerHandler):
     }
 
     @property
-    def trigger_names(self) -> List[str]:
+    def trigger_names(self) -> list[str]:
         return self.SUPPORTED_TRIGGERS
 
     @property
-    def event_types(self) -> Set[str]:
+    def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
     async def register(
@@ -37,7 +37,7 @@ class AsanaTriggerHandler(TriggerHandler):
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-    ) -> List[str]:
+    ) -> list[str]:
         """Register Asana triggers.
 
         Raises:
@@ -61,7 +61,7 @@ class AsanaTriggerHandler(TriggerHandler):
             )
 
         # Build trigger config with optional filters
-        composio_trigger_config: Dict[str, Any] = {}
+        composio_trigger_config: dict[str, Any] = {}
         if trigger_data.project_id:
             composio_trigger_config["project_id"] = trigger_data.project_id
         if trigger_data.workspace_id:
@@ -76,8 +76,8 @@ class AsanaTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: Dict[str, Any]
-    ) -> List[Workflow]:
+        self, event_type: str, trigger_id: str, data: dict[str, Any]
+    ) -> list[Workflow]:
         """Find workflows matching an Asana trigger event."""
         log.set(trigger={"provider": "asana", "event": event_type})
         try:
@@ -89,7 +89,7 @@ class AsanaTriggerHandler(TriggerHandler):
             }
 
             cursor = workflows_collection.find(query)
-            workflows: List[Workflow] = []
+            workflows: list[Workflow] = []
 
             async for workflow_doc in cursor:
                 try:

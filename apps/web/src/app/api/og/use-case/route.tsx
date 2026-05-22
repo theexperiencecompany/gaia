@@ -23,6 +23,15 @@ import {
 
 export const runtime = "edge";
 
+interface OgWorkflow {
+  id?: string;
+  title?: string;
+  description?: string;
+  steps?: { category: string }[];
+  total_executions?: number;
+  creator?: { id?: string; name?: string; avatar?: string };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -35,7 +44,7 @@ export async function GET(request: NextRequest) {
     const apiBaseUrl = getApiBaseUrl();
     const siteBaseUrl = getBaseUrl(request.url);
 
-    let workflow = null;
+    let workflow: OgWorkflow | null = null;
     try {
       const [exploreResponse, communityResponse] = await Promise.all([
         fetch(`${apiBaseUrl}/workflows/explore`, { cache: "no-store" }),

@@ -10,15 +10,13 @@ Used by:
 - call_subagent() in subagent_runner.py (direct subagent calls for testing)
 """
 
-from typing import Optional
-
 from app.utils.agent_utils import format_tool_call_entry
 
 
 async def extract_tool_entries_from_update(
     state_update: dict,
     emitted_tool_calls: set[str],
-    integration_metadata: Optional[dict] = None,
+    integration_metadata: dict | None = None,
 ) -> list[tuple[str, dict]]:
     """
     Extract tool_data entries from a LangGraph state update.
@@ -66,15 +64,9 @@ async def extract_tool_entries_from_update(
             # Format tool call as tool_data entry
             tool_entry = await format_tool_call_entry(
                 tc,
-                icon_url=(
-                    integration_metadata.get("icon_url")
-                    if integration_metadata
-                    else None
-                ),
+                icon_url=(integration_metadata.get("icon_url") if integration_metadata else None),
                 integration_id=(
-                    integration_metadata.get("integration_id")
-                    if integration_metadata
-                    else None
+                    integration_metadata.get("integration_id") if integration_metadata else None
                 ),
                 integration_name=(
                     integration_metadata.get("name") if integration_metadata else None

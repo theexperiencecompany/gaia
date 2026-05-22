@@ -116,7 +116,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(container_last_seen{name!=\"\"})",
+          "expr": "count(container_last_seen{name!=\"\", instance=~\"$node\"})",
           "instant": true,
           "legendFormat": "Running Containers",
           "refId": "A"
@@ -185,7 +185,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{name!=\"\"}[2m])) / count(machine_cpu_cores) * 100",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{name!=\"\", instance=~\"$node\"}[2m])) / count(machine_cpu_cores) * 100",
           "instant": true,
           "legendFormat": "Total CPU %",
           "refId": "A"
@@ -246,7 +246,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(container_memory_usage_bytes{name!=\"\"})",
+          "expr": "sum(container_memory_usage_bytes{name!=\"\", instance=~\"$node\"})",
           "instant": true,
           "legendFormat": "Total Memory",
           "refId": "A"
@@ -307,7 +307,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(container_network_receive_bytes_total{name!=\"\"}[2m]))",
+          "expr": "sum(rate(container_network_receive_bytes_total{name!=\"\", instance=~\"$node\"}[2m]))",
           "instant": true,
           "legendFormat": "Total Network RX/s",
           "refId": "A"
@@ -418,7 +418,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\"$container\"}[2m])) by (name) * 100",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\"$container\", instance=~\"$node\"}[2m])) by (name) * 100",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -537,7 +537,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "container_memory_usage_bytes{name=~\"$container\"}",
+          "expr": "container_memory_usage_bytes{name=~\"$container\", instance=~\"$node\"}",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -644,7 +644,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "container_memory_usage_bytes{name=~\"$container\"} / container_spec_memory_limit_bytes{name=~\"$container\"} > 0",
+          "expr": "container_memory_usage_bytes{name=~\"$container\", instance=~\"$node\"} / container_spec_memory_limit_bytes{name=~\"$container\", instance=~\"$node\"} > 0",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -763,7 +763,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(container_network_receive_bytes_total{name=~\"$container\"}[2m])) by (name)",
+          "expr": "sum(rate(container_network_receive_bytes_total{name=~\"$container\", instance=~\"$node\"}[2m])) by (name)",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -870,7 +870,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(container_network_transmit_bytes_total{name=~\"$container\"}[2m])) by (name)",
+          "expr": "sum(rate(container_network_transmit_bytes_total{name=~\"$container\", instance=~\"$node\"}[2m])) by (name)",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -989,7 +989,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(container_fs_reads_bytes_total{name=~\"$container\"}[2m])) by (name)",
+          "expr": "sum(rate(container_fs_reads_bytes_total{name=~\"$container\", instance=~\"$node\"}[2m])) by (name)",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -1096,7 +1096,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(container_fs_writes_bytes_total{name=~\"$container\"}[2m])) by (name)",
+          "expr": "sum(rate(container_fs_writes_bytes_total{name=~\"$container\", instance=~\"$node\"}[2m])) by (name)",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -1123,6 +1123,29 @@
   ],
   "templating": {
     "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(container_last_seen{name!=\"\"}, instance)",
+        "hide": 0,
+        "includeAll": true,
+        "allValue": ".+",
+        "label": "Node",
+        "multi": false,
+        "name": "node",
+        "options": [],
+        "query": {
+          "query": "label_values(container_last_seen{name!=\"\"}, instance)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
       {
         "current": {},
         "datasource": {

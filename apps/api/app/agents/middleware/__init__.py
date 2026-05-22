@@ -23,10 +23,10 @@ Usage in build_graph.py:
     )
 """
 
+from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.agents.middleware.factory import (
     create_comms_middleware,
-    create_default_middleware,
     create_executor_middleware,
     create_middleware_stack,
     create_subagent_middleware,
@@ -45,12 +45,12 @@ from app.agents.middleware.vfs_summarization import VFSArchivingSummarizationMid
 __all__ = [
     "BigtoolRuntime",
     "BigtoolToolRuntime",
+    "LLMAccountingMiddleware",
     "MiddlewareExecutor",
     "SubagentMiddleware",
     "VFSArchivingSummarizationMiddleware",
     "VFSCompactionMiddleware",
     "create_comms_middleware",
-    "create_default_middleware",
     "create_executor_middleware",
     "create_middleware_stack",
     "create_model_request",

@@ -13,10 +13,10 @@ Key behaviors under test:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-import pytest
 from bson import ObjectId
+import pytest
 
 
 @pytest.mark.service
@@ -39,7 +39,7 @@ class TestTodoQueriesReal:
 
     async def test_todos_filtered_by_completed_false(self, todos_collection):
         """Querying completed=False must return only non-completed todos."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         await todos_collection.insert_many(
             [
@@ -64,16 +64,16 @@ class TestTodoQueriesReal:
             ]
         )
 
-        pending = await todos_collection.find(
-            {"user_id": "u1", "completed": False}
-        ).to_list(length=100)
+        pending = await todos_collection.find({"user_id": "u1", "completed": False}).to_list(
+            length=100
+        )
 
         assert len(pending) == 2
         assert all(t["completed"] is False for t in pending)
 
     async def test_todos_filtered_by_completed_true(self, todos_collection):
         """Querying completed=True must return only completed todos."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         await todos_collection.insert_many(
             [
@@ -92,16 +92,16 @@ class TestTodoQueriesReal:
             ]
         )
 
-        completed = await todos_collection.find(
-            {"user_id": "u1", "completed": True}
-        ).to_list(length=100)
+        completed = await todos_collection.find({"user_id": "u1", "completed": True}).to_list(
+            length=100
+        )
 
         assert len(completed) == 1
         assert completed[0]["title"] == "Done"
 
     async def test_todos_sorted_by_created_at_desc(self, todos_collection):
         """list_todos sorts by created_at descending — newest todo appears first."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         await todos_collection.insert_many(
             [
@@ -138,7 +138,7 @@ class TestTodoQueriesReal:
 
     async def test_todo_user_isolation(self, todos_collection):
         """User A's todos must never appear in User B's query results."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         await todos_collection.insert_many(
             [
@@ -173,7 +173,7 @@ class TestTodoQueriesReal:
 
     async def test_todo_priority_filter(self, todos_collection):
         """Filtering by priority must return only todos with the matching priority value."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         await todos_collection.insert_many(
             [
@@ -201,16 +201,16 @@ class TestTodoQueriesReal:
             ]
         )
 
-        high_prio = await todos_collection.find(
-            {"user_id": "u3", "priority": "high"}
-        ).to_list(length=100)
+        high_prio = await todos_collection.find({"user_id": "u3", "priority": "high"}).to_list(
+            length=100
+        )
 
         assert len(high_prio) == 2
         assert all(t["priority"] == "high" for t in high_prio)
 
     async def test_pagination_correct_slice(self, todos_collection):
         """Skip + limit must return distinct, non-overlapping pages."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         for i in range(5):
             await todos_collection.insert_one(
@@ -259,7 +259,7 @@ class TestTodoQueriesReal:
 
     async def test_overdue_filter(self, todos_collection):
         """Overdue query must return only non-completed todos with due_date in the past."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         await todos_collection.insert_many(
             [

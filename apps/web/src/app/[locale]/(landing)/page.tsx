@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import LandingPageClient from "@/app/[locale]/(landing)/client";
 import JsonLd from "@/components/seo/JsonLd";
+import { getLatestRelease } from "@/features/landing/utils/getLatestRelease";
 import {
   getTimeOfDay,
   type TimeOfDay,
@@ -44,6 +45,7 @@ export const metadata: Metadata = generatePageMetadata({
 
 export default function LandingPage() {
   const initialTimeOfDay = getTimeOfDay();
+  const latestRelease = getLatestRelease();
   const organizationSchema = generateOrganizationSchema();
   const websiteSchema = generateWebSiteSchema();
   const webPageSchema = generateWebPageSchema(
@@ -77,7 +79,10 @@ export default function LandingPage() {
           faqSchema,
         ]}
       />
-      <LandingPageClient initialTimeOfDay={initialTimeOfDay} />
+      <LandingPageClient
+        initialTimeOfDay={initialTimeOfDay}
+        latestRelease={latestRelease}
+      />
     </>
   );
 }

@@ -1,6 +1,6 @@
 """Tests for app/agents/tools/vfs_tools.py and app/agents/tools/file_tools.py."""
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -16,10 +16,10 @@ AGENT_NAME = "research_agent"
 
 
 def _make_config(
-    configurable: Dict[str, Any] | None = None,
-    metadata: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
-    cfg: Dict[str, Any] = {}
+    configurable: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    cfg: dict[str, Any] = {}
     if configurable is not None:
         cfg["configurable"] = configurable
     if metadata is not None:
@@ -168,9 +168,7 @@ class TestResolvePath:
 
     def test_users_prefix_without_slash(self):
         _resolve_path = self._import()
-        result = _resolve_path(
-            f"users/{USER_ID}/global/executor/notes/file.txt", USER_ID
-        )
+        result = _resolve_path(f"users/{USER_ID}/global/executor/notes/file.txt", USER_ID)
         assert result == f"/users/{USER_ID}/global/executor/notes/file.txt"
 
     def test_absolute_user_path_validated(self):
@@ -237,9 +235,7 @@ class TestResolvePath:
         """Accessing another user's path logs warning and falls through to default handler."""
         _resolve_path = self._import()
         # Path for a different user - access denied, falls through to leading-slash handler
-        result = _resolve_path(
-            "/users/other_user/global/executor/notes/a.txt", USER_ID, "executor"
-        )
+        result = _resolve_path("/users/other_user/global/executor/notes/a.txt", USER_ID, "executor")
         # The path starts with / so after the access-denied warning it's treated
         # as relative to agent root: agent_root + path
         assert result.startswith(f"/users/{USER_ID}/")
@@ -275,9 +271,7 @@ class TestEmitArtifactEvent:
         mock_vfs.info.return_value = info_mock
 
         writer_fn = MagicMock()
-        with patch(
-            "app.agents.tools.vfs_tools.get_stream_writer", return_value=writer_fn
-        ):
+        with patch("app.agents.tools.vfs_tools.get_stream_writer", return_value=writer_fn):
             await _emit_artifact_event(
                 path="/users/u1/global/executor/sessions/c1/.user-visible/report.md",
                 user_id="u1",
@@ -297,9 +291,7 @@ class TestEmitArtifactEvent:
         mock_vfs.info.side_effect = Exception("not found")
 
         writer_fn = MagicMock()
-        with patch(
-            "app.agents.tools.vfs_tools.get_stream_writer", return_value=writer_fn
-        ):
+        with patch("app.agents.tools.vfs_tools.get_stream_writer", return_value=writer_fn):
             await _emit_artifact_event(
                 path="/users/u1/global/executor/sessions/c1/.user-visible/data.json",
                 user_id="u1",
@@ -333,9 +325,7 @@ class TestEmitArtifactEvent:
         mock_vfs.info.return_value = info_mock
 
         writer_fn = MagicMock()
-        with patch(
-            "app.agents.tools.vfs_tools.get_stream_writer", return_value=writer_fn
-        ):
+        with patch("app.agents.tools.vfs_tools.get_stream_writer", return_value=writer_fn):
             await _emit_artifact_event(
                 path="/users/u1/global/executor/sessions/c1/.user-visible/f.txt",
                 user_id="u1",
@@ -354,7 +344,7 @@ class TestEmitArtifactEvent:
 class TestVfsRead:
     """Tests for the vfs_read tool function."""
 
-    def _make_ctx(self, user_id: str = USER_ID) -> Dict[str, Any]:
+    def _make_ctx(self, user_id: str = USER_ID) -> dict[str, Any]:
         return {
             "user_id": user_id,
             "conversation_id": "conv1",
@@ -385,9 +375,7 @@ class TestVfsRead:
 
     @patch("app.agents.tools.vfs_tools._get_context")
     @patch("app.agents.tools.vfs_tools.get_vfs")
-    async def test_read_file_not_found(
-        self, mock_get_vfs: AsyncMock, mock_ctx: MagicMock
-    ):
+    async def test_read_file_not_found(self, mock_get_vfs: AsyncMock, mock_ctx: MagicMock):
         from app.agents.tools.vfs_tools import vfs_read
 
         mock_ctx.return_value = self._make_ctx()
@@ -445,7 +433,7 @@ class TestVfsRead:
 class TestVfsWrite:
     """Tests for the vfs_write tool function."""
 
-    def _make_ctx(self, user_id: str = USER_ID) -> Dict[str, Any]:
+    def _make_ctx(self, user_id: str = USER_ID) -> dict[str, Any]:
         return {
             "user_id": user_id,
             "conversation_id": "conv1",
@@ -565,7 +553,7 @@ class TestVfsWrite:
 class TestVfsCmd:
     """Tests for the vfs_cmd tool function."""
 
-    def _make_ctx(self, user_id: str = USER_ID) -> Dict[str, Any]:
+    def _make_ctx(self, user_id: str = USER_ID) -> dict[str, Any]:
         return {
             "user_id": user_id,
             "conversation_id": "conv1",
@@ -577,9 +565,7 @@ class TestVfsCmd:
 
     @patch("app.agents.tools.vfs_tools._get_context")
     @patch("app.agents.tools.vfs_tools.get_vfs_command_parser")
-    async def test_cmd_success(
-        self, mock_parser_factory: MagicMock, mock_ctx: MagicMock
-    ):
+    async def test_cmd_success(self, mock_parser_factory: MagicMock, mock_ctx: MagicMock):
         from app.agents.tools.vfs_tools import vfs_cmd
 
         mock_ctx.return_value = self._make_ctx()
@@ -613,9 +599,7 @@ class TestVfsCmd:
 
     @patch("app.agents.tools.vfs_tools._get_context")
     @patch("app.agents.tools.vfs_tools.get_vfs_command_parser")
-    async def test_cmd_exception(
-        self, mock_parser_factory: MagicMock, mock_ctx: MagicMock
-    ):
+    async def test_cmd_exception(self, mock_parser_factory: MagicMock, mock_ctx: MagicMock):
         from app.agents.tools.vfs_tools import vfs_cmd
 
         mock_ctx.return_value = self._make_ctx()
@@ -644,9 +628,7 @@ class TestConstructContent:
 
         return _construct_content
 
-    def _make_doc(
-        self, file_id: str, page_wise_summary: Any, description: str = "desc"
-    ):
+    def _make_doc(self, file_id: str, page_wise_summary: Any, description: str = "desc"):
         return {
             "file_id": file_id,
             "page_wise_summary": page_wise_summary,
@@ -735,9 +717,7 @@ class TestGetSimilarDocuments:
         assert result == []
 
     @patch("app.agents.tools.file_tools.ChromaClient.get_langchain_client")
-    async def test_returns_results_with_file_id_filter(
-        self, mock_get_client: AsyncMock
-    ):
+    async def test_returns_results_with_file_id_filter(self, mock_get_client: AsyncMock):
         from app.agents.tools.file_tools import _get_similar_documents
 
         mock_collection = AsyncMock()
@@ -772,12 +752,10 @@ class TestQueryFile:
 
     @patch("app.agents.tools.file_tools.files_collection")
     @patch("app.agents.tools.file_tools._get_similar_documents")
-    async def test_query_file_success(
-        self, mock_similar: AsyncMock, mock_files: MagicMock
-    ):
-        from app.agents.tools.file_tools import query_file
-
+    async def test_query_file_success(self, mock_similar: AsyncMock, mock_files: MagicMock):
         from langchain_core.documents import Document
+
+        from app.agents.tools.file_tools import query_file
 
         sim_doc = Document(
             page_content="text",

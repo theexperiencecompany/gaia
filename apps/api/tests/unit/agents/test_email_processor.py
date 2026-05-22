@@ -1,10 +1,9 @@
 """Unit tests for app.agents.memory.email_processor."""
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Any, Dict, List
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-
 
 from app.agents.memory.email_processor import (
     _discover_and_store_linked_profiles,
@@ -26,12 +25,8 @@ _PATCH_SEARCH = "app.agents.memory.email_processor.search_messages"
 _PATCH_EMIT = "app.agents.memory.email_processor.emit_progress"
 _PATCH_PROCESS = "app.agents.memory.email_processor.process_email_content"
 _PATCH_STORE_EMAILS = "app.agents.memory.email_processor.store_emails_to_mem0"
-_PATCH_MARK_COMPLETE = (
-    "app.agents.memory.email_processor.mark_email_processing_complete"
-)
-_PATCH_POST_ONBOARD = (
-    "app.agents.memory.email_processor.process_post_onboarding_personalization"
-)
+_PATCH_MARK_COMPLETE = "app.agents.memory.email_processor.mark_email_processing_complete"
+_PATCH_POST_ONBOARD = "app.agents.memory.email_processor.process_post_onboarding_personalization"
 _PATCH_EXTRACT_PROFILES = (
     "app.agents.memory.email_processor._extract_profiles_from_parallel_searches"
 )
@@ -43,9 +38,7 @@ _PATCH_CRAWL = "app.agents.memory.email_processor.crawl_profile_url"
 _PATCH_CRAWL_BATCH = "app.agents.memory.email_processor.crawl_profile_urls_batch"
 _PATCH_STORE_PROFILE = "app.agents.memory.email_processor.store_single_profile"
 _PATCH_MEMORY_SERVICE = "app.agents.memory.email_processor.memory_service"
-_PATCH_SEARCH_PARALLEL = (
-    "app.agents.memory.email_processor._search_platform_emails_parallel"
-)
+_PATCH_SEARCH_PARALLEL = "app.agents.memory.email_processor._search_platform_emails_parallel"
 
 
 # ---------------------------------------------------------------------------
@@ -72,9 +65,7 @@ class TestSearchPlatformEmails:
         assert result == []
 
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
-    async def test_returns_empty_on_missing_messages_key(
-        self, mock_search: AsyncMock
-    ) -> None:
+    async def test_returns_empty_on_missing_messages_key(self, mock_search: AsyncMock) -> None:
         mock_search.return_value = {}
         result = await _search_platform_emails(USER_ID, "twitter", "from:twitter.com")
         assert result == []
@@ -108,9 +99,7 @@ class TestSearchPlatformEmailsParallel:
         },
     )
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
-    async def test_parallel_search_aggregates_results(
-        self, mock_search: AsyncMock
-    ) -> None:
+    async def test_parallel_search_aggregates_results(self, mock_search: AsyncMock) -> None:
         mock_search.side_effect = [
             {"messages": [{"id": "g1"}]},
             {"messages": [{"id": "t1"}, {"id": "t2"}]},
@@ -126,9 +115,7 @@ class TestSearchPlatformEmailsParallel:
         {"github": {"sender_domains": ["github.com"]}},
     )
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
-    async def test_parallel_search_handles_exception(
-        self, mock_search: AsyncMock
-    ) -> None:
+    async def test_parallel_search_handles_exception(self, mock_search: AsyncMock) -> None:
         mock_search.side_effect = RuntimeError("fail")
         result = await _search_platform_emails_parallel(USER_ID)
         # Exception results in empty list for that platform
@@ -162,7 +149,7 @@ class TestProcessSinglePlatform:
         mock_store: AsyncMock,
     ) -> None:
         mock_crawl.return_value = {"content": "Profile content", "error": None}
-        emails: List[Dict[str, Any]] = [{"id": "1"}]
+        emails: list[dict[str, Any]] = [{"id": "1"}]
 
         result = await _process_single_platform(USER_ID, "github", emails, "Test User")
 
@@ -277,9 +264,7 @@ class TestProcessGmailToMemory:
     """Tests for the main orchestrator function."""
 
     @patch(_PATCH_USERS)
-    async def test_already_processed_user_returns_early(
-        self, mock_users: MagicMock
-    ) -> None:
+    async def test_already_processed_user_returns_early(self, mock_users: MagicMock) -> None:
         mock_users.find_one = AsyncMock(
             return_value={
                 "_id": USER_ID,
@@ -413,7 +398,7 @@ class TestProcessGmailToMemory:
         mock_search: AsyncMock,
         mock_users: MagicMock,
     ) -> None:
-        ts = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        ts = datetime(2025, 1, 1, tzinfo=UTC)
         mock_users.find_one = AsyncMock(
             return_value={
                 "_id": USER_ID,

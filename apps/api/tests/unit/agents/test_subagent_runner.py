@@ -1,16 +1,16 @@
 """Unit tests for subagent_runner.py and subagent_helpers.py."""
 
+from datetime import UTC, datetime
 import json
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import (
     AIMessageChunk,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
+import pytest
 
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
@@ -23,7 +23,6 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.models.mcp_config import SubAgentConfig
 from app.models.subagent_models import Subagent
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -118,7 +117,12 @@ def _make_integration(
 @pytest.mark.unit
 class TestBuildInitialMessages:
     @pytest.mark.asyncio
-    async def test_returns_three_messages(self):
+    async def test_returns_four_messages(self):
+        """Shape is [static, dynamic_context, time_msg, human_task].
+
+        The time HumanMessage is separated from the user task so minute
+        ticks don't reset the ``system_instruction`` cache boundary.
+        """
         sys_msg = SystemMessage(content="System prompt")
         ctx_msg = SystemMessage(content="Context")
 
@@ -134,11 +138,15 @@ class TestBuildInitialMessages:
                 task="Do the thing",
             )
 
-        assert len(result) == 3
+        assert len(result) == 4
         assert result[0] is sys_msg
         assert result[1] is ctx_msg
+        # result[2] is the build_current_time_message HumanMessage
         assert isinstance(result[2], HumanMessage)
-        assert result[2].content == "Do the thing"
+        assert result[2].additional_kwargs.get("time_context") is True
+        # result[3] is the task
+        assert isinstance(result[3], HumanMessage)
+        assert result[3].content == "Do the thing"
 
     @pytest.mark.asyncio
     async def test_human_message_has_visible_to(self):
@@ -154,7 +162,8 @@ class TestBuildInitialMessages:
                 task="task",
             )
 
-        human_msg = result[2]
+        # Task HumanMessage is now at index 3 (after the time_msg at 2)
+        human_msg = result[3]
         assert "my_agent" in human_msg.additional_kwargs["visible_to"]
 
     @pytest.mark.asyncio
@@ -255,7 +264,7 @@ class TestPrepareSubagentExecution:
                 subagent_id="github",
                 task="List my repos",
                 user={"user_id": "u1", "email": "t@t.com", "name": "T"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id="conv-1",
             )
 
@@ -282,7 +291,7 @@ class TestPrepareSubagentExecution:
                 subagent_id="nonexistent",
                 task="task",
                 user={"user_id": "u1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id="conv-1",
             )
 
@@ -309,7 +318,7 @@ class TestPrepareSubagentExecution:
                 subagent_id="github",
                 task="task",
                 user={"user_id": "u1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id="conv-1",
             )
 
@@ -352,7 +361,7 @@ class TestPrepareSubagentExecution:
                 subagent_id="subagent:github",
                 task="task",
                 user={"user_id": "u1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id="conv-1",
             )
 
@@ -671,7 +680,7 @@ class TestPrepareExecutorExecution:
                     "email": "t@t.com",
                     "user_name": "Test",
                 },
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert error is None
@@ -690,7 +699,7 @@ class TestPrepareExecutorExecution:
             ctx, error = await prepare_executor_execution(
                 task="task",
                 configurable={"user_id": "u1", "thread_id": "t1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert ctx is None
@@ -734,7 +743,7 @@ class TestPrepareExecutorExecution:
                     "tool_category": "github",
                     "selected_tool": "github_search_repos",
                 },
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert error is None
@@ -772,7 +781,7 @@ class TestPrepareExecutorExecution:
                     "user_id": "u1",
                     "thread_id": "t1",
                 },
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         human_msg = ctx.initial_state["messages"][-1]
@@ -805,7 +814,7 @@ class TestPrepareExecutorExecution:
             ctx, error = await prepare_executor_execution(
                 task="task",
                 configurable={"user_id": "u1", "thread_id": "t1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 stream_id="my-stream-id",
             )
 
@@ -839,7 +848,7 @@ class TestPrepareExecutorExecution:
             await prepare_executor_execution(
                 task="task",
                 configurable={"user_id": "u1", "thread_id": "t1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         call_kwargs = mock_build_config.call_args.kwargs
@@ -889,7 +898,7 @@ class TestCallSubagent:
                 query="List repos",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 chunks.append(c)
 
@@ -917,7 +926,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 chunks.append(c)
 
@@ -947,7 +956,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 skip_integration_check=False,
             ):
                 chunks.append(c)
@@ -990,7 +999,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 pass
 
@@ -1033,7 +1042,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 stream_id="s-1",
             ):
                 chunks.append(c)
@@ -1078,7 +1087,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 chunks.append(c)
 
@@ -1113,7 +1122,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 chunks.append(c)
 
@@ -1149,7 +1158,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 chunks.append(c)
 
@@ -1173,7 +1182,13 @@ from app.agents.core.subagents.subagent_helpers import (  # noqa: E402
 @pytest.mark.unit
 class TestBuildSubagentSystemPrompt:
     @pytest.mark.asyncio
-    async def test_returns_base_prompt_with_metadata(self):
+    async def test_returns_static_base_prompt_without_user_metadata(self):
+        """The static subagent prompt must be byte-identical across users.
+
+        Provider metadata (usernames, emails) flows through the dynamic
+        context message — see create_agent_context_message — so the static
+        prefix the LLM receives stays cacheable.
+        """
         integration = _make_integration("github")
 
         with (
@@ -1185,14 +1200,15 @@ class TestBuildSubagentSystemPrompt:
                 "app.agents.core.subagents.subagent_helpers.get_provider_metadata",
                 new_callable=AsyncMock,
                 return_value={"Username": "testuser"},
-            ),
+            ) as mock_meta,
             patch("app.agents.core.subagents.subagent_helpers.log"),
         ):
             result = await build_subagent_system_prompt("github", user_id="u1")
 
         assert "You are the GitHub agent." in result
-        assert "USER CONTEXT FOR GITHUB" in result
-        assert "testuser" in result
+        assert "USER CONTEXT FOR GITHUB" not in result
+        assert "testuser" not in result
+        mock_meta.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_no_metadata_when_no_user_id(self):
@@ -1318,7 +1334,12 @@ class TestCreateSubagentSystemMessage:
 @pytest.mark.unit
 class TestCreateAgentContextMessage:
     @pytest.mark.asyncio
-    async def test_includes_utc_time(self):
+    async def test_returns_system_message_without_clock(self):
+        """The clock intentionally does NOT live in the dynamic-context
+        system message. It rides in a HumanMessage built by
+        ``build_current_time_message`` so the ``system_instruction`` prefix
+        stays stable across minute boundaries.
+        """
         with (
             patch(
                 "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
@@ -1336,7 +1357,8 @@ class TestCreateAgentContextMessage:
             )
 
         assert isinstance(result, SystemMessage)
-        assert "Current UTC Time:" in result.content
+        assert "Current UTC Time:" not in result.content
+        assert "User Local Time:" not in result.content
 
     @pytest.mark.asyncio
     async def test_includes_user_name(self):
@@ -1379,7 +1401,9 @@ class TestCreateAgentContextMessage:
             )
 
         assert "User Timezone Offset: +05:30" in result.content
-        assert "User Local Time:" in result.content
+        # Local clock moved out of the dynamic system message. It's emitted
+        # as a HumanMessage by ``build_current_time_message`` instead.
+        assert "User Local Time:" not in result.content
 
     @pytest.mark.asyncio
     async def test_memories_included(self):
@@ -1560,12 +1584,15 @@ class TestCreateAgentContextMessage:
                 configurable={"user_time": "not-a-valid-time"},
             )
 
-        # Should not raise
+        # Should not raise; clock doesn't live here any more.
         assert isinstance(result, SystemMessage)
-        assert "Current UTC Time:" in result.content
 
     @pytest.mark.asyncio
-    async def test_memory_message_flag(self):
+    async def test_dynamic_context_marker(self):
+        """Context messages carry ``dynamic_context`` in additional_kwargs so
+        manage_system_prompts_node can keep only the latest one per run. The
+        legacy ``memory_message`` key is still present for back-compat with
+        older persisted state."""
         with (
             patch(
                 "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
@@ -1580,5 +1607,5 @@ class TestCreateAgentContextMessage:
         ):
             result = await create_agent_context_message(configurable={})
 
-        # SystemMessage should have memory_message=True
-        assert getattr(result, "memory_message", False) is True
+        assert result.additional_kwargs.get("dynamic_context") is True
+        assert result.additional_kwargs.get("memory_message") is True

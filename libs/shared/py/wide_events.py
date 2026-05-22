@@ -23,8 +23,8 @@ log.get() into the final emitted event. For worker tasks use wide_task().
 import contextlib
 import contextvars
 import time
-import uuid
 from typing import Any, TypedDict
+import uuid
 
 from loguru import logger as _loguru
 
@@ -42,9 +42,7 @@ _wide_event: contextvars.ContextVar[dict[str, Any] | None] = contextvars.Context
 _max_level: contextvars.ContextVar[str] = contextvars.ContextVar(
     "wide_event_max_level", default="INFO"
 )
-_trace_id: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "wide_event_trace_id", default=""
-)
+_trace_id: contextvars.ContextVar[str] = contextvars.ContextVar("wide_event_trace_id", default="")
 
 
 def _generate_trace_id() -> str:
@@ -77,6 +75,21 @@ class ModelContext(TypedDict, total=False):
     input_tokens: int
     output_tokens: int
     cost_usd: float
+    # Caching / accounting fields added by the caching-optimization work.
+    # Populated by the @after_model middleware hook via
+    # `usage_metadata.input_token_details.cache_read` and
+    # `cached_content_token_count`.
+    cached_tokens: int
+    cache_hit_rate: float  # cached_tokens / max(input_tokens, 1)
+    credits_charged: float
+    step_index: int  # monotonic step counter within a single agent run
+    agent_name: str  # "comms_agent" | "executor_agent" | "<subagent>"
+    handoff_latency_ms: float  # call_executor/handoff → first LLM token
+    retrieve_tools_calls_per_run: int
+    # Retry / error bookkeeping.
+    retry_attempt: int
+    retry_of: str  # error_type of the previous failed attempt
+    call_failed: bool
 
 
 class ConversationContext(TypedDict, total=False):

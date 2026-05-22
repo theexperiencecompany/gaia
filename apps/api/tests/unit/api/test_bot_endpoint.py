@@ -6,8 +6,8 @@ routing, status codes, response bodies, and auth checks.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 BOT_BASE = "/api/v1/bot"
 
@@ -185,9 +185,7 @@ class TestResetSession:
         assert response.status_code == 401
 
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
-    async def test_reset_session_validation_error(
-        self, mock_auth: AsyncMock, client: AsyncClient
-    ):
+    async def test_reset_session_validation_error(self, mock_auth: AsyncMock, client: AsyncClient):
         response = await client.post(f"{BOT_BASE}/reset-session", json={})
         assert response.status_code == 422
 
@@ -237,9 +235,7 @@ class TestCheckAuthStatus:
         assert data["authenticated"] is False
 
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
-    async def test_auth_status_invalid_platform(
-        self, mock_auth: AsyncMock, client: AsyncClient
-    ):
+    async def test_auth_status_invalid_platform(self, mock_auth: AsyncMock, client: AsyncClient):
         response = await client.get(f"{BOT_BASE}/auth-status/invalid_plat/u1")
         assert response.status_code == 400
 
@@ -305,9 +301,7 @@ class TestGetSettings:
         assert data["authenticated"] is False
 
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
-    async def test_settings_invalid_platform(
-        self, mock_auth: AsyncMock, client: AsyncClient
-    ):
+    async def test_settings_invalid_platform(self, mock_auth: AsyncMock, client: AsyncClient):
         response = await client.get(f"{BOT_BASE}/settings/badplatform/u1")
         assert response.status_code == 400
 
@@ -352,16 +346,12 @@ class TestUnlinkAccount:
         assert response.json()["success"] is True
 
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
-    async def test_unlink_missing_headers(
-        self, mock_auth: AsyncMock, client: AsyncClient
-    ):
+    async def test_unlink_missing_headers(self, mock_auth: AsyncMock, client: AsyncClient):
         response = await client.post(f"{BOT_BASE}/unlink")
         assert response.status_code == 400
 
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
-    async def test_unlink_invalid_platform(
-        self, mock_auth: AsyncMock, client: AsyncClient
-    ):
+    async def test_unlink_invalid_platform(self, mock_auth: AsyncMock, client: AsyncClient):
         response = await client.post(
             f"{BOT_BASE}/unlink",
             headers={
@@ -424,8 +414,6 @@ class TestBotChatStream:
         assert response.status_code == 401
 
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
-    async def test_chat_stream_validation_error(
-        self, mock_auth: AsyncMock, client: AsyncClient
-    ):
+    async def test_chat_stream_validation_error(self, mock_auth: AsyncMock, client: AsyncClient):
         response = await client.post(f"{BOT_BASE}/chat-stream", json={})
         assert response.status_code == 422

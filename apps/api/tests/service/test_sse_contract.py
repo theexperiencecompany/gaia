@@ -26,9 +26,7 @@ class TestSSEContract:
 
         async def publisher():
             await asyncio.sleep(0.1)
-            await StreamManager.publish_chunk(
-                "sse-1", 'data: {"response": "Hello"}\n\n'
-            )
+            await StreamManager.publish_chunk("sse-1", 'data: {"response": "Hello"}\n\n')
             await StreamManager.complete_stream("sse-1")
 
         async def subscriber():
@@ -90,9 +88,7 @@ class TestSSEContract:
             await StreamManager.complete_stream("sse-4")
 
         async def subscriber():
-            async for chunk in StreamManager.subscribe_stream(
-                "sse-4", keepalive_interval=1
-            ):
+            async for chunk in StreamManager.subscribe_stream("sse-4", keepalive_interval=1):
                 received.append(chunk)
 
         await asyncio.gather(publisher(), subscriber())

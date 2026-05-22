@@ -10,6 +10,10 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { AppEmptyStateCard } from "@/shared/components/ui/app-empty-state-card";
+import { AppStatusChip } from "@/shared/components/ui/app-status-chip";
+import { WORKFLOW_COLORS } from "../constants/colors";
+import { EXECUTION_STATUS } from "../constants/status";
 import type { WorkflowExecution } from "../types/workflow-types";
 import { formatDuration, formatRelativeDate } from "../utils/format-utils";
 
@@ -21,26 +25,41 @@ interface WorkflowExecutionHistoryProps {
   onLoadMore?: () => void;
 }
 
-function statusColor(status: WorkflowExecution["status"]): string {
-  if (status === "success") return "#22c55e";
-  if (status === "running") return "#f59e0b";
-  return "#ef4444";
-}
-
-function statusBgColor(status: WorkflowExecution["status"]): string {
-  if (status === "success") return "rgba(34,197,94,0.12)";
-  if (status === "running") return "rgba(245,158,11,0.12)";
-  return "rgba(239,68,68,0.12)";
-}
-
 function StatusIcon({ status }: { status: WorkflowExecution["status"] }) {
   if (status === "success") {
-    return <AppIcon icon={CheckmarkCircle02Icon} size={12} color="#22c55e" />;
+    return (
+      <AppIcon
+        icon={CheckmarkCircle02Icon}
+        size={11}
+        color={WORKFLOW_COLORS.successText}
+      />
+    );
   }
   if (status === "running") {
-    return <AppIcon icon={Loading03Icon} size={12} color="#f59e0b" />;
+    return (
+      <AppIcon icon={Loading03Icon} size={11} color={WORKFLOW_COLORS.primary} />
+    );
   }
-  return <AppIcon icon={AlertCircleIcon} size={12} color="#ef4444" />;
+  return (
+    <AppIcon
+      icon={AlertCircleIcon}
+      size={11}
+      color={WORKFLOW_COLORS.dangerText}
+    />
+  );
+}
+
+function MetaDot() {
+  return (
+    <View
+      style={{
+        width: 2,
+        height: 2,
+        borderRadius: 1,
+        backgroundColor: WORKFLOW_COLORS.textZinc500,
+      }}
+    />
+  );
 }
 
 function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
@@ -49,6 +68,7 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
   const isClickable = !!execution.conversation_id;
   const durationText = formatDuration(execution.duration_seconds);
   const relativeDate = formatRelativeDate(execution.started_at);
+  const descriptor = EXECUTION_STATUS[execution.status];
 
   const handlePress = () => {
     if (execution.conversation_id) {
@@ -60,9 +80,11 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
     <Pressable
       onPress={isClickable ? handlePress : undefined}
       style={({ pressed }) => ({
-        borderRadius: moderateScale(12, 0.5),
+        borderRadius: moderateScale(16, 0.5),
         backgroundColor:
-          pressed && isClickable ? "rgba(63,63,70,0.6)" : "rgba(39,39,42,0.5)",
+          pressed && isClickable
+            ? WORKFLOW_COLORS.cardBgActive
+            : WORKFLOW_COLORS.cardBg,
         padding: spacing.md,
         gap: spacing.xs,
       })}
@@ -74,56 +96,53 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
           justifyContent: "space-between",
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          {/* Status badge */}
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
-              borderRadius: 6,
-              paddingHorizontal: 7,
-              paddingVertical: 3,
-              backgroundColor: statusBgColor(execution.status),
-            }}
-          >
-            <StatusIcon status={execution.status} />
-            <Text
-              style={{
-                fontSize: fontSize.xs - 1,
-                color: statusColor(execution.status),
-                textTransform: "capitalize",
-              }}
-            >
-              {execution.status === "success"
-                ? "Success"
-                : execution.status === "running"
-                  ? "Running"
-                  : "Failed"}
-            </Text>
-          </View>
-
-          {/* Duration */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <AppStatusChip
+            status={descriptor.chipStatus}
+            label={descriptor.label}
+            startContent={<StatusIcon status={execution.status} />}
+          />
           {durationText ? (
-            <Text style={{ fontSize: fontSize.xs - 1, color: "#71717a" }}>
-              {durationText}
-            </Text>
+            <>
+              <MetaDot />
+              <Text
+                style={{
+                  fontSize: fontSize.xs - 1,
+                  color: WORKFLOW_COLORS.textZinc500,
+                }}
+              >
+                {durationText}
+              </Text>
+            </>
           ) : null}
         </View>
 
         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-          <Text style={{ fontSize: fontSize.xs - 1, color: "#71717a" }}>
+          <Text
+            style={{
+              fontSize: fontSize.xs - 1,
+              color: WORKFLOW_COLORS.textZinc500,
+            }}
+          >
             {relativeDate}
           </Text>
-          {isClickable && (
-            <AppIcon icon={ArrowRight01Icon} size={14} color="#71717a" />
-          )}
+          {isClickable ? (
+            <AppIcon
+              icon={ArrowRight01Icon}
+              size={14}
+              color={WORKFLOW_COLORS.textZinc500}
+            />
+          ) : null}
         </View>
       </View>
 
       {execution.summary ? (
         <Text
-          style={{ fontSize: fontSize.xs, color: "#8a9099", lineHeight: 16 }}
+          style={{
+            fontSize: fontSize.xs,
+            color: WORKFLOW_COLORS.textBody,
+            lineHeight: 16,
+          }}
           numberOfLines={2}
         >
           {execution.summary}
@@ -132,7 +151,7 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
 
       {execution.error_message ? (
         <Text
-          style={{ fontSize: fontSize.xs, color: "#ef4444" }}
+          style={{ fontSize: fontSize.xs, color: WORKFLOW_COLORS.dangerText }}
           numberOfLines={2}
         >
           {execution.error_message}
@@ -158,8 +177,8 @@ export function WorkflowExecutionHistory({
           <View
             key={i}
             style={{
-              borderRadius: moderateScale(12, 0.5),
-              backgroundColor: "rgba(39,39,42,0.5)",
+              borderRadius: moderateScale(16, 0.5),
+              backgroundColor: WORKFLOW_COLORS.cardBg,
               height: 56,
             }}
           />
@@ -170,44 +189,29 @@ export function WorkflowExecutionHistory({
 
   if (executions.length === 0) {
     return (
-      <View
-        style={{
-          paddingVertical: spacing.xl,
-          alignItems: "center",
-          gap: spacing.sm,
-        }}
-      >
-        <View
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 999,
-            backgroundColor: "rgba(39,39,42,0.5)",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <AppIcon icon={Clock04Icon} size={18} color="#71717a" />
-        </View>
-        <Text style={{ fontSize: fontSize.sm, color: "#71717a" }}>
-          No executions yet
-        </Text>
-        <Text style={{ fontSize: fontSize.xs, color: "#555" }}>
-          Run this workflow to see execution history
-        </Text>
-      </View>
+      <AppEmptyStateCard
+        title="No executions yet"
+        description="Run this workflow to see execution history."
+        icon={
+          <AppIcon
+            icon={Clock04Icon}
+            size={28}
+            color={WORKFLOW_COLORS.textZinc500}
+          />
+        }
+        className="rounded-2xl bg-zinc-800/30"
+      />
     );
   }
 
   return (
     <View style={{ gap: spacing.sm }}>
-      {/* Count badge row */}
-      {total !== undefined && total > 0 && (
+      {total !== undefined && total > 0 ? (
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <View
             style={{
               borderRadius: 999,
-              backgroundColor: "rgba(39,39,42,1)",
+              backgroundColor: WORKFLOW_COLORS.cardBgActive,
               paddingHorizontal: 10,
               paddingVertical: 3,
             }}
@@ -216,40 +220,46 @@ export function WorkflowExecutionHistory({
               style={{
                 fontSize: fontSize.xs,
                 fontWeight: "500",
-                color: "#a1a1aa",
+                color: WORKFLOW_COLORS.textMuted,
               }}
             >
               {total} runs
             </Text>
           </View>
         </View>
-      )}
+      ) : null}
 
       {executions.map((execution) => (
         <ExecutionItem key={execution.execution_id} execution={execution} />
       ))}
 
-      {hasMore && onLoadMore && (
+      {hasMore && onLoadMore ? (
         <Pressable
           onPress={onLoadMore}
           style={({ pressed }) => ({
-            borderRadius: moderateScale(12, 0.5),
+            borderRadius: moderateScale(16, 0.5),
             paddingVertical: spacing.md,
             alignItems: "center",
             backgroundColor: pressed
-              ? "rgba(63,63,70,0.5)"
-              : "rgba(39,39,42,0.4)",
+              ? WORKFLOW_COLORS.cardBgActive
+              : WORKFLOW_COLORS.cardBg,
           })}
         >
           {isLoading ? (
-            <ActivityIndicator size="small" color="#00bbff" />
+            <ActivityIndicator size="small" color={WORKFLOW_COLORS.primary} />
           ) : (
-            <Text style={{ fontSize: fontSize.sm, color: "#00bbff" }}>
+            <Text
+              style={{
+                fontSize: fontSize.sm,
+                color: WORKFLOW_COLORS.primary,
+                fontWeight: "600",
+              }}
+            >
               Load More
             </Text>
           )}
         </Pressable>
-      )}
+      ) : null}
     </View>
   );
 }

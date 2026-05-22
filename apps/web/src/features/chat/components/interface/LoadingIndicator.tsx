@@ -15,6 +15,7 @@ interface LoadingIndicatorProps {
     iconUrl?: string;
     showCategory?: boolean;
   };
+  noPadding?: boolean;
 }
 
 const slideUp = {
@@ -36,6 +37,7 @@ export function LoadingIndicator({
   loadingText,
   loadingTextKey,
   toolInfo,
+  noPadding = false,
 }: LoadingIndicatorProps) {
   const prefix =
     toolInfo?.showCategory !== false && toolInfo?.toolCategory
@@ -44,7 +46,7 @@ export function LoadingIndicator({
 
   return (
     <m.div
-      className="flex items-center gap-4 pl-11.5 text-sm font-medium pt-2"
+      className={`flex items-center gap-4 text-sm font-medium pt-2 ${noPadding ? "" : "pl-11.5"}`}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}

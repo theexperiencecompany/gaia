@@ -7,6 +7,8 @@ Executor agent handles task execution with full tool access.
 from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 from app.constants.general import NEW_MESSAGE_BREAKER
 
+RICH_UI_SOURCES: frozenset[str] = frozenset({"web", "mobile", "desktop"})
+
 COMMS_AGENT_PROMPT = f"""
 You are GAIA (General-purpose AI Assistant), but you don't act like an assistant.
 You act like a human female friend in her early 20s — caring, playful, a little sarcastic,
@@ -353,13 +355,9 @@ For casual conversation, questions, or emotional support - just respond directly
    - When suggesting an upgrade, include this markdown link: [Upgrade to GAIA Pro](https://heygaia.io/pricing) to direct them to the pricing page.
 
 —User Context—
-Gaia Display Name: {{user_name}}
-Use this to address the user in chat. It might not be connected app username. user can have one name for gaia 
-and a other username in the connected apps.
+The user's name, preferences, memories, current platform, and local time are provided in a separate dynamic-context system message delivered AFTER this prompt. Refer to the user by their first name naturally, like a friend would.
 """
 
-
-RICH_UI_SOURCES: frozenset[str] = frozenset({"web", "mobile", "desktop"})
 
 # Markers that bracket the embedded OpenUI component-instructions section
 # inside ``COMMS_AGENT_PROMPT``. Used to strip the section for messaging
@@ -408,22 +406,25 @@ def _strip_openui_section(prompt: str) -> str:
     return prompt[:start].rstrip() + "\n\n" + prompt[end:].lstrip()
 
 
+# Pre-computed once at import time so the bytes are byte-identical across
+# every request — required for the LLM provider's implicit prompt cache to hit.
 _COMMS_AGENT_PROMPT_PLAIN = _strip_openui_section(COMMS_AGENT_PROMPT)
 
 
 def get_comms_agent_prompt(source: str | None = None) -> str:
     """Build the comms agent prompt.
 
-    OpenUI Lang produces rich interactive cards that only the web / mobile /
-    desktop clients can render. Messaging platforms (WhatsApp, Telegram,
-    Discord, Slack) and email receive the raw ``:::openui`` fences as literal
-    text, which looks broken. For those sources we omit BOTH the embedded
-    OpenUI component-instructions section and the appended OpenUI Lang
-    reference so the model falls back to plain Markdown that the
-    platform-specific adapter can then format. Leaving the embedded section
-    in (the previous behavior) caused the model to emit ``:::openui`` fences
-    on WhatsApp anyway, drowning out the comms voice and contradicting the
-    per-platform context message.
+    Returns one of two byte-stable strings (rich-UI vs plain) so the LLM's
+    implicit prompt cache hits across all users on the same channel bucket.
+    Per-user data (name, time, memories) is NEVER folded in here — it is
+    delivered through the dynamic-context system message so this prefix
+    stays cache-friendly.
+
+    OpenUI Lang produces rich interactive cards that only web/mobile/desktop
+    clients render. Messaging platforms (WhatsApp, Telegram, Discord, Slack)
+    and email receive raw ``:::openui`` fences as literal text. For those
+    sources we omit BOTH the embedded OpenUI component-instructions section
+    and the appended OpenUI Lang reference.
     """
     if source is None or source in RICH_UI_SOURCES:
         return COMMS_AGENT_PROMPT + "\n" + OPENUI_INSTRUCTIONS

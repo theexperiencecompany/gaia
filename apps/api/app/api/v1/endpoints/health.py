@@ -7,9 +7,10 @@ This module provides routes for checking the health and status of the API.
 import asyncio
 import time
 
-from app.utils.general_utils import get_project_info
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse
+
+from app.utils.general_utils import get_project_info
 
 router = APIRouter()
 

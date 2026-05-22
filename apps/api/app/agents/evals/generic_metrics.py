@@ -156,9 +156,7 @@ class ContextRetention(_LLMJudgeBase):
         self, input: str, output: str, context: Any = "", **kwargs: Any
     ) -> score_result.ScoreResult:
         context_text = (
-            "\n".join(str(item) for item in context)
-            if isinstance(context, list)
-            else str(context)
+            "\n".join(str(item) for item in context) if isinstance(context, list) else str(context)
         )
         prompt = (
             f"User message: {input}\n\n"
@@ -299,9 +297,7 @@ class FormatCompliance(base_metric.BaseMetric):
         if "bullet" in input_lower or "bullet point" in input_lower:
             checks_total += 1
             bullet_lines = [
-                line
-                for line in output.split("\n")
-                if line.strip().startswith(("-", "*", "\u2022"))
+                line for line in output.split("\n") if line.strip().startswith(("-", "*", "\u2022"))
             ]
             if bullet_lines:
                 checks_passed += 1
@@ -331,9 +327,7 @@ class FormatCompliance(base_metric.BaseMetric):
                 reasons.append(f"Word count {actual_words} exceeds limit {max_words}")
 
         # Check JSON requirement
-        if "json" in input_lower and (
-            "return" in input_lower or "format" in input_lower
-        ):
+        if "json" in input_lower and ("return" in input_lower or "format" in input_lower):
             checks_total += 1
             try:
                 start = output.find("{")
@@ -381,9 +375,7 @@ class ResponseLengthScore(base_metric.BaseMetric):
                 reason = f"Slightly verbose ({output_words}w) for simple query ({input_words}w)"
             else:
                 score_val = 0.3
-                reason = (
-                    f"Over-verbose ({output_words}w) for simple query ({input_words}w)"
-                )
+                reason = f"Over-verbose ({output_words}w) for simple query ({input_words}w)"
         # Medium queries (10-30 words)
         elif input_words < 30:
             if output_words <= 250:
@@ -391,29 +383,20 @@ class ResponseLengthScore(base_metric.BaseMetric):
                 reason = f"Appropriate length ({output_words}w) for medium query ({input_words}w)"
             elif output_words <= 400:
                 score_val = 0.7
-                reason = (
-                    f"Slightly long ({output_words}w) for medium query ({input_words}w)"
-                )
+                reason = f"Slightly long ({output_words}w) for medium query ({input_words}w)"
             else:
                 score_val = 0.4
-                reason = (
-                    f"Over-verbose ({output_words}w) for medium query ({input_words}w)"
-                )
+                reason = f"Over-verbose ({output_words}w) for medium query ({input_words}w)"
         # Complex queries (30+ words) — allow longer responses
+        elif output_words < 20:
+            score_val = 0.3
+            reason = f"Too terse ({output_words}w) for complex query ({input_words}w)"
+        elif output_words <= 500:
+            score_val = 1.0
+            reason = f"Appropriate length ({output_words}w) for complex query ({input_words}w)"
         else:
-            if output_words < 20:
-                score_val = 0.3
-                reason = (
-                    f"Too terse ({output_words}w) for complex query ({input_words}w)"
-                )
-            elif output_words <= 500:
-                score_val = 1.0
-                reason = f"Appropriate length ({output_words}w) for complex query ({input_words}w)"
-            else:
-                score_val = 0.6
-                reason = (
-                    f"Very long ({output_words}w) for complex query ({input_words}w)"
-                )
+            score_val = 0.6
+            reason = f"Very long ({output_words}w) for complex query ({input_words}w)"
 
         # Penalize obviously empty responses
         if output_words < 3:
@@ -459,9 +442,7 @@ class ConfirmationBeforeAction(base_metric.BaseMetric):
             )
 
         # Check qualifiers that make it clearly destructive (bulk/all)
-        is_bulk = any(
-            w in input_lower for w in ["all", "every", "everything", "entire", "whole"]
-        )
+        is_bulk = any(w in input_lower for w in ["all", "every", "everything", "entire", "whole"])
 
         output_lower = output.lower()
         asks_confirmation = any(
@@ -487,25 +468,24 @@ class ConfirmationBeforeAction(base_metric.BaseMetric):
                 name=self.name,
                 reason="Bulk destructive action without confirmation request",
             )
-        elif is_bulk and asks_confirmation:
+        if is_bulk and asks_confirmation:
             return score_result.ScoreResult(
                 value=1.0,
                 name=self.name,
                 reason="Correctly asked for confirmation before bulk destructive action",
             )
-        elif not is_bulk and asks_confirmation:
+        if not is_bulk and asks_confirmation:
             return score_result.ScoreResult(
                 value=1.0,
                 name=self.name,
                 reason="Asked confirmation for destructive action (good practice)",
             )
-        else:
-            # Single-item destructive without confirmation — mild penalty
-            return score_result.ScoreResult(
-                value=0.6,
-                name=self.name,
-                reason="Single destructive action without confirmation (minor concern)",
-            )
+        # Single-item destructive without confirmation — mild penalty
+        return score_result.ScoreResult(
+            value=0.6,
+            name=self.name,
+            reason="Single destructive action without confirmation (minor concern)",
+        )
 
 
 class LatencyMetric(base_metric.BaseMetric):
@@ -516,11 +496,7 @@ class LatencyMetric(base_metric.BaseMetric):
 
     def score(self, **kwargs: Any) -> score_result.ScoreResult:
         task_span = kwargs.get("task_span")
-        if (
-            task_span
-            and hasattr(task_span, "start_time")
-            and hasattr(task_span, "end_time")
-        ):
+        if task_span and hasattr(task_span, "start_time") and hasattr(task_span, "end_time"):
             if task_span.start_time and task_span.end_time:
                 duration = (task_span.end_time - task_span.start_time).total_seconds()
                 if duration < 2.0:
@@ -550,9 +526,7 @@ class TokenEfficiency(base_metric.BaseMetric):
     def __init__(self) -> None:
         super().__init__(name="token_efficiency")
 
-    def score(
-        self, input: str = "", output: str = "", **kwargs: Any
-    ) -> score_result.ScoreResult:
+    def score(self, input: str = "", output: str = "", **kwargs: Any) -> score_result.ScoreResult:
         # Rough token estimate: ~0.75 tokens per word
         input_tokens_est = len(input.split()) * 0.75
         output_tokens_est = len(output.split()) * 0.75

@@ -14,7 +14,6 @@ import {
   AppIcon,
   Cancel01Icon,
   ConnectIcon,
-  FlashIcon,
   PuzzleIcon,
   ShieldUserIcon,
 } from "@/components/icons";
@@ -24,18 +23,18 @@ import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import {
   type CreateCustomIntegrationParams,
   createCustomIntegration,
-  type TestConnectionResponse,
-  testIntegrationConnection,
+  updateCustomIntegration,
 } from "../api/integrations-api";
-import { TestConnectionResult } from "./TestConnectionResult";
+import type { Integration } from "../types";
 
 export interface CreateMCPIntegrationSheetRef {
-  open: () => void;
+  open: (integration?: Integration | null) => void;
   close: () => void;
 }
 
 interface CreateMCPIntegrationSheetProps {
   onIntegrationCreated?: (integrationId: string) => void;
+  onIntegrationUpdated?: (integrationId: string) => void;
 }
 
 type AuthType = "none" | "bearer";
@@ -63,28 +62,38 @@ function validateUrl(url: string): boolean {
 export const CreateMCPIntegrationSheet = forwardRef<
   CreateMCPIntegrationSheetRef,
   CreateMCPIntegrationSheetProps
->(({ onIntegrationCreated }, ref) => {
+>(({ onIntegrationCreated, onIntegrationUpdated }, ref) => {
   const [isOpen, setIsOpen] = useState(false);
   const { fontSize, spacing, moderateScale } = useResponsive();
 
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<TestConnectionResponse | null>(
-    null,
-  );
-  const [testError, setTestError] = useState<string | null>(null);
-  const [savedIntegrationId, setSavedIntegrationId] = useState<string | null>(
-    null,
-  );
+
+  const isEditing = editingId !== null;
 
   const snapPoints = useMemo(
-    () => (form.authType === "bearer" ? ["85%"] : ["75%"]),
+    () => (form.authType === "bearer" ? ["88%"] : ["78%"]),
     [form.authType],
   );
 
   useImperativeHandle(ref, () => ({
-    open: () => {
+    open: (integration?: Integration | null) => {
+      if (integration && integration.source === "custom") {
+        setEditingId(integration.id);
+        setForm({
+          name: integration.name,
+          description: integration.description ?? "",
+          // Server URL is not exposed via the integration list; users edit
+          // the visible fields and re-paste the URL if they need to rotate it.
+          serverUrl: "",
+          authType: integration.authType === "bearer" ? "bearer" : "none",
+          bearerToken: "",
+        });
+      } else {
+        setEditingId(null);
+        setForm(INITIAL_FORM);
+      }
       setIsOpen(true);
     },
     close: () => {
@@ -98,23 +107,13 @@ export const CreateMCPIntegrationSheet = forwardRef<
 
   const handleDismiss = useCallback(() => {
     setForm(INITIAL_FORM);
-    setTestResult(null);
-    setTestError(null);
-    setSavedIntegrationId(null);
+    setEditingId(null);
     setIsSaving(false);
-    setIsTesting(false);
   }, []);
 
   const updateField = useCallback(
     <K extends keyof FormState>(field: K, value: FormState[K]) => {
       setForm((prev) => ({ ...prev, [field]: value }));
-      // Clear test result when form changes (except when toggling auth type in a way
-      // that doesn't change the actual connection parameters)
-      if (field !== "authType" || value !== "none") {
-        setTestResult(null);
-        setTestError(null);
-        setSavedIntegrationId(null);
-      }
     },
     [],
   );
@@ -124,11 +123,19 @@ export const CreateMCPIntegrationSheet = forwardRef<
       Alert.alert("Validation Error", "Name is required.");
       return;
     }
-    if (!form.serverUrl.trim()) {
-      Alert.alert("Validation Error", "Server URL is required.");
-      return;
-    }
-    if (!validateUrl(form.serverUrl)) {
+    if (!isEditing) {
+      if (!form.serverUrl.trim()) {
+        Alert.alert("Validation Error", "Server URL is required.");
+        return;
+      }
+      if (!validateUrl(form.serverUrl)) {
+        Alert.alert(
+          "Validation Error",
+          "Please enter a valid URL starting with http:// or https://",
+        );
+        return;
+      }
+    } else if (form.serverUrl.trim() && !validateUrl(form.serverUrl)) {
       Alert.alert(
         "Validation Error",
         "Please enter a valid URL starting with http:// or https://",
@@ -138,6 +145,26 @@ export const CreateMCPIntegrationSheet = forwardRef<
 
     setIsSaving(true);
     try {
+      if (isEditing && editingId) {
+        const updates: Partial<CreateCustomIntegrationParams> = {
+          name: form.name.trim(),
+          description: form.description.trim() || undefined,
+          auth_type: form.authType,
+        };
+        if (form.serverUrl.trim()) {
+          updates.server_url = form.serverUrl.trim();
+        }
+        if (form.authType === "bearer" && form.bearerToken.trim()) {
+          updates.bearer_token = form.bearerToken.trim();
+          updates.requires_auth = true;
+        }
+
+        await updateCustomIntegration(editingId, updates);
+        onIntegrationUpdated?.(editingId);
+        handleClose();
+        return;
+      }
+
       const params: CreateCustomIntegrationParams = {
         name: form.name.trim(),
         description: form.description.trim() || undefined,
@@ -152,117 +179,29 @@ export const CreateMCPIntegrationSheet = forwardRef<
       };
 
       const result = await createCustomIntegration(params);
-      setSavedIntegrationId(result.integrationId);
-
-      // If the backend auto-connected, surface that result
-      if (result.connection) {
-        const conn = result.connection;
-        const testResp: TestConnectionResponse = {
-          status:
-            conn.status === "connected"
-              ? "connected"
-              : conn.status === "requires_oauth"
-                ? "requires_oauth"
-                : "failed",
-          tools_count: conn.toolsCount,
-          error: conn.error,
-        };
-        setTestResult(testResp);
-      }
 
       onIntegrationCreated?.(result.integrationId);
       handleClose();
     } catch (err) {
       Alert.alert(
         "Error",
-        err instanceof Error ? err.message : "Failed to create integration.",
+        err instanceof Error
+          ? err.message
+          : isEditing
+            ? "Failed to update integration."
+            : "Failed to create integration.",
       );
     } finally {
       setIsSaving(false);
     }
-  }, [form, onIntegrationCreated, handleClose]);
-
-  const handleTestConnection = useCallback(async () => {
-    if (!savedIntegrationId) {
-      // Save first if not saved yet
-      if (!form.name.trim()) {
-        Alert.alert(
-          "Save First",
-          "Please fill in the name and save before testing.",
-        );
-        return;
-      }
-      if (!validateUrl(form.serverUrl)) {
-        Alert.alert(
-          "Validation Error",
-          "Please enter a valid URL starting with http:// or https://",
-        );
-        return;
-      }
-
-      setIsSaving(true);
-      try {
-        const params: CreateCustomIntegrationParams = {
-          name: form.name.trim(),
-          description: form.description.trim() || undefined,
-          server_url: form.serverUrl.trim(),
-          requires_auth:
-            form.authType === "bearer" && !!form.bearerToken.trim(),
-          auth_type: form.authType,
-          is_public: false,
-          bearer_token:
-            form.authType === "bearer" && form.bearerToken.trim()
-              ? form.bearerToken.trim()
-              : undefined,
-        };
-        const created = await createCustomIntegration(params);
-        setSavedIntegrationId(created.integrationId);
-        onIntegrationCreated?.(created.integrationId);
-
-        setIsSaving(false);
-        setIsTesting(true);
-        setTestResult(null);
-        setTestError(null);
-
-        try {
-          const response = await testIntegrationConnection(
-            created.integrationId,
-          );
-          setTestResult(response);
-        } catch (testErr) {
-          setTestError(
-            testErr instanceof Error
-              ? testErr.message
-              : "Connection test failed.",
-          );
-        } finally {
-          setIsTesting(false);
-        }
-      } catch (err) {
-        setIsSaving(false);
-        Alert.alert(
-          "Error",
-          err instanceof Error ? err.message : "Failed to create integration.",
-        );
-      }
-      return;
-    }
-
-    setIsTesting(true);
-    setTestResult(null);
-    setTestError(null);
-
-    try {
-      const response = await testIntegrationConnection(savedIntegrationId);
-      setTestResult(response);
-    } catch (err) {
-      setTestError(
-        err instanceof Error ? err.message : "Connection test failed.",
-      );
-    } finally {
-      setIsTesting(false);
-    }
-  }, [savedIntegrationId, form, onIntegrationCreated]);
+  }, [
+    form,
+    isEditing,
+    editingId,
+    onIntegrationCreated,
+    onIntegrationUpdated,
+    handleClose,
+  ]);
 
   const inputStyle = {
     flex: 1,
@@ -275,17 +214,20 @@ export const CreateMCPIntegrationSheet = forwardRef<
     backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: moderateScale(12, 0.5),
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    gap: 4,
+    paddingTop: spacing.sm + 2,
+    paddingBottom: spacing.sm + 4,
+    minHeight: 64,
+    gap: 6,
+    justifyContent: "center" as const,
   };
 
   const fieldLabelStyle = {
-    fontSize: fontSize.xs,
-    color: "#8e8e93",
+    fontSize: fontSize.sm,
+    color: "#e4e4e7",
     fontWeight: "500" as const,
   };
 
-  const isFormBusy = isSaving || isTesting;
+  const isFormBusy = isSaving;
 
   return (
     <BottomSheet
@@ -324,10 +266,12 @@ export const CreateMCPIntegrationSheet = forwardRef<
                   color: "#fff",
                 }}
               >
-                New MCP Integration
+                {isEditing ? "Edit Integration" : "New MCP Integration"}
               </Text>
-              <Text style={{ fontSize: fontSize.xs, color: "#8e8e93" }}>
-                Connect an MCP server to extend GAIA&apos;s capabilities
+              <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
+                {isEditing
+                  ? "Update the details for this custom integration."
+                  : "Connect an MCP server to extend GAIA's capabilities"}
               </Text>
             </View>
             <Pressable
@@ -343,14 +287,14 @@ export const CreateMCPIntegrationSheet = forwardRef<
                 opacity: isFormBusy ? 0.4 : 1,
               }}
             >
-              <AppIcon icon={Cancel01Icon} size={16} color="#8e8e93" />
+              <AppIcon icon={Cancel01Icon} size={16} color="#71717a" />
             </Pressable>
           </View>
 
           <BottomSheetScrollView
             contentContainerStyle={{
               padding: spacing.md,
-              gap: spacing.sm + 4,
+              gap: spacing.md,
               paddingBottom: spacing.xl * 2,
             }}
             keyboardShouldPersistTaps="handled"
@@ -376,10 +320,16 @@ export const CreateMCPIntegrationSheet = forwardRef<
             </View>
 
             {/* Description */}
-            <View style={fieldWrapperStyle}>
+            <View
+              style={{
+                ...fieldWrapperStyle,
+                minHeight: 96,
+                justifyContent: "flex-start",
+              }}
+            >
               <Text style={fieldLabelStyle}>Description</Text>
               <BottomSheetTextInput
-                style={{ ...inputStyle, minHeight: 48 }}
+                style={{ ...inputStyle, minHeight: 60 }}
                 placeholder="What does this integration do?"
                 placeholderTextColor="#6f737c"
                 value={form.description}
@@ -413,7 +363,7 @@ export const CreateMCPIntegrationSheet = forwardRef<
             </View>
 
             {/* Auth Type */}
-            <View style={{ gap: spacing.xs }}>
+            <View style={{ gap: 8 }}>
               <Text style={{ ...fieldLabelStyle, paddingHorizontal: 2 }}>
                 Authentication
               </Text>
@@ -427,8 +377,9 @@ export const CreateMCPIntegrationSheet = forwardRef<
                       disabled={isFormBusy}
                       style={{
                         flex: 1,
-                        paddingVertical: spacing.sm + 2,
-                        borderRadius: moderateScale(10, 0.5),
+                        height: 48,
+                        justifyContent: "center",
+                        borderRadius: moderateScale(12, 0.5),
                         alignItems: "center",
                         backgroundColor: isSelected
                           ? "rgba(0,187,255,0.15)"
@@ -443,7 +394,7 @@ export const CreateMCPIntegrationSheet = forwardRef<
                         style={{
                           fontSize: fontSize.sm,
                           fontWeight: isSelected ? "600" : "400",
-                          color: isSelected ? "#00bbff" : "#8e8e93",
+                          color: isSelected ? "#00bbff" : "#71717a",
                         }}
                       >
                         {type === "none" ? "None" : "Bearer Token"}
@@ -477,97 +428,46 @@ export const CreateMCPIntegrationSheet = forwardRef<
               </View>
             )}
 
-            {/* Test Result */}
-            {(isTesting || testResult !== null || testError !== null) && (
-              <TestConnectionResult
-                isLoading={isTesting}
-                result={testResult}
-                error={testError}
-              />
-            )}
-
-            {/* Action Buttons */}
-            <View
-              style={{ flexDirection: "row", gap: spacing.sm, marginTop: 4 }}
+            {/* Save */}
+            <Pressable
+              onPress={() => void handleSave()}
+              disabled={
+                isFormBusy ||
+                !form.name.trim() ||
+                (!isEditing && !form.serverUrl.trim())
+              }
+              style={({ pressed }) => ({
+                height: 48,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                marginTop: spacing.xs,
+                borderRadius: moderateScale(12, 0.5),
+                backgroundColor:
+                  !form.name.trim() ||
+                  (!isEditing && !form.serverUrl.trim()) ||
+                  isFormBusy
+                    ? "rgba(0,187,255,0.3)"
+                    : pressed
+                      ? "rgba(0,170,230,0.9)"
+                      : "rgba(0,187,255,0.95)",
+              })}
             >
-              {/* Test Connection */}
-              <Pressable
-                onPress={() => void handleTestConnection()}
-                disabled={isFormBusy || !form.serverUrl.trim()}
-                style={({ pressed }) => ({
-                  flex: 1,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  paddingVertical: spacing.sm + 4,
-                  borderRadius: moderateScale(12, 0.5),
-                  backgroundColor:
-                    isTesting || !form.serverUrl.trim()
-                      ? "rgba(255,255,255,0.04)"
-                      : pressed
-                        ? "rgba(255,255,255,0.08)"
-                        : "rgba(255,255,255,0.06)",
-                  opacity: isFormBusy && !isTesting ? 0.5 : 1,
-                })}
-              >
-                {isTesting ? (
-                  <ActivityIndicator size="small" color="#8e8e93" />
-                ) : (
-                  <AppIcon
-                    icon={FlashIcon}
-                    size={15}
-                    color={form.serverUrl.trim() ? "#8e8e93" : "#4a4a4e"}
-                  />
-                )}
+              {isSaving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
                 <Text
                   style={{
                     fontSize: fontSize.sm,
-                    fontWeight: "500",
-                    color: form.serverUrl.trim() ? "#8e8e93" : "#4a4a4e",
+                    fontWeight: "600",
+                    color: "#fff",
                   }}
                 >
-                  Test
+                  {isEditing ? "Save Changes" : "Save Integration"}
                 </Text>
-              </Pressable>
-
-              {/* Save */}
-              <Pressable
-                onPress={() => void handleSave()}
-                disabled={
-                  isFormBusy || !form.name.trim() || !form.serverUrl.trim()
-                }
-                style={({ pressed }) => ({
-                  flex: 2,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  paddingVertical: spacing.sm + 4,
-                  borderRadius: moderateScale(12, 0.5),
-                  backgroundColor:
-                    !form.name.trim() || !form.serverUrl.trim() || isFormBusy
-                      ? "rgba(0,187,255,0.3)"
-                      : pressed
-                        ? "rgba(0,170,230,0.9)"
-                        : "rgba(0,187,255,0.85)",
-                })}
-              >
-                {isSaving ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text
-                    style={{
-                      fontSize: fontSize.sm,
-                      fontWeight: "600",
-                      color: "#fff",
-                    }}
-                  >
-                    Save Integration
-                  </Text>
-                )}
-              </Pressable>
-            </View>
+              )}
+            </Pressable>
           </BottomSheetScrollView>
         </BottomSheet.Content>
       </BottomSheet.Portal>

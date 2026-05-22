@@ -4,13 +4,11 @@ Covers:
 - get_token_counter: provider-specific lookups and default fallback
 """
 
-from typing import Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.agents.llm.token_counter import get_token_counter
-
 
 # ---------------------------------------------------------------------------
 # get_token_counter
@@ -23,7 +21,7 @@ class TestGetTokenCounter:
     def test_openai_provider(self, mock_providers: MagicMock) -> None:
         openai_llm = MagicMock(name="openai_llm_instance")
 
-        def _get(key: str) -> Optional[MagicMock]:
+        def _get(key: str) -> MagicMock | None:
             if key == "openai_llm":
                 return openai_llm
             return None
@@ -39,7 +37,7 @@ class TestGetTokenCounter:
     def test_gemini_provider(self, mock_providers: MagicMock) -> None:
         gemini_llm = MagicMock(name="gemini_llm_instance")
 
-        def _get(key: str) -> Optional[MagicMock]:
+        def _get(key: str) -> MagicMock | None:
             if key == "gemini_llm":
                 return gemini_llm
             return None
@@ -55,7 +53,7 @@ class TestGetTokenCounter:
     def test_default_falls_back_to_openai(self, mock_providers: MagicMock) -> None:
         openai_llm = MagicMock(name="openai_llm_instance")
 
-        def _get(key: str) -> Optional[MagicMock]:
+        def _get(key: str) -> MagicMock | None:
             if key == "openai_llm":
                 return openai_llm
             return None
@@ -68,12 +66,10 @@ class TestGetTokenCounter:
         assert result is openai_llm
 
     @patch("app.agents.llm.token_counter.providers")
-    def test_no_provider_arg_falls_back_to_openai(
-        self, mock_providers: MagicMock
-    ) -> None:
+    def test_no_provider_arg_falls_back_to_openai(self, mock_providers: MagicMock) -> None:
         openai_llm = MagicMock(name="openai_llm_instance")
 
-        def _get(key: str) -> Optional[MagicMock]:
+        def _get(key: str) -> MagicMock | None:
             if key == "openai_llm":
                 return openai_llm
             return None
@@ -86,12 +82,10 @@ class TestGetTokenCounter:
         assert result is openai_llm
 
     @patch("app.agents.llm.token_counter.providers")
-    def test_unknown_provider_falls_back_to_openai(
-        self, mock_providers: MagicMock
-    ) -> None:
+    def test_unknown_provider_falls_back_to_openai(self, mock_providers: MagicMock) -> None:
         openai_llm = MagicMock(name="openai_llm_instance")
 
-        def _get(key: str) -> Optional[MagicMock]:
+        def _get(key: str) -> MagicMock | None:
             if key == "openai_llm":
                 return openai_llm
             return None
@@ -106,9 +100,7 @@ class TestGetTokenCounter:
         assert result is openai_llm
 
     @patch("app.agents.llm.token_counter.providers")
-    def test_openai_provider_not_registered_returns_none(
-        self, mock_providers: MagicMock
-    ) -> None:
+    def test_openai_provider_not_registered_returns_none(self, mock_providers: MagicMock) -> None:
         mock_providers.get.return_value = None
 
         result = get_token_counter(provider="openai")
@@ -116,9 +108,7 @@ class TestGetTokenCounter:
         assert result is None
 
     @patch("app.agents.llm.token_counter.providers")
-    def test_gemini_provider_not_registered_returns_none(
-        self, mock_providers: MagicMock
-    ) -> None:
+    def test_gemini_provider_not_registered_returns_none(self, mock_providers: MagicMock) -> None:
         mock_providers.get.return_value = None
 
         result = get_token_counter(provider="gemini")
@@ -126,9 +116,7 @@ class TestGetTokenCounter:
         assert result is None
 
     @patch("app.agents.llm.token_counter.providers")
-    def test_default_not_registered_returns_none(
-        self, mock_providers: MagicMock
-    ) -> None:
+    def test_default_not_registered_returns_none(self, mock_providers: MagicMock) -> None:
         mock_providers.get.return_value = None
 
         result = get_token_counter()
@@ -136,13 +124,11 @@ class TestGetTokenCounter:
         assert result is None
 
     @patch("app.agents.llm.token_counter.providers")
-    def test_openai_and_gemini_return_different_instances(
-        self, mock_providers: MagicMock
-    ) -> None:
+    def test_openai_and_gemini_return_different_instances(self, mock_providers: MagicMock) -> None:
         openai_llm = MagicMock(name="openai_instance")
         gemini_llm = MagicMock(name="gemini_instance")
 
-        def _get(key: str) -> Optional[MagicMock]:
+        def _get(key: str) -> MagicMock | None:
             mapping = {
                 "openai_llm": openai_llm,
                 "gemini_llm": gemini_llm,

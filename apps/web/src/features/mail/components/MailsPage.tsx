@@ -12,6 +12,7 @@ import {
   StarIcon,
   Timer02Icon,
 } from "@icons";
+import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
 import {
   FixedSizeList as List,
@@ -20,7 +21,13 @@ import {
 import InfiniteLoader from "react-window-infinite-loader";
 import Spinner from "@/components/ui/spinner";
 import { EmailFrom } from "@/features/mail/components/MailFrom";
-import ViewEmail from "@/features/mail/components/ViewMail";
+
+// ssr:false — ViewMail pulls in @tiptap (~0.37 MB raw). Mail UI is fully
+// interactive, no SEO need.
+const ViewEmail = dynamic(() => import("@/features/mail/components/ViewMail"), {
+  ssr: false,
+});
+
 import { useEmailActions } from "@/features/mail/hooks/useEmailActions";
 import { useEmailAnalysisIndicators } from "@/features/mail/hooks/useEmailAnalysis";
 import { useEmailGrouping } from "@/features/mail/hooks/useEmailGrouping";

@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import { mailApi } from "@/features/mail/api/mailApi";
 import type { EmailImportanceSummary } from "@/types/features/mailTypes";
@@ -37,31 +37,6 @@ export function useEmailSummary(emailId: string, enabled: boolean = true) {
 }
 
 /**
- * Hook to fetch multiple email importance summaries
- * @param limit - Number of emails to fetch
- * @param importantOnly - Whether to fetch only important emails
- * @param enabled - Whether the query should be enabled
- * @returns Query result with email summaries data
- */
-function useEmailSummaries(
-  limit: number = 50,
-  importantOnly: boolean = false,
-  enabled: boolean = true,
-) {
-  return useQuery({
-    queryKey: ["email-summaries", limit, importantOnly],
-    queryFn: async () => {
-      return await mailApi.fetchEmailSummaries(limit, importantOnly);
-    },
-    enabled,
-    staleTime: 2 * 60 * 1000, // 2 minutes
-    gcTime: 5 * 60 * 1000, // 5 minutes (was cacheTime)
-    retry: 2,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-  });
-}
-
-/**
  * Hook to fetch email importance summaries for multiple emails in bulk
  * @param messageIds - Array of email message IDs
  * @param enabled - Whether the query should be enabled
@@ -92,27 +67,6 @@ function useBulkEmailSummaries(messageIds: string[], enabled: boolean = true) {
 }
 
 /**
- * Hook to get email analysis status for multiple emails using bulk API
- * @param emailIds - Array of email IDs to check
- * @param enabled - Whether the query should be enabled
- * @returns Query result with analysis status for each email
- */
-function useEmailAnalysisStatus(emailIds: string[], enabled: boolean = true) {
-  const bulkQuery = useBulkEmailSummaries(emailIds, enabled);
-
-  return {
-    ...bulkQuery,
-    data: bulkQuery.data
-      ? emailIds.map((emailId) => ({
-          emailId,
-          hasAnalysis: !!bulkQuery.data?.emails[emailId],
-          analysis: bulkQuery.data?.emails[emailId] || null,
-        }))
-      : undefined,
-  };
-}
-
-/**
  * Hook for efficiently checking if emails have AI analysis available
  * This is optimized for use in email lists where you need to show AI indicators
  * @param emailIds - Array of email IDs to check
@@ -132,68 +86,6 @@ export function useEmailAnalysisIndicators(
     error: bulkQuery.error,
     foundCount: bulkQuery.data?.found_count || 0,
     missingCount: bulkQuery.data?.missing_count || 0,
-  };
-}
-
-/**
- * Hook to prefetch email analysis for better UX
- * @param emailId - The email message ID to prefetch
- */
-function usePrefetchEmailAnalysis() {
-  const queryClient = useQueryClient();
-
-  return (emailId: string) => {
-    if (!emailId) return;
-
-    queryClient.prefetchQuery({
-      queryKey: ["email-summary", emailId],
-      queryFn: async () => {
-        return await mailApi.fetchEmailSummaryById(emailId);
-      },
-      staleTime: 5 * 60 * 1000, // 5 minutes
-    });
-  };
-}
-
-/**
- * Hook to invalidate email analysis cache
- */
-function useInvalidateEmailAnalysis() {
-  const queryClient = useQueryClient();
-
-  return {
-    invalidateEmailSummary: (emailId: string) => {
-      queryClient.invalidateQueries({
-        queryKey: ["email-summary", emailId],
-      });
-    },
-    invalidateEmailSummaries: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["email-summaries"],
-      });
-    },
-    invalidateBulkSummaries: (emailIds?: string[]) => {
-      if (emailIds) {
-        queryClient.invalidateQueries({
-          queryKey: ["bulk-email-summaries", emailIds],
-        });
-      } else {
-        queryClient.invalidateQueries({
-          queryKey: ["bulk-email-summaries"],
-        });
-      }
-    },
-    invalidateAnalysisStatus: (emailIds?: string[]) => {
-      if (emailIds) {
-        queryClient.invalidateQueries({
-          queryKey: ["bulk-email-summaries", emailIds],
-        });
-      } else {
-        queryClient.invalidateQueries({
-          queryKey: ["bulk-email-summaries"],
-        });
-      }
-    },
   };
 }
 

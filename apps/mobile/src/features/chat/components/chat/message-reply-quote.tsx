@@ -1,4 +1,4 @@
-import { Divider, Surface } from "heroui-native";
+import { Surface } from "heroui-native";
 import { View } from "react-native";
 import { AppIcon, LinkBackwardIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -16,22 +16,15 @@ export function MessageReplyQuote({
 }: MessageReplyQuoteProps) {
   const { spacing, fontSize, iconSize } = useResponsive();
 
-  const preview =
-    replyToMessage.content.length > 60
-      ? `${replyToMessage.content.slice(0, 60).trim()}...`
-      : replyToMessage.content;
+  const preview = replyToMessage.content;
 
   const label = replyToMessage.role === "user" ? "You" : "GAIA";
 
   return (
     <Surface
       style={{
-        backgroundColor: isUserMessage
-          ? "rgba(0,0,0,0.2)"
-          : "rgba(255,255,255,0.06)",
-        borderRadius: 8,
-        borderTopLeftRadius: 2,
-        borderBottomLeftRadius: 2,
+        backgroundColor: "#3f3f46",
+        borderRadius: 16,
         paddingHorizontal: spacing.sm,
         paddingVertical: spacing.xs + 2,
         marginBottom: spacing.xs,
@@ -41,20 +34,10 @@ export function MessageReplyQuote({
         overflow: "hidden",
       }}
     >
-      <Divider
-        orientation="vertical"
-        thickness={3}
-        style={{
-          backgroundColor: "#6366f1",
-          alignSelf: "stretch",
-          marginRight: spacing.xs,
-        }}
-      />
-
       <AppIcon
         icon={LinkBackwardIcon}
         size={iconSize.sm - 4}
-        color="#6366f1"
+        color="#71717a"
         style={{ marginTop: 2 }}
       />
 
@@ -62,7 +45,7 @@ export function MessageReplyQuote({
         <Text
           style={{
             fontSize: fontSize.xs,
-            color: "#6366f1",
+            color: "#71717a",
             fontWeight: "600",
           }}
         >
@@ -71,9 +54,9 @@ export function MessageReplyQuote({
         <Text
           style={{
             fontSize: fontSize.xs + 1,
-            color: isUserMessage ? "rgba(255,255,255,0.6)" : "#71717a",
+            color: isUserMessage ? "rgba(255,255,255,0.7)" : "#a1a1aa",
           }}
-          numberOfLines={2}
+          numberOfLines={1}
         >
           {preview}
         </Text>

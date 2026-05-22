@@ -65,9 +65,7 @@ def normalize_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:
     return schema
 
 
-def _update_refs_recursive(
-    obj: Any, key_mapping: dict[str, str], defs_key: str
-) -> None:
+def _update_refs_recursive(obj: Any, key_mapping: dict[str, str], defs_key: str) -> None:
     """Recursively update $ref values in a schema.
 
     Args:
@@ -120,9 +118,6 @@ def patch_tool_schema(tool: Any) -> Any:
             tool_dict["inputSchema"] = normalized
             return type(tool)(**tool_dict)
     except Exception as e:
-        log.warning(
-            f"Could not normalize schema for tool {tool.name}: {e}. "
-            f"Using original schema."
-        )
+        log.warning(f"Could not normalize schema for tool {tool.name}: {e}. Using original schema.")
 
     return tool

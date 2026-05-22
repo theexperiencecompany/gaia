@@ -60,6 +60,18 @@ export const colors = {
   primaryBg: "#111111",
   secondaryBg: "#1a1a1a",
 
+  // Zinc scale (mirrors Tailwind zinc) — single source of truth for raw hex usage
+  zinc100: "#f4f4f5",
+  zinc200: "#e4e4e7",
+  zinc300: "#d4d4d8",
+  zinc400: "#a1a1aa",
+  zinc500: "#71717a",
+  zinc600: "#52525b",
+  zinc700: "#3f3f46",
+  zinc800: "#27272a",
+  zinc900: "#18181b",
+  zinc950: "#09090b",
+
   // Utility
   white: "#ffffff",
   black: "#000000",
@@ -69,8 +81,8 @@ export type ColorToken = keyof typeof colors;
 
 export const typography = {
   fontFamily: {
-    sans: ["System", "sans-serif"],
-    mono: ["Courier New", "monospace"],
+    sans: ["Inter_400Regular", "System", "sans-serif"],
+    mono: ["AnonymousPro_400Regular", "Courier New", "monospace"],
   },
   fontSize: {
     xs: 12,

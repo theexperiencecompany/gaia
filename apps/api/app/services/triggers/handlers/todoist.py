@@ -2,14 +2,14 @@
 Todoist trigger handler.
 """
 
-from typing import Any, Dict, List, Set
+from typing import Any
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.trigger_configs import TodoistNewTaskCreatedConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.wide_events import log
 
 
 class TodoistTriggerHandler(TriggerHandler):
@@ -24,11 +24,11 @@ class TodoistTriggerHandler(TriggerHandler):
     }
 
     @property
-    def trigger_names(self) -> List[str]:
+    def trigger_names(self) -> list[str]:
         return self.SUPPORTED_TRIGGERS
 
     @property
-    def event_types(self) -> Set[str]:
+    def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
     async def register(
@@ -37,7 +37,7 @@ class TodoistTriggerHandler(TriggerHandler):
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-    ) -> List[str]:
+    ) -> list[str]:
         """Register Todoist triggers.
 
         Raises:
@@ -53,16 +53,14 @@ class TodoistTriggerHandler(TriggerHandler):
         trigger_data = trigger_config.trigger_data
 
         # Validate trigger_data type if provided
-        if trigger_data is not None and not isinstance(
-            trigger_data, TodoistNewTaskCreatedConfig
-        ):
+        if trigger_data is not None and not isinstance(trigger_data, TodoistNewTaskCreatedConfig):
             raise TypeError(
                 f"Expected TodoistNewTaskCreatedConfig for trigger '{trigger_name}', "
                 f"but got {type(trigger_data).__name__}"
             )
 
         # No config needed for Todoist new task trigger
-        composio_trigger_config: Dict[str, Any] = {}
+        composio_trigger_config: dict[str, Any] = {}
 
         # Use the base class helper for consistent error handling
         return await self._register_triggers_parallel(
@@ -73,8 +71,8 @@ class TodoistTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: Dict[str, Any]
-    ) -> List[Workflow]:
+        self, event_type: str, trigger_id: str, data: dict[str, Any]
+    ) -> list[Workflow]:
         """Find workflows matching a Todoist trigger event."""
         log.set(trigger={"provider": "todoist", "event": event_type})
         try:
@@ -86,7 +84,7 @@ class TodoistTriggerHandler(TriggerHandler):
             }
 
             cursor = workflows_collection.find(query)
-            workflows: List[Workflow] = []
+            workflows: list[Workflow] = []
 
             async for workflow_doc in cursor:
                 try:

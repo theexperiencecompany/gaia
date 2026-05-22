@@ -1,11 +1,11 @@
 """Memory utilities for agent operations."""
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from shared.py.wide_events import log
-from app.services.memory_service import memory_service
 from app.agents.templates.mail_templates import GmailMessageParser
+from app.services.memory_service import memory_service
+from shared.py.wide_events import log
 
 
 async def store_user_message_memory(user_id: str, message: str, conversation_id: str):
@@ -21,7 +21,7 @@ async def store_user_message_memory(user_id: str, message: str, conversation_id:
             user_id=user_id,
             conversation_id=conversation_id,
             metadata={
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "conversation_id": conversation_id,
                 "type": "user_message",
             },
@@ -32,7 +32,7 @@ async def store_user_message_memory(user_id: str, message: str, conversation_id:
             return {
                 "type": "memory_stored",
                 "content": f"Stored message: {message}...",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "conversation_id": conversation_id,
             }
     except Exception as e:
@@ -44,9 +44,7 @@ async def store_user_message_memory(user_id: str, message: str, conversation_id:
 def start_memory_task(user_id: str, message: str, conversation_id: str):
     """Start memory storage task if conditions are met."""
     if user_id and message:
-        return asyncio.create_task(
-            store_user_message_memory(user_id, message, conversation_id)
-        )
+        return asyncio.create_task(store_user_message_memory(user_id, message, conversation_id))
     return None
 
 

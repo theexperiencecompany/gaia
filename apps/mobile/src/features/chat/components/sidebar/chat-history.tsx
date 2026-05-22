@@ -1,13 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import {
-  Button,
-  Card,
-  Divider,
-  PressableFeedback,
-  SkeletonGroup,
-} from "heroui-native";
-import { useCallback, useRef, useState } from "react";
+import { Button, PressableFeedback, SkeletonGroup } from "heroui-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -18,18 +12,25 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from "react-native-gesture-handler/ReanimatedSwipeable";
 import Reanimated, {
   type SharedValue,
   useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
 } from "react-native-reanimated";
 import {
   AppIcon,
-  BubbleChatIcon,
+  ArrowDown01Icon,
+  BubbleChatAddIcon,
   Delete02Icon,
   FavouriteIcon,
+  PencilEdit02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
@@ -94,20 +95,19 @@ function RenameModal({
       >
         <Pressable
           style={{
-            backgroundColor: "#18181b",
-            borderRadius: 12,
+            backgroundColor: "#1a1a1a",
+            // rounded-2xl = 16px on containers
+            borderRadius: 16,
             padding: spacing.lg,
             width: "100%",
             maxWidth: 360,
-            borderWidth: 1,
-            borderColor: "#27272a",
           }}
           onPress={() => {}}
         >
           <Text
             style={{
               fontSize: fontSize.md,
-              color: "#ffffff",
+              color: "#e4e4e7",
               fontWeight: "600",
               marginBottom: spacing.xs,
             }}
@@ -130,16 +130,15 @@ function RenameModal({
             selectTextOnFocus
             style={{
               backgroundColor: "#09090b",
-              borderWidth: 1,
-              borderColor: "#27272a",
               borderRadius: 8,
               paddingHorizontal: spacing.md,
-              paddingVertical: spacing.sm + 2,
-              color: "#ffffff",
+              // 12px vertical padding for comfortable 44dp+ tap height
+              paddingVertical: 12,
+              color: "#e4e4e7",
               fontSize: fontSize.sm,
               marginBottom: spacing.md,
             }}
-            placeholderTextColor="#52525b"
+            placeholderTextColor="#71717a"
             placeholder="Conversation name"
             onSubmitEditing={handleConfirm}
             returnKeyType="done"
@@ -170,7 +169,7 @@ interface DeleteSwipeActionProps {
 }
 
 function DeleteSwipeAction({ dragX, onDelete }: DeleteSwipeActionProps) {
-  const { iconSize } = useResponsive();
+  const { iconSize, fontSize } = useResponsive();
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: Math.min(1, Math.abs(dragX.value) / 60),
   }));
@@ -182,7 +181,7 @@ function DeleteSwipeAction({ dragX, onDelete }: DeleteSwipeActionProps) {
           justifyContent: "center",
           alignItems: "center",
           width: 72,
-          borderRadius: 8,
+          borderRadius: 12,
           marginVertical: 1,
           marginRight: 4,
           overflow: "hidden",
@@ -196,7 +195,7 @@ function DeleteSwipeAction({ dragX, onDelete }: DeleteSwipeActionProps) {
         className="flex-1 w-full rounded-lg items-center justify-center"
       >
         <AppIcon icon={Delete02Icon} size={iconSize.sm} color="#ffffff" />
-        <Text style={{ color: "#ffffff", fontSize: 10, marginTop: 2 }}>
+        <Text style={{ color: "#ffffff", fontSize: fontSize.xs, marginTop: 2 }}>
           Delete
         </Text>
       </Button>
@@ -285,6 +284,46 @@ interface ChatItemProps {
   searchQuery?: string;
 }
 
+function StreamingDot() {
+  const opacity = useSharedValue(1);
+  const scale = useSharedValue(1);
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.4, { duration: 700 }),
+        withTiming(1, { duration: 700 }),
+      ),
+      -1,
+      false,
+    );
+    scale.value = withRepeat(
+      withSequence(
+        withTiming(1.3, { duration: 700 }),
+        withTiming(1, { duration: 700 }),
+      ),
+      -1,
+      false,
+    );
+  }, [opacity, scale]);
+  const style = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ scale: scale.value }],
+  }));
+  return (
+    <Reanimated.View
+      style={[
+        style,
+        {
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: "#00bbff",
+        },
+      ]}
+    />
+  );
+}
+
 function ChatItem({
   item,
   isActive,
@@ -297,47 +336,17 @@ function ChatItem({
 }: ChatItemProps) {
   const { spacing, fontSize, iconSize } = useResponsive();
   const swipeableRef = useRef<SwipeableMethods>(null);
+  const [showSheet, setShowSheet] = useState(false);
 
-  const formatTime = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-
-    if (diffMins < 1) return "now";
-    if (diffMins < 60) return `${diffMins}m`;
-    if (diffHours < 24) return `${diffHours}h`;
-    return date.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  const handleLongPress = () => {
+  const handleLongPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert(item.title, undefined, [
-      {
-        text: item.is_starred ? "Unstar" : "Star",
-        onPress: () => onToggleStar(item.id, !!item.is_starred),
-      },
-      {
-        text: "Rename",
-        onPress: () => onRename(item.id, item.title),
-      },
-      {
-        text: "Delete",
-        onPress: () => onDelete(item.id),
-        style: "destructive",
-      },
-      { text: "Cancel", style: "cancel" },
-    ]);
-  };
+    setShowSheet(true);
+  }, []);
 
-  const handlePress = () => {
+  const handlePress = useCallback(() => {
     Haptics.selectionAsync();
     onPress();
-  };
+  }, [onPress]);
 
   const handleSwipeDelete = () => {
     swipeableRef.current?.close();
@@ -349,6 +358,39 @@ function ChatItem({
     dragX: SharedValue<number>,
   ) => <DeleteSwipeAction dragX={dragX} onDelete={handleSwipeDelete} />;
 
+  // RNGH-aware tap + long-press composition. Plain RN Pressable inside
+  // ReanimatedSwipeable + DrawerLayout has its onPress swallowed when the
+  // parent pan gesture is still resolving — gesture-handler's tap gesture
+  // routes through the same arbitration system and fires reliably.
+  const tapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDuration(400)
+        .onEnd((_e, success) => {
+          if (success) {
+            handlePress();
+          }
+        })
+        .runOnJS(true),
+    [handlePress],
+  );
+
+  const longPressGesture = useMemo(
+    () =>
+      Gesture.LongPress()
+        .minDuration(450)
+        .onStart(() => {
+          handleLongPress();
+        })
+        .runOnJS(true),
+    [handleLongPress],
+  );
+
+  const composedGesture = useMemo(
+    () => Gesture.Exclusive(longPressGesture, tapGesture),
+    [longPressGesture, tapGesture],
+  );
+
   return (
     <ReanimatedSwipeable
       ref={swipeableRef}
@@ -356,31 +398,33 @@ function ChatItem({
       rightThreshold={40}
       overshootRight={false}
     >
-      <PressableFeedback onPress={handlePress} onLongPress={handleLongPress}>
+      <GestureDetector gesture={composedGesture}>
         <View
           style={{
             flexDirection: "row",
             alignItems: "center",
-            paddingHorizontal: spacing.md,
+            paddingHorizontal: 12,
             paddingVertical: spacing.sm + 2,
             gap: spacing.sm,
-            backgroundColor: isActive
-              ? "rgba(255,255,255,0.08)"
-              : "transparent",
-            borderRadius: 8,
-            marginHorizontal: spacing.xs,
+            backgroundColor: isActive ? "rgba(0,187,255,0.10)" : "transparent",
+            borderRadius: 10,
+            marginHorizontal: 12,
+            overflow: "hidden",
           }}
         >
-          {isStreaming && (
+          {isActive ? (
             <View
               style={{
-                width: 8,
-                height: 8,
-                borderRadius: 4,
+                position: "absolute",
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 3,
                 backgroundColor: "#00bbff",
               }}
             />
-          )}
+          ) : null}
+          {isStreaming && <StreamingDot />}
           {!isStreaming && item.is_unread && (
             <View
               style={{
@@ -402,27 +446,144 @@ function ChatItem({
             text={item.title}
             query={searchQuery}
             baseStyle={{
-              fontSize: fontSize.sm,
+              fontSize: fontSize.md,
               color: isActive
                 ? "#ffffff"
                 : item.is_unread
                   ? "#ffffff"
                   : "#a1a1aa",
-              fontWeight: item.is_unread ? "600" : "400",
+              fontWeight: isActive ? "600" : item.is_unread ? "400" : "300",
               flex: 1,
             }}
             numberOfLines={1}
           />
+        </View>
+      </GestureDetector>
+
+      {/* Custom action sheet */}
+      <Modal
+        visible={showSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSheet(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }}
+          onPress={() => setShowSheet(false)}
+        />
+        <View
+          style={{
+            backgroundColor: "#18181b",
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+            paddingBottom: 32,
+          }}
+        >
+          {/* Handle */}
+          <View
+            style={{
+              width: 36,
+              height: 5,
+              borderRadius: 2.5,
+              backgroundColor: "rgba(255,255,255,0.2)",
+              alignSelf: "center",
+              marginTop: 12,
+              marginBottom: 12,
+            }}
+          />
+          {/* Title */}
           <Text
             style={{
-              fontSize: fontSize.xs - 1,
-              color: "#52525b",
+              fontSize: fontSize.sm,
+              color: "#71717a",
+              fontWeight: "500",
+              paddingHorizontal: spacing.lg,
+              paddingBottom: spacing.sm,
             }}
+            numberOfLines={1}
           >
-            {formatTime(item.updated_at || item.created_at)}
+            {item.title}
           </Text>
+          {/* Divider */}
+          <View style={{ height: 1, backgroundColor: "#27272a" }} />
+
+          {/* Star / Unstar */}
+          <Pressable
+            onPress={() => {
+              setShowSheet(false);
+              onToggleStar(item.id, !!item.is_starred);
+            }}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.md,
+              paddingHorizontal: spacing.lg,
+              paddingVertical: spacing.md,
+              backgroundColor: pressed
+                ? "rgba(255,255,255,0.04)"
+                : "transparent",
+            })}
+          >
+            <AppIcon icon={FavouriteIcon} size={iconSize.sm} color="#a1a1aa" />
+            <Text style={{ fontSize: fontSize.md, color: "#ffffff" }}>
+              {item.is_starred ? "Unstar" : "Star"}
+            </Text>
+          </Pressable>
+
+          {/* Rename */}
+          <Pressable
+            onPress={() => {
+              setShowSheet(false);
+              onRename(item.id, item.title);
+            }}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.md,
+              paddingHorizontal: spacing.lg,
+              paddingVertical: spacing.md,
+              backgroundColor: pressed
+                ? "rgba(255,255,255,0.04)"
+                : "transparent",
+            })}
+          >
+            <AppIcon
+              icon={PencilEdit02Icon}
+              size={iconSize.sm}
+              color="#a1a1aa"
+            />
+            <Text style={{ fontSize: fontSize.md, color: "#ffffff" }}>
+              Rename
+            </Text>
+          </Pressable>
+
+          {/* Divider before destructive action */}
+          <View
+            style={{ height: 1, backgroundColor: "#27272a", marginTop: 4 }}
+          />
+
+          {/* Delete */}
+          <Pressable
+            onPress={() => {
+              setShowSheet(false);
+              onDelete(item.id);
+            }}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.md,
+              paddingHorizontal: spacing.lg,
+              paddingVertical: spacing.md,
+              backgroundColor: pressed ? "rgba(239,68,68,0.08)" : "transparent",
+            })}
+          >
+            <AppIcon icon={Delete02Icon} size={iconSize.sm} color="#ef4444" />
+            <Text style={{ fontSize: fontSize.md, color: "#ef4444" }}>
+              Delete
+            </Text>
+          </Pressable>
         </View>
-      </PressableFeedback>
+      </Modal>
     </ReanimatedSwipeable>
   );
 }
@@ -452,33 +613,46 @@ function Section({
   isExpanded,
   onToggle,
 }: SectionProps) {
-  const { spacing, fontSize } = useResponsive();
+  const { spacing, fontSize, iconSize } = useResponsive();
+  const rotation = useSharedValue(isExpanded ? 0 : -90);
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
+
+  const handleToggle = () => {
+    rotation.value = withTiming(isExpanded ? -90 : 0, { duration: 200 });
+    onToggle();
+  };
 
   if (items.length === 0) return null;
 
   return (
-    <View style={{ marginBottom: 2 }}>
-      <Divider className="mx-3 mb-1" />
+    <View style={{ marginBottom: 4 }}>
       <PressableFeedback
-        onPress={onToggle}
+        onPress={handleToggle}
+        hitSlop={4}
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.sm,
+          paddingHorizontal: spacing.sm + 4,
+          paddingTop: 8,
+          paddingBottom: 4,
         }}
       >
         <Text
           style={{
-            fontSize: fontSize.xs,
-            color: "#52525b",
-            fontWeight: "500",
-            textTransform: "uppercase",
-            letterSpacing: 0.5,
+            flex: 1,
+            fontSize: fontSize.md,
+            color: "#71717a",
+            fontWeight: "400",
           }}
         >
           {title}
         </Text>
+        <Reanimated.View style={chevronStyle}>
+          <AppIcon icon={ArrowDown01Icon} size={iconSize.sm} color="#71717a" />
+        </Reanimated.View>
       </PressableFeedback>
       {isExpanded &&
         items.map((item) => (
@@ -500,34 +674,36 @@ function Section({
 function ChatHistorySkeleton() {
   const { spacing } = useResponsive();
   return (
-    <SkeletonGroup isLoading className="gap-0">
-      {[1, 2, 3, 4, 5, 6].map((i) => (
-        <View
-          key={i}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            paddingHorizontal: spacing.md,
-            paddingVertical: spacing.sm + 2,
-            gap: spacing.sm,
-            marginHorizontal: spacing.xs,
-          }}
-        >
-          <SkeletonGroup.Item
-            className="rounded-full"
-            style={{ width: 8, height: 8 }}
-          />
-          <SkeletonGroup.Item
-            className="rounded-md flex-1"
-            style={{ height: 14 }}
-          />
-          <SkeletonGroup.Item
-            className="rounded-md"
-            style={{ width: 28, height: 10 }}
-          />
-        </View>
-      ))}
-    </SkeletonGroup>
+    <View style={{ flex: 1 }}>
+      <SkeletonGroup isLoading className="gap-0">
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <View
+            key={i}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.sm + 2,
+              gap: spacing.sm,
+              marginHorizontal: spacing.xs,
+            }}
+          >
+            <SkeletonGroup.Item
+              className="rounded-full"
+              style={{ width: 8, height: 8 }}
+            />
+            <SkeletonGroup.Item
+              className="rounded-md flex-1"
+              style={{ height: 14 }}
+            />
+            <SkeletonGroup.Item
+              className="rounded-md"
+              style={{ width: 28, height: 10 }}
+            />
+          </View>
+        ))}
+      </SkeletonGroup>
+    </View>
   );
 }
 
@@ -714,63 +890,97 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
 
   if (error) {
     return (
-      <Card
-        variant="secondary"
-        className="flex-1 items-center justify-center mx-3 rounded-2xl"
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          padding: spacing.lg,
+        }}
       >
-        <Card.Body className="items-center justify-center p-4">
-          <Card.Description className="text-center text-danger">
-            {error}
-          </Card.Description>
-        </Card.Body>
-      </Card>
+        <Text
+          style={{
+            color: "#ef4444",
+            fontSize: fontSize.sm,
+            textAlign: "center",
+          }}
+        >
+          {error}
+        </Text>
+      </View>
     );
   }
 
   if (filteredConversations.length === 0 && isSearching) {
     return (
-      <Card
-        variant="secondary"
-        className="flex-1 items-center justify-center mx-3 rounded-2xl"
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          padding: spacing.lg,
+        }}
       >
-        <Card.Body className="items-center justify-center gap-1 p-4">
-          <Card.Title className="text-center">No results found</Card.Title>
-          <Card.Description className="text-center">
-            Try a different search term
-          </Card.Description>
-        </Card.Body>
-      </Card>
+        <Text
+          style={{
+            color: "#71717a",
+            fontSize: fontSize.sm,
+            textAlign: "center",
+          }}
+        >
+          No results for "{searchQuery}"
+        </Text>
+      </View>
     );
   }
 
   if (conversations.length === 0) {
     return (
-      <Card
-        variant="secondary"
-        className="flex-1 items-center justify-center mx-3 rounded-2xl"
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          padding: spacing.lg,
+        }}
       >
-        <Card.Body className="items-center justify-center gap-3 py-10 px-5">
-          <Card
-            variant="secondary"
-            className="w-14 h-14 rounded-full items-center justify-center"
+        <View
+          style={{
+            flexDirection: "column",
+            alignItems: "center",
+            gap: spacing.sm,
+            paddingVertical: spacing.xl,
+          }}
+        >
+          {/* #71717a (zinc-500) gives better contrast than zinc-600 on #1a1a1a */}
+          <AppIcon icon={BubbleChatAddIcon} size={24} color="#71717a" />
+          <Text
+            style={{
+              fontSize: fontSize.sm,
+              color: "#a1a1aa",
+              textAlign: "center",
+            }}
           >
-            <Card.Body className="items-center justify-center p-0">
-              <AppIcon icon={BubbleChatIcon} size={28} color="#3f3f46" />
-            </Card.Body>
-          </Card>
-          <Card.Title className="text-center">No conversations yet</Card.Title>
-          <Card.Description className="text-center">
+            No conversations yet
+          </Text>
+          <Text
+            style={{
+              fontSize: fontSize.xs,
+              color: "#71717a",
+              textAlign: "center",
+            }}
+          >
             Start a new chat to begin
-          </Card.Description>
-        </Card.Body>
-      </Card>
+          </Text>
+        </View>
+      </View>
     );
   }
 
   // When searching: show flat list with highlighted matches
   if (isSearching) {
     return (
-      <>
+      <View style={{ flex: 1 }}>
         <RenameModal
           visible={renameModal.visible}
           currentTitle={renameModal.currentTitle}
@@ -785,11 +995,9 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
         >
           <Text
             style={{
-              fontSize: fontSize.xs,
+              fontSize: fontSize.sm,
               color: "#52525b",
-              fontWeight: "500",
-              textTransform: "uppercase",
-              letterSpacing: 0.5,
+              fontWeight: "400",
             }}
           >
             {filteredConversations.length}{" "}
@@ -800,11 +1008,12 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           data={filteredConversations}
           keyExtractor={keyExtractor}
           renderItem={renderSearchItem}
+          style={{ flex: 1 }}
           contentContainerStyle={{ paddingBottom: spacing.md }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         />
-      </>
+      </View>
     );
   }
 
@@ -857,7 +1066,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           onToggle={() => toggleSection("yesterday")}
         />
         <Section
-          title="Previous 7 Days"
+          title="Previous 7 days"
           items={groupedChats.lastWeek}
           activeChatId={activeChatId}
           streamingConversationId={streamingConversationId}
@@ -869,7 +1078,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           onToggle={() => toggleSection("lastWeek")}
         />
         <Section
-          title="Previous 30 Days"
+          title="Previous 30 days"
           items={groupedChats.last30Days}
           activeChatId={activeChatId}
           streamingConversationId={streamingConversationId}

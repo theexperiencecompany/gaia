@@ -5,11 +5,11 @@ to verify encrypt/decrypt roundtrips, token storage, expiry checks,
 and credential deletion.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from cryptography.fernet import Fernet
+import pytest
 
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -38,7 +38,7 @@ def _make_bearer_credential(
     token_store: MCPTokenStore, integration_id: str, plaintext: str
 ) -> MCPCredential:
     """Build an MCPCredential as store_bearer_token would, using the same cipher."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     return MCPCredential(
         user_id=token_store.user_id,
         integration_id=integration_id,
@@ -103,9 +103,7 @@ class TestMCPTokenManagement:
     # ------------------------------------------------------------------
 
     @patch("app.services.mcp.mcp_token_store.get_db_session")
-    async def test_get_bearer_token_returns_stored_value(
-        self, mock_get_session, token_store
-    ):
+    async def test_get_bearer_token_returns_stored_value(self, mock_get_session, token_store):
         """get_bearer_token must decrypt and return the same value that was stored.
 
         This is the retrieval path that the previous test_store_and_get_bearer_token
@@ -147,9 +145,7 @@ class TestMCPTokenManagement:
 
         result = await token_store.get_bearer_token("non-existent-integration")
 
-        assert result is None, (
-            "get_bearer_token must return None for an unknown integration_id"
-        )
+        assert result is None, "get_bearer_token must return None for an unknown integration_id"
 
     @patch("app.services.mcp.mcp_token_store.get_db_session")
     async def test_token_expiry_bearer_disconnected_returns_none(
@@ -195,7 +191,7 @@ class TestMCPTokenManagement:
         mock_session.commit = AsyncMock()
         mock_get_session.return_value = _make_db_session_context(mock_session)
 
-        expires = datetime.now(timezone.utc) + timedelta(hours=1)
+        expires = datetime.now(UTC) + timedelta(hours=1)
         await token_store.store_oauth_tokens(
             "integration-2",
             access_token="access-abc",
@@ -211,18 +207,16 @@ class TestMCPTokenManagement:
         assert token_store._decrypt(added_obj.refresh_token) == "refresh-xyz"
 
     @patch("app.services.mcp.mcp_token_store.get_db_session")
-    async def test_get_oauth_token_returns_none_when_expired(
-        self, mock_get_session, token_store
-    ):
+    async def test_get_oauth_token_returns_none_when_expired(self, mock_get_session, token_store):
         """get_oauth_token should return None if the token has expired."""
         expired_cred = MagicMock()
         expired_cred.access_token = token_store._encrypt("expired-token")
         expired_cred.status = MCPCredentialStatus.CONNECTED
         expired_cred.auth_type = MCPAuthType.OAUTH
         # Set expired time (1 hour ago), naive UTC as stored in DB
-        expired_cred.token_expires_at = (
-            datetime.now(timezone.utc) - timedelta(hours=1)
-        ).replace(tzinfo=None)
+        expired_cred.token_expires_at = (datetime.now(UTC) - timedelta(hours=1)).replace(
+            tzinfo=None
+        )
 
         mock_session = AsyncMock()
         mock_result = MagicMock()
@@ -272,9 +266,7 @@ class TestMCPTokenManagement:
             "code_verifier": "my-verifier",
         }
 
-        is_valid, verifier = await token_store.verify_oauth_state(
-            "int-oauth", "correct-state"
-        )
+        is_valid, verifier = await token_store.verify_oauth_state("int-oauth", "correct-state")
 
         assert is_valid is True
         assert verifier == "my-verifier"
@@ -290,17 +282,13 @@ class TestMCPTokenManagement:
             "code_verifier": "my-verifier",
         }
 
-        is_valid, verifier = await token_store.verify_oauth_state(
-            "int-oauth", "wrong-state"
-        )
+        is_valid, verifier = await token_store.verify_oauth_state("int-oauth", "wrong-state")
 
         assert is_valid is False
         assert verifier is None
 
     @patch("app.services.mcp.mcp_token_store.get_db_session")
-    async def test_delete_credentials_noop_when_not_found(
-        self, mock_get_session, token_store
-    ):
+    async def test_delete_credentials_noop_when_not_found(self, mock_get_session, token_store):
         """delete_credentials should not call delete or commit when no credential exists."""
         mock_session = AsyncMock()
         mock_result = MagicMock()
@@ -331,9 +319,7 @@ class TestMCPTokenManagement:
         legacy_state = "legacy-state-token-xyz"
         mock_get_delete.return_value = legacy_state
 
-        is_valid, verifier = await token_store.verify_oauth_state(
-            "int-oauth", legacy_state
-        )
+        is_valid, verifier = await token_store.verify_oauth_state("int-oauth", legacy_state)
 
         assert is_valid is True
         # Legacy format carries no code_verifier
@@ -343,15 +329,11 @@ class TestMCPTokenManagement:
         "app.services.mcp.mcp_token_store.get_and_delete_cache",
         new_callable=AsyncMock,
     )
-    async def test_verify_oauth_state_legacy_format_mismatch(
-        self, mock_get_delete, token_store
-    ):
+    async def test_verify_oauth_state_legacy_format_mismatch(self, mock_get_delete, token_store):
         """verify_oauth_state should return False when legacy state does not match."""
         mock_get_delete.return_value = "legacy-state-token-xyz"
 
-        is_valid, verifier = await token_store.verify_oauth_state(
-            "int-oauth", "wrong-state"
-        )
+        is_valid, verifier = await token_store.verify_oauth_state("int-oauth", "wrong-state")
 
         assert is_valid is False
         assert verifier is None
@@ -362,9 +344,7 @@ class TestGetBearerToken:
     """Test get_bearer_token filtering logic (auth_type, status, access_token)."""
 
     @patch("app.services.mcp.mcp_token_store.get_db_session")
-    async def test_returns_decrypted_token_for_active_bearer(
-        self, mock_get_session, token_store
-    ):
+    async def test_returns_decrypted_token_for_active_bearer(self, mock_get_session, token_store):
         """get_bearer_token should decrypt and return the token for a healthy BEARER credential."""
         bearer_cred = MagicMock()
         bearer_cred.access_token = token_store._encrypt("my-bearer-secret")
@@ -386,9 +366,7 @@ class TestGetBearerToken:
         assert result == "my-bearer-secret"
 
     @patch("app.services.mcp.mcp_token_store.get_db_session")
-    async def test_returns_none_for_wrong_auth_type(
-        self, mock_get_session, token_store
-    ):
+    async def test_returns_none_for_wrong_auth_type(self, mock_get_session, token_store):
         """get_bearer_token should return None when the stored credential is OAuth, not BEARER."""
         oauth_cred = MagicMock()
         oauth_cred.access_token = token_store._encrypt("oauth-access-token")
@@ -410,9 +388,7 @@ class TestGetBearerToken:
         assert result is None
 
     @patch("app.services.mcp.mcp_token_store.get_db_session")
-    async def test_returns_none_for_inactive_status(
-        self, mock_get_session, token_store
-    ):
+    async def test_returns_none_for_inactive_status(self, mock_get_session, token_store):
         """get_bearer_token should return None when the credential status is not CONNECTED."""
         inactive_cred = MagicMock()
         inactive_cred.access_token = token_store._encrypt("my-bearer-secret")

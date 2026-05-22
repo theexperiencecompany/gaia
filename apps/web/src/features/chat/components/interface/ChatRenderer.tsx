@@ -11,6 +11,7 @@ import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUs
 import GeneratedImageSheet from "@/features/chat/components/image/GeneratedImageSheet";
 import { LoadingIndicator } from "@/features/chat/components/interface/LoadingIndicator";
 import MemoryModal from "@/features/chat/components/memory/MemoryModal";
+import { WelcomeChat } from "@/features/chat/components/welcome/WelcomeChat";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
 import { useLoading } from "@/features/chat/hooks/useLoading";
@@ -23,6 +24,7 @@ import {
 import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
 import type {
   ChatBubbleBotProps,
+  ChatBubbleUserProps,
   SetImageDataType,
 } from "@/types/features/chatBubbleTypes";
 import type { MessageType } from "@/types/features/convoTypes";
@@ -55,6 +57,10 @@ export default function ChatRenderer({
       (convo) => convo.conversation_id === convoIdParam,
     );
   }, [conversations, convoIdParam]);
+
+  // Read off the conversation, not userStore, to avoid a stale-rehydrate race.
+  const isWelcomeConversation =
+    conversation?.is_onboarding_conversation === true;
 
   // Handle retry callback
   const handleRetry = useCallback(
@@ -194,9 +200,11 @@ export default function ChatRenderer({
       />
       <SearchedImageDialog />
       <CreatedByGAIABanner show={conversation?.is_system_generated === true} />
+      {isWelcomeConversation && <WelcomeChat />}
       {messagesWithDeduplicatedToolCalls?.map(
         (message: MessageType, index: number) => {
-          let messageProps = null;
+          let messageProps: ChatBubbleBotProps | ChatBubbleUserProps | null =
+            null;
 
           if (message.type === "bot")
             messageProps = getMessageProps(message, "bot", messagePropsOptions);
@@ -212,14 +220,14 @@ export default function ChatRenderer({
           if (
             message.type === "bot" &&
             !isBotMessageEmpty(messageProps as ChatBubbleBotProps)
-          )
+          ) {
             return (
               <ChatBubbleBot
                 key={message.message_id || index}
                 {...getMessageProps(message, "bot", messagePropsOptions)}
               />
             );
-
+          }
           return (
             <ChatBubbleUser
               key={message.message_id || index}

@@ -10,12 +10,10 @@ execution pipeline (trigger → webhook → queue → agent) handles them with n
 """
 
 from collections.abc import Callable
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from pymongo.errors import DuplicateKeyError
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -35,6 +33,7 @@ from app.services.system_workflows.definitions.gmail import GMAIL_SYSTEM_WORKFLO
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.trigger_service import TriggerService
 from app.utils.workflow_utils import ensure_trigger_config_object
+from shared.py.wide_events import log
 
 # Maps integration_id -> list of (system_workflow_key, factory)
 SYSTEM_WORKFLOWS_BY_INTEGRATION: dict[
@@ -46,14 +45,15 @@ SYSTEM_WORKFLOWS_BY_INTEGRATION: dict[
 
 # Flat registry: system_workflow_key -> factory (for reset-to-default)
 SYSTEM_WORKFLOW_REGISTRY: dict[str, Callable[[], CreateWorkflowRequest]] = {
-    key: factory
-    for entries in SYSTEM_WORKFLOWS_BY_INTEGRATION.values()
-    for key, factory in entries
+    key: factory for entries in SYSTEM_WORKFLOWS_BY_INTEGRATION.values() for key, factory in entries
 }
 
 
 async def provision_system_workflows(
-    user_id: str, integration_id: str, integration_display_name: str
+    user_id: str,
+    integration_id: str,
+    integration_display_name: str,
+    notify: bool = True,
 ) -> None:
     """Create system workflows for a newly connected integration.
 
@@ -64,6 +64,9 @@ async def provision_system_workflows(
         user_id: The user who connected the integration.
         integration_id: The integration that was connected (e.g. 'gmail', 'googlecalendar').
         integration_display_name: Human-readable name for notifications (e.g. 'Gmail').
+        notify: If True, sends a user notification summarising the new workflows.
+            Set to False during onboarding so the provisioning is silent — the
+            onboarding UI surfaces the workflows itself.
     """
     log.set(
         service="system_workflow_provisioner",
@@ -90,9 +93,7 @@ async def provision_system_workflows(
             {"user_id": user_id, "system_workflow_key": key, "is_system_workflow": True}
         )
         if existing:
-            log.info(
-                f"System workflow '{key}' already exists for user {user_id}, skipping"
-            )
+            log.info(f"System workflow '{key}' already exists for user {user_id}, skipping")
             continue
 
         try:
@@ -111,7 +112,7 @@ async def provision_system_workflows(
                 exc_info=True,
             )
 
-    if created:
+    if created and notify:
         await _notify_workflows_provisioned(user_id, integration_display_name, created)
 
 
@@ -193,7 +194,7 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     if not existing:
         return False
 
-    key: Optional[str] = existing.get("system_workflow_key")
+    key: str | None = existing.get("system_workflow_key")
     factory = SYSTEM_WORKFLOW_REGISTRY.get(key) if key else None
     if not factory:
         log.warning(
@@ -207,7 +208,7 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     old_trigger_ids: list[str] = (
         existing.get("trigger_config", {}).get("composio_trigger_ids") or []
     )
-    trigger_name: Optional[str] = existing.get("trigger_config", {}).get("trigger_name")
+    trigger_name: str | None = existing.get("trigger_config", {}).get("trigger_name")
 
     # Register fresh triggers FIRST (old still active if this fails)
     new_trigger_ids: list[str] = []
@@ -221,9 +222,7 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
                 raise_on_failure=False,
             )
         except Exception as e:
-            log.error(
-                f"Failed to re-register triggers, aborting reset of {workflow_id}: {e}"
-            )
+            log.error(f"Failed to re-register triggers, aborting reset of {workflow_id}: {e}")
             return False
 
         if not new_trigger_ids:
@@ -258,12 +257,10 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
                 "description": request.description,
                 "steps": [s.model_dump() for s in (request.steps or [])],
                 "trigger_config": trigger_doc,
-                "updated_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(UTC),
             }
         },
     )
 
-    log.info(
-        f"Reset system workflow '{key}' ({workflow_id}) to default for user {user_id}"
-    )
+    log.info(f"Reset system workflow '{key}' ({workflow_id}) to default for user {user_id}")
     return True

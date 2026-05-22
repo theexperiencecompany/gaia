@@ -1,7 +1,10 @@
+import type { ToolDataEntry } from "@gaia/shared/chat";
+import { mergeToolOutputIntoToolData } from "@gaia/shared/chat";
 import type { FlashListRef } from "@shopify/flash-list";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { chatDb } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chat-store";
 import { chatApi, fetchChatStream, type Message } from "../api/chat-api";
 import { chatKeys, useConversationQuery } from "../api/queries";
@@ -9,6 +12,9 @@ import type { AttachmentFile } from "../components/composer/attachment-preview";
 import type { ReplyToMessageData } from "../types";
 
 const EMPTY_MESSAGES: Message[] = [];
+
+/** Delay (ms) before re-fetching conversation after the user cancels a stream. */
+const POST_CANCEL_SYNC_DELAY_MS = 2000;
 
 export type { Message } from "../api/chat-api";
 
@@ -44,7 +50,9 @@ export function useChat(
 ): UseChatReturn {
   const flatListRef = useRef<FlashListRef<Message>>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const streamIdRef = useRef<string | null>(null);
   const streamingResponseRef = useRef<string>("");
+  const streamingToolDataRef = useRef<ToolDataEntry[]>([]);
   const queryClient = useQueryClient();
 
   const storeActiveChatId = useChatStore((state) => state.activeChatId);
@@ -66,6 +74,29 @@ export function useChat(
       activeConvIdRef.current = newEffectiveId;
     }
   }, [chatId, storeActiveChatId]);
+
+  // When a conversation is opened, eagerly seed the React Query cache from
+  // AsyncStorage so the UI renders instantly before the network fetch resolves.
+  // This does NOT touch Zustand — streaming messages still take priority.
+  useEffect(() => {
+    if (!currentConversationId || currentConversationId.startsWith("temp-")) {
+      return;
+    }
+
+    const cacheKey = chatKeys.messages(currentConversationId);
+    // Only seed if React Query has no data yet for this conversation
+    if (queryClient.getQueryData(cacheKey) !== undefined) return;
+
+    chatDb.getMessages(currentConversationId).then((persisted) => {
+      if (persisted.length > 0) {
+        // setQueryData without overwriting if a fetch already completed
+        queryClient.setQueryData(
+          cacheKey,
+          (existing: Message[] | undefined) => existing ?? persisted,
+        );
+      }
+    });
+  }, [currentConversationId, queryClient]);
 
   const {
     data: cachedMessages,
@@ -112,14 +143,37 @@ export function useChat(
   }, []);
 
   const cancelStream = useCallback(() => {
+    // Abort the local SSE connection immediately.
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
+
+    // Notify the backend so it can stop processing. Fire-and-forget.
+    const streamId = streamIdRef.current;
+    if (streamId) {
+      chatApi.cancelStream(streamId).catch(() => {
+        // Ignore — backend may already be done.
+      });
+      streamIdRef.current = null;
+    }
+
     useChatStore.getState().setStreamingState({
       isStreaming: false,
       isTyping: false,
       conversationId: null,
+      progress: null,
+      progressToolName: null,
     });
-  }, []);
+
+    // Schedule a single re-fetch after the backend has had time to persist the
+    // partial response. Mirrors web's syncWithRetry but simpler: one attempt
+    // with a short delay is sufficient for the mobile use case.
+    const convId = activeConvIdRef.current;
+    if (convId && !convId.startsWith("temp-")) {
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: chatKeys.messages(convId) });
+      }, POST_CANCEL_SYNC_DELAY_MS);
+    }
+  }, [queryClient]);
 
   const sendMessage = useCallback(
     async (text: string, opts?: SendMessageOptions) => {
@@ -182,6 +236,8 @@ export function useChat(
         conversationId: storeKey,
       });
       streamingResponseRef.current = "";
+      streamingToolDataRef.current = [];
+      streamIdRef.current = null;
 
       try {
         const existingConvId = activeConvIdRef.current;
@@ -203,6 +259,9 @@ export function useChat(
             replyToMessage: replyToMessage ?? null,
           },
           {
+            onStreamId: (id) => {
+              streamIdRef.current = id;
+            },
             onConversationCreated: (
               newConvId,
               userMsgId,
@@ -262,16 +321,54 @@ export function useChat(
                 .getState()
                 .updateLastMessageFollowUp(activeConvIdRef.current!, actions);
             },
+            onToolData: (entry) => {
+              streamingToolDataRef.current = [
+                ...streamingToolDataRef.current,
+                entry,
+              ];
+              // Keep the last AI message in sync with accumulated tool data
+              // so tool cards render live during streaming.
+              useChatStore
+                .getState()
+                .updateLastAssistantMessage(activeConvIdRef.current!, {
+                  toolData: streamingToolDataRef.current,
+                });
+            },
+            onToolOutput: (output) => {
+              // Backend streams the tool result on a separate event keyed
+              // by tool_call_id; merge it into the matching tool_data entry
+              // (web parity, mirrors useChatStream.handleToolOutput).
+              streamingToolDataRef.current = mergeToolOutputIntoToolData(
+                streamingToolDataRef.current,
+                output,
+              );
+              useChatStore
+                .getState()
+                .updateLastAssistantMessage(activeConvIdRef.current!, {
+                  toolData: streamingToolDataRef.current,
+                });
+            },
             onDone: () => {
+              streamIdRef.current = null;
               const finalConvId = activeConvIdRef.current;
               const store = useChatStore.getState();
               const finalMessages = store.messagesByConversation[finalConvId!];
 
               if (finalMessages && finalConvId) {
+                // Update React Query cache so the UI picks up the final messages
                 queryClient.setQueryData(
                   chatKeys.messages(finalConvId),
                   finalMessages,
                 );
+
+                // Persist to AsyncStorage so messages survive app restarts
+                chatDb.saveMessages(finalConvId, finalMessages).catch((err) => {
+                  console.warn(
+                    "[use-chat] Failed to persist messages on stream done:",
+                    err,
+                  );
+                });
+
                 store.clearMessages(finalConvId);
               }
 
@@ -286,6 +383,7 @@ export function useChat(
             },
             onError: (error) => {
               console.error("Stream error:", error);
+              streamIdRef.current = null;
               useChatStore.getState().setStreamingState({
                 isTyping: false,
                 isStreaming: false,

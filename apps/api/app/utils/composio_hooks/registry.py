@@ -8,7 +8,8 @@ Also provides schema modifiers for customizing tool schemas before they are
 presented to agents.
 """
 
-from typing import Any, Callable, List, Optional, Union
+from collections.abc import Callable
+from typing import Any, Union
 
 from composio.types import Tool, ToolExecuteParams
 
@@ -26,15 +27,13 @@ class ComposioHookRegistry:
 
     def __init__(self) -> None:
         # Registry for before_execute hooks
-        self._before_hooks: List[
-            Callable[[str, str, ToolExecuteParams], ToolExecuteParams]
-        ] = []
+        self._before_hooks: list[Callable[[str, str, ToolExecuteParams], ToolExecuteParams]] = []
 
         # Registry for after_execute hooks
-        self._after_hooks: List[Callable[[str, str, Any], Any]] = []
+        self._after_hooks: list[Callable[[str, str, Any], Any]] = []
 
         # Registry for schema modifiers
-        self._schema_modifiers: List[Callable[[str, str, Tool], Tool]] = []
+        self._schema_modifiers: list[Callable[[str, str, Tool], Tool]] = []
 
     def register_before_hook(
         self, hook_func: Callable[[str, str, ToolExecuteParams], ToolExecuteParams]
@@ -77,9 +76,7 @@ class ComposioHookRegistry:
                 # Continue with other hooks even if one fails
         return modified_response
 
-    def register_schema_modifier(
-        self, modifier_func: Callable[[str, str, Tool], Tool]
-    ) -> None:
+    def register_schema_modifier(self, modifier_func: Callable[[str, str, Tool], Tool]) -> None:
         """Register a schema modifier function."""
         self._schema_modifiers.append(modifier_func)
         log.debug(f"Registered schema_modifier: {modifier_func.__name__}")
@@ -142,8 +139,8 @@ def master_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
 
 
 def register_before_hook(
-    tools: Optional[Union[str, List[str]]] = None,
-    toolkits: Optional[Union[str, List[str]]] = None,
+    tools: Union[str, list[str]] | None = None,
+    toolkits: Union[str, list[str]] | None = None,
 ):
     """
     Enhanced decorator for registering before_execute hooks.
@@ -211,8 +208,8 @@ def register_before_hook(
 
 
 def register_after_hook(
-    tools: Optional[Union[str, List[str]]] = None,
-    toolkits: Optional[Union[str, List[str]]] = None,
+    tools: Union[str, list[str]] | None = None,
+    toolkits: Union[str, list[str]] | None = None,
 ):
     """
     Enhanced decorator for registering after_execute hooks.
@@ -275,8 +272,8 @@ def register_after_hook(
 
 
 def register_schema_modifier(
-    tools: Optional[Union[str, List[str]]] = None,
-    toolkits: Optional[Union[str, List[str]]] = None,
+    tools: Union[str, list[str]] | None = None,
+    toolkits: Union[str, list[str]] | None = None,
 ):
     """
     Decorator for registering schema modifiers.

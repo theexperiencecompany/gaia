@@ -10,8 +10,8 @@ Tests cover:
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 BASE_URL = "/api/v1/onboarding"
 STATUS_URL = f"{BASE_URL}/status"
@@ -27,7 +27,7 @@ _WORKFLOWS_COLLECTION = "app.api.v1.endpoints.onboarding.workflows_collection"
 _UPDATE_PREFERENCES = "app.api.v1.endpoints.onboarding.update_onboarding_preferences"
 _COMPOSIO_SERVICE = "app.api.v1.endpoints.onboarding.get_composio_service"
 _WEBSOCKET_MANAGER = "app.api.v1.endpoints.onboarding.websocket_manager"
-_QUEUE_PERSONALIZATION = "app.api.v1.endpoints.onboarding.queue_personalization"
+_REDIS_POOL_MANAGER = "app.utils.redis_utils.RedisPoolManager"
 
 
 def _make_onboarding_request(**overrides) -> dict:
@@ -91,7 +91,11 @@ class TestCompleteOnboarding:
                 new_callable=AsyncMock,
                 return_value={"email_memory_processed": False},
             ),
-            patch(_QUEUE_PERSONALIZATION, new_callable=AsyncMock),
+            patch(
+                _REDIS_POOL_MANAGER + ".get_pool",
+                new_callable=AsyncMock,
+                return_value=AsyncMock(),
+            ),
         ):
             response = await client.post(BASE_URL, json=_make_onboarding_request())
 
@@ -100,27 +104,21 @@ class TestCompleteOnboarding:
         assert data["success"] is True
         assert data["message"] == "Onboarding completed successfully"
 
-    async def test_complete_onboarding_missing_name_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_complete_onboarding_missing_name_returns_422(self, client: AsyncClient):
         response = await client.post(
             BASE_URL,
             json={"profession": "Developer"},
         )
         assert response.status_code == 422
 
-    async def test_complete_onboarding_missing_profession_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_complete_onboarding_missing_profession_returns_422(self, client: AsyncClient):
         response = await client.post(
             BASE_URL,
             json={"name": "Test User"},
         )
         assert response.status_code == 422
 
-    async def test_complete_onboarding_empty_name_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_complete_onboarding_empty_name_returns_422(self, client: AsyncClient):
         response = await client.post(
             BASE_URL,
             json={"name": "", "profession": "Developer"},
@@ -136,9 +134,7 @@ class TestCompleteOnboarding:
         )
         assert response.status_code == 422
 
-    async def test_complete_onboarding_service_error_returns_500(
-        self, client: AsyncClient
-    ):
+    async def test_complete_onboarding_service_error_returns_500(self, client: AsyncClient):
         with patch(
             _COMPLETE_ONBOARDING,
             new_callable=AsyncMock,
@@ -296,9 +292,7 @@ class TestUpdatePreferences:
         )
         assert response.status_code == 422
 
-    async def test_update_preferences_service_error_returns_500(
-        self, client: AsyncClient
-    ):
+    async def test_update_preferences_service_error_returns_500(self, client: AsyncClient):
         with patch(
             _UPDATE_PREFERENCES,
             new_callable=AsyncMock,
@@ -346,9 +340,7 @@ class TestGetPersonalization:
         assert data["personality_phrase"] == "Curious Explorer"
         assert data["has_personalization"] is True
 
-    async def test_get_personalization_user_not_found_returns_404(
-        self, client: AsyncClient
-    ):
+    async def test_get_personalization_user_not_found_returns_404(self, client: AsyncClient):
         with patch(
             _USERS_COLLECTION + ".find_one",
             new_callable=AsyncMock,
@@ -358,9 +350,7 @@ class TestGetPersonalization:
 
         assert response.status_code == 404
 
-    async def test_get_personalization_service_error_returns_500(
-        self, client: AsyncClient
-    ):
+    async def test_get_personalization_service_error_returns_500(self, client: AsyncClient):
         with patch(
             _USERS_COLLECTION + ".find_one",
             new_callable=AsyncMock,

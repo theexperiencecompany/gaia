@@ -526,6 +526,7 @@ export function PieChartView(props: z.infer<typeof pieChartSchema>) {
                       </text>
                     );
                   }
+                  return null;
                 }}
               />
             </Pie>
@@ -709,7 +710,7 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
   const scale = GAUGE_SCALE[props.size ?? "md"];
   const wrap = (node: React.ReactNode) =>
     scale === 1 ? (
-      <>{node}</>
+      node
     ) : (
       <div
         style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}
@@ -776,6 +777,7 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
                       </text>
                     );
                   }
+                  return null;
                 }}
               />
             </PolarRadiusAxis>
@@ -847,6 +849,7 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
                       </text>
                     );
                   }
+                  return null;
                 }}
               />
             </PolarRadiusAxis>
@@ -920,6 +923,7 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
                     </text>
                   );
                 }
+                return null;
               }}
             />
           </PolarRadiusAxis>

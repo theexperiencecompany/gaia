@@ -3,7 +3,6 @@ Device Token Models for Push Notifications
 """
 
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -20,7 +19,7 @@ class DeviceTokenRequest(BaseModel):
 
     token: str = Field(..., description="Expo push token")
     platform: PlatformType = Field(..., description="Device platform (ios or android)")
-    device_id: Optional[str] = Field(None, description="Optional device identifier")
+    device_id: str | None = Field(None, description="Optional device identifier")
 
 
 class DeviceTokenResponse(BaseModel):

@@ -32,12 +32,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from app.db.mongodb.collections import workflows_collection
 from shared.py.wide_events import log
-
 
 # ---------------------------------------------------------------------------
 # Manifest of edits, keyed by workflow id (``_id`` in Mongo).
@@ -52,7 +50,7 @@ from shared.py.wide_events import log
 COPY_DESCRIPTION = "<copy-description>"
 
 
-MANIFEST: dict[str, dict[str, Optional[str]]] = {
+MANIFEST: dict[str, dict[str, str | None]] = {
     # --- Community (user-published) — copy desc → prompt -------------------
     "wf_fa50beaef986": {
         "description": None,
@@ -225,7 +223,7 @@ def _truncate(text: str, limit: int = 80) -> str:
     return text[: limit - 1].rstrip() + "…"
 
 
-def _resolve_prompt(target: Optional[str], next_description: str) -> Optional[str]:
+def _resolve_prompt(target: str | None, next_description: str) -> str | None:
     if target is None:
         return None
     if target == COPY_DESCRIPTION:
@@ -246,9 +244,7 @@ async def _run(args: argparse.Namespace) -> int:
     cursor = workflows_collection.find({"is_public": True})
     docs = {doc["_id"]: doc async for doc in cursor}
 
-    print(
-        f"Found {len(docs)} public workflows in Mongo; manifest covers {len(manifest)}."
-    )
+    print(f"Found {len(docs)} public workflows in Mongo; manifest covers {len(manifest)}.")
 
     orphan_ids = sorted(set(docs) - set(MANIFEST))
     missing_ids = sorted(set(manifest) - set(docs))
@@ -281,9 +277,7 @@ async def _run(args: argparse.Namespace) -> int:
         current_desc = doc.get("description") or ""
         current_prompt = doc.get("prompt") or ""
 
-        next_desc = (
-            target["description"] if target["description"] is not None else current_desc
-        )
+        next_desc = target["description"] if target["description"] is not None else current_desc
         next_prompt = _resolve_prompt(target["prompt"], next_desc)
         if next_prompt is None:
             next_prompt = current_prompt
@@ -330,7 +324,7 @@ async def _run(args: argparse.Namespace) -> int:
         print("Nothing to apply.")
         return 0
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     confirmed = 0
     for wid, _before, after in plans:
         result = await workflows_collection.update_one(

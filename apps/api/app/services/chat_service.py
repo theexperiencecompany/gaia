@@ -10,16 +10,18 @@ ensuring conversations are always saved even if client disconnects.
 """
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import uuid4
+
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 from app.agents.core.agent import call_agent
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
-from shared.py.wide_events import ChatContext, ModelContext, log, wide_task
 from app.config.model_pricing import calculate_token_cost
 from app.core.stream_manager import stream_manager
+from app.db.mongodb.collections import conversations_collection
 from app.models.chat_models import (
     MessageModel,
     ToolDataEntry,
@@ -31,7 +33,7 @@ from app.models.payment_models import PlanType
 from app.services.conversation_service import update_messages
 from app.services.payments.payment_service import payment_service
 from app.utils.chat_utils import create_conversation, generate_and_update_description
-from langchain_core.callbacks import UsageMetadataCallbackHandler
+from shared.py.wide_events import ChatContext, log, wide_task
 
 
 async def run_chat_stream_background(
@@ -40,8 +42,8 @@ async def run_chat_stream_background(
     user: dict,
     user_time: datetime,
     conversation_id: str,
-    source: Optional[str] = None,
-    start_event: Optional[asyncio.Event] = None,
+    source: str | None = None,
+    start_event: asyncio.Event | None = None,
 ) -> None:
     """
     Run chat streaming in background, publishing chunks to Redis.
@@ -74,7 +76,7 @@ async def run_chat_stream_background(
 
 def _set_stream_log_context(
     body: MessageRequestWithHistory,
-    user_id: Optional[str],
+    user_id: str | None,
     conversation_id: str,
     stream_id: str,
     is_new_conversation: bool,
@@ -92,9 +94,7 @@ def _set_stream_log_context(
             tool_category=body.toolCategory,
             has_reply=bool(body.replyToMessage),
             has_calendar_event=bool(body.selectedCalendarEvent),
-            selected_workflow_id=body.selectedWorkflow.id
-            if body.selectedWorkflow
-            else None,
+            selected_workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else None,
         ),
         user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
         selected_tool=body.selectedTool,
@@ -106,7 +106,7 @@ def _start_description_task(
     body: MessageRequestWithHistory,
     conversation_id: str,
     user: dict,
-) -> Optional[asyncio.Task]:
+) -> asyncio.Task | None:
     """Create a background task to generate a conversation description if new."""
     if not is_new_conversation:
         return None
@@ -124,8 +124,8 @@ def _start_description_task(
 
 async def _publish_description_if_ready(
     stream_id: str,
-    description_task: Optional[asyncio.Task],
-) -> Optional[asyncio.Task]:
+    description_task: asyncio.Task | None,
+) -> asyncio.Task | None:
     """Publish conversation description chunk if the task has completed. Returns None to clear it."""
     if not description_task or not description_task.done():
         return description_task
@@ -143,11 +143,11 @@ async def _publish_description_if_ready(
 async def _process_data_chunk(
     stream_id: str,
     chunk: str,
-    tool_data: Dict[str, Any],
-    tool_outputs: Dict[str, str],
-    todo_progress_accumulated: Dict[str, Any],
-    follow_up_actions: List[str],
-) -> tuple[List[str], bool]:
+    tool_data: dict[str, Any],
+    tool_outputs: dict[str, str],
+    todo_progress_accumulated: dict[str, Any],
+    follow_up_actions: list[str],
+) -> tuple[list[str], bool]:
     """
     Process a 'data: ' prefixed agent chunk.
 
@@ -159,7 +159,7 @@ async def _process_data_chunk(
     """
     chunk_payload = chunk[6:]
 
-    chunk_json: Optional[Dict[str, Any]] = None
+    chunk_json: dict[str, Any] | None = None
     try:
         chunk_json = json.loads(chunk_payload)
     except json.JSONDecodeError:
@@ -230,25 +230,33 @@ async def _process_data_chunk(
 
 
 def _aggregate_usage_metadata(
-    usage_metadata: Dict[str, Any],
-) -> tuple[int, int]:
-    """Sum input and output tokens across all model entries in usage metadata."""
-    total_input = sum(
-        v.get("input_tokens", 0) for v in usage_metadata.values() if isinstance(v, dict)
-    )
-    total_output = sum(
-        v.get("output_tokens", 0)
-        for v in usage_metadata.values()
-        if isinstance(v, dict)
-    )
-    return total_input, total_output
+    usage_metadata: dict[str, Any],
+) -> tuple[int, int, int]:
+    """Sum input, output, and cache_read tokens across all model entries.
+
+    Returns (total_input, total_output, total_cached). ``cache_read`` lives in
+    each entry's ``input_token_details`` (LangChain canonical shape). Some
+    provider SDK versions surface it under different keys, hence the fallbacks.
+    """
+    total_input = 0
+    total_output = 0
+    total_cached = 0
+    for v in usage_metadata.values():
+        if not isinstance(v, dict):
+            continue
+        total_input += int(v.get("input_tokens") or 0)
+        total_output += int(v.get("output_tokens") or 0)
+        details = v.get("input_token_details") or {}
+        cached = details.get("cache_read") or v.get("cached_content_token_count") or 0
+        total_cached += int(cached or 0)
+    return total_input, total_output, total_cached
 
 
 async def _recover_stream_state(
     stream_id: str,
     complete_message: str,
-    tool_data: Dict[str, Any],
-) -> tuple[str, Dict[str, Any]]:
+    tool_data: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
     """
     Recover complete_message and tool_data from Redis progress when the nostream
     marker was never delivered (e.g. on cancellation).
@@ -273,8 +281,8 @@ async def _recover_stream_state(
 
 
 def _merge_tool_outputs(
-    tool_data: Dict[str, Any],
-    tool_outputs: Dict[str, str],
+    tool_data: dict[str, Any],
+    tool_outputs: dict[str, str],
 ) -> None:
     """Merge captured tool outputs into the tool_data entries before saving."""
     for entry in tool_data.get("tool_data", []):
@@ -287,8 +295,8 @@ def _merge_tool_outputs(
 
 
 def _inject_todo_progress(
-    tool_data: Dict[str, Any],
-    todo_progress_accumulated: Dict[str, Any],
+    tool_data: dict[str, Any],
+    todo_progress_accumulated: dict[str, Any],
 ) -> None:
     """Inject accumulated todo_progress snapshots as a single tool_data entry."""
     if todo_progress_accumulated:
@@ -296,23 +304,21 @@ def _inject_todo_progress(
             {
                 "tool_name": "todo_progress",
                 "data": todo_progress_accumulated,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
         )
 
 
 async def _wait_for_http_subscriber(
-    start_event: Optional[asyncio.Event],
+    start_event: asyncio.Event | None,
     stream_id: str,
 ) -> None:
     if not start_event or start_event.is_set():
         return
     try:
         await asyncio.wait_for(start_event.wait(), timeout=5.0)
-    except asyncio.TimeoutError:
-        log.warning(
-            f"Stream {stream_id} HTTP subscriber timeout, proceeding anyway"
-        )
+    except TimeoutError:
+        log.warning(f"Stream {stream_id} HTTP subscriber timeout, proceeding anyway")
 
 
 async def _run_chat_stream(
@@ -321,24 +327,31 @@ async def _run_chat_stream(
     user: dict,
     user_time: datetime,
     conversation_id: str,
-    source: Optional[str] = None,
-    start_event: Optional[asyncio.Event] = None,
+    source: str | None = None,
+    start_event: asyncio.Event | None = None,
 ) -> None:
     complete_message = ""
-    tool_data: Dict[str, Any] = {"tool_data": []}
-    tool_outputs: Dict[str, str] = {}
-    todo_progress_accumulated: Dict[str, Any] = {}
+    tool_data: dict[str, Any] = {"tool_data": []}
+    tool_outputs: dict[str, str] = {}
+    todo_progress_accumulated: dict[str, Any] = {}
     user_message_id = str(uuid4())
     bot_message_id = str(uuid4())
-    is_new_conversation = body.conversation_id is None
-    usage_metadata: Dict[str, Any] = {}
-    follow_up_actions: List[str] = []
+    is_new_conversation = body.conversation_id is None or (
+        body.is_onboarding_demo
+        and not await conversations_collection.find_one(
+            {
+                "user_id": user.get("user_id"),
+                "conversation_id": body.conversation_id,
+            },
+            {"_id": 1},
+        )
+    )
+    usage_metadata: dict[str, Any] = {}
+    follow_up_actions: list[str] = []
     is_cancelled = False
 
     try:
-        description_task = _start_description_task(
-            is_new_conversation, body, conversation_id, user
-        )
+        description_task = _start_description_task(is_new_conversation, body, conversation_id, user)
 
         user_id = user.get("user_id")
         _set_stream_log_context(
@@ -384,17 +397,12 @@ async def _run_chat_stream(
             if chunk == "data: [DONE]\n\n":
                 continue
 
-            description_task = await _publish_description_if_ready(
-                stream_id, description_task
-            )
+            description_task = await _publish_description_if_ready(stream_id, description_task)
 
             # Process complete message marker (internal, not sent to client)
             if chunk.startswith("nostream: "):
                 nostream_json = json.loads(chunk.replace("nostream: ", ""))
-                if (
-                    isinstance(nostream_json, dict)
-                    and "complete_message" in nostream_json
-                ):
+                if isinstance(nostream_json, dict) and "complete_message" in nostream_json:
                     complete_message = str(nostream_json["complete_message"])
                 else:
                     complete_message = ""
@@ -417,13 +425,27 @@ async def _run_chat_stream(
                 await stream_manager.publish_chunk(stream_id, chunk)
 
         usage_metadata = usage_metadata_callback.usage_metadata or {}
-        total_input, total_output = _aggregate_usage_metadata(usage_metadata)
+        total_input, total_output, total_cached = _aggregate_usage_metadata(usage_metadata)
+        # Read cache_read out of the LangChain UsageMetadataCallback rather
+        # than the wide-event ContextVar. ``LLMAccountingMiddleware`` writes
+        # ``cached_tokens`` per-step into the wide event from inside a
+        # LangGraph node, but those writes happen in a child copy_context()
+        # frame that does not propagate back to the wide_task block — so the
+        # worker_task rollup would otherwise see ``cached_tokens=null`` even
+        # when caching fired. The callback handler runs in the parent context
+        # via LangChain's tracer and accumulates correctly across every model
+        # call.
+        cache_hit_rate = round(total_cached / max(total_input, 1), 4) if total_input else 0.0
+        existing_model = log.get().get("model") or {}
         log.set(
-            model=ModelContext(
-                tokens_used=total_input + total_output,
-                input_tokens=total_input,
-                output_tokens=total_output,
-            ),
+            model={
+                **existing_model,
+                "tokens_used": total_input + total_output,
+                "input_tokens": total_input,
+                "output_tokens": total_output,
+                "cached_tokens": total_cached,
+                "cache_hit_rate": cache_hit_rate,
+            },
             response_length=len(complete_message),
             follow_up_actions_count=len(follow_up_actions),
             is_cancelled=is_cancelled,
@@ -450,9 +472,7 @@ async def _run_chat_stream(
         # IMPORTANT: Publish error chunk FIRST, before calling set_error()
         # set_error() publishes STREAM_ERROR_SIGNAL which breaks the subscriber loop
         # If we call set_error() first, the error message never reaches the client
-        await stream_manager.publish_chunk(
-            stream_id, f"data: {json.dumps({'error': str(e)})}\n\n"
-        )
+        await stream_manager.publish_chunk(stream_id, f"data: {json.dumps({'error': str(e)})}\n\n")
         await stream_manager.set_error(stream_id, str(e))
     finally:
         # On cancellation, complete_message may be empty because nostream: marker
@@ -507,7 +527,8 @@ async def _initialize_new_conversation(
         selectedTool=body.selectedTool,
         selectedWorkflow=body.selectedWorkflow,
         generate_description=False,
-        conversation_id=conversation_id,  # Use provided ID
+        conversation_id=conversation_id,
+        is_onboarding_demo=body.is_onboarding_demo,
     )
 
     init_data = {
@@ -524,8 +545,7 @@ async def _initialize_new_conversation(
 def _extract_response_text(chunk: str) -> str:
     """Extract response text from a data chunk."""
     try:
-        if chunk.startswith("data: "):
-            chunk = chunk[6:]
+        chunk = chunk.removeprefix("data: ")
         data = json.loads(chunk)
         return data.get("response", "")
     except (json.JSONDecodeError, KeyError):
@@ -538,8 +558,8 @@ async def _save_conversation_async(
     user: dict,
     conversation_id: str,
     complete_message: str,
-    tool_data: Dict[str, Any],
-    metadata: Dict[str, Any],
+    tool_data: dict[str, Any],
+    metadata: dict[str, Any],
     user_message_id: str,
     bot_message_id: str,
 ) -> None:
@@ -554,14 +574,12 @@ async def _save_conversation_async(
             log.error(f"Failed to process token usage: {e}")
 
     # Get timestamps
-    bot_timestamp = datetime.now(timezone.utc)
+    bot_timestamp = datetime.now(UTC)
     user_timestamp = bot_timestamp - timedelta(milliseconds=100)
 
     # Create user message
     user_content = (
-        body.messages[-1].get("content")
-        if body.messages and len(body.messages) > 0
-        else None
+        body.messages[-1].get("content") if body.messages and len(body.messages) > 0 else None
     ) or body.message
 
     user_message = MessageModel(
@@ -601,7 +619,7 @@ async def _save_conversation_async(
     )
 
 
-def extract_tool_data(json_str: str) -> Dict[str, Any]:
+def extract_tool_data(json_str: str) -> dict[str, Any]:
     """
     Parse and extract structured tool output from an agent's JSON response chunk.
 
@@ -620,15 +638,15 @@ def extract_tool_data(json_str: str) -> Dict[str, Any]:
     """
     try:
         data = json.loads(json_str)
-        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(UTC).isoformat()
 
         # Step 1: Extract non-tool data (e.g., follow_up_actions)
-        other_data: Dict[str, Any] = {}
+        other_data: dict[str, Any] = {}
         if data.get("follow_up_actions") is not None:
             other_data["follow_up_actions"] = data["follow_up_actions"]
 
         # Step 2: Extract tool_data from one of two sources (in priority order)
-        tool_data_entries: List[ToolDataEntry] = []
+        tool_data_entries: list[ToolDataEntry] = []
 
         # Source A: Already in unified format (from backend tool_data emission)
         if "tool_data" in data:
@@ -652,7 +670,7 @@ def extract_tool_data(json_str: str) -> Dict[str, Any]:
                     )
 
         # Step 3: Build result from collected data
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
 
         if tool_data_entries:
             result["tool_data"] = tool_data_entries
@@ -669,7 +687,7 @@ def extract_tool_data(json_str: str) -> Dict[str, Any]:
         return {}
 
 
-async def _process_token_usage_and_cost(user_id: str, metadata: Dict[str, Any]) -> None:
+async def _process_token_usage_and_cost(user_id: str, metadata: dict[str, Any]) -> None:
     """Process token usage and calculate costs."""
     try:
         subscription = await payment_service.get_user_subscription_status(user_id)
@@ -681,10 +699,18 @@ async def _process_token_usage_and_cost(user_id: str, metadata: Dict[str, Any]) 
             if isinstance(usage_data, dict):
                 input_tokens = usage_data.get("input_tokens", 0)
                 output_tokens = usage_data.get("output_tokens", 0)
+                # Bill cache reads at the discounted rate, not free.
+                details = usage_data.get("input_token_details") or {}
+                cached_tokens = int(
+                    details.get("cache_read") or usage_data.get("cached_content_token_count") or 0
+                )
 
                 if input_tokens > 0 or output_tokens > 0:
                     cost_info = await calculate_token_cost(
-                        model_name, input_tokens, output_tokens
+                        model_name,
+                        input_tokens,
+                        output_tokens,
+                        cached_tokens=cached_tokens,
                     )
                     total_credits += cost_info["total_cost"]
 

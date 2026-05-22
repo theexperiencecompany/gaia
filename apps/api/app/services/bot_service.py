@@ -3,16 +3,16 @@
 Business logic for bot chat sessions, rate limiting, and conversation management.
 """
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 from uuid import uuid4
 
-from shared.py.wide_events import log
+from fastapi import HTTPException
+
 from app.db.mongodb.collections import bot_sessions_collection, conversations_collection
 from app.db.redis import redis_cache
 from app.models.chat_models import ConversationModel
 from app.services.conversation_service import create_conversation_service
-from fastapi import HTTPException
+from shared.py.wide_events import log
 
 # Constants
 BOT_RATE_LIMIT = 20  # requests per minute per user
@@ -53,14 +53,11 @@ class BotService:
             # acceptable because bot rate limiting is a nice-to-have feature that should
             # not block legitimate users when infrastructure is degraded.
             log.warning(
-                f"Rate limit check failed for {platform}:{platform_user_id}, "
-                f"failing open: {e!r}"
+                f"Rate limit check failed for {platform}:{platform_user_id}, failing open: {e!r}"
             )
 
     @staticmethod
-    def build_session_key(
-        platform: str, platform_user_id: str, channel_id: Optional[str]
-    ) -> str:
+    def build_session_key(platform: str, platform_user_id: str, channel_id: str | None) -> str:
         """
         Build a unique session key for bot conversations.
 
@@ -79,7 +76,7 @@ class BotService:
     async def get_or_create_session(
         platform: str,
         platform_user_id: str,
-        channel_id: Optional[str],
+        channel_id: str | None,
         user: dict,
     ) -> str:
         """
@@ -99,9 +96,7 @@ class BotService:
         if not user.get("user_id") and user.get("_id"):
             user = {**user, "user_id": str(user["_id"])}
 
-        session_key = BotService.build_session_key(
-            platform, platform_user_id, channel_id
-        )
+        session_key = BotService.build_session_key(platform, platform_user_id, channel_id)
 
         existing = await bot_sessions_collection.find_one({"session_key": session_key})
         if existing:
@@ -140,10 +135,10 @@ class BotService:
                     "platform": platform,
                     "platform_user_id": platform_user_id,
                     "channel_id": channel_id,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(UTC).isoformat(),
                 },
                 "$setOnInsert": {
-                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": datetime.now(UTC).isoformat(),
                 },
             },
             upsert=True,
@@ -161,7 +156,7 @@ class BotService:
 
     @staticmethod
     async def reset_session(
-        platform: str, platform_user_id: str, channel_id: Optional[str], user: dict
+        platform: str, platform_user_id: str, channel_id: str | None, user: dict
     ) -> str:
         """
         Reset bot session (delete existing and create new).
@@ -175,14 +170,10 @@ class BotService:
         Returns:
             New conversation ID
         """
-        session_key = BotService.build_session_key(
-            platform, platform_user_id, channel_id
-        )
+        session_key = BotService.build_session_key(platform, platform_user_id, channel_id)
         await bot_sessions_collection.delete_one({"session_key": session_key})
 
-        return await BotService.get_or_create_session(
-            platform, platform_user_id, channel_id, user
-        )
+        return await BotService.get_or_create_session(platform, platform_user_id, channel_id, user)
 
     @staticmethod
     async def load_conversation_history(
@@ -213,7 +204,5 @@ class BotService:
             if msg_type == "user":
                 history.append({"role": "user", "content": msg.get("response", "")})
             elif msg_type == "bot":
-                history.append(
-                    {"role": "assistant", "content": msg.get("response", "")}
-                )
+                history.append({"role": "assistant", "content": msg.get("response", "")})
         return history

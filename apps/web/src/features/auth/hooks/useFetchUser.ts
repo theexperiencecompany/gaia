@@ -4,7 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { authApi } from "@/features/auth/api/authApi";
-import { PUBLIC_PAGES, SESSION_RESUMED_KEY } from "@/features/auth/constants";
+import {
+  ONBOARDING_PROCESSING_PHASES,
+  PUBLIC_PAGES,
+  SESSION_RESUMED_KEY,
+} from "@/features/auth/constants";
 import { useUserActions } from "@/features/auth/hooks/useUser";
 import { usePathname } from "@/i18n/navigation";
 import {
@@ -81,6 +85,10 @@ const useFetchUser = () => {
     if (!accessToken || !refreshToken) return;
 
     const needsOnboarding = !data.onboarding?.completed;
+    const phase = data.onboarding?.phase;
+    const isStillProcessing =
+      !!phase && ONBOARDING_PROCESSING_PHASES.has(phase);
+
     if (needsOnboarding && currentPath !== "/onboarding") {
       router.push("/onboarding");
       return;
@@ -88,6 +96,7 @@ const useFetchUser = () => {
 
     if (
       !needsOnboarding &&
+      !isStillProcessing &&
       (currentPath === "/onboarding" || PUBLIC_PAGES.includes(currentPath))
     ) {
       router.push("/c");

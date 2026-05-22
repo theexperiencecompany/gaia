@@ -35,8 +35,6 @@ async def verify_blog_token(
         )
 
     if not secrets.compare_digest(credentials.credentials, expected_token):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Invalid bearer token"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid bearer token")
 
     return credentials.credentials

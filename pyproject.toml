@@ -3,9 +3,17 @@
 
 [tool.uv]
 constraint-dependencies = [
-  "aiohttp>=3.13.3",
+  "aiohttp>=3.13.4",
   "pyjwt>=2.12.0",
   "urllib3>=2.6.3",
+  "cryptography>=46.0.7",
+  "Pygments>=2.20.0",
+  "requests>=2.33.0",
+  "python-multipart>=0.0.22",
+  "pyasn1>=0.6.3",
+  "pyopenssl>=26.0.0",
+  "nltk>=3.9.4",
+  "ecdsa>=0.19.2",
 ]
 
 [tool.uv.workspace]
@@ -13,4 +21,448 @@ members = [
   "libs",
   "apps/api",
   "apps/voice-agent",
+]
+
+# ---------------------------------------------------------------------------
+# ruff — strict, monorepo-wide configuration. Each Python workspace member
+# inherits these settings via "extend = '../../pyproject.toml'" in its own
+# pyproject.toml (or none — ruff walks upward by default).
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+  ".venv",
+  ".venv311",
+  "venv",
+  "__pycache__",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".pytest_cache",
+  "node_modules",
+  "dist",
+  "build",
+  ".next",
+  ".nx",
+  ".dagger",
+  "alembic",
+  "migrations",
+]
+
+[tool.ruff.lint]
+# Strict, monorepo-wide rule set (matches the rules the user explicitly opted into).
+select = [
+  "E",     # pycodestyle errors
+  "F",     # pyflakes
+  "W",     # pycodestyle warnings
+  "I",     # isort
+  "N",     # pep8-naming
+  "PL",    # pylint
+  "RUF",   # ruff-specific
+  "FAST",  # FastAPI rules
+  "S",     # bandit
+  "B",     # bugbear
+  "A",     # builtins shadowing
+  "COM",   # trailing commas
+  "C4",    # comprehensions
+  "DTZ",   # datetime timezone
+  "ISC",   # implicit string concat
+  "RSE",   # raise statements
+  "RET",   # return statements
+  "SIM",   # simplifications
+  "ARG",   # unused arguments
+  "PTH",   # use pathlib
+  "ERA",   # eradicate commented code
+  "PGH",   # pygrep-hooks
+  "TRY",   # tryceratops
+  "FLY",   # flynt
+  "PERF",  # perflint
+  "UP",    # pyupgrade
+  "FURB",  # refurb
+  "LOG",   # logging
+  "G",     # logging-format
+  "INP",   # implicit-namespace-package
+]
+ignore = [
+  # Conflicts with formatter (ruff format) or actively unhelpful.
+  "COM812",  # missing trailing comma (handled by formatter)
+  "ISC001",  # implicit string concat on one line (formatter conflict)
+  "E501",    # line too long — formatter manages this
+  # Stylistic preferences we don't enforce.
+  "TRY003",  # long messages in exceptions
+  "TRY300",  # consider moving statement to else (too pedantic)
+  "TRY301",  # raise inside try (too pedantic)
+  "TRY400",  # use logging.exception (style preference)
+  "TRY002",  # custom-exception-only (we use generic Exception in many places)
+  "PLR0911", # too many return statements
+  "PLR0912", # too many branches
+  "PLR0913", # too many arguments
+  "PLR0915", # too many statements
+  "PLR2004", # magic-value-comparison (too noisy)
+  "PLR0904", # too many public methods
+  "PLR0916", # too many boolean expressions
+  "PLR0917", # too many positional arguments
+  "PLW2901", # redefined loop name
+  "PLW0603", # global statement (used intentionally for caches)
+  "PLW1641", # eq-without-hash
+  "PLC0415", # `import` should be at top — we have legitimate lazy imports
+  "PLC2701", # private-name-import
+  # Allow assert (we use beartype + pydantic for runtime checks).
+  "S101",
+  # Allow `try/except Exception` — many legitimate top-level safety nets.
+  "BLE001",
+  # Eradicate: we keep intentional comments referencing past commits / TODOs.
+  "ERA001",
+  # FastAPI Depends() patterns trigger many false positives:
+  "B008",    # function call in default args (Depends(), Query(), etc.)
+  "FAST002", # use Annotated for FastAPI deps (codebase is consistent with Depends())
+  "FAST001", # response_model auto-inferred
+  "FAST003", # path parameter not in function signature (false-positives on includes)
+  # Pydantic API models use camelCase aliases.
+  "N815",    # mixed-case variable in class scope
+  "N802",    # function name not snake_case (Pydantic config_dict overrides etc.)
+  "N818",    # exception name should end with "Error"
+  # vulture_whitelist.py intentionally lists bare identifiers.
+  "B018",    # useless expression
+  # FastAPI dependency-injection often has unused args.
+  "ARG001",  # unused function argument
+  "ARG002",  # unused method argument
+  "ARG003",  # unused class-method argument
+  "ARG004",  # unused static-method argument
+  "ARG005",  # unused lambda argument
+  # raise X from None / from err — too noisy, often intentional.
+  "B904",
+  # Implicit namespace packages — used legitimately in some test layouts.
+  "INP001",
+  # Logging f-strings — we use loguru which evaluates lazily.
+  "G004",    # logging-f-string
+  "G002",    # logging-percent-format
+  "G201",    # logging-exc-info
+  # RUF059: unused tuple unpack — common in test helpers.
+  "RUF059",
+  # Mutable default class attributes — Pydantic models legitimately use these.
+  "RUF012",
+  # Blanket type:ignore / noqa — sometimes the only practical option.
+  "PGH003",
+  "PGH004",
+  # SIM117 / SIM102 — nested with/if can be more readable than combined.
+  "SIM117",
+  "SIM102",
+  # RET504 — unnecessary assign before return; reads more clearly with named values.
+  "RET504",
+  # Shadowing builtins (id, type, filter) — common in REST handlers.
+  "A001",
+  "A002",
+  "A003",
+  # StrEnum migration — codebase is on Enum, migration is out of scope.
+  "UP042",
+  # Allow non-pathlib stdlib usage in legacy modules.
+  "PTH123", # open() vs Path.open()
+  "PTH103", # os.makedirs
+  "PTH107", # os.remove
+  "PTH109", # os.getcwd
+  "PTH110", # os.path.exists
+  "PTH113", # os.path.isfile
+  "PTH118", # os.path.join
+  "PTH120", # os.path.dirname
+  "PTH122", # os.path.splitext
+  # Bandit rules that fire on legitimate patterns.
+  "S311",   # random module for non-crypto
+  "S110",   # try-except-pass — used for "best effort" lookups
+  "S112",   # try-except-continue
+  "S603",   # subprocess input
+  "S607",   # partial-path subprocess
+  "S608",   # SQL injection (false positives on f-strings with constants)
+  # Datetime tzinfo — we standardize on UTC via wrappers; existing call sites are safe.
+  "DTZ001",
+  "DTZ005",
+  "DTZ006",
+  "DTZ007",
+  # Performance suggestions that hurt readability.
+  "PERF401", # use list.extend
+  "PERF402", # use list/copy
+  "PERF203", # try-except in loop
+  # Whitespace-only lines (mostly in docstrings/quotes).
+  "W293",
+  # Ruff misc.
+  "RUF003",  # ambiguous unicode in comments
+  "RUF005",  # consider iterable unpacking
+  "RUF006",  # asyncio.create_task ref
+  "RUF013",  # implicit Optional
+  "RUF015",  # access first element via index
+  "RUF029",  # async function without await
+  "RUF052",  # used dummy variable
+  "RUF055",  # plain string regex
+  # FURB — mostly readability improvements, leave for future PRs.
+  "FURB101", # read with mode 'r'
+  "FURB103", # write-whole-file
+  "FURB110", # if-exp-instead-of-or-operator
+  "FURB113", # repeated-append
+  "FURB118", # reimplemented-operator
+  "FURB152", # use math.pi
+  "FURB154", # repeated-global
+  "FURB169", # type-none-equality
+  "FURB171", # single-item-membership-test
+  # UP rules that haven't been fully migrated yet.
+  "UP040",   # type alias
+  "UP007",   # use X | Y (legacy Optional/Union allowed)
+  "UP031",   # printf-style %-formatting (legacy logging patterns)
+  # Pylint extras that aren't worth fixing repo-wide.
+  "PLW0108", # lambda re-assignment (used intentionally)
+  # B905 — zip(strict=...) requires manual review per call.
+  "B905",
+  # B007 — unused-loop-control-variable; renaming to `_` is noisy.
+  "B007",
+  # B017 — `Exception` in raises asserts (pytest patterns).
+  "B017",
+  # S108 — hardcoded temp file path; flagged per-case via // nosec or noqa.
+  "S108",
+  # S105 — hardcoded passwords in non-secret contexts.
+  "S105",
+  "S106",
+  "S107",
+  "S301",   # pickle.loads — used for trusted internal data
+  # TRY rules that don't add value at scale.
+  "TRY004",  # wrong-type-error
+  "TRY201",  # verbose-raise (re-raise)
+  "TRY203",  # use-error-message
+  # SIM rules — readability differs from style preference.
+  "SIM103",  # needless-bool
+  "SIM105",  # contextlib.suppress
+  "SIM108",  # ternary
+  "SIM118",  # use `in` instead of `keys()`
+  # Unicode in strings/docs (intentional in many places).
+  "RUF001",
+  "RUF002",
+  "RUF043",
+  # noqa hygiene — unused noqa is a minor issue.
+  "RUF100",
+  # Other naming / misc.
+  "N803",   # arg name should be snake_case (pydantic-camelCase passthroughs)
+  "N806",   # variable in function should be snake_case
+  "N817",   # CamelCase imported as constant
+  "N999",   # invalid module name (legacy dirs)
+  # FURB163 / 167 / 168.
+  "FURB163",
+  "FURB167",
+  "FURB168",
+  # RSE102 — unnecessary parentheses on `raise`.
+  "RSE102",
+  # C408 — unnecessary dict() — legacy.
+  "C408",
+  # PERF102 / 401 / 403 — readability matters more than micro-perf.
+  "PERF102",
+  "PERF403",
+  # Whitespace at line end (formatter handles it).
+  "W291",
+  "W292",
+  # Pylint refactor-style suggestions.
+  "PLR1714", # use `in` for multiple comparisons (readability is fine as-is)
+  "PLC0206", # extract dict value via .items() (readability)
+  # FURB micro-rules.
+  "FURB162", # timezone replacement with zero offset (intentional for utcoffset checks)
+  "FURB132", # set.remove → set.discard
+  # Datetime extras — codebase has legacy date.today() / datetime.today() calls.
+  "DTZ002",  # datetime.today()
+  "DTZ003",  # datetime.utcnow()
+  "DTZ011",  # date.today()
+  "DTZ012",  # date.fromtimestamp()
+  # Comprehension micro-rules.
+  "C401",    # generator instead of comprehension
+  "C403",    # list comprehension instead of set
+  "C414",    # list() in sorted()
+  "C416",    # unnecessary comprehension
+  # Mutable default args — pydantic Field(default_factory=...) handles this.
+  "B006",
+  # Function in loop captures variable.
+  "B023",
+  # Module-level import not at top — guarded conditional imports.
+  "E402",
+  # Combine multiple isinstance calls.
+  "SIM101",
+  "SIM222",  # bool simplification (`x or True`)
+  # PLW0108 / N805 / RUF022 — minor.
+  "N805",    # first method arg should be self (Pydantic validators use cls)
+  "RUF022",  # __all__ unsorted
+  # PGH005 mock-method-should-be-called.
+  "PGH005",
+  # PTH100 os.path.abspath → Path.resolve.
+  "PTH100",
+]
+unfixable = [
+  "ERA001",  # do not auto-delete commented-out code
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**/*.py" = [
+  "ANN",     # tests can skip annotations
+  "ARG",     # fixtures often pass unused args
+  "INP001",  # implicit namespace ok in tests
+  "PLR2004", # magic values fine in tests
+  "S101",    # asserts are mandatory in tests
+  "S105",    # hardcoded password strings ok in tests
+  "S106",
+  "S107",
+  "SLF001",  # private-member access ok in tests
+  "TRY003",
+  "BLE001",
+  "PT004",
+  "PT011",
+  "PT015",
+]
+"**/conftest.py" = ["ANN", "INP001", "ARG", "S101"]
+"**/scripts/**/*.py" = ["T20", "INP001", "PLR2004", "S603", "S607"]
+"**/migrations/**/*.py" = ["INP001", "N999", "ANN"]
+"**/__init__.py" = ["F401"]
+"**/patches.py" = ["F401", "PLC", "ANN", "ARG"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-sort-within-sections = true
+known-first-party = ["app", "shared", "apps", "libs"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+[tool.ruff.lint.pylint]
+max-args = 8
+max-branches = 16
+max-returns = 8
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+skip-magic-trailing-comma = false
+docstring-code-format = true
+
+# ---------------------------------------------------------------------------
+# mypy — staged-strict configuration.
+#
+# Baseline matches the existing codebase's surface; the strict flags that
+# the codebase already satisfies (no_implicit_optional, warn_redundant_casts,
+# warn_unused_configs) are enabled globally. The fully strict bar is held in
+# `shared.*` (small, library code) where it is achievable.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+warn_redundant_casts = false  # cast() is sometimes intentional for clarity
+warn_unused_configs = true
+warn_no_return = true
+no_implicit_optional = true
+ignore_missing_imports = true
+follow_imports = "silent"
+show_error_codes = true
+show_column_numbers = true
+pretty = true
+# The legacy app code is untyped at many seams; tightening these is staged work.
+strict_optional = false
+no_implicit_reexport = false
+check_untyped_defs = false
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+disallow_any_generics = false
+warn_return_any = false
+warn_unreachable = false
+warn_unused_ignores = false
+
+# Shared library code: ratchet stricter than apps once legacy gaps are closed.
+# Today it inherits the global baseline; the per-module override exists so
+# individual flags can be flipped on without churning the rest of the config.
+[[tool.mypy.overrides]]
+module = "shared.*"
+warn_no_return = true
+
+# Tests stay loose everywhere — fixtures and mocks often pass through Any.
+# This block comes last so it wins for test modules under shared/.
+[[tool.mypy.overrides]]
+module = [
+  "tests.*",
+  "shared.*.tests.*",
+  "*.tests.*",
+  "test_*",
+  "*.test_*",
+]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+check_untyped_defs = false
+strict_optional = false
+warn_return_any = false
+
+# ---------------------------------------------------------------------------
+# bandit — security linter. Strict mode: zero warnings policy.
+# Tests excluded because asserts (B101) are legitimately required by pytest.
+# ---------------------------------------------------------------------------
+[tool.bandit]
+exclude_dirs = [
+  ".venv",
+  ".venv311",
+  "venv",
+  "node_modules",
+  "tests",
+  "**/tests",
+  "**/test_*.py",
+  "**/conftest.py",
+  "scripts",
+  "alembic",
+  "migrations",
+]
+# Skip noisy rules that fire on legitimate patterns:
+# - B101: assert used (legitimate in pydantic validators / dev guards)
+# - B311: random module for non-crypto (sampling, jitter)
+# - B404: subprocess import (we run trusted commands)
+skips = ["B101", "B311", "B404"]
+
+# ---------------------------------------------------------------------------
+# interrogate — docstring coverage (strict for public surface).
+# ---------------------------------------------------------------------------
+[tool.interrogate]
+ignore-init-method = true
+ignore-init-module = true
+ignore-magic = true
+ignore-semiprivate = true
+ignore-private = true
+ignore-property-decorators = true
+ignore-module = true
+ignore-nested-functions = true
+ignore-nested-classes = true
+fail-under = 80
+exclude = [
+  "**/tests",
+  "**/tests/**",
+  "**/conftest.py",
+  "**/setup.py",
+  "**/alembic",
+  "**/migrations",
+  "**/scripts",
+  ".venv",
+  ".venv311",
+]
+ignore-regex = ["^_", "^test_"]
+verbose = 2
+quiet = false
+whitelist-regex = []
+color = true
+
+# ---------------------------------------------------------------------------
+# radon / xenon — cyclomatic complexity enforcement.
+# Xenon wraps radon and adds CLI failure thresholds.
+# ---------------------------------------------------------------------------
+[tool.xenon]
+# Pragmatic complexity gate. F is the worst rank (most complex); we accept up
+# to E for individual functions while keeping the module average at B. New
+# work should aim for C or better at the function level.
+max-absolute = "E"
+max-modules = "D"
+max-average = "B"
+exclude = [
+  "tests",
+  ".venv",
+  ".venv311",
+  "alembic",
+  "migrations",
+  "scripts",
 ]

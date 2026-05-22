@@ -80,7 +80,8 @@ const SplitTextBlur = ({
   const shouldAnimate = disableIntersectionObserver || isVisible;
   const baseId = useId();
 
-  const MotionComponent = m[as] as typeof m.div;
+  const motionComponents = { h1: m.h1, h2: m.h2, h3: m.h3, div: m.div };
+  const MotionComponent = motionComponents[as];
 
   const gradientStyle = {
     "--split-gradient": gradient,

@@ -5,8 +5,6 @@ Helper functions for trigger type detection and integration mapping.
 Uses oauth_config.py as single source of truth.
 """
 
-from typing import Optional
-
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 
 
@@ -41,7 +39,7 @@ def has_integration_triggers(trigger_type: str) -> bool:
     return False
 
 
-def get_integration_for_trigger(trigger_name: str) -> Optional[str]:
+def get_integration_for_trigger(trigger_name: str) -> str | None:
     """
     Get the integration ID for a given trigger name.
 

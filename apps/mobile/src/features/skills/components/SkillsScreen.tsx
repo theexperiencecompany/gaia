@@ -1,17 +1,16 @@
-import { useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Pressable,
   RefreshControl,
   TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AppIcon, ArrowLeft01Icon, Search01Icon } from "@/components/icons";
+import { AppIcon, Search01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BackButton } from "@/shared/components/ui/back-button";
 import type { Skill } from "../api/skills-api";
 import { useSkills } from "../hooks/useSkills";
 import { SkillCard } from "./SkillCard";
@@ -195,7 +194,6 @@ function SkeletonCard() {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export function SkillsScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { spacing, fontSize, moderateScale } = useResponsive();
 
@@ -341,19 +339,7 @@ export function SkillsScreen() {
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Pressable
-            onPress={() => router.back()}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(255,255,255,0.05)",
-            }}
-          >
-            <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-          </Pressable>
+          <BackButton />
 
           <Text
             style={{
