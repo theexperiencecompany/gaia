@@ -168,88 +168,185 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         : [body as KapsoMessageEvent];
 
       for (const event of events) {
-        const waId = extractWaId(event);
-        const waIdHash = hashLogIdentifier(waId);
-        const text = extractTextBody(event);
-        const timestampSec = Number(event.message.timestamp);
-        if (!Number.isFinite(timestampSec)) {
-          this.adapterLogger.warn("webhook_invalid_timestamp", {
-            wa_hash: waIdHash,
-            message_id: event.message.id,
-          });
-          continue;
-        }
-        const eventTimeMs = timestampSec * 1000;
-        const eventAgeMs = Date.now() - eventTimeMs;
-        if (eventAgeMs < 0) {
-          this.adapterLogger.warn("webhook_future_timestamp", {
-            wa_hash: waIdHash,
-            message_id: event.message.id,
-            age_ms: eventAgeMs,
-          });
-          continue;
-        }
-        if (eventAgeMs > REPLAY_WINDOW_MS) {
-          this.adapterLogger.warn("webhook_event_replayed", {
-            wa_hash: waIdHash,
-            message_id: event.message.id,
-            age_ms: eventAgeMs,
-          });
-          continue;
-        }
-        this.adapterLogger.info("webhook_message_received", {
-          wa_hash: waIdHash,
-          message_type: event.message.type,
-          has_text: Boolean(text),
-        });
-        const msgId = event.message.id;
-        if (text) {
-          // Enqueue per user — webhook returns 200 immediately while processing
-          // is serialized: messages from the same user run one at a time, in order.
-          this.enqueueForUser(waId, () =>
-            this.handleIncomingMessage(waId, text, msgId).catch((err) =>
-              this.adapterLogger.error("incoming_message_processing_failed", {
-                wa_hash: waIdHash,
-                message_id: msgId,
-                ...sanitizeErrorForLog(err),
-              }),
-            ),
-          );
-          continue;
-        }
-        if (event.message.type === "text") continue;
-
-        // Non-text message — try to handle as media (image/audio/voice/doc).
-        const media = extractMedia(event);
-        if (!media) {
-          // No usable media descriptor (sticker without id, unknown type, etc.)
-          // Fall back to the friendly rejection.
-          this.enqueueForUser(waId, () =>
-            this.handleUnsupportedMedia(waId, event.message.type).catch((err) =>
-              this.adapterLogger.error("unsupported_media_handling_failed", {
-                wa_hash: waIdHash,
-                message_type: event.message.type,
-                ...sanitizeErrorForLog(err),
-              }),
-            ),
-          );
-          continue;
-        }
-
-        this.enqueueForUser(waId, () =>
-          this.handleMediaMessage(waId, media, msgId).catch((err) =>
-            this.adapterLogger.error("media_message_processing_failed", {
-              wa_hash: waIdHash,
-              message_id: msgId,
-              media_kind: media.kind,
-              ...sanitizeErrorForLog(err),
-            }),
-          ),
-        );
+        this.handleWebhookEvent(event);
       }
 
       return c.json({ status: "ok" });
     });
+  }
+
+  /**
+   * Validates and routes a single inbound Kapso event. Drops events with an
+   * invalid, future, or replayed timestamp, then enqueues text, media, or
+   * unsupported-media handling (serialized per user).
+   */
+  private handleWebhookEvent(event: KapsoMessageEvent): void {
+    const waId = extractWaId(event);
+    const waIdHash = hashLogIdentifier(waId);
+    const text = extractTextBody(event);
+
+    const timestampSec = Number(event.message.timestamp);
+    if (!Number.isFinite(timestampSec)) {
+      this.adapterLogger.warn("webhook_invalid_timestamp", {
+        wa_hash: waIdHash,
+        message_id: event.message.id,
+      });
+      return;
+    }
+    const eventAgeMs = Date.now() - timestampSec * 1000;
+    if (eventAgeMs < 0) {
+      this.adapterLogger.warn("webhook_future_timestamp", {
+        wa_hash: waIdHash,
+        message_id: event.message.id,
+        age_ms: eventAgeMs,
+      });
+      return;
+    }
+    if (eventAgeMs > REPLAY_WINDOW_MS) {
+      this.adapterLogger.warn("webhook_event_replayed", {
+        wa_hash: waIdHash,
+        message_id: event.message.id,
+        age_ms: eventAgeMs,
+      });
+      return;
+    }
+
+    this.adapterLogger.info("webhook_message_received", {
+      wa_hash: waIdHash,
+      message_type: event.message.type,
+      has_text: Boolean(text),
+    });
+    const msgId = event.message.id;
+
+    // Enqueue per user — webhook returns 200 immediately while processing is
+    // serialized: messages from the same user run one at a time, in order.
+    if (text) {
+      this.enqueueForUser(waId, () =>
+        this.handleIncomingMessage(waId, text, msgId).catch((err) =>
+          this.adapterLogger.error("incoming_message_processing_failed", {
+            wa_hash: waIdHash,
+            message_id: msgId,
+            ...sanitizeErrorForLog(err),
+          }),
+        ),
+      );
+      return;
+    }
+    if (event.message.type === "text") return;
+
+    // Non-text message — try to handle as media (image/audio/voice/doc).
+    const media = extractMedia(event);
+    if (!media) {
+      // No usable media descriptor (sticker without id, unknown type, etc.)
+      // Fall back to the friendly rejection.
+      this.enqueueForUser(waId, () =>
+        this.handleUnsupportedMedia(waId, event.message.type).catch((err) =>
+          this.adapterLogger.error("unsupported_media_handling_failed", {
+            wa_hash: waIdHash,
+            message_type: event.message.type,
+            ...sanitizeErrorForLog(err),
+          }),
+        ),
+      );
+      return;
+    }
+
+    this.enqueueForUser(waId, () =>
+      this.handleMediaMessage(waId, media, msgId).catch((err) =>
+        this.adapterLogger.error("media_message_processing_failed", {
+          wa_hash: waIdHash,
+          message_id: msgId,
+          media_kind: media.kind,
+          ...sanitizeErrorForLog(err),
+        }),
+      ),
+    );
+  }
+
+  /**
+   * Starts the WhatsApp "typing…" indicator and keeps it alive on a 20s timer
+   * (Meta dismisses it after ~25s). Call `stop()` once the reply is sent.
+   */
+  private startTypingIndicator(
+    waId: string,
+    messageId: string,
+  ): { refresh: () => void; stop: () => void } {
+    const waIdHash = hashLogIdentifier(waId);
+    const refresh = (): void => {
+      this.whatsAppClient.messages
+        .markRead({
+          phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
+          messageId,
+          typingIndicator: { type: "text" },
+        })
+        .catch((err: unknown) =>
+          this.adapterLogger.error("typing_indicator_failed", {
+            wa_hash: waIdHash,
+            message_id: messageId,
+            ...sanitizeErrorForLog(err),
+          }),
+        );
+    };
+    refresh();
+    const interval = setInterval(refresh, 20_000);
+    return { refresh, stop: () => clearInterval(interval) };
+  }
+
+  /**
+   * Sends the one-time welcome to an unlinked, first-time user (tracked for the
+   * process lifetime). Linked users are cached and skipped. `refreshTyping` is
+   * re-fired after the welcome so the indicator survives the extra message.
+   */
+  private async ensureWelcomed(
+    waId: string,
+    refreshTyping: () => void,
+    authCheckTimeoutMs?: number,
+  ): Promise<void> {
+    if (this.welcomeSent.has(waId)) return;
+    this.welcomeSent.add(waId);
+
+    let isLinked = this.linkedUsers.has(waId);
+    if (!isLinked) {
+      isLinked = await this.isWaUserLinked(waId, authCheckTimeoutMs);
+    }
+    if (!isLinked) {
+      await this.sendWelcome(waId);
+      refreshTyping();
+    }
+  }
+
+  /**
+   * Resolves whether a WhatsApp user is linked to a GAIA account, caching a
+   * positive result. Failures (including the optional timeout) resolve to
+   * `false` so the welcome path degrades gracefully.
+   */
+  private async isWaUserLinked(
+    waId: string,
+    timeoutMs?: number,
+  ): Promise<boolean> {
+    try {
+      const statusPromise = this.gaia.checkAuthStatus("whatsapp", waId);
+      const status =
+        timeoutMs === undefined
+          ? await statusPromise
+          : await Promise.race([
+              statusPromise,
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () => reject(new Error("auth_check_timeout")),
+                  timeoutMs,
+                ),
+              ),
+            ]);
+      if (status.authenticated) this.linkedUsers.add(waId);
+      return status.authenticated;
+    } catch (err) {
+      this.adapterLogger.warn("welcome_auth_check_failed", {
+        wa_hash: hashLogIdentifier(waId),
+        ...sanitizeErrorForLog(err),
+      });
+      return false;
+    }
   }
 
   /** Nothing additional to start — base server is started by BaseBotAdapter.boot(). */
@@ -312,56 +409,10 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       is_command: text.startsWith("/"),
     });
 
-    const showTyping = () =>
-      this.whatsAppClient.messages
-        .markRead({
-          phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
-          messageId,
-          typingIndicator: { type: "text" },
-        })
-        .catch((err: unknown) =>
-          this.adapterLogger.error("typing_indicator_failed", {
-            wa_hash: waIdHash,
-            message_id: messageId,
-            ...sanitizeErrorForLog(err),
-          }),
-        );
-
-    showTyping();
-    const typingInterval = setInterval(showTyping, 20_000);
-    const clearTyping = () => clearInterval(typingInterval);
+    const typing = this.startTypingIndicator(waId, messageId);
 
     try {
-      if (!this.welcomeSent.has(waId)) {
-        this.welcomeSent.add(waId);
-
-        let isLinked = this.linkedUsers.has(waId);
-        if (!isLinked) {
-          try {
-            const timeoutMs = 2_000;
-            const statusPromise = this.gaia.checkAuthStatus("whatsapp", waId);
-            const timeoutPromise = new Promise<never>((_, reject) =>
-              setTimeout(
-                () => reject(new Error("auth_check_timeout")),
-                timeoutMs,
-              ),
-            );
-            const status = await Promise.race([statusPromise, timeoutPromise]);
-            isLinked = status.authenticated;
-            if (isLinked) this.linkedUsers.add(waId);
-          } catch (err) {
-            this.adapterLogger.warn("welcome_auth_check_failed", {
-              wa_hash: waIdHash,
-              ...sanitizeErrorForLog(err),
-            });
-          }
-        }
-
-        if (!isLinked) {
-          await this.sendWelcome(waId);
-          showTyping();
-        }
-      }
+      await this.ensureWelcomed(waId, typing.refresh, 2_000);
 
       const target = this.createWaTarget(waId, messageId);
 
@@ -400,7 +451,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
       await this.handleStreamingMessage(waId, text);
     } finally {
-      clearTyping();
+      typing.stop();
     }
   }
 
@@ -581,49 +632,13 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     });
 
     // Always show typing first — matches the text path so the UX is identical.
-    const showTyping = () =>
-      this.whatsAppClient.messages
-        .markRead({
-          phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
-          messageId,
-          typingIndicator: { type: "text" },
-        })
-        .catch((err: unknown) =>
-          this.adapterLogger.error("typing_indicator_failed", {
-            wa_hash: waIdHash,
-            message_id: messageId,
-            ...sanitizeErrorForLog(err),
-          }),
-        );
-
-    showTyping();
-    const typingInterval = setInterval(showTyping, 20_000);
-    const clearTyping = () => clearInterval(typingInterval);
+    const typing = this.startTypingIndicator(waId, messageId);
 
     try {
       // Welcome gate runs once per process per user — same as text path. If
       // the user isn't linked we send a different friendly message because
       // /api/v1/upload + /api/v1/bot/transcribe both require a linked user.
-      if (!this.welcomeSent.has(waId)) {
-        this.welcomeSent.add(waId);
-        let isLinked = this.linkedUsers.has(waId);
-        if (!isLinked) {
-          try {
-            const status = await this.gaia.checkAuthStatus("whatsapp", waId);
-            isLinked = status.authenticated;
-            if (isLinked) this.linkedUsers.add(waId);
-          } catch (err) {
-            this.adapterLogger.warn("welcome_auth_check_failed", {
-              wa_hash: waIdHash,
-              ...sanitizeErrorForLog(err),
-            });
-          }
-        }
-        if (!isLinked) {
-          await this.sendWelcome(waId);
-          showTyping();
-        }
-      }
+      await this.ensureWelcomed(waId, typing.refresh);
 
       if (media.kind === "video" || media.kind === "sticker") {
         await this.handleUnsupportedMedia(waId, media.kind);
@@ -659,7 +674,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         });
       }
     } finally {
-      clearTyping();
+      typing.stop();
     }
   }
 
@@ -752,11 +767,12 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
     // Caption — when present — is the user's prompt. Otherwise prompt the
     // agent to summarise / answer questions about the attachment.
-    const messageText =
-      media.caption?.trim() ||
-      (media.kind === "image"
+    const attachmentNoun = media.filename ? "document" : "file";
+    const fallbackPrompt =
+      media.kind === "image"
         ? "Please describe this image."
-        : `Please review this ${media.filename ? "document" : "file"} and tell me what's in it.`);
+        : `Please review this ${attachmentNoun} and tell me what's in it.`;
+    const messageText = media.caption?.trim() || fallbackPrompt;
 
     await this.handleStreamingMessage(waId, messageText, [fileData]);
   }

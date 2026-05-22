@@ -2,6 +2,7 @@ import asyncio
 import json
 import secrets
 from datetime import datetime, timezone
+from typing import Annotated
 from uuid import uuid4
 
 from shared.py.wide_events import log
@@ -432,11 +433,17 @@ async def unlink_account(request: Request) -> dict:
         "Transcribe a short audio clip (e.g. WhatsApp voice note) to text. "
         "Requires the bot to be authenticated as a linked platform user."
     ),
+    responses={
+        401: {"description": "Account not linked."},
+        413: {"description": "Audio exceeds the maximum allowed size."},
+        415: {"description": "Unsupported audio format."},
+        502: {"description": "Transcription provider failed."},
+    },
 )
 async def transcribe_bot_audio(
     request: Request,
-    file: UploadFile = File(...),
-    content_length: int | None = Header(default=None, alias="content-length"),
+    file: Annotated[UploadFile, File(...)],
+    content_length: Annotated[int | None, Header(alias="content-length")] = None,
 ) -> dict:
     """Convert audio bytes into a transcript.
 
