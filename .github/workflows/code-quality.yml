@@ -36,11 +36,20 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - name: Lint and format check across all TS/JS/JSON/CSS files
         run: |
           echo "::group::Biome check"
-          pnpm run quality:lint
+          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx json jsonc css)
+          if [ "$FILES" = "__FULL__" ]; then
+            pnpm run quality:lint
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            pnpm exec biome check $FILES
+          fi
           echo "::endgroup::"
           echo "Biome: OK (0 errors; warnings shown above are non-blocking)"
 
@@ -93,11 +102,20 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - name: Per-file line count (default 400, relaxed 700, hard cap 1200)
         run: |
           echo "::group::File size scan"
-          pnpm run quality:size
+          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs)
+          if [ "$FILES" = "__FULL__" ]; then
+            pnpm run quality:size
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            CHANGED_FILES="$FILES" node scripts/ci/check-file-sizes.mjs
+          fi
           echo "::endgroup::"
           echo "File size: OK (no hard-cap violations)"
 
@@ -108,11 +126,20 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - name: Type / interface / enum location enforcer
         run: |
           echo "::group::types-location check"
-          node scripts/ci/check-types-location.mjs --enforce
+          FILES=$(scripts/ci/changed-files.sh ts tsx)
+          if [ "$FILES" = "__FULL__" ]; then
+            node scripts/ci/check-types-location.mjs --enforce
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            CHANGED_FILES="$FILES" node scripts/ci/check-types-location.mjs --enforce
+          fi
           echo "::endgroup::"
           echo "Type colocation: OK (no file exports > 3 types unless in *.types.ts)"
 
@@ -123,11 +150,20 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - name: Components-per-file enforcer
         run: |
           echo "::group::components-per-file check"
-          pnpm run quality:components
+          FILES=$(scripts/ci/changed-files.sh tsx)
+          if [ "$FILES" = "__FULL__" ]; then
+            pnpm run quality:components
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            CHANGED_FILES="$FILES" node scripts/ci/check-components-per-file.mjs
+          fi
           echo "::endgroup::"
           echo "Components: OK (no file declares > 2 React components)"
 
@@ -195,13 +231,20 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - name: tsc --noEmit across web, desktop, mobile, cli, bots
         run: |
-          echo "::group::nx run-many -t type-check"
-          pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp
+          echo "::group::nx type-check"
+          if [ -n "${GITHUB_BASE_REF:-}" ]; then
+            git fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null || true
+            pnpm exec nx affected -t type-check --base=origin/$GITHUB_BASE_REF
+          else
+            pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp
+          fi
           echo "::endgroup::"
-          echo "TypeScript: OK (all 8 workspaces pass strict tsc)"
+          echo "TypeScript: OK (all affected workspaces pass strict tsc)"
 
   # --- Python ruff --------------------------------------------------------
   python-ruff:
@@ -210,22 +253,27 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           version: "latest"
           enable-cache: true
-      - name: ruff check (PL, RUF, FAST, S, B, A, COM, C4, DTZ, ISC, RET, SIM, ARG, PTH, TRY, PERF, UP, FURB, LOG, G + more)
+      - name: ruff check + format (PL, RUF, FAST, S, B, A, COM, C4, DTZ, ISC, RET, SIM, ARG, PTH, TRY, PERF, UP, FURB, LOG, G + more)
         run: |
-          echo "::group::ruff check"
-          uvx ruff check apps/api apps/voice-agent libs/shared/py
+          echo "::group::ruff check + format --check"
+          FILES=$(scripts/ci/changed-files.sh py)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx ruff check apps/api apps/voice-agent libs/shared/py
+            uvx ruff format --check apps/api apps/voice-agent libs/shared/py
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx ruff check $FILES
+            uvx ruff format --check $FILES
+          fi
           echo "::endgroup::"
-          echo "ruff: OK (strict rule set passes)"
-      - name: ruff format check
-        run: |
-          echo "::group::ruff format --check"
-          uvx ruff format --check apps/api apps/voice-agent libs/shared/py
-          echo "::endgroup::"
-          echo "ruff format: OK (every file is already formatted)"
+          echo "ruff: OK (strict rule set passes; every file is already formatted)"
 
   # --- Python mypy --------------------------------------------------------
   python-mypy:
@@ -234,6 +282,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           version: "latest"
@@ -247,7 +297,30 @@ jobs:
       - name: mypy across api + voice-agent + shared (staged-strict + shared.* strict override)
         run: |
           echo "::group::mypy"
-          uv run --project apps/api --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py --ignore-missing-imports
+          # mypy needs the whole module graph per project, so it can't be scoped
+          # to individual changed files. On PRs we instead detect which Python
+          # projects changed (from the .py diff) and check only those project
+          # roots. libs/shared/py is a dependency of both apps, so any change
+          # there pulls both apps in. On push we check everything.
+          FILES=$(scripts/ci/changed-files.sh py)
+          if [ "$FILES" = "__FULL__" ]; then
+            uv run --project apps/api --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py --ignore-missing-imports
+          elif [ -z "$FILES" ]; then
+            echo "No changed Python files — skipping."
+          else
+            TARGETS=""
+            if echo "$FILES" | grep -q '^libs/shared/py/'; then
+              TARGETS="apps/api/app apps/voice-agent/src libs/shared/py"
+            else
+              echo "$FILES" | grep -q '^apps/api/'         && TARGETS="$TARGETS apps/api/app"
+              echo "$FILES" | grep -q '^apps/voice-agent/' && TARGETS="$TARGETS apps/voice-agent/src"
+            fi
+            if [ -z "$TARGETS" ]; then
+              echo "No tracked Python project changed — skipping."
+            else
+              uv run --project apps/api --group backend --group dev mypy $TARGETS --ignore-missing-imports
+            fi
+          fi
           echo "::endgroup::"
           echo "mypy: OK (no type errors)"
 
@@ -258,6 +331,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           version: "latest"
@@ -265,7 +340,14 @@ jobs:
       - name: Docstring coverage on public API surface
         run: |
           echo "::group::interrogate"
-          uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py
+          FILES=$(scripts/ci/changed-files.sh py)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx interrogate -c pyproject.toml $FILES
+          fi
           echo "::endgroup::"
           echo "Docstrings: OK (coverage ≥ 80%)"
 
@@ -276,6 +358,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           version: "latest"
@@ -283,24 +367,37 @@ jobs:
       - name: Complexity scan (max-absolute F, max-modules E, max-average B)
         run: |
           echo "::group::xenon"
-          uvx xenon \
-            --max-absolute F \
-            --max-modules E \
-            --max-average B \
-            apps/api apps/voice-agent libs/shared/py \
-            -e 'apps/api/tests/**' \
-            -e 'apps/api/scripts/**' \
-            -e 'libs/shared/py/tests/**'
+          FILES=$(scripts/ci/changed-files.sh py)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx xenon \
+              --max-absolute F \
+              --max-modules E \
+              --max-average B \
+              apps/api apps/voice-agent libs/shared/py \
+              -e 'apps/api/tests/**' \
+              -e 'apps/api/scripts/**' \
+              -e 'libs/shared/py/tests/**'
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx xenon \
+              --max-absolute F \
+              --max-modules E \
+              --max-average B \
+              $FILES
+          fi
           echo "::endgroup::"
           echo "Complexity: OK (no module exceeds rank D, codebase average ≤ B)"
 
-  # --- Python security (bandit + pip-audit) -------------------------------
+  # --- Python security (bandit gates; pip-audit advisory) -----------------
   python-security:
-    name: Python security (bandit zero-warning + pip-audit)
+    name: Python security (bandit; pip-audit advisory)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           version: "latest"
@@ -308,7 +405,14 @@ jobs:
       - name: Bandit security scan (zero-warning policy)
         run: |
           echo "::group::bandit (low severity, low confidence — no exclusions)"
-          uvx bandit -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low
+          FILES=$(scripts/ci/changed-files.sh py)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx bandit -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx bandit -c pyproject.toml $FILES --severity-level low --confidence-level low
+          fi
           echo "::endgroup::"
           echo "Security: OK (0 issues across all severity levels)"
       - name: pip-audit (dependency CVEs)

@@ -41,7 +41,34 @@ function isAllowed(path) {
   return false;
 }
 
+// This gate only governs source under apps/, libs/, packages/ with a .ts/.tsx
+// extension. The explicit-list path mirrors that scope so a diff that touches
+// unrelated files (e.g. root config) is correctly ignored.
+function inScope(path) {
+  const underTrackedRoot =
+    path.startsWith("apps/") ||
+    path.startsWith("libs/") ||
+    path.startsWith("packages/");
+  return underTrackedRoot && (path.endsWith(".ts") || path.endsWith(".tsx"));
+}
+
+// Explicit file list (CI diff-scoping): newline-separated CHANGED_FILES env
+// var OR non-flag argv entries. When provided, only those in-scope files are
+// checked. Otherwise fall back to a full `git ls-files` repo scan.
+function explicitFileList() {
+  const fromEnv = (process.env.CHANGED_FILES ?? "")
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const fromArgv = process.argv.slice(2).filter((a) => !a.startsWith("-"));
+  return [...fromEnv, ...fromArgv];
+}
+
 function getFiles() {
+  const explicit = explicitFileList();
+  if (explicit.length > 0) {
+    return explicit.filter(inScope);
+  }
   // `git` is intentionally resolved via PATH on CI runners and local dev
   // shells where the binary is part of the runtime.
   const out = execFileSync( // NOSONAR javascript:S4036

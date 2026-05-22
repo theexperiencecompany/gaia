@@ -73,7 +73,28 @@ const limitFor = (p) =>
 const exemptFromHardCap = (p) =>
   NO_HARD_CAP_PATTERNS.some((rx) => rx.test(p));
 
+const SCANNED_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
+
+// Explicit file list (CI diff-scoping): newline-separated CHANGED_FILES env
+// var OR non-flag argv entries. When provided, only those files are checked —
+// still subject to this script's own extension + ignore rules. Otherwise fall
+// back to a full `git ls-files` repo scan.
+function explicitFileList() {
+  const fromEnv = (process.env.CHANGED_FILES ?? "")
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const fromArgv = process.argv.slice(2).filter((a) => !a.startsWith("-"));
+  return [...fromEnv, ...fromArgv];
+}
+
 function getFiles() {
+  const explicit = explicitFileList();
+  if (explicit.length > 0) {
+    return explicit
+      .filter((p) => SCANNED_EXTENSIONS.some((ext) => p.endsWith(ext)))
+      .filter((p) => !shouldIgnore(p));
+  }
   // `git` is intentionally resolved via PATH; CI runners always have it.
   const out = execFileSync( // NOSONAR javascript:S4036
     "git", // NOSONAR javascript:S4036
