@@ -26,12 +26,12 @@ Usage:
     logger.info("Hello world")
 """
 
-import json as _json
-import os
-import sys
-import logging
 from collections.abc import Callable
+import json as _json
+import logging
+import os
 from pathlib import Path
+import sys
 
 from loguru import logger
 
@@ -140,10 +140,16 @@ def _json_file_sink_factory(log_dir: Path) -> "Callable[..., None]":
             # Close stale handles from previous days before opening a new one
             for old_key in list(_handles):
                 if old_key != key:
+                    old_fh = _handles.pop(old_key)
                     try:
-                        _handles.pop(old_key).close()  # type: ignore[union-attr]
-                    except Exception:
-                        pass
+                        old_fh.close()  # type: ignore[union-attr]
+                    except OSError as exc:
+                        # We are inside loguru's own sink, so we cannot log via
+                        # loguru here. Surface the failure on stderr instead of
+                        # dropping it — a leaked handle is worth knowing about.
+                        sys.stderr.write(
+                            f"[gaia-logging] failed to close stale log handle {old_key}: {exc}\n"
+                        )
             fh = open(resolved, "a", encoding="utf-8")  # noqa: SIM115
             _handles[key] = fh
 
@@ -162,7 +168,7 @@ def _worker_name_patcher(record: dict) -> None:
     """
     name: str = record["process"].name
     if name.startswith("SpawnProcess-"):
-        record["extra"]["worker"] = "w" + name.split("-")[-1]
+        record["extra"]["worker"] = "w" + name.rsplit("-", maxsplit=1)[-1]
     elif name == "MainProcess":
         record["extra"]["worker"] = "main"
     else:
@@ -240,8 +246,7 @@ def configure_loguru():
             ]
 
             should_intercept = any(
-                record.name.startswith(namespace)
-                or record.name == namespace.rstrip(".")
+                record.name.startswith(namespace) or record.name == namespace.rstrip(".")
                 for namespace in app_namespaces
             )
 
@@ -272,9 +277,9 @@ def configure_loguru():
             else:
                 context_name = logger_name_map.get(record.name, record.name.upper()[:7])
 
-            logger.bind(logger_name=context_name).opt(
-                depth=depth, exception=record.exc_info
-            ).log(level, record.getMessage())
+            logger.bind(logger_name=context_name).opt(depth=depth, exception=record.exc_info).log(
+                level, record.getMessage()
+            )
 
     intercept_loggers = [
         "uvicorn",

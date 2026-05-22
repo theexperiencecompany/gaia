@@ -421,7 +421,7 @@ jobs:
           #
           # Lanes still informational (need a resolution PR each): biome,
           # deps, circular, types-location, components-per-file, type-check,
-          # python-ruff, python-mypy, python-security.
+          # python-ruff, python-mypy.
           ENFORCED=(
             duplicates
             type-coverage
@@ -429,6 +429,7 @@ jobs:
             package-hygiene
             python-xenon
             python-interrogate
+            python-security
           )
           # ---------------------------------------------------------------
 
