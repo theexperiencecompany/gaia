@@ -1,10 +1,10 @@
 """Unit tests for reminder scheduler service."""
 
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
+import pytest
 
 from app.models.reminder_models import (
     AgentType,
@@ -19,7 +19,6 @@ from app.models.scheduler_models import (
     TaskExecutionResult,
 )
 from app.services.reminder_service import ReminderScheduler
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -57,12 +56,8 @@ def mock_reminders_collection():
 def mock_scheduler_base():
     """Patch BaseSchedulerService.schedule_task and reschedule_task."""
     with (
-        patch.object(
-            ReminderScheduler, "schedule_task", new_callable=AsyncMock
-        ) as m_schedule,
-        patch.object(
-            ReminderScheduler, "reschedule_task", new_callable=AsyncMock
-        ) as m_reschedule,
+        patch.object(ReminderScheduler, "schedule_task", new_callable=AsyncMock) as m_schedule,
+        patch.object(ReminderScheduler, "reschedule_task", new_callable=AsyncMock) as m_reschedule,
     ):
         yield m_schedule, m_reschedule
 
@@ -78,7 +73,7 @@ def scheduler():
 
 @pytest.fixture
 def future_time():
-    return datetime.now(timezone.utc) + timedelta(hours=1)
+    return datetime.now(UTC) + timedelta(hours=1)
 
 
 @pytest.fixture
@@ -98,8 +93,8 @@ def sample_reminder_doc(future_time, sample_payload):
         "scheduled_at": future_time,
         "status": ScheduledTaskStatus.SCHEDULED,
         "occurrence_count": 0,
-        "created_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
     }
 
 
@@ -201,10 +196,8 @@ class TestCreateReminder:
         insert_result = MagicMock(inserted_id=oid)
         mock_reminders_collection.insert_one = AsyncMock(return_value=insert_result)
 
-        future = datetime.now(timezone.utc) + timedelta(hours=2)
-        with patch(
-            "app.services.reminder_service.get_next_run_time", return_value=future
-        ):
+        future = datetime.now(UTC) + timedelta(hours=2)
+        with patch("app.services.reminder_service.get_next_run_time", return_value=future):
             request = MagicMock(spec=CreateReminderRequest)
             request.scheduled_at = None
             request.repeat = "0 9 * * *"
@@ -261,15 +254,13 @@ class TestUpdateReminder:
         update_result = MagicMock(modified_count=1)
         mock_reminders_collection.update_one = AsyncMock(return_value=update_result)
 
-        future_iso = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+        future_iso = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
         update_data = {
             "scheduled_at": future_iso,
             "status": ReminderStatus.SCHEDULED,
         }
 
-        result = await scheduler.update_reminder(
-            str(ObjectId()), update_data, FAKE_USER_ID
-        )
+        result = await scheduler.update_reminder(str(ObjectId()), update_data, FAKE_USER_ID)
 
         assert result is True
         m_reschedule.assert_called_once()
@@ -282,7 +273,7 @@ class TestUpdateReminder:
         update_result = MagicMock(modified_count=1)
         mock_reminders_collection.update_one = AsyncMock(return_value=update_result)
 
-        future_iso = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+        future_iso = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
         update_data = {"scheduled_at": future_iso}
 
         await scheduler.update_reminder(str(ObjectId()), update_data, FAKE_USER_ID)
@@ -346,9 +337,7 @@ class TestListUserReminders:
         cursor.to_list = AsyncMock(return_value=[sample_reminder_doc])
         mock_reminders_collection.find.return_value = cursor
 
-        await scheduler.list_user_reminders(
-            FAKE_USER_ID, status=ReminderStatus.SCHEDULED
-        )
+        await scheduler.list_user_reminders(FAKE_USER_ID, status=ReminderStatus.SCHEDULED)
 
         call_args = mock_reminders_collection.find.call_args[0][0]
         assert call_args["status"] == ReminderStatus.SCHEDULED
@@ -365,9 +354,7 @@ class TestListUserReminders:
         cursor.skip.assert_called_once_with(5)
         cursor.limit.assert_called_once_with(10)
 
-    async def test_returns_empty_list_when_no_reminders(
-        self, scheduler, mock_reminders_collection
-    ):
+    async def test_returns_empty_list_when_no_reminders(self, scheduler, mock_reminders_collection):
         cursor = MagicMock()
         cursor.skip.return_value = cursor
         cursor.limit.return_value = cursor
@@ -395,18 +382,14 @@ class TestGetReminder:
 
         assert isinstance(result, ReminderModel)
 
-    async def test_get_task_returns_none_when_not_found(
-        self, scheduler, mock_reminders_collection
-    ):
+    async def test_get_task_returns_none_when_not_found(self, scheduler, mock_reminders_collection):
         mock_reminders_collection.find_one = AsyncMock(return_value=None)
 
         result = await scheduler.get_task(str(ObjectId()))
 
         assert result is None
 
-    async def test_get_task_with_user_id_filter(
-        self, scheduler, mock_reminders_collection
-    ):
+    async def test_get_task_with_user_id_filter(self, scheduler, mock_reminders_collection):
         mock_reminders_collection.find_one = AsyncMock(return_value=None)
 
         await scheduler.get_task(str(ObjectId()), user_id=FAKE_USER_ID)
@@ -463,9 +446,7 @@ class TestExecuteTask:
         assert result.success is False
         assert "not a ReminderModel" in (result.message or "")
 
-    async def test_returns_failure_on_execution_error(
-        self, scheduler, sample_reminder_doc
-    ):
+    async def test_returns_failure_on_execution_error(self, scheduler, sample_reminder_doc):
         reminder = ReminderModel(**sample_reminder_doc)
 
         with patch(
@@ -486,9 +467,7 @@ class TestExecuteTask:
 
 @pytest.mark.unit
 class TestUpdateTaskStatus:
-    async def test_updates_status_with_additional_data(
-        self, scheduler, mock_reminders_collection
-    ):
+    async def test_updates_status_with_additional_data(self, scheduler, mock_reminders_collection):
         update_result = MagicMock(modified_count=1)
         mock_reminders_collection.update_one = AsyncMock(return_value=update_result)
 
@@ -505,9 +484,7 @@ class TestUpdateTaskStatus:
         assert update_fields["status"] == ScheduledTaskStatus.COMPLETED
         assert update_fields["occurrence_count"] == 5
 
-    async def test_adds_updated_at_when_missing(
-        self, scheduler, mock_reminders_collection
-    ):
+    async def test_adds_updated_at_when_missing(self, scheduler, mock_reminders_collection):
         update_result = MagicMock(modified_count=1)
         mock_reminders_collection.update_one = AsyncMock(return_value=update_result)
 
@@ -518,15 +495,11 @@ class TestUpdateTaskStatus:
         update_fields = call_args[0][1]["$set"]
         assert "updated_at" in update_fields
 
-    async def test_returns_false_when_not_modified(
-        self, scheduler, mock_reminders_collection
-    ):
+    async def test_returns_false_when_not_modified(self, scheduler, mock_reminders_collection):
         update_result = MagicMock(modified_count=0)
         mock_reminders_collection.update_one = AsyncMock(return_value=update_result)
 
-        result = await scheduler.update_task_status(
-            str(ObjectId()), ScheduledTaskStatus.FAILED
-        )
+        result = await scheduler.update_task_status(str(ObjectId()), ScheduledTaskStatus.FAILED)
 
         assert result is False
 
@@ -537,9 +510,7 @@ class TestUpdateTaskStatus:
         mock_reminders_collection.update_one = AsyncMock(return_value=update_result)
 
         oid = str(ObjectId())
-        await scheduler.update_task_status(
-            oid, ScheduledTaskStatus.CANCELLED, user_id=FAKE_USER_ID
-        )
+        await scheduler.update_task_status(oid, ScheduledTaskStatus.CANCELLED, user_id=FAKE_USER_ID)
 
         call_args = mock_reminders_collection.update_one.call_args
         filters = call_args[0][0]
@@ -556,22 +527,18 @@ class TestGetPendingTask:
     async def test_returns_pending_reminders(
         self, scheduler, mock_reminders_collection, sample_reminder_doc
     ):
-        mock_reminders_collection.find.return_value = _AsyncCursorMock(
-            [sample_reminder_doc]
-        )
+        mock_reminders_collection.find.return_value = _AsyncCursorMock([sample_reminder_doc])
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = await scheduler.get_pending_task(now)
 
         assert len(result) == 1
         assert isinstance(result[0], ReminderModel)
 
-    async def test_returns_empty_when_no_pending(
-        self, scheduler, mock_reminders_collection
-    ):
+    async def test_returns_empty_when_no_pending(self, scheduler, mock_reminders_collection):
         mock_reminders_collection.find.return_value = _AsyncCursorMock([])
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = await scheduler.get_pending_task(now)
 
         assert result == []
@@ -584,7 +551,7 @@ class TestGetPendingTask:
 
         mock_reminders_collection.find.return_value = _AsyncCursorMock([doc])
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = await scheduler.get_pending_task(now)
 
         assert result[0].id == str(oid)

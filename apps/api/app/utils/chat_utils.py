@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langsmith import traceable
@@ -8,19 +6,19 @@ from uuid_extensions import uuid7str
 from app.agents.core.state import State
 from app.agents.llm.chatbot import chatbot
 from app.agents.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
-from shared.py.wide_events import log
 from app.models.message_models import MessageDict, SelectedWorkflowData
 from app.services.conversation_service import (
     ConversationModel,
     create_conversation_service,
     update_conversation_description,
 )
+from shared.py.wide_events import log
 
 
 async def _generate_description_from_message(
     last_message: MessageDict | None,
-    selectedTool: Optional[str],
-    selectedWorkflow: Optional[SelectedWorkflowData],
+    selectedTool: str | None,
+    selectedWorkflow: SelectedWorkflowData | None,
 ) -> str:
     """Helper to generate conversation description from message context."""
     user_message = (
@@ -29,9 +27,7 @@ async def _generate_description_from_message(
         else "New conversation started"
     )
 
-    workflow_context = (
-        f" - Workflow: {selectedWorkflow.title}" if selectedWorkflow else ""
-    )
+    workflow_context = f" - Workflow: {selectedWorkflow.title}" if selectedWorkflow else ""
 
     try:
         response = await do_prompt_no_stream(
@@ -56,10 +52,10 @@ async def _generate_description_from_message(
 async def create_conversation(
     last_message: MessageDict | None,
     user: dict,
-    selectedTool: Optional[str] | None,
-    selectedWorkflow: Optional[SelectedWorkflowData] | None = None,
+    selectedTool: str | None | None,
+    selectedWorkflow: SelectedWorkflowData | None | None = None,
     generate_description: bool = True,
-    conversation_id: Optional[str] = None,
+    conversation_id: str | None = None,
     is_onboarding_demo: bool = False,
 ) -> dict:
     """
@@ -83,9 +79,7 @@ async def create_conversation(
     description = (
         "New Chat"
         if not generate_description
-        else await _generate_description_from_message(
-            last_message, selectedTool, selectedWorkflow
-        )
+        else await _generate_description_from_message(last_message, selectedTool, selectedWorkflow)
     )
 
     conversation = ConversationModel(
@@ -107,8 +101,8 @@ async def generate_and_update_description(
     conversation_id: str,
     last_message: MessageDict | None,
     user: dict,
-    selectedTool: Optional[str] | None,
-    selectedWorkflow: Optional[SelectedWorkflowData] | None = None,
+    selectedTool: str | None | None,
+    selectedWorkflow: SelectedWorkflowData | None | None = None,
 ) -> str:
     """
     Generate a description for an existing conversation and update it.
@@ -146,9 +140,7 @@ async def do_prompt_no_stream(
     Returns:
         dict with "response" key containing the AI's response content
     """
-    messages: List[AnyMessage] = (
-        [SystemMessage(content=system_prompt)] if system_prompt else []
-    )
+    messages: list[AnyMessage] = [SystemMessage(content=system_prompt)] if system_prompt else []
     messages.append(HumanMessage(content=prompt))
 
     state = State(messages=messages)
@@ -161,8 +153,7 @@ async def do_prompt_no_stream(
     # content can be a list of blocks (e.g. structured tool-use responses) — extract text
     if isinstance(content, list):
         content = " ".join(
-            block.get("text", "") if isinstance(block, dict) else str(block)
-            for block in content
+            block.get("text", "") if isinstance(block, dict) else str(block) for block in content
         ).strip()
     elif not isinstance(content, str):
         content = "" if content is None else str(content)

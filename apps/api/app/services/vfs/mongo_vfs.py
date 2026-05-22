@@ -8,13 +8,15 @@ SECURITY: All operations require user_id and validate access.
 Users can ONLY access paths under /users/{their_user_id}/.
 """
 
+from datetime import UTC, datetime
 import fnmatch
 import json
 import re
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any
 
-from shared.py.wide_events import log
+from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorGridFSBucket
+
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.mongodb.collections import _get_mongodb_instance, vfs_nodes_collection
 from app.models.vfs_models import (
@@ -31,8 +33,7 @@ from app.services.vfs.path_resolver import (
     normalize_path,
     validate_user_access,
 )
-from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorGridFSBucket
+from shared.py.wide_events import log
 
 
 def _escape_mongo_regex(value: str) -> str:
@@ -71,7 +72,7 @@ class MongoVFS:
     INLINE_SIZE_LIMIT = 1_048_576  # 1MB
 
     def __init__(self, *, allow_system_write: bool = False):
-        self._gridfs_bucket: Optional[AsyncIOMotorGridFSBucket] = None
+        self._gridfs_bucket: AsyncIOMotorGridFSBucket | None = None
         self._allow_system_write = allow_system_write
 
     async def _get_gridfs(self) -> AsyncIOMotorGridFSBucket:
@@ -103,9 +104,7 @@ class MongoVFS:
 
         # Validate that the path belongs to this user
         if not validate_user_access(normalized, user_id):
-            log.warning(
-                f"VFS ACCESS DENIED: User '{user_id}' attempted to access '{path}'"
-            )
+            log.warning(f"VFS ACCESS DENIED: User '{user_id}' attempted to access '{path}'")
             raise VFSAccessError(normalized, user_id)
 
         return normalized
@@ -130,9 +129,7 @@ class MongoVFS:
         """
         # Check instance flag first (set by seeding script)
         if self._allow_system_write:
-            original_normalized = (
-                normalize_path(original_path) if original_path else None
-            )
+            original_normalized = normalize_path(original_path) if original_path else None
             normalized = normalize_path(path)
             if user_id != "system" and (
                 (original_normalized and original_normalized.startswith("/system/"))
@@ -206,9 +203,7 @@ class MongoVFS:
         """Check if a path is a system path."""
         return normalize_path(path).startswith("/system/")
 
-    def _build_query(
-        self, path: str, user_id: str, include_content: bool = False
-    ) -> dict:
+    def _build_query(self, path: str, user_id: str, include_content: bool = False) -> dict:
         """
         Build MongoDB query for a path, handling system paths.
 
@@ -243,7 +238,7 @@ class MongoVFS:
         path: str,
         content: str,
         user_id: str,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """
         Write a file to the VFS.
@@ -274,7 +269,7 @@ class MongoVFS:
         name = get_filename(path)
         metadata = metadata or {}
         metadata["user_id"] = user_id  # Track ownership
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Ensure parent directories exist (with user_id)
         await self._ensure_directories(parent, user_id)
@@ -288,9 +283,7 @@ class MongoVFS:
             bucket = await self._get_gridfs()
 
             # Delete existing GridFS file if exists
-            existing = await vfs_nodes_collection.find_one(
-                {"path": path, "user_id": user_id}
-            )
+            existing = await vfs_nodes_collection.find_one({"path": path, "user_id": user_id})
             if existing and existing.get("gridfs_id"):
                 try:
                     await bucket.delete(ObjectId(existing["gridfs_id"]))
@@ -310,9 +303,7 @@ class MongoVFS:
             inline_content = content
 
             # Clean up any existing GridFS reference
-            existing = await vfs_nodes_collection.find_one(
-                {"path": path, "user_id": user_id}
-            )
+            existing = await vfs_nodes_collection.find_one({"path": path, "user_id": user_id})
             if existing and existing.get("gridfs_id"):
                 try:
                     bucket = await self._get_gridfs()
@@ -322,13 +313,9 @@ class MongoVFS:
                         f"VFS: Failed to delete GridFS object {existing['gridfs_id']} for {path} (user={user_id}): {e!s}"
                     )
 
-        existing_node = await vfs_nodes_collection.find_one(
-            {"path": path, "user_id": user_id}
-        )
+        existing_node = await vfs_nodes_collection.find_one({"path": path, "user_id": user_id})
         if existing_node and existing_node.get("node_type") != VFSNodeType.FILE.value:
-            raise ValueError(
-                f"Cannot write file to {path}: path already exists as a folder."
-            )
+            raise ValueError(f"Cannot write file to {path}: path already exists as a folder.")
 
         # Upsert the file node - MUST include user_id in query for security
         await vfs_nodes_collection.update_one(
@@ -379,18 +366,14 @@ class MongoVFS:
 
         parent = get_parent_path(path)
         name = get_filename(path)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         if parent:
             await self._ensure_directories(parent, user_id)
 
-        existing_node = await vfs_nodes_collection.find_one(
-            {"path": path, "user_id": user_id}
-        )
+        existing_node = await vfs_nodes_collection.find_one({"path": path, "user_id": user_id})
         if existing_node and existing_node.get("node_type") != VFSNodeType.FOLDER.value:
-            raise ValueError(
-                f"Cannot create directory {path}: path already exists as a file."
-            )
+            raise ValueError(f"Cannot create directory {path}: path already exists as a file.")
 
         await vfs_nodes_collection.update_one(
             {"path": path, "user_id": user_id},
@@ -452,9 +435,7 @@ class MongoVFS:
             elif node.get("gridfs_id"):
                 try:
                     bucket = await self._get_gridfs()
-                    stream = await bucket.open_download_stream(
-                        ObjectId(node["gridfs_id"])
-                    )
+                    stream = await bucket.open_download_stream(ObjectId(node["gridfs_id"]))
                     content_bytes: bytes = await stream.read()
                     existing_content = content_bytes.decode("utf-8")
                 except Exception as e:
@@ -464,13 +445,13 @@ class MongoVFS:
 
         await vfs_nodes_collection.update_one(
             self._build_query(path, user_id),
-            {"$set": {"accessed_at": datetime.now(timezone.utc)}},
+            {"$set": {"accessed_at": datetime.now(UTC)}},
         )
 
         await self.write(path, new_content, user_id)
         return path
 
-    async def read(self, path: str, user_id: str) -> Optional[str]:
+    async def read(self, path: str, user_id: str) -> str | None:
         """
         Read file content.
 
@@ -494,7 +475,7 @@ class MongoVFS:
 
         await vfs_nodes_collection.update_one(
             self._build_query(path, user_id),
-            {"$set": {"accessed_at": datetime.now(timezone.utc)}},
+            {"$set": {"accessed_at": datetime.now(UTC)}},
         )
 
         if node.get("content") is not None:
@@ -534,7 +515,7 @@ class MongoVFS:
         node = await vfs_nodes_collection.find_one(query, {"_id": 1})
         return node is not None
 
-    async def info(self, path: str, user_id: str) -> Optional[VFSNodeResponse]:
+    async def info(self, path: str, user_id: str) -> VFSNodeResponse | None:
         """
         Get file/folder metadata.
 
@@ -553,9 +534,7 @@ class MongoVFS:
 
         # Query - use _build_query to handle system paths
         query = self._build_query(path, user_id)
-        node = await vfs_nodes_collection.find_one(
-            query, {"content": 0, "gridfs_id": 0}
-        )
+        node = await vfs_nodes_collection.find_one(query, {"content": 0, "gridfs_id": 0})
 
         if not node:
             return None
@@ -608,9 +587,7 @@ class MongoVFS:
         else:
             query = {"parent_path": path, "user_id": query_user_id}
 
-        cursor = vfs_nodes_collection.find(query, {"content": 0, "gridfs_id": 0}).sort(
-            "name", 1
-        )
+        cursor = vfs_nodes_collection.find(query, {"content": 0, "gridfs_id": 0}).sort("name", 1)
 
         nodes = await cursor.to_list(length=1000)
 
@@ -655,9 +632,7 @@ class MongoVFS:
         query_user_id = self._get_query_user_id(path, user_id)
 
         # Query MUST include user_id for security
-        node = await vfs_nodes_collection.find_one(
-            {"path": path, "user_id": query_user_id}
-        )
+        node = await vfs_nodes_collection.find_one({"path": path, "user_id": query_user_id})
 
         if not node:
             # Create a virtual root node
@@ -670,9 +645,7 @@ class MongoVFS:
 
         return await self._build_tree_node(node, query_user_id, depth)
 
-    async def _build_tree_node(
-        self, node: dict, user_id: str, depth: int
-    ) -> VFSTreeNode:
+    async def _build_tree_node(self, node: dict, user_id: str, depth: int) -> VFSTreeNode:
         """Recursively build tree nodes."""
         tree_node = VFSTreeNode(
             name=node["name"],
@@ -699,7 +672,7 @@ class MongoVFS:
         self,
         pattern: str,
         user_id: str,
-        base_path: Optional[str] = None,
+        base_path: str | None = None,
     ) -> VFSSearchResult:
         """
         Search for files matching a glob pattern.
@@ -728,7 +701,7 @@ class MongoVFS:
         query_user_id = self._get_query_user_id(base_path, user_id)
 
         # Query MUST include user_id for security
-        query: Dict[str, Any] = {
+        query: dict[str, Any] = {
             "path": {"$regex": f"^{_escape_mongo_regex(base_path)}"},
             "user_id": query_user_id,  # CRITICAL: Always filter by user
         }
@@ -740,9 +713,7 @@ class MongoVFS:
         matches = []
         for node in nodes:
             relative_path = node["path"][len(base_path) :].lstrip("/")
-            if fnmatch.fnmatch(relative_path, pattern) or fnmatch.fnmatch(
-                node["name"], pattern
-            ):
+            if fnmatch.fnmatch(relative_path, pattern) or fnmatch.fnmatch(node["name"], pattern):
                 matches.append(
                     VFSNodeResponse(
                         path=node["path"],
@@ -878,7 +849,7 @@ class MongoVFS:
         dest_parent = get_parent_path(dest)
         await self._ensure_directories(dest_parent, user_id)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         if node["node_type"] == VFSNodeType.FOLDER.value:
             # Move all children - MUST include user_id
@@ -978,15 +949,12 @@ class MongoVFS:
             existing_node = await vfs_nodes_collection.find_one(
                 {"path": current, "user_id": user_id}
             )
-            if (
-                existing_node
-                and existing_node.get("node_type") != VFSNodeType.FOLDER.value
-            ):
+            if existing_node and existing_node.get("node_type") != VFSNodeType.FOLDER.value:
                 raise ValueError(
                     f"Cannot ensure directory {current}: path already exists as a file."
                 )
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             await vfs_nodes_collection.update_one(
                 {"path": current, "user_id": user_id},
                 {
@@ -1057,9 +1025,9 @@ class MongoVFS:
             size /= 1024
         return f"{size:.1f} TB"
 
-    def _analyze_json(self, data: Any, sample_size: int = 3) -> Dict[str, Any]:
+    def _analyze_json(self, data: Any, sample_size: int = 3) -> dict[str, Any]:
         """Analyze JSON structure."""
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "schema": {},
             "array_lengths": {},
             "nested_depth": 0,
@@ -1085,18 +1053,18 @@ class MongoVFS:
                 return "object"
             return "unknown"
 
-        def analyze_value(val: Any, path: str = "", depth: int = 0) -> Dict[str, Any]:
+        def analyze_value(val: Any, path: str = "", depth: int = 0) -> dict[str, Any]:
             result["nested_depth"] = max(result["nested_depth"], depth)
 
             if isinstance(val, dict):
-                schema: Dict[str, Any] = {"type": "object", "properties": {}}
+                schema: dict[str, Any] = {"type": "object", "properties": {}}
                 for key, v in val.items():
                     field_path = f"{path}.{key}" if path else key
                     result["field_count"] += 1
                     schema["properties"][key] = analyze_value(v, field_path, depth + 1)
                 return schema
 
-            elif isinstance(val, list):
+            if isinstance(val, list):
                 array_path = path or "root"
                 result["array_lengths"][array_path] = len(val)
 
@@ -1104,24 +1072,21 @@ class MongoVFS:
                     return {"type": "array", "items": {}}
 
                 # Analyze first few items
-                item_schemas = [
-                    analyze_value(item, f"{path}[]", depth + 1) for item in val[:3]
-                ]
+                item_schemas = [analyze_value(item, f"{path}[]", depth + 1) for item in val[:3]]
                 # Use first item's schema as representative
                 return {
                     "type": "array",
                     "items": item_schemas[0] if item_schemas else {},
                 }
 
-            else:
-                val_type = get_type(val)
-                if path and sample_size > 0:
-                    if path not in result["sample_values"]:
-                        result["sample_values"][path] = []
-                    if len(result["sample_values"][path]) < sample_size:
-                        result["sample_values"][path].append(val)
-                    result["value_types"][path] = val_type
-                return {"type": val_type}
+            val_type = get_type(val)
+            if path and sample_size > 0:
+                if path not in result["sample_values"]:
+                    result["sample_values"][path] = []
+                if len(result["sample_values"][path]) < sample_size:
+                    result["sample_values"][path].append(val)
+                result["value_types"][path] = val_type
+            return {"type": val_type}
 
         result["schema"] = analyze_value(data)
         return result

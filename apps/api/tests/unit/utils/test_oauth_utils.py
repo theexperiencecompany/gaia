@@ -2,15 +2,14 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi import HTTPException
+import pytest
 
 from app.utils.oauth_utils import (
     build_google_oauth_url,
     get_tokens_by_user_id,
     upload_user_picture,
 )
-
 
 # ---------------------------------------------------------------------------
 # build_google_oauth_url
@@ -228,9 +227,7 @@ class TestUploadUserPicture:
         assert result == "https://cdn.example.com/img.png"
 
     @patch("app.utils.oauth_utils.cloudinary.uploader.upload")
-    async def test_passes_correct_params_to_cloudinary(
-        self, mock_upload: MagicMock
-    ) -> None:
+    async def test_passes_correct_params_to_cloudinary(self, mock_upload: MagicMock) -> None:
         mock_upload.return_value = {"secure_url": "https://cdn.example.com/img.png"}
 
         await upload_user_picture(b"data", "my_public_id")
@@ -241,9 +238,7 @@ class TestUploadUserPicture:
         assert call_kwargs.kwargs["overwrite"] is True
 
     @patch("app.utils.oauth_utils.cloudinary.uploader.upload")
-    async def test_raises_500_when_secure_url_missing(
-        self, mock_upload: MagicMock
-    ) -> None:
+    async def test_raises_500_when_secure_url_missing(self, mock_upload: MagicMock) -> None:
         # The inner HTTPException is caught by the outer except block,
         # which re-raises as "Image upload failed".
         mock_upload.return_value = {"public_id": "abc"}  # no secure_url
@@ -254,9 +249,7 @@ class TestUploadUserPicture:
         assert "Image upload failed" in exc_info.value.detail
 
     @patch("app.utils.oauth_utils.cloudinary.uploader.upload")
-    async def test_raises_500_when_secure_url_is_none(
-        self, mock_upload: MagicMock
-    ) -> None:
+    async def test_raises_500_when_secure_url_is_none(self, mock_upload: MagicMock) -> None:
         mock_upload.return_value = {"secure_url": None}
 
         with pytest.raises(HTTPException) as exc_info:
@@ -306,9 +299,7 @@ class TestGetTokensByUserId:
         assert success is True
 
     @patch("app.utils.oauth_utils.token_repository")
-    async def test_returns_empty_when_no_token(
-        self, mock_token_repo: MagicMock
-    ) -> None:
+    async def test_returns_empty_when_no_token(self, mock_token_repo: MagicMock) -> None:
         mock_token_repo.get_token = AsyncMock(return_value=None)
 
         access, refresh, success = await get_tokens_by_user_id("user_1")
@@ -317,9 +308,7 @@ class TestGetTokensByUserId:
         assert success is False
 
     @patch("app.utils.oauth_utils.token_repository")
-    async def test_returns_empty_when_no_refresh_token(
-        self, mock_token_repo: MagicMock
-    ) -> None:
+    async def test_returns_empty_when_no_refresh_token(self, mock_token_repo: MagicMock) -> None:
         mock_token = MagicMock()
         mock_token.get.side_effect = lambda key, default="": {
             "access_token": "access_tok",
@@ -356,9 +345,7 @@ class TestGetTokensByUserId:
         mock_token_repo.refresh_token.assert_awaited_once_with("user_1", "google")
 
     @patch("app.utils.oauth_utils.token_repository")
-    async def test_refresh_failure_returns_partial(
-        self, mock_token_repo: MagicMock
-    ) -> None:
+    async def test_refresh_failure_returns_partial(self, mock_token_repo: MagicMock) -> None:
         mock_token = MagicMock()
         mock_token.get.side_effect = lambda key, default="": {
             "access_token": "old_access",
@@ -375,9 +362,7 @@ class TestGetTokensByUserId:
 
     @patch("app.utils.oauth_utils.token_repository")
     async def test_exception_returns_empty(self, mock_token_repo: MagicMock) -> None:
-        mock_token_repo.get_token = AsyncMock(
-            side_effect=Exception("Connection refused")
-        )
+        mock_token_repo.get_token = AsyncMock(side_effect=Exception("Connection refused"))
 
         access, refresh, success = await get_tokens_by_user_id("user_1")
         assert access == ""
@@ -385,9 +370,7 @@ class TestGetTokensByUserId:
         assert success is False
 
     @patch("app.utils.oauth_utils.token_repository")
-    async def test_calls_get_token_with_google_provider(
-        self, mock_token_repo: MagicMock
-    ) -> None:
+    async def test_calls_get_token_with_google_provider(self, mock_token_repo: MagicMock) -> None:
         mock_token_repo.get_token = AsyncMock(return_value=None)
 
         await get_tokens_by_user_id("user_42")
@@ -395,9 +378,7 @@ class TestGetTokensByUserId:
         mock_token_repo.get_token.assert_awaited_once_with("user_42", "google")
 
     @patch("app.utils.oauth_utils.token_repository")
-    async def test_non_expired_token_skips_refresh(
-        self, mock_token_repo: MagicMock
-    ) -> None:
+    async def test_non_expired_token_skips_refresh(self, mock_token_repo: MagicMock) -> None:
         mock_token = MagicMock()
         mock_token.get.side_effect = lambda key, default="": {
             "access_token": "valid_access",

@@ -8,7 +8,7 @@ For main functions, import directly from:
 - app.services.integrations.custom_crud
 """
 
-from typing import Any, Dict, List, Set
+from typing import Any
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL
@@ -25,14 +25,14 @@ from app.services.oauth.oauth_service import get_all_integrations_status
 
 
 @Cacheable(key_pattern="tool_namespaces:{user_id}", ttl=ONE_DAY_TTL)
-async def get_user_available_tool_namespaces(user_id: str) -> Set[str]:
+async def get_user_available_tool_namespaces(user_id: str) -> set[str]:
     """Get the set of integration namespaces (tool spaces) that user has connected.
 
     For platform integrations, uses the configured tool_space.
     For custom integrations, resolves to URL domain (matches indexing logic).
     """
 
-    namespaces: Set[str] = set()
+    namespaces: set[str] = set()
 
     # Add core namespaces that are always available
     namespaces.update({"general", "subagents"})
@@ -61,15 +61,13 @@ async def get_user_available_tool_namespaces(user_id: str) -> Set[str]:
             # Custom integration: resolve to URL (domain + path) for consistency
             # Includes path to differentiate /v1 vs /v2 endpoints
             server_url = await IntegrationResolver.get_server_url(integration_id)
-            namespace = derive_integration_namespace(
-                integration_id, server_url, is_custom=True
-            )
+            namespace = derive_integration_namespace(integration_id, server_url, is_custom=True)
             namespaces.add(namespace)
 
     return namespaces
 
 
-def build_creator_lookup_stages() -> List[Dict[str, Any]]:
+def build_creator_lookup_stages() -> list[dict[str, Any]]:
     """Build aggregation stages to join creator info from users collection."""
     return [
         {

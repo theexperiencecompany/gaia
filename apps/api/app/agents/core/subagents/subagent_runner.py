@@ -15,10 +15,17 @@ Key exports:
 - prepare_executor_execution(): Prepare context for executor agent
 """
 
+from collections.abc import AsyncGenerator
+from datetime import datetime
 import json
 import uuid
-from datetime import datetime
-from typing import AsyncGenerator, Optional
+
+from langchain_core.messages import (
+    AIMessageChunk,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
@@ -26,7 +33,6 @@ from app.agents.core.subagents.subagent_helpers import (
     create_agent_context_message,
     create_subagent_system_message,
 )
-from shared.py.wide_events import log
 from app.constants.general import FINISH_TASK_NAME
 from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
@@ -38,12 +44,7 @@ from app.helpers.message_helpers import (
 from app.models.models_models import ModelConfig
 from app.services.oauth.oauth_service import check_integration_status
 from app.utils.stream_utils import extract_tool_entries_from_update
-from langchain_core.messages import (
-    AIMessageChunk,
-    HumanMessage,
-    SystemMessage,
-    ToolMessage,
-)
+from shared.py.wide_events import log
 
 
 def _capture_finish_task_content(chunk: ToolMessage, current_message: str) -> str:
@@ -71,8 +72,8 @@ class SubagentExecutionContext:
         configurable: dict,
         integration_id: str,
         initial_state: dict,
-        user_id: Optional[str] = None,
-        stream_id: Optional[str] = None,
+        user_id: str | None = None,
+        stream_id: str | None = None,
     ):
         self.subagent_graph = subagent_graph
         self.agent_name = agent_name
@@ -89,12 +90,12 @@ async def build_initial_messages(
     agent_name: str,
     configurable: dict,
     task: str,
-    user_id: Optional[str] = None,
-    subagent_id: Optional[str] = None,
-    retrieval_query: Optional[str] = None,
-    integration_id: Optional[str] = None,
-    memories_text: Optional[str] = None,
-    skills_text: Optional[str] = None,
+    user_id: str | None = None,
+    subagent_id: str | None = None,
+    retrieval_query: str | None = None,
+    integration_id: str | None = None,
+    memories_text: str | None = None,
+    skills_text: str | None = None,
 ) -> list:
     """Build the [static_prompt, dynamic_context, human_task] triplet.
 
@@ -159,10 +160,10 @@ async def prepare_subagent_execution(
     user: dict,
     user_time: datetime,
     conversation_id: str,
-    base_configurable: Optional[dict] = None,
-    user_model_config: Optional[ModelConfig] = None,
-    stream_id: Optional[str] = None,
-) -> tuple[Optional[SubagentExecutionContext], Optional[str]]:
+    base_configurable: dict | None = None,
+    user_model_config: ModelConfig | None = None,
+    stream_id: str | None = None,
+) -> tuple[SubagentExecutionContext | None, str | None]:
     """
     Prepare everything needed to execute a subagent.
 
@@ -275,7 +276,7 @@ async def prepare_subagent_execution(
 async def execute_subagent_stream(
     ctx: SubagentExecutionContext,
     stream_writer=None,
-    integration_metadata: Optional[dict] = None,
+    integration_metadata: dict | None = None,
 ) -> str:
     """
     Execute subagent with streaming and tool tracking.
@@ -341,9 +342,7 @@ async def execute_subagent_stream(
             # Emit tool_output when ToolMessage arrives
             elif chunk and isinstance(chunk, ToolMessage):
                 content_str = (
-                    chunk.content
-                    if isinstance(chunk.content, str)
-                    else str(chunk.content)
+                    chunk.content if isinstance(chunk.content, str) else str(chunk.content)
                 )
                 complete_message = _capture_finish_task_content(chunk, complete_message)
                 if stream_writer:
@@ -383,8 +382,8 @@ async def prepare_executor_execution(
     task: str,
     configurable: dict,
     user_time: datetime,
-    stream_id: Optional[str] = None,
-) -> tuple[Optional[SubagentExecutionContext], Optional[str]]:
+    stream_id: str | None = None,
+) -> tuple[SubagentExecutionContext | None, str | None]:
     """
     Prepare execution context for the executor agent.
 
@@ -461,9 +460,7 @@ async def prepare_executor_execution(
     tool_category = configurable.get("tool_category")
     selected_tool = configurable.get("selected_tool")
     if tool_category and get_subagent_by_id(tool_category):
-        tool_hint = (
-            f"the '{selected_tool}' tool" if selected_tool else "the user's request"
-        )
+        tool_hint = f"the '{selected_tool}' tool" if selected_tool else "the user's request"
         enhanced_task = (
             f"{task}\n\n"
             f"DIRECT EXECUTION HINT: This request should be handled by "
@@ -506,7 +503,7 @@ async def prepare_executor_execution(
 async def check_subagent_integration(
     integration_id: str,
     user_id: str,
-) -> Optional[str]:
+) -> str | None:
     """
     Check if integration is connected. Returns error message if not connected.
 
@@ -516,9 +513,7 @@ async def check_subagent_integration(
         is_connected = await check_integration_status(integration_id, user_id)
         if is_connected:
             return None
-        return (
-            f"Integration {integration_id} is not connected. Please connect it first."
-        )
+        return f"Integration {integration_id} is not connected. Please connect it first."
     except Exception as e:
         log.warning(f"Integration check failed: {e}")
         return None
@@ -531,8 +526,8 @@ async def call_subagent(
     conversation_id: str,
     user_time: datetime,
     skip_integration_check: bool = True,
-    user_model_config: Optional[ModelConfig] = None,
-    stream_id: Optional[str] = None,
+    user_model_config: ModelConfig | None = None,
+    stream_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Directly invoke a subagent with streaming - drop-in for call_agent in chat_service.
@@ -590,9 +585,7 @@ async def call_subagent(
         yield "data: [DONE]\n\n"
         return
 
-    log.info(
-        f"[DIRECT] Invoking subagent '{ctx.agent_name}' with query: {query[:80]}..."
-    )
+    log.info(f"[DIRECT] Invoking subagent '{ctx.agent_name}' with query: {query[:80]}...")
 
     complete_message = ""
     finish_task_result: str | None = None
@@ -638,9 +631,7 @@ async def call_subagent(
             # Emit tool_output when ToolMessage arrives
             elif chunk and isinstance(chunk, ToolMessage):
                 content_str = (
-                    chunk.content
-                    if isinstance(chunk.content, str)
-                    else str(chunk.content)
+                    chunk.content if isinstance(chunk.content, str) else str(chunk.content)
                 )
                 complete_message = _capture_finish_task_content(chunk, complete_message)
                 if chunk.name == FINISH_TASK_NAME:
@@ -651,9 +642,7 @@ async def call_subagent(
         if stream_mode == "custom":
             yield f"data: {json.dumps(payload)}\n\n"
 
-    final_message = (
-        finish_task_result if finish_task_result is not None else complete_message
-    )
+    final_message = finish_task_result if finish_task_result is not None else complete_message
     # Final message for DB storage
     yield f"nostream: {json.dumps({'complete_message': final_message})}"
     yield "data: [DONE]\n\n"

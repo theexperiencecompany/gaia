@@ -235,9 +235,7 @@ class TestProviderRegistryExtended:
 
         # The registration-time warning fires exactly once; get() is silent.
         warn_calls = [
-            call
-            for call in mock_logger.warning.call_args_list
-            if "warn_once_provider" in str(call)
+            call for call in mock_logger.warning.call_args_list if "warn_once_provider" in str(call)
         ]
         assert len(warn_calls) == 1
 

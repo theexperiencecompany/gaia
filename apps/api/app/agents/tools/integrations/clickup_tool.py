@@ -1,7 +1,7 @@
 """ClickUp tools using Composio custom tool infrastructure."""
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List
+from datetime import UTC, datetime
+from typing import Any
 
 from composio import Composio
 
@@ -9,15 +9,15 @@ from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 
 
-def register_clickup_custom_tools(composio: Composio) -> List[str]:
+def register_clickup_custom_tools(composio: Composio) -> list[str]:
     """Register ClickUp tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="CLICKUP")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get ClickUp context snapshot: assigned tasks across teams.
 
         Zero required parameters. Returns current account state for situational awareness.
@@ -32,7 +32,7 @@ def register_clickup_custom_tools(composio: Composio) -> List[str]:
             user_id,
         )
         tasks = data.get("tasks", [])
-        today_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        today_ms = int(datetime.now(UTC).timestamp() * 1000)
         overdue = [
             t
             for t in tasks

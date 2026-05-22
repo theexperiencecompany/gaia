@@ -6,11 +6,12 @@ PKCE generation, tool wrapping, and schema handling.
 """
 
 import base64
+from collections.abc import Callable
+from functools import wraps
 import hashlib
 import inspect
 import secrets
-from functools import wraps
-from typing import Any, Callable, Literal, Optional, Union
+from typing import Any, Literal, Union
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
@@ -54,7 +55,7 @@ _CONNECTION_ERROR_PATTERNS = (
 
 def wrap_tool_with_null_filter(
     tool: BaseTool,
-    on_connection_error: Optional[Callable[[], None]] = None,
+    on_connection_error: Callable[[], None] | None = None,
 ) -> BaseTool:
     """
     Wrap a LangChain tool to filter out None values before MCP invocation.
@@ -78,9 +79,7 @@ def wrap_tool_with_null_filter(
     async def filtered_arun(**kwargs: Any) -> Any:
         filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
         log.set(operation="mcp_tool_call", tool_name=tool.name)
-        log.debug(
-            f"MCP tool '{tool.name}': original args={kwargs}, filtered={filtered_kwargs}"
-        )
+        log.debug(f"MCP tool '{tool.name}': original args={kwargs}, filtered={filtered_kwargs}")
         try:
             result = await original_arun(**filtered_kwargs)
             return result
@@ -102,18 +101,15 @@ def wrap_tool_with_null_filter(
                     raise TypeError(
                         "on_connection_error must be a synchronous callable, not a coroutine function"
                     )
-                log.warning(
-                    f"MCP tool '{tool.name}' hit connection error, evicting session"
-                )
+                log.warning(f"MCP tool '{tool.name}' hit connection error, evicting session")
                 on_connection_error()
 
             # Provide helpful error message for common MCP errors
             if "Cannot read properties of undefined" in error_msg:
                 return f"The MCP server encountered an internal error while processing your request. This is typically a bug in the MCP server implementation. Error: {error_msg}"
-            elif "timeout" in error_lower:
+            if "timeout" in error_lower:
                 return f"The MCP server timed out. Please try again. Error: {error_msg}"
-            else:
-                return f"MCP tool error: {error_msg}"
+            return f"MCP tool error: {error_msg}"
 
     tool._arun = filtered_arun  # type: ignore[method-assign]
     return tool
@@ -124,10 +120,7 @@ def wrap_tools_with_null_filter(
     on_connection_error: Any = None,
 ) -> list[BaseTool]:
     """Wrap all tools with null value filtering."""
-    return [
-        wrap_tool_with_null_filter(t, on_connection_error=on_connection_error)
-        for t in tools
-    ]
+    return [wrap_tool_with_null_filter(t, on_connection_error=on_connection_error) for t in tools]
 
 
 def extract_type_from_field(field_info: dict) -> tuple[Any, Any, bool]:

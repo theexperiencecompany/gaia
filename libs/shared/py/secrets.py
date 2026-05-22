@@ -50,14 +50,11 @@ def inject_infisical_secrets():
 
     for config_value, config_name in missing_configs:
         if not config_value:
-            message = (
-                f"{config_name} is missing. This is required for secrets management."
-            )
+            message = f"{config_name} is missing. This is required for secrets management."
             if is_production:
                 raise InfisicalConfigError(message)
-            else:
-                logger.warning(f"Development environment: {message}")
-                return
+            logger.warning(f"Development environment: {message}")
+            return
 
     try:
         from infisical_sdk import InfisicalSDKClient
@@ -73,9 +70,7 @@ def inject_infisical_secrets():
             client_id=CLIENT_ID,
             client_secret=CLIENT_SECRET,
         )
-        logger.info(
-            f"Infisical authentication completed in {time.time() - start_time:.3f}s"
-        )
+        logger.info(f"Infisical authentication completed in {time.time() - start_time:.3f}s")
 
         secrets_start = time.time()
         secrets = client.secrets.list_secrets(
@@ -96,14 +91,10 @@ def inject_infisical_secrets():
             if os.environ.get(secret.secretKey) is None:
                 os.environ[secret.secretKey] = secret.secretValue
 
-        logger.info(
-            f"Secrets injected into environment in {time.time() - injection_start:.3f}s"
-        )
+        logger.info(f"Secrets injected into environment in {time.time() - injection_start:.3f}s")
 
     except Exception as e:
-        raise InfisicalConfigError(
-            f"Failed to fetch secrets from Infisical: {e}"
-        ) from e
+        raise InfisicalConfigError(f"Failed to fetch secrets from Infisical: {e}") from e
 
 
 __all__ = [

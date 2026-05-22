@@ -9,14 +9,14 @@ I/O boundaries (MongoDB, Redis).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi import FastAPI, HTTPException, Request
 from httpx import ASGITransport, AsyncClient
 from jose import JWTError, jwt
+import pytest
 
 from app.config.settings import settings
 from app.constants.auth import JWT_ALGORITHM
@@ -75,12 +75,8 @@ def mock_platform_lookup():
 def mock_redis_cache():
     """Mock Redis cache get/set used by middleware."""
     with (
-        patch(
-            "app.core.bot_auth_middleware.get_cache", new_callable=AsyncMock
-        ) as mock_get,
-        patch(
-            "app.core.bot_auth_middleware.set_cache", new_callable=AsyncMock
-        ) as mock_set,
+        patch("app.core.bot_auth_middleware.get_cache", new_callable=AsyncMock) as mock_get,
+        patch("app.core.bot_auth_middleware.set_cache", new_callable=AsyncMock) as mock_set,
     ):
         mock_get.return_value = None  # No cache hit by default
         yield {"get": mock_get, "set": mock_set}
@@ -196,14 +192,14 @@ class TestBotTokenService:
     def test_tampered_token_rejected(self) -> None:
         """A token signed with a different secret is rejected."""
         wrong_secret = "b" * 64
-        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+        expire = datetime.now(UTC) + timedelta(minutes=15)
         payload = {
             "sub": TEST_USER_ID,
             "platform": TEST_PLATFORM,
             "platform_user_id": TEST_PLATFORM_USER_ID,
             "role": "bot",
             "exp": expire,
-            "iat": datetime.now(timezone.utc),
+            "iat": datetime.now(UTC),
         }
         bad_token = jwt.encode(payload, wrong_secret, algorithm=JWT_ALGORITHM)
 
@@ -212,14 +208,14 @@ class TestBotTokenService:
 
     def test_wrong_role_rejected(self) -> None:
         """A token with role != 'bot' is rejected even if otherwise valid."""
-        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+        expire = datetime.now(UTC) + timedelta(minutes=15)
         payload = {
             "sub": TEST_USER_ID,
             "platform": TEST_PLATFORM,
             "platform_user_id": TEST_PLATFORM_USER_ID,
             "role": "agent",  # Wrong role
             "exp": expire,
-            "iat": datetime.now(timezone.utc),
+            "iat": datetime.now(UTC),
         }
         token = jwt.encode(payload, TEST_BOT_SESSION_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -229,9 +225,7 @@ class TestBotTokenService:
     def test_missing_secret_raises_value_error(self) -> None:
         """Creating a token without BOT_SESSION_TOKEN_SECRET configured raises ValueError."""
         with patch.object(settings, "BOT_SESSION_TOKEN_SECRET", None):
-            with pytest.raises(
-                ValueError, match="BOT_SESSION_TOKEN_SECRET is required"
-            ):
+            with pytest.raises(ValueError, match="BOT_SESSION_TOKEN_SECRET is required"):
                 create_bot_session_token(
                     user_id=TEST_USER_ID,
                     platform=TEST_PLATFORM,
@@ -259,15 +253,11 @@ class TestBotTokenService:
         )
         raw = jwt.decode(token, TEST_BOT_SESSION_SECRET, algorithms=[JWT_ALGORITHM])
 
-        iat = datetime.fromtimestamp(raw["iat"], tz=timezone.utc)
-        exp = datetime.fromtimestamp(raw["exp"], tz=timezone.utc)
+        iat = datetime.fromtimestamp(raw["iat"], tz=UTC)
+        exp = datetime.fromtimestamp(raw["exp"], tz=UTC)
         delta = exp - iat
         # Allow 2 seconds of clock drift between iat and exp computation
-        assert (
-            timedelta(minutes=14, seconds=58)
-            <= delta
-            <= timedelta(minutes=15, seconds=2)
-        )
+        assert timedelta(minutes=14, seconds=58) <= delta <= timedelta(minutes=15, seconds=2)
 
 
 @pytest.mark.integration
@@ -362,9 +352,7 @@ class TestBotAuthMiddlewareJWT:
         # Cache was hit, so set_cache should not have been called
         mock_redis_cache["set"].assert_not_called()
 
-    async def test_invalid_jwt_falls_through_to_api_key(
-        self, mock_redis_cache: dict
-    ) -> None:
+    async def test_invalid_jwt_falls_through_to_api_key(self, mock_redis_cache: dict) -> None:
         """Invalid JWT does not set authenticated, falls through to API key check."""
         request = _make_mock_request(
             headers={"Authorization": "Bearer invalid.jwt.token"},
@@ -407,9 +395,7 @@ class TestBotAuthMiddlewarePlatformHeaders:
         assert request.state.bot_platform == TEST_PLATFORM
         assert request.state.bot_platform_user_id == TEST_PLATFORM_USER_ID
 
-        mock_platform_lookup.assert_awaited_once_with(
-            TEST_PLATFORM, TEST_PLATFORM_USER_ID
-        )
+        mock_platform_lookup.assert_awaited_once_with(TEST_PLATFORM, TEST_PLATFORM_USER_ID)
 
     async def test_api_key_without_platform_headers_sets_bot_key_valid(
         self, mock_redis_cache: dict
@@ -426,9 +412,7 @@ class TestBotAuthMiddlewarePlatformHeaders:
         assert request.state.bot_platform is None
         assert request.state.bot_platform_user_id is None
 
-    async def test_invalid_api_key_does_not_authenticate(
-        self, mock_redis_cache: dict
-    ) -> None:
+    async def test_invalid_api_key_does_not_authenticate(self, mock_redis_cache: dict) -> None:
         """Wrong API key does not set any bot auth state."""
         request = _make_mock_request(
             headers={
@@ -570,7 +554,7 @@ class TestBotEndpointSettings:
             **TEST_USER_DOC,
             "name": "Bot User",
             "profile_image_url": "https://example.com/avatar.png",
-            "created_at": datetime(2024, 1, 15, tzinfo=timezone.utc),
+            "created_at": datetime(2024, 1, 15, tzinfo=UTC),
         }
         with (
             patch.object(
@@ -685,9 +669,7 @@ class TestBotEndpointResetSession:
 class TestBotEndpointUnlink:
     """Tests for the /bot/unlink endpoint."""
 
-    async def test_unlink_without_platform_headers_returns_400(
-        self, bot_client
-    ) -> None:
+    async def test_unlink_without_platform_headers_returns_400(self, bot_client) -> None:
         """POST /bot/unlink without platform headers returns 400."""
         response = await bot_client.post(
             "/api/v1/bot/unlink",
@@ -736,9 +718,7 @@ class TestBotEndpointUnlink:
 class TestBotAuthFullChain:
     """End-to-end tests for the complete bot auth chain: API key -> JWT -> endpoint."""
 
-    async def test_jwt_auth_then_endpoint_access(
-        self, bot_client, mock_redis_cache: dict
-    ) -> None:
+    async def test_jwt_auth_then_endpoint_access(self, bot_client, mock_redis_cache: dict) -> None:
         """Bot authenticates via JWT Bearer token and accesses auth-status endpoint."""
         token = create_bot_session_token(
             user_id=TEST_USER_ID,

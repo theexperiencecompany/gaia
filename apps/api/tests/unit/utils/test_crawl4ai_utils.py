@@ -1,7 +1,5 @@
 """Unit tests for app.utils.crawl4ai_utils."""
 
-import asyncio
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -29,9 +27,7 @@ class TestBatchFetchWithCrawl4ai:
         crawler_inst = AsyncMock()
         crawler_inst.__aenter__ = AsyncMock(return_value=crawler_inst)
         crawler_inst.__aexit__ = AsyncMock(return_value=False)
-        crawler_inst.arun_many = AsyncMock(
-            return_value=[result_httpbin, result_example]
-        )
+        crawler_inst.arun_many = AsyncMock(return_value=[result_httpbin, result_example])
         mock_crawler_cls.return_value = crawler_inst
 
         from app.utils.crawl4ai_utils import batch_fetch_with_crawl4ai
@@ -56,9 +52,7 @@ class TestBatchFetchWithCrawl4ai:
         )
 
     @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
-    async def test_batch_timeout_recovers_per_url(
-        self, mock_crawler_cls: MagicMock
-    ) -> None:
+    async def test_batch_timeout_recovers_per_url(self, mock_crawler_cls: MagicMock) -> None:
         success_result = MagicMock()
         success_result.success = True
         success_result.markdown = "ok"
@@ -73,7 +67,7 @@ class TestBatchFetchWithCrawl4ai:
         crawler_inst.__aenter__ = AsyncMock(return_value=crawler_inst)
         crawler_inst.__aexit__ = AsyncMock(return_value=False)
         crawler_inst.arun_many = AsyncMock(
-            side_effect=[asyncio.TimeoutError(), [success_result], [fail_result]]
+            side_effect=[TimeoutError(), [success_result], [fail_result]]
         )
         mock_crawler_cls.return_value = crawler_inst
 

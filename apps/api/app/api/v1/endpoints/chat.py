@@ -13,6 +13,9 @@ import asyncio
 from collections.abc import AsyncGenerator
 from uuid import uuid4
 
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
+
 from app.api.v1.dependencies.oauth_dependencies import (
     GET_USER_TZ_TYPE,
     get_current_user,
@@ -23,8 +26,6 @@ from app.db.redis import redis_cache
 from app.decorators import tiered_rate_limit
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat_service import run_chat_stream_background
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
 from shared.py.wide_events import ChatContext, log
 
 # Set to hold references to background tasks to prevent garbage collection
@@ -49,9 +50,7 @@ def _build_chat_context(
         tool_category=body.toolCategory,
         has_reply=bool(body.replyToMessage),
         has_calendar_event=bool(body.selectedCalendarEvent),
-        selected_workflow_id=body.selectedWorkflow.id
-        if body.selectedWorkflow
-        else None,
+        selected_workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else None,
     )
 
 
@@ -67,13 +66,9 @@ async def _stream_from_redis(
         return
 
     try:
-        async for chunk in stream_manager.subscribe_stream(
-            stream_id, start_event=start_event
-        ):
+        async for chunk in stream_manager.subscribe_stream(stream_id, start_event=start_event):
             if await request.is_disconnected():
-                log.info(
-                    f"Client disconnected, stream {stream_id} continues in background"
-                )
+                log.info(f"Client disconnected, stream {stream_id} continues in background")
                 break
             yield chunk
     except asyncio.CancelledError:

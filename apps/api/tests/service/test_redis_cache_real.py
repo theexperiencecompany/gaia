@@ -51,8 +51,6 @@ class TestRedisCacheWithRealRedis:
 
         await asyncio.gather(*[write(i) for i in range(10)])
 
-        results = await asyncio.gather(
-            *[redis_cache.get(f"concurrent-key-{i}") for i in range(10)]
-        )
+        results = await asyncio.gather(*[redis_cache.get(f"concurrent-key-{i}") for i in range(10)])
         for i, result in enumerate(results):
             assert result == {"index": i}

@@ -4,8 +4,8 @@ Service for managing todo counts and ensuring consistency.
 
 from bson import ObjectId
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import projects_collection, todos_collection
+from shared.py.wide_events import log
 
 
 async def update_project_todo_count(project_id: str, user_id: str) -> None:
@@ -37,7 +37,7 @@ async def update_project_todo_count(project_id: str, user_id: str) -> None:
         log.info(f"Updated project {project_id} todo count to {count}")
 
     except Exception as e:
-        log.error(f"Error updating project todo count: {str(e)}")
+        log.error(f"Error updating project todo count: {e!s}")
 
 
 async def sync_all_project_counts(user_id: str) -> None:
@@ -54,14 +54,10 @@ async def sync_all_project_counts(user_id: str) -> None:
     )
     try:
         # Get all projects for the user
-        projects = await projects_collection.find({"user_id": user_id}).to_list(
-            length=None
-        )
+        projects = await projects_collection.find({"user_id": user_id}).to_list(length=None)
 
         for project in projects:
-            project_id = (
-                str(project["_id"]) if not project.get("is_default") else "inbox"
-            )
+            project_id = str(project["_id"]) if not project.get("is_default") else "inbox"
 
             # Count todos for this project
             count = await todos_collection.count_documents(
@@ -76,4 +72,4 @@ async def sync_all_project_counts(user_id: str) -> None:
         log.info(f"Synced all project counts for user {user_id}")
 
     except Exception as e:
-        log.error(f"Error syncing project counts: {str(e)}")
+        log.error(f"Error syncing project counts: {e!s}")

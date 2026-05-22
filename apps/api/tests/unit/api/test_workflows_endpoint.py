@@ -22,19 +22,19 @@ Tests cover:
 - DELETE /api/v1/workflows/{id}
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
+from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
     PublicWorkflowsResponse,
     Workflow,
     WorkflowExecutionResponse,
     WorkflowStatusResponse,
 )
-from app.models.workflow_execution_models import WorkflowExecutionsResponse
 
 BASE_URL = "/api/v1/workflows"
 
@@ -87,8 +87,8 @@ def _make_workflow(**overrides) -> Workflow:
         "total_executions": 0,
         "successful_executions": 0,
         "last_executed_at": None,
-        "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
-        "updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+        "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
     }
     base.update(overrides)
     return Workflow(**base)
@@ -136,9 +136,7 @@ class TestCreateWorkflow:
         )
         assert response.status_code == 422
 
-    async def test_create_workflow_missing_prompt_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_create_workflow_missing_prompt_returns_422(self, client: AsyncClient):
         response = await client.post(
             BASE_URL,
             json={
@@ -266,9 +264,7 @@ class TestExecuteWorkflow:
 
         assert response.status_code == 400
 
-    async def test_execute_workflow_service_error_returns_500(
-        self, client: AsyncClient
-    ):
+    async def test_execute_workflow_service_error_returns_500(self, client: AsyncClient):
         with patch(
             f"{_WF_SERVICE}.execute_workflow",
             new_callable=AsyncMock,
@@ -349,7 +345,7 @@ class TestGetWorkflowStatus:
             current_step_index=0,
             total_steps=3,
             progress_percentage=0.0,
-            last_updated=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            last_updated=datetime(2025, 1, 1, tzinfo=UTC),
             error_message=None,
             logs=[],
         )
@@ -507,18 +503,14 @@ class TestRegenerateSteps:
 
         assert response.status_code == 500
 
-    async def test_regenerate_steps_missing_instruction_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_regenerate_steps_missing_instruction_returns_422(self, client: AsyncClient):
         response = await client.post(
             f"{BASE_URL}/wf_abc123/regenerate-steps",
             json={},
         )
         assert response.status_code == 422
 
-    async def test_regenerate_steps_service_error_returns_500(
-        self, client: AsyncClient
-    ):
+    async def test_regenerate_steps_service_error_returns_500(self, client: AsyncClient):
         with patch(
             f"{_WF_SERVICE}.regenerate_workflow_steps",
             new_callable=AsyncMock,

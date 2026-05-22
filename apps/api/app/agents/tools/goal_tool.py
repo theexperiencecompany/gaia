@@ -1,11 +1,24 @@
 import json
-from typing import Annotated, Any, Dict, Optional
+from typing import Annotated, Any
 
-from shared.py.wide_events import log
+from bson import ObjectId
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
+
 from app.constants.cache import DEFAULT_CACHE_TTL
 from app.db.mongodb.collections import goals_collection
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.decorators import with_doc, with_rate_limiting
+from app.models.goals_models import GoalCreate, UpdateNodeRequest
+from app.services.goals_service import (
+    delete_goal_service,
+    generate_roadmap_with_llm_stream,
+    get_goal_service,
+    get_user_goals_service,
+    update_goal_with_roadmap_service,
+    update_node_status_service,
+)
 from app.templates.docstrings.goal_tool_docs import (
     CREATE_GOAL,
     DELETE_GOAL,
@@ -16,23 +29,11 @@ from app.templates.docstrings.goal_tool_docs import (
     SEARCH_GOALS,
     UPDATE_GOAL_NODE,
 )
-from app.models.goals_models import GoalCreate, UpdateNodeRequest
-from app.services.goals_service import (
-    delete_goal_service,
-    generate_roadmap_with_llm_stream,
-    get_goal_service,
-    get_user_goals_service,
-    update_goal_with_roadmap_service,
-    update_node_status_service,
-)
 from app.utils.chat_utils import get_user_id_from_config
-from bson import ObjectId
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
+from shared.py.wide_events import log
 
 
-async def invalidate_goal_caches(user_id: str, goal_id: Optional[str] = None) -> None:
+async def invalidate_goal_caches(user_id: str, goal_id: str | None = None) -> None:
     """
     Invalidate goal-related caches for a user.
 
@@ -66,7 +67,7 @@ async def invalidate_goal_caches(user_id: str, goal_id: Optional[str] = None) ->
         )
 
     except Exception as e:
-        log.error(f"Error invalidating goal caches: {str(e)}")
+        log.error(f"Error invalidating goal caches: {e!s}")
         # Don't raise exception as cache invalidation failure shouldn't break the operation
 
 
@@ -76,8 +77,8 @@ async def invalidate_goal_caches(user_id: str, goal_id: Optional[str] = None) ->
 async def create_goal(
     config: RunnableConfig,
     title: Annotated[str, "Title of the goal (required)"],
-    description: Annotated[Optional[str], "Detailed description of the goal"] = None,
-) -> Dict[str, Any]:
+    description: Annotated[str | None, "Detailed description of the goal"] = None,
+) -> dict[str, Any]:
     try:
         log.set(tool={"name": "create_goal", "action": "create"})
         log.info(f"Goal Tool: Creating goal with title '{title}'")
@@ -125,14 +126,14 @@ async def create_goal(
         return {"goal": goal_dict, "error": None}
 
     except Exception as e:
-        error_msg = f"Error creating goal: {str(e)}"
+        error_msg = f"Error creating goal: {e!s}"
         log.error(error_msg)
         return {"error": error_msg, "goal": None}
 
 
 @tool
 @with_doc(LIST_GOALS)
-async def list_goals(config: RunnableConfig) -> Dict[str, Any]:
+async def list_goals(config: RunnableConfig) -> dict[str, Any]:
     try:
         log.set(tool={"name": "list_goals", "action": "list"})
         log.info("Goal Tool: Listing all goals")
@@ -168,7 +169,7 @@ async def list_goals(config: RunnableConfig) -> Dict[str, Any]:
         return {"goals": results, "count": len(results), "error": None}
 
     except Exception as e:
-        error_msg = f"Error listing goals: {str(e)}"
+        error_msg = f"Error listing goals: {e!s}"
         log.error(error_msg)
         return {"error": error_msg, "goals": []}
 
@@ -178,7 +179,7 @@ async def list_goals(config: RunnableConfig) -> Dict[str, Any]:
 async def get_goal(
     config: RunnableConfig,
     goal_id: Annotated[str, "ID of the goal to retrieve (required)"],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     try:
         log.set(tool={"name": "get_goal", "action": "get"})
         log.info(f"Goal Tool: Getting goal {goal_id}")
@@ -227,7 +228,7 @@ async def get_goal(
         return {"goal": result, "error": None}
 
     except Exception as e:
-        error_msg = f"Error getting goal: {str(e)}"
+        error_msg = f"Error getting goal: {e!s}"
         log.error(error_msg)
         return {"error": error_msg, "goal": None}
 
@@ -237,7 +238,7 @@ async def get_goal(
 async def delete_goal(
     config: RunnableConfig,
     goal_id: Annotated[str, "ID of the goal to delete (required)"],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     try:
         log.set(tool={"name": "delete_goal", "action": "delete"})
         log.info(f"Goal Tool: Deleting goal {goal_id}")
@@ -277,7 +278,7 @@ async def delete_goal(
         return {"success": True, "deleted_goal": result, "error": None}
 
     except Exception as e:
-        error_msg = f"Error deleting goal: {str(e)}"
+        error_msg = f"Error deleting goal: {e!s}"
         log.error(error_msg)
         return {"error": error_msg, "success": False}
 
@@ -287,10 +288,8 @@ async def delete_goal(
 async def generate_roadmap(
     config: RunnableConfig,
     goal_id: Annotated[str, "ID of the goal to generate roadmap for (required)"],
-    regenerate: Annotated[
-        Optional[bool], "Whether to overwrite existing roadmap"
-    ] = False,
-) -> Dict[str, Any]:
+    regenerate: Annotated[bool | None, "Whether to overwrite existing roadmap"] = False,
+) -> dict[str, Any]:
     try:
         log.set(tool={"name": "generate_roadmap", "action": "generate"})
         log.info(f"Goal Tool: Generating roadmap for goal {goal_id}")
@@ -364,9 +363,7 @@ async def generate_roadmap(
             success = await update_goal_with_roadmap_service(goal_id, final_roadmap)
             if success:
                 # Get the updated goal
-                updated_goal = await goals_collection.find_one(
-                    {"_id": ObjectId(goal_id)}
-                )
+                updated_goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
                 if updated_goal:
                     from app.utils.goals_utils import goal_helper
 
@@ -390,11 +387,10 @@ async def generate_roadmap(
                     return {"roadmap": final_roadmap, "goal": goal_dict, "error": None}
 
             return {"error": "Failed to save roadmap", "roadmap": None}
-        else:
-            return {"error": "Failed to generate roadmap", "roadmap": None}
+        return {"error": "Failed to generate roadmap", "roadmap": None}
 
     except Exception as e:
-        error_msg = f"Error generating roadmap: {str(e)}"
+        error_msg = f"Error generating roadmap: {e!s}"
         log.error(error_msg)
         return {"error": error_msg, "roadmap": None}
 
@@ -406,12 +402,10 @@ async def update_goal_node(
     goal_id: Annotated[str, "ID of the goal containing the node (required)"],
     node_id: Annotated[str, "ID of the node to update (required)"],
     is_complete: Annotated[bool, "Whether the node/task is complete (required)"],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     try:
         log.set(tool={"name": "update_goal_node", "action": "update"})
-        log.info(
-            f"Goal Tool: Updating node {node_id} in goal {goal_id} to complete={is_complete}"
-        )
+        log.info(f"Goal Tool: Updating node {node_id} in goal {goal_id} to complete={is_complete}")
         user_id = get_user_id_from_config(config)
         if not user_id:
             return {"error": "User authentication required", "goal": None}
@@ -451,7 +445,7 @@ async def update_goal_node(
         return {"goal": goal_dict, "error": None}
 
     except Exception as e:
-        error_msg = f"Error updating goal node: {str(e)}"
+        error_msg = f"Error updating goal node: {e!s}"
         log.error(error_msg)
         return {"error": error_msg, "goal": None}
 
@@ -462,7 +456,7 @@ async def search_goals(
     config: RunnableConfig,
     query: Annotated[str, "Search query to match against goals (required)"],
     limit: Annotated[int, "Maximum number of results to return"] = 10,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     try:
         log.set(tool={"name": "search_goals", "action": "search"})
         log.info(f"Goal Tool: Searching goals with query '{query}'")
@@ -519,14 +513,14 @@ async def search_goals(
         }
 
     except Exception as e:
-        error_msg = f"Error searching goals: {str(e)}"
+        error_msg = f"Error searching goals: {e!s}"
         log.error(error_msg)
         return {"error": error_msg, "goals": []}
 
 
 @tool
 @with_doc(GET_GOAL_STATISTICS)
-async def get_goal_statistics(config: RunnableConfig) -> Dict[str, Any]:
+async def get_goal_statistics(config: RunnableConfig) -> dict[str, Any]:
     try:
         log.set(tool={"name": "get_goal_statistics", "action": "stats"})
         log.info("Goal Tool: Getting goal statistics")
@@ -587,11 +581,7 @@ async def get_goal_statistics(config: RunnableConfig) -> Dict[str, Any]:
                 goals_with_roadmaps += 1
                 goal_completed_nodes = 0
                 goal_total_nodes = len(
-                    [
-                        n
-                        for n in nodes
-                        if n.get("data", {}).get("type") not in ["start", "end"]
-                    ]
+                    [n for n in nodes if n.get("data", {}).get("type") not in ["start", "end"]]
                 )
 
                 for node in nodes:
@@ -607,9 +597,7 @@ async def get_goal_statistics(config: RunnableConfig) -> Dict[str, Any]:
 
                 # Calculate goal progress
                 if goal_total_nodes > 0:
-                    goal_progress = round(
-                        (goal_completed_nodes / goal_total_nodes) * 100
-                    )
+                    goal_progress = round((goal_completed_nodes / goal_total_nodes) * 100)
                 else:
                     goal_progress = 0
 
@@ -654,7 +642,7 @@ async def get_goal_statistics(config: RunnableConfig) -> Dict[str, Any]:
         return {"stats": stats, "error": None}
 
     except Exception as e:
-        error_msg = f"Error getting goal statistics: {str(e)}"
+        error_msg = f"Error getting goal statistics: {e!s}"
         log.error(error_msg)
         return {"error": error_msg, "stats": None}
 

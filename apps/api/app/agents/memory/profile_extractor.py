@@ -9,16 +9,18 @@ Flow:
 6. Return validated profile URLs ready for crawling
 """
 
+from difflib import SequenceMatcher
 import json
 import os
 import re
 import time
-from difflib import SequenceMatcher
-from typing import Dict, List
 
+from bs4 import BeautifulSoup  # For HTML cleaning
 import ftfy
+from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, Field
+
 from app.agents.llm.client import init_llm
-from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.general import (
     DEDUPLICATION_SIMILARITY_THRESHOLD,
@@ -26,9 +28,7 @@ from app.constants.general import (
     PROFILE_EXTRACTION_LLM_MODEL,
     PROFILE_EXTRACTION_LLM_PROVIDER,
 )
-from bs4 import BeautifulSoup  # For HTML cleaning
-from langchain_core.output_parsers import PydanticOutputParser
-from pydantic import BaseModel, Field
+from shared.py.wide_events import log
 
 PLATFORM_CONFIG = {
     "twitter": {
@@ -237,7 +237,7 @@ Here are recent emails RECEIVED by the user from {platform}:
 Extract the RECIPIENT's username/handle ONLY if explicitly written (not inferred):"""
 
 
-def filter_emails_by_platform(emails: List[Dict], platform: str) -> List[Dict]:
+def filter_emails_by_platform(emails: list[dict], platform: str) -> list[dict]:
     """
     Filter emails sent from a specific platform.
 
@@ -339,7 +339,7 @@ def _filter_garbage_content(text: str) -> str:
     return text
 
 
-def _deduplicate_emails(emails: List[Dict]) -> List[Dict]:
+def _deduplicate_emails(emails: list[dict]) -> list[dict]:
     """
     Remove duplicate/similar emails based on full content similarity.
 
@@ -381,7 +381,7 @@ def _deduplicate_emails(emails: List[Dict]) -> List[Dict]:
         return SequenceMatcher(None, text1, text2).ratio()
 
     unique_emails = []
-    normalized_bodies: List[str] = []
+    normalized_bodies: list[str] = []
 
     for email in emails:
         # Get full email body (not truncated)
@@ -415,7 +415,7 @@ def _deduplicate_emails(emails: List[Dict]) -> List[Dict]:
 
 
 async def extract_username_with_llm(
-    platform: str, emails: List[Dict], user_name: str | None = None
+    platform: str, emails: list[dict], user_name: str | None = None
 ) -> str:
     """
     Use LLM with structured output to extract username from platform emails.

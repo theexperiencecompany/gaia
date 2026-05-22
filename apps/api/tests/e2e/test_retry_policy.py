@@ -24,13 +24,13 @@ from __future__ import annotations
 from typing import Any, cast
 from uuid import uuid4
 
-import pytest
 from google.api_core.exceptions import ResourceExhausted
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.outputs import ChatResult
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 from pydantic import PrivateAttr
+import pytest
 
 from app.agents.core.graph_builder.build_graph import _AGENT_RETRY_POLICY
 from app.agents.core.nodes.filter_messages import filter_messages_node
@@ -38,7 +38,6 @@ from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_no
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from tests.helpers import BindableToolsFakeModel
-
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -62,9 +61,7 @@ class FailThenSucceedModel(BindableToolsFakeModel):
     _exception_to_raise: Exception = PrivateAttr()
     _fail_attempts: int = PrivateAttr(default=1)
 
-    def __init__(
-        self, exception: Exception, fail_attempts: int = 1, **data: Any
-    ) -> None:
+    def __init__(self, exception: Exception, fail_attempts: int = 1, **data: Any) -> None:
         super().__init__(**data)
         self._exception_to_raise = exception
         self._fail_attempts = fail_attempts
@@ -81,7 +78,7 @@ class FailThenSucceedModel(BindableToolsFakeModel):
             raise self._exception_to_raise
         return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
 
-    def bind_tools(self, tools: Any, **kwargs: Any) -> "FailThenSucceedModel":  # type: ignore[override]
+    def bind_tools(self, tools: Any, **kwargs: Any) -> FailThenSucceedModel:  # type: ignore[override]
         return self
 
     @property
@@ -148,14 +145,11 @@ class TestRetryPolicyEndToEnd:
             config=_make_config(),
         )
 
-        ai_messages = [
-            m for m in result["messages"] if isinstance(m, AIMessage) and m.content
-        ]
+        ai_messages = [m for m in result["messages"] if isinstance(m, AIMessage) and m.content]
         assert ai_messages, "Expected at least one non-empty AIMessage in the result"
         assert ai_messages[-1].content == "Recovered after retry!"
         assert fake_llm.attempt_count == 2, (
-            f"Expected exactly 2 LLM invocations (1 fail + 1 succeed), "
-            f"got {fake_llm.attempt_count}"
+            f"Expected exactly 2 LLM invocations (1 fail + 1 succeed), got {fake_llm.attempt_count}"
         )
 
     async def test_retries_twice_on_two_consecutive_failures(self) -> None:
@@ -175,13 +169,10 @@ class TestRetryPolicyEndToEnd:
             config=_make_config(),
         )
 
-        ai_messages = [
-            m for m in result["messages"] if isinstance(m, AIMessage) and m.content
-        ]
+        ai_messages = [m for m in result["messages"] if isinstance(m, AIMessage) and m.content]
         assert ai_messages[-1].content == "Recovered on attempt 3!"
         assert fake_llm.attempt_count == 3, (
-            f"Expected 3 LLM invocations (2 fail + 1 succeed), "
-            f"got {fake_llm.attempt_count}"
+            f"Expected 3 LLM invocations (2 fail + 1 succeed), got {fake_llm.attempt_count}"
         )
 
     async def test_non_retryable_exception_propagates_immediately(self) -> None:
@@ -228,8 +219,7 @@ class TestRetryPolicyEndToEnd:
             )
 
         assert fake_llm.attempt_count == 1, (
-            f"Expected exactly 1 LLM invocation (no retry policy), "
-            f"got {fake_llm.attempt_count}"
+            f"Expected exactly 1 LLM invocation (no retry policy), got {fake_llm.attempt_count}"
         )
 
     async def test_exhausting_all_retries_raises(self) -> None:
@@ -252,6 +242,5 @@ class TestRetryPolicyEndToEnd:
             )
 
         assert fake_llm.attempt_count == 3, (
-            f"Expected exactly 3 LLM invocations (max_attempts=3), "
-            f"got {fake_llm.attempt_count}"
+            f"Expected exactly 3 LLM invocations (max_attempts=3), got {fake_llm.attempt_count}"
         )

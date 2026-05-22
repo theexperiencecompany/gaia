@@ -7,7 +7,6 @@ import pytest
 
 from app.utils.redis_utils import RedisPoolManager
 
-
 # ---------------------------------------------------------------------------
 # Fixtures — reset the singleton between every test
 # ---------------------------------------------------------------------------

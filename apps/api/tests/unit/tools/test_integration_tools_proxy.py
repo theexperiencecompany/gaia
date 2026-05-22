@@ -9,7 +9,8 @@ Detailed per-function behavior tests live in the per-tool unit modules
 that fails fast if a tool stops routing through the proxy.
 """
 
-from typing import Any, Callable, Dict
+from collections.abc import Callable
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,20 +19,18 @@ from app.models.common_models import GatherContextInput
 from app.models.google_docs_models import DeleteDocInput, ShareDocInput, ShareRecipient
 from app.models.google_sheets_models import (
     ShareRecipient as SheetsRecipient,
-)
-from app.models.google_sheets_models import (
     ShareSpreadsheetInput,
 )
+from app.models.linkedin_models import AddCommentInput, ReactToPostInput
 from app.models.notion_models import FetchDataInput, MovePageInput
 from app.models.twitter_models import BatchFollowInput, CreateThreadInput
-from app.models.linkedin_models import AddCommentInput, ReactToPostInput
 
-AUTH_CREDS: Dict[str, Any] = {"user_id": "user_test_123"}
+AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
 EXECUTE_REQUEST = MagicMock()
 
 
-def _capture_tools(register_fn: Callable[..., Any]) -> Dict[str, Any]:
-    tools: Dict[str, Any] = {}
+def _capture_tools(register_fn: Callable[..., Any]) -> dict[str, Any]:
+    tools: dict[str, Any] = {}
     composio = MagicMock()
 
     def custom_tool(**_kwargs: Any) -> Callable[[Any], Any]:
@@ -126,18 +125,14 @@ def test_google_meet_gather_context_swallows_calendar_failures() -> None:
     )
     from app.utils.errors import AppError
 
-    with patch(
-        "app.agents.tools.integrations.google_meet_tool.proxy_request_sync"
-    ) as proxy:
+    with patch("app.agents.tools.integrations.google_meet_tool.proxy_request_sync") as proxy:
         # First call (userinfo) succeeds; second call (calendar/events) raises.
         proxy.side_effect = [
             {"email": "u@x.com", "name": "User", "picture": None},
             AppError(message="GOOGLEMEET API error (403)", status_code=403),
         ]
         tools = _capture_tools(register_google_meet_custom_tools)
-        result = tools["CUSTOM_GATHER_CONTEXT"](
-            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS
-        )
+        result = tools["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS)
 
     assert result["user"]["email"] == "u@x.com"
     assert result["upcoming_meets"] == []
@@ -149,9 +144,7 @@ def test_google_docs_share_doc_routes_through_proxy() -> None:
         register_google_docs_custom_tools,
     )
 
-    with patch(
-        "app.agents.tools.integrations.google_docs_tool.proxy_request_sync"
-    ) as proxy:
+    with patch("app.agents.tools.integrations.google_docs_tool.proxy_request_sync") as proxy:
         proxy.return_value = {"id": "perm-1"}
         tools = _capture_tools(register_google_docs_custom_tools)
         result = tools["CUSTOM_SHARE_DOC"](
@@ -175,9 +168,7 @@ def test_google_docs_delete_doc_routes_through_proxy() -> None:
         register_google_docs_custom_tools,
     )
 
-    with patch(
-        "app.agents.tools.integrations.google_docs_tool.proxy_request_sync"
-    ) as proxy:
+    with patch("app.agents.tools.integrations.google_docs_tool.proxy_request_sync") as proxy:
         proxy.return_value = None
         tools = _capture_tools(register_google_docs_custom_tools)
         result = tools["CUSTOM_DELETE_DOC"](
@@ -202,9 +193,7 @@ def test_google_sheets_share_routes_through_proxy() -> None:
         register_google_sheets_custom_tools,
     )
 
-    with patch(
-        "app.agents.tools.integrations.google_sheets_tool.proxy_request_sync"
-    ) as proxy:
+    with patch("app.agents.tools.integrations.google_sheets_tool.proxy_request_sync") as proxy:
         proxy.return_value = {"id": "perm-1"}
         tools = _capture_tools(register_google_sheets_custom_tools)
         result = tools["CUSTOM_SHARE_SPREADSHEET"](
@@ -234,9 +223,7 @@ def test_notion_move_page_uses_execute_request_proxy() -> None:
     proxy_mock = MagicMock()
     proxy_mock.return_value.data = {"id": "page-1", "url": "https://notion.so/x"}
     result = tools["MOVE_PAGE"](
-        MovePageInput(
-            page_id="page-1", parent_id="parent-1", parent_type="page_id"
-        ),
+        MovePageInput(page_id="page-1", parent_id="parent-1", parent_type="page_id"),
         proxy_mock,
         AUTH_CREDS,
     )
@@ -249,9 +236,7 @@ def test_notion_fetch_data_routes_through_proxy() -> None:
         register_notion_custom_tools,
     )
 
-    with patch(
-        "app.agents.tools.integrations.notion_tool.proxy_request_sync"
-    ) as proxy:
+    with patch("app.agents.tools.integrations.notion_tool.proxy_request_sync") as proxy:
         proxy.return_value = {"results": [], "has_more": False}
         tools = _capture_tools(register_notion_custom_tools)
         result = tools["FETCH_DATA"](
@@ -276,10 +261,13 @@ def test_twitter_batch_follow_uses_proxy_via_utils() -> None:
         register_twitter_custom_tools,
     )
 
-    with patch(
-        "app.agents.tools.integrations.twitter_tool.get_stream_writer",
-        return_value=None,
-    ), patch("app.utils.twitter_utils.proxy_request_sync") as proxy:
+    with (
+        patch(
+            "app.agents.tools.integrations.twitter_tool.get_stream_writer",
+            return_value=None,
+        ),
+        patch("app.utils.twitter_utils.proxy_request_sync") as proxy,
+    ):
         # First call: get_my_user_id; second: lookup_user_by_username; third: follow
         proxy.side_effect = [
             {"data": {"id": "me"}},
@@ -301,14 +289,14 @@ def test_twitter_create_thread_uses_proxy() -> None:
         register_twitter_custom_tools,
     )
 
-    with patch(
-        "app.agents.tools.integrations.twitter_tool.get_stream_writer",
-        return_value=None,
-    ), patch(
-        "app.utils.twitter_utils.proxy_request_sync"
-    ) as utils_proxy, patch(
-        "app.agents.tools.integrations.twitter_tool.proxy_request_sync"
-    ) as tool_proxy:
+    with (
+        patch(
+            "app.agents.tools.integrations.twitter_tool.get_stream_writer",
+            return_value=None,
+        ),
+        patch("app.utils.twitter_utils.proxy_request_sync") as utils_proxy,
+        patch("app.agents.tools.integrations.twitter_tool.proxy_request_sync") as tool_proxy,
+    ):
         utils_proxy.side_effect = [
             {"data": {"id": "tw1"}},
             {"data": {"id": "tw2"}},
@@ -334,18 +322,17 @@ def test_linkedin_react_to_post_uses_proxy() -> None:
         register_linkedin_custom_tools,
     )
 
-    with patch(
-        "app.agents.tools.integrations.linkedin_tool.proxy_request_sync"
-    ) as proxy, patch(
-        "app.agents.tools.integrations.linkedin_tool.get_author_urn",
-        return_value="urn:li:person:1",
+    with (
+        patch("app.agents.tools.integrations.linkedin_tool.proxy_request_sync") as proxy,
+        patch(
+            "app.agents.tools.integrations.linkedin_tool.get_author_urn",
+            return_value="urn:li:person:1",
+        ),
     ):
         proxy.return_value = {}
         tools = _capture_tools(register_linkedin_custom_tools)
         result = tools["CUSTOM_REACT_TO_POST"](
-            ReactToPostInput(
-                post_urn="urn:li:share:1", reaction_type="LIKE"
-            ),
+            ReactToPostInput(post_urn="urn:li:share:1", reaction_type="LIKE"),
             EXECUTE_REQUEST,
             AUTH_CREDS,
         )
@@ -361,11 +348,12 @@ def test_linkedin_add_comment_uses_proxy_full() -> None:
         register_linkedin_custom_tools,
     )
 
-    with patch(
-        "app.agents.tools.integrations.linkedin_tool.proxy_request_full_sync"
-    ) as proxy_full, patch(
-        "app.agents.tools.integrations.linkedin_tool.get_author_urn",
-        return_value="urn:li:person:1",
+    with (
+        patch("app.agents.tools.integrations.linkedin_tool.proxy_request_full_sync") as proxy_full,
+        patch(
+            "app.agents.tools.integrations.linkedin_tool.get_author_urn",
+            return_value="urn:li:person:1",
+        ),
     ):
         proxy_full.return_value = {
             "data": {"id": "comment-1"},
@@ -373,9 +361,7 @@ def test_linkedin_add_comment_uses_proxy_full() -> None:
         }
         tools = _capture_tools(register_linkedin_custom_tools)
         result = tools["CUSTOM_ADD_COMMENT"](
-            AddCommentInput(
-                post_urn="urn:li:share:1", comment_text="hi"
-            ),
+            AddCommentInput(post_urn="urn:li:share:1", comment_text="hi"),
             EXECUTE_REQUEST,
             AUTH_CREDS,
         )

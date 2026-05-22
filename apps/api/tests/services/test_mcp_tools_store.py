@@ -2,9 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-
 from app.services.mcp.mcp_tools_store import MCPToolsStore, _format_tools
-
 
 INTEGRATION_ID = "mcp-test-001"
 
@@ -52,9 +50,7 @@ class TestStoreTools:
         tools = [{"name": "tool_a", "description": "does A"}]
 
         with (
-            patch(
-                "app.services.mcp.mcp_tools_store.integrations_collection"
-            ) as mock_coll,
+            patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_coll,
             patch(
                 "app.services.mcp.mcp_tools_store.delete_cache",
                 new_callable=AsyncMock,
@@ -77,9 +73,7 @@ class TestStoreTools:
     async def test_skips_empty_tools(self):
         store = MCPToolsStore()
 
-        with patch(
-            "app.services.mcp.mcp_tools_store.integrations_collection"
-        ) as mock_coll:
+        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_coll:
             mock_coll.update_one = AsyncMock()
 
             await store.store_tools(INTEGRATION_ID, [])
@@ -90,9 +84,7 @@ class TestStoreTools:
         store = MCPToolsStore()
         tools = [{"name": "", "description": "empty name"}]
 
-        with patch(
-            "app.services.mcp.mcp_tools_store.integrations_collection"
-        ) as mock_coll:
+        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_coll:
             mock_coll.update_one = AsyncMock()
 
             await store.store_tools(INTEGRATION_ID, tools)
@@ -105,9 +97,7 @@ class TestGetTools:
         store = MCPToolsStore()
         doc = {"tools": [{"name": "t1", "description": "d1"}]}
 
-        with patch(
-            "app.services.mcp.mcp_tools_store.integrations_collection"
-        ) as mock_coll:
+        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_coll:
             mock_coll.find_one = AsyncMock(return_value=doc)
 
             result = await store.get_tools(INTEGRATION_ID)
@@ -117,9 +107,7 @@ class TestGetTools:
     async def test_returns_none_when_not_found(self):
         store = MCPToolsStore()
 
-        with patch(
-            "app.services.mcp.mcp_tools_store.integrations_collection"
-        ) as mock_coll:
+        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_coll:
             mock_coll.find_one = AsyncMock(return_value=None)
 
             result = await store.get_tools(INTEGRATION_ID)
@@ -129,9 +117,7 @@ class TestGetTools:
     async def test_returns_none_on_error(self):
         store = MCPToolsStore()
 
-        with patch(
-            "app.services.mcp.mcp_tools_store.integrations_collection"
-        ) as mock_coll:
+        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_coll:
             mock_coll.find_one = AsyncMock(side_effect=Exception("DB error"))
 
             result = await store.get_tools(INTEGRATION_ID)
@@ -180,9 +166,7 @@ class TestGetAllMcpTools:
                 "app.services.mcp.mcp_tools_store.set_cache",
                 new_callable=AsyncMock,
             ) as mock_set,
-            patch(
-                "app.services.mcp.mcp_tools_store.integrations_collection"
-            ) as mock_coll,
+            patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_coll,
         ):
             mock_coll.find = MagicMock(return_value=mock_cursor)
 
@@ -201,9 +185,7 @@ class TestGetAllMcpTools:
                 new_callable=AsyncMock,
                 return_value=None,
             ),
-            patch(
-                "app.services.mcp.mcp_tools_store.integrations_collection"
-            ) as mock_coll,
+            patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_coll,
         ):
             mock_coll.find = MagicMock(side_effect=Exception("DB error"))
 
@@ -221,9 +203,7 @@ class TestStoreBatch:
         ]
 
         with (
-            patch(
-                "app.services.mcp.mcp_tools_store.integrations_collection"
-            ) as mock_coll,
+            patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_coll,
             patch(
                 "app.services.mcp.mcp_tools_store.delete_cache",
                 new_callable=AsyncMock,
@@ -248,9 +228,7 @@ class TestStoreBatch:
             ("i2", [{"name": "", "description": "bad"}]),
         ]
 
-        with patch(
-            "app.services.mcp.mcp_tools_store.integrations_collection"
-        ) as mock_coll:
+        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_coll:
             mock_coll.bulk_write = AsyncMock()
 
             await store.store_tools_batch(items)

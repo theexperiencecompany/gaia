@@ -32,13 +32,12 @@ class BaseAppSettings(BaseSettings):
         try:
             return cls(**kwargs)
         except Exception as e:
-            logger.warning(f"Error creating settings: {str(e)}")
+            logger.warning(f"Error creating settings: {e!s}")
             fields = cls.model_fields
             defaults = {
                 field_name: ""
                 for field_name in fields
-                if field_name not in kwargs
-                and "str" in str(fields[field_name].annotation)
+                if field_name not in kwargs and "str" in str(fields[field_name].annotation)
             }
             return cls(**defaults, **kwargs)
 

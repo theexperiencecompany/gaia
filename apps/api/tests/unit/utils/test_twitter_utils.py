@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.utils.errors import AppError
 from app.utils.twitter_utils import (
     TWITTER_API_BASE,
     create_tweet,
@@ -13,7 +14,6 @@ from app.utils.twitter_utils import (
     search_tweets,
     unfollow_user,
 )
-from app.utils.errors import AppError
 
 USER_ID = "user_test_123"
 PROXY_PATH = "app.utils.twitter_utils.proxy_request_sync"

@@ -5,8 +5,9 @@ independently from observed failure modes (executor tends to be longer-running,
 comms is user-facing latency-sensitive, subagents fan out in parallel).
 """
 
-from app.agents.llm.client import _LLM_RETRYABLE_EXCEPTIONS
 from langgraph.types import RetryPolicy
+
+from app.agents.llm.client import _LLM_RETRYABLE_EXCEPTIONS
 
 
 def _llm_retry_policy(

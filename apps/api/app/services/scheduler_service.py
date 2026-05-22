@@ -3,10 +3,12 @@ Base scheduler service for managing scheduled tasks.
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from shared.py.wide_events import log
+from arq import create_pool
+from arq.connections import RedisSettings
+
 from app.config.settings import settings
 from app.models.scheduler_models import (
     BaseScheduledTask,
@@ -15,8 +17,7 @@ from app.models.scheduler_models import (
     TaskExecutionResult,
 )
 from app.utils.cron_utils import get_next_run_time
-from arq import create_pool
-from arq.connections import RedisSettings
+from shared.py.wide_events import log
 
 
 class BaseSchedulerService(ABC):
@@ -32,16 +33,14 @@ class BaseSchedulerService(ABC):
     Subclasses must implement task-specific operations like CRUD and execution.
     """
 
-    def __init__(self, redis_settings: Optional[RedisSettings] = None):
+    def __init__(self, redis_settings: RedisSettings | None = None):
         """
         Initialize the scheduler service.
 
         Args:
             redis_settings: Redis connection settings for ARQ
         """
-        self.redis_settings = redis_settings or RedisSettings.from_dsn(
-            settings.REDIS_URL
-        )
+        self.redis_settings = redis_settings or RedisSettings.from_dsn(settings.REDIS_URL)
         self.arq_pool = None
 
     async def initialize(self):
@@ -55,9 +54,7 @@ class BaseSchedulerService(ABC):
             await self.arq_pool.aclose()
         log.info(f"{self.__class__.__name__} closed")
 
-    async def schedule_task(
-        self, task_id: str, schedule_config: ScheduleConfig
-    ) -> bool:
+    async def schedule_task(self, task_id: str, schedule_config: ScheduleConfig) -> bool:
         """
         Schedule a task using the provided configuration.
 
@@ -77,9 +74,7 @@ class BaseSchedulerService(ABC):
             )
 
         if not scheduled_at:
-            raise ValueError(
-                "scheduled_at must be provided or repeat must be specified"
-            )
+            raise ValueError("scheduled_at must be provided or repeat must be specified")
 
         return await self._enqueue_task(task_id, scheduled_at)
 
@@ -117,9 +112,7 @@ class BaseSchedulerService(ABC):
         task = await self.get_task(task_id)
         if not task:
             log.error(f"Task {task_id} not found")
-            return TaskExecutionResult(
-                success=False, message=f"Task {task_id} not found"
-            )
+            return TaskExecutionResult(success=False, message=f"Task {task_id} not found")
 
         if task.status != ScheduledTaskStatus.SCHEDULED:
             log.warning(f"Task {task_id} is not scheduled (status: {task.status})")
@@ -134,7 +127,7 @@ class BaseSchedulerService(ABC):
             await self.update_task_status(
                 task_id,
                 ScheduledTaskStatus.EXECUTING,
-                {"updated_at": datetime.now(timezone.utc)},
+                {"updated_at": datetime.now(UTC)},
             )
 
             # Execute the task
@@ -158,15 +151,13 @@ class BaseSchedulerService(ABC):
             return execution_result
 
         except Exception as e:
-            log.error(f"Failed to process task {task_id}: {str(e)}")
+            log.error(f"Failed to process task {task_id}: {e!s}")
             await self.update_task_status(
                 task_id,
                 ScheduledTaskStatus.FAILED,
-                {"updated_at": datetime.now(timezone.utc)},
+                {"updated_at": datetime.now(UTC)},
             )
-            return TaskExecutionResult(
-                success=False, message=f"Task execution failed: {str(e)}"
-            )
+            return TaskExecutionResult(success=False, message=f"Task execution failed: {e!s}")
 
     async def cancel_task(self, task_id: str, user_id: str) -> bool:
         """
@@ -186,7 +177,7 @@ class BaseSchedulerService(ABC):
         success = await self.update_task_status(
             task_id,
             ScheduledTaskStatus.CANCELLED,
-            {"updated_at": datetime.now(timezone.utc)},
+            {"updated_at": datetime.now(UTC)},
             user_id,
         )
 
@@ -200,7 +191,7 @@ class BaseSchedulerService(ABC):
         Scan for scheduled tasks and enqueue them in ARQ.
         Called during service startup.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         tasks = await self.get_pending_task(now)
 
         scheduled_count = 0
@@ -211,9 +202,7 @@ class BaseSchedulerService(ABC):
 
         log.info(f"Scheduled {scheduled_count} pending tasks")
 
-    async def _handle_recurring_task(
-        self, task: BaseScheduledTask, occurrence_count: int
-    ):
+    async def _handle_recurring_task(self, task: BaseScheduledTask, occurrence_count: int):
         """
         Handle rescheduling logic for recurring tasks.
 
@@ -258,7 +247,7 @@ class BaseSchedulerService(ABC):
         if task.stop_after:
             stop_after = task.stop_after
             if stop_after.tzinfo is None:
-                stop_after = stop_after.replace(tzinfo=timezone.utc)
+                stop_after = stop_after.replace(tzinfo=UTC)
                 log.warning(f"Task {task.id} stop_after was offset-naive, assuming UTC")
 
             if next_run >= stop_after:
@@ -304,13 +293,13 @@ class BaseSchedulerService(ABC):
 
         tz_was_naive = scheduled_at.tzinfo is None
         if tz_was_naive:
-            scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+            scheduled_at = scheduled_at.replace(tzinfo=UTC)
             log.warning(
                 f"Task {task_id} scheduled_at was naive; assumed UTC — this is a "
                 f"common source of timezone drift, check the caller",
             )
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         past_due = scheduled_at <= now
         if past_due:
             log.warning(
@@ -328,9 +317,7 @@ class BaseSchedulerService(ABC):
         )
 
         job_name = self.get_job_name()
-        job = await self.arq_pool.enqueue_job(
-            job_name, task_id, _defer_until=scheduled_at
-        )
+        job = await self.arq_pool.enqueue_job(job_name, task_id, _defer_until=scheduled_at)
 
         if not job:
             log.error(f"Failed to enqueue task {task_id}")
@@ -343,9 +330,7 @@ class BaseSchedulerService(ABC):
     # Abstract methods that subclasses must implement
 
     @abstractmethod
-    async def get_task(
-        self, task_id: str, user_id: Optional[str] = None
-    ) -> Optional[BaseScheduledTask]:
+    async def get_task(self, task_id: str, user_id: str | None = None) -> BaseScheduledTask | None:
         """
         Get a task by ID.
 
@@ -376,8 +361,8 @@ class BaseSchedulerService(ABC):
         self,
         task_id: str,
         status: ScheduledTaskStatus,
-        update_data: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
+        update_data: dict[str, Any] | None = None,
+        user_id: str | None = None,
     ) -> bool:
         """
         Update task status and additional data.
@@ -394,7 +379,7 @@ class BaseSchedulerService(ABC):
         pass
 
     @abstractmethod
-    async def get_pending_task(self, current_time: datetime) -> List[BaseScheduledTask]:
+    async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
         """
         Get all tasks that should be scheduled.
 

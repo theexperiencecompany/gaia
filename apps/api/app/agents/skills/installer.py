@@ -9,9 +9,9 @@ as flat fields on the Skill document.
 """
 
 import re
-from typing import List, Optional, Tuple
 
 import httpx
+
 from app.agents.skills.models import Skill, SkillSource
 from app.agents.skills.parser import (
     generate_skill_md,
@@ -20,11 +20,11 @@ from app.agents.skills.parser import (
 )
 from app.agents.skills.registry import get_skill, install_skill, uninstall_skill
 from app.agents.skills.utils import GITHUB_API_BASE, get_github_headers
-from shared.py.wide_events import log
 from app.services.vfs.path_resolver import get_custom_skill_path
+from shared.py.wide_events import log
 
 
-def _parse_github_url(url: str) -> Tuple[str, str, Optional[str]]:
+def _parse_github_url(url: str) -> tuple[str, str, str | None]:
     """Parse a GitHub URL or shorthand into owner, repo, and optional path.
 
     Accepts:
@@ -68,7 +68,7 @@ async def _fetch_github_contents(
     path: str,
     client: httpx.AsyncClient,
     branch: str = "main",
-) -> List[dict]:
+) -> list[dict]:
     """Fetch directory contents from GitHub API.
 
     Returns list of file info dicts with 'name', 'path', 'type', 'download_url'.
@@ -80,9 +80,7 @@ async def _fetch_github_contents(
 
     if resp.status_code == 404:
         if branch == "main":
-            return await _fetch_github_contents(
-                owner, repo, path, client=client, branch="master"
-            )
+            return await _fetch_github_contents(owner, repo, path, client=client, branch="master")
         raise ValueError(f"Path not found: {owner}/{repo}/{path}")
 
     if resp.status_code == 403:
@@ -116,8 +114,8 @@ async def _get_vfs():
 async def install_from_github(
     user_id: str,
     repo_url: str,
-    skill_path: Optional[str] = None,
-    target_override: Optional[str] = None,
+    skill_path: str | None = None,
+    target_override: str | None = None,
 ) -> Skill:
     """Install a skill from a GitHub repository.
 
@@ -179,9 +177,7 @@ async def install_from_github(
             )
 
         # Download SKILL.md
-        skill_md_content = await _fetch_file_content(
-            skill_md_entry["download_url"], client=client
-        )
+        skill_md_content = await _fetch_file_content(skill_md_entry["download_url"], client=client)
 
         # Validate
         errors = validate_skill_content(skill_md_content)
@@ -199,7 +195,7 @@ async def install_from_github(
 
         # Download all files in the skill directory
         vfs = await _get_vfs()
-        file_list: List[str] = []
+        file_list: list[str] = []
 
         # Write body-only SKILL.md to VFS (metadata lives in MongoDB)
         await vfs.write(
@@ -255,8 +251,8 @@ async def _download_github_dir(
     owner: str,
     repo: str,
     remote_path: str,
-    contents: List[dict],
-    file_list: List[str],
+    contents: list[dict],
+    file_list: list[str],
     source_url: str,
     client: httpx.AsyncClient,
 ) -> None:
@@ -283,9 +279,7 @@ async def _download_github_dir(
 
         elif entry_type == "dir":
             # Recurse into subdirectory
-            sub_contents = await _fetch_github_contents(
-                owner, repo, entry["path"], client=client
-            )
+            sub_contents = await _fetch_github_contents(owner, repo, entry["path"], client=client)
             await _download_github_dir(
                 vfs=vfs,
                 user_id=user_id,
@@ -306,7 +300,7 @@ async def install_from_inline(
     description: str,
     instructions: str,
     target: str = "executor",
-    extra_metadata: Optional[dict[str, str]] = None,
+    extra_metadata: dict[str, str] | None = None,
 ) -> Skill:
     """Create and install a skill from inline components.
 

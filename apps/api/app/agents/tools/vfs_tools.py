@@ -18,7 +18,11 @@ Folder Structure (per user):
 """
 
 import contextlib
-from typing import Annotated, Any, Dict
+from typing import Annotated, Any
+
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
 
 from app.agents.tools.vfs_cmd_parser import get_vfs_command_parser
 from app.agents.tools.vfs_constants import (
@@ -26,7 +30,6 @@ from app.agents.tools.vfs_constants import (
     detect_artifact_content_type,
     is_user_visible_path,
 )
-from shared.py.wide_events import log
 from app.decorators import with_rate_limiting
 from app.services.vfs import MongoVFS, get_vfs
 from app.services.vfs.path_resolver import (
@@ -35,12 +38,10 @@ from app.services.vfs.path_resolver import (
     normalize_path,
     validate_user_access,
 )
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
+from shared.py.wide_events import log
 
 
-def _get_context(config: RunnableConfig) -> Dict[str, Any]:
+def _get_context(config: RunnableConfig) -> dict[str, Any]:
     """Extract VFS context fields from config.
 
     When vfs_session_id is present in configurable every agent in the chain
@@ -143,9 +144,7 @@ def _resolve_path(
     # .user-visible/ paths map to the current session
     if path.startswith(f"{USER_VISIBLE_FOLDER}/") or path == USER_VISIBLE_FOLDER:
         if not conversation_id:
-            log.warning(
-                "No conversation_id for .user-visible path, falling back to files/"
-            )
+            log.warning("No conversation_id for .user-visible path, falling back to files/")
             files_path = get_files_path(user_id, agent_name)
             relative = (
                 path[len(f"{USER_VISIBLE_FOLDER}/") :]
@@ -157,11 +156,7 @@ def _resolve_path(
             return normalize_path(files_path)
 
         agent_root = get_agent_root(user_id, agent_name)
-        relative = (
-            path[len(USER_VISIBLE_FOLDER) :]
-            if len(path) > len(USER_VISIBLE_FOLDER)
-            else ""
-        )
+        relative = path[len(USER_VISIBLE_FOLDER) :] if len(path) > len(USER_VISIBLE_FOLDER) else ""
         return normalize_path(
             f"{agent_root}/sessions/{conversation_id}/{USER_VISIBLE_FOLDER}{relative}"
         )
@@ -260,7 +255,7 @@ async def vfs_read(
 
     except Exception as e:
         log.error(f"VFS read error: {e}")
-        return f"Error reading file: {str(e)}"
+        return f"Error reading file: {e!s}"
 
 
 @tool
@@ -300,7 +295,7 @@ async def vfs_write(
         )
 
         # Provenance metadata — who created this file and in which session
-        metadata: Dict[str, Any] = {
+        metadata: dict[str, Any] = {
             "agent_name": ctx["agent_name"],
             "written_by": ctx["written_by"],
         }
@@ -332,7 +327,7 @@ async def vfs_write(
 
     except Exception as e:
         log.error(f"VFS write error: {e}")
-        return f"Error writing file: {str(e)}"
+        return f"Error writing file: {e!s}"
 
 
 @tool
@@ -389,7 +384,7 @@ async def vfs_cmd(
 
     except Exception as e:
         log.error(f"VFS cmd error: {e}")
-        return f"Error executing command: {str(e)}"
+        return f"Error executing command: {e!s}"
 
 
 tools = [

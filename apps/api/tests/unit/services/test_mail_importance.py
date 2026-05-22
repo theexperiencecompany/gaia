@@ -7,8 +7,8 @@ Covers:
 - get_bulk_email_importance_summaries (found, partial match, error)
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,18 +20,18 @@ def _make_email_doc(
     message_id: str = "msg-1",
     user_id: str = "user-1",
     is_important: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return {
         "_id": MagicMock(),  # ObjectId mock
         "user_id": user_id,
         "message_id": message_id,
         "is_important": is_important,
-        "analyzed_at": datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc),
+        "analyzed_at": datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC),
         "subject": "Test email",
     }
 
 
-def _mock_cursor(docs: List[Dict[str, Any]]) -> MagicMock:
+def _mock_cursor(docs: list[dict[str, Any]]) -> MagicMock:
     """Build a mock async cursor that supports .sort().limit().to_list()."""
     cursor = MagicMock()
     cursor.sort.return_value = cursor

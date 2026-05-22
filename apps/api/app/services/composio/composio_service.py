@@ -1,8 +1,8 @@
 import asyncio
 import time
-from typing import Optional
 
-from shared.py.wide_events import log
+from composio import Composio, after_execute, before_execute, schema_modifier
+
 from app.config.oauth_config import get_composio_social_configs
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -17,7 +17,7 @@ from app.utils.composio_hooks.registry import (
     master_schema_modifier,
 )
 from app.utils.query_utils import add_query_param
-from composio import Composio, after_execute, before_execute, schema_modifier
+from shared.py.wide_events import log
 
 COMPOSIO_SOCIAL_CONFIGS = get_composio_social_configs()
 
@@ -28,14 +28,9 @@ class ComposioService:
 
         toolkit_versions: dict[str, str] = {}
         for integration in OAUTH_INTEGRATIONS:
-            if (
-                integration.composio_config
-                and integration.composio_config.toolkit_version
-            ):
+            if integration.composio_config and integration.composio_config.toolkit_version:
                 toolkit_name = integration.composio_config.toolkit.lower()
-                toolkit_versions[toolkit_name] = (
-                    integration.composio_config.toolkit_version
-                )
+                toolkit_versions[toolkit_name] = integration.composio_config.toolkit_version
 
         self.composio = Composio(
             provider=LangchainProvider(),
@@ -46,7 +41,7 @@ class ComposioService:
         custom_tools_registry.initialize(self.composio)
 
     async def connect_account(
-        self, provider: str, user_id: str, state_token: Optional[str] = None
+        self, provider: str, user_id: str, state_token: str | None = None
     ) -> dict:
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
             raise ValueError(f"Provider '{provider}' not supported")
@@ -85,7 +80,7 @@ class ComposioService:
             log.error(f"Error connecting {provider} for {user_id}: {e}")
             raise
 
-    async def get_tools(self, tool_kit: str, exclude_tools: Optional[list[str]] = None):
+    async def get_tools(self, tool_kit: str, exclude_tools: list[str] | None = None):
         """Get tools for a toolkit with unified master hooks."""
         log.set(composio_toolkit=tool_kit)
         log.info(f"Loading {tool_kit} toolkit...")
@@ -105,12 +100,8 @@ class ComposioService:
         for custom_tool_name in custom_tool_names:
             if custom_tool_name not in tool_names:
                 tool_names.append(custom_tool_name)
-        master_before_modifier = before_execute(tools=tool_names)(
-            master_before_execute_hook
-        )
-        master_after_modifier = after_execute(tools=tool_names)(
-            master_after_execute_hook
-        )
+        master_before_modifier = before_execute(tools=tool_names)(master_before_execute_hook)
+        master_after_modifier = after_execute(tools=tool_names)(master_after_execute_hook)
         master_schema_mod = schema_modifier(tools=tool_names)(master_schema_modifier)
 
         tools = await asyncio.to_thread(
@@ -154,19 +145,14 @@ class ComposioService:
 
         try:
             tool_metadata = [
-                {"name": t.name, "description": getattr(t, "description", "")}
-                for t in tools
+                {"name": t.name, "description": getattr(t, "description", "")} for t in tools
             ]
 
             store = get_mcp_tools_store()
             await store.store_tools(toolkit_name.lower(), tool_metadata)
-            log.debug(
-                f"Stored {len(tool_metadata)} Composio tool metadata for {toolkit_name}"
-            )
+            log.debug(f"Stored {len(tool_metadata)} Composio tool metadata for {toolkit_name}")
         except Exception as e:
-            log.warning(
-                f"Failed to store Composio tool metadata for {toolkit_name}: {e}"
-            )
+            log.warning(f"Failed to store Composio tool metadata for {toolkit_name}: {e}")
 
     async def get_tools_by_name(
         self,
@@ -182,21 +168,15 @@ class ComposioService:
         modifiers = []
 
         if use_schema_modifier:
-            master_schema_mod = schema_modifier(tools=tool_names)(
-                master_schema_modifier
-            )
+            master_schema_mod = schema_modifier(tools=tool_names)(master_schema_modifier)
             modifiers.append(master_schema_mod)
 
         if use_before_hook:
-            master_before_modifier = before_execute(tools=tool_names)(
-                master_before_execute_hook
-            )
+            master_before_modifier = before_execute(tools=tool_names)(master_before_execute_hook)
             modifiers.append(master_before_modifier)
 
         if use_after_hook:
-            master_after_modifier = after_execute(tools=tool_names)(
-                master_after_execute_hook
-            )
+            master_after_modifier = after_execute(tools=tool_names)(master_after_execute_hook)
             modifiers.append(master_after_modifier)
 
         result = await asyncio.to_thread(
@@ -230,9 +210,7 @@ class ComposioService:
             modifiers = []
 
             if use_schema_modifier:
-                master_schema_mod = schema_modifier(tools=[tool_name])(
-                    master_schema_modifier
-                )
+                master_schema_mod = schema_modifier(tools=[tool_name])(master_schema_modifier)
                 modifiers.append(master_schema_mod)
 
             if use_before_hook:
@@ -242,9 +220,7 @@ class ComposioService:
                 modifiers.append(master_before_modifier)
 
             if use_after_hook:
-                master_after_modifier = after_execute(tools=[tool_name])(
-                    master_after_execute_hook
-                )
+                master_after_modifier = after_execute(tools=[tool_name])(master_after_execute_hook)
                 modifiers.append(master_after_modifier)
 
             tools = self.composio.tools.get(
@@ -258,9 +234,7 @@ class ComposioService:
             log.error(f"Error getting tool {tool_name}: {e}")
             return None
 
-    async def check_connection_status(
-        self, providers: list[str], user_id: str
-    ) -> dict[str, bool]:
+    async def check_connection_status(self, providers: list[str], user_id: str) -> dict[str, bool]:
         """Check if a user has active connections for given providers."""
         log.set(composio_user_id=user_id, composio_providers=providers)
         result = {}
@@ -269,9 +243,7 @@ class ComposioService:
         for provider in providers:
             result[provider] = False
             if provider in COMPOSIO_SOCIAL_CONFIGS:
-                required_auth_config_ids.append(
-                    COMPOSIO_SOCIAL_CONFIGS[provider].auth_config_id
-                )
+                required_auth_config_ids.append(COMPOSIO_SOCIAL_CONFIGS[provider].auth_config_id)
 
         try:
             loop = asyncio.get_event_loop()
@@ -314,9 +286,7 @@ class ComposioService:
             log.error(f"Error retrieving connected account {connected_account_id}: {e}")
             return None
 
-    async def delete_connected_account(
-        self, user_id: str, provider: str
-    ) -> dict[str, str]:
+    async def delete_connected_account(self, user_id: str, provider: str) -> dict[str, str]:
         log.set(composio_user_id=user_id, composio_provider=provider)
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
             raise ValueError(f"Provider '{provider}' not supported")
@@ -370,9 +340,7 @@ class ComposioService:
         except ValueError:
             raise
         except Exception as e:
-            log.error(
-                f"Error deleting connected account for {provider} and user {user_id}: {e}"
-            )
+            log.error(f"Error deleting connected account for {provider} and user {user_id}: {e}")
             raise
         finally:
             # Always flush the proxy connected_account_id cache: on success the
@@ -382,13 +350,9 @@ class ComposioService:
             # gather() raises would leave stale IDs in memory for up to the
             # full TTL.
             if config.toolkit:
-                invalidate_connected_account_cache(
-                    user_id=user_id, toolkit=config.toolkit
-                )
+                invalidate_connected_account_cache(user_id=user_id, toolkit=config.toolkit)
 
-    async def handle_subscribe_trigger(
-        self, user_id: str, triggers: list[TriggerConfig]
-    ):
+    async def handle_subscribe_trigger(self, user_id: str, triggers: list[TriggerConfig]):
         """Subscribe to auto-active triggers for a user."""
         log.set(composio_user_id=user_id, composio_trigger_count=len(triggers))
         active_triggers = [t for t in triggers if t.auto_activate]
@@ -397,9 +361,7 @@ class ComposioService:
             log.info(f"No auto-active triggers to subscribe for user {user_id}")
             return []
 
-        log.info(
-            f"Subscribing to {len(active_triggers)} auto-active triggers for user {user_id}"
-        )
+        log.info(f"Subscribing to {len(active_triggers)} auto-active triggers for user {user_id}")
 
         try:
 

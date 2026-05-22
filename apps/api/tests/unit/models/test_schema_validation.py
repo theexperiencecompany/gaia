@@ -1,17 +1,23 @@
 """Unit tests for Pydantic model validation across chat, message, and user models."""
 
-import pytest
 from pydantic import ValidationError
+import pytest
 
 from app.models.chat_models import (
+    BatchSyncRequest,
     ConversationModel,
     ConversationSource,
+    ConversationSyncItem,
     ImageData,
     MessageModel,
     SystemPurpose,
     UpdateMessagesRequest,
-    ConversationSyncItem,
-    BatchSyncRequest,
+)
+from app.models.memory_models import (
+    CreateMemoryRequest,
+    MemoryEntry,
+    MemoryRelation,
+    MemorySearchResult,
 )
 from app.models.message_models import (
     FileData,
@@ -20,18 +26,12 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 from app.models.user_models import (
+    BioStatus,
     OnboardingData,
     OnboardingPhase,
     OnboardingPreferences,
     OnboardingRequest,
     UserUpdateResponse,
-    BioStatus,
-)
-from app.models.memory_models import (
-    MemoryEntry,
-    MemoryRelation,
-    MemorySearchResult,
-    CreateMemoryRequest,
 )
 
 
@@ -103,9 +103,7 @@ class TestMessageModel:
         m = MessageModel(
             type="assistant",
             response="Done",
-            tool_data=[
-                {"tool_name": "search", "data": {"query": "test"}, "timestamp": None}
-            ],
+            tool_data=[{"tool_name": "search", "data": {"query": "test"}, "timestamp": None}],
         )
         assert len(m.tool_data) == 1
         assert m.tool_data[0]["tool_name"] == "search"
@@ -201,9 +199,7 @@ class TestBatchSyncRequest:
     def test_valid(self):
         r = BatchSyncRequest(
             conversations=[
-                ConversationSyncItem(
-                    conversation_id="c1", last_updated="2024-01-01T00:00:00Z"
-                ),
+                ConversationSyncItem(conversation_id="c1", last_updated="2024-01-01T00:00:00Z"),
                 ConversationSyncItem(conversation_id="c2"),
             ]
         )
@@ -322,9 +318,7 @@ class TestOnboardingPreferences:
         assert p.profession == "Developer"
 
     def test_empty_string_normalized_to_none(self):
-        p = OnboardingPreferences(
-            profession="", response_style="", custom_instructions=""
-        )
+        p = OnboardingPreferences(profession="", response_style="", custom_instructions="")
         assert p.profession is None
         assert p.response_style is None
         assert p.custom_instructions is None

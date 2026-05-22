@@ -1,13 +1,13 @@
 """Global MCP tool storage. Redis-cached MongoDB storage for frontend tool visibility."""
 
 import asyncio
-from typing import Optional
 
 from pymongo import UpdateOne
-from shared.py.wide_events import log
+
 from app.constants.cache import MCP_TOOLS_CACHE_KEY, MCP_TOOLS_CACHE_TTL
 from app.db.mongodb.collections import integrations_collection
 from app.db.redis import delete_cache, get_cache, set_cache
+from shared.py.wide_events import log
 
 # Module-level set to hold references to background tasks and prevent premature GC
 _background_tasks: set[asyncio.Task] = set()
@@ -80,7 +80,7 @@ class MCPToolsStore:
             log.error(f"Error storing tools batch: {e}")
             raise
 
-    async def get_tools(self, integration_id: str) -> Optional[list[dict]]:
+    async def get_tools(self, integration_id: str) -> list[dict] | None:
         """Get stored tools for an integration."""
         try:
             doc = await integrations_collection.find_one(

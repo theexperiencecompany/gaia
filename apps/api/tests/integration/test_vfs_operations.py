@@ -21,8 +21,8 @@ import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import HumanMessage, ToolMessage
+import pytest
 
 from app.agents.middleware.vfs_compaction import VFSCompactionMiddleware
 from app.agents.middleware.vfs_summarization import (
@@ -78,14 +78,11 @@ class FakeMongoCollection:
                         return False
                 else:
                     return False
-            else:
-                if doc.get(key) != condition:
-                    return False
+            elif doc.get(key) != condition:
+                return False
         return True
 
-    def _project(
-        self, doc: dict[str, Any], projection: dict[str, Any] | None
-    ) -> dict[str, Any]:
+    def _project(self, doc: dict[str, Any], projection: dict[str, Any] | None) -> dict[str, Any]:
         if projection is None:
             return dict(doc)
         result = dict(doc)
@@ -102,12 +99,8 @@ class FakeMongoCollection:
                 return self._project(doc, projection)
         return None
 
-    def find(
-        self, query: dict[str, Any], projection: dict[str, Any] | None = None
-    ) -> FakeCursor:
-        results = [
-            self._project(d, projection) for d in self._docs if self._match(d, query)
-        ]
+    def find(self, query: dict[str, Any], projection: dict[str, Any] | None = None) -> FakeCursor:
+        results = [self._project(d, projection) for d in self._docs if self._match(d, query)]
         return FakeCursor(results)
 
     async def update_one(
@@ -212,9 +205,7 @@ def fake_gridfs() -> FakeGridFSBucket:
 
 
 @pytest.fixture
-def vfs(
-    fake_collection: FakeMongoCollection, fake_gridfs: FakeGridFSBucket
-) -> MongoVFS:
+def vfs(fake_collection: FakeMongoCollection, fake_gridfs: FakeGridFSBucket) -> MongoVFS:
     """Create a MongoVFS instance with the MongoDB collection and GridFS bucket
     replaced by in-memory fakes."""
     with patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", fake_collection):
@@ -267,14 +258,14 @@ class TestWriteAndRead:
         self, vfs: MongoVFS, fake_collection: FakeMongoCollection
     ) -> None:
         with patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", fake_collection):
-            path = f"/users/{TEST_USER_ID}/global/executor/sessions/conv1/agent1/deep/nested/file.json"
+            path = (
+                f"/users/{TEST_USER_ID}/global/executor/sessions/conv1/agent1/deep/nested/file.json"
+            )
             await vfs.write(path, '{"key": "value"}', user_id=TEST_USER_ID)
 
             # Verify parent directories were created
             parent = f"/users/{TEST_USER_ID}/global/executor/sessions/conv1/agent1/deep/nested"
-            parent_doc = await fake_collection.find_one(
-                {"path": parent, "user_id": TEST_USER_ID}
-            )
+            parent_doc = await fake_collection.find_one({"path": parent, "user_id": TEST_USER_ID})
             assert parent_doc is not None
             assert parent_doc["node_type"] == VFSNodeType.FOLDER.value
 
@@ -309,20 +300,11 @@ class TestPathResolution:
         assert normalize_path("//double//slash//") == "/double/slash"
 
     def test_validate_user_access_blocks_other_users(self) -> None:
-        assert (
-            validate_user_access(f"/users/{TEST_USER_ID}/global/notes", TEST_USER_ID)
-            is True
-        )
-        assert (
-            validate_user_access(f"/users/{TEST_USER_ID_2}/global/notes", TEST_USER_ID)
-            is False
-        )
+        assert validate_user_access(f"/users/{TEST_USER_ID}/global/notes", TEST_USER_ID) is True
+        assert validate_user_access(f"/users/{TEST_USER_ID_2}/global/notes", TEST_USER_ID) is False
 
     def test_validate_user_access_allows_system_paths(self) -> None:
-        assert (
-            validate_user_access("/system/skills/github_agent/create-pr", TEST_USER_ID)
-            is True
-        )
+        assert validate_user_access("/system/skills/github_agent/create-pr", TEST_USER_ID) is True
 
     def test_parse_path_extracts_components(self) -> None:
         parsed = parse_path(f"/users/{TEST_USER_ID}/global/executor/sessions/conv1")
@@ -346,10 +328,7 @@ class TestPathResolution:
 
     def test_get_session_path(self) -> None:
         path = get_session_path(TEST_USER_ID, TEST_CONVERSATION_ID)
-        assert (
-            path
-            == f"/users/{TEST_USER_ID}/global/executor/sessions/{TEST_CONVERSATION_ID}"
-        )
+        assert path == f"/users/{TEST_USER_ID}/global/executor/sessions/{TEST_CONVERSATION_ID}"
 
     def test_get_tool_output_path(self) -> None:
         path = get_tool_output_path(
@@ -359,10 +338,7 @@ class TestPathResolution:
             "call_123",
             "search_emails",
         )
-        assert (
-            f"/users/{TEST_USER_ID}/global/executor/sessions/{TEST_CONVERSATION_ID}"
-            in path
-        )
+        assert f"/users/{TEST_USER_ID}/global/executor/sessions/{TEST_CONVERSATION_ID}" in path
         assert "gmail_agent" in path
         assert "search_emails" in path
 
@@ -383,9 +359,7 @@ class TestNestedPaths:
             base = f"/users/{TEST_USER_ID}/global/executor/notes"
             await vfs.write(f"{base}/note1.txt", "Note 1", user_id=TEST_USER_ID)
             await vfs.write(f"{base}/note2.txt", "Note 2", user_id=TEST_USER_ID)
-            await vfs.write(
-                f"{base}/subfolder/note3.txt", "Note 3", user_id=TEST_USER_ID
-            )
+            await vfs.write(f"{base}/subfolder/note3.txt", "Note 3", user_id=TEST_USER_ID)
 
             listing = await vfs.list_dir(base, user_id=TEST_USER_ID)
 
@@ -521,9 +495,7 @@ class TestLargeOutputArchiving:
         with patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", fake_collection):
             mw = self._make_middleware(vfs, max_output_chars=100)
             request = self._make_request()
-            large_content = (
-                "x" * 500
-            )  # Above both MIN_COMPACTION_SIZE and max_output_chars
+            large_content = "x" * 500  # Above both MIN_COMPACTION_SIZE and max_output_chars
 
             original_result = ToolMessage(
                 content=large_content, tool_call_id="call_abc123", name="search_emails"
@@ -693,9 +665,7 @@ class TestContentIntegrity:
             assert read_back == content
             assert json.loads(read_back) == data
 
-    async def test_empty_content(
-        self, vfs: MongoVFS, fake_collection: FakeMongoCollection
-    ) -> None:
+    async def test_empty_content(self, vfs: MongoVFS, fake_collection: FakeMongoCollection) -> None:
         with patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", fake_collection):
             path = f"/users/{TEST_USER_ID}/global/executor/notes/empty.txt"
 
@@ -738,9 +708,7 @@ class TestArtifactMetadata:
                 "conversation_id": TEST_CONVERSATION_ID,
                 "compacted": True,
             }
-            await vfs.write(
-                path, '{"result": "ok"}', user_id=TEST_USER_ID, metadata=metadata
-            )
+            await vfs.write(path, '{"result": "ok"}', user_id=TEST_USER_ID, metadata=metadata)
 
             info = await vfs.info(path, user_id=TEST_USER_ID)
             assert info is not None
@@ -808,9 +776,7 @@ class TestArtifactMetadata:
 class TestDeleteCleanup:
     """Write artifact, delete, verify gone and path no longer resolves."""
 
-    async def test_delete_file(
-        self, vfs: MongoVFS, fake_collection: FakeMongoCollection
-    ) -> None:
+    async def test_delete_file(self, vfs: MongoVFS, fake_collection: FakeMongoCollection) -> None:
         with patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", fake_collection):
             path = f"/users/{TEST_USER_ID}/global/executor/notes/to_delete.txt"
 
@@ -838,9 +804,7 @@ class TestDeleteCleanup:
             assert deleted is True
 
             assert await vfs.exists(f"{base}/file1.txt", user_id=TEST_USER_ID) is False
-            assert (
-                await vfs.exists(f"{base}/sub/file2.txt", user_id=TEST_USER_ID) is False
-            )
+            assert await vfs.exists(f"{base}/sub/file2.txt", user_id=TEST_USER_ID) is False
 
     async def test_delete_nonempty_dir_without_recursive_raises(
         self, vfs: MongoVFS, fake_collection: FakeMongoCollection
@@ -884,17 +848,13 @@ class TestSummarizationMiddleware:
             "app.agents.middleware.vfs_summarization.SummarizationMiddleware.__init__",
             return_value=None,
         ):
-            mw = VFSArchivingSummarizationMiddleware.__new__(
-                VFSArchivingSummarizationMiddleware
-            )
+            mw = VFSArchivingSummarizationMiddleware.__new__(VFSArchivingSummarizationMiddleware)
             mw.vfs_enabled = True
             mw.excluded_tools = set()
 
             messages = [
                 HumanMessage(content="Hello"),
-                ToolMessage(
-                    content="Result data", tool_call_id="call_1", name="search"
-                ),
+                ToolMessage(content="Result data", tool_call_id="call_1", name="search"),
             ]
 
             serialized = mw._serialize_messages(messages)
@@ -912,9 +872,7 @@ class TestSummarizationMiddleware:
             "app.agents.middleware.vfs_summarization.SummarizationMiddleware.__init__",
             return_value=None,
         ):
-            mw = VFSArchivingSummarizationMiddleware.__new__(
-                VFSArchivingSummarizationMiddleware
-            )
+            mw = VFSArchivingSummarizationMiddleware.__new__(VFSArchivingSummarizationMiddleware)
 
             summary_msg = HumanMessage(
                 content="Summary of conversation",
@@ -922,14 +880,13 @@ class TestSummarizationMiddleware:
             )
             result = {"messages": [summary_msg]}
 
-            archive_path = "/users/test/global/executor/sessions/conv1/archives/pre_summary_20260401.json"
+            archive_path = (
+                "/users/test/global/executor/sessions/conv1/archives/pre_summary_20260401.json"
+            )
             modified = mw._inject_archive_path(result, archive_path)
 
             assert archive_path in modified["messages"][0].content
-            assert (
-                modified["messages"][0].additional_kwargs["archive_path"]
-                == archive_path
-            )
+            assert modified["messages"][0].additional_kwargs["archive_path"] == archive_path
 
     def test_inject_archive_path_no_summary_message_is_noop(self) -> None:
 
@@ -937,9 +894,7 @@ class TestSummarizationMiddleware:
             "app.agents.middleware.vfs_summarization.SummarizationMiddleware.__init__",
             return_value=None,
         ):
-            mw = VFSArchivingSummarizationMiddleware.__new__(
-                VFSArchivingSummarizationMiddleware
-            )
+            mw = VFSArchivingSummarizationMiddleware.__new__(VFSArchivingSummarizationMiddleware)
 
             regular_msg = HumanMessage(content="Just a message")
             result = {"messages": [regular_msg]}
@@ -1004,9 +959,7 @@ class TestSummarizationMiddleware:
             "app.agents.middleware.vfs_summarization.SummarizationMiddleware.__init__",
             return_value=None,
         ):
-            mw = VFSArchivingSummarizationMiddleware.__new__(
-                VFSArchivingSummarizationMiddleware
-            )
+            mw = VFSArchivingSummarizationMiddleware.__new__(VFSArchivingSummarizationMiddleware)
             mw.vfs_enabled = True
             mw.excluded_tools = {"noisy_tool"}
             mw.trigger = ("messages", 2)
@@ -1070,9 +1023,7 @@ class TestEdgeCases:
             assert "report.json" in json_names
             assert "report.txt" not in json_names
 
-    async def test_move_file(
-        self, vfs: MongoVFS, fake_collection: FakeMongoCollection
-    ) -> None:
+    async def test_move_file(self, vfs: MongoVFS, fake_collection: FakeMongoCollection) -> None:
         with patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", fake_collection):
             src = f"/users/{TEST_USER_ID}/global/executor/notes/moveme.txt"
             dst = f"/users/{TEST_USER_ID}/global/executor/files/moved.txt"
@@ -1083,9 +1034,7 @@ class TestEdgeCases:
             assert new_path == normalize_path(dst)
             assert await vfs.exists(dst, user_id=TEST_USER_ID) is True
 
-    async def test_copy_file(
-        self, vfs: MongoVFS, fake_collection: FakeMongoCollection
-    ) -> None:
+    async def test_copy_file(self, vfs: MongoVFS, fake_collection: FakeMongoCollection) -> None:
         with patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", fake_collection):
             src = f"/users/{TEST_USER_ID}/global/executor/notes/copyme.txt"
             dst = f"/users/{TEST_USER_ID}/global/executor/files/copied.txt"

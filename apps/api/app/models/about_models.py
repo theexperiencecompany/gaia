@@ -2,7 +2,6 @@
 Pydantic models for the about page functionality.
 """
 
-from typing import List, Optional
 from pydantic import BaseModel
 
 
@@ -12,12 +11,12 @@ class Author(BaseModel):
     name: str
     avatar: str
     role: str
-    linkedin: Optional[str] = None
-    twitter: Optional[str] = None
+    linkedin: str | None = None
+    twitter: str | None = None
 
 
 class AboutResponse(BaseModel):
     """Response model for about page content."""
 
     content: str
-    authors: List[Author]
+    authors: list[Author]

@@ -7,8 +7,8 @@ to verify routing, status codes, response bodies, and validation.
 from io import BytesIO
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 # Note: The file endpoints do NOT have try/except blocks, so unhandled
 # exceptions propagate to the global handler. With ASGITransport's default
@@ -25,9 +25,7 @@ class TestUploadFile:
         "app.api.v1.endpoints.file.upload_file_service",
         new_callable=AsyncMock,
     )
-    async def test_upload_file_returns_201(
-        self, mock_upload: AsyncMock, client: AsyncClient
-    ):
+    async def test_upload_file_returns_201(self, mock_upload: AsyncMock, client: AsyncClient):
         mock_upload.return_value = {
             "file_id": "file-001",
             "url": "https://cdn.example.com/file.png",
@@ -120,9 +118,7 @@ class TestUpdateFile:
         "app.api.v1.endpoints.file.update_file_service",
         new_callable=AsyncMock,
     )
-    async def test_update_file_returns_200(
-        self, mock_update: AsyncMock, client: AsyncClient
-    ):
+    async def test_update_file_returns_200(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.return_value = {
             "file_id": "file-001",
             "description": "Updated description",
@@ -176,9 +172,7 @@ class TestDeleteFile:
         "app.api.v1.endpoints.file.delete_file_service",
         new_callable=AsyncMock,
     )
-    async def test_delete_file_returns_200(
-        self, mock_delete: AsyncMock, client: AsyncClient
-    ):
+    async def test_delete_file_returns_200(self, mock_delete: AsyncMock, client: AsyncClient):
         mock_delete.return_value = {
             "message": "File deleted successfully",
             "file_id": "file-001",
@@ -192,9 +186,7 @@ class TestDeleteFile:
         "app.api.v1.endpoints.file.delete_file_service",
         new_callable=AsyncMock,
     )
-    async def test_delete_file_passes_user_id(
-        self, mock_delete: AsyncMock, client: AsyncClient
-    ):
+    async def test_delete_file_passes_user_id(self, mock_delete: AsyncMock, client: AsyncClient):
         mock_delete.return_value = {"message": "ok"}
         await client.delete(f"{FILE_BASE}/file-001")
         call_kwargs = mock_delete.call_args.kwargs

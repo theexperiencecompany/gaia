@@ -6,9 +6,9 @@ Mocks at the MongoDB collection boundary.
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from bson import ObjectId
 from fastapi import HTTPException
+import pytest
 
 COLLECTION = "app.services.user_service.users_collection"
 FAKE_OID = ObjectId("507f1f77bcf86cd799439011")
@@ -179,7 +179,5 @@ class TestUpdateUserProfile:
         ):
             mock_col.find_one = AsyncMock(return_value=fake_doc)
             with pytest.raises(HTTPException) as exc:
-                await update_user_profile(
-                    str(FAKE_OID), picture_data=b"fake_image_data"
-                )
+                await update_user_profile(str(FAKE_OID), picture_data=b"fake_image_data")
             assert exc.value.status_code == 500

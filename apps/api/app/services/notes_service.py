@@ -2,10 +2,13 @@
 Service module for handling note operations.
 """
 
-from typing import Any, Dict
+from typing import Any
+
+from bson import ObjectId
+from fastapi import HTTPException, status
+from langchain_core.documents import Document
 
 from app.agents.prompts.convo_prompts import NOTES_PROMPT
-from shared.py.wide_events import log
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import notes_collection
 from app.db.redis import delete_cache, get_cache, set_cache
@@ -13,9 +16,7 @@ from app.db.utils import serialize_document
 from app.models.notes_models import NoteModel, NoteResponse
 from app.utils.embedding_utils import search_notes_by_similarity
 from app.utils.notes_utils import insert_note
-from bson import ObjectId
-from fastapi import HTTPException, status
-from langchain_core.documents import Document
+from shared.py.wide_events import log
 
 
 async def get_note(note_id: str, user_id: str) -> NoteResponse:
@@ -33,23 +34,17 @@ async def get_note(note_id: str, user_id: str) -> NoteResponse:
         HTTPException: If the note is not found.
     """
     log.info(f"Retrieving note with id: {note_id} for user: {user_id}")
-    log.set(
-        service="notes_service", operation="get_note", note_id=note_id, user_id=user_id
-    )
+    log.set(service="notes_service", operation="get_note", note_id=note_id, user_id=user_id)
     cache_key = f"note:{user_id}:{note_id}"
     cached_note = await get_cache(cache_key)
     if cached_note:
         log.info("Note found in cache.")
         return NoteResponse(**cached_note)
 
-    note = await notes_collection.find_one(
-        {"_id": ObjectId(note_id), "user_id": user_id}
-    )
+    note = await notes_collection.find_one({"_id": ObjectId(note_id), "user_id": user_id})
     if not note:
         log.error("Note not found.")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Note not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
     serialized_note = serialize_document(note)
     await set_cache(cache_key, serialized_note)
@@ -116,14 +111,10 @@ async def update_note(note_id: str, note: NoteModel, user_id: str) -> NoteRespon
     )
     if result.matched_count == 0:
         log.error("Note not found for update.")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Note not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
     # Fetch the complete updated note
-    updated_note = await notes_collection.find_one(
-        {"_id": ObjectId(note_id), "user_id": user_id}
-    )
+    updated_note = await notes_collection.find_one({"_id": ObjectId(note_id), "user_id": user_id})
 
     if not updated_note:
         raise ValueError(f"Note {note_id} not found after update")
@@ -147,7 +138,7 @@ async def update_note(note_id: str, note: NoteModel, user_id: str) -> NoteRespon
             log.info(f"Note with id {note_id} updated in ChromaDB")
         except Exception as e:
             # Log the error but don't fail the request if ChromaDB update fails
-            log.error(f"Failed to update note in ChromaDB: {str(e)}")
+            log.error(f"Failed to update note in ChromaDB: {e!s}")
 
     # Invalidate caches for this note and for all notes of the user
     await delete_cache(f"note:{user_id}:{note_id}")
@@ -180,14 +171,10 @@ async def delete_note(note_id: str, user_id: str) -> None:
     )
 
     # Delete from MongoDB
-    result = await notes_collection.delete_one(
-        {"_id": ObjectId(note_id), "user_id": user_id}
-    )
+    result = await notes_collection.delete_one({"_id": ObjectId(note_id), "user_id": user_id})
     if result.deleted_count == 0:
         log.error("Note not found for deletion.")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Note not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
     # Invalidate caches for this note and for all notes of the user
     await delete_cache(f"note:{user_id}:{note_id}")
@@ -195,14 +182,12 @@ async def delete_note(note_id: str, user_id: str) -> None:
 
     # Delete from ChromaDB if client is provided
     try:
-        chroma_notes_collection = await ChromaClient.get_langchain_client(
-            collection_name="notes"
-        )
+        chroma_notes_collection = await ChromaClient.get_langchain_client(collection_name="notes")
         await chroma_notes_collection.adelete(ids=[note_id])
         log.info(f"Note with id {note_id} deleted from ChromaDB")
     except Exception as e:
         # Log the error but don't fail the request if ChromaDB deletion fails
-        log.error(f"Failed to delete note from ChromaDB: {str(e)}")
+        log.error(f"Failed to delete note from ChromaDB: {e!s}")
 
     log.info("Note successfully deleted from MongoDB and cache invalidated.")
 
@@ -224,11 +209,11 @@ async def create_note_service(note: NoteModel, user_id: str) -> NoteResponse:
     try:
         return await insert_note(note, user_id)
     except Exception as e:
-        log.error(f"Failed to create note: {str(e)}")
+        log.error(f"Failed to create note: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to create note")
 
 
-async def fetch_notes(context: Dict[str, Any]) -> Dict[str, Any]:
+async def fetch_notes(context: dict[str, Any]) -> dict[str, Any]:
     """
     Fetch similar notes and append their content to the last message.
 

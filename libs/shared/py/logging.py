@@ -26,12 +26,12 @@ Usage:
     logger.info("Hello world")
 """
 
-import json as _json
-import os
-import sys
-import logging
 from collections.abc import Callable
+import json as _json
+import logging
+import os
 from pathlib import Path
+import sys
 
 from loguru import logger
 
@@ -162,7 +162,7 @@ def _worker_name_patcher(record: dict) -> None:
     """
     name: str = record["process"].name
     if name.startswith("SpawnProcess-"):
-        record["extra"]["worker"] = "w" + name.split("-")[-1]
+        record["extra"]["worker"] = "w" + name.rsplit("-", maxsplit=1)[-1]
     elif name == "MainProcess":
         record["extra"]["worker"] = "main"
     else:
@@ -240,8 +240,7 @@ def configure_loguru():
             ]
 
             should_intercept = any(
-                record.name.startswith(namespace)
-                or record.name == namespace.rstrip(".")
+                record.name.startswith(namespace) or record.name == namespace.rstrip(".")
                 for namespace in app_namespaces
             )
 
@@ -272,9 +271,9 @@ def configure_loguru():
             else:
                 context_name = logger_name_map.get(record.name, record.name.upper()[:7])
 
-            logger.bind(logger_name=context_name).opt(
-                depth=depth, exception=record.exc_info
-            ).log(level, record.getMessage())
+            logger.bind(logger_name=context_name).opt(depth=depth, exception=record.exc_info).log(
+                level, record.getMessage()
+            )
 
     intercept_loggers = [
         "uvicorn",

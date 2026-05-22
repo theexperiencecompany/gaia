@@ -6,32 +6,33 @@ Covers:
   - app/services/workflow/queue_service.py
 """
 
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.models.workflow_execution_models import (
+    WorkflowExecution,
+    WorkflowExecutionsResponse,
+)
+from app.models.workflow_models import (
+    TriggerConfig,
+    TriggerType,
+    Workflow,
+    WorkflowStep,
+)
 
 # ---------------------------------------------------------------------------
 # Direct imports from the modules under test.
 # Deleting any of these source files will cause ImportError here.
 # ---------------------------------------------------------------------------
 from app.services.workflow.execution_service import (
-    create_execution,
     complete_execution,
+    create_execution,
     get_workflow_executions,
 )
-from app.services.workflow.validators import WorkflowValidator
 from app.services.workflow.queue_service import WorkflowQueueService
-from app.models.workflow_execution_models import (
-    WorkflowExecution,
-    WorkflowExecutionsResponse,
-)
-from app.models.workflow_models import (
-    Workflow,
-    TriggerConfig,
-    TriggerType,
-    WorkflowStep,
-)
-
+from app.services.workflow.validators import WorkflowValidator
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -75,7 +76,7 @@ def _make_execution_doc(
         "workflow_id": WORKFLOW_ID,
         "user_id": USER_ID,
         "status": status,
-        "started_at": started_at or datetime.now(timezone.utc),
+        "started_at": started_at or datetime.now(UTC),
         "completed_at": None,
         "duration_seconds": None,
         "conversation_id": None,
@@ -102,9 +103,7 @@ def mock_executions_collection():
 @pytest.fixture
 def mock_redis_pool():
     """Patch RedisPoolManager.get_pool used by WorkflowQueueService."""
-    with patch(
-        "app.services.workflow.queue_service.RedisPoolManager.get_pool"
-    ) as mock_get_pool:
+    with patch("app.services.workflow.queue_service.RedisPoolManager.get_pool") as mock_get_pool:
         mock_pool = AsyncMock()
         mock_get_pool.return_value = mock_pool
         yield mock_pool
@@ -117,9 +116,7 @@ def mock_redis_pool():
 
 @pytest.mark.unit
 class TestCreateExecution:
-    async def test_inserts_execution_record_with_running_status(
-        self, mock_executions_collection
-    ):
+    async def test_inserts_execution_record_with_running_status(self, mock_executions_collection):
         mock_executions_collection.insert_one = AsyncMock()
 
         await create_execution(
@@ -134,9 +131,7 @@ class TestCreateExecution:
         assert inserted_doc["user_id"] == USER_ID
         assert inserted_doc["trigger_type"] == "manual"
 
-    async def test_returns_workflow_execution_instance(
-        self, mock_executions_collection
-    ):
+    async def test_returns_workflow_execution_instance(self, mock_executions_collection):
         mock_executions_collection.insert_one = AsyncMock()
 
         result = await create_execution(workflow_id=WORKFLOW_ID, user_id=USER_ID)
@@ -172,9 +167,7 @@ class TestCreateExecution:
         doc = mock_executions_collection.insert_one.call_args[0][0]
         assert doc["trigger_type"] == "gmail"
 
-    async def test_stores_conversation_id_when_provided(
-        self, mock_executions_collection
-    ):
+    async def test_stores_conversation_id_when_provided(self, mock_executions_collection):
         mock_executions_collection.insert_one = AsyncMock()
 
         result = await create_execution(
@@ -189,11 +182,11 @@ class TestCreateExecution:
 
     async def test_started_at_is_recent_utc_datetime(self, mock_executions_collection):
         mock_executions_collection.insert_one = AsyncMock()
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
 
         result = await create_execution(WORKFLOW_ID, USER_ID)
 
-        after = datetime.now(timezone.utc)
+        after = datetime.now(UTC)
         assert before <= result.started_at <= after
         assert result.started_at.tzinfo is not None
 
@@ -206,7 +199,7 @@ class TestCreateExecution:
 @pytest.mark.unit
 class TestCompleteExecution:
     async def test_updates_status_and_completed_at(self, mock_executions_collection):
-        started_at = datetime.now(timezone.utc) - timedelta(seconds=30)
+        started_at = datetime.now(UTC) - timedelta(seconds=30)
         mock_executions_collection.find_one = AsyncMock(
             return_value=_make_execution_doc(started_at=started_at)
         )
@@ -224,10 +217,8 @@ class TestCompleteExecution:
         assert update_set["status"] == "success"
         assert "completed_at" in update_set
 
-    async def test_calculates_duration_from_started_at(
-        self, mock_executions_collection
-    ):
-        started_at = datetime.now(timezone.utc) - timedelta(seconds=45)
+    async def test_calculates_duration_from_started_at(self, mock_executions_collection):
+        started_at = datetime.now(UTC) - timedelta(seconds=45)
         mock_executions_collection.find_one = AsyncMock(
             return_value=_make_execution_doc(started_at=started_at)
         )
@@ -243,9 +234,7 @@ class TestCompleteExecution:
         assert 40 <= update_set["duration_seconds"] <= 50
 
     async def test_stores_summary_when_provided(self, mock_executions_collection):
-        mock_executions_collection.find_one = AsyncMock(
-            return_value=_make_execution_doc()
-        )
+        mock_executions_collection.find_one = AsyncMock(return_value=_make_execution_doc())
         mock_result = MagicMock()
         mock_result.modified_count = 1
         mock_executions_collection.update_one = AsyncMock(return_value=mock_result)
@@ -256,38 +245,28 @@ class TestCompleteExecution:
         assert update_set["summary"] == "Did 3 things"
 
     async def test_stores_error_message_when_provided(self, mock_executions_collection):
-        mock_executions_collection.find_one = AsyncMock(
-            return_value=_make_execution_doc()
-        )
+        mock_executions_collection.find_one = AsyncMock(return_value=_make_execution_doc())
         mock_result = MagicMock()
         mock_result.modified_count = 1
         mock_executions_collection.update_one = AsyncMock(return_value=mock_result)
 
-        await complete_execution(
-            EXECUTION_ID, status="failed", error_message="Tool call failed"
-        )
+        await complete_execution(EXECUTION_ID, status="failed", error_message="Tool call failed")
 
         update_set = mock_executions_collection.update_one.call_args[0][1]["$set"]
         assert update_set["error_message"] == "Tool call failed"
 
     async def test_sets_conversation_id_when_provided(self, mock_executions_collection):
-        mock_executions_collection.find_one = AsyncMock(
-            return_value=_make_execution_doc()
-        )
+        mock_executions_collection.find_one = AsyncMock(return_value=_make_execution_doc())
         mock_result = MagicMock()
         mock_result.modified_count = 1
         mock_executions_collection.update_one = AsyncMock(return_value=mock_result)
 
-        await complete_execution(
-            EXECUTION_ID, status="success", conversation_id="conv_xyz"
-        )
+        await complete_execution(EXECUTION_ID, status="success", conversation_id="conv_xyz")
 
         update_set = mock_executions_collection.update_one.call_args[0][1]["$set"]
         assert update_set["conversation_id"] == "conv_xyz"
 
-    async def test_returns_false_when_execution_not_found(
-        self, mock_executions_collection
-    ):
+    async def test_returns_false_when_execution_not_found(self, mock_executions_collection):
         mock_executions_collection.find_one = AsyncMock(return_value=None)
 
         result = await complete_execution("exec_nonexistent", status="success")
@@ -295,12 +274,8 @@ class TestCompleteExecution:
         assert result is False
         mock_executions_collection.update_one.assert_not_called()
 
-    async def test_returns_false_when_update_modifies_nothing(
-        self, mock_executions_collection
-    ):
-        mock_executions_collection.find_one = AsyncMock(
-            return_value=_make_execution_doc()
-        )
+    async def test_returns_false_when_update_modifies_nothing(self, mock_executions_collection):
+        mock_executions_collection.find_one = AsyncMock(return_value=_make_execution_doc())
         mock_result = MagicMock()
         mock_result.modified_count = 0
         mock_executions_collection.update_one = AsyncMock(return_value=mock_result)
@@ -309,9 +284,7 @@ class TestCompleteExecution:
 
         assert result is False
 
-    async def test_duration_is_none_when_started_at_missing(
-        self, mock_executions_collection
-    ):
+    async def test_duration_is_none_when_started_at_missing(self, mock_executions_collection):
         doc = _make_execution_doc()
         doc["started_at"] = None  # simulate missing field
         mock_executions_collection.find_one = AsyncMock(return_value=doc)
@@ -325,9 +298,7 @@ class TestCompleteExecution:
         assert update_set["duration_seconds"] is None
 
     async def test_omits_optional_fields_not_provided(self, mock_executions_collection):
-        mock_executions_collection.find_one = AsyncMock(
-            return_value=_make_execution_doc()
-        )
+        mock_executions_collection.find_one = AsyncMock(return_value=_make_execution_doc())
         mock_result = MagicMock()
         mock_result.modified_count = 1
         mock_executions_collection.update_one = AsyncMock(return_value=mock_result)
@@ -361,9 +332,7 @@ class TestGetWorkflowExecutions:
         cursor.__aiter__ = async_iter
         return cursor
 
-    async def test_returns_workflow_executions_response(
-        self, mock_executions_collection
-    ):
+    async def test_returns_workflow_executions_response(self, mock_executions_collection):
         mock_executions_collection.count_documents = AsyncMock(return_value=1)
         doc = _make_execution_doc()
         mock_executions_collection.find.return_value = self._make_async_cursor([doc])
@@ -385,9 +354,7 @@ class TestGetWorkflowExecutions:
         assert query["workflow_id"] == WORKFLOW_ID
         assert query["user_id"] == USER_ID
 
-    async def test_has_more_is_true_when_more_docs_exist(
-        self, mock_executions_collection
-    ):
+    async def test_has_more_is_true_when_more_docs_exist(self, mock_executions_collection):
         mock_executions_collection.count_documents = AsyncMock(return_value=5)
         docs = [_make_execution_doc(execution_id=f"exec_{i}") for i in range(2)]
         mock_executions_collection.find.return_value = self._make_async_cursor(docs)
@@ -397,9 +364,7 @@ class TestGetWorkflowExecutions:
 
         assert result.has_more is True
 
-    async def test_has_more_is_false_when_all_docs_fetched(
-        self, mock_executions_collection
-    ):
+    async def test_has_more_is_false_when_all_docs_fetched(self, mock_executions_collection):
         mock_executions_collection.count_documents = AsyncMock(return_value=2)
         docs = [_make_execution_doc(execution_id=f"exec_{i}") for i in range(2)]
         mock_executions_collection.find.return_value = self._make_async_cursor(docs)
@@ -419,9 +384,7 @@ class TestGetWorkflowExecutions:
         # WorkflowExecution should not have _id – if it did, Pydantic would raise
         assert len(result.executions) == 1
 
-    async def test_returns_empty_list_when_no_executions(
-        self, mock_executions_collection
-    ):
+    async def test_returns_empty_list_when_no_executions(self, mock_executions_collection):
         mock_executions_collection.count_documents = AsyncMock(return_value=0)
         mock_executions_collection.find.return_value = self._make_async_cursor([])
 
@@ -509,25 +472,17 @@ class TestWorkflowQueueServiceGeneration:
             "generate_workflow_steps", WORKFLOW_ID, USER_ID
         )
 
-    async def test_queue_generation_returns_false_when_job_is_none(
-        self, mock_redis_pool
-    ):
+    async def test_queue_generation_returns_false_when_job_is_none(self, mock_redis_pool):
         mock_redis_pool.enqueue_job = AsyncMock(return_value=None)
 
-        result = await WorkflowQueueService.queue_workflow_generation(
-            WORKFLOW_ID, USER_ID
-        )
+        result = await WorkflowQueueService.queue_workflow_generation(WORKFLOW_ID, USER_ID)
 
         assert result is False
 
     async def test_queue_generation_returns_false_on_exception(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(
-            side_effect=ConnectionError("redis down")
-        )
+        mock_redis_pool.enqueue_job = AsyncMock(side_effect=ConnectionError("redis down"))
 
-        result = await WorkflowQueueService.queue_workflow_generation(
-            WORKFLOW_ID, USER_ID
-        )
+        result = await WorkflowQueueService.queue_workflow_generation(WORKFLOW_ID, USER_ID)
 
         assert result is False
 
@@ -554,16 +509,12 @@ class TestWorkflowQueueServiceExecution:
         mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
 
         ctx = {"trigger_data": {"email_id": "msg1"}}
-        await WorkflowQueueService.queue_workflow_execution(
-            WORKFLOW_ID, USER_ID, context=ctx
-        )
+        await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID, context=ctx)
 
         args = mock_redis_pool.enqueue_job.call_args[0]
         assert args[2] == ctx
 
-    async def test_queue_execution_uses_empty_dict_when_no_context(
-        self, mock_redis_pool
-    ):
+    async def test_queue_execution_uses_empty_dict_when_no_context(self, mock_redis_pool):
         mock_job = MagicMock()
         mock_job.job_id = "job_no_ctx"
         mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
@@ -576,9 +527,7 @@ class TestWorkflowQueueServiceExecution:
     async def test_queue_execution_returns_false_on_exception(self, mock_redis_pool):
         mock_redis_pool.enqueue_job = AsyncMock(side_effect=Exception("redis timeout"))
 
-        result = await WorkflowQueueService.queue_workflow_execution(
-            WORKFLOW_ID, USER_ID
-        )
+        result = await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID)
 
         assert result is False
 
@@ -586,7 +535,7 @@ class TestWorkflowQueueServiceExecution:
 @pytest.mark.unit
 class TestWorkflowQueueServiceScheduled:
     async def test_queue_scheduled_execution_passes_defer_until(self, mock_redis_pool):
-        scheduled_at = datetime.now(timezone.utc) + timedelta(hours=2)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=2)
         mock_job = MagicMock()
         mock_job.job_id = "job_sched"
         mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
@@ -601,7 +550,7 @@ class TestWorkflowQueueServiceScheduled:
 
     async def test_queue_scheduled_returns_false_when_job_none(self, mock_redis_pool):
         mock_redis_pool.enqueue_job = AsyncMock(return_value=None)
-        scheduled_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
 
         result = await WorkflowQueueService.queue_scheduled_workflow_execution(
             WORKFLOW_ID, scheduled_at
@@ -611,7 +560,7 @@ class TestWorkflowQueueServiceScheduled:
 
     async def test_queue_scheduled_returns_false_on_exception(self, mock_redis_pool):
         mock_redis_pool.enqueue_job = AsyncMock(side_effect=Exception("unavailable"))
-        scheduled_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
 
         result = await WorkflowQueueService.queue_scheduled_workflow_execution(
             WORKFLOW_ID, scheduled_at
@@ -679,16 +628,12 @@ class TestWorkflowQueueServiceTodo:
         mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
         mock_redis_pool.set = AsyncMock()
 
-        await WorkflowQueueService.queue_todo_workflow_generation(
-            "todo_x", USER_ID, "Title"
-        )
+        await WorkflowQueueService.queue_todo_workflow_generation("todo_x", USER_ID, "Title")
 
         args = mock_redis_pool.enqueue_job.call_args[0]
         assert args[0] == "process_workflow_generation_task"
 
-    async def test_queue_todo_generation_returns_false_when_job_none(
-        self, mock_redis_pool
-    ):
+    async def test_queue_todo_generation_returns_false_when_job_none(self, mock_redis_pool):
         mock_redis_pool.enqueue_job = AsyncMock(return_value=None)
 
         result = await WorkflowQueueService.queue_todo_workflow_generation(
@@ -697,12 +642,8 @@ class TestWorkflowQueueServiceTodo:
 
         assert result is False
 
-    async def test_queue_todo_generation_returns_false_on_exception(
-        self, mock_redis_pool
-    ):
-        mock_redis_pool.enqueue_job = AsyncMock(
-            side_effect=Exception("connection refused")
-        )
+    async def test_queue_todo_generation_returns_false_on_exception(self, mock_redis_pool):
+        mock_redis_pool.enqueue_job = AsyncMock(side_effect=Exception("connection refused"))
 
         result = await WorkflowQueueService.queue_todo_workflow_generation(
             "todo_x", USER_ID, "Title"
@@ -713,30 +654,22 @@ class TestWorkflowQueueServiceTodo:
 
 @pytest.mark.unit
 class TestWorkflowQueueServiceFlags:
-    async def test_is_workflow_generating_returns_true_when_flag_set(
-        self, mock_redis_pool
-    ):
+    async def test_is_workflow_generating_returns_true_when_flag_set(self, mock_redis_pool):
         mock_redis_pool.get = AsyncMock(return_value="1")
 
         result = await WorkflowQueueService.is_workflow_generating("todo_abc")
 
         assert result is True
-        mock_redis_pool.get.assert_awaited_once_with(
-            "todo_workflow_generating:todo_abc"
-        )
+        mock_redis_pool.get.assert_awaited_once_with("todo_workflow_generating:todo_abc")
 
-    async def test_is_workflow_generating_returns_false_when_flag_absent(
-        self, mock_redis_pool
-    ):
+    async def test_is_workflow_generating_returns_false_when_flag_absent(self, mock_redis_pool):
         mock_redis_pool.get = AsyncMock(return_value=None)
 
         result = await WorkflowQueueService.is_workflow_generating("todo_abc")
 
         assert result is False
 
-    async def test_is_workflow_generating_returns_false_on_exception(
-        self, mock_redis_pool
-    ):
+    async def test_is_workflow_generating_returns_false_on_exception(self, mock_redis_pool):
         mock_redis_pool.get = AsyncMock(side_effect=Exception("timeout"))
 
         result = await WorkflowQueueService.is_workflow_generating("todo_abc")
@@ -748,13 +681,9 @@ class TestWorkflowQueueServiceFlags:
 
         await WorkflowQueueService.clear_workflow_generating_flag("todo_abc")
 
-        mock_redis_pool.delete.assert_awaited_once_with(
-            "todo_workflow_generating:todo_abc"
-        )
+        mock_redis_pool.delete.assert_awaited_once_with("todo_workflow_generating:todo_abc")
 
-    async def test_clear_generating_flag_silently_handles_exception(
-        self, mock_redis_pool
-    ):
+    async def test_clear_generating_flag_silently_handles_exception(self, mock_redis_pool):
         mock_redis_pool.delete = AsyncMock(side_effect=Exception("connection lost"))
 
         # Should not raise

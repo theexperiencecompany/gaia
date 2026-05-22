@@ -11,14 +11,13 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
-import pytest
 from composio.core.models.custom_tools import CustomTool
 from pydantic import BaseModel
-
-from app.utils.errors import AppError
+import pytest
 
 # Importing the patch module triggers the monkey-patch at import time.
 import app.patches.composio_custom_tool_patch  # noqa: F401
+from app.utils.errors import AppError
 
 
 class _StubRequestModel(BaseModel):

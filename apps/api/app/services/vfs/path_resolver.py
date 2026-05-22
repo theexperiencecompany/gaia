@@ -18,7 +18,6 @@ Implements the folder structure:
 """
 
 import re
-from typing import Optional
 
 # Special agent name for the executor
 EXECUTOR_AGENT = "executor"
@@ -244,8 +243,7 @@ def get_notes_path(user_id: str, agent_name: str) -> str:
 
     if safe_agent == EXECUTOR_AGENT:
         return f"/users/{user_id}/global/executor/notes"
-    else:
-        return f"/users/{user_id}/global/subagents/{safe_agent}/notes"
+    return f"/users/{user_id}/global/subagents/{safe_agent}/notes"
 
 
 def get_files_path(user_id: str, agent_name: str) -> str:
@@ -267,8 +265,7 @@ def get_files_path(user_id: str, agent_name: str) -> str:
 
     if safe_agent == EXECUTOR_AGENT:
         return f"/users/{user_id}/global/executor/files"
-    else:
-        return f"/users/{user_id}/global/subagents/{safe_agent}/files"
+    return f"/users/{user_id}/global/subagents/{safe_agent}/files"
 
 
 def get_agent_root(user_id: str, agent_name: str) -> str:
@@ -286,8 +283,7 @@ def get_agent_root(user_id: str, agent_name: str) -> str:
 
     if safe_agent == EXECUTOR_AGENT:
         return f"/users/{user_id}/global/executor"
-    else:
-        return f"/users/{user_id}/global/subagents/{safe_agent}"
+    return f"/users/{user_id}/global/subagents/{safe_agent}"
 
 
 def parse_path(path: str) -> dict:
@@ -375,10 +371,10 @@ def parse_path(path: str) -> dict:
 def build_path(
     user_id: str,
     *,
-    agent_name: Optional[str] = None,
-    folder_type: Optional[str] = None,
-    conversation_id: Optional[str] = None,
-    filename: Optional[str] = None,
+    agent_name: str | None = None,
+    folder_type: str | None = None,
+    conversation_id: str | None = None,
+    filename: str | None = None,
 ) -> str:
     """
     Build a VFS path from components.

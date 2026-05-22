@@ -1,7 +1,8 @@
 """Unit tests for MemoryService parsing and formatting logic."""
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from app.models.memory_models import MemorySearchResult
 from app.services.memory_service import MemoryService
@@ -161,9 +162,7 @@ class TestParseAddResult:
 @pytest.mark.unit
 class TestExtractRelationships:
     def test_extracts_relations_key(self, service):
-        response = {
-            "relations": [{"source": "a", "relation": "knows", "destination": "b"}]
-        }
+        response = {"relations": [{"source": "a", "relation": "knows", "destination": "b"}]}
         result = service._extract_relationships_from_response(response)
         assert len(result) == 1
 
@@ -310,9 +309,7 @@ class TestStoreMemory:
         )
 
         with patch.object(service, "_get_client", return_value=mock_client):
-            result = await service.store_memory(
-                "I prefer dark mode", "user_123", async_mode=False
-            )
+            result = await service.store_memory("I prefer dark mode", "user_123", async_mode=False)
 
         assert result is not None
         assert result.id == "mem_sync_01"
@@ -354,9 +351,7 @@ class TestStoreMemory:
     async def test_store_memory_error_response_in_results_returns_none(self, service):
         """When the results list contains an entry with no memory content, returns None."""
         mock_client = AsyncMock()
-        mock_client.add = AsyncMock(
-            return_value={"results": [{"event": "NOOP", "memory": ""}]}
-        )
+        mock_client.add = AsyncMock(return_value={"results": [{"event": "NOOP", "memory": ""}]})
 
         with patch.object(service, "_get_client", return_value=mock_client):
             result = await service.store_memory("Test", "user_123")
@@ -425,9 +420,7 @@ class TestSearchMemories:
                     {"id": "m1", "memory": "Likes coffee", "score": 0.95},
                     {"id": "m2", "memory": "Uses Linux", "score": 0.85},
                 ],
-                "relations": [
-                    {"source": "user", "relation": "likes", "destination": "coffee"}
-                ],
+                "relations": [{"source": "user", "relation": "likes", "destination": "coffee"}],
             }
         )
 

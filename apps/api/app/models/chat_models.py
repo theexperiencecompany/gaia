@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, List, Optional, Union
+from typing import Any, Union
 
 from pydantic import BaseModel
 from typing_extensions import TypedDict
@@ -10,7 +10,7 @@ from app.models.message_models import FileData, ReplyToMessageData, SelectedWork
 class ImageData(BaseModel):
     url: str
     prompt: str
-    improved_prompt: Optional[str] = None
+    improved_prompt: str | None = None
 
 
 class MCPAppData(BaseModel):
@@ -19,9 +19,9 @@ class MCPAppData(BaseModel):
     server_url: str
     resource_uri: str
     html_content: str
-    csp: Optional[dict[str, Any]] = None
+    csp: dict[str, Any] | None = None
     permissions: list[str] = []
-    tool_result: Optional[Any] = None
+    tool_result: Any | None = None
     tool_arguments: dict[str, Any] = {}
 
 
@@ -29,8 +29,8 @@ class ToolDataEntry(TypedDict):
     """Unified structure for tool execution data."""
 
     tool_name: str
-    data: Union[dict, List, str, int, float, bool]
-    timestamp: Optional[str]
+    data: Union[dict, list, str, int, float, bool]
+    timestamp: str | None
 
 
 tool_fields = [
@@ -71,23 +71,23 @@ tool_fields = [
 class MessageModel(BaseModel):
     type: str
     response: str
-    date: Optional[str] = None
-    image_data: Optional[ImageData] = None
-    disclaimer: Optional[str] = None
-    subtype: Optional[str] = None
-    file: Optional[bytes] = None
-    filename: Optional[str] = None
-    filetype: Optional[str] = None
-    message_id: Optional[str] = None
-    fileIds: Optional[List[str]] = []
-    fileData: Optional[List[FileData]] = []
-    selectedTool: Optional[str] = None
-    toolCategory: Optional[str] = None
-    selectedWorkflow: Optional[SelectedWorkflowData] = None
-    tool_data: Optional[List[ToolDataEntry]] = None
-    follow_up_actions: Optional[List[str]] = None
-    metadata: Optional[dict] = None
-    replyToMessage: Optional[ReplyToMessageData] = None
+    date: str | None = None
+    image_data: ImageData | None = None
+    disclaimer: str | None = None
+    subtype: str | None = None
+    file: bytes | None = None
+    filename: str | None = None
+    filetype: str | None = None
+    message_id: str | None = None
+    fileIds: list[str] | None = []
+    fileData: list[FileData] | None = []
+    selectedTool: str | None = None
+    toolCategory: str | None = None
+    selectedWorkflow: SelectedWorkflowData | None = None
+    tool_data: list[ToolDataEntry] | None = None
+    follow_up_actions: list[str] | None = None
+    metadata: dict | None = None
+    replyToMessage: ReplyToMessageData | None = None
 
 
 class SystemPurpose(str, Enum):
@@ -110,16 +110,16 @@ class ConversationSource(str, Enum):
 class ConversationModel(BaseModel):
     conversation_id: str
     description: str = "New Chat"
-    is_system_generated: Optional[bool] = False
-    system_purpose: Optional[SystemPurpose] = None
-    is_unread: Optional[bool] = False
-    source: Optional[ConversationSource] = None
+    is_system_generated: bool | None = False
+    system_purpose: SystemPurpose | None = None
+    is_unread: bool | None = False
+    source: ConversationSource | None = None
     is_onboarding_demo: bool = False
 
 
 class UpdateMessagesRequest(BaseModel):
     conversation_id: str
-    messages: List[MessageModel]
+    messages: list[MessageModel]
 
 
 class StarredUpdate(BaseModel):
@@ -136,8 +136,8 @@ class UpdateDescriptionRequest(BaseModel):
 
 class ConversationSyncItem(BaseModel):
     conversation_id: str
-    last_updated: Optional[str] = None
+    last_updated: str | None = None
 
 
 class BatchSyncRequest(BaseModel):
-    conversations: List[ConversationSyncItem]
+    conversations: list[ConversationSyncItem]

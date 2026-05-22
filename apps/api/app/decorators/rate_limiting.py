@@ -4,12 +4,13 @@ Rate limiting decorators for API endpoints and LangChain tools.
 This module provides decorators for rate limiting based on user subscription plans.
 """
 
+from collections.abc import Callable
+from contextvars import ContextVar
+from datetime import UTC, datetime
+from functools import wraps
 import inspect
 import json
-from contextvars import ContextVar
-from datetime import datetime, timezone
-from functools import wraps
-from typing import Any, Callable, Dict, Optional
+from typing import Any
 
 from fastapi import HTTPException
 from langgraph.config import get_stream_writer
@@ -18,22 +19,20 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
     tiered_limiter,
 )
-from shared.py.wide_events import log
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
 from app.services.payments.payment_service import payment_service
+from shared.py.wide_events import log
 
 # Context variables to avoid parameter pollution
-user_context: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
-    "user_context", default=None
-)
-rate_limit_context: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
+user_context: ContextVar[dict[str, Any] | None] = ContextVar("user_context", default=None)
+rate_limit_context: ContextVar[dict[str, Any] | None] = ContextVar(
     "rate_limit_context", default=None
 )
 
 
 def with_rate_limiting(
-    feature_key: Optional[str] = None,
+    feature_key: str | None = None,
     count_tokens: bool = False,
     bypass_for_system: bool = False,
 ):
@@ -76,9 +75,7 @@ def with_rate_limiting(
                 # Extract from RunnableConfig
                 context = {
                     "user_id": config.get("metadata", {}).get("user_id"),
-                    "initiator": config.get("configurable", {}).get(
-                        "initiator", "frontend"
-                    ),
+                    "initiator": config.get("configurable", {}).get("initiator", "frontend"),
                 }
 
             if context and context.get("user_id"):
@@ -87,9 +84,7 @@ def with_rate_limiting(
 
                 # Skip rate limiting for system operations if configured
                 if bypass_for_system and initiator == "backend":
-                    log.debug(
-                        f"Bypassing rate limiting for system operation: {actual_feature_key}"
-                    )
+                    log.debug(f"Bypassing rate limiting for system operation: {actual_feature_key}")
                 else:
                     try:
                         # Get cached subscription or fetch new one
@@ -146,14 +141,10 @@ def with_rate_limiting(
                                         "tool_category": "system",
                                         "data": {
                                             "feature": actual_feature_key,
-                                            "plan_required": detail_dict.get(
-                                                "plan_required"
-                                            ),
+                                            "plan_required": detail_dict.get("plan_required"),
                                             "reset_time": reset_time,
                                         },
-                                        "timestamp": datetime.now(
-                                            timezone.utc
-                                        ).isoformat(),
+                                        "timestamp": datetime.now(UTC).isoformat(),
                                     }
                                 }
                             )
@@ -167,13 +158,11 @@ def with_rate_limiting(
                         )
                     except Exception as e:
                         log.error(
-                            f"Rate limiting failed for user {user_id}, feature {actual_feature_key}: {str(e)}"
+                            f"Rate limiting failed for user {user_id}, feature {actual_feature_key}: {e!s}"
                         )
                         raise
             else:
-                log.warning(
-                    f"No user context for {actual_feature_key}, skipping rate limiting"
-                )
+                log.warning(f"No user context for {actual_feature_key}, skipping rate limiting")
 
             # Execute the original function
             result = await func(*args, **kwargs)
@@ -272,7 +261,7 @@ def tiered_rate_limit(feature_key: str, count_tokens: bool = False):
             return result
 
         # Store metadata for usage tracking
-        setattr(wrapper, "_rate_limit_metadata", {"feature_key": feature_key})
+        wrapper._rate_limit_metadata = {"feature_key": feature_key}
 
         return wrapper
 
@@ -285,8 +274,8 @@ class LangChainRateLimitException(Exception):
     def __init__(
         self,
         feature: str,
-        detail: Optional[Dict[Any, Any]] = None,
-        reset_time: Optional[str] = None,
+        detail: dict[Any, Any] | None = None,
+        reset_time: str | None = None,
     ):
         self.feature = feature
         self.detail = detail or {}
@@ -296,9 +285,7 @@ class LangChainRateLimitException(Exception):
         if reset_time:
             message += f" Resets at {reset_time}."
         if detail and detail.get("plan_required"):
-            message += (
-                f" Upgrade to {detail['plan_required'].upper()} for higher limits."
-            )
+            message += f" Upgrade to {detail['plan_required'].upper()} for higher limits."
 
         super().__init__(message)
 
@@ -324,7 +311,7 @@ async def _get_cached_subscription(user_id: str):
             cached_subscription.plan_type = PlanType(data.get("plan_type", "free"))
             return cached_subscription
     except Exception as e:
-        log.debug(f"Cache lookup failed for user {user_id}: {str(e)}")
+        log.debug(f"Cache lookup failed for user {user_id}: {e!s}")
 
     # Fetch and cache
     subscription = await payment_service.get_user_subscription_status(user_id)
@@ -344,7 +331,7 @@ async def _get_cached_subscription(user_id: str):
         await redis_cache.set(cache_key, cache_data, 300)
         log.debug(f"Cached subscription for user {user_id}")
     except Exception as e:
-        log.debug(f"Cache write failed for user {user_id}: {str(e)}")
+        log.debug(f"Cache write failed for user {user_id}: {e!s}")
 
     return subscription
 
@@ -364,6 +351,6 @@ def clear_user_context():
     log.debug("Cleared user context")
 
 
-def get_current_rate_limit_info() -> Optional[Dict[str, Any]]:
+def get_current_rate_limit_info() -> dict[str, Any] | None:
     """Get current rate limit information for the request."""
     return rate_limit_context.get()

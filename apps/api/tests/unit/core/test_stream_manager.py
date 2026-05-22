@@ -4,9 +4,10 @@ Covers: start, complete, cleanup, publish, subscribe (all signal types
 and edge cases), cancel, is_cancelled, progress tracking, and error recording.
 """
 
-import json
+from collections.abc import Generator
 from dataclasses import asdict
-from typing import Any, Dict, Generator, List, Optional
+import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,7 +25,6 @@ from app.constants.streaming import (
 )
 from app.core.stream_manager import StreamManager, StreamProgress
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -34,11 +34,11 @@ def _progress_dict(
     conversation_id: str = "conv-1",
     user_id: str = "user-1",
     complete_message: str = "",
-    tool_data: Optional[Dict[str, Any]] = None,
+    tool_data: dict[str, Any] | None = None,
     is_cancelled: bool = False,
     is_complete: bool = False,
-    error: Optional[str] = None,
-) -> Dict[str, Any]:
+    error: str | None = None,
+) -> dict[str, Any]:
     """Return a dict that mirrors what Redis stores for StreamProgress."""
     return {
         "conversation_id": conversation_id,
@@ -55,7 +55,7 @@ def _progress_dict(
 class _FakePubSub:
     """Lightweight stand-in for redis.asyncio pubsub objects."""
 
-    def __init__(self, messages: Optional[List[Optional[Dict[str, Any]]]] = None):
+    def __init__(self, messages: list[dict[str, Any] | None] | None = None):
         self._messages = list(messages or [])
         self._idx = 0
         self.subscribe = AsyncMock()
@@ -64,7 +64,7 @@ class _FakePubSub:
 
     async def get_message(
         self, ignore_subscribe_messages: bool = True, timeout: float = 1.0
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         if self._idx >= len(self._messages):
             return None
         msg = self._messages[self._idx]
@@ -142,7 +142,7 @@ class TestStartStream:
 class TestCompleteStream:
     @pytest.fixture(autouse=True)
     def _patch_redis(self) -> Generator[None, None, None]:
-        self.stored: Dict[str, Any] = {}
+        self.stored: dict[str, Any] = {}
         self.mock_get = AsyncMock(return_value=_progress_dict())
         self.mock_set = AsyncMock()
         self.mock_redis_client = MagicMock()
@@ -250,7 +250,7 @@ class TestPublishChunk:
 
 
 class TestSubscribeStream:
-    def _make_msg(self, data: str) -> Dict[str, Any]:
+    def _make_msg(self, data: str) -> dict[str, Any]:
         return {"type": "message", "data": data}
 
     async def test_yields_chunks_until_done(self) -> None:
@@ -268,7 +268,7 @@ class TestSubscribeStream:
             "app.core.stream_manager.redis_cache",
             new=MagicMock(redis=mock_redis_client),
         ):
-            chunks: List[str] = []
+            chunks: list[str] = []
             async for chunk in StreamManager.subscribe_stream("s1"):
                 chunks.append(chunk)
 
@@ -290,7 +290,7 @@ class TestSubscribeStream:
             "app.core.stream_manager.redis_cache",
             new=MagicMock(redis=mock_redis_client),
         ):
-            chunks: List[str] = []
+            chunks: list[str] = []
             async for chunk in StreamManager.subscribe_stream("s1"):
                 chunks.append(chunk)
 
@@ -308,7 +308,7 @@ class TestSubscribeStream:
             "app.core.stream_manager.redis_cache",
             new=MagicMock(redis=mock_redis_client, get=mock_get),
         ):
-            chunks: List[str] = []
+            chunks: list[str] = []
             async for chunk in StreamManager.subscribe_stream("s1"):
                 chunks.append(chunk)
 
@@ -327,7 +327,7 @@ class TestSubscribeStream:
             "app.core.stream_manager.redis_cache",
             new=MagicMock(redis=mock_redis_client, get=mock_get),
         ):
-            chunks: List[str] = []
+            chunks: list[str] = []
             async for chunk in StreamManager.subscribe_stream("s1"):
                 chunks.append(chunk)
 
@@ -349,10 +349,8 @@ class TestSubscribeStream:
             "app.core.stream_manager.redis_cache",
             new=MagicMock(redis=mock_redis_client),
         ):
-            chunks: List[str] = []
-            async for chunk in StreamManager.subscribe_stream(
-                "s1", keepalive_interval=0.01
-            ):
+            chunks: list[str] = []
+            async for chunk in StreamManager.subscribe_stream("s1", keepalive_interval=0.01):
                 chunks.append(chunk)
 
         assert chunks == ['data: {"keepalive":true}\n\n']
@@ -372,7 +370,7 @@ class TestSubscribeStream:
             "app.core.stream_manager.redis_cache",
             new=MagicMock(redis=mock_redis_client),
         ):
-            chunks: List[str] = []
+            chunks: list[str] = []
             async for chunk in StreamManager.subscribe_stream("s1"):
                 chunks.append(chunk)
 
@@ -392,7 +390,7 @@ class TestSubscribeStream:
             "app.core.stream_manager.redis_cache",
             new=MagicMock(redis=mock_redis_client),
         ):
-            chunks: List[str] = []
+            chunks: list[str] = []
             async for chunk in StreamManager.subscribe_stream("s1"):
                 chunks.append(chunk)
 
@@ -403,7 +401,7 @@ class TestSubscribeStream:
             "app.core.stream_manager.redis_cache",
             new=MagicMock(redis=None),
         ):
-            chunks: List[str] = []
+            chunks: list[str] = []
             async for chunk in StreamManager.subscribe_stream("s1"):
                 chunks.append(chunk)
 
@@ -431,7 +429,7 @@ class TestSubscribeStream:
             "app.core.stream_manager.redis_cache",
             new=MagicMock(redis=mock_redis_client),
         ):
-            chunks: List[str] = []
+            chunks: list[str] = []
             async for chunk in StreamManager.subscribe_stream("s1"):
                 chunks.append(chunk)
 
@@ -452,7 +450,7 @@ class TestSubscribeStream:
             "app.core.stream_manager.redis_cache",
             new=MagicMock(redis=mock_redis_client),
         ):
-            chunks: List[str] = []
+            chunks: list[str] = []
             async for chunk in StreamManager.subscribe_stream("s1"):
                 chunks.append(chunk)
 

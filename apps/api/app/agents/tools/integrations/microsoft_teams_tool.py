@@ -1,26 +1,26 @@
 """Microsoft Teams tools using Composio custom tool infrastructure."""
 
-from typing import Any, Dict, List
+from typing import Any
 
 from composio import Composio
 
-from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
+from shared.py.wide_events import log
 
 TEAMS_TOOLKIT = "MICROSOFT_TEAMS"
 GRAPH_API_BASE = "https://graph.microsoft.com/v1.0"
 
 
-def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
+def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
     """Register Microsoft Teams tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="MICROSOFT_TEAMS")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get Microsoft Teams context snapshot: user info, joined teams, and recent chats.
 
         Zero required parameters. Returns current Teams state for situational awareness.
@@ -30,15 +30,18 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
         if not user_id:
             raise ValueError("Missing user_id in auth_credentials")
 
-        user_info: Dict[str, Any] = {}
+        user_info: dict[str, Any] = {}
         try:
-            me = proxy_request_sync(
-                user_id=user_id,
-                toolkit=TEAMS_TOOLKIT,
-                endpoint=f"{GRAPH_API_BASE}/me",
-                method="GET",
-                query={"$select": "id,displayName,mail,userPrincipalName"},
-            ) or {}
+            me = (
+                proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=TEAMS_TOOLKIT,
+                    endpoint=f"{GRAPH_API_BASE}/me",
+                    method="GET",
+                    query={"$select": "id,displayName,mail,userPrincipalName"},
+                )
+                or {}
+            )
             user_info = {
                 "id": me.get("id"),
                 "display_name": me.get("displayName"),
@@ -47,15 +50,18 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
         except Exception as e:
             log.debug(f"Teams /me fetch failed: {e}")
 
-        teams: List[Dict[str, Any]] = []
+        teams: list[dict[str, Any]] = []
         try:
-            data = proxy_request_sync(
-                user_id=user_id,
-                toolkit=TEAMS_TOOLKIT,
-                endpoint=f"{GRAPH_API_BASE}/me/joinedTeams",
-                method="GET",
-                query={"$select": "id,displayName,description"},
-            ) or {}
+            data = (
+                proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=TEAMS_TOOLKIT,
+                    endpoint=f"{GRAPH_API_BASE}/me/joinedTeams",
+                    method="GET",
+                    query={"$select": "id,displayName,description"},
+                )
+                or {}
+            )
             teams = [
                 {
                     "id": t.get("id"),
@@ -67,22 +73,24 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
         except Exception as e:
             log.debug(f"Teams joinedTeams fetch failed: {e}")
 
-        chats: List[Dict[str, Any]] = []
+        chats: list[dict[str, Any]] = []
         unread_count = 0
         try:
-            data = proxy_request_sync(
-                user_id=user_id,
-                toolkit=TEAMS_TOOLKIT,
-                endpoint=f"{GRAPH_API_BASE}/me/chats",
-                method="GET",
-                query={"$expand": "lastMessagePreview", "$top": 10},
-            ) or {}
+            data = (
+                proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=TEAMS_TOOLKIT,
+                    endpoint=f"{GRAPH_API_BASE}/me/chats",
+                    method="GET",
+                    query={"$expand": "lastMessagePreview", "$top": 10},
+                )
+                or {}
+            )
             raw_chats = data.get("value", [])
             unread_count = sum(
                 1
                 for c in raw_chats
-                if c.get("lastMessagePreview")
-                and not c["lastMessagePreview"].get("isRead", True)
+                if c.get("lastMessagePreview") and not c["lastMessagePreview"].get("isRead", True)
             )
             chats = [
                 {

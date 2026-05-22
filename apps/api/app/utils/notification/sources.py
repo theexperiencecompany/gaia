@@ -1,5 +1,4 @@
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 
 from app.models.notification.notification_models import (
     ChannelConfig,
@@ -26,7 +25,7 @@ class AIProactiveNotificationSource:
         reminder_id: str,
         title: str,
         body: str,
-        actions: List[NotificationAction],
+        actions: list[NotificationAction],
     ) -> NotificationRequest:
         """Create notification for AI-generated reminders"""
         return NotificationRequest(
@@ -42,6 +41,6 @@ class AIProactiveNotificationSource:
             ),
             metadata={
                 "reminder_id": reminder_id,
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": datetime.now(UTC).isoformat(),
             },
         )

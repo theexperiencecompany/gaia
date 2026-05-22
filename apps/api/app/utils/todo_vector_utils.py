@@ -1,13 +1,12 @@
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 
 from bson import ObjectId
 
-from shared.py.wide_events import log
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import todos_collection
 from app.db.utils import serialize_document
 from app.models.todo_models import TodoResponse
+from shared.py.wide_events import log
 
 
 def create_todo_content_for_embedding(todo_data: dict) -> str:
@@ -50,9 +49,7 @@ def create_todo_content_for_embedding(todo_data: dict) -> str:
     # Add subtasks information
     if todo_data.get("subtasks"):
         subtask_titles = [
-            subtask.get("title", "")
-            for subtask in todo_data["subtasks"]
-            if subtask.get("title")
+            subtask.get("title", "") for subtask in todo_data["subtasks"] if subtask.get("title")
         ]
         if subtask_titles:
             parts.append(f"Subtasks: {', '.join(subtask_titles)}")
@@ -92,12 +89,12 @@ async def store_todo_embedding(todo_id: str, todo_data: dict, user_id: str) -> b
                 todo_data.get("completed", False)
             ).lower(),  # Convert to "true" or "false"
             "created_at": (
-                todo_data.get("created_at", datetime.now(timezone.utc)).isoformat()
+                todo_data.get("created_at", datetime.now(UTC)).isoformat()
                 if isinstance(todo_data.get("created_at"), datetime)
                 else str(todo_data.get("created_at", ""))
             ),
             "updated_at": (
-                todo_data.get("updated_at", datetime.now(timezone.utc)).isoformat()
+                todo_data.get("updated_at", datetime.now(UTC)).isoformat()
                 if isinstance(todo_data.get("updated_at"), datetime)
                 else str(todo_data.get("updated_at", ""))
             ),
@@ -123,15 +120,13 @@ async def store_todo_embedding(todo_id: str, todo_data: dict, user_id: str) -> b
             )
 
         # Store in ChromaDB (LangChain Chroma handles embedding generation automatically)
-        chroma_collection.add_texts(
-            texts=[content], metadatas=[metadata], ids=[str(todo_id)]
-        )
+        chroma_collection.add_texts(texts=[content], metadatas=[metadata], ids=[str(todo_id)])
 
         log.info(f"Stored embedding for todo {todo_id}")
         return True
 
     except Exception as e:
-        log.error(f"Error storing embedding for todo {todo_id}: {str(e)}")
+        log.error(f"Error storing embedding for todo {todo_id}: {e!s}")
         return False
 
 
@@ -155,7 +150,7 @@ async def update_todo_embedding(todo_id: str, todo_data: dict, user_id: str) -> 
         return await store_todo_embedding(todo_id, todo_data, user_id)
 
     except Exception as e:
-        log.error(f"Error updating embedding for todo {todo_id}: {str(e)}")
+        log.error(f"Error updating embedding for todo {todo_id}: {e!s}")
         return False
 
 
@@ -182,7 +177,7 @@ async def delete_todo_embedding(todo_id: str) -> bool:
         return True
 
     except Exception as e:
-        log.error(f"Error deleting embedding for todo {todo_id}: {str(e)}")
+        log.error(f"Error deleting embedding for todo {todo_id}: {e!s}")
         return False
 
 
@@ -190,11 +185,11 @@ async def semantic_search_todos(
     query: str,
     user_id: str,
     top_k: int = 10,
-    completed: Optional[bool] = None,
-    priority: Optional[str] = None,
-    project_id: Optional[str] = None,
+    completed: bool | None = None,
+    priority: str | None = None,
+    project_id: str | None = None,
     include_traditional_search: bool = True,
-) -> List[TodoResponse]:
+) -> list[TodoResponse]:
     """
     Perform semantic search on todos using ChromaDB.
 
@@ -229,9 +224,7 @@ async def semantic_search_todos(
         where_filter = {"user_id": str(user_id)}
 
         if completed is not None:
-            where_filter["completed"] = str(
-                completed
-            ).lower()  # Convert to "true" or "false"
+            where_filter["completed"] = str(completed).lower()  # Convert to "true" or "false"
 
         if priority and priority != "none":
             where_filter["priority"] = priority
@@ -258,9 +251,7 @@ async def semantic_search_todos(
         # Fetch full todo documents from MongoDB in the order of similarity
         todos = []
         for todo_id in todo_ids:
-            todo_doc = await todos_collection.find_one(
-                {"_id": todo_id, "user_id": user_id}
-            )
+            todo_doc = await todos_collection.find_one({"_id": todo_id, "user_id": user_id})
             if todo_doc:
                 todos.append(TodoResponse(**serialize_document(todo_doc)))
 
@@ -268,7 +259,7 @@ async def semantic_search_todos(
         return todos
 
     except Exception as e:
-        log.error(f"Error in semantic search for todos: {str(e)}")
+        log.error(f"Error in semantic search for todos: {e!s}")
 
         # Fallback to traditional search on error
         if include_traditional_search:
@@ -298,9 +289,7 @@ async def bulk_index_todos(user_id: str, batch_size: int = 100) -> int:
 
         while True:
             # Fetch batch of todos
-            cursor = (
-                todos_collection.find({"user_id": user_id}).skip(skip).limit(batch_size)
-            )
+            cursor = todos_collection.find({"user_id": user_id}).skip(skip).limit(batch_size)
             todos = await cursor.to_list(length=batch_size)
 
             if not todos:
@@ -322,13 +311,13 @@ async def bulk_index_todos(user_id: str, batch_size: int = 100) -> int:
         return indexed_count
 
     except Exception as e:
-        log.error(f"Error in bulk indexing todos for user {user_id}: {str(e)}")
+        log.error(f"Error in bulk indexing todos for user {user_id}: {e!s}")
         return 0
 
 
 async def hybrid_search_todos(
     query: str, user_id: str, top_k: int = 10, semantic_weight: float = 0.7, **filters
-) -> List[TodoResponse]:
+) -> list[TodoResponse]:
     """
     Perform hybrid search combining semantic and traditional search.
 
@@ -400,6 +389,6 @@ async def hybrid_search_todos(
         return result
 
     except Exception as e:
-        log.error(f"Error in hybrid search: {str(e)}")
+        log.error(f"Error in hybrid search: {e!s}")
         # Fallback to semantic search only
         return await semantic_search_todos(query, user_id, top_k, **filters)

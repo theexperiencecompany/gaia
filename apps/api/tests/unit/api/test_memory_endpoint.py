@@ -7,8 +7,8 @@ and error handling are verified.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 from app.models.memory_models import MemoryEntry, MemorySearchResult
 
@@ -29,9 +29,7 @@ def _search_result(memories: list | None = None) -> MemorySearchResult:
     )
 
 
-def _memory_entry(
-    memory_id: str = "mem_1", content: str = "User likes coffee"
-) -> MemoryEntry:
+def _memory_entry(memory_id: str = "mem_1", content: str = "User likes coffee") -> MemoryEntry:
     return MemoryEntry(id=memory_id, content=content)
 
 
@@ -70,9 +68,7 @@ class TestGetAllMemories:
         assert data["total_count"] == 0
         assert data["memories"] == []
 
-    async def test_get_all_memories_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_get_all_memories_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.get(API)
         assert resp.status_code == 401
 
@@ -101,9 +97,7 @@ class TestCreateMemory:
         assert data["memory_id"] == "mem_new"
         assert "created" in data["message"].lower()
 
-    async def test_create_memory_service_returns_none(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_create_memory_service_returns_none(self, client: AsyncClient) -> None:
         with patch(
             "app.api.v1.endpoints.memory.memory_service.store_memory",
             new_callable=AsyncMock,
@@ -135,9 +129,7 @@ class TestCreateMemory:
         resp = await client.post(API, json={})
         assert resp.status_code == 422
 
-    async def test_create_memory_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_create_memory_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(API, json={"content": "test"})
         assert resp.status_code == 401
 
@@ -163,9 +155,7 @@ class TestDeleteMemory:
         assert data["success"] is True
         assert "deleted" in data["message"].lower()
 
-    async def test_delete_memory_not_found_returns_success_false(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_delete_memory_not_found_returns_success_false(self, client: AsyncClient) -> None:
         """The endpoint returns success=False (200) when the service cannot delete."""
         with patch(
             "app.api.v1.endpoints.memory.memory_service.delete_memory",
@@ -177,9 +167,7 @@ class TestDeleteMemory:
         data = resp.json()
         assert data["success"] is False
 
-    async def test_delete_memory_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_delete_memory_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.delete(f"{API}/mem_1")
         assert resp.status_code == 401
 

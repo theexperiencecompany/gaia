@@ -12,16 +12,16 @@ Strategy:
 
 import asyncio
 import time
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urljoin, urlparse
 
-import httpx
-import favicon
-import tldextract
 from bs4 import BeautifulSoup
+import favicon
+import httpx
+import tldextract
 
-from shared.py.wide_events import log
 from app.constants.cache import FAVICON_CACHE_TTL
 from app.db.redis import get_cache, set_cache
+from shared.py.wide_events import log
 
 # HTTP client settings
 HTTP_TIMEOUT = 3.0

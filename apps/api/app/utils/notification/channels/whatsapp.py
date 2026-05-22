@@ -7,9 +7,10 @@ The platform_user_id stored in platform_links.whatsapp is the wa_id
 (phone number without leading '+'), e.g. "15551234567".
 """
 
-from typing import Any, Dict
+from typing import Any
 
 import aiohttp
+
 from app.config.settings import settings
 from app.constants.notifications import (
     CHANNEL_TYPE_WHATSAPP,
@@ -42,7 +43,7 @@ class WhatsAppChannelAdapter(ExternalPlatformAdapter):
         # WhatsApp uses *bold* (single asterisk)
         return "*"
 
-    async def transform(self, notification: NotificationRequest) -> Dict[str, Any]:
+    async def transform(self, notification: NotificationRequest) -> dict[str, Any]:
         """Build the notification payload and convert any CommonMark Markdown in
         the body/messages to WhatsApp's native formatting so ``**bold**`` and
         ``### headings`` don't render as literal characters in the chat bubble.
@@ -73,7 +74,7 @@ class WhatsAppChannelAdapter(ExternalPlatformAdapter):
         # We return the API key so _get_platform_context's token-check passes.
         return settings.KAPSO_API_KEY
 
-    def _session_kwargs(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
+    def _session_kwargs(self, ctx: dict[str, Any]) -> dict[str, Any]:
         return {
             "headers": {
                 "X-API-Key": ctx["token"],  # KAPSO_API_KEY
@@ -84,7 +85,7 @@ class WhatsAppChannelAdapter(ExternalPlatformAdapter):
     async def _setup_sender(
         self,
         session: aiohttp.ClientSession,
-        ctx: Dict[str, Any],
+        ctx: dict[str, Any],
     ) -> tuple[SendFn | None, ChannelDeliveryStatus | None]:
         """Return send function that POSTs to Kapso's Meta WhatsApp proxy."""
         phone_number_id = settings.KAPSO_PHONE_NUMBER_ID

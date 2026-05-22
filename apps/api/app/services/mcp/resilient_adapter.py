@@ -9,9 +9,9 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
-from shared.py.wide_events import log
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.utils.schema_fixes import patch_tool_schema
+from shared.py.wide_events import log
 
 
 class ResilientLangChainAdapter(SanitizingLangChainAdapter):
@@ -66,9 +66,7 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
                 normalized_tool = patch_tool_schema(tool)
                 normalized_tools.append(normalized_tool)
             except Exception as e:
-                log.warning(
-                    f"[{integration_id}] Could not normalize schema for {tool.name}: {e}"
-                )
+                log.warning(f"[{integration_id}] Could not normalize schema for {tool.name}: {e}")
                 # Still try to use the original tool
                 normalized_tools.append(tool)
 
@@ -93,9 +91,7 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
                     if not isinstance(ui_meta, dict):
                         ui_meta = {}
 
-                    resource_uri = ui_meta.get("resourceUri") or raw_meta.get(
-                        "ui/resourceUri"
-                    )
+                    resource_uri = ui_meta.get("resourceUri") or raw_meta.get("ui/resourceUri")
                     if isinstance(resource_uri, str) and resource_uri:
                         if langchain_tool.metadata is None:
                             langchain_tool.metadata = {}
@@ -132,9 +128,7 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
 
         if not successfully_converted:
             # All tools failed - this is a problem
-            error_summary = "\n".join(
-                f"  - {name}: {error}" for name, error in failed_tools[:5]
-            )
+            error_summary = "\n".join(f"  - {name}: {error}" for name, error in failed_tools[:5])
             raise ValueError(
                 f"Failed to convert any tools from {integration_id}. "
                 f"All {len(mcp_tools)} tools have invalid schemas:\n{error_summary}"

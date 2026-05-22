@@ -13,13 +13,14 @@ Choose streaming for user interactions, silent for background processing.
 """
 
 import asyncio
-import json
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import AsyncGenerator, Optional
+import json
+
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.messages import construct_langchain_messages
-from shared.py.wide_events import log
 from app.helpers.agent_helpers import (
     build_agent_config,
     build_initial_state,
@@ -29,7 +30,7 @@ from app.helpers.agent_helpers import (
 from app.models.message_models import MessageRequestWithHistory
 from app.models.models_models import ModelConfig
 from app.utils.memory_utils import store_user_message_memory
-from langchain_core.callbacks import UsageMetadataCallbackHandler
+from shared.py.wide_events import log
 
 # Set to hold references to background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task] = set()
@@ -40,10 +41,10 @@ async def _core_agent_logic(
     conversation_id: str,
     user: dict,
     user_time: datetime,
-    user_model_config: Optional[ModelConfig] = None,
-    trigger_context: Optional[dict] = None,
-    usage_metadata_callback: Optional[UsageMetadataCallbackHandler] = None,
-    source: Optional[str] = None,
+    user_model_config: ModelConfig | None = None,
+    trigger_context: dict | None = None,
+    usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
+    source: str | None = None,
 ):
     """Core agent initialization logic shared between streaming and silent execution modes.
 
@@ -132,10 +133,10 @@ async def call_agent(
     conversation_id: str,
     user: dict,
     user_time: datetime,
-    user_model_config: Optional[ModelConfig] = None,
-    usage_metadata_callback: Optional[UsageMetadataCallbackHandler] = None,
-    stream_id: Optional[str] = None,
-    source: Optional[str] = None,
+    user_model_config: ModelConfig | None = None,
+    usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
+    stream_id: str | None = None,
+    source: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Execute agent in streaming mode for interactive chat.
@@ -165,7 +166,7 @@ async def call_agent(
 
     except Exception as exc:
         log.error(f"Error when calling agent: {exc}")
-        error_message = f"Error when calling agent: {str(exc)}"
+        error_message = f"Error when calling agent: {exc!s}"
 
         async def error_generator():
             error_dict = {"error": error_message}
@@ -180,10 +181,10 @@ async def call_agent_silent(
     conversation_id: str,
     user: dict,
     user_time: datetime,
-    usage_metadata_callback: Optional[UsageMetadataCallbackHandler] = None,
-    user_model_config: Optional[ModelConfig] = None,
-    trigger_context: Optional[dict] = None,
-    source: Optional[str] = None,
+    usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
+    user_model_config: ModelConfig | None = None,
+    trigger_context: dict | None = None,
+    source: str | None = None,
 ) -> tuple[str, dict]:
     """
     Execute agent in silent mode for background processing.
@@ -204,9 +205,7 @@ async def call_agent_silent(
 
         result = await execute_graph_silent(graph, initial_state, config)
 
-        if usage_metadata_callback and hasattr(
-            usage_metadata_callback, "usage_metadata"
-        ):
+        if usage_metadata_callback and hasattr(usage_metadata_callback, "usage_metadata"):
             usage = usage_metadata_callback.usage_metadata or {}
             total_input = sum(
                 v.get("input_tokens", 0) for v in usage.values() if isinstance(v, dict)
@@ -225,4 +224,4 @@ async def call_agent_silent(
 
     except Exception as exc:
         log.error(f"Error when calling silent agent: {exc}")
-        return f"Error when calling silent agent: {str(exc)}", {}
+        return f"Error when calling silent agent: {exc!s}", {}

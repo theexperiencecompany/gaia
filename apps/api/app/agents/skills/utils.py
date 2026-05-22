@@ -10,7 +10,6 @@ This module provides utility functions for:
 
 import os
 from urllib.parse import urlparse
-from typing import List, Optional, Tuple
 
 from shared.py.wide_events import log
 
@@ -21,7 +20,7 @@ MAX_SKILLS_PER_REPO = 100
 SKILL_FILENAMES = ["SKILL.md", "skill.md"]
 
 
-def get_github_token() -> Optional[str]:
+def get_github_token() -> str | None:
     """Get GitHub token from environment for API rate limit relief."""
     return os.environ.get("GITHUB_TOKEN")
 
@@ -35,7 +34,7 @@ def get_github_headers() -> dict[str, str]:
     return headers
 
 
-def parse_github_url(url: str) -> Tuple[str, str]:
+def parse_github_url(url: str) -> tuple[str, str]:
     """Parse GitHub URL into owner and repo.
 
     Args:
@@ -65,14 +64,13 @@ def parse_github_url(url: str) -> Tuple[str, str]:
 
     if len(parts) >= 2:
         owner, repo = parts[0], parts[1]
-        if repo.endswith(".git"):
-            repo = repo[:-4]
+        repo = repo.removesuffix(".git")
         return owner, repo
 
     raise ValueError(f"Invalid GitHub URL: {url}")
 
 
-def find_skill_files(tree_entries: List[dict]) -> List[str]:
+def find_skill_files(tree_entries: list[dict]) -> list[str]:
     """Find all SKILL.md and skill.md files in the tree.
 
     Args:

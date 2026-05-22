@@ -15,7 +15,7 @@ then invoke them directly with mock auth_credentials and request objects.
 """
 
 from datetime import datetime, timedelta
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -43,7 +43,7 @@ from app.models.linear_models import (
 
 FAKE_ACCESS_TOKEN = "fake-access-token"
 FAKE_USER_ID = "user-123"
-AUTH_CREDS: Dict[str, Any] = {
+AUTH_CREDS: dict[str, Any] = {
     "access_token": FAKE_ACCESS_TOKEN,
     "user_id": FAKE_USER_ID,
     "version": "v1",
@@ -71,7 +71,7 @@ def _make_composio_mock() -> MagicMock:
 
 
 def _ok_response(
-    json_data: Any, status_code: int = 200, headers: Dict[str, str] | None = None
+    json_data: Any, status_code: int = 200, headers: dict[str, str] | None = None
 ) -> MagicMock:
     """Build a fake httpx.Response-like object with .json(), .status_code, .raise_for_status(), .headers."""
     resp = MagicMock()
@@ -83,9 +83,7 @@ def _ok_response(
     return resp
 
 
-def _error_response(
-    status_code: int = 400, text: str = "Bad Request"
-) -> httpx.Response:
+def _error_response(status_code: int = 400, text: str = "Bad Request") -> httpx.Response:
     """Build a real httpx.Response that will raise on .raise_for_status()."""
     resp = httpx.Response(
         status_code=status_code, text=text, request=httpx.Request("GET", "https://test")
@@ -100,7 +98,7 @@ def _error_response(
 LINEAR_MODULE = "app.agents.tools.integrations.linear_tool"
 
 
-def _register_linear_tools() -> Dict[str, Any]:
+def _register_linear_tools() -> dict[str, Any]:
     """Register linear tools and return a dict of {func_name: func}."""
     composio = _make_composio_mock()
     # Import inside to avoid side effects at module level
@@ -119,13 +117,9 @@ class TestLinearResolveContext:
 
     @patch(f"{LINEAR_MODULE}.graphql_request")
     @patch(f"{LINEAR_MODULE}.fuzzy_match")
-    def test_resolve_context_basic(
-        self, mock_fuzzy: MagicMock, mock_gql: MagicMock
-    ) -> None:
+    def test_resolve_context_basic(self, mock_fuzzy: MagicMock, mock_gql: MagicMock) -> None:
         """Resolve context with no optional fields returns current user only."""
-        mock_gql.return_value = {
-            "viewer": {"id": "u1", "name": "Alice", "email": "a@b.com"}
-        }
+        mock_gql.return_value = {"viewer": {"id": "u1", "name": "Alice", "email": "a@b.com"}}
 
         composio = _make_composio_mock()
         from app.agents.tools.integrations.linear_tool import (
@@ -136,7 +130,7 @@ class TestLinearResolveContext:
         # After registration, the inner function is defined; call it via locals trick:
         # Actually, since our decorator passthrough doesn't store the functions anywhere,
         # we need a different approach. Let's capture them.
-        captured: Dict[str, Any] = {}
+        captured: dict[str, Any] = {}
 
         def capturing_custom_tool(**kwargs):
             def wrapper(fn):
@@ -170,7 +164,7 @@ class TestLinearResolveContext:
         ]
 
         composio = _make_composio_mock()
-        captured: Dict[str, Any] = {}
+        captured: dict[str, Any] = {}
 
         def capturing_custom_tool(**kwargs):
             def wrapper(fn):
@@ -204,7 +198,7 @@ class TestLinearResolveContext:
         ]
 
         composio = _make_composio_mock()
-        captured: Dict[str, Any] = {}
+        captured: dict[str, Any] = {}
 
         def capturing_custom_tool(**kwargs):
             def wrapper(fn):
@@ -237,7 +231,7 @@ class TestLinearResolveContext:
         ]
 
         composio = _make_composio_mock()
-        captured: Dict[str, Any] = {}
+        captured: dict[str, Any] = {}
 
         def capturing_custom_tool(**kwargs):
             def wrapper(fn):
@@ -270,7 +264,7 @@ class TestLinearResolveContext:
         ]
 
         composio = _make_composio_mock()
-        captured: Dict[str, Any] = {}
+        captured: dict[str, Any] = {}
 
         def capturing_custom_tool(**kwargs):
             def wrapper(fn):
@@ -303,7 +297,7 @@ class TestLinearResolveContext:
         ]
 
         composio = _make_composio_mock()
-        captured: Dict[str, Any] = {}
+        captured: dict[str, Any] = {}
 
         def capturing_custom_tool(**kwargs):
             def wrapper(fn):
@@ -339,7 +333,7 @@ class TestLinearResolveContext:
         ]
 
         composio = _make_composio_mock()
-        captured: Dict[str, Any] = {}
+        captured: dict[str, Any] = {}
 
         def capturing_custom_tool(**kwargs):
             def wrapper(fn):
@@ -365,10 +359,10 @@ class TestLinearResolveContext:
 # ── Helper to capture registered tool funcs ──────────────────────────────────
 
 
-def _capture_tools(register_func) -> Dict[str, Any]:
+def _capture_tools(register_func) -> dict[str, Any]:
     """Call a register_*_custom_tools function and capture all inner tool functions."""
     composio = MagicMock()
-    captured: Dict[str, Any] = {}
+    captured: dict[str, Any] = {}
 
     def capturing_custom_tool(**kwargs):
         def wrapper(fn):
@@ -393,9 +387,7 @@ class TestLinearGetMyTasks:
         f"{LINEAR_MODULE}.format_issue_summary",
         side_effect=lambda i: {"id": i.get("id"), "title": i.get("title")},
     )
-    def test_get_my_tasks_all_filter(
-        self, mock_fmt: MagicMock, mock_gql: MagicMock
-    ) -> None:
+    def test_get_my_tasks_all_filter(self, mock_fmt: MagicMock, mock_gql: MagicMock) -> None:
         mock_gql.side_effect = [
             {"viewer": {"id": "u1"}},
             {
@@ -484,9 +476,7 @@ class TestLinearGetMyTasks:
         tools = _capture_tools(register_linear_custom_tools)
         fn = tools["CUSTOM_GET_MY_TASKS"]
 
-        result = fn(
-            GetMyTasksInput(filter="high_priority"), EXECUTE_REQUEST, AUTH_CREDS
-        )
+        result = fn(GetMyTasksInput(filter="high_priority"), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["count"] == 1
 
     @patch(f"{LINEAR_MODULE}.graphql_request")
@@ -494,9 +484,7 @@ class TestLinearGetMyTasks:
         f"{LINEAR_MODULE}.format_issue_summary",
         side_effect=lambda i: {"id": i.get("id")},
     )
-    def test_get_my_tasks_overdue_filter(
-        self, mock_fmt: MagicMock, mock_gql: MagicMock
-    ) -> None:
+    def test_get_my_tasks_overdue_filter(self, mock_fmt: MagicMock, mock_gql: MagicMock) -> None:
         yesterday = (datetime.now().date() - timedelta(days=1)).isoformat()
         mock_gql.side_effect = [
             {"viewer": {"id": "u1"}},
@@ -579,9 +567,7 @@ class TestLinearGetMyTasks:
         f"{LINEAR_MODULE}.format_issue_summary",
         side_effect=lambda i: {"id": i.get("id")},
     )
-    def test_get_my_tasks_today_filter(
-        self, mock_fmt: MagicMock, mock_gql: MagicMock
-    ) -> None:
+    def test_get_my_tasks_today_filter(self, mock_fmt: MagicMock, mock_gql: MagicMock) -> None:
         today = datetime.now().date().isoformat()
         mock_gql.side_effect = [
             {"viewer": {"id": "u1"}},
@@ -620,9 +606,7 @@ class TestLinearGetMyTasks:
         f"{LINEAR_MODULE}.format_issue_summary",
         side_effect=lambda i: {"id": i.get("id")},
     )
-    def test_get_my_tasks_this_week_filter(
-        self, mock_fmt: MagicMock, mock_gql: MagicMock
-    ) -> None:
+    def test_get_my_tasks_this_week_filter(self, mock_fmt: MagicMock, mock_gql: MagicMock) -> None:
         tomorrow = (datetime.now().date() + timedelta(days=1)).isoformat()
         mock_gql.side_effect = [
             {"viewer": {"id": "u1"}},
@@ -657,9 +641,7 @@ class TestLinearSearchIssues:
         f"{LINEAR_MODULE}.format_issue_summary",
         side_effect=lambda i: {"id": i.get("id")},
     )
-    def test_search_issues_basic(
-        self, mock_fmt: MagicMock, mock_gql: MagicMock
-    ) -> None:
+    def test_search_issues_basic(self, mock_fmt: MagicMock, mock_gql: MagicMock) -> None:
         mock_gql.return_value = {
             "searchIssues": {
                 "nodes": [
@@ -692,9 +674,7 @@ class TestLinearSearchIssues:
         f"{LINEAR_MODULE}.format_issue_summary",
         side_effect=lambda i: {"id": i.get("id")},
     )
-    def test_search_issues_with_team_filter(
-        self, mock_fmt: MagicMock, mock_gql: MagicMock
-    ) -> None:
+    def test_search_issues_with_team_filter(self, mock_fmt: MagicMock, mock_gql: MagicMock) -> None:
         mock_gql.return_value = {
             "searchIssues": {
                 "nodes": [
@@ -723,9 +703,7 @@ class TestLinearSearchIssues:
         tools = _capture_tools(register_linear_custom_tools)
         fn = tools["CUSTOM_SEARCH_ISSUES"]
 
-        result = fn(
-            SearchIssuesInput(query="test", team_id="t1"), EXECUTE_REQUEST, AUTH_CREDS
-        )
+        result = fn(SearchIssuesInput(query="test", team_id="t1"), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["count"] == 1
 
     @patch(f"{LINEAR_MODULE}.graphql_request")
@@ -887,9 +865,7 @@ class TestLinearGetIssueFullContext:
         tools = _capture_tools(register_linear_custom_tools)
         fn = tools["CUSTOM_GET_ISSUE_FULL_CONTEXT"]
 
-        result = fn(
-            GetIssueFullContextInput(issue_id="i1"), EXECUTE_REQUEST, AUTH_CREDS
-        )
+        result = fn(GetIssueFullContextInput(issue_id="i1"), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["issue"]["id"] == "i1"
         assert result["issue"]["priority"] == "urgent"
 
@@ -1053,9 +1029,7 @@ class TestLinearGetIssueFullContext:
                     ]
                 },
                 "attachments": {
-                    "nodes": [
-                        {"title": "file.pdf", "url": "https://example.com/file.pdf"}
-                    ]
+                    "nodes": [{"title": "file.pdf", "url": "https://example.com/file.pdf"}]
                 },
             },
         }
@@ -1067,9 +1041,7 @@ class TestLinearGetIssueFullContext:
         tools = _capture_tools(register_linear_custom_tools)
         fn = tools["CUSTOM_GET_ISSUE_FULL_CONTEXT"]
 
-        result = fn(
-            GetIssueFullContextInput(issue_id="i1"), EXECUTE_REQUEST, AUTH_CREDS
-        )
+        result = fn(GetIssueFullContextInput(issue_id="i1"), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["issue"]["parent"]["identifier"] == "ENG-0"
         assert len(result["issue"]["sub_issues"]) == 1
         assert len(result["issue"]["relations"]) == 1
@@ -1100,9 +1072,7 @@ class TestLinearCreateIssue:
         tools = _capture_tools(register_linear_custom_tools)
         fn = tools["CUSTOM_CREATE_ISSUE"]
 
-        result = fn(
-            CreateIssueInput(team_id="t1", title="New Bug"), EXECUTE_REQUEST, AUTH_CREDS
-        )
+        result = fn(CreateIssueInput(team_id="t1", title="New Bug"), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["issue"]["id"] == "i1"
 
     @patch(f"{LINEAR_MODULE}.graphql_request")
@@ -1229,9 +1199,7 @@ class TestLinearCreateIssueRelation:
         fn = tools["CUSTOM_CREATE_ISSUE_RELATION"]
 
         result = fn(
-            CreateIssueRelationInput(
-                issue_id="i1", related_issue_id="i2", relation_type="blocks"
-            ),
+            CreateIssueRelationInput(issue_id="i1", related_issue_id="i2", relation_type="blocks"),
             EXECUTE_REQUEST,
             AUTH_CREDS,
         )
@@ -1579,9 +1547,7 @@ class TestLinearGetNotifications:
         tools = _capture_tools(register_linear_custom_tools)
         fn = tools["CUSTOM_GET_NOTIFICATIONS"]
 
-        result = fn(
-            GetNotificationsInput(include_read=False), EXECUTE_REQUEST, AUTH_CREDS
-        )
+        result = fn(GetNotificationsInput(include_read=False), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["count"] == 1
 
     @patch(f"{LINEAR_MODULE}.graphql_request")
@@ -1616,9 +1582,7 @@ class TestLinearGetNotifications:
         tools = _capture_tools(register_linear_custom_tools)
         fn = tools["CUSTOM_GET_NOTIFICATIONS"]
 
-        result = fn(
-            GetNotificationsInput(include_read=True), EXECUTE_REQUEST, AUTH_CREDS
-        )
+        result = fn(GetNotificationsInput(include_read=True), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["count"] == 2
 
 
@@ -1628,9 +1592,7 @@ class TestLinearGetWorkspaceContext:
         f"{LINEAR_MODULE}.format_issue_summary",
         side_effect=lambda i: {"id": i.get("id")},
     )
-    def test_get_workspace_context(
-        self, mock_fmt: MagicMock, mock_gql: MagicMock
-    ) -> None:
+    def test_get_workspace_context(self, mock_fmt: MagicMock, mock_gql: MagicMock) -> None:
         yesterday = (datetime.now().date() - timedelta(days=1)).isoformat()
         mock_gql.side_effect = [
             {

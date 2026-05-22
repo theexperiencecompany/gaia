@@ -61,9 +61,7 @@ class TestUploadImageFromUrl:
         assert urn == "urn:li:image:abc"
 
         init_kwargs = mock_proxy.call_args_list[0].kwargs
-        assert init_kwargs["endpoint"] == (
-            f"{LINKEDIN_REST_BASE}/images?action=initializeUpload"
-        )
+        assert init_kwargs["endpoint"] == (f"{LINKEDIN_REST_BASE}/images?action=initializeUpload")
 
         upload_kwargs = mock_proxy.call_args_list[1].kwargs
         assert upload_kwargs["endpoint"] == "https://upload.example/x"
@@ -72,9 +70,7 @@ class TestUploadImageFromUrl:
 
     def test_returns_none_on_init_failure(self, mock_proxy):
         mock_proxy.return_value = {"value": {}}
-        assert (
-            upload_image_from_url(USER_ID, "https://src", "urn:li:person:1") is None
-        )
+        assert upload_image_from_url(USER_ID, "https://src", "urn:li:person:1") is None
 
 
 class TestUploadDocumentFromUrl:

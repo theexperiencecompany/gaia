@@ -1,11 +1,10 @@
 """Custom MCP integration routes."""
 
+from fastapi import APIRouter, Depends, HTTPException
+
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
-from shared.py.wide_events import log
 from app.models.integration_models import (
     CreateCustomIntegrationRequest as RequestModel,
-)
-from app.models.integration_models import (
     UpdateCustomIntegrationRequest as UpdateCustomIntegrationRequestModel,
 )
 from app.schemas.integrations.requests import (
@@ -30,7 +29,7 @@ from app.services.integrations.publish_service import (
     unpublish_custom_integration,
 )
 from app.services.mcp.mcp_client import get_mcp_client
-from fastapi import APIRouter, Depends, HTTPException
+from shared.py.wide_events import log
 
 router = APIRouter()
 

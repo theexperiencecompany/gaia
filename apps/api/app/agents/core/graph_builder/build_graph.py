@@ -1,6 +1,9 @@
 import asyncio
 from contextlib import asynccontextmanager
-from typing import Optional, cast
+from typing import cast
+
+from langchain_core.language_models import LanguageModelLike
+from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agents.core.graph_builder.checkpointer_manager import (
     get_checkpointer_manager,
@@ -25,17 +28,15 @@ from app.agents.tools.core.tool_runtime_config import (
 )
 from app.agents.tools.executor_tool import call_executor
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
-from shared.py.wide_events import log
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
-from langchain_core.language_models import LanguageModelLike
-from langgraph.checkpoint.memory import InMemorySaver
+from shared.py.wide_events import log
 
 
 @asynccontextmanager
 async def build_executor_graph(
-    chat_llm: Optional[LanguageModelLike] = None,
+    chat_llm: LanguageModelLike | None = None,
     in_memory_checkpointer: bool = False,
 ):
     """Construct and compile the executor agent graph with handoff tools."""
@@ -103,15 +104,11 @@ async def build_executor_graph(
 
     checkpointer_manager = await get_checkpointer_manager()
 
-    model_name = getattr(chat_llm, "model_name", None) or getattr(
-        chat_llm, "model", None
-    )
+    model_name = getattr(chat_llm, "model_name", None) or getattr(chat_llm, "model", None)
 
     if in_memory_checkpointer or not checkpointer_manager:
         in_memory_checkpointer_instance = InMemorySaver()
-        graph = builder.compile(
-            checkpointer=in_memory_checkpointer_instance, store=store
-        )
+        graph = builder.compile(checkpointer=in_memory_checkpointer_instance, store=store)
         log.debug("Graph compiled with in-memory checkpointer")
         log.set(agent={"model": model_name})
         yield graph
@@ -140,7 +137,7 @@ async def build_executor_agent():
 
 @asynccontextmanager
 async def build_comms_graph(
-    chat_llm: Optional[LanguageModelLike] = None,
+    chat_llm: LanguageModelLike | None = None,
     in_memory_checkpointer: bool = False,
 ):
     """Build the comms agent graph with only the executor tool."""
@@ -177,15 +174,11 @@ async def build_comms_graph(
 
     checkpointer_manager = await get_checkpointer_manager()
 
-    model_name = getattr(chat_llm, "model_name", None) or getattr(
-        chat_llm, "model", None
-    )
+    model_name = getattr(chat_llm, "model_name", None) or getattr(chat_llm, "model", None)
 
     if in_memory_checkpointer or not checkpointer_manager:
         in_memory_checkpointer_instance = InMemorySaver()
-        graph = builder.compile(
-            checkpointer=in_memory_checkpointer_instance, store=store
-        )
+        graph = builder.compile(checkpointer=in_memory_checkpointer_instance, store=store)
         log.debug("Comms graph compiled with in-memory checkpointer")
         log.set(agent={"model": model_name})
         yield graph

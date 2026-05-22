@@ -1,12 +1,13 @@
 from contextlib import asynccontextmanager
 
-from shared.py.wide_events import log
+from fastapi import FastAPI
+
 from app.core.provider_registration import (
     unified_shutdown,
     unified_startup,
 )
 from app.utils.context_utils import _CONTEXT_EXECUTOR
-from fastapi import FastAPI
+from shared.py.wide_events import log
 
 
 @asynccontextmanager

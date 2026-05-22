@@ -1,10 +1,10 @@
 """Tests for shared.py.logging — configure_loguru, configure_file_logging, get_contextual_logger, JSON format."""
 
+from datetime import UTC, datetime
 import json
 import logging
-import sys
-from datetime import datetime, timezone
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -20,7 +20,6 @@ from shared.py.logging import (
     configure_loguru,
     get_contextual_logger,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -103,7 +102,15 @@ class TestConfigureLoguru:
 
     def test_intercept_handlers_attached(self, mock_logger: MagicMock):
         configure_loguru()
-        for name in ["uvicorn", "uvicorn.access", "uvicorn.error", "fastapi", "gunicorn", "livekit", "app"]:
+        for name in [
+            "uvicorn",
+            "uvicorn.access",
+            "uvicorn.error",
+            "fastapi",
+            "gunicorn",
+            "livekit",
+            "app",
+        ]:
             specific = logging.getLogger(name)
             assert len(specific.handlers) == 1
             assert specific.propagate is False
@@ -216,7 +223,7 @@ class TestBuildJsonEntry:
         exception: object = None,
     ) -> dict:
         return {
-            "time": datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+            "time": datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC),
             "level": SimpleNamespace(name=level_name),
             "message": message,
             "module": "test_module",

@@ -1,10 +1,10 @@
 """Unit tests for the MiddlewareExecutor."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import AIMessage, ToolMessage
+import pytest
 
 from app.agents.middleware.executor import MiddlewareExecutor, _has_override
 from tests.factories import make_config, make_state, make_tool_call
@@ -240,9 +240,7 @@ class TestWrapModelInvocation:
 
         with (
             patch("app.agents.middleware.executor.BigtoolRuntime") as mock_rt_cls,
-            patch(
-                "app.agents.middleware.executor.create_model_request"
-            ) as mock_create_req,
+            patch("app.agents.middleware.executor.create_model_request") as mock_create_req,
         ):
             mock_rt_cls.from_graph_context.return_value = MagicMock()
             # ModelRequest stub: needs .system_message and .messages
@@ -288,9 +286,7 @@ class TestWrapModelInvocation:
 
         with (
             patch("app.agents.middleware.executor.BigtoolRuntime") as mock_rt_cls,
-            patch(
-                "app.agents.middleware.executor.create_model_request"
-            ) as mock_create_req,
+            patch("app.agents.middleware.executor.create_model_request") as mock_create_req,
         ):
             mock_rt_cls.from_graph_context.return_value = MagicMock()
             mock_req = MagicMock()
@@ -331,9 +327,7 @@ class TestWrapModelInvocation:
 
         with (
             patch("app.agents.middleware.executor.BigtoolRuntime") as mock_rt_cls,
-            patch(
-                "app.agents.middleware.executor.create_model_request"
-            ) as mock_create_req,
+            patch("app.agents.middleware.executor.create_model_request") as mock_create_req,
         ):
             mock_rt_cls.from_graph_context.return_value = MagicMock()
             mock_req = MagicMock()
@@ -373,9 +367,7 @@ class TestWrapToolInvocation:
 
         with (
             patch("app.agents.middleware.executor.BigtoolToolRuntime") as mock_rt_cls,
-            patch(
-                "app.agents.middleware.executor.create_tool_call_request"
-            ) as mock_create_req,
+            patch("app.agents.middleware.executor.create_tool_call_request") as mock_create_req,
         ):
             mock_rt_cls.from_graph_context.return_value = MagicMock()
             mock_req = MagicMock()
@@ -419,9 +411,7 @@ class TestWrapToolInvocation:
 
         with (
             patch("app.agents.middleware.executor.BigtoolToolRuntime") as mock_rt_cls,
-            patch(
-                "app.agents.middleware.executor.create_tool_call_request"
-            ) as mock_create_req,
+            patch("app.agents.middleware.executor.create_tool_call_request") as mock_create_req,
         ):
             mock_rt_cls.from_graph_context.return_value = MagicMock()
             mock_req = MagicMock()
@@ -460,9 +450,7 @@ class TestWrapToolInvocation:
 
         with (
             patch("app.agents.middleware.executor.BigtoolToolRuntime") as mock_rt_cls,
-            patch(
-                "app.agents.middleware.executor.create_tool_call_request"
-            ) as mock_create_req,
+            patch("app.agents.middleware.executor.create_tool_call_request") as mock_create_req,
         ):
             mock_rt_cls.from_graph_context.return_value = MagicMock()
             mock_req = MagicMock()

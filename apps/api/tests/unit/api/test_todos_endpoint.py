@@ -5,11 +5,11 @@ and counts/labels endpoints. Service layer is mocked; only HTTP status codes,
 response shapes, and error handling are verified.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 from tests.conftest import FAKE_USER
 
@@ -19,7 +19,7 @@ from tests.conftest import FAKE_USER
 
 API = "/api/v1"
 USER_ID = FAKE_USER["user_id"]
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 
 
 def _todo_response(
@@ -134,9 +134,7 @@ class TestListTodos:
         assert resp.status_code == 500
         assert "Failed to retrieve todos" in resp.json()["detail"]
 
-    async def test_list_todos_validation_error_per_page(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_list_todos_validation_error_per_page(self, client: AsyncClient) -> None:
         resp = await client.get(f"{API}/todos", params={"per_page": 999})
         assert resp.status_code == 422
 
@@ -175,15 +173,11 @@ class TestCreateTodo:
             resp = await client.post(f"{API}/todos", json=payload)
         assert resp.status_code == 201
 
-    async def test_create_todo_validation_error_empty_title(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_create_todo_validation_error_empty_title(self, client: AsyncClient) -> None:
         resp = await client.post(f"{API}/todos", json={"title": ""})
         assert resp.status_code == 422
 
-    async def test_create_todo_validation_error_missing_title(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_create_todo_validation_error_missing_title(self, client: AsyncClient) -> None:
         resp = await client.post(f"{API}/todos", json={})
         assert resp.status_code == 422
 
@@ -197,12 +191,8 @@ class TestCreateTodo:
         assert resp.status_code == 500
         assert "Failed to create todo" in resp.json()["detail"]
 
-    async def test_create_todo_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
-        resp = await unauthed_client.post(
-            f"{API}/todos", json={"title": "Buy groceries"}
-        )
+    async def test_create_todo_requires_auth(self, unauthed_client: AsyncClient) -> None:
+        resp = await unauthed_client.post(f"{API}/todos", json={"title": "Buy groceries"})
         assert resp.status_code == 401
 
 
@@ -277,9 +267,7 @@ class TestUpdateTodo:
             resp = await client.put(f"{API}/todos/t1", json={"title": "X"})
         assert resp.status_code == 500
 
-    async def test_update_todo_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_update_todo_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.put(f"{API}/todos/t1", json={"title": "X"})
         assert resp.status_code == 401
 
@@ -314,9 +302,7 @@ class TestDeleteTodo:
             resp = await client.delete(f"{API}/todos/t1")
         assert resp.status_code == 500
 
-    async def test_delete_todo_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_delete_todo_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.delete(f"{API}/todos/t1")
         assert resp.status_code == 401
 
@@ -413,9 +399,7 @@ class TestListProjects:
             resp = await client.get(f"{API}/projects")
         assert resp.status_code == 500
 
-    async def test_list_projects_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_list_projects_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.get(f"{API}/projects")
         assert resp.status_code == 401
 
@@ -434,15 +418,11 @@ class TestCreateProject:
         assert resp.status_code == 201
         assert resp.json()["name"] == "Work"
 
-    async def test_create_project_validation_error_empty_name(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_create_project_validation_error_empty_name(self, client: AsyncClient) -> None:
         resp = await client.post(f"{API}/projects", json={"name": ""})
         assert resp.status_code == 422
 
-    async def test_create_project_validation_error_missing_name(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_create_project_validation_error_missing_name(self, client: AsyncClient) -> None:
         resp = await client.post(f"{API}/projects", json={})
         assert resp.status_code == 422
 
@@ -455,9 +435,7 @@ class TestCreateProject:
             resp = await client.post(f"{API}/projects", json={"name": "Work"})
         assert resp.status_code == 500
 
-    async def test_create_project_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_create_project_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(f"{API}/projects", json={"name": "Work"})
         assert resp.status_code == 401
 
@@ -484,9 +462,7 @@ class TestUpdateProject:
             resp = await client.put(f"{API}/projects/p1", json={"name": "X"})
         assert resp.status_code == 404
 
-    async def test_update_project_cannot_update_default(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_update_project_cannot_update_default(self, client: AsyncClient) -> None:
         with patch(
             "app.services.todos.todo_service.ProjectService.update_project",
             new_callable=AsyncMock,
@@ -504,9 +480,7 @@ class TestUpdateProject:
             resp = await client.put(f"{API}/projects/p1", json={"name": "X"})
         assert resp.status_code == 500
 
-    async def test_update_project_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_update_project_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.put(f"{API}/projects/p1", json={"name": "X"})
         assert resp.status_code == 401
 
@@ -532,9 +506,7 @@ class TestDeleteProject:
             resp = await client.delete(f"{API}/projects/p1")
         assert resp.status_code == 404
 
-    async def test_delete_project_cannot_delete_default(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_delete_project_cannot_delete_default(self, client: AsyncClient) -> None:
         with patch(
             "app.services.todos.todo_service.ProjectService.delete_project",
             new_callable=AsyncMock,
@@ -552,9 +524,7 @@ class TestDeleteProject:
             resp = await client.delete(f"{API}/projects/p1")
         assert resp.status_code == 500
 
-    async def test_delete_project_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_delete_project_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.delete(f"{API}/projects/p1")
         assert resp.status_code == 401
 
@@ -593,9 +563,7 @@ class TestBulkUpdateTodos:
         assert resp.status_code == 200
         assert resp.json()["id"] == "bulk"
 
-    async def test_bulk_update_validation_error_empty_ids(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_bulk_update_validation_error_empty_ids(self, client: AsyncClient) -> None:
         # PUT /todos/bulk is intercepted by PUT /todos/{todo_id}.
         # The body doesn't match TodoUpdateRequest validation, so 422.
         resp = await client.put(
@@ -620,9 +588,7 @@ class TestBulkUpdateTodos:
             )
         assert resp.status_code == 500
 
-    async def test_bulk_update_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_bulk_update_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.put(
             f"{API}/todos/bulk",
             json={"todo_ids": ["t1"], "updates": {"completed": True}},
@@ -695,9 +661,7 @@ class TestBulkDeleteTodos:
         # Hits delete_todo route, which returns 204 on success
         assert resp.status_code == 204
 
-    async def test_bulk_delete_validation_error_empty(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_bulk_delete_validation_error_empty(self, client: AsyncClient) -> None:
         # DELETE /todos/bulk intercepted by DELETE /todos/{todo_id}.
         # The delete_todo endpoint does not validate a JSON body — it just
         # uses the path param (todo_id="bulk") and calls the service.
@@ -722,9 +686,7 @@ class TestBulkDeleteTodos:
             )
         assert resp.status_code == 500
 
-    async def test_bulk_delete_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_bulk_delete_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.request(
             "DELETE",
             f"{API}/todos/bulk",
@@ -761,9 +723,7 @@ class TestBulkCompleteTodos:
             )
         assert resp.status_code == 500
 
-    async def test_bulk_complete_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_bulk_complete_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(
             f"{API}/todos/bulk/complete",
             json=["t1"],
@@ -811,9 +771,7 @@ class TestCreateSubtask:
                 new_callable=AsyncMock,
             ),
         ):
-            resp = await client.post(
-                f"{API}/todos/{valid_oid}/subtasks", json={"title": "Sub 1"}
-            )
+            resp = await client.post(f"{API}/todos/{valid_oid}/subtasks", json={"title": "Sub 1"})
         assert resp.status_code == 201
 
     async def test_create_subtask_todo_not_found(self, client: AsyncClient) -> None:
@@ -823,21 +781,15 @@ class TestCreateSubtask:
             new_callable=AsyncMock,
             return_value=None,
         ):
-            resp = await client.post(
-                f"{API}/todos/{valid_oid}/subtasks", json={"title": "Sub"}
-            )
+            resp = await client.post(f"{API}/todos/{valid_oid}/subtasks", json={"title": "Sub"})
         assert resp.status_code == 404
 
     async def test_create_subtask_validation_error(self, client: AsyncClient) -> None:
         resp = await client.post(f"{API}/todos/t1/subtasks", json={})
         assert resp.status_code == 422
 
-    async def test_create_subtask_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
-        resp = await unauthed_client.post(
-            f"{API}/todos/t1/subtasks", json={"title": "Sub"}
-        )
+    async def test_create_subtask_requires_auth(self, unauthed_client: AsyncClient) -> None:
+        resp = await unauthed_client.post(f"{API}/todos/t1/subtasks", json={"title": "Sub"})
         assert resp.status_code == 401
 
     async def test_create_subtask_service_error(self, client: AsyncClient) -> None:
@@ -847,9 +799,7 @@ class TestCreateSubtask:
             new_callable=AsyncMock,
             side_effect=Exception("DB down"),
         ):
-            resp = await client.post(
-                f"{API}/todos/{valid_oid}/subtasks", json={"title": "Sub"}
-            )
+            resp = await client.post(f"{API}/todos/{valid_oid}/subtasks", json={"title": "Sub"})
         assert resp.status_code == 500
         assert "Failed to create subtask" in resp.json()["detail"]
 
@@ -880,9 +830,7 @@ class TestUpdateSubtask:
                     "priority": "none",
                     "project_id": None,
                     "completed": False,
-                    "subtasks": [
-                        {"id": "s1", "title": "Updated Sub", "completed": True}
-                    ],
+                    "subtasks": [{"id": "s1", "title": "Updated Sub", "completed": True}],
                     "workflow_id": None,
                     "created_at": NOW,
                     "updated_at": NOW,
@@ -972,12 +920,8 @@ class TestUpdateSubtask:
             )
         assert resp.status_code == 500
 
-    async def test_update_subtask_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
-        resp = await unauthed_client.put(
-            f"{API}/todos/t1/subtasks/s1", json={"title": "X"}
-        )
+    async def test_update_subtask_requires_auth(self, unauthed_client: AsyncClient) -> None:
+        resp = await unauthed_client.put(f"{API}/todos/t1/subtasks/s1", json={"title": "X"})
         assert resp.status_code == 401
 
 
@@ -1033,9 +977,7 @@ class TestDeleteSubtask:
             resp = await client.delete(f"{API}/todos/{valid_oid}/subtasks/s1")
         assert resp.status_code == 404
 
-    async def test_delete_subtask_not_found_still_exists(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_delete_subtask_not_found_still_exists(self, client: AsyncClient) -> None:
         """When $pull didn't remove the subtask (it still exists), the endpoint
         raises HTTPException(404) inside try, but `except Exception` catches it
         and returns 500."""
@@ -1055,9 +997,7 @@ class TestDeleteSubtask:
                     "priority": "none",
                     "project_id": None,
                     "completed": False,
-                    "subtasks": [
-                        {"id": "s1", "title": "Still here", "completed": False}
-                    ],
+                    "subtasks": [{"id": "s1", "title": "Still here", "completed": False}],
                     "workflow_id": None,
                     "created_at": NOW,
                     "updated_at": NOW,
@@ -1083,9 +1023,7 @@ class TestDeleteSubtask:
             resp = await client.delete(f"{API}/todos/{valid_oid}/subtasks/s1")
         assert resp.status_code == 500
 
-    async def test_delete_subtask_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_delete_subtask_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.delete(f"{API}/todos/t1/subtasks/s1")
         assert resp.status_code == 401
 
@@ -1180,9 +1118,7 @@ class TestToggleSubtaskCompletion:
             resp = await client.post(f"{API}/todos/{valid_oid}/subtasks/s1/toggle")
         assert resp.status_code == 500
 
-    async def test_toggle_subtask_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_toggle_subtask_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(f"{API}/todos/t1/subtasks/s1/toggle")
         assert resp.status_code == 401
 
@@ -1287,9 +1223,7 @@ class TestGenerateWorkflow:
             resp = await client.post(f"{API}/todos/t1/workflow")
         assert resp.status_code == 500
 
-    async def test_generate_workflow_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_generate_workflow_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(f"{API}/todos/t1/workflow")
         assert resp.status_code == 401
 
@@ -1404,9 +1338,7 @@ class TestWorkflowStatus:
             resp = await client.get(f"{API}/todos/t1/workflow-status")
         assert resp.status_code == 500
 
-    async def test_workflow_status_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_workflow_status_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.get(f"{API}/todos/t1/workflow-status")
         assert resp.status_code == 401
 
@@ -1447,9 +1379,7 @@ class TestListTodosFilters:
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
-            resp = await client.get(
-                f"{API}/todos", params={"labels": ["work", "urgent"]}
-            )
+            resp = await client.get(f"{API}/todos", params={"labels": ["work", "urgent"]})
         assert resp.status_code == 200
 
     async def test_list_todos_with_search_query(self, client: AsyncClient) -> None:
@@ -1605,9 +1535,7 @@ class TestCreateTodoValueError:
 class TestGenerateWorkflowRegeneration:
     """POST /api/v1/todos/{todo_id}/workflow — regeneration of empty workflow."""
 
-    async def test_regenerate_workflow_when_no_existing_found(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_regenerate_workflow_when_no_existing_found(self, client: AsyncClient) -> None:
         """When todo has workflow_id but the workflow is not found in DB,
         endpoint unsets workflow_id and queues regeneration.
 

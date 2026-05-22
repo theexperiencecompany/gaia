@@ -282,14 +282,10 @@ class TestProcessChromaSearchResult:
     def test_subagent_namespace_items(self):
         from app.agents.tools.core.retrieval import _process_chroma_search_result
 
-        item = self._make_item(
-            "gmail", namespace=("subagents",), value={"name": "Gmail"}
-        )
+        item = self._make_item("gmail", namespace=("subagents",), value={"name": "Gmail"})
         registry = MagicMock()
 
-        result = _process_chroma_search_result(
-            [item], 0, set(), registry, include_subagents=True
-        )
+        result = _process_chroma_search_result([item], 0, set(), registry, include_subagents=True)
         assert len(result) == 1
         assert result[0]["id"] == "subagent:gmail (Gmail)"
 
@@ -299,9 +295,7 @@ class TestProcessChromaSearchResult:
         item = self._make_item("gmail", namespace=("subagents",))
         registry = MagicMock()
 
-        result = _process_chroma_search_result(
-            [item], 0, set(), registry, include_subagents=False
-        )
+        result = _process_chroma_search_result([item], 0, set(), registry, include_subagents=False)
         assert len(result) == 0
 
     def test_subagent_prefix_key(self):
@@ -310,9 +304,7 @@ class TestProcessChromaSearchResult:
         item = self._make_item("subagent:gmail", namespace=("general",))
         registry = MagicMock()
 
-        result = _process_chroma_search_result(
-            [item], 0, set(), registry, include_subagents=True
-        )
+        result = _process_chroma_search_result([item], 0, set(), registry, include_subagents=True)
         assert len(result) == 1
         assert result[0]["id"] == "subagent:gmail"
 
@@ -322,9 +314,7 @@ class TestProcessChromaSearchResult:
         item = self._make_item("subagent:gmail", namespace=("general",))
         registry = MagicMock()
 
-        result = _process_chroma_search_result(
-            [item], 0, set(), registry, include_subagents=False
-        )
+        result = _process_chroma_search_result([item], 0, set(), registry, include_subagents=False)
         assert len(result) == 0
 
     def test_general_namespace_filters_non_webpage_tools_for_subagent(self):
@@ -384,14 +374,10 @@ class TestProcessChromaSearchResult:
     def test_subagent_key_with_existing_prefix(self):
         from app.agents.tools.core.retrieval import _process_chroma_search_result
 
-        item = self._make_item(
-            "subagent:slack", namespace=("subagents",), value={"name": "Slack"}
-        )
+        item = self._make_item("subagent:slack", namespace=("subagents",), value={"name": "Slack"})
         registry = MagicMock()
 
-        result = _process_chroma_search_result(
-            [item], 0, set(), registry, include_subagents=True
-        )
+        result = _process_chroma_search_result([item], 0, set(), registry, include_subagents=True)
         assert result[0]["id"] == "subagent:slack (Slack)"
 
 
@@ -407,9 +393,7 @@ class TestProcessSearchResults:
 
         registry = MagicMock()
         results = [RuntimeError("search fail"), []]
-        processed = await _process_search_results(
-            results, set(), registry, include_subagents=False
-        )
+        processed = await _process_search_results(results, set(), registry, include_subagents=False)
         assert processed == []
 
     @pytest.mark.asyncio
@@ -427,9 +411,7 @@ class TestProcessSearchResults:
         from app.agents.tools.core.retrieval import _process_search_results
 
         registry = MagicMock()
-        public_results = [
-            {"integration_id": "abc", "name": "App", "relevance_score": 0.9}
-        ]
+        public_results = [{"integration_id": "abc", "name": "App", "relevance_score": 0.9}]
         processed = await _process_search_results(
             [public_results], set(), registry, include_subagents=True
         )

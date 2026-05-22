@@ -16,7 +16,7 @@ exercise the real `proxy_request_sync` path with a real Composio API key
 and a real connected account.
 """
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -34,7 +34,7 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture
-def mock_gmail_credentials() -> Dict[str, Any]:
+def mock_gmail_credentials() -> dict[str, Any]:
     """Auth credentials shape Composio passes into custom tools post-migration.
 
     Composio no longer returns OAuth `access_token` in connected-account
@@ -58,7 +58,7 @@ def mock_composio_client():
     register_gmail_custom_tools().  We capture each registered function so
     tests can invoke it directly.
     """
-    registered_tools: Dict[str, Any] = {}
+    registered_tools: dict[str, Any] = {}
 
     def custom_tool_decorator(toolkit: str):
         """Simulate @composio.tools.custom_tool(toolkit=...)."""

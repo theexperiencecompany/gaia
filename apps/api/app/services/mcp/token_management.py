@@ -5,19 +5,19 @@ Handles token refresh, revocation, and client credential resolution.
 """
 
 import base64
+from datetime import UTC, datetime, timedelta
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 import httpx
-from shared.py.wide_events import log
+
 from app.models.mcp_config import MCPConfig
 from app.services.mcp.mcp_token_store import MCPTokenStore
+from shared.py.wide_events import log
 
 
 def resolve_client_credentials(
     mcp_config: MCPConfig,
-) -> tuple[Optional[str], Optional[str]]:
+) -> tuple[str | None, str | None]:
     """Resolve OAuth client credentials from config or environment."""
     client_id = mcp_config.client_id
     client_secret = mcp_config.client_secret
@@ -57,9 +57,7 @@ async def try_refresh_token(
                 client_secret = dcr_data.get("client_secret")
 
         if not client_id:
-            log.warning(
-                f"No client_id for refresh, user must re-authorize {integration_id}"
-            )
+            log.warning(f"No client_id for refresh, user must re-authorize {integration_id}")
             return False
 
         resource = oauth_config.get("resource", mcp_config.server_url.rstrip("/"))
@@ -109,16 +107,12 @@ async def try_refresh_token(
 
             access_token = tokens.get("access_token")
             if not access_token:
-                log.warning(
-                    f"Token refresh for {integration_id} returned empty access_token"
-                )
+                log.warning(f"Token refresh for {integration_id} returned empty access_token")
                 return False
 
             expires_at = None
             if tokens.get("expires_in"):
-                expires_at = datetime.now(timezone.utc) + timedelta(
-                    seconds=tokens["expires_in"]
-                )
+                expires_at = datetime.now(UTC) + timedelta(seconds=tokens["expires_in"])
 
             await token_store.store_oauth_tokens(
                 integration_id=integration_id,
@@ -176,8 +170,6 @@ async def revoke_tokens(
                     encoded = base64.b64encode(credentials.encode()).decode()
                     headers["Authorization"] = f"Basic {encoded}"
 
-                await http_client.post(
-                    revocation_endpoint, data=data, headers=headers, timeout=10
-                )
+                await http_client.post(revocation_endpoint, data=data, headers=headers, timeout=10)
     except Exception as e:
         log.warning(f"Token revocation failed for {integration_id}: {e}")

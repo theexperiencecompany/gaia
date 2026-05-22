@@ -1,11 +1,10 @@
 """Service to learn and save user writing style."""
 
+from collections.abc import Awaitable, Callable
 import time
-from typing import Awaitable, Callable, Optional
 
 from bson import ObjectId
 from langchain_core.messages import HumanMessage
-from shared.py.wide_events import log
 
 from app.agents.prompts.onboarding_prompts import (
     WRITING_STYLE_EXAMPLE_PROMPT,
@@ -20,6 +19,7 @@ from app.models.onboarding_models import (
     WritingStyleProfile,
 )
 from app.services.mail.mail_service import search_messages
+from shared.py.wide_events import log
 
 # Minimum usable sent-email count below which style learning is skipped.
 _MIN_SENT_EMAILS = 5
@@ -29,8 +29,8 @@ _MAX_SAMPLES = 30
 async def learn_writing_style(
     user_id: str,
     profession: str = "",
-    on_status: Optional[Callable[[str], Awaitable[None]]] = None,
-) -> Optional[WritingStyleProfile]:
+    on_status: Callable[[str], Awaitable[None]] | None = None,
+) -> WritingStyleProfile | None:
     """Fetch the user's recent sent emails and analyze writing style."""
     t0 = time.monotonic()
     try:
@@ -46,9 +46,7 @@ async def learn_writing_style(
         sent_count = len(sent_emails)
 
         if on_status is not None:
-            await on_status(
-                f"Found {sent_count} sent email{'s' if sent_count != 1 else ''}"
-            )
+            await on_status(f"Found {sent_count} sent email{'s' if sent_count != 1 else ''}")
 
         if sent_count < _MIN_SENT_EMAILS:
             log.info(
@@ -70,10 +68,7 @@ async def learn_writing_style(
             if len(body) < 20:
                 skipped_short += 1
                 continue
-            if any(
-                kw in subject.lower()
-                for kw in ["out of office", "auto-reply", "automatic"]
-            ):
+            if any(kw in subject.lower() for kw in ["out of office", "auto-reply", "automatic"]):
                 skipped_autoreply += 1
                 continue
             samples.append(body)
@@ -147,7 +142,7 @@ async def learn_writing_style(
 async def regenerate_example_for_style(
     summary: str,
     profession: str = "",
-) -> Optional[WritingStyleExampleBlocks]:
+) -> WritingStyleExampleBlocks | None:
     """Generate a new example email from an edited writing style summary."""
     try:
         llm = await providers.aget("gemini_llm")
@@ -181,9 +176,7 @@ async def save_user_edited_summary(user_id: str, edited_summary: str) -> None:
     log.info(f"[writing_style] Saved user-edited summary for {user_id}")
 
 
-async def save_generated_example(
-    user_id: str, example: WritingStyleExampleBlocks
-) -> None:
+async def save_generated_example(user_id: str, example: WritingStyleExampleBlocks) -> None:
     """Persist a regenerated example email to MongoDB as structured blocks."""
     await users_collection.update_one(
         {"_id": ObjectId(user_id)},

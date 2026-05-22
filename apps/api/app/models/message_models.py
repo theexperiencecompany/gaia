@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel
 from typing_extensions import TypedDict
@@ -13,28 +13,28 @@ class FileData(BaseModel):
     fileId: str
     url: str
     filename: str
-    type: Optional[str] = "file"
-    message: Optional[str] = "File uploaded successfully"
+    type: str | None = "file"
+    message: str | None = "File uploaded successfully"
 
 
 class SelectedWorkflowData(BaseModel):
     id: str
     title: str
     description: str
-    prompt: Optional[str] = None
-    steps: List[Dict[str, Any]]
+    prompt: str | None = None
+    steps: list[dict[str, Any]]
 
 
 class SelectedCalendarEventData(BaseModel):
     id: str
     summary: str
     description: str
-    start: Dict[str, Optional[str]]
-    end: Dict[str, Optional[str]]
-    calendarId: Optional[str] = None
-    calendarTitle: Optional[str] = None
-    backgroundColor: Optional[str] = None
-    isAllDay: Optional[bool] = False
+    start: dict[str, str | None]
+    end: dict[str, str | None]
+    calendarId: str | None = None
+    calendarTitle: str | None = None
+    backgroundColor: str | None = None
+    isAllDay: bool | None = False
 
 
 class ReplyToMessageData(BaseModel):
@@ -47,15 +47,15 @@ class ReplyToMessageData(BaseModel):
 
 class MessageRequestWithHistory(BaseModel):
     message: str
-    conversation_id: Optional[str] = None
-    messages: List[MessageDict]
-    fileIds: Optional[List[str]] = []
-    fileData: Optional[List[FileData]] = []
-    selectedTool: Optional[str] = None
-    toolCategory: Optional[str] = None
-    selectedWorkflow: Optional[SelectedWorkflowData] = None
-    selectedCalendarEvent: Optional[SelectedCalendarEventData] = None
-    replyToMessage: Optional[ReplyToMessageData] = None  # Message being replied to
+    conversation_id: str | None = None
+    messages: list[MessageDict]
+    fileIds: list[str] | None = []
+    fileData: list[FileData] | None = []
+    selectedTool: str | None = None
+    toolCategory: str | None = None
+    selectedWorkflow: SelectedWorkflowData | None = None
+    selectedCalendarEvent: SelectedCalendarEventData | None = None
+    replyToMessage: ReplyToMessageData | None = None  # Message being replied to
     is_onboarding_demo: bool = False
 
 

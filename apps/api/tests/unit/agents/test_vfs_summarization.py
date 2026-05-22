@@ -3,13 +3,12 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import HumanMessage, ToolMessage
+import pytest
 
 from app.agents.middleware.vfs_summarization import (
     VFSArchivingSummarizationMiddleware,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -32,9 +31,7 @@ def _make_middleware(**kwargs):
         return mw
 
 
-def _make_runtime(
-    user_id="u1", thread_id="t1", subagent_id="executor", vfs_session_id=None
-):
+def _make_runtime(user_id="u1", thread_id="t1", subagent_id="executor", vfs_session_id=None):
     """Build a fake runtime with configurable."""
     config = {
         "configurable": {
@@ -221,10 +218,7 @@ class TestInjectArchivePath:
         result_dict = {"messages": [summary_msg]}
         result = mw._inject_archive_path(result_dict, "/vfs/archive.json")
         assert "/vfs/archive.json" in result["messages"][0].content
-        assert (
-            result["messages"][0].additional_kwargs["archive_path"]
-            == "/vfs/archive.json"
-        )
+        assert result["messages"][0].additional_kwargs["archive_path"] == "/vfs/archive.json"
 
     def test_no_summary_message_unchanged(self):
         mw = _make_middleware()

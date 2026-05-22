@@ -12,7 +12,7 @@ Covers:
 - POST /projects — create project
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
@@ -23,7 +23,7 @@ TODO_SERVICE = "app.api.v1.endpoints.todos.TodoService"
 PROJECT_SERVICE = "app.api.v1.endpoints.todos.ProjectService"
 
 # Minimal valid TodoResponse-compatible dict
-_NOW = datetime.now(timezone.utc)
+_NOW = datetime.now(UTC)
 FAKE_TODO = {
     "id": "todo_123",
     "title": "Buy groceries",

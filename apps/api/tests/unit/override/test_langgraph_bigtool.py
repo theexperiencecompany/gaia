@@ -3,10 +3,9 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import AIMessage
 from langchain_core.tools import BaseTool, tool
-
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -364,9 +363,7 @@ class TestAcallModel:
         mw = MagicMock()
         mw.tools = []
 
-        with patch(
-            "app.override.langgraph_bigtool.create_agent.MiddlewareExecutor"
-        ) as mock_me_cls:
+        with patch("app.override.langgraph_bigtool.create_agent.MiddlewareExecutor") as mock_me_cls:
             mock_me = MagicMock()
             mock_me.execute_before_model = AsyncMock(return_value=_make_state())
             mock_me.has_wrap_model_call = MagicMock(return_value=False)
@@ -438,8 +435,9 @@ class TestAcallModel:
 
 class TestShouldContinue:
     def test_no_tool_calls_returns_end(self) -> None:
-        from app.override.langgraph_bigtool.create_agent import create_agent
         from langgraph.graph import END
+
+        from app.override.langgraph_bigtool.create_agent import create_agent
 
         llm = _make_llm()
         registry = _make_tool_registry()
@@ -522,9 +520,7 @@ class TestShouldContinue:
 
         edge_fn = builder.branches["agent"]["should_continue"].path.func  # type: ignore[attr-defined]
         result = edge_fn(state, store=store)
-        has_reject = any(
-            getattr(s, "node", None) == "reject_unbound_tools" for s in result
-        )
+        has_reject = any(getattr(s, "node", None) == "reject_unbound_tools" for s in result)
         assert has_reject
 
 

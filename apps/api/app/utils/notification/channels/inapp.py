@@ -1,6 +1,5 @@
-from typing import Any, Dict
+from typing import Any
 
-from shared.py.wide_events import log
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.core.websocket_manager import websocket_manager
 from app.models.notification.notification_models import (
@@ -8,6 +7,7 @@ from app.models.notification.notification_models import (
     NotificationRequest,
 )
 from app.utils.notification.channels.base import ChannelAdapter
+from shared.py.wide_events import log
 
 
 class InAppChannelAdapter(ChannelAdapter):
@@ -29,11 +29,9 @@ class InAppChannelAdapter(ChannelAdapter):
         return CHANNEL_TYPE_INAPP
 
     def can_handle(self, notification: NotificationRequest) -> bool:
-        return any(
-            ch.channel_type == CHANNEL_TYPE_INAPP for ch in notification.channels
-        )
+        return any(ch.channel_type == CHANNEL_TYPE_INAPP for ch in notification.channels)
 
-    async def transform(self, notification: NotificationRequest) -> Dict[str, Any]:
+    async def transform(self, notification: NotificationRequest) -> dict[str, Any]:
         return {
             "id": notification.id,
             "title": notification.content.title,
@@ -56,9 +54,7 @@ class InAppChannelAdapter(ChannelAdapter):
             "created_at": notification.created_at.isoformat(),
         }
 
-    async def deliver(
-        self, content: Dict[str, Any], user_id: str
-    ) -> ChannelDeliveryStatus:
+    async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
         log.set(
             operation="inapp_deliver",
             user_id=user_id,
@@ -73,9 +69,7 @@ class InAppChannelAdapter(ChannelAdapter):
                     "notification": content,
                 },
             )
-            log.info(
-                f"In-app notification delivered to user {user_id}: {content.get('title')}"
-            )
+            log.info(f"In-app notification delivered to user {user_id}: {content.get('title')}")
             return self._success()
         except Exception as e:
             log.error(f"Failed to deliver in-app notification to user {user_id}: {e}")

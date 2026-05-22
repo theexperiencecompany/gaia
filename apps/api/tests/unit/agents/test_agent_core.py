@@ -1,12 +1,12 @@
 """Unit tests for app.agents.core.agent — call_agent and call_agent_silent."""
 
 import asyncio
+from datetime import UTC, datetime
 import json
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
+import pytest
 
 from app.agents.core.agent import (
     _core_agent_logic,
@@ -14,7 +14,6 @@ from app.agents.core.agent import (
     call_agent_silent,
 )
 from app.models.message_models import MessageRequestWithHistory
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -120,7 +119,7 @@ class TestCoreAgentLogic:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert graph is FAKE_GRAPH
@@ -144,7 +143,7 @@ class TestCoreAgentLogic:
                 request=req,
                 conversation_id="conv-1",
                 user=user,
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         mock_construct.assert_awaited_once()
@@ -168,7 +167,7 @@ class TestCoreAgentLogic:
                 request=_make_request(message="remember this"),
                 conversation_id="conv-1",
                 user=_make_user(user_id="uid-1"),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
             # Give the event loop a tick so the background task fires
@@ -191,7 +190,7 @@ class TestCoreAgentLogic:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(user_id=None),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
             await asyncio.sleep(0)
@@ -213,7 +212,7 @@ class TestCoreAgentLogic:
                 request=_make_request(message=""),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
             await asyncio.sleep(0)
@@ -236,7 +235,7 @@ class TestCoreAgentLogic:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 trigger_context=trigger,
             )
 
@@ -258,7 +257,7 @@ class TestCoreAgentLogic:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         mock_log.set.assert_called_once()
@@ -301,7 +300,7 @@ class TestCallAgent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         chunks = [chunk async for chunk in gen]
@@ -347,7 +346,7 @@ class TestCallAgent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 stream_id="stream-abc",
             )
 
@@ -387,7 +386,7 @@ class TestCallAgent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
             passed_config = mock_exec.call_args[0][2]
@@ -413,7 +412,7 @@ class TestCallAgent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         chunks = [chunk async for chunk in gen]
@@ -449,7 +448,7 @@ class TestCallAgent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         chunks = [chunk async for chunk in gen]
@@ -487,7 +486,7 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert result == ("Hello!", {"tool": "data"})
@@ -513,7 +512,7 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 trigger_context=trigger,
             )
 
@@ -547,7 +546,7 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 usage_metadata_callback=callback,
             )
 
@@ -584,7 +583,7 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 usage_metadata_callback=callback,
             )
 
@@ -617,7 +616,7 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         log_calls = mock_log.set.call_args_list
@@ -651,7 +650,7 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 usage_metadata_callback=callback,
             )
 
@@ -681,7 +680,7 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert "silent boom" in msg
@@ -708,7 +707,7 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert "execute failed" in msg

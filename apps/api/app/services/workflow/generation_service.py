@@ -1,19 +1,16 @@
 """Workflow generation service for LLM-based step creation."""
 
-from typing import List, Optional
-
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
 
 from app.agents.llm.client import init_llm
 from app.agents.prompts.trigger_prompts import generate_trigger_context
-from app.agents.tools.core.registry import get_tool_registry
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_PROMPT_GENERATION_SYSTEM,
     WORKFLOW_PROMPT_GENERATION_TEMPLATE,
 )
 from app.agents.templates.workflow_template import WORKFLOW_GENERATION_TEMPLATE
-from shared.py.wide_events import log
+from app.agents.tools.core.registry import get_tool_registry
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.models.workflow_models import (
     GeneratedPromptOutput,
@@ -21,6 +18,7 @@ from app.models.workflow_models import (
     GeneratedWorkflow,
     SuggestedTrigger,
 )
+from shared.py.wide_events import log
 
 prompt_output_parser = PydanticOutputParser(pydantic_object=GeneratedPromptOutput)
 
@@ -34,11 +32,11 @@ def _slug_to_friendly_name(slug: str) -> str:
     return slug
 
 
-def _normalize_slugs(slugs: List[str] | None) -> List[str]:
+def _normalize_slugs(slugs: list[str] | None) -> list[str]:
     if not slugs:
         return []
     seen: set[str] = set()
-    out: List[str] = []
+    out: list[str] = []
     for raw in slugs:
         s = (raw or "").strip().lower()
         if not s or s in seen:
@@ -48,7 +46,7 @@ def _normalize_slugs(slugs: List[str] | None) -> List[str]:
     return out
 
 
-def _build_trigger_hint(trigger_config: Optional[dict]) -> str:
+def _build_trigger_hint(trigger_config: dict | None) -> str:
     """Build a minimal, human-readable trigger hint for the LLM.
 
     We intentionally omit raw cron/timezone/next_run so the LLM cannot
@@ -82,7 +80,7 @@ def _build_trigger_hint(trigger_config: Optional[dict]) -> str:
 
 
 def _build_available_triggers(
-    connected_integration_ids: Optional[set[str]] = None,
+    connected_integration_ids: set[str] | None = None,
 ) -> str:
     """Build a compact list of available integration triggers for the LLM.
 
@@ -90,7 +88,7 @@ def _build_available_triggers(
     integrations are listed. This prevents the LLM from suggesting triggers
     the user can't actually use.
     """
-    lines: List[str] = []
+    lines: list[str] = []
     for integration in OAUTH_INTEGRATIONS:
         if (
             connected_integration_ids is not None
@@ -101,18 +99,13 @@ def _build_available_triggers(
             schema = tc.workflow_trigger_schema
             if schema:
                 desc = f" — {schema.description}" if schema.description else ""
-                lines.append(
-                    f"- {schema.slug}: {schema.name} ({integration.name}){desc}"
-                )
+                lines.append(f"- {schema.slug}: {schema.name} ({integration.name}){desc}")
     if not lines:
         return ""
-    return (
-        "Available integration triggers (use the slug for trigger_name):\n"
-        + "\n".join(lines)
-    )
+    return "Available integration triggers (use the slug for trigger_name):\n" + "\n".join(lines)
 
 
-def enrich_steps(generated_steps: List[GeneratedStep]) -> List[dict]:
+def enrich_steps(generated_steps: list[GeneratedStep]) -> list[dict]:
     """Convert minimal generated steps to full step schema with id."""
     enriched = []
     for i, step in enumerate(generated_steps):
@@ -137,8 +130,7 @@ def _parse_workflow_response(content: str) -> GeneratedWorkflow:
             cleaned = cleaned[first_newline + 1 :]
         else:
             cleaned = cleaned[3:]
-    if cleaned.endswith("```"):
-        cleaned = cleaned[:-3]
+    cleaned = cleaned.removesuffix("```")
     cleaned = cleaned.strip()
     return GeneratedWorkflow.model_validate_json(cleaned)
 
@@ -152,7 +144,7 @@ class WorkflowGenerationService:
         title: str,
         trigger_config=None,
         description: str | None = None,
-        selected_integrations: List[str] | None = None,
+        selected_integrations: list[str] | None = None,
     ) -> list:
         """Generate workflow steps using LLM with structured output.
 
@@ -182,8 +174,7 @@ class WorkflowGenerationService:
             category_names.append(category)
             category_tools = categories[category].get_tool_objects()
             tool_names = [
-                tool.name if hasattr(tool, "name") else str(tool)
-                for tool in category_tools
+                tool.name if hasattr(tool, "name") else str(tool) for tool in category_tools
             ]
             tools_with_categories.append(f"{category}: {', '.join(tool_names)}")
 
@@ -194,9 +185,7 @@ class WorkflowGenerationService:
                     continue
                 cfg = integration.subagent_config
                 category_names.append(integration.id)
-                tools_with_categories.append(
-                    f"{integration.id} (subagent): {cfg.capabilities}"
-                )
+                tools_with_categories.append(f"{integration.id} (subagent): {cfg.capabilities}")
 
         for tool in tool_registry.get_core_tools():
             tool_name = tool.name if hasattr(tool, "name") else str(tool)
@@ -236,8 +225,7 @@ class WorkflowGenerationService:
         prompt_context = prompt
         if description:
             prompt_context = (
-                f"{prompt}\n\n"
-                f"Short display summary for additional context: {description}"
+                f"{prompt}\n\nShort display summary for additional context: {description}"
             )
         if normalized_slugs:
             friendly = [_slug_to_friendly_name(s) for s in normalized_slugs]
@@ -257,7 +245,7 @@ class WorkflowGenerationService:
         )
         log.info(f"[WorkflowGen] Prompt: {len(formatted_prompt)} chars")
 
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
         for attempt in range(_MAX_GENERATION_ATTEMPTS):
             try:
                 if attempt > 0:
@@ -279,12 +267,8 @@ class WorkflowGenerationService:
                         '"description": "..."}]}'
                     )
                     llm_response = await llm.ainvoke(fallback_prompt)
-                    response_content = getattr(
-                        llm_response, "content", str(llm_response)
-                    )
-                    log.debug(
-                        f"[WorkflowGen] Raw response ({len(response_content)} chars)"
-                    )
+                    response_content = getattr(llm_response, "content", str(llm_response))
+                    log.debug(f"[WorkflowGen] Raw response ({len(response_content)} chars)")
                     result = _parse_workflow_response(response_content)
 
                 log.info("[WorkflowGen] === LLM RESPONDED ===")
@@ -297,16 +281,13 @@ class WorkflowGenerationService:
 
                 steps_data = enrich_steps(result.steps)
 
-                log.info(
-                    f"[WorkflowGen] ========== DONE: {len(steps_data)} steps =========="
-                )
+                log.info(f"[WorkflowGen] ========== DONE: {len(steps_data)} steps ==========")
                 return steps_data
 
             except Exception as e:
                 last_error = e
                 log.warning(
-                    f"[WorkflowGen] Attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS} "
-                    f"failed: {e}"
+                    f"[WorkflowGen] Attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS} failed: {e}"
                 )
 
         log.error(
@@ -320,12 +301,12 @@ class WorkflowGenerationService:
 
     @staticmethod
     async def generate_workflow_prompt(
-        title: Optional[str] = None,
-        description: Optional[str] = None,
-        trigger_config: Optional[dict] = None,
-        existing_prompt: Optional[str] = None,
-        connected_integration_ids: Optional[set[str]] = None,
-        selected_integrations: Optional[List[str]] = None,
+        title: str | None = None,
+        description: str | None = None,
+        trigger_config: dict | None = None,
+        existing_prompt: str | None = None,
+        connected_integration_ids: set[str] | None = None,
+        selected_integrations: list[str] | None = None,
     ) -> dict:
         """Generate or improve workflow instructions using LLM.
 
@@ -359,9 +340,7 @@ class WorkflowGenerationService:
             integrations_hint=integrations_hint,
             available_triggers=available_triggers,
             existing_section=(
-                f"Existing instructions to improve:\n{existing_prompt}"
-                if existing_prompt
-                else ""
+                f"Existing instructions to improve:\n{existing_prompt}" if existing_prompt else ""
             ),
             mode_instruction=(
                 "Improve these instructions — keep the user's intent, add specificity, "
@@ -388,7 +367,7 @@ class WorkflowGenerationService:
 
         result = prompt_output_parser.parse(response_content)
 
-        suggested: Optional[SuggestedTrigger] = None
+        suggested: SuggestedTrigger | None = None
         if result.trigger_type in ("manual", "schedule", "integration"):
             suggested = SuggestedTrigger(
                 type=result.trigger_type,

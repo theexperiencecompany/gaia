@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,7 +12,6 @@ from app.utils.tool_cache import (
     _get_redis_client,
     cache_gather_context,
 )
-
 
 # ---------------------------------------------------------------------------
 # _build_cache_key
@@ -24,27 +23,27 @@ class TestBuildCacheKey:
 
     def test_with_access_token(self):
         """Returns a deterministic key based on func name and token hash."""
-        creds: Dict[str, Any] = {"access_token": "my-secret-token"}
+        creds: dict[str, Any] = {"access_token": "my-secret-token"}
         key = _build_cache_key("module.func", creds)
 
-        expected_hash = hashlib.sha256("my-secret-token".encode()).hexdigest()[:16]
+        expected_hash = hashlib.sha256(b"my-secret-token").hexdigest()[:16]
         assert key == f"tool_cache:module.func:{expected_hash}"
 
     def test_without_access_token(self):
         """Returns None when access_token key is missing entirely."""
-        creds: Dict[str, Any] = {"refresh_token": "something"}
+        creds: dict[str, Any] = {"refresh_token": "something"}
         key = _build_cache_key("module.func", creds)
         assert key is None
 
     def test_empty_access_token(self):
         """Returns None when access_token is an empty string."""
-        creds: Dict[str, Any] = {"access_token": ""}
+        creds: dict[str, Any] = {"access_token": ""}
         key = _build_cache_key("module.func", creds)
         assert key is None
 
     def test_empty_credentials(self):
         """Returns None when credentials dict is completely empty."""
-        creds: Dict[str, Any] = {}
+        creds: dict[str, Any] = {}
         key = _build_cache_key("module.func", creds)
         assert key is None
 
@@ -58,7 +57,7 @@ class TestBuildCacheKey:
     )
     def test_different_func_names(self, func_name: str):
         """Key incorporates the full function qualified name."""
-        creds: Dict[str, Any] = {"access_token": "tok"}
+        creds: dict[str, Any] = {"access_token": "tok"}
         key = _build_cache_key(func_name, creds)
         assert key is not None
         assert key.startswith(f"tool_cache:{func_name}:")
@@ -71,7 +70,7 @@ class TestBuildCacheKey:
 
     def test_same_token_same_func_produces_stable_key(self):
         """Same inputs always produce the same key (deterministic)."""
-        creds: Dict[str, Any] = {"access_token": "stable"}
+        creds: dict[str, Any] = {"access_token": "stable"}
         key1 = _build_cache_key("fn", creds)
         key2 = _build_cache_key("fn", creds)
         assert key1 == key2
@@ -128,7 +127,7 @@ class TestCacheGatherContext:
 
     @staticmethod
     def _make_decorated_func(
-        return_value: Dict[str, Any],
+        return_value: dict[str, Any],
     ) -> tuple[Any, AsyncMock]:
         """Create a decorated async function and return (decorated, inner_mock)."""
         inner = AsyncMock(return_value=return_value)
@@ -137,14 +136,14 @@ class TestCacheGatherContext:
         async def gather(
             request: Any,
             execute_request: Any,
-            auth_credentials: Dict[str, Any],
-        ) -> Dict[str, Any]:
+            auth_credentials: dict[str, Any],
+        ) -> dict[str, Any]:
             return await inner(request, execute_request, auth_credentials)
 
         return gather, inner
 
     @staticmethod
-    def _creds(token: str = "test-token") -> Dict[str, Any]:
+    def _creds(token: str = "test-token") -> dict[str, Any]:
         return {"access_token": token}
 
     # -- cache hit --
@@ -267,8 +266,8 @@ class TestCacheGatherContext:
         async def gather(
             request: Any,
             execute_request: Any,
-            auth_credentials: Dict[str, Any],
-        ) -> Dict[str, Any]:
+            auth_credentials: dict[str, Any],
+        ) -> dict[str, Any]:
             return await inner(request, execute_request, auth_credentials)
 
         with patch("app.utils.tool_cache._get_redis_client", return_value=mock_redis):
@@ -288,8 +287,8 @@ class TestCacheGatherContext:
         async def gather(
             request: Any,
             execute_request: Any,
-            auth_credentials: Dict[str, Any],
-        ) -> Dict[str, Any]:
+            auth_credentials: dict[str, Any],
+        ) -> dict[str, Any]:
             return await inner(request, execute_request, auth_credentials)
 
         with patch("app.utils.tool_cache._get_redis_client", return_value=mock_redis):
@@ -330,8 +329,8 @@ class TestCacheGatherContext:
         async def gather(
             request: Any,
             execute_request: Any,
-            auth_credentials: Dict[str, Any],
-        ) -> Dict[str, Any]:
+            auth_credentials: dict[str, Any],
+        ) -> dict[str, Any]:
             return await inner(request, execute_request, auth_credentials)
 
         with patch("app.utils.tool_cache._get_redis_client", return_value=mock_redis):
@@ -364,8 +363,8 @@ class TestCacheGatherContext:
         async def my_custom_gather(
             request: Any,
             execute_request: Any,
-            auth_credentials: Dict[str, Any],
-        ) -> Dict[str, Any]:
+            auth_credentials: dict[str, Any],
+        ) -> dict[str, Any]:
             return {}
 
         assert my_custom_gather.__name__ == "my_custom_gather"
@@ -380,8 +379,8 @@ class TestCacheGatherContext:
         async def gather(
             request: Any,
             execute_request: Any,
-            auth_credentials: Dict[str, Any],
-        ) -> Dict[str, Any]:
+            auth_credentials: dict[str, Any],
+        ) -> dict[str, Any]:
             return await inner(request, execute_request, auth_credentials)
 
         sentinel_req = object()

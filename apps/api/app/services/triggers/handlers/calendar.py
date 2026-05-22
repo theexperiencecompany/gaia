@@ -7,9 +7,8 @@ Handles all calendar-specific trigger logic including:
 - Event-to-workflow matching
 """
 
-from typing import Any, Dict, List, Set
+from typing import Any
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import (
     GoogleCalendarEventCreatedPayload,
@@ -22,6 +21,7 @@ from app.models.trigger_configs import (
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.wide_events import log
 
 
 class CalendarTriggerHandler(TriggerHandler):
@@ -46,11 +46,11 @@ class CalendarTriggerHandler(TriggerHandler):
     }
 
     @property
-    def trigger_names(self) -> List[str]:
+    def trigger_names(self) -> list[str]:
         return self.SUPPORTED_TRIGGERS
 
     @property
-    def event_types(self) -> Set[str]:
+    def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
     async def register(
@@ -59,7 +59,7 @@ class CalendarTriggerHandler(TriggerHandler):
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-    ) -> List[str]:
+    ) -> list[str]:
         """Register calendar triggers with parallel execution and rollback.
 
         Handles multi-calendar registration - creates one Composio trigger
@@ -105,9 +105,9 @@ class CalendarTriggerHandler(TriggerHandler):
             return []
 
         # Build configs for each calendar
-        configs: List[Dict[str, Any]] = []
+        configs: list[dict[str, Any]] = []
         for calendar_id in calendar_ids:
-            config: Dict[str, Any] = {"calendarId": calendar_id}
+            config: dict[str, Any] = {"calendarId": calendar_id}
             if trigger_name == "calendar_event_starting_soon":
                 if not isinstance(trigger_data, CalendarEventStartingSoonConfig):
                     # Should be covered by validation above, but for MyPy safety:
@@ -115,9 +115,7 @@ class CalendarTriggerHandler(TriggerHandler):
 
                 starting_soon_data = trigger_data
                 if starting_soon_data.minutes_before_start is not None:
-                    config["countdown_window_minutes"] = (
-                        starting_soon_data.minutes_before_start
-                    )
+                    config["countdown_window_minutes"] = starting_soon_data.minutes_before_start
                 if starting_soon_data.include_all_day is not None:
                     config["include_all_day"] = starting_soon_data.include_all_day
             configs.append(config)
@@ -144,8 +142,8 @@ class CalendarTriggerHandler(TriggerHandler):
         return trigger_ids
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: Dict[str, Any]
-    ) -> List[Workflow]:
+        self, event_type: str, trigger_id: str, data: dict[str, Any]
+    ) -> list[Workflow]:
         """Find workflows matching a calendar trigger event."""
         log.set(trigger={"provider": "google_calendar", "event": event_type})
         try:
@@ -167,12 +165,10 @@ class CalendarTriggerHandler(TriggerHandler):
                 try:
                     GoogleCalendarEventStartingSoonPayload.model_validate(data)
                 except Exception as e:
-                    log.debug(
-                        f"Calendar event starting soon payload validation failed: {e}"
-                    )
+                    log.debug(f"Calendar event starting soon payload validation failed: {e}")
 
             cursor = workflows_collection.find(query)
-            workflows: List[Workflow] = []
+            workflows: list[Workflow] = []
 
             async for workflow_doc in cursor:
                 try:
@@ -193,7 +189,7 @@ class CalendarTriggerHandler(TriggerHandler):
             log.error(f"Error finding workflows for trigger {trigger_id}: {e}")
             return []
 
-    async def _fetch_user_calendars(self, user_id: str) -> List[str]:
+    async def _fetch_user_calendars(self, user_id: str) -> list[str]:
         """Fetch list of user's calendar IDs.
 
         Used when calendar_ids is set to ["all"].
@@ -205,11 +201,7 @@ class CalendarTriggerHandler(TriggerHandler):
             calendars = calendar_service.list_calendars(user_id)
 
             if isinstance(calendars, dict) and "items" in calendars:
-                return [
-                    cal.get("id", "primary")
-                    for cal in calendars["items"]
-                    if cal.get("id")
-                ]
+                return [cal.get("id", "primary") for cal in calendars["items"] if cal.get("id")]
             return ["primary"]
 
         except Exception as e:

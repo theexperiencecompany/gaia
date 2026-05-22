@@ -10,18 +10,19 @@ This middleware:
 3. Adds archive path reference to the summary message
 """
 
+from datetime import UTC, datetime
 import json
-from datetime import datetime, timezone
 from typing import Any
 
-from shared.py.wide_events import log
-from app.services.vfs import MongoVFS, get_vfs
-from app.services.vfs.path_resolver import get_session_path
 from langchain.agents.middleware import SummarizationMiddleware
 from langchain.agents.middleware.types import AgentState
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
+
+from app.services.vfs import MongoVFS, get_vfs
+from app.services.vfs.path_resolver import get_session_path
+from shared.py.wide_events import log
 
 
 class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
@@ -115,10 +116,7 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         filtered_messages = [
             m
             for m in messages
-            if not (
-                isinstance(m, ToolMessage)
-                and getattr(m, "name", None) in self.excluded_tools
-            )
+            if not (isinstance(m, ToolMessage) and getattr(m, "name", None) in self.excluded_tools)
         ]
         if not filtered_messages:
             return False
@@ -131,18 +129,16 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
                 if trigger_type == "fraction":
                     max_tokens = getattr(self, "_max_tokens", 128000)
                     return token_count > max_tokens * trigger_value
-                elif trigger_type == "tokens":
+                if trigger_type == "tokens":
                     return token_count > trigger_value
-                elif trigger_type == "messages":
+                if trigger_type == "messages":
                     return len(filtered_messages) > trigger_value
         except Exception:
             pass  # Intentional: fallback if token counter unavailable  # nosec B110
 
         return False
 
-    async def _archive_to_vfs(
-        self, state: AgentState[Any], runtime: Runtime[Any]
-    ) -> str:
+    async def _archive_to_vfs(self, state: AgentState[Any], runtime: Runtime[Any]) -> str:
         """Archive full conversation to VFS before summarization."""
         messages = state.get("messages", [])
 
@@ -171,7 +167,7 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
 
         vfs = await self._get_vfs()
 
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         session_path = get_session_path(user_id, conversation_id)
         archive_path = f"{session_path}/archives/pre_summary_{timestamp}.json"
 
@@ -190,14 +186,12 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
                 "conversation_id": conversation_id,
                 "vfs_session_id": vfs_session_id,
                 "message_count": len(messages),
-                "archived_at": datetime.now(timezone.utc).isoformat(),
+                "archived_at": datetime.now(UTC).isoformat(),
                 "trigger_reason": "summarization_middleware",
             },
         )
 
-        log.info(
-            f"Archived {len(messages)} messages to {archive_path} before summarization"
-        )
+        log.info(f"Archived {len(messages)} messages to {archive_path} before summarization")
         return archive_path
 
     def _serialize_messages(self, messages: list[AnyMessage]) -> list[dict[str, Any]]:
@@ -230,9 +224,7 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
 
         return history
 
-    def _inject_archive_path(
-        self, result: dict[str, Any], archive_path: str
-    ) -> dict[str, Any]:
+    def _inject_archive_path(self, result: dict[str, Any], archive_path: str) -> dict[str, Any]:
         """Inject archive path reference into the summarized messages."""
         messages = result.get("messages", [])
         if not messages:

@@ -5,7 +5,10 @@ These tools allow agents to store, search, and retrieve memories,
 enabling them to maintain context and learn from past interactions.
 """
 
-from typing import Annotated, Dict, Optional
+from typing import Annotated
+
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
 
 from app.decorators import with_doc
 from app.services.memory_service import memory_service
@@ -13,8 +16,6 @@ from app.templates.docstrings.memory_tool_docs import (
     ADD_MEMORY,
     SEARCH_MEMORY,
 )
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
 
 
 @tool
@@ -22,7 +23,7 @@ from langchain_core.tools import tool
 async def add_memory(
     config: RunnableConfig,
     content: Annotated[str, "Memory content to store"],
-    metadata: Annotated[Optional[Dict], "Additional metadata for the memory"] = None,
+    metadata: Annotated[dict | None, "Additional metadata for the memory"] = None,
 ) -> str:
     if not config:
         return "Error: Configuration required but not provided"
@@ -67,9 +68,7 @@ async def search_memory(
     if not user_id:
         return "Error: User ID is required but not found in configuration"
 
-    results = await memory_service.search_memories(
-        query=query, user_id=user_id, limit=limit
-    )
+    results = await memory_service.search_memories(query=query, user_id=user_id, limit=limit)
 
     if not results.memories:
         return "No matching memories found"
@@ -77,9 +76,7 @@ async def search_memory(
     # Format the results
     formatted_results = "Found the following memories:\n\n"
     for i, memory in enumerate(results.memories, 1):
-        score = (
-            f" (score: {memory.relevance_score:.2f})" if memory.relevance_score else ""
-        )
+        score = f" (score: {memory.relevance_score:.2f})" if memory.relevance_score else ""
         formatted_results += f"{i}. {memory.content}{score}\n\n"
 
     return formatted_results
