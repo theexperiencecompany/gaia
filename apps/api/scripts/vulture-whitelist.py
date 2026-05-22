@@ -8,6 +8,11 @@ from pydantic import BaseModel  # noqa
 
 _.model_config  # noqa
 _.model_fields  # noqa
+
+# loguru types imported under TYPE_CHECKING and used only in string
+# annotations (record: "Record") — vulture can't see string annotations.
+Message  # noqa
+Record  # noqa
 _.current_datetime  # noqa - Used in Pydantic models
 _.mem0_user_id  # noqa - Used in agent state
 _.memories_stored  # noqa - Used in agent state

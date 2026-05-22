@@ -343,7 +343,7 @@ jobs:
       - name: knip (TypeScript) + vulture (Python) dead-code scan (strict)
         run: |
           echo "::group::dead-code scan"
-          bash scripts/dead-code-check.sh --strict
+          bash scripts/dead-code-check.sh --strict --verbose
           echo "::endgroup::"
           echo "Dead code: OK (no unused TS or Python code)"
 
