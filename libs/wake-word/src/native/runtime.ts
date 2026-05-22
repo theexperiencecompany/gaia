@@ -12,6 +12,11 @@
  */
 
 import type * as ortType from "onnxruntime-react-native";
+import {
+  float32Tensor,
+  int64Tensor,
+  OrtSession,
+} from "../internal/ort-session";
 import type {
   InferenceRuntime,
   InferenceSession,
@@ -37,42 +42,6 @@ function getOrt(): Promise<OrtModule> {
   return ortPromise;
 }
 
-class NativeSession implements InferenceSession {
-  constructor(private readonly s: ortType.InferenceSession) {}
-  inputNames(): readonly string[] {
-    return this.s.inputNames;
-  }
-  outputNames(): readonly string[] {
-    return this.s.outputNames;
-  }
-  async run(
-    feeds: Record<string, TypedTensor>,
-  ): Promise<Record<string, TypedTensor>> {
-    const ort = await getOrt();
-    const ortFeeds: Record<string, ortType.Tensor> = {};
-    for (const [name, t] of Object.entries(feeds)) {
-      ortFeeds[name] = new ort.Tensor(
-        t.type,
-        t.data as Float32Array | BigInt64Array | Int32Array,
-        t.dims as number[],
-      );
-    }
-    const out = await this.s.run(ortFeeds);
-    const result: Record<string, TypedTensor> = {};
-    for (const [name, tensor] of Object.entries(out)) {
-      result[name] = {
-        data: tensor.data as Float32Array | BigInt64Array | Int32Array,
-        dims: tensor.dims,
-        type: tensor.type as TypedTensor["type"],
-      };
-    }
-    return result;
-  }
-  async release(): Promise<void> {
-    await this.s.release();
-  }
-}
-
 export class NativeRuntime implements InferenceRuntime {
   async loadSession(source: ModelSource): Promise<InferenceSession> {
     const ort = await getOrt();
@@ -92,15 +61,14 @@ export class NativeRuntime implements InferenceRuntime {
           : new Uint8Array(source.bytes);
       session = await ort.InferenceSession.create(bytes);
     }
-    return new NativeSession(session);
+    return new OrtSession(session, ort.Tensor);
   }
 
   tensor(data: Float32Array, dims: readonly number[]): TypedTensor {
-    return { data, dims, type: "float32" };
+    return float32Tensor(data, dims);
   }
 
   int64(value: bigint | number, dims: readonly number[] = []): TypedTensor {
-    const v = typeof value === "bigint" ? value : BigInt(value);
-    return { data: new BigInt64Array([v]), dims, type: "int64" };
+    return int64Tensor(value, dims);
   }
 }
