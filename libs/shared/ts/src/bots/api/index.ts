@@ -839,12 +839,15 @@ export class GaiaClient {
   ): Promise<BotFileData> {
     return this.requestWithAuth(async () => {
       const form = new FormData();
-      // Blob preserves the mime type for FastAPI's UploadFile content_type,
-      // which file_service.py uses to dispatch image/PDF/text summarisation.
-      const blob = new Blob([new Uint8Array(input.data)], {
+      // A File (carrying name + type) preserves the mime type for FastAPI's
+      // UploadFile content_type, which file_service.py uses to dispatch
+      // image/PDF/text summarisation. A File with a 2-arg append (vs a Blob
+      // with a 3-arg append) keeps the typings consistent under lib:ESNext,
+      // where the 3-arg FormData.append overload isn't resolved.
+      const file = new File([new Uint8Array(input.data)], input.filename, {
         type: input.mimeType,
       });
-      form.append("file", blob, input.filename);
+      form.append("file", file);
       if (input.conversationId) {
         form.append("conversation_id", input.conversationId);
       }
@@ -883,10 +886,10 @@ export class GaiaClient {
   ): Promise<string> {
     return this.requestWithAuth(async () => {
       const form = new FormData();
-      const blob = new Blob([new Uint8Array(input.data)], {
+      const file = new File([new Uint8Array(input.data)], input.filename, {
         type: input.mimeType,
       });
-      form.append("file", blob, input.filename);
+      form.append("file", file);
 
       const { data } = await this.client.post("/api/v1/bot/transcribe", form, {
         headers: this.userHeaders(ctx),

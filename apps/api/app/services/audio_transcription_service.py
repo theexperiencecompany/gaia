@@ -12,8 +12,9 @@ from __future__ import annotations
 import io
 from typing import Final
 
-from shared.py.wide_events import log
 from openai import AsyncOpenAI
+
+from shared.py.wide_events import log
 
 # OpenAI's documented hard ceiling for the audio transcription endpoint.
 # Anything larger is rejected upstream — surface a clear 413 before sending.
@@ -54,9 +55,7 @@ def validate_audio_payload(*, content_type: str | None, size: int) -> str:
     {@link UnsupportedAudioFormatError} so callers can map to HTTP responses.
     """
     if size > MAX_AUDIO_BYTES:
-        raise AudioTooLargeError(
-            f"Audio is {size} bytes; max supported is {MAX_AUDIO_BYTES}."
-        )
+        raise AudioTooLargeError(f"Audio is {size} bytes; max supported is {MAX_AUDIO_BYTES}.")
     normalized = (content_type or "").split(";")[0].strip().lower()
     if normalized not in _ALLOWED_AUDIO_MIME_TYPES:
         raise UnsupportedAudioFormatError(

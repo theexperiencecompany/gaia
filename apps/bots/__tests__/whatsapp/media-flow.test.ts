@@ -78,7 +78,7 @@ vi.mock("@gaia/shared", async () => {
 
 import { handleStreamingChat } from "@gaia/shared";
 import { WhatsAppAdapter } from "../../whatsapp/src/adapter";
-import type { ExtractedMedia } from "../../whatsapp/src/webhook";
+import type { ExtractedMedia } from "../../whatsapp/src/webhook.types";
 
 // ---------------------------------------------------------------------------
 // Test helpers

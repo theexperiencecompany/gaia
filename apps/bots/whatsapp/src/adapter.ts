@@ -35,14 +35,16 @@ import {
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import { REPLAY_WINDOW_MS } from "./constants";
 import {
-  type ExtractedMedia,
   extractMedia,
   extractTextBody,
   extractWaId,
-  type KapsoMessageBatch,
-  type KapsoMessageEvent,
   verifyKapsoSignature,
 } from "./webhook";
+import type {
+  ExtractedMedia,
+  KapsoMessageBatch,
+  KapsoMessageEvent,
+} from "./webhook.types";
 
 // ─── WhatsApp-specific config ─────────────────────────────────────────────────
 
