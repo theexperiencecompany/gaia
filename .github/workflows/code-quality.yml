@@ -420,7 +420,7 @@ jobs:
           # only membership.
           #
           # Lanes still informational (need a resolution PR each): biome,
-          # deps, circular, types-location, components-per-file, type-check,
+          # deps, types-location, components-per-file, type-check,
           # python-ruff, python-mypy, python-security.
           ENFORCED=(
             duplicates
@@ -429,6 +429,7 @@ jobs:
             package-hygiene
             python-xenon
             python-interrogate
+            circular
           )
           # ---------------------------------------------------------------
 
