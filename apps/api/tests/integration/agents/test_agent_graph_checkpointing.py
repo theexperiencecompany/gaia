@@ -17,15 +17,20 @@ Requires: PostgreSQL running at localhost:5432 with database gaia_test.
 """
 
 import contextlib
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+import os
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-import pytest
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
+import pytest
 
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
@@ -36,12 +41,6 @@ from app.override.langgraph_bigtool.hooks import HookType
 from tests.helpers import (
     create_fake_llm,
 )
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-import os
 
 POSTGRES_TEST_URL = os.environ.get(
     "DATABASE_URL", "postgresql://gaia:gaia@localhost:5432/gaia_test"
@@ -245,9 +244,7 @@ async def pg_checkpointer_manager():
 class TestGraphCompilationWithPostgres:
     """Test 1: Graph compilation with real PostgreSQL checkpointer."""
 
-    async def test_comms_graph_compiles_with_postgres_checkpointer(
-        self, pg_checkpointer_manager
-    ):
+    async def test_comms_graph_compiles_with_postgres_checkpointer(self, pg_checkpointer_manager):
         """build_comms_graph compiles successfully when backed by a real
         PostgreSQL checkpointer manager. The compiled graph must expose
         the standard LangGraph API (ainvoke, astream, aget_state)."""
@@ -268,9 +265,7 @@ class TestGraphCompilationWithPostgres:
         fake_llm = create_fake_llm(["ok"])
 
         with _apply_patches(store_mock):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 assert graph is not None
                 assert hasattr(graph, "ainvoke")
 
@@ -365,12 +360,8 @@ class TestMultiTurnConversation:
         state_a = await graph.aget_state(config_a)
         state_b = await graph.aget_state(config_b)
 
-        human_a = [
-            m.content for m in state_a.values["messages"] if isinstance(m, HumanMessage)
-        ]
-        human_b = [
-            m.content for m in state_b.values["messages"] if isinstance(m, HumanMessage)
-        ]
+        human_a = [m.content for m in state_a.values["messages"] if isinstance(m, HumanMessage)]
+        human_b = [m.content for m in state_b.values["messages"] if isinstance(m, HumanMessage)]
 
         assert "Thread A message" in human_a
         assert "Thread B message" not in human_a
@@ -411,16 +402,12 @@ class TestStatePersistence:
 
         # Query the checkpointer directly
         checkpoint_tuple = await pg_checkpointer.aget_tuple(config)
-        assert checkpoint_tuple is not None, (
-            "Checkpoint must exist in PostgreSQL after invocation"
-        )
+        assert checkpoint_tuple is not None, "Checkpoint must exist in PostgreSQL after invocation"
         assert checkpoint_tuple.checkpoint is not None
         assert checkpoint_tuple.config is not None
 
         # The checkpoint config must reference our thread_id
-        stored_thread_id = checkpoint_tuple.config.get("configurable", {}).get(
-            "thread_id"
-        )
+        stored_thread_id = checkpoint_tuple.config.get("configurable", {}).get("thread_id")
         assert stored_thread_id == thread_id, (
             f"Checkpoint thread_id mismatch: expected {thread_id}, got {stored_thread_id}"
         )
@@ -526,9 +513,7 @@ class TestCheckpointRecovery:
         assert "Message from graph 1" in contents, (
             "Graph 2 must recover messages from graph 1 via PostgreSQL checkpoint"
         )
-        assert "Message from graph 2" in contents, (
-            "Graph 2 must also contain its own input message"
-        )
+        assert "Message from graph 2" in contents, "Graph 2 must also contain its own input message"
 
     async def test_recovery_preserves_ai_responses(self, pg_checkpointer):
         """After recovery, AI responses from the first graph instance must
@@ -580,8 +565,7 @@ class TestCheckpointRecovery:
 
         # The AI response from graph1 must have been recovered
         assert any("AI response from first session" in c for c in ai_contents), (
-            f"AI response from first session not found in recovered state. "
-            f"Got: {ai_contents}"
+            f"AI response from first session not found in recovered state. Got: {ai_contents}"
         )
 
 
@@ -685,9 +669,7 @@ class TestPreModelHooksExecution:
         # only modify ephemerally for the LLM call)
         system_msgs = [m for m in result["messages"] if m.type == "system"]
         non_memory = [
-            m
-            for m in system_msgs
-            if not m.additional_kwargs.get("memory_message", False)
+            m for m in system_msgs if not m.additional_kwargs.get("memory_message", False)
         ]
         assert len(non_memory) == 2, (
             f"Both system prompts should remain in persisted state, found {len(non_memory)}"
@@ -815,17 +797,13 @@ class TestErrorDuringInvocation:
         assert "messages" in state_after_error.values
 
         human_msgs = [
-            m
-            for m in state_after_error.values["messages"]
-            if isinstance(m, HumanMessage)
+            m for m in state_after_error.values["messages"] if isinstance(m, HumanMessage)
         ]
         assert any(m.content == "Good message" for m in human_msgs), (
             "First turn's human message must survive the failed second invocation"
         )
 
-        ai_msgs = [
-            m for m in state_after_error.values["messages"] if isinstance(m, AIMessage)
-        ]
+        ai_msgs = [m for m in state_after_error.values["messages"] if isinstance(m, AIMessage)]
         assert any("Successful first response" in m.content for m in ai_msgs), (
             "First turn's AI response must survive the failed second invocation"
         )
@@ -905,9 +883,7 @@ class TestErrorDuringInvocation:
         contents = [m.content for m in human_msgs]
 
         # Turn 1 message must be present (recovered from checkpoint)
-        assert "First OK" in contents, (
-            "First turn message must be present after recovery"
-        )
+        assert "First OK" in contents, "First turn message must be present after recovery"
         # Turn 3 message must be present
         assert "Third OK" in contents, "Third turn message must be present"
         # AI responses from both successful turns
@@ -1013,9 +989,7 @@ class TestFullCommsGraphWithPostgres:
                     "Messages must accumulate across turns with PostgreSQL checkpointing"
                 )
 
-                human_msgs = [
-                    m for m in state2.values["messages"] if isinstance(m, HumanMessage)
-                ]
+                human_msgs = [m for m in state2.values["messages"] if isinstance(m, HumanMessage)]
                 contents = [m.content for m in human_msgs]
                 assert "Postgres turn 1" in contents
                 assert "Postgres turn 2" in contents

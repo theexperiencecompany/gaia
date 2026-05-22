@@ -7,8 +7,8 @@ This module defines Pydantic models for:
 - API request/response schemas
 """
 
-from datetime import datetime, timezone
-from typing import Dict, List, Literal, Optional, TypedDict, cast
+from datetime import UTC, datetime
+from typing import Literal, TypedDict, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
@@ -25,7 +25,7 @@ class IntegrationTool(BaseModel):
     """Tool metadata for frontend display (not used by LLM)."""
 
     name: str
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class ComposioConfigDoc(BaseModel):
@@ -43,14 +43,10 @@ class Integration(BaseModel):
     Custom integrations created by users are stored here.
     """
 
-    integration_id: str = Field(
-        ..., description="Unique identifier for the integration"
-    )
+    integration_id: str = Field(..., description="Unique identifier for the integration")
     name: str = Field(..., description="Display name")
     description: str = Field(..., description="User-facing description")
-    category: str = Field(
-        ..., description="e.g., productivity, communication, developer"
-    )
+    category: str = Field(..., description="e.g., productivity, communication, developer")
 
     # Management and source
     managed_by: Literal["self", "composio", "mcp", "internal"] = Field(
@@ -62,37 +58,31 @@ class Integration(BaseModel):
 
     # Visibility and ownership
     is_public: bool = Field(False, description="Visible in public marketplace")
-    created_by: Optional[str] = Field(
-        None, description="User ID for custom integrations"
-    )
+    created_by: str | None = Field(None, description="User ID for custom integrations")
 
     # Publishing metadata
-    published_at: Optional[datetime] = Field(
+    published_at: datetime | None = Field(
         None, description="When integration was published to marketplace"
     )
-    clone_count: int = Field(
-        0, description="Number of times this integration was cloned"
-    )
+    clone_count: int = Field(0, description="Number of times this integration was cloned")
     # Note: cloned_from, slug, og_title, og_description, creator_name, creator_picture
     # have been removed. Creator info is now fetched from users collection at runtime.
 
     # Configuration (one of these based on managed_by)
-    mcp_config: Optional[MCPConfig] = None
-    composio_config: Optional[ComposioConfigDoc] = None
+    mcp_config: MCPConfig | None = None
+    composio_config: ComposioConfigDoc | None = None
 
     # Frontend display metadata
-    tools: List[IntegrationTool] = Field(
+    tools: list[IntegrationTool] = Field(
         default_factory=list, description="Tool list for frontend display only"
     )
-    icon_url: Optional[str] = Field(
-        None, description="Favicon URL fetched from MCP server subdomain"
-    )
+    icon_url: str | None = Field(None, description="Favicon URL fetched from MCP server subdomain")
     display_priority: int = Field(0, description="Higher priority shows first")
     is_featured: bool = Field(False, description="Show in featured section")
 
     # Timestamps
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = None
 
     @field_validator("clone_count", mode="before")
     @classmethod
@@ -117,10 +107,8 @@ class UserIntegration(BaseModel):
         "created",
         description="'created' = added but not authenticated, 'connected' = ready to use",
     )
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    connected_at: Optional[datetime] = Field(
-        None, description="When OAuth/auth was completed"
-    )
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    connected_at: datetime | None = Field(None, description="When OAuth/auth was completed")
 
     model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
 
@@ -135,24 +123,24 @@ class CreateCustomIntegrationRequest(BaseModel):
     """Request to create a custom MCP integration."""
 
     name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
+    description: str | None = Field(None, max_length=500)
     category: str = Field(default="custom")
     server_url: str = Field(..., description="MCP server URL")
     requires_auth: bool = Field(False)
-    auth_type: Optional[Literal["none", "oauth", "bearer"]] = Field(None)
+    auth_type: Literal["none", "oauth", "bearer"] | None = Field(None)
     is_public: bool = Field(False)
-    bearer_token: Optional[str] = Field(None)
+    bearer_token: str | None = Field(None)
 
 
 class UpdateCustomIntegrationRequest(BaseModel):
     """Request to update a custom integration (partial update)."""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = Field(None, min_length=1, max_length=500)
-    server_url: Optional[str] = None
-    requires_auth: Optional[bool] = None
-    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
-    is_public: Optional[bool] = None
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = Field(None, min_length=1, max_length=500)
+    server_url: str | None = None
+    requires_auth: bool | None = None
+    auth_type: Literal["none", "oauth", "bearer"] | None = None
+    is_public: bool | None = None
 
 
 class IntegrationResponse(BaseModel):
@@ -171,24 +159,24 @@ class IntegrationResponse(BaseModel):
 
     # Config details (optional, depends on managed_by)
     requires_auth: bool = False
-    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
+    auth_type: Literal["none", "oauth", "bearer"] | None = None
 
     # Tool metadata for frontend display
-    tools: List[IntegrationTool] = Field(default_factory=list)
+    tools: list[IntegrationTool] = Field(default_factory=list)
 
     # Icon URL for custom integrations (favicon from MCP server)
-    icon_url: Optional[str] = None
+    icon_url: str | None = None
 
     # Custom integration fields
-    is_public: Optional[bool] = None
-    created_by: Optional[str] = None
+    is_public: bool | None = None
+    created_by: str | None = None
 
     # Publishing metadata (for public integrations)
-    published_at: Optional[datetime] = None
+    published_at: datetime | None = None
     clone_count: int = 0
-    slug: Optional[str] = None
+    slug: str | None = None
     # Creator info (populated via aggregation from users collection)
-    creator: Optional[Dict[str, Optional[str]]] = None
+    creator: dict[str, str | None] | None = None
 
     @field_validator("clone_count", mode="before")
     @classmethod
@@ -204,9 +192,7 @@ class IntegrationResponse(BaseModel):
 
         if integration.mcp_config:
             requires_auth = integration.mcp_config.requires_auth
-            auth_type = integration.mcp_config.auth_type or (
-                "oauth" if requires_auth else "none"
-            )
+            auth_type = integration.mcp_config.auth_type or ("oauth" if requires_auth else "none")
 
         # Compute slug at runtime (not stored in DB)
         slug = generate_integration_slug(
@@ -236,9 +222,7 @@ class IntegrationResponse(BaseModel):
         )
 
     @classmethod
-    def from_oauth_integration(
-        cls, oauth_int: OAuthIntegration
-    ) -> "IntegrationResponse":
+    def from_oauth_integration(cls, oauth_int: OAuthIntegration) -> "IntegrationResponse":
         """Convert OAuthIntegration from config to response."""
         requires_auth = False
         auth_type = None
@@ -274,7 +258,7 @@ class UserIntegrationResponse(BaseModel):
     integration_id: str
     status: Literal["created", "connected"]
     created_at: datetime
-    connected_at: Optional[datetime] = None
+    connected_at: datetime | None = None
 
     # Hydrated integration details
     integration: IntegrationResponse
@@ -283,15 +267,15 @@ class UserIntegrationResponse(BaseModel):
 class MarketplaceResponse(BaseModel):
     """Response for marketplace listing."""
 
-    featured: List[IntegrationResponse] = Field(default_factory=list)
-    integrations: List[IntegrationResponse] = Field(default_factory=list)
+    featured: list[IntegrationResponse] = Field(default_factory=list)
+    integrations: list[IntegrationResponse] = Field(default_factory=list)
     total: int = 0
 
 
 class UserIntegrationsListResponse(BaseModel):
     """Response for user's integrations listing."""
 
-    integrations: List[UserIntegrationResponse] = Field(default_factory=list)
+    integrations: list[UserIntegrationResponse] = Field(default_factory=list)
     total: int = 0
 
 
@@ -302,7 +286,7 @@ class ConnectIntegrationRequest(BaseModel):
         default="/integrations",
         description="Frontend path to redirect after OAuth completes",
     )
-    bearer_token: Optional[str] = Field(None)
+    bearer_token: str | None = Field(None)
 
 
 class ConnectIntegrationResponse(BaseModel):
@@ -317,16 +301,16 @@ class ConnectIntegrationResponse(BaseModel):
 
     status: Literal["connected", "redirect", "error"]
     integration_id: str
-    message: Optional[str] = None
+    message: str | None = None
 
     # For status="connected"
-    tools_count: Optional[int] = None
+    tools_count: int | None = None
 
     # For status="redirect"
-    redirect_url: Optional[str] = None
+    redirect_url: str | None = None
 
     # For status="error"
-    error: Optional[str] = None
+    error: str | None = None
 
 
 # TypedDicts for integration tool LLM responses
@@ -349,8 +333,8 @@ class SuggestedIntegration(TypedDict):
     name: str
     description: str
     category: str
-    icon_url: Optional[str]
-    auth_type: Optional[str]
+    icon_url: str | None
+    auth_type: str | None
     relevance_score: float
     slug: str
 
@@ -358,6 +342,6 @@ class SuggestedIntegration(TypedDict):
 class ListIntegrationsResult(TypedDict):
     """Result from list_integrations tool for LLM context."""
 
-    connected: List[IntegrationInfo]
-    available: List[IntegrationInfo]
-    suggested: List[SuggestedIntegration]
+    connected: list[IntegrationInfo]
+    available: list[IntegrationInfo]
+    suggested: list[SuggestedIntegration]

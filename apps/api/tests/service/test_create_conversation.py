@@ -15,9 +15,7 @@ from app.utils.chat_utils import create_conversation
 class TestCreateConversationReal:
     """Call real create_conversation against real MongoDB."""
 
-    async def test_creates_document_in_mongodb(
-        self, real_redis, conversations_collection
-    ):
+    async def test_creates_document_in_mongodb(self, real_redis, conversations_collection):
         """create_conversation must insert a document retrievable by conversation_id."""
         with patch(
             "app.utils.chat_utils._generate_description_from_message",
@@ -37,9 +35,7 @@ class TestCreateConversationReal:
         assert doc is not None
         assert doc["user_id"] == "create-user-1"
 
-    async def test_conversation_id_is_unique(
-        self, real_redis, conversations_collection
-    ):
+    async def test_conversation_id_is_unique(self, real_redis, conversations_collection):
         """Each call must generate a unique conversation_id."""
         with patch(
             "app.utils.chat_utils._generate_description_from_message",

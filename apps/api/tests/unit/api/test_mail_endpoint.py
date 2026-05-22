@@ -10,8 +10,8 @@ the dependency passes without a real Composio/Redis connection.
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 MAIL_BASE = "/api/v1"
 
@@ -43,9 +43,7 @@ class TestListLabels:
         "app.api.v1.endpoints.mail.list_labels_service",
         new_callable=AsyncMock,
     )
-    async def test_list_labels_returns_200(
-        self, mock_labels: AsyncMock, client: AsyncClient
-    ):
+    async def test_list_labels_returns_200(self, mock_labels: AsyncMock, client: AsyncClient):
         mock_labels.return_value = {
             "success": True,
             "labels": [{"id": "INBOX", "name": "INBOX"}],
@@ -79,9 +77,7 @@ class TestListMessages:
         "app.api.v1.endpoints.mail.search_messages",
         new_callable=AsyncMock,
     )
-    async def test_list_messages_returns_200(
-        self, mock_search: AsyncMock, client: AsyncClient
-    ):
+    async def test_list_messages_returns_200(self, mock_search: AsyncMock, client: AsyncClient):
         mock_search.return_value = {
             "messages": [{"id": "msg-1", "snippet": "Hello"}],
             "nextPageToken": None,
@@ -96,9 +92,7 @@ class TestListMessages:
         "app.api.v1.endpoints.mail.search_messages",
         new_callable=AsyncMock,
     )
-    async def test_list_messages_with_pagination(
-        self, mock_search: AsyncMock, client: AsyncClient
-    ):
+    async def test_list_messages_with_pagination(self, mock_search: AsyncMock, client: AsyncClient):
         mock_search.return_value = {
             "messages": [{"id": "msg-2"}],
             "nextPageToken": "token-abc",
@@ -132,9 +126,7 @@ class TestGetEmailById:
         "app.api.v1.endpoints.mail.get_email_by_id_service",
         new_callable=AsyncMock,
     )
-    async def test_get_email_returns_200(
-        self, mock_get: AsyncMock, client: AsyncClient
-    ):
+    async def test_get_email_returns_200(self, mock_get: AsyncMock, client: AsyncClient):
         mock_get.return_value = {
             "success": True,
             "message": {"id": "msg-1", "subject": "Test"},
@@ -149,9 +141,7 @@ class TestGetEmailById:
         "app.api.v1.endpoints.mail.get_email_by_id_service",
         new_callable=AsyncMock,
     )
-    async def test_get_email_not_found_returns_404(
-        self, mock_get: AsyncMock, client: AsyncClient
-    ):
+    async def test_get_email_not_found_returns_404(self, mock_get: AsyncMock, client: AsyncClient):
         mock_get.return_value = {
             "success": False,
             "error": "Message not found",
@@ -184,25 +174,19 @@ class TestSearchEmails:
         "app.api.v1.endpoints.mail.search_messages",
         new_callable=AsyncMock,
     )
-    async def test_search_emails_returns_200(
-        self, mock_search: AsyncMock, client: AsyncClient
-    ):
+    async def test_search_emails_returns_200(self, mock_search: AsyncMock, client: AsyncClient):
         mock_search.return_value = {
             "messages": [{"id": "msg-1"}],
             "nextPageToken": None,
         }
-        response = await client.get(
-            f"{MAIL_BASE}/gmail/search", params={"query": "invoice"}
-        )
+        response = await client.get(f"{MAIL_BASE}/gmail/search", params={"query": "invoice"})
         assert response.status_code == 200
 
     @patch(
         "app.api.v1.endpoints.mail.search_messages",
         new_callable=AsyncMock,
     )
-    async def test_search_emails_with_filters(
-        self, mock_search: AsyncMock, client: AsyncClient
-    ):
+    async def test_search_emails_with_filters(self, mock_search: AsyncMock, client: AsyncClient):
         mock_search.return_value = {"messages": [], "nextPageToken": None}
         response = await client.get(
             f"{MAIL_BASE}/gmail/search",
@@ -246,9 +230,7 @@ class TestSendEmailJson:
         "app.api.v1.endpoints.mail.send_email",
         new_callable=AsyncMock,
     )
-    async def test_send_email_json_returns_200(
-        self, mock_send: AsyncMock, client: AsyncClient
-    ):
+    async def test_send_email_json_returns_200(self, mock_send: AsyncMock, client: AsyncClient):
         mock_send.return_value = {"id": "sent-001"}
         response = await client.post(
             f"{MAIL_BASE}/gmail/send-json",
@@ -267,9 +249,7 @@ class TestSendEmailJson:
         "app.api.v1.endpoints.mail.send_email",
         new_callable=AsyncMock,
     )
-    async def test_send_email_json_with_cc_bcc(
-        self, mock_send: AsyncMock, client: AsyncClient
-    ):
+    async def test_send_email_json_with_cc_bcc(self, mock_send: AsyncMock, client: AsyncClient):
         mock_send.return_value = {"id": "sent-002"}
         response = await client.post(
             f"{MAIL_BASE}/gmail/send-json",
@@ -290,9 +270,7 @@ class TestSendEmailJson:
         )
         assert response.status_code == 422
 
-    async def test_send_email_json_missing_subject_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_send_email_json_missing_subject_returns_422(self, client: AsyncClient):
         response = await client.post(
             f"{MAIL_BASE}/gmail/send-json",
             json={"to": ["a@test.com"], "body": "Body"},
@@ -335,9 +313,7 @@ class TestMarkAsRead:
         "app.api.v1.endpoints.mail.mark_messages_as_read",
         new_callable=AsyncMock,
     )
-    async def test_mark_as_read_returns_200(
-        self, mock_mark: AsyncMock, client: AsyncClient
-    ):
+    async def test_mark_as_read_returns_200(self, mock_mark: AsyncMock, client: AsyncClient):
         mock_mark.return_value = [{"id": "msg-1"}, {"id": "msg-2"}]
         response = await client.post(
             f"{MAIL_BASE}/gmail/mark-as-read",
@@ -364,9 +340,7 @@ class TestMarkAsUnread:
         "app.api.v1.endpoints.mail.mark_messages_as_unread",
         new_callable=AsyncMock,
     )
-    async def test_mark_as_unread_returns_200(
-        self, mock_mark: AsyncMock, client: AsyncClient
-    ):
+    async def test_mark_as_unread_returns_200(self, mock_mark: AsyncMock, client: AsyncClient):
         mock_mark.return_value = [{"id": "msg-1"}]
         response = await client.post(
             f"{MAIL_BASE}/gmail/mark-as-unread",
@@ -388,9 +362,7 @@ class TestStarEmails:
         "app.api.v1.endpoints.mail.star_messages",
         new_callable=AsyncMock,
     )
-    async def test_star_emails_returns_200(
-        self, mock_star: AsyncMock, client: AsyncClient
-    ):
+    async def test_star_emails_returns_200(self, mock_star: AsyncMock, client: AsyncClient):
         mock_star.return_value = [{"id": "msg-1"}]
         response = await client.post(
             f"{MAIL_BASE}/gmail/star",
@@ -426,9 +398,7 @@ class TestUnstarEmails:
         "app.api.v1.endpoints.mail.unstar_messages",
         new_callable=AsyncMock,
     )
-    async def test_unstar_emails_returns_200(
-        self, mock_unstar: AsyncMock, client: AsyncClient
-    ):
+    async def test_unstar_emails_returns_200(self, mock_unstar: AsyncMock, client: AsyncClient):
         mock_unstar.return_value = [{"id": "msg-1"}]
         response = await client.post(
             f"{MAIL_BASE}/gmail/unstar",
@@ -469,9 +439,7 @@ class TestUntrashEmails:
         "app.api.v1.endpoints.mail.untrash_messages",
         new_callable=AsyncMock,
     )
-    async def test_untrash_returns_200(
-        self, mock_untrash: AsyncMock, client: AsyncClient
-    ):
+    async def test_untrash_returns_200(self, mock_untrash: AsyncMock, client: AsyncClient):
         mock_untrash.return_value = [{"id": "msg-1"}]
         response = await client.post(
             f"{MAIL_BASE}/gmail/untrash",
@@ -492,9 +460,7 @@ class TestArchiveEmails:
         "app.api.v1.endpoints.mail.archive_messages",
         new_callable=AsyncMock,
     )
-    async def test_archive_returns_200(
-        self, mock_archive: AsyncMock, client: AsyncClient
-    ):
+    async def test_archive_returns_200(self, mock_archive: AsyncMock, client: AsyncClient):
         mock_archive.return_value = [{"id": "msg-1"}]
         response = await client.post(
             f"{MAIL_BASE}/gmail/archive",
@@ -515,9 +481,7 @@ class TestMoveToInbox:
         "app.api.v1.endpoints.mail.move_to_inbox",
         new_callable=AsyncMock,
     )
-    async def test_move_to_inbox_returns_200(
-        self, mock_move: AsyncMock, client: AsyncClient
-    ):
+    async def test_move_to_inbox_returns_200(self, mock_move: AsyncMock, client: AsyncClient):
         mock_move.return_value = [{"id": "msg-1"}]
         response = await client.post(
             f"{MAIL_BASE}/gmail/move-to-inbox",
@@ -538,9 +502,7 @@ class TestGetThread:
         "app.api.v1.endpoints.mail.fetch_thread",
         new_callable=AsyncMock,
     )
-    async def test_get_thread_returns_200(
-        self, mock_fetch: AsyncMock, client: AsyncClient
-    ):
+    async def test_get_thread_returns_200(self, mock_fetch: AsyncMock, client: AsyncClient):
         mock_fetch.return_value = {
             "messages": [
                 {"id": "msg-1", "threadId": "thread-1"},
@@ -575,9 +537,7 @@ class TestCreateLabel:
         "app.api.v1.endpoints.mail.create_label",
         new_callable=AsyncMock,
     )
-    async def test_create_label_returns_200(
-        self, mock_create: AsyncMock, client: AsyncClient
-    ):
+    async def test_create_label_returns_200(self, mock_create: AsyncMock, client: AsyncClient):
         mock_create.return_value = {"id": "Label_1", "name": "Important"}
         response = await client.post(
             f"{MAIL_BASE}/gmail/labels",
@@ -601,9 +561,7 @@ class TestUpdateLabel:
         "app.api.v1.endpoints.mail.update_label",
         new_callable=AsyncMock,
     )
-    async def test_update_label_returns_200(
-        self, mock_update: AsyncMock, client: AsyncClient
-    ):
+    async def test_update_label_returns_200(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.return_value = {"id": "Label_1", "name": "Renamed"}
         response = await client.put(
             f"{MAIL_BASE}/gmail/labels/Label_1",
@@ -623,9 +581,7 @@ class TestDeleteLabel:
         "app.api.v1.endpoints.mail.delete_label",
         new_callable=AsyncMock,
     )
-    async def test_delete_label_success(
-        self, mock_delete: AsyncMock, client: AsyncClient
-    ):
+    async def test_delete_label_success(self, mock_delete: AsyncMock, client: AsyncClient):
         mock_delete.return_value = True
         response = await client.delete(f"{MAIL_BASE}/gmail/labels/Label_1")
         assert response.status_code == 200
@@ -635,9 +591,7 @@ class TestDeleteLabel:
         "app.api.v1.endpoints.mail.delete_label",
         new_callable=AsyncMock,
     )
-    async def test_delete_label_failure(
-        self, mock_delete: AsyncMock, client: AsyncClient
-    ):
+    async def test_delete_label_failure(self, mock_delete: AsyncMock, client: AsyncClient):
         mock_delete.return_value = False
         response = await client.delete(f"{MAIL_BASE}/gmail/labels/Label_1")
         assert response.status_code == 200
@@ -654,9 +608,7 @@ class TestApplyLabels:
         "app.api.v1.endpoints.mail.apply_labels",
         new_callable=AsyncMock,
     )
-    async def test_apply_labels_returns_200(
-        self, mock_apply: AsyncMock, client: AsyncClient
-    ):
+    async def test_apply_labels_returns_200(self, mock_apply: AsyncMock, client: AsyncClient):
         mock_apply.return_value = [{"id": "msg-1"}]
         response = await client.post(
             f"{MAIL_BASE}/gmail/messages/apply-label",
@@ -683,9 +635,7 @@ class TestRemoveLabels:
         "app.api.v1.endpoints.mail.remove_labels",
         new_callable=AsyncMock,
     )
-    async def test_remove_labels_returns_200(
-        self, mock_remove: AsyncMock, client: AsyncClient
-    ):
+    async def test_remove_labels_returns_200(self, mock_remove: AsyncMock, client: AsyncClient):
         mock_remove.return_value = [{"id": "msg-1"}]
         response = await client.post(
             f"{MAIL_BASE}/gmail/messages/remove-label",
@@ -705,9 +655,7 @@ class TestCreateDraft:
         "app.api.v1.endpoints.mail.create_draft",
         new_callable=AsyncMock,
     )
-    async def test_create_draft_returns_200(
-        self, mock_create: AsyncMock, client: AsyncClient
-    ):
+    async def test_create_draft_returns_200(self, mock_create: AsyncMock, client: AsyncClient):
         mock_create.return_value = {
             "id": "draft-001",
             "message": {"id": "msg-draft-001"},
@@ -743,9 +691,7 @@ class TestListDrafts:
         "app.api.v1.endpoints.mail.list_drafts",
         new_callable=AsyncMock,
     )
-    async def test_list_drafts_returns_200(
-        self, mock_list: AsyncMock, client: AsyncClient
-    ):
+    async def test_list_drafts_returns_200(self, mock_list: AsyncMock, client: AsyncClient):
         mock_list.return_value = {
             "drafts": [{"id": "draft-001"}],
             "nextPageToken": None,
@@ -764,9 +710,7 @@ class TestGetDraft:
         "app.api.v1.endpoints.mail.get_draft",
         new_callable=AsyncMock,
     )
-    async def test_get_draft_returns_200(
-        self, mock_get: AsyncMock, client: AsyncClient
-    ):
+    async def test_get_draft_returns_200(self, mock_get: AsyncMock, client: AsyncClient):
         mock_get.return_value = {"id": "draft-001", "message": {"id": "msg-001"}}
         response = await client.get(f"{MAIL_BASE}/gmail/drafts/draft-001")
         assert response.status_code == 200
@@ -775,9 +719,7 @@ class TestGetDraft:
         "app.api.v1.endpoints.mail.get_draft",
         new_callable=AsyncMock,
     )
-    async def test_get_draft_error_returns_500(
-        self, mock_get: AsyncMock, client: AsyncClient
-    ):
+    async def test_get_draft_error_returns_500(self, mock_get: AsyncMock, client: AsyncClient):
         mock_get.side_effect = Exception("Not found")
         response = await client.get(f"{MAIL_BASE}/gmail/drafts/bad-id")
         assert response.status_code == 500
@@ -793,9 +735,7 @@ class TestUpdateDraft:
         "app.api.v1.endpoints.mail.update_draft",
         new_callable=AsyncMock,
     )
-    async def test_update_draft_returns_200(
-        self, mock_update: AsyncMock, client: AsyncClient
-    ):
+    async def test_update_draft_returns_200(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.return_value = {
             "id": "draft-001",
             "message": {"id": "msg-updated"},
@@ -822,9 +762,7 @@ class TestDeleteDraft:
         "app.api.v1.endpoints.mail.delete_draft",
         new_callable=AsyncMock,
     )
-    async def test_delete_draft_success(
-        self, mock_delete: AsyncMock, client: AsyncClient
-    ):
+    async def test_delete_draft_success(self, mock_delete: AsyncMock, client: AsyncClient):
         mock_delete.return_value = True
         response = await client.delete(f"{MAIL_BASE}/gmail/drafts/draft-001")
         assert response.status_code == 200
@@ -834,9 +772,7 @@ class TestDeleteDraft:
         "app.api.v1.endpoints.mail.delete_draft",
         new_callable=AsyncMock,
     )
-    async def test_delete_draft_failure(
-        self, mock_delete: AsyncMock, client: AsyncClient
-    ):
+    async def test_delete_draft_failure(self, mock_delete: AsyncMock, client: AsyncClient):
         mock_delete.return_value = False
         response = await client.delete(f"{MAIL_BASE}/gmail/drafts/draft-001")
         assert response.status_code == 200
@@ -853,9 +789,7 @@ class TestSendDraft:
         "app.api.v1.endpoints.mail.send_draft",
         new_callable=AsyncMock,
     )
-    async def test_send_draft_returns_200(
-        self, mock_send: AsyncMock, client: AsyncClient
-    ):
+    async def test_send_draft_returns_200(self, mock_send: AsyncMock, client: AsyncClient):
         mock_send.return_value = {
             "successful": True,
             "id": "sent-001",
@@ -871,9 +805,7 @@ class TestSendDraft:
         "app.api.v1.endpoints.mail.send_draft",
         new_callable=AsyncMock,
     )
-    async def test_send_draft_failure_returns_500(
-        self, mock_send: AsyncMock, client: AsyncClient
-    ):
+    async def test_send_draft_failure_returns_500(self, mock_send: AsyncMock, client: AsyncClient):
         mock_send.return_value = {
             "successful": False,
             "error": "Draft expired",
@@ -933,9 +865,7 @@ class TestGetSingleImportanceSummary:
         "app.api.v1.endpoints.mail.get_single_importance_summary_service",
         new_callable=AsyncMock,
     )
-    async def test_not_found_returns_404(
-        self, mock_svc: AsyncMock, client: AsyncClient
-    ):
+    async def test_not_found_returns_404(self, mock_svc: AsyncMock, client: AsyncClient):
         mock_svc.return_value = None
         response = await client.get(f"{MAIL_BASE}/gmail/importance-summary/nonexistent")
         assert response.status_code == 404

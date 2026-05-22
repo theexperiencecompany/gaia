@@ -32,9 +32,7 @@ def clear_cacheable_redis_cache():
     stale cached value left by a previous test in the same session.
     """
     with (
-        patch(
-            "app.decorators.caching.get_cache", new_callable=AsyncMock
-        ) as mock_dec_get,
+        patch("app.decorators.caching.get_cache", new_callable=AsyncMock) as mock_dec_get,
         patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
     ):
         mock_dec_get.return_value = None  # always a cache miss inside @Cacheable
@@ -89,9 +87,7 @@ class TestToolsEndpoints:
         "app.api.v1.endpoints.tools.get_available_tools",
         new_callable=AsyncMock,
     )
-    async def test_list_tools_returns_200(
-        self, mock_get_tools, mock_cache, test_client
-    ):
+    async def test_list_tools_returns_200(self, mock_get_tools, mock_cache, test_client):
         """GET /tools should return 200 with tools response structure."""
         mock_cache.return_value = None  # Cache miss
         mock_get_tools.return_value = _make_tools_list_response()
@@ -109,9 +105,7 @@ class TestToolsEndpoints:
         "app.api.v1.endpoints.tools.get_available_tools",
         new_callable=AsyncMock,
     )
-    async def test_list_tools_returns_tool_metadata(
-        self, mock_get_tools, mock_cache, test_client
-    ):
+    async def test_list_tools_returns_tool_metadata(self, mock_get_tools, mock_cache, test_client):
         """GET /tools should include tool name, category, and display_name fields."""
         mock_cache.return_value = None
         tools = [
@@ -152,14 +146,10 @@ class TestToolsEndpoints:
         "app.api.v1.endpoints.tools.get_available_tools",
         new_callable=AsyncMock,
     )
-    async def test_list_tools_empty_returns_200(
-        self, mock_get_tools, mock_cache, test_client
-    ):
+    async def test_list_tools_empty_returns_200(self, mock_get_tools, mock_cache, test_client):
         """GET /tools with no tools in registry should return 200 with empty list."""
         mock_cache.return_value = None
-        mock_get_tools.return_value = ToolsListResponse(
-            tools=[], total_count=0, categories=[]
-        )
+        mock_get_tools.return_value = ToolsListResponse(tools=[], total_count=0, categories=[])
 
         response = await test_client.get(_TOOLS_URL)
 
@@ -188,11 +178,7 @@ class TestToolsEndpoints:
         to keep the test hermetic (no real DB/Redis access).
         """
         cached = _make_tools_list_response(
-            [
-                _make_tool_info(
-                    name="cached_tool", category="general", display_name="General"
-                )
-            ]
+            [_make_tool_info(name="cached_tool", category="general", display_name="General")]
         )
         mock_cache.return_value = cached
         # No user-specific MCP tools — response should come straight from cache.
@@ -300,9 +286,7 @@ class TestToolsEndpoints:
         "app.api.v1.endpoints.tools.get_tool_categories",
         new_callable=AsyncMock,
     )
-    async def test_list_categories_empty_returns_200(
-        self, mock_categories, test_client
-    ):
+    async def test_list_categories_empty_returns_200(self, mock_categories, test_client):
         """GET /tools/categories with no categories returns 200 and empty dict."""
         mock_categories.return_value = {}
 
@@ -315,9 +299,7 @@ class TestToolsEndpoints:
         "app.api.v1.endpoints.tools.get_tool_categories",
         new_callable=AsyncMock,
     )
-    async def test_list_categories_service_error_returns_500(
-        self, mock_categories, test_client
-    ):
+    async def test_list_categories_service_error_returns_500(self, mock_categories, test_client):
         """GET /tools/categories should return 500 when service raises."""
         mock_categories.side_effect = RuntimeError("Registry error")
 
@@ -343,11 +325,7 @@ class TestToolsEndpoints:
         """GET /tools/category/{name} should return 200 with tools in category."""
         mock_by_cat.return_value = ToolsCategoryResponse(
             category="gmail",
-            tools=[
-                _make_tool_info(
-                    name="send_email", category="gmail", display_name="Gmail"
-                )
-            ],
+            tools=[_make_tool_info(name="send_email", category="gmail", display_name="Gmail")],
             count=1,
         )
 
@@ -364,9 +342,7 @@ class TestToolsEndpoints:
         "app.api.v1.endpoints.tools.get_tools_by_category",
         new_callable=AsyncMock,
     )
-    async def test_get_tools_in_category_not_found_returns_404(
-        self, mock_by_cat, test_client
-    ):
+    async def test_get_tools_in_category_not_found_returns_404(self, mock_by_cat, test_client):
         """GET /tools/category/{name} with unknown category returns 404."""
         mock_by_cat.return_value = ToolsCategoryResponse(
             category="nonexistent",
@@ -383,9 +359,7 @@ class TestToolsEndpoints:
         "app.api.v1.endpoints.tools.get_tools_by_category",
         new_callable=AsyncMock,
     )
-    async def test_get_tools_in_category_service_error_returns_500(
-        self, mock_by_cat, test_client
-    ):
+    async def test_get_tools_in_category_service_error_returns_500(self, mock_by_cat, test_client):
         """GET /tools/category/{name} should return 500 when service raises."""
         mock_by_cat.side_effect = RuntimeError("Registry unavailable")
 
@@ -408,9 +382,7 @@ class TestToolsEndpoints:
         tools = [
             _make_tool_info(name="send_email", category="gmail", display_name="Gmail"),
             _make_tool_info(name="read_email", category="gmail", display_name="Gmail"),
-            _make_tool_info(
-                name="delete_email", category="gmail", display_name="Gmail"
-            ),
+            _make_tool_info(name="delete_email", category="gmail", display_name="Gmail"),
         ]
         mock_by_cat.return_value = ToolsCategoryResponse(
             category="gmail",
@@ -429,9 +401,7 @@ class TestToolsEndpoints:
         "app.api.v1.endpoints.tools.get_tools_by_category",
         new_callable=AsyncMock,
     )
-    async def test_get_tools_in_category_response_fields(
-        self, mock_by_cat, test_client
-    ):
+    async def test_get_tools_in_category_response_fields(self, mock_by_cat, test_client):
         """GET /tools/category/{name} tools should include required metadata fields."""
         mock_by_cat.return_value = ToolsCategoryResponse(
             category="googlecalendar",
@@ -650,11 +620,7 @@ class TestMCPToolMerge:
     ):
         """Categories from merged MCP tools must appear in the response categories list."""
         cached_global = ToolsListResponse(
-            tools=[
-                _make_tool_info(
-                    name="web_search", category="general", display_name="General"
-                )
-            ],
+            tools=[_make_tool_info(name="web_search", category="general", display_name="General")],
             total_count=1,
             categories=["general"],
         )

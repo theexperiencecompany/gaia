@@ -54,9 +54,7 @@ class TestChatStreamingPipeline:
         received: list[str] = []
 
         async def subscriber():
-            async for chunk in StreamManager.subscribe_stream(
-                sid, keepalive_interval=5
-            ):
+            async for chunk in StreamManager.subscribe_stream(sid, keepalive_interval=5):
                 received.append(chunk)
 
         pub_task = asyncio.create_task(publisher())
@@ -83,9 +81,7 @@ class TestChatStreamingPipeline:
         received: list[str] = []
 
         async def subscriber():
-            async for chunk in StreamManager.subscribe_stream(
-                sid, keepalive_interval=5
-            ):
+            async for chunk in StreamManager.subscribe_stream(sid, keepalive_interval=5):
                 received.append(chunk)
 
         pub_task = asyncio.create_task(publisher())
@@ -130,9 +126,7 @@ class TestChatStreamingPipeline:
         received_b: list[str] = []
 
         async def subscribe_for(sid: str, dest: list[str]):
-            async for chunk in StreamManager.subscribe_stream(
-                sid, keepalive_interval=5
-            ):
+            async for chunk in StreamManager.subscribe_stream(sid, keepalive_interval=5):
                 dest.append(chunk)
 
         tasks = [
@@ -172,9 +166,7 @@ class TestChatStreamingPipeline:
         received: list[str] = []
 
         async def subscriber():
-            async for chunk in StreamManager.subscribe_stream(
-                sid, keepalive_interval=5
-            ):
+            async for chunk in StreamManager.subscribe_stream(sid, keepalive_interval=5):
                 received.append(chunk)
 
         pub_task = asyncio.create_task(publisher())
@@ -253,9 +245,7 @@ class TestStreamMetadata:
         received: list[str] = []
 
         async def subscriber():
-            async for chunk in StreamManager.subscribe_stream(
-                sid, keepalive_interval=5
-            ):
+            async for chunk in StreamManager.subscribe_stream(sid, keepalive_interval=5):
                 received.append(chunk)
 
         sub_task = asyncio.create_task(subscriber())
@@ -303,9 +293,7 @@ class TestStreamRedisFailure:
 
         with patch.object(redis_cache, "redis", None):
             received: list[str] = []
-            async for chunk in StreamManager.subscribe_stream(
-                sid, keepalive_interval=1
-            ):
+            async for chunk in StreamManager.subscribe_stream(sid, keepalive_interval=1):
                 received.append(chunk)
 
         assert received == []
@@ -353,9 +341,7 @@ class TestStreamKeepalive:
         received: list[str] = []
 
         async def subscriber():
-            async for chunk in StreamManager.subscribe_stream(
-                sid, keepalive_interval=0.3
-            ):
+            async for chunk in StreamManager.subscribe_stream(sid, keepalive_interval=0.3):
                 received.append(chunk)
                 # After receiving first keepalive, stop
                 if '{"keepalive":true}' in chunk:
@@ -400,9 +386,7 @@ class TestMultipleSubscribers:
         received_2: list[str] = []
 
         async def subscriber(dest: list[str]):
-            async for chunk in StreamManager.subscribe_stream(
-                sid, keepalive_interval=5
-            ):
+            async for chunk in StreamManager.subscribe_stream(sid, keepalive_interval=5):
                 dest.append(chunk)
 
         tasks = [

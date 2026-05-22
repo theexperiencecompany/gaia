@@ -1,7 +1,7 @@
 """Unit tests for the notification orchestrator."""
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -26,7 +26,6 @@ from app.models.notification.notification_models import (
 )
 from app.utils.notification.orchestrator import NotificationOrchestrator
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -34,8 +33,8 @@ from app.utils.notification.orchestrator import NotificationOrchestrator
 
 def _make_request(
     user_id: str = "user-1",
-    channels: Optional[List[ChannelConfig]] = None,
-    actions: Optional[List[NotificationAction]] = None,
+    channels: list[ChannelConfig] | None = None,
+    actions: list[NotificationAction] | None = None,
     notification_id: str = "notif-1",
 ) -> NotificationRequest:
     """Build a minimal NotificationRequest for testing."""
@@ -45,8 +44,7 @@ def _make_request(
         source=NotificationSourceEnum.AI_TODO_ADDED,
         type=NotificationType.INFO,
         priority=2,
-        channels=channels
-        or [ChannelConfig(channel_type="inapp", enabled=True, priority=1)],
+        channels=channels or [ChannelConfig(channel_type="inapp", enabled=True, priority=1)],
         content=NotificationContent(
             title="Test Notification",
             body="This is a test body",
@@ -57,9 +55,9 @@ def _make_request(
 
 
 def _make_record(
-    request: Optional[NotificationRequest] = None,
+    request: NotificationRequest | None = None,
     status: NotificationStatus = NotificationStatus.PENDING,
-    channels: Optional[List[ChannelDeliveryStatus]] = None,
+    channels: list[ChannelDeliveryStatus] | None = None,
 ) -> NotificationRecord:
     """Build a NotificationRecord wrapping *request*."""
     req = request or _make_request()
@@ -76,8 +74,8 @@ def _make_record(
 def _mock_channel_adapter(
     channel_type: str = "inapp",
     can_handle: bool = True,
-    transform_return: Optional[Dict[str, Any]] = None,
-    deliver_return: Optional[ChannelDeliveryStatus] = None,
+    transform_return: dict[str, Any] | None = None,
+    deliver_return: ChannelDeliveryStatus | None = None,
 ) -> MagicMock:
     """Build a mock channel adapter with sync can_handle and async transform/deliver."""
     adapter = MagicMock()
@@ -89,7 +87,7 @@ def _mock_channel_adapter(
         or ChannelDeliveryStatus(
             channel_type=channel_type,
             status=NotificationStatus.DELIVERED,
-            delivered_at=datetime.now(timezone.utc),
+            delivered_at=datetime.now(UTC),
         )
     )
     return adapter
@@ -104,13 +102,9 @@ def _make_action(
     """Build a NotificationAction for testing."""
     config: ActionConfig
     if action_type == ActionType.REDIRECT:
-        config = ActionConfig(
-            redirect=RedirectConfig(url="/test", open_in_new_tab=False)
-        )
+        config = ActionConfig(redirect=RedirectConfig(url="/test", open_in_new_tab=False))
     elif action_type == ActionType.API_CALL:
-        config = ActionConfig(
-            api_call=ApiCallConfig(endpoint="/api/test", method="POST")
-        )
+        config = ActionConfig(api_call=ApiCallConfig(endpoint="/api/test", method="POST"))
     else:
         raise ValueError(f"Unsupported action type for helper: {action_type}")
     return NotificationAction(
@@ -224,7 +218,7 @@ class TestDeliverNotification:
         success_status = ChannelDeliveryStatus(
             channel_type="inapp",
             status=NotificationStatus.DELIVERED,
-            delivered_at=datetime.now(timezone.utc),
+            delivered_at=datetime.now(UTC),
         )
 
         orch.channel_adapters["inapp"] = _mock_channel_adapter(
@@ -343,7 +337,7 @@ class TestDeliverNotification:
         success_status = ChannelDeliveryStatus(
             channel_type="inapp",
             status=NotificationStatus.DELIVERED,
-            delivered_at=datetime.now(timezone.utc),
+            delivered_at=datetime.now(UTC),
         )
         orch.channel_adapters["inapp"] = _mock_channel_adapter(
             channel_type="inapp",
@@ -389,7 +383,7 @@ class TestAutoInjectedChannels:
                 deliver_return=ChannelDeliveryStatus(
                     channel_type=key,
                     status=NotificationStatus.DELIVERED,
-                    delivered_at=datetime.now(timezone.utc),
+                    delivered_at=datetime.now(UTC),
                 ),
             )
 
@@ -426,7 +420,7 @@ class TestAutoInjectedChannels:
                 deliver_return=ChannelDeliveryStatus(
                     channel_type=key,
                     status=NotificationStatus.DELIVERED,
-                    delivered_at=datetime.now(timezone.utc),
+                    delivered_at=datetime.now(UTC),
                 ),
             )
 
@@ -465,9 +459,7 @@ class TestAutoInjectedChannels:
         with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
             ws.broadcast_to_user = AsyncMock()
             # _get_channel_prefs should never be called
-            with patch.object(
-                orch, "_get_channel_prefs", new_callable=AsyncMock
-            ) as prefs:
+            with patch.object(orch, "_get_channel_prefs", new_callable=AsyncMock) as prefs:
                 await orch._deliver_notification(record)
                 prefs.assert_not_awaited()
 
@@ -523,7 +515,7 @@ class TestDeliverViaChannel:
         expected = ChannelDeliveryStatus(
             channel_type="inapp",
             status=NotificationStatus.DELIVERED,
-            delivered_at=datetime.now(timezone.utc),
+            delivered_at=datetime.now(UTC),
         )
         adapter = AsyncMock()
         adapter.channel_type = "inapp"
@@ -589,9 +581,7 @@ class TestExecuteAction:
     async def test_action_already_executed_api_call(self) -> None:
         """An already-executed API_CALL action returns ACTION_ALREADY_EXECUTED."""
         storage = AsyncMock()
-        action = _make_action(
-            action_id="act-1", action_type=ActionType.API_CALL, executed=True
-        )
+        action = _make_action(action_id="act-1", action_type=ActionType.API_CALL, executed=True)
         request = _make_request(actions=[action])
         record = _make_record(request=request)
         storage.get_notification.return_value = record
@@ -726,9 +716,7 @@ class TestExecuteAction:
         handler = MagicMock()
         handler.action_type = "redirect"
         handler.can_handle.return_value = True
-        handler.execute = AsyncMock(
-            return_value=ActionResult(success=False, message="nope")
-        )
+        handler.execute = AsyncMock(return_value=ActionResult(success=False, message="nope"))
         orch.action_handlers["redirect"] = handler
 
         with patch("app.utils.notification.orchestrator.websocket_manager"):
@@ -914,9 +902,7 @@ class TestBulkActions:
 
         with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
             ws.broadcast_to_user = AsyncMock()
-            results = await orch.bulk_actions(
-                ["n-1", "n-2"], "user-1", BulkActions.MARK_READ
-            )
+            results = await orch.bulk_actions(["n-1", "n-2"], "user-1", BulkActions.MARK_READ)
 
         assert results["n-1"] is True
         assert results["n-2"] is True
@@ -952,7 +938,7 @@ class TestBulkActions:
         storage = AsyncMock()
         call_count = 0
 
-        async def mock_get(nid: str, uid: str) -> Optional[NotificationRecord]:
+        async def mock_get(nid: str, uid: str) -> NotificationRecord | None:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -964,9 +950,7 @@ class TestBulkActions:
 
         with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
             ws.broadcast_to_user = AsyncMock()
-            results = await orch.bulk_actions(
-                ["n-fail", "n-ok"], "user-1", BulkActions.MARK_READ
-            )
+            results = await orch.bulk_actions(["n-fail", "n-ok"], "user-1", BulkActions.MARK_READ)
 
         assert results["n-fail"] is False
         # n-ok should still succeed (or at least not crash)
@@ -977,9 +961,7 @@ class TestBulkActions:
         storage.get_notification.return_value = None
         orch = NotificationOrchestrator(storage=storage)
 
-        results = await orch.bulk_actions(
-            ["n-missing"], "user-1", BulkActions.MARK_READ
-        )
+        results = await orch.bulk_actions(["n-missing"], "user-1", BulkActions.MARK_READ)
 
         assert results["n-missing"] is False
 
@@ -998,13 +980,13 @@ class TestSerializeNotification:
         action = _make_action(action_id="a-1")
         request = _make_request(actions=[action])
         record = _make_record(request=request, status=NotificationStatus.DELIVERED)
-        record.delivered_at = datetime.now(timezone.utc)
-        record.read_at = datetime.now(timezone.utc)
+        record.delivered_at = datetime.now(UTC)
+        record.read_at = datetime.now(UTC)
         record.channels = [
             ChannelDeliveryStatus(
                 channel_type="inapp",
                 status=NotificationStatus.DELIVERED,
-                delivered_at=datetime.now(timezone.utc),
+                delivered_at=datetime.now(UTC),
             )
         ]
 

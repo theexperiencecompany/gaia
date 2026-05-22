@@ -1,6 +1,7 @@
+from opik import configure
+
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
-from opik import configure
 
 
 @lazy_provider(

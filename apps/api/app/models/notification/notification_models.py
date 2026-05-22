@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -55,22 +55,22 @@ class RedirectConfig(BaseModel):
 class ApiCallConfig(BaseModel):
     endpoint: str
     method: Literal["GET", "POST", "PUT", "DELETE"] = "POST"
-    payload: Optional[Dict[str, Any]] = None
-    headers: Optional[Dict[str, str]] = None
-    success_message: Optional[str] = None
-    error_message: Optional[str] = None
-    is_internal: Optional[bool] = False
+    payload: dict[str, Any] | None = None
+    headers: dict[str, str] | None = None
+    success_message: str | None = None
+    error_message: str | None = None
+    is_internal: bool | None = False
 
 
 class ModalConfig(BaseModel):
     component: str
-    props: Dict[str, Any] = Field(default_factory=dict)
+    props: dict[str, Any] = Field(default_factory=dict)
 
 
 class ActionConfig(BaseModel):
-    redirect: Optional[RedirectConfig] = None
-    api_call: Optional[ApiCallConfig] = None
-    modal: Optional[ModalConfig] = None
+    redirect: RedirectConfig | None = None
+    api_call: ApiCallConfig | None = None
+    modal: ModalConfig | None = None
 
     @model_validator(mode="after")
     def validate_single_config(self):
@@ -90,16 +90,16 @@ class NotificationAction(BaseModel):
     style: ActionStyle = ActionStyle.SECONDARY
     config: ActionConfig
     requires_confirmation: bool = False
-    confirmation_message: Optional[str] = None
-    icon: Optional[str] = None
+    confirmation_message: str | None = None
+    icon: str | None = None
     disabled: bool = False
     executed: bool = False
-    executed_at: Optional[datetime] = None
+    executed_at: datetime | None = None
 
     def mark_as_executed(self) -> None:
         """Mark this action as executed"""
         self.executed = True
-        self.executed_at = datetime.now(timezone.utc)
+        self.executed_at = datetime.now(UTC)
 
     def is_executable(self) -> bool:
         """Check if this action can be executed"""
@@ -115,16 +115,16 @@ class NotificationAction(BaseModel):
 class NotificationContent(BaseModel):
     title: str
     body: str
-    actions: Optional[List[NotificationAction]] = None
-    rich_content: Optional[Dict[str, Any]] = None
+    actions: list[NotificationAction] | None = None
+    rich_content: dict[str, Any] | None = None
 
 
 class ChannelConfig(BaseModel):
     channel_type: str  # 'inapp', 'telegram', 'discord'
     enabled: bool = True
     priority: int = 1  # 1 highest
-    template: Optional[str] = None
-    config: Dict[str, Any] = Field(default_factory=dict)
+    template: str | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class NotificationRequest(BaseModel):
@@ -133,11 +133,11 @@ class NotificationRequest(BaseModel):
     source: NotificationSourceEnum
     type: NotificationType = NotificationType.INFO
     priority: int = Field(default=3, ge=1, le=5)  # 1 highest
-    channels: List[ChannelConfig] = Field(default_factory=list)
+    channels: list[ChannelConfig] = Field(default_factory=list)
     content: NotificationContent
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    scheduled_for: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    scheduled_for: datetime | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @field_validator("priority", mode="before")
     def validate_priority(cls, v):
@@ -149,8 +149,8 @@ class NotificationRequest(BaseModel):
 class ChannelDeliveryStatus(BaseModel):
     channel_type: str
     status: NotificationStatus
-    delivered_at: Optional[datetime] = None
-    error_message: Optional[str] = None
+    delivered_at: datetime | None = None
+    error_message: str | None = None
     retry_count: int = 0
     skipped: bool = False
 
@@ -160,12 +160,12 @@ class NotificationRecord(BaseModel):
     user_id: str
     status: NotificationStatus = NotificationStatus.PENDING
     created_at: datetime
-    delivered_at: Optional[datetime] = None
-    read_at: Optional[datetime] = None
-    archived_at: Optional[datetime] = None
-    channels: List[ChannelDeliveryStatus] = Field(default_factory=list)
+    delivered_at: datetime | None = None
+    read_at: datetime | None = None
+    archived_at: datetime | None = None
+    channels: list[ChannelDeliveryStatus] = Field(default_factory=list)
     original_request: NotificationRequest
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def mark_action_as_executed(self, action_id: str) -> bool:
         """Mark a specific action as executed"""
@@ -174,11 +174,11 @@ class NotificationRecord(BaseModel):
         for action in self.original_request.content.actions:
             if action.id == action_id:
                 action.mark_as_executed()
-                self.updated_at = datetime.now(timezone.utc)
+                self.updated_at = datetime.now(UTC)
                 return True
         return False
 
-    def get_action_by_id(self, action_id: str) -> Optional[NotificationAction]:
+    def get_action_by_id(self, action_id: str) -> NotificationAction | None:
         """Get a specific action by ID"""
         if not self.original_request.content.actions:
             return None
@@ -190,12 +190,12 @@ class NotificationRecord(BaseModel):
 
 class ActionResult(BaseModel):
     success: bool
-    message: Optional[str] = None
-    data: Optional[Dict[str, Any]] = None
-    next_actions: Optional[List[NotificationAction]] = None
-    update_notification: Optional[Dict[str, Any]] = None
-    update_action: Optional[Dict[str, Any]] = None
-    error_code: Optional[str] = None
+    message: str | None = None
+    data: dict[str, Any] | None = None
+    next_actions: list[NotificationAction] | None = None
+    update_notification: dict[str, Any] | None = None
+    update_action: dict[str, Any] | None = None
+    error_code: str | None = None
 
 
 class BulkActions(str, Enum):
@@ -214,6 +214,6 @@ class ChannelPreferences(BaseModel):
 class ChannelPreferencesUpdate(BaseModel):
     """Request body for updating channel preferences."""
 
-    telegram: Optional[bool] = None
-    discord: Optional[bool] = None
-    whatsapp: Optional[bool] = None
+    telegram: bool | None = None
+    discord: bool | None = None
+    whatsapp: bool | None = None

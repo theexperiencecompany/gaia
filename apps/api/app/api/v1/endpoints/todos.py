@@ -1,17 +1,19 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
-from typing import Annotated, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
 import uuid
 
 from bson import ObjectId
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from pymongo import ReturnDocument
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone_from_preferences,
 )
-from shared.py.wide_events import log
 from app.db.mongodb.collections import projects_collection, todos_collection
+from app.db.redis import delete_cache, get_cache, set_cache
+from app.db.utils import serialize_document
 from app.decorators import tiered_rate_limit
 from app.models.todo_models import (
     BulkMoveRequest,
@@ -33,18 +35,14 @@ from app.models.todo_models import (
 from app.services.todos.sync_service import sync_subtask_to_goal_completion
 from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.workflow.service import WorkflowService
-from app.db.redis import delete_cache, get_cache, set_cache
-from app.db.utils import serialize_document
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
+from shared.py.wide_events import log
 
 router = APIRouter()
 
 
 # Counts endpoint for efficient dashboard data
 @router.get("/todos/counts")
-async def get_todo_counts(
-    response: Response, user: Annotated[dict, Depends(get_current_user)]
-):
+async def get_todo_counts(response: Response, user: Annotated[dict, Depends(get_current_user)]):
     """
     Get all todo counts for dashboard/sidebar in a single efficient call.
     Returns inbox count, today count, upcoming count, and completed count.
@@ -58,27 +56,21 @@ async def get_todo_counts(
             return cached
 
         # Get today's date for filtering
-        today = datetime.now(timezone.utc).date()
-        today_start = datetime.combine(today, datetime.min.time()).replace(
-            tzinfo=timezone.utc
-        )
-        today_end = datetime.combine(today, datetime.max.time()).replace(
-            tzinfo=timezone.utc
-        )
+        today = datetime.now(UTC).date()
+        today_start = datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC)
+        today_end = datetime.combine(today, datetime.max.time()).replace(tzinfo=UTC)
 
         # Get upcoming end date (7 days from now)
-        upcoming_end = datetime.now(timezone.utc) + timedelta(days=7)
+        upcoming_end = datetime.now(UTC) + timedelta(days=7)
 
         # Get inbox project
         inbox_project = await projects_collection.find_one(
             {"user_id": user["user_id"], "is_default": True}
         )
-        inbox_project_id = (
-            str(inbox_project["_id"]) if inbox_project else "no_inbox_found"
-        )
+        inbox_project_id = str(inbox_project["_id"]) if inbox_project else "no_inbox_found"
 
         # Get current time for overdue calculation
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Count todos efficiently with a single aggregation
         counts_pipeline = [
@@ -177,22 +169,20 @@ async def get_todo_labels(
 @router.get("/todos", response_model=TodoListResponse)
 async def list_todos(
     # Search parameters
-    q: Optional[str] = Query(None, description="Search query"),
+    q: str | None = Query(None, description="Search query"),
     mode: SearchMode = Query(
         SearchMode.HYBRID, description="Search mode: text, semantic, or hybrid"
     ),
     # Filter parameters
-    project_id: Optional[str] = Query(None),
-    completed: Optional[bool] = Query(None),
-    priority: Optional[Priority] = Query(None),
-    has_due_date: Optional[bool] = Query(None),
-    overdue: Optional[bool] = Query(None),
-    labels: Optional[List[str]] = Query(None),
+    project_id: str | None = Query(None),
+    completed: bool | None = Query(None),
+    priority: Priority | None = Query(None),
+    has_due_date: bool | None = Query(None),
+    overdue: bool | None = Query(None),
+    labels: list[str] | None = Query(None),
     # Date range filters
-    due_after: Optional[datetime] = Query(None, description="Due date after this date"),
-    due_before: Optional[datetime] = Query(
-        None, description="Due date before this date"
-    ),
+    due_after: datetime | None = Query(None, description="Due date after this date"),
+    due_before: datetime | None = Query(None, description="Due date before this date"),
     # Special date filters
     due_today: bool = Query(False, description="Only todos due today"),
     due_this_week: bool = Query(False, description="Only todos due this week"),
@@ -246,15 +236,11 @@ async def list_todos(
 
     # Handle special date filters
     if due_today:
-        today = datetime.now(timezone.utc).date()
-        due_after = datetime.combine(today, datetime.min.time()).replace(
-            tzinfo=timezone.utc
-        )
-        due_before = datetime.combine(today, datetime.max.time()).replace(
-            tzinfo=timezone.utc
-        )
+        today = datetime.now(UTC).date()
+        due_after = datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC)
+        due_before = datetime.combine(today, datetime.max.time()).replace(tzinfo=UTC)
     elif due_this_week:
-        today = datetime.now(timezone.utc)
+        today = datetime.now(UTC)
         due_after = today
         due_before = today + timedelta(days=7)
 
@@ -405,11 +391,7 @@ async def generate_workflow(
             existing_workflow = await WorkflowService.get_workflow(
                 todo.workflow_id, user["user_id"]
             )
-            if (
-                existing_workflow
-                and existing_workflow.steps
-                and len(existing_workflow.steps) > 0
-            ):
+            if existing_workflow and existing_workflow.steps and len(existing_workflow.steps) > 0:
                 return {
                     "status": "exists",
                     "workflow": existing_workflow,
@@ -417,9 +399,7 @@ async def generate_workflow(
                 }
             # Empty or failed workflow — delete it and allow regeneration
             if existing_workflow and existing_workflow.id:
-                await WorkflowService.delete_workflow(
-                    existing_workflow.id, user["user_id"]
-                )
+                await WorkflowService.delete_workflow(existing_workflow.id, user["user_id"])
             await todos_collection.update_one(
                 {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
                 {"$unset": {"workflow_id": ""}},
@@ -499,9 +479,7 @@ async def get_workflow_status(
         if is_generating:
             workflow_status = "generating"
         elif todo.workflow_id:
-            workflow = await WorkflowService.get_workflow(
-                todo.workflow_id, user["user_id"]
-            )
+            workflow = await WorkflowService.get_workflow(todo.workflow_id, user["user_id"])
 
             if workflow:
                 # Workflow exists - check if steps are generated
@@ -538,9 +516,7 @@ async def get_workflow_status(
 # Bulk Operations
 @router.put("/todos/bulk", response_model=BulkOperationResponse)
 @tiered_rate_limit("todo_operations")
-async def bulk_update_todos(
-    request: BulkUpdateRequest, user: dict = Depends(get_current_user)
-):
+async def bulk_update_todos(request: BulkUpdateRequest, user: dict = Depends(get_current_user)):
     """
     Bulk update multiple todos with the same changes.
 
@@ -573,9 +549,7 @@ async def bulk_update_todos(
 
 @router.post("/todos/bulk/move", response_model=BulkOperationResponse)
 @tiered_rate_limit("todo_operations")
-async def bulk_move_todos(
-    request: BulkMoveRequest, user: dict = Depends(get_current_user)
-):
+async def bulk_move_todos(request: BulkMoveRequest, user: dict = Depends(get_current_user)):
     """Move multiple todos to a different project."""
     log.set(
         user={"id": user["user_id"]},
@@ -598,7 +572,7 @@ async def bulk_move_todos(
 @router.delete("/todos/bulk", response_model=BulkOperationResponse)
 @tiered_rate_limit("todo_operations")
 async def bulk_delete_todos(
-    todo_ids: List[str] = Body(..., min_length=1, max_length=100),
+    todo_ids: list[str] = Body(..., min_length=1, max_length=100),
     user: dict = Depends(get_current_user),
 ):
     """Delete multiple todos."""
@@ -619,7 +593,7 @@ async def bulk_delete_todos(
 @router.post("/todos/bulk/complete", response_model=BulkOperationResponse)
 @tiered_rate_limit("todo_operations")
 async def bulk_complete_todos(
-    todo_ids: List[str] = Body(..., min_length=1, max_length=100),
+    todo_ids: list[str] = Body(..., min_length=1, max_length=100),
     user: dict = Depends(get_current_user),
 ):
     """Mark multiple todos as completed (convenience endpoint)."""
@@ -641,7 +615,7 @@ async def bulk_complete_todos(
 
 
 # Project Endpoints
-@router.get("/projects", response_model=List[ProjectResponse])
+@router.get("/projects", response_model=list[ProjectResponse])
 async def list_projects(user: dict = Depends(get_current_user)):
     """List all projects with todo counts."""
     log.set(user={"id": user["user_id"]}, todo={"operation": "list_projects"})
@@ -654,13 +628,9 @@ async def list_projects(user: dict = Depends(get_current_user)):
         )
 
 
-@router.post(
-    "/projects", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("/projects", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 @tiered_rate_limit("todo_operations")
-async def create_project(
-    project: ProjectCreate, user: dict = Depends(get_current_user)
-):
+async def create_project(project: ProjectCreate, user: dict = Depends(get_current_user)):
     """Create a new project."""
     log.set(user={"id": user["user_id"]}, todo={"operation": "create_project"})
     try:
@@ -755,7 +725,7 @@ async def create_subtask(
             {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
             {
                 "$push": {"subtasks": new_subtask},
-                "$set": {"updated_at": datetime.now(timezone.utc)},
+                "$set": {"updated_at": datetime.now(UTC)},
             },
             return_document=ReturnDocument.AFTER,
         )
@@ -798,9 +768,7 @@ async def update_subtask(
         # Build update operations
         from typing import Any
 
-        update_ops: dict[str, Any] = {
-            "$set": {"updated_at": datetime.now(timezone.utc)}
-        }
+        update_ops: dict[str, Any] = {"$set": {"updated_at": datetime.now(UTC)}}
 
         if updates.title is not None:
             update_ops["$set"]["subtasks.$[elem].title"] = updates.title
@@ -819,13 +787,9 @@ async def update_subtask(
             raise ValueError(f"Todo {todo_id} not found")
 
         # Verify subtask exists (if no match, the update still succeeds but doesn't modify)
-        subtask_found = any(
-            s.get("id") == subtask_id for s in updated_todo.get("subtasks", [])
-        )
+        subtask_found = any(s.get("id") == subtask_id for s in updated_todo.get("subtasks", []))
         if not subtask_found:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
         # Invalidate cache and handle goal sync if completion changed
         await TodoService._invalidate_cache(
@@ -842,7 +806,7 @@ async def update_subtask(
                     todo_id, subtask_id, updates.completed, user["user_id"]
                 )
             except Exception as e:
-                log.warning(f"Failed to sync subtask to goal: {str(e)}")
+                log.warning(f"Failed to sync subtask to goal: {e!s}")
 
         return TodoResponse(**serialize_document(updated_todo))
     except ValueError as e:
@@ -856,9 +820,7 @@ async def update_subtask(
 
 @router.delete("/todos/{todo_id}/subtasks/{subtask_id}", response_model=TodoResponse)
 @tiered_rate_limit("todo_operations")
-async def delete_subtask(
-    todo_id: str, subtask_id: str, user: dict = Depends(get_current_user)
-):
+async def delete_subtask(todo_id: str, subtask_id: str, user: dict = Depends(get_current_user)):
     """Delete a specific subtask."""
     log.set(
         user={"id": user["user_id"]},
@@ -870,7 +832,7 @@ async def delete_subtask(
             {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
             {
                 "$pull": {"subtasks": {"id": subtask_id}},
-                "$set": {"updated_at": datetime.now(timezone.utc)},
+                "$set": {"updated_at": datetime.now(UTC)},
             },
             return_document=ReturnDocument.AFTER,
         )
@@ -883,9 +845,7 @@ async def delete_subtask(
             s.get("id") == subtask_id for s in updated_todo.get("subtasks", [])
         )
         if subtask_still_exists:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
         # Invalidate cache
         await TodoService._invalidate_cache(
@@ -905,9 +865,7 @@ async def delete_subtask(
         )
 
 
-@router.post(
-    "/todos/{todo_id}/subtasks/{subtask_id}/toggle", response_model=TodoResponse
-)
+@router.post("/todos/{todo_id}/subtasks/{subtask_id}/toggle", response_model=TodoResponse)
 @tiered_rate_limit("todo_operations")
 async def toggle_subtask_completion(
     todo_id: str, subtask_id: str, user: dict = Depends(get_current_user)
@@ -929,13 +887,9 @@ async def toggle_subtask_completion(
             raise ValueError(f"Todo {todo_id} not found")
 
         # Find the subtask to get current completion status
-        subtask = next(
-            (s for s in todo.get("subtasks", []) if s.get("id") == subtask_id), None
-        )
+        subtask = next((s for s in todo.get("subtasks", []) if s.get("id") == subtask_id), None)
         if not subtask:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
         new_completed = not subtask.get("completed", False)
 
@@ -946,7 +900,7 @@ async def toggle_subtask_completion(
             {
                 "$set": {
                     "subtasks.$[elem].completed": new_completed,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
             array_filters=[{"elem.id": subtask_id}],
@@ -970,7 +924,7 @@ async def toggle_subtask_completion(
                 todo_id, subtask_id, new_completed, user["user_id"]
             )
         except Exception as e:
-            log.warning(f"Failed to sync subtask to goal: {str(e)}")
+            log.warning(f"Failed to sync subtask to goal: {e!s}")
 
         return TodoResponse(**serialize_document(updated_todo))
     except ValueError as e:

@@ -25,13 +25,14 @@ Key Features:
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 import functools
 import inspect
-from typing import Any, Awaitable, Callable, Dict, Generic, List, Optional, TypeVar
+from typing import Any, Generic, TypeVar
 
-from shared.py.wide_events import log
 from app.db.redis import ONE_YEAR_TTL, delete_cache, get_cache, set_cache
 from app.utils.cache_utils import create_cache_key_hash
+from shared.py.wide_events import log
 
 T = TypeVar("T")
 
@@ -100,13 +101,13 @@ class Cacheable(Generic[T]):
 
     def __init__(
         self,
-        key_pattern: Optional[str] = None,
-        key_generator: Optional[Callable] = None,
-        key: Optional[str] = None,
+        key_pattern: str | None = None,
+        key_generator: Callable | None = None,
+        key: str | None = None,
         ttl: int = ONE_YEAR_TTL,
-        serializer: Optional[Callable[[T], Any]] = None,
-        deserializer: Optional[Callable[[Any], T]] = None,
-        model: Optional[type] = None,
+        serializer: Callable[[T], Any] | None = None,
+        deserializer: Callable[[Any], T] | None = None,
+        model: type | None = None,
         smart_hash: bool = False,
         namespace: str = "api",
         ignore_none: bool = False,
@@ -185,17 +186,13 @@ class Cacheable(Generic[T]):
                     cache_key = self.key_generator(func.__name__, *args, **kwargs)
             else:
                 if not self.key_pattern:
-                    raise ValueError(
-                        "key_pattern must be provided if key_generator is not used."
-                    )
+                    raise ValueError("key_pattern must be provided if key_generator is not used.")
 
                 func_signature = inspect.signature(func)
                 bound_args = func_signature.bind(*args, **kwargs)
                 bound_args.apply_defaults()
 
-                cache_key = _pattern_to_key(
-                    self.key_pattern, arguments=bound_args.arguments
-                )
+                cache_key = _pattern_to_key(self.key_pattern, arguments=bound_args.arguments)
 
             # Check if the value is already cached
             cached_value = await get_cache(cache_key, self.model)
@@ -222,9 +219,7 @@ class Cacheable(Generic[T]):
             log.debug(f"Setting cache for key: {cache_key}")
 
             # Let set_cache handle Pydantic serialization
-            await set_cache(
-                key=cache_key, value=serialized_result, ttl=self.ttl, model=self.model
-            )
+            await set_cache(key=cache_key, value=serialized_result, ttl=self.ttl, model=self.model)
 
             return result
 
@@ -276,9 +271,9 @@ class CacheInvalidator:
 
     def __init__(
         self,
-        key_patterns: Optional[List[str]] = None,
-        key_generator: Optional[Callable] = None,
-        key: Optional[str] = None,
+        key_patterns: list[str] | None = None,
+        key_generator: Callable | None = None,
+        key: str | None = None,
     ):
         """
         Initialize the cache decorator.
@@ -293,9 +288,7 @@ class CacheInvalidator:
         self.key_generator = key_generator
         self.key = key
         if not key and not key_patterns and not key_generator:
-            raise ValueError(
-                "Either key, key_patterns, or key_generator must be provided."
-            )
+            raise ValueError("Either key, key_patterns, or key_generator must be provided.")
 
     def __call__(self, func: Callable[..., Any]) -> Callable[..., Awaitable[Any]]:
         """
@@ -311,7 +304,7 @@ class CacheInvalidator:
         @functools.wraps(func)
         async def wrapper(*args, **kwargs) -> Any:
             # Generate the cache key
-            cache_keys: List[str] = []
+            cache_keys: list[str] = []
             if self.key:
                 cache_keys = [self.key]
             elif self.key_generator:
@@ -323,9 +316,7 @@ class CacheInvalidator:
                 cache_keys = [key]
             else:
                 if not self.key_patterns:
-                    raise ValueError(
-                        "key_pattern must be provided if key_generator is not used."
-                    )
+                    raise ValueError("key_pattern must be provided if key_generator is not used.")
 
                 func_signature = inspect.signature(func)
                 bound_args = func_signature.bind(*args, **kwargs)
@@ -345,13 +336,12 @@ class CacheInvalidator:
             # Call the original function - handle both sync and async
             if asyncio.iscoroutinefunction(func):
                 return await func(*args, **kwargs)
-            else:
-                return func(*args, **kwargs)
+            return func(*args, **kwargs)
 
         return wrapper
 
 
-def _pattern_to_key(pattern: str, arguments: Dict[str, Any]) -> str:
+def _pattern_to_key(pattern: str, arguments: dict[str, Any]) -> str:
     """
     Convert key pattern template to actual cache key using function arguments.
 

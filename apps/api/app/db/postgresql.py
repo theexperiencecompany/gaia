@@ -4,14 +4,15 @@ PostgreSQL Database Configuration
 This module provides SQLAlchemy setup for PostgreSQL database connection.
 """
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
-from app.config.settings import settings
-from shared.py.wide_events import log
-from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base
+
+from app.config.settings import settings
+from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from shared.py.wide_events import log
 
 # Create a SQLAlchemy base class for declarative models
 Base = declarative_base()

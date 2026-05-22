@@ -1,6 +1,7 @@
 {
   "enabledPlugins": {
-    "superpowers@claude-plugins-official": true
+    "superpowers@claude-plugins-official": true,
+    "nx@nx-claude-plugins": true
   },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
@@ -9,8 +10,13 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Write|Edit",
+        "matcher": "Edit|Write|Bash",
         "hooks": [
+          {
+            "type": "command",
+            "command": "code-review-graph update",
+            "timeout": 5000
+          },
           {
             "type": "command",
             "command": "f=$(jq -r '.tool_input.file_path // empty'); [ -z \"$f\" ] && exit 0; root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); case \"$f\" in *.ts|*.tsx|*.js|*.jsx) \"$root/node_modules/.bin/biome\" check --write \"$f\" 2>&1 || true;; *.py) uvx ruff format \"$f\" && uvx ruff check --fix \"$f\" || true;; esac"
@@ -64,6 +70,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "code-review-graph status --json",
+            "timeout": 3000
+          },
+          {
+            "type": "command",
             "command": "sh -c 'if ! command -v entire >/dev/null 2>&1; then printf \"%s\\n\" \"{\\\"systemMessage\\\":\\\"\\\\n\\\\nEntire CLI is enabled but not installed or not on PATH.\\\\nInstallation guide: https://docs.entire.io/cli/installation#installation-methods\\\"}\"; exit 0; fi; exec entire hooks claude-code session-start'"
           }
         ]
@@ -91,6 +102,14 @@
         ]
       }
     ]
+  },
+  "extraKnownMarketplaces": {
+    "nx-claude-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "nrwl/nx-ai-agents-config"
+      }
+    }
   },
   "permissions": {
     "deny": [

@@ -4,7 +4,7 @@ Aggregates urgency signals across multiple integration context snapshots
 into a single prioritized list of items needing attention.
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 from composio import Composio
 from pydantic import BaseModel, Field
@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 class UrgencyAggregatorInput(BaseModel):
     """Input for the urgency aggregator — a dict of integration snapshots."""
 
-    snapshots: Dict[str, Any] = Field(
+    snapshots: dict[str, Any] = Field(
         ...,
         description=(
             "Dict mapping integration name to its CUSTOM_GATHER_CONTEXT output. "
@@ -22,15 +22,15 @@ class UrgencyAggregatorInput(BaseModel):
     )
 
 
-def register_urgency_custom_tools(composio: Composio) -> List[str]:
+def register_urgency_custom_tools(composio: Composio) -> list[str]:
     """Register urgency aggregator tool as a Composio custom tool."""
 
     @composio.tools.custom_tool(toolkit="GAIA")
     def CUSTOM_URGENCY_AGGREGATOR(
         request: UrgencyAggregatorInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Aggregate urgency signals from multiple integration context snapshots.
 
         Takes outputs from multiple CUSTOM_GATHER_CONTEXT calls and returns a
@@ -42,7 +42,7 @@ def register_urgency_custom_tools(composio: Composio) -> List[str]:
         Returns:
             Dict with urgent_items list (sorted by priority) and summary counts
         """
-        urgent_items: List[Dict[str, Any]] = []
+        urgent_items: list[dict[str, Any]] = []
 
         for integration, snapshot in request.snapshots.items():
             if not isinstance(snapshot, dict):
@@ -52,9 +52,7 @@ def register_urgency_custom_tools(composio: Composio) -> List[str]:
 
             # Gmail: unread count (data is flat — inbox_unread_count at top level)
             if "inbox_unread_count" in snapshot or "unread_count" in snapshot:
-                unread = snapshot.get("inbox_unread_count") or snapshot.get(
-                    "unread_count", 0
-                )
+                unread = snapshot.get("inbox_unread_count") or snapshot.get("unread_count", 0)
                 if unread > 0:
                     urgent_items.append(
                         {
@@ -83,9 +81,7 @@ def register_urgency_custom_tools(composio: Composio) -> List[str]:
                                 if mentions_list
                                 else f"{unread_count} unread Slack messages"
                             ),
-                            "details": [
-                                m.get("text", "")[:80] for m in mentions_list[:3]
-                            ],
+                            "details": [m.get("text", "")[:80] for m in mentions_list[:3]],
                         }
                     )
 
@@ -118,8 +114,7 @@ def register_urgency_custom_tools(composio: Composio) -> List[str]:
                             "priority": "medium",
                             "description": f"{len(event_list)} calendar events today",
                             "details": [
-                                e.get("summary", e.get("title", ""))
-                                for e in event_list[:3]
+                                e.get("summary", e.get("title", "")) for e in event_list[:3]
                             ],
                         }
                     )
@@ -148,9 +143,7 @@ def register_urgency_custom_tools(composio: Composio) -> List[str]:
                             "count": review_count,
                             "priority": "high",
                             "description": f"{review_count} GitHub PRs awaiting your review",
-                            "details": [
-                                pr.get("title", "") for pr in review_requests[:3]
-                            ],
+                            "details": [pr.get("title", "") for pr in review_requests[:3]],
                         }
                     )
 
@@ -158,9 +151,7 @@ def register_urgency_custom_tools(composio: Composio) -> List[str]:
             overdue_tasks = snapshot.get("overdue_tasks", [])
             if not overdue_tasks:
                 # Try urgent_tasks for Google Tasks
-                overdue_tasks = [
-                    t for t in snapshot.get("urgent_tasks", []) if t.get("overdue")
-                ]
+                overdue_tasks = [t for t in snapshot.get("urgent_tasks", []) if t.get("overdue")]
             if overdue_tasks:
                 urgent_items.append(
                     {
@@ -171,9 +162,7 @@ def register_urgency_custom_tools(composio: Composio) -> List[str]:
                         "description": (
                             f"{len(overdue_tasks)} overdue tasks in {integration_lower}"
                         ),
-                        "details": [
-                            t.get("name") or t.get("title") for t in overdue_tasks[:3]
-                        ],
+                        "details": [t.get("name") or t.get("title") for t in overdue_tasks[:3]],
                     }
                 )
 

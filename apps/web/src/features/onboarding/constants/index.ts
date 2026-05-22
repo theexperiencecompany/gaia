@@ -1,5 +1,8 @@
 import type { ProfessionOption, Question } from "../types";
 
+export const HOLO_CARD_HEIGHT = 470;
+export const HOLO_CARD_WIDTH = 330;
+
 export const professionOptions: ProfessionOption[] = [
   { label: "Student", value: "student" },
   { label: "Teacher", value: "teacher" },
@@ -26,21 +29,29 @@ export const professionOptions: ProfessionOption[] = [
 export const FIELD_NAMES = {
   NAME: "name",
   PROFESSION: "profession",
+  GMAIL: "gmail",
+  FOCUS: "focus",
 } as const;
 
 export const questions: Question[] = [
   {
     id: "1",
-    question:
-      "Hi there! I'm GAIA, your personal AI assistant. What should I call you?",
+    question: "Hey! I'm GAIA. What should I call you?",
     placeholder: "Enter your name...",
     fieldName: FIELD_NAMES.NAME,
   },
   {
     id: "2",
     question:
-      "What's your profession or main area of focus? Knowing your profession or field helps me better manage your calendar, emails, and tasks. For example, I'll treat meetings and priorities differently for a student, a founder, or a designer.",
+      "What do you do? This helps me handle your emails, calendar, and tasks the right way.",
     placeholder: "e.g., Software Developer, Student, Designer...",
     fieldName: FIELD_NAMES.PROFESSION,
+  },
+  {
+    id: "3",
+    question:
+      "Last thing. Connect your Gmail and I'll go through your inbox, find what matters, and set up your first action items.",
+    placeholder: "",
+    fieldName: FIELD_NAMES.GMAIL,
   },
 ];

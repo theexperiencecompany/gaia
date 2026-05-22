@@ -12,16 +12,8 @@ The subagent has access to:
 - search_memory: Access user memories
 """
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
-from app.agents.core.subagents.base_subagent import SubAgentFactory
-from app.agents.core.subagents.subagent_helpers import create_agent_context_message
-from app.agents.llm.client import init_llm
-from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
-from app.agents.tools.workflow_shared_tools import SUBAGENT_WORKFLOW_TOOLS
-from shared.py.wide_events import log
-from app.helpers.agent_helpers import build_agent_config
 from langchain_core.messages import (
     AIMessageChunk,
     HumanMessage,
@@ -29,6 +21,14 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
+
+from app.agents.core.subagents.base_subagent import SubAgentFactory
+from app.agents.core.subagents.subagent_helpers import create_agent_context_message
+from app.agents.llm.client import init_llm
+from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
+from app.agents.tools.workflow_shared_tools import SUBAGENT_WORKFLOW_TOOLS
+from app.helpers.agent_helpers import build_agent_config
+from shared.py.wide_events import log
 
 # Singleton for the workflow subagent graph
 _workflow_subagent_graph = None
@@ -89,8 +89,8 @@ class WorkflowSubagentRunner:
         task: str,
         user_id: str,
         thread_id: str,
-        user_name: Optional[str] = None,
-        user_time: Optional[datetime] = None,
+        user_name: str | None = None,
+        user_time: datetime | None = None,
         stream_writer=None,
     ) -> str:
         """
@@ -110,7 +110,7 @@ class WorkflowSubagentRunner:
         subagent_graph = await get_workflow_subagent()
 
         # Build config
-        user_time = user_time or datetime.now(timezone.utc)
+        user_time = user_time or datetime.now(UTC)
         subagent_thread_id = f"workflow_{thread_id}"
 
         user = {
@@ -188,9 +188,7 @@ class WorkflowSubagentRunner:
 
                 # Accumulate AI response content
                 if chunk and isinstance(chunk, AIMessageChunk):
-                    content = (
-                        chunk.text() if hasattr(chunk, "text") else str(chunk.content)
-                    )
+                    content = chunk.text() if hasattr(chunk, "text") else str(chunk.content)
                     if content:
                         complete_message += content
 
@@ -211,7 +209,5 @@ class WorkflowSubagentRunner:
                 if stream_writer:
                     stream_writer(payload)
 
-        log.info(
-            f"[WorkflowSubagent] Completed. Response: {len(complete_message)} chars"
-        )
+        log.info(f"[WorkflowSubagent] Completed. Response: {len(complete_message)} chars")
         return complete_message if complete_message else "Task completed"

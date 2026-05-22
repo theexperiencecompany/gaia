@@ -3,9 +3,7 @@ from pathlib import Path
 
 def shorten_path(record):
     """Custom function to shorten file paths for cleaner logs."""
-    file_path = (
-        record["file"].path if hasattr(record["file"], "path") else str(record["file"])
-    )
+    file_path = record["file"].path if hasattr(record["file"], "path") else str(record["file"])
     # Get just the filename without extension, or last 2 parts of path
     path_parts = Path(file_path).parts
     if len(path_parts) >= 2:

@@ -1,5 +1,7 @@
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.v1.dependencies.google_scope_dependencies import require_integration
 from app.decorators import tiered_rate_limit
@@ -18,7 +20,6 @@ from app.services.calendar_service import (
     delete_calendar_event,
     update_calendar_event,
 )
-from fastapi import APIRouter, Depends, HTTPException, Query
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -75,9 +76,7 @@ async def query_events(
         time_max = None
         if request.start_date:
             try:
-                start_dt = datetime.strptime(request.start_date, "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
-                )
+                start_dt = datetime.strptime(request.start_date, "%Y-%m-%d").replace(tzinfo=UTC)
                 time_min = start_dt.isoformat()
             except ValueError:
                 raise HTTPException(
@@ -86,9 +85,7 @@ async def query_events(
 
         if request.end_date:
             try:
-                end_dt = datetime.strptime(request.end_date, "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
-                )
+                end_dt = datetime.strptime(request.end_date, "%Y-%m-%d").replace(tzinfo=UTC)
                 end_dt = end_dt + timedelta(days=1)
                 time_max = end_dt.isoformat()
             except ValueError:
@@ -139,10 +136,10 @@ async def query_events(
 
 @router.get("/calendar/events", summary="Get Calendar Events (Simple Queries)")
 async def get_events(
-    page_token: Optional[str] = None,
-    selected_calendars: Optional[List[str]] = Query(None),
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    page_token: str | None = None,
+    selected_calendars: list[str] | None = Query(None),
+    start_date: str | None = None,
+    end_date: str | None = None,
     max_results: int = Query(100, ge=1, le=250),
     fetch_all: bool = Query(False, description="Fetch ALL events in date range"),
     current_user: dict = Depends(require_integration("calendar")),
@@ -158,9 +155,7 @@ async def get_events(
 
         if start_date:
             try:
-                start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
-                )
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=UTC)
                 time_min = start_dt.isoformat()
             except ValueError:
                 raise HTTPException(
@@ -169,9 +164,7 @@ async def get_events(
 
         if end_date:
             try:
-                end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
-                )
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=UTC)
                 end_dt = end_dt + timedelta(days=1)
                 time_max = end_dt.isoformat()
             except ValueError:
@@ -223,9 +216,9 @@ async def get_events(
 @router.get("/calendar/{calendar_id}/events", summary="Get Events by Calendar ID")
 async def get_events_by_calendar(
     calendar_id: str,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    page_token: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    page_token: str | None = None,
     current_user: dict = Depends(require_integration("calendar")),
 ):
     """Fetch events for a specific calendar identified by its ID."""
@@ -239,9 +232,7 @@ async def get_events_by_calendar(
 
         if start_date:
             try:
-                start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
-                )
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=UTC)
                 time_min = start_dt.isoformat()
             except ValueError:
                 raise HTTPException(
@@ -250,9 +241,7 @@ async def get_events_by_calendar(
 
         if end_date:
             try:
-                end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
-                )
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=UTC)
                 end_dt = end_dt + timedelta(days=1)
                 time_max = end_dt.isoformat()
             except ValueError:
@@ -414,13 +403,11 @@ async def create_events_batch(
 
         log.set(user={"id": user_id}, calendar={"operation": "batch_create"})
 
-        results: Dict[str, List[Any]] = {"successful": [], "failed": []}
+        results: dict[str, list[Any]] = {"successful": [], "failed": []}
 
         for event in batch_request.events:
             try:
-                created_event = calendar_service.create_calendar_event(
-                    event, str(user_id)
-                )
+                created_event = calendar_service.create_calendar_event(event, str(user_id))
                 results["successful"].append(created_event)
             except Exception as e:
                 results["failed"].append(

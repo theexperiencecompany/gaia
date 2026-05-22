@@ -4,20 +4,21 @@ Abstract base class for trigger handlers.
 All provider-specific trigger handlers must extend this class.
 """
 
-import asyncio
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Set
+import asyncio
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.wide_events import log
 
 
-def _parse_event_start_utc(data: Dict[str, Any]) -> Optional[datetime]:
+def _parse_event_start_utc(data: dict[str, Any]) -> datetime | None:
     """Best-effort extraction of an event's start time as a UTC datetime.
 
     Handles Composio/Google payloads that may ship `start_time` as an ISO-8601
@@ -32,8 +33,8 @@ def _parse_event_start_utc(data: Dict[str, Any]) -> Optional[datetime]:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 class TriggerHandler(ABC):
@@ -45,7 +46,7 @@ class TriggerHandler(ABC):
 
     @property
     @abstractmethod
-    def trigger_names(self) -> List[str]:
+    def trigger_names(self) -> list[str]:
         """Return supported trigger names (e.g., ['calendar_event_created']).
 
         These are the values stored in trigger_data.trigger_name.
@@ -54,7 +55,7 @@ class TriggerHandler(ABC):
 
     @property
     @abstractmethod
-    def event_types(self) -> Set[str]:
+    def event_types(self) -> set[str]:
         """Return Composio event types this handler processes.
 
         These are the webhook event types from Composio (e.g., 'GOOGLECALENDAR_...')
@@ -68,7 +69,7 @@ class TriggerHandler(ABC):
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-    ) -> List[str]:
+    ) -> list[str]:
         """Register triggers for a workflow.
 
         Args:
@@ -82,7 +83,7 @@ class TriggerHandler(ABC):
         """
         pass
 
-    async def unregister(self, user_id: str, trigger_ids: List[str]) -> bool:
+    async def unregister(self, user_id: str, trigger_ids: list[str]) -> bool:
         """Unregister triggers when workflow is deleted/deactivated.
 
         Default implementation uses Composio triggers.delete API.
@@ -124,10 +125,10 @@ class TriggerHandler(ABC):
         self,
         user_id: str,
         trigger_name: str,
-        configs: List[Dict[str, Any]],
+        configs: list[dict[str, Any]],
         composio_slug: str,
-        config_description_fn: Optional[Callable[[Dict[str, Any]], str]] = None,
-    ) -> List[str]:
+        config_description_fn: Callable[[dict[str, Any]], str] | None = None,
+    ) -> list[str]:
         """Register multiple triggers in parallel with automatic rollback on failure.
 
         This is a reusable helper for handlers that create multiple triggers.
@@ -152,7 +153,7 @@ class TriggerHandler(ABC):
 
         composio = get_composio_service()
 
-        async def register_single(config: Dict[str, Any]) -> Optional[str]:
+        async def register_single(config: dict[str, Any]) -> str | None:
             """Register a single trigger and return trigger_id."""
             result = await asyncio.to_thread(
                 composio.composio.triggers.create,
@@ -171,7 +172,7 @@ class TriggerHandler(ABC):
         )
 
         # Collect results and check for failures
-        successful_ids: List[str] = []
+        successful_ids: list[str] = []
         has_failure = False
         failure_message = ""
 
@@ -180,9 +181,7 @@ class TriggerHandler(ABC):
                 has_failure = True
                 failure_message = str(result)
                 config_desc = (
-                    config_description_fn(configs[i])
-                    if config_description_fn
-                    else str(configs[i])
+                    config_description_fn(configs[i]) if config_description_fn else str(configs[i])
                 )
                 log.error(f"Trigger registration failed for {config_desc}: {result}")
             elif result is not None:
@@ -191,9 +190,7 @@ class TriggerHandler(ABC):
         # If any failed, rollback all successful ones
         if has_failure:
             if successful_ids:
-                log.warning(
-                    f"Rolling back {len(successful_ids)} triggers due to partial failure"
-                )
+                log.warning(f"Rolling back {len(successful_ids)} triggers due to partial failure")
                 rollback_ok = await self.unregister(user_id, successful_ids)
                 if not rollback_ok:
                     log.error(
@@ -210,10 +207,10 @@ class TriggerHandler(ABC):
         return successful_ids
 
     async def _load_workflows_from_query(
-        self, query: Dict[str, Any], log_context: str
-    ) -> List[Workflow]:
+        self, query: dict[str, Any], log_context: str
+    ) -> list[Workflow]:
         """Load and validate workflows for a MongoDB query."""
-        workflows: List[Workflow] = []
+        workflows: list[Workflow] = []
         cursor = workflows_collection.find(query)
         async for workflow_doc in cursor:
             try:
@@ -228,8 +225,8 @@ class TriggerHandler(ABC):
 
     @abstractmethod
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: Dict[str, Any]
-    ) -> List[Workflow]:
+        self, event_type: str, trigger_id: str, data: dict[str, Any]
+    ) -> list[Workflow]:
         """Find workflows that match an incoming webhook event.
 
         Args:
@@ -248,9 +245,9 @@ class TriggerHandler(ABC):
         field_name: str,
         user_id: str,
         integration_id: str,
-        parent_ids: Optional[List[str]] = None,
+        parent_ids: list[str] | None = None,
         **kwargs: Any,
-    ) -> List[Dict[str, str]]:
+    ) -> list[dict[str, str]]:
         """Get dynamic options for a trigger configuration field.
 
         Optional method for handlers to provide dropdown options for
@@ -275,10 +272,10 @@ class TriggerHandler(ABC):
     async def process_event(
         self,
         event_type: str,
-        trigger_id: Optional[str],
-        user_id: Optional[str],
-        data: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        trigger_id: str | None,
+        user_id: str | None,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         """Process an incoming webhook event and queue matching workflows.
 
         Default implementation:
@@ -298,7 +295,7 @@ class TriggerHandler(ABC):
         Returns:
             Dict with 'status' and 'message' keys
         """
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
         log.set(
             service="trigger_handler",
             operation="process_event",

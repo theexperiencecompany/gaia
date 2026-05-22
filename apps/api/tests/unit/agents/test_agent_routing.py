@@ -7,9 +7,9 @@ and inspecting what happens when the compiled graph is invoked with states
 that have or don't have tool_calls on the last AIMessage.
 """
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
+import pytest
 
 from app.override.langgraph_bigtool.create_agent import create_agent
 from tests.helpers import BindableToolsFakeModel
@@ -85,9 +85,7 @@ class TestShouldContinueLogicViaCreateAgent:
             "Expected 'agent' conditional edge to exist in StateGraph branches. "
             "If this fails, the routing structure in create_agent has changed."
         )
-        assert len(agent_branches) > 0, (
-            "Expected at least one branch condition on 'agent' node."
-        )
+        assert len(agent_branches) > 0, "Expected at least one branch condition on 'agent' node."
 
     @pytest.mark.asyncio
     async def test_no_tool_calls_no_end_graph_hooks_path_map_lacks_end_graph_hooks(
@@ -237,9 +235,7 @@ class TestShouldContinueBehavior:
         Fails if should_continue treats empty tool_calls as if there were tool calls.
         """
         graph = self._compile_graph(
-            BindableToolsFakeModel(
-                responses=[AIMessage(content="No tools needed.", tool_calls=[])]
-            )
+            BindableToolsFakeModel(responses=[AIMessage(content="No tools needed.", tool_calls=[])])
         )
         result = await graph.ainvoke(
             {"messages": [HumanMessage(content="hi")]},
@@ -247,9 +243,7 @@ class TestShouldContinueBehavior:
         )
 
         tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
-        assert len(tool_messages) == 0, (
-            "Empty tool_calls list must not route to tool node."
-        )
+        assert len(tool_messages) == 0, "Empty tool_calls list must not route to tool node."
 
     @pytest.mark.asyncio
     async def test_tool_calls_route_to_tools_node(self):
@@ -326,6 +320,5 @@ class TestShouldContinueBehavior:
         assert len(ai_messages) >= 1, "Expected at least one AIMessage in output."
         final_ai = ai_messages[-1]
         assert final_ai.content == "Here is the answer, no tools needed.", (
-            f"Final AIMessage content must match the fake LLM response. "
-            f"Got: {final_ai.content!r}"
+            f"Final AIMessage content must match the fake LLM response. Got: {final_ai.content!r}"
         )

@@ -43,22 +43,25 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
   useAxiosInterceptor();
 
   return (
-    <LazyMotionProvider>
-      <QueryProvider>
-        {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
-        <Suspense fallback={<></>}>
-          <GlobalAuth />
-        </Suspense>
-        <GlobalInterceptor />
-        <Toaster position="top-right" />
-        <GlobalIntegrationModal />
-        <ElectronRouteGuard>
-          <KeyboardShortcutsProvider>
-            {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
-            <Suspense fallback={<></>}>{children}</Suspense>
-          </KeyboardShortcutsProvider>
-        </ElectronRouteGuard>
-      </QueryProvider>
-    </LazyMotionProvider>
+    <>
+      {/* Keep Toaster outside LazyMotion: sileo uses motion.* internally. */}
+      <Toaster position="top-right" />
+      <LazyMotionProvider>
+        <QueryProvider>
+          {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
+          <Suspense fallback={<></>}>
+            <GlobalAuth />
+          </Suspense>
+          <GlobalInterceptor />
+          <GlobalIntegrationModal />
+          <ElectronRouteGuard>
+            <KeyboardShortcutsProvider>
+              {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
+              <Suspense fallback={<></>}>{children}</Suspense>
+            </KeyboardShortcutsProvider>
+          </ElectronRouteGuard>
+        </QueryProvider>
+      </LazyMotionProvider>
+    </>
   );
 }

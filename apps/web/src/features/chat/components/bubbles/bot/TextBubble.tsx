@@ -19,8 +19,16 @@ import {
   splitByBreaksPreservingFences,
   splitMessageByBreaks,
 } from "@shared/utils";
+import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
+
+export const MESSAGE_BREAK_STAGGER_SECONDS = 0.08;
+export const MESSAGE_BREAK_DURATION_SECONDS = 0.25;
+export const MESSAGE_BREAK_EASE_OUT_QUART: [number, number, number, number] = [
+  0.25, 1, 0.5, 1,
+];
+
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
   GROUPED_TOOLS,
@@ -657,10 +665,17 @@ export default function TextBubble({
                   }
 
                   return (
-                    <div
+                    <m.div
                       // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
                       key={`${baseId}-text-part-${index}`}
                       className={`${bubbleClassName} ${groupedClasses}`}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{
+                        duration: MESSAGE_BREAK_DURATION_SECONDS,
+                        ease: MESSAGE_BREAK_EASE_OUT_QUART,
+                        delay: index * MESSAGE_BREAK_STAGGER_SECONDS,
+                      }}
                     >
                       <div className={textClass}>
                         <div className="flex flex-col gap-3">
@@ -686,7 +701,7 @@ export default function TextBubble({
                           )}
                         </div>
                       </div>
-                    </div>
+                    </m.div>
                   );
                 }
 
@@ -702,8 +717,18 @@ export default function TextBubble({
                 );
 
                 return (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
-                  <React.Fragment key={`${baseId}-text-part-${index}`}>
+                  <m.div
+                    // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
+                    key={`${baseId}-text-part-${index}`}
+                    className="flex flex-col"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: MESSAGE_BREAK_DURATION_SECONDS,
+                      ease: MESSAGE_BREAK_EASE_OUT_QUART,
+                      delay: index * MESSAGE_BREAK_STAGGER_SECONDS,
+                    }}
+                  >
                     {segments.map((seg, segIdx) => {
                       const segKey = `${baseId}-seg-${index}-${segIdx}`;
                       if (seg.type === "openui") {
@@ -747,7 +772,7 @@ export default function TextBubble({
                         </div>
                       );
                     })}
-                  </React.Fragment>
+                  </m.div>
                 );
               })}
             </div>

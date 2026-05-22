@@ -14,17 +14,17 @@ event at the middleware level — no per-file boilerplate required.
 """
 
 import asyncio
-import os
-import time
 from functools import wraps
 from http import HTTPStatus
+import os
+import time
 
 from fastapi import Request
-from shared.py.wide_events import log as wide_log
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config.loggers import request_logger
 from app.config.settings import settings
+from shared.py.wide_events import log as wide_log
 
 _LEVEL_ORDER = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3, "CRITICAL": 4}
 

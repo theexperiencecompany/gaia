@@ -11,9 +11,10 @@ A standalone HTTP server is started in `startup()` on the port configured via
 
 from __future__ import annotations
 
+from collections.abc import Callable, Coroutine
 import functools
 import time
-from typing import Any, Callable, Coroutine, TypeVar
+from typing import Any, TypeVar
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, start_http_server
 
@@ -55,9 +56,7 @@ def instrument_task(
             raise
         finally:
             elapsed = time.perf_counter() - start
-            TASK_DURATION_SECONDS.labels(task_name=task_name, status=status).observe(
-                elapsed
-            )
+            TASK_DURATION_SECONDS.labels(task_name=task_name, status=status).observe(elapsed)
             TASK_TOTAL.labels(task_name=task_name, status=status).inc()
 
     return wrapper

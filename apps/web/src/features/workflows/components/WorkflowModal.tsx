@@ -9,10 +9,12 @@ import {
   ModalHeader,
 } from "@heroui/modal";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { InformationCircleIcon } from "@icons";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import WorkflowDescriptionField from "@/features/workflows/components/workflow-modal/WorkflowDescriptionField";
 import WorkflowFooter from "@/features/workflows/components/workflow-modal/WorkflowFooter";
 import WorkflowHeader from "@/features/workflows/components/workflow-modal/WorkflowHeader";
@@ -37,7 +39,8 @@ import { useWorkflowsStore } from "../stores/workflowsStore";
 import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
 import { createDefaultTriggerConfig } from "../triggers/registry";
 import { hasValidTriggerName, isIntegrationTrigger } from "../triggers/types";
-import { findTriggerSchema } from "../triggers/utils";
+
+import { findTriggerSchema, getTriggerDisplayInfo } from "../triggers/utils";
 import { getBrowserTimezone } from "../utils/browserTimezone";
 
 interface WorkflowModalProps {
@@ -45,7 +48,7 @@ interface WorkflowModalProps {
   onOpenChange: (open: boolean) => void;
   onWorkflowSaved?: (workflowId: string) => void;
   onWorkflowDeleted?: (workflowId: string) => void;
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "preview";
   existingWorkflow?: Workflow | null;
   /** Pre-fill form from AI-generated draft data */
   draftData?: WorkflowDraftData | null;
@@ -107,6 +110,32 @@ export default function WorkflowModal({
 
   // Fetch trigger schemas for slug normalization
   const { data: triggerSchemas } = useTriggerSchemas();
+
+  const { integrations, connectIntegration } = useIntegrations();
+  const [isConnecting, setIsConnecting] = useState(false);
+  const missingIntegration = (() => {
+    if (!currentWorkflow) return null;
+    if (currentWorkflow.trigger_config.type !== "integration") return null;
+    const display = getTriggerDisplayInfo(
+      currentWorkflow,
+      integrations,
+      triggerSchemas,
+    );
+    if (!display.integration) return null;
+    if (display.integration.status === "connected") return null;
+    return display.integration;
+  })();
+  const handleConnectMissingIntegration = useCallback(async () => {
+    if (!missingIntegration || isConnecting) return;
+    setIsConnecting(true);
+    try {
+      await connectIntegration(missingIntegration.id);
+    } catch (err) {
+      console.error("Failed to connect integration", err);
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [missingIntegration, isConnecting, connectIntegration]);
 
   // React Hook Form setup
   const form = useForm<WorkflowFormData>({
@@ -197,12 +226,20 @@ export default function WorkflowModal({
   useHotkeys(
     "mod+enter",
     () => {
-      if (isOpen && creationPhase === "form" && !isSaveDisabled()) {
+      if (
+        isOpen &&
+        creationPhase === "form" &&
+        mode !== "preview" &&
+        !isSaveDisabled()
+      ) {
         handleSubmit(handleSave)();
       }
     },
-    { enableOnFormTags: true, enabled: isOpen && creationPhase === "form" },
-    [isOpen, creationPhase, isSaveDisabled],
+    {
+      enableOnFormTags: true,
+      enabled: isOpen && creationPhase === "form" && mode !== "preview",
+    },
+    [isOpen, creationPhase, isSaveDisabled, mode],
   );
 
   // Handle initial step generation (for empty workflows)
@@ -212,7 +249,7 @@ export default function WorkflowModal({
 
   // Initialize form data based on mode and currentWorkflow
   useEffect(() => {
-    if (mode === "edit" && currentWorkflow) {
+    if ((mode === "edit" || mode === "preview") && currentWorkflow) {
       const formValues = workflowToFormData(currentWorkflow);
       resetFormValues(formValues);
       // Initialize activation state from current workflow
@@ -760,81 +797,123 @@ export default function WorkflowModal({
             {creationPhase === "form" ? (
               <div className="flex min-h-0 flex-1 gap-8">
                 <div className="flex min-h-0 flex-1 flex-col">
-                  <div className="min-h-0 flex-1 space-y-5 overflow-y-auto ">
-                    <WorkflowHeader
-                      mode={mode}
-                      control={control}
-                      errors={errors}
-                      currentWorkflow={currentWorkflow}
-                      isActivated={isActivated}
-                      isTogglingActivation={isTogglingActivation}
-                      onToggleActivation={handleActivationToggle}
-                      isPublic={!!currentWorkflow?.is_public}
-                      onUnpublish={handlePublishToggle}
-                      onDelete={() => setIsDeleteConfirmOpen(true)}
-                      onResetToDefault={handleResetToDefault}
-                    />
+                  <fieldset
+                    disabled={mode === "preview"}
+                    className="contents disabled:cursor-default"
+                  >
+                    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto ">
+                      {missingIntegration && (
+                        <div className="flex items-center justify-between gap-3 rounded-2xl bg-amber-400/10 px-3 py-2.5 text-sm text-amber-300">
+                          <span>
+                            This workflow is disabled because{" "}
+                            <span className="font-medium">
+                              {missingIntegration.name}
+                            </span>{" "}
+                            isn't connected. Connect it to start running.
+                          </span>
+                          <Button
+                            color="primary"
+                            size="sm"
+                            isLoading={isConnecting}
+                            onPress={handleConnectMissingIntegration}
+                          >
+                            Connect {missingIntegration.name}
+                          </Button>
+                        </div>
+                      )}
+                      <WorkflowHeader
+                        mode={mode}
+                        control={control}
+                        errors={errors}
+                        currentWorkflow={currentWorkflow}
+                        isActivated={isActivated}
+                        isTogglingActivation={isTogglingActivation}
+                        onToggleActivation={handleActivationToggle}
+                        isPublic={!!currentWorkflow?.is_public}
+                        onUnpublish={handlePublishToggle}
+                        onDelete={() => setIsDeleteConfirmOpen(true)}
+                        onResetToDefault={handleResetToDefault}
+                      />
 
-                    <WorkflowTriggerSection
-                      activeTab={formData.activeTab}
-                      selectedTrigger={formData.selectedTrigger}
-                      triggerConfig={formData.trigger_config}
-                      onActiveTabChange={handleActiveTabChange}
-                      onSelectedTriggerChange={(trigger) =>
-                        setValue("selectedTrigger", trigger)
-                      }
-                      onTriggerConfigChange={(config) =>
-                        setValue("trigger_config", config)
-                      }
-                    />
+                      <WorkflowTriggerSection
+                        activeTab={formData.activeTab}
+                        selectedTrigger={formData.selectedTrigger}
+                        triggerConfig={formData.trigger_config}
+                        onActiveTabChange={handleActiveTabChange}
+                        onSelectedTriggerChange={(trigger) =>
+                          setValue("selectedTrigger", trigger)
+                        }
+                        onTriggerConfigChange={(config) =>
+                          setValue("trigger_config", config)
+                        }
+                        isPreview={mode === "preview"}
+                      />
 
-                    <div>
-                      <div className="space-y-4">
-                        <WorkflowDescriptionField
-                          control={control}
-                          errors={errors}
-                          setValue={setValue}
-                          mode={mode}
-                          selectedIntegrationSlugs={selectedIntegrationSlugs}
-                          onIntegrationSlugsChange={setSelectedIntegrationSlugs}
-                        />
+                      <div>
+                        <div className="border-t border-zinc-800 mb-2" />
+                        <div className="space-y-4">
+                          <WorkflowDescriptionField
+                            control={control}
+                            errors={errors}
+                            setValue={setValue}
+                            mode={mode === "preview" ? "edit" : mode}
+                            isPreview={mode === "preview"}
+                            selectedIntegrationSlugs={selectedIntegrationSlugs}
+                            onIntegrationSlugsChange={
+                              setSelectedIntegrationSlugs
+                            }
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </fieldset>
 
-                  <WorkflowFooter
-                    existingWorkflow={!!existingWorkflow}
-                    hasSteps={
-                      !!currentWorkflow?.steps &&
-                      currentWorkflow.steps.length > 0
-                    }
-                    onRunWorkflow={handleRunWorkflow}
-                    onCancel={handleClose}
-                    onSave={() => handleSubmit(handleSave)()}
-                    isSaveDisabled={isSaveDisabled()}
-                    isCreating={isCreating}
-                    modifierKeyName={modifierKeyName}
-                    buttonText={getButtonText()}
-                    isPublic={!!currentWorkflow?.is_public}
-                    onPublishToggle={handlePublishToggle}
-                    onViewMarketplace={
-                      currentWorkflow?.slug ? handleMarketplaceView : undefined
-                    }
-                  />
+                  {mode === "preview" ? (
+                    <PreviewFooter onClose={handleClose} />
+                  ) : (
+                    <WorkflowFooter
+                      existingWorkflow={!!existingWorkflow}
+                      hasSteps={
+                        !!currentWorkflow?.steps &&
+                        currentWorkflow.steps.length > 0
+                      }
+                      onRunWorkflow={handleRunWorkflow}
+                      onCancel={handleClose}
+                      onSave={() => handleSubmit(handleSave)()}
+                      isSaveDisabled={isSaveDisabled()}
+                      isCreating={isCreating}
+                      modifierKeyName={modifierKeyName}
+                      buttonText={getButtonText()}
+                      isPublic={!!currentWorkflow?.is_public}
+                      onPublishToggle={handlePublishToggle}
+                      onViewMarketplace={
+                        currentWorkflow?.slug
+                          ? handleMarketplaceView
+                          : undefined
+                      }
+                    />
+                  )}
                 </div>
 
-                {mode === "edit" && existingWorkflow && (
-                  <WorkflowRightPanel
-                    workflow={currentWorkflow}
-                    workflowId={existingWorkflow.id}
-                    isGenerating={isGeneratingSteps}
-                    isRegenerating={isRegeneratingSteps}
-                    regenerationError={regenerationError}
-                    onRegenerateWithReason={handleRegenerateWithReason}
-                    onInitialGeneration={handleInitialGeneration}
-                    onClearError={() => setRegenerationError(null)}
-                  />
-                )}
+                {(mode === "edit" || mode === "preview") &&
+                  existingWorkflow && (
+                    <fieldset
+                      disabled={mode === "preview"}
+                      className="contents disabled:cursor-default"
+                    >
+                      <WorkflowRightPanel
+                        workflow={currentWorkflow}
+                        workflowId={existingWorkflow.id}
+                        isGenerating={isGeneratingSteps}
+                        isRegenerating={isRegeneratingSteps}
+                        regenerationError={regenerationError}
+                        onRegenerateWithReason={handleRegenerateWithReason}
+                        onInitialGeneration={handleInitialGeneration}
+                        onClearError={() => setRegenerationError(null)}
+                        isPreview={mode === "preview"}
+                      />
+                    </fieldset>
+                  )}
               </div>
             ) : (
               <WorkflowLoadingState
@@ -880,5 +959,27 @@ export default function WorkflowModal({
         </ModalContent>
       </Modal>
     </>
+  );
+}
+
+function PreviewFooter({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="mt-6 pt-4 pb-3">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-start gap-2 rounded-2xl bg-zinc-800 px-3 py-2.5 text-xs text-zinc-300">
+          <InformationCircleIcon
+            height={16}
+            className="mt-0.5 shrink-0 text-zinc-400"
+          />
+          <span>
+            Don't worry, you can customise all the details later from the
+            Workflows page.
+          </span>
+        </div>
+        <Button color="primary" onPress={onClose}>
+          Close
+        </Button>
+      </div>
+    </div>
   );
 }

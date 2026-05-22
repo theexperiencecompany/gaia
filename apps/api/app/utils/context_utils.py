@@ -1,11 +1,12 @@
 """Utilities for the context gathering system."""
 
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FuturesTimeout
-from typing import Any, Callable, Dict, List, Optional, Set
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from typing import Any
+
+from pydantic import BaseModel
 
 from shared.py.wide_events import log
-from pydantic import BaseModel
 
 # ── Performance tuning ───────────────────────────────────────────────────────
 
@@ -23,10 +24,10 @@ _CONTEXT_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ctx-fe
 
 def execute_tool(
     tool_name: str,
-    params: Dict[str, Any],
+    params: dict[str, Any],
     user_id: str,
     output_model: type[BaseModel] | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Execute a Composio tool directly (bypasses hook pipeline) and return its data dict.
 
     Args:
@@ -72,10 +73,10 @@ def execute_tool(
 
 
 def fetch_all_providers(
-    providers: List[str],
-    provider_tools: Dict[str, str],
+    providers: list[str],
+    provider_tools: dict[str, str],
     user_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Fetch all providers in parallel by calling each CUSTOM_GATHER_CONTEXT tool."""
 
     def fetch_one(provider: str) -> tuple:
@@ -87,7 +88,7 @@ def fetch_all_providers(
             log.warning(f"Provider {provider} ({tool_slug}) failed: {e}")
             return provider, None
 
-    results: Dict[str, Any] = {}
+    results: dict[str, Any] = {}
     # Use the module-level dedicated pool instead of creating a new one per call.
     # This prevents unbounded thread creation under concurrent agent sessions
     # and isolates context-fetching threads from the default asyncio pool.
@@ -110,11 +111,11 @@ def fetch_all_providers(
 
 
 async def resolve_providers(
-    requested: Optional[List[str]],
+    requested: list[str] | None,
     user_id: str,
-    provider_tools: Dict[str, str],
+    provider_tools: dict[str, str],
     namespace_fn: Callable[[str], str],
-) -> List[str]:
+) -> list[str]:
     """Return the list of providers to query based on request + connected integrations.
 
     Args:
@@ -131,16 +132,14 @@ async def resolve_providers(
         get_user_available_tool_namespaces,
     )
 
-    connected: Set[str] = set()
+    connected: set[str] = set()
     try:
         connected = await get_user_available_tool_namespaces(user_id)
     except Exception as e:
         log.warning(f"Could not get connected namespaces: {e}")
 
     if connected:
-        filtered = [
-            p for p, slug in provider_tools.items() if namespace_fn(slug) in connected
-        ]
+        filtered = [p for p, slug in provider_tools.items() if namespace_fn(slug) in connected]
         if filtered:
             log.info(f"Auto-selected {len(filtered)} connected providers: {filtered}")
             return filtered

@@ -16,22 +16,20 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from composio.types import ToolExecuteParams
-
-import pytest
 from langchain_core.tools import ToolException
+import pytest
 
+from app.utils.composio_hooks.reddit_hooks import (
+    process_reddit_comment,
+    process_reddit_post,
+    process_reddit_search_results,
+)
 from app.utils.composio_hooks.registry import (
     ComposioHookRegistry,
     register_after_hook,
     register_before_hook,
     register_schema_modifier,
 )
-from app.utils.composio_hooks.reddit_hooks import (
-    process_reddit_comment,
-    process_reddit_post,
-    process_reddit_search_results,
-)
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -343,9 +341,7 @@ class TestMasterHooks:
             master_before_execute_hook,
         )
 
-        with patch.object(
-            hook_registry, "execute_before_hooks", return_value="delegated"
-        ) as mock:
+        with patch.object(hook_registry, "execute_before_hooks", return_value="delegated") as mock:
             result = master_before_execute_hook("T", "K", _make_params())
             mock.assert_called_once()
             assert result == "delegated"
@@ -356,9 +352,7 @@ class TestMasterHooks:
             master_after_execute_hook,
         )
 
-        with patch.object(
-            hook_registry, "execute_after_hooks", return_value="delegated"
-        ) as mock:
+        with patch.object(hook_registry, "execute_after_hooks", return_value="delegated") as mock:
             result = master_after_execute_hook("T", "K", {"data": "x"})
             mock.assert_called_once()
             assert result == "delegated"
@@ -370,9 +364,7 @@ class TestMasterHooks:
         )
 
         schema = _make_tool_schema()
-        with patch.object(
-            hook_registry, "execute_schema_modifiers", return_value=schema
-        ) as mock:
+        with patch.object(hook_registry, "execute_schema_modifiers", return_value=schema) as mock:
             result = master_schema_modifier("T", "K", schema)
             mock.assert_called_once()
             assert result is schema
@@ -472,9 +464,7 @@ class TestGmailSchemaModifiers:
                 },
             }
         )
-        result = gmail_fetch_emails_schema_modifier(
-            "GMAIL_FETCH_EMAILS", "GMAIL", schema
-        )
+        result = gmail_fetch_emails_schema_modifier("GMAIL_FETCH_EMAILS", "GMAIL", schema)
         props = result.input_parameters["properties"]
         assert props["max_results"]["default"] == 10
         assert props["label_ids"]["default"] == ["INBOX"]
@@ -490,9 +480,7 @@ class TestGmailSchemaModifiers:
         schema = _make_tool_schema(
             input_parameters={"properties": {"max_results": {"type": "integer"}}}
         )
-        result = gmail_fetch_emails_schema_modifier(
-            "GMAIL_FETCH_EMAILS", "GMAIL", schema
-        )
+        result = gmail_fetch_emails_schema_modifier("GMAIL_FETCH_EMAILS", "GMAIL", schema)
         assert str(GMAIL_FULL_FETCH_HARD_LIMIT) in result.description
 
     def test_fetch_message_by_id_schema_sets_format_default(self) -> None:
@@ -520,9 +508,7 @@ class TestGmailSchemaModifiers:
 
         schema = _make_tool_schema(input_parameters="not_a_dict")
         # Should return schema unchanged (early return)
-        result = gmail_fetch_emails_schema_modifier(
-            "GMAIL_FETCH_EMAILS", "GMAIL", schema
-        )
+        result = gmail_fetch_emails_schema_modifier("GMAIL_FETCH_EMAILS", "GMAIL", schema)
         assert result is schema
 
     def test_schema_modifier_handles_non_dict_properties(self) -> None:
@@ -531,9 +517,7 @@ class TestGmailSchemaModifiers:
         )
 
         schema = _make_tool_schema(input_parameters={"properties": "not_a_dict"})
-        result = gmail_fetch_emails_schema_modifier(
-            "GMAIL_FETCH_EMAILS", "GMAIL", schema
-        )
+        result = gmail_fetch_emails_schema_modifier("GMAIL_FETCH_EMAILS", "GMAIL", schema)
         assert result is schema
 
 
@@ -562,9 +546,7 @@ class TestGmailBeforeHooks:
     def test_fetch_emails_allows_large_non_full_mode(self) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_fetch_emails_before_hook
 
-        params = _make_params(
-            {"max_results": 100, "verbose": False, "include_payload": False}
-        )
+        params = _make_params({"max_results": 100, "verbose": False, "include_payload": False})
         result = gmail_fetch_emails_before_hook("GMAIL_FETCH_EMAILS", "GMAIL", params)
         assert result is params
 
@@ -599,9 +581,7 @@ class TestGmailBeforeHooks:
             gmail_fetch_emails_before_hook("GMAIL_FETCH_EMAILS", "GMAIL", params)
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_compose_before_hook_maps_to_to_recipient_email(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_compose_before_hook_maps_to_to_recipient_email(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
 
         mock_writer.return_value = _noop_writer()
@@ -678,9 +658,7 @@ class TestGmailBeforeHooks:
         assert "email_compose_data" in payload
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_compose_before_hook_sends_email_sent_data(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_compose_before_hook_sends_email_sent_data(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
 
         writer = _noop_writer()
@@ -740,9 +718,7 @@ class TestGmailBeforeHooks:
         ]
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_compose_before_hook_forward_string_recipients(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_compose_before_hook_forward_string_recipients(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
 
         writer = _noop_writer()
@@ -777,9 +753,7 @@ class TestGmailBeforeHooks:
         writer.assert_called_once()
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_send_draft_before_hook_streams_progress(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_send_draft_before_hook_streams_progress(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_before_hook
 
         writer = _noop_writer()
@@ -928,9 +902,7 @@ class TestGmailBeforeHooks:
         assert "draft details" in payload["progress"]
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_get_contacts_before_hook_sets_page_size_default(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_get_contacts_before_hook_sets_page_size_default(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_before_hook
 
         mock_writer.return_value = _noop_writer()
@@ -1060,9 +1032,7 @@ class TestGmailAfterHooks:
             "messageCount": 1,
         }
         response = _make_response({"id": "thread1", "messages": []})
-        result = gmail_thread_after_hook(
-            "GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response
-        )
+        result = gmail_thread_after_hook("GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response)
         assert result["id"] == "thread1"
         writer.assert_called_once()
         payload = writer.call_args[0][0]
@@ -1073,9 +1043,7 @@ class TestGmailAfterHooks:
         from app.utils.composio_hooks.gmail_hooks import gmail_thread_after_hook
 
         response = _make_response({"error": "Not found"})
-        result = gmail_thread_after_hook(
-            "GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response
-        )
+        result = gmail_thread_after_hook("GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response)
         assert result == {"error": "Not found"}
 
     @patch("app.utils.composio_hooks.gmail_hooks.process_list_drafts_response")
@@ -1119,9 +1087,7 @@ class TestGmailAfterHooks:
             },
             successful=True,
         )
-        result = gmail_attachment_after_hook(
-            "GMAIL_FETCH_ATTACHMENT", "GMAIL", response
-        )
+        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "GMAIL", response)
         assert result["attachmentId"] == "att1"
         assert result["filename"] == "report.pdf"
         assert result["size"] == 1024
@@ -1132,9 +1098,7 @@ class TestGmailAfterHooks:
         from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
 
         response = _make_response({"error": "Not found"}, successful=False)
-        result = gmail_attachment_after_hook(
-            "GMAIL_FETCH_ATTACHMENT", "GMAIL", response
-        )
+        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "GMAIL", response)
         assert result == {"error": "Not found"}
 
     @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
@@ -1143,9 +1107,7 @@ class TestGmailAfterHooks:
 
         mock_template.return_value = {"id": "m1", "subject": "Test"}
         response = _make_response({"id": "m1", "payload": {}})
-        result = gmail_fetch_by_id_after_hook(
-            "GMAIL_FETCH_EMAIL_BY_ID", "GMAIL", response
-        )
+        result = gmail_fetch_by_id_after_hook("GMAIL_FETCH_EMAIL_BY_ID", "GMAIL", response)
         assert result["id"] == "m1"
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
@@ -1179,9 +1141,7 @@ class TestGmailAfterHooks:
         assert result == {"successful": False, "error": "Failed"}
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_get_contacts_after_hook_processes_contacts(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_get_contacts_after_hook_processes_contacts(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_after_hook
 
         writer = _noop_writer()
@@ -1221,9 +1181,7 @@ class TestGmailAfterHooks:
         writer.assert_called_once()
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_get_contacts_after_hook_missing_fields(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_get_contacts_after_hook_missing_fields(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_after_hook
 
         mock_writer.return_value = _noop_writer()
@@ -1276,9 +1234,7 @@ class TestGmailAfterHooks:
                 },
             }
         )
-        result = gmail_search_people_after_hook(
-            "GMAIL_SEARCH_PEOPLE", "GMAIL", response
-        )
+        result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", response)
         assert result["people"][0]["name"] == "Jane Doe"
         assert result["result_count"] == 1
         writer.assert_called_once()
@@ -1340,9 +1296,7 @@ class TestTwitterSchemaModifiers:
         )
 
         schema = _make_tool_schema()
-        result = twitter_search_schema_modifier(
-            "TWITTER_RECENT_SEARCH", "TWITTER", schema
-        )
+        result = twitter_search_schema_modifier("TWITTER_RECENT_SEARCH", "TWITTER", schema)
         assert "from:username" in result.description
         assert "is:retweet" in result.description
 
@@ -1352,9 +1306,7 @@ class TestTwitterSchemaModifiers:
         )
 
         schema = _make_tool_schema()
-        result = twitter_follow_schema_modifier(
-            "TWITTER_FOLLOW_USER", "TWITTER", schema
-        )
+        result = twitter_follow_schema_modifier("TWITTER_FOLLOW_USER", "TWITTER", schema)
         assert "TWITTER_RECENT_SEARCH" in result.description
 
     def test_twitter_create_post_schema_adds_tips(self) -> None:
@@ -1405,9 +1357,7 @@ class TestTwitterBeforeHooks:
     """Tests for Twitter before-execute hooks."""
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_create_post_before_hook_streams_preview(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_create_post_before_hook_streams_preview(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_create_post_before_hook,
         )
@@ -1423,9 +1373,7 @@ class TestTwitterBeforeHooks:
                 "poll_options": ["Yes", "No"],
             }
         )
-        result = twitter_create_post_before_hook(
-            "TWITTER_CREATION_OF_A_POST", "TWITTER", params
-        )
+        result = twitter_create_post_before_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", params)
         assert result is params
         writer.assert_called_once()
         payload = writer.call_args[0][0]
@@ -1440,9 +1388,7 @@ class TestTwitterBeforeHooks:
 
         mock_writer.return_value = None
         params = _make_params({"text": "Hello"})
-        result = twitter_create_post_before_hook(
-            "TWITTER_CREATION_OF_A_POST", "TWITTER", params
-        )
+        result = twitter_create_post_before_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", params)
         assert result is params
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
@@ -1518,9 +1464,7 @@ class TestTwitterAfterHooks:
         assert result == {"error": "Rate limited"}
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_search_after_hook_truncates_long_tweets(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_search_after_hook_truncates_long_tweets(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
 
         mock_writer.return_value = _noop_writer()
@@ -1574,9 +1518,7 @@ class TestTwitterAfterHooks:
         writer.assert_called_once()
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_user_lookup_after_hook_multiple_users(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_user_lookup_after_hook_multiple_users(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_user_lookup_after_hook,
         )
@@ -1666,9 +1608,7 @@ class TestTwitterAfterHooks:
                 "meta": {"next_token": "next"},
             }
         )
-        result = twitter_followers_after_hook(
-            "TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response
-        )
+        result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
         assert result["users"][0]["username"] == "follower1"
         assert result["has_more"] is True
         writer.assert_called_once()
@@ -1676,9 +1616,7 @@ class TestTwitterAfterHooks:
         assert "twitter_followers_data" in payload
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_following_after_hook_uses_following_key(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_following_after_hook_uses_following_key(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_followers_after_hook
 
         writer = _noop_writer()
@@ -1696,9 +1634,7 @@ class TestTwitterAfterHooks:
                 "meta": {},
             }
         )
-        result = twitter_followers_after_hook(
-            "TWITTER_FOLLOWING_BY_USER_ID", "TWITTER", response
-        )
+        result = twitter_followers_after_hook("TWITTER_FOLLOWING_BY_USER_ID", "TWITTER", response)
         assert result["has_more"] is False
         writer.assert_called_once()
         payload = writer.call_args[0][0]
@@ -1720,9 +1656,7 @@ class TestTwitterAfterHooks:
                 }
             }
         )
-        result = twitter_post_created_after_hook(
-            "TWITTER_CREATION_OF_A_POST", "TWITTER", response
-        )
+        result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
         assert result["success"] is True
         assert result["id"] == "post123"
         assert "twitter.com" in result["url"]
@@ -1738,9 +1672,7 @@ class TestTwitterAfterHooks:
 
         mock_writer.return_value = _noop_writer()
         response = _make_response({"error": "Duplicate"})
-        result = twitter_post_created_after_hook(
-            "TWITTER_CREATION_OF_A_POST", "TWITTER", response
-        )
+        result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
         assert result == {"error": "Duplicate"}
 
 
@@ -1829,9 +1761,7 @@ class TestRedditHelpers:
         assert result["posts"][0]["id"] == "p1"
 
     def test_process_reddit_search_results_empty(self) -> None:
-        result = process_reddit_search_results(
-            {"search_results": {"data": {"children": []}}}
-        )
+        result = process_reddit_search_results({"search_results": {"data": {"children": []}}})
         assert result["result_count"] == 0
         assert result["posts"] == []
 
@@ -1873,9 +1803,7 @@ class TestRedditBeforeHooks:
         writer = _noop_writer()
         mock_writer.return_value = writer
         params = _make_params({})
-        reddit_content_before_hook(
-            "REDDIT_EDIT_REDDIT_COMMENT_OR_POST", "REDDIT", params
-        )
+        reddit_content_before_hook("REDDIT_EDIT_REDDIT_COMMENT_OR_POST", "REDDIT", params)
         payload = writer.call_args[0][0]
         assert "Editing content" in payload["progress"]
 
@@ -1885,9 +1813,7 @@ class TestRedditBeforeHooks:
 
         mock_writer.return_value = None
         params = _make_params({})
-        result = reddit_content_before_hook(
-            "REDDIT_CREATE_REDDIT_POST", "REDDIT", params
-        )
+        result = reddit_content_before_hook("REDDIT_CREATE_REDDIT_POST", "REDDIT", params)
         assert result is params
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
@@ -1977,9 +1903,7 @@ class TestRedditAfterHooks:
                 }
             }
         )
-        result = reddit_search_after_hook(
-            "REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response
-        )
+        result = reddit_search_after_hook("REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response)
         assert result["result_count"] == 1
         assert result["posts"][0]["id"] == "p1"
         writer.assert_called_once()
@@ -1992,9 +1916,7 @@ class TestRedditAfterHooks:
 
         mock_writer.return_value = _noop_writer()
         response = _make_response({"error": "Rate limited"})
-        result = reddit_search_after_hook(
-            "REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response
-        )
+        result = reddit_search_after_hook("REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response)
         assert result == {"error": "Rate limited"}
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
@@ -2022,9 +1944,7 @@ class TestRedditAfterHooks:
                 }
             }
         )
-        result = reddit_post_detail_after_hook(
-            "REDDIT_RETRIEVE_REDDIT_POST", "REDDIT", response
-        )
+        result = reddit_post_detail_after_hook("REDDIT_RETRIEVE_REDDIT_POST", "REDDIT", response)
         assert result["id"] == "p1"
         writer.assert_called_once()
         payload = writer.call_args[0][0]
@@ -2061,9 +1981,7 @@ class TestRedditAfterHooks:
                 },
             ]
         )
-        result = reddit_comments_after_hook(
-            "REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response
-        )
+        result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
         assert result["comment_count"] == 1
         assert result["comments"][0]["body"] == "Nice post!"
         writer.assert_called_once()
@@ -2093,9 +2011,7 @@ class TestRedditAfterHooks:
                 }
             }
         )
-        result = reddit_comments_after_hook(
-            "REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response
-        )
+        result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
         assert result["comment_count"] == 1
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
@@ -2115,9 +2031,7 @@ class TestRedditAfterHooks:
                 },
             ]
         )
-        result = reddit_comments_after_hook(
-            "REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response
-        )
+        result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
         assert result["comment_count"] == 0
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
@@ -2135,9 +2049,7 @@ class TestRedditAfterHooks:
                 "permalink": "/r/python/new_post",
             }
         )
-        result = reddit_content_created_after_hook(
-            "REDDIT_CREATE_REDDIT_POST", "REDDIT", response
-        )
+        result = reddit_content_created_after_hook("REDDIT_CREATE_REDDIT_POST", "REDDIT", response)
         assert result["success"] is True
         assert result["id"] == "new_post"
         writer.assert_called_once()
@@ -2158,9 +2070,7 @@ class TestRedditAfterHooks:
                 "permalink": "/r/python/p1/new_comment",
             }
         )
-        result = reddit_content_created_after_hook(
-            "REDDIT_POST_REDDIT_COMMENT", "REDDIT", response
-        )
+        result = reddit_content_created_after_hook("REDDIT_POST_REDDIT_COMMENT", "REDDIT", response)
         assert result["success"] is True
         writer.assert_called_once()
         payload = writer.call_args[0][0]
@@ -2174,9 +2084,7 @@ class TestRedditAfterHooks:
 
         mock_writer.return_value = _noop_writer()
         response = _make_response({"error": "Forbidden"})
-        result = reddit_content_created_after_hook(
-            "REDDIT_CREATE_REDDIT_POST", "REDDIT", response
-        )
+        result = reddit_content_created_after_hook("REDDIT_CREATE_REDDIT_POST", "REDDIT", response)
         assert result == {"error": "Forbidden"}
 
 
@@ -2189,9 +2097,7 @@ class TestEdgeCases:
     """Test edge cases and error handling across the hook system."""
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_compose_hook_exception_returns_params(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_compose_hook_exception_returns_params(self, mock_writer: MagicMock) -> None:
         """If get_stream_writer raises, the compose hook returns params unchanged."""
         from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
 
@@ -2220,9 +2126,7 @@ class TestEdgeCases:
         assert result == {"raw": "data"}
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_twitter_search_after_hook_exception_returns_data(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_twitter_search_after_hook_exception_returns_data(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
 
         mock_writer.side_effect = RuntimeError("No writer")
@@ -2231,16 +2135,12 @@ class TestEdgeCases:
         assert result == {"data": [], "includes": {}, "meta": {}}
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
-    def test_reddit_search_after_hook_exception_returns_data(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_reddit_search_after_hook_exception_returns_data(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_search_after_hook
 
         mock_writer.side_effect = RuntimeError("No writer")
         response = _make_response({"search_results": {}})
-        result = reddit_search_after_hook(
-            "REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response
-        )
+        result = reddit_search_after_hook("REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response)
         # When exception occurs during processing, falls through to return response data
         assert isinstance(result, dict)
 
@@ -2251,9 +2151,7 @@ class TestEdgeCases:
             gmail_fetch_emails_before_hook,
         )
 
-        params = _make_params(
-            {"max_results": GMAIL_FULL_FETCH_HARD_LIMIT, "verbose": True}
-        )
+        params = _make_params({"max_results": GMAIL_FULL_FETCH_HARD_LIMIT, "verbose": True})
         result = gmail_fetch_emails_before_hook("GMAIL_FETCH_EMAILS", "GMAIL", params)
         assert result is params
 
@@ -2264,9 +2162,7 @@ class TestEdgeCases:
             gmail_fetch_emails_before_hook,
         )
 
-        params = _make_params(
-            {"max_results": GMAIL_FULL_FETCH_HARD_LIMIT + 1, "verbose": True}
-        )
+        params = _make_params({"max_results": GMAIL_FULL_FETCH_HARD_LIMIT + 1, "verbose": True})
         with pytest.raises(ToolException):
             gmail_fetch_emails_before_hook("GMAIL_FETCH_EMAILS", "GMAIL", params)
 
@@ -2274,15 +2170,11 @@ class TestEdgeCases:
         from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
 
         response: dict[str, Any] = {"data": "plain_string", "successful": True}
-        result = gmail_attachment_after_hook(
-            "GMAIL_FETCH_ATTACHMENT", "GMAIL", response
-        )
+        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "GMAIL", response)
         assert result == "plain_string"
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_gmail_before_hook_no_writer_skips_streaming(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_gmail_before_hook_no_writer_skips_streaming(self, mock_writer: MagicMock) -> None:
         """Before hooks that check writer truthy-ness skip streaming gracefully."""
         from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_before_hook
 
@@ -2292,9 +2184,7 @@ class TestEdgeCases:
         assert result is params
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_compose_before_hook_extra_recipients_non_list(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_compose_before_hook_extra_recipients_non_list(self, mock_writer: MagicMock) -> None:
         """When extra_recipients is not a list, it should be treated as empty."""
         from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
 
@@ -2334,37 +2224,27 @@ class TestEdgeCases:
         assert result is params
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_modify_labels_before_hook_writer_exception(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_modify_labels_before_hook_writer_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_modify_labels_before_hook
 
         mock_writer.side_effect = RuntimeError("no context")
         params = _make_params({})
-        result = gmail_modify_labels_before_hook(
-            "GMAIL_ADD_LABEL_TO_EMAIL", "GMAIL", params
-        )
+        result = gmail_modify_labels_before_hook("GMAIL_ADD_LABEL_TO_EMAIL", "GMAIL", params)
         assert result is params
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_draft_management_before_hook_writer_exception(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_draft_management_before_hook_writer_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import (
             gmail_draft_management_before_hook,
         )
 
         mock_writer.side_effect = RuntimeError("no context")
         params = _make_params({})
-        result = gmail_draft_management_before_hook(
-            "GMAIL_UPDATE_DRAFT", "GMAIL", params
-        )
+        result = gmail_draft_management_before_hook("GMAIL_UPDATE_DRAFT", "GMAIL", params)
         assert result is params
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_list_drafts_before_hook_writer_exception(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_list_drafts_before_hook_writer_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_list_drafts_before_hook
 
         mock_writer.side_effect = RuntimeError("no context")
@@ -2373,9 +2253,7 @@ class TestEdgeCases:
         assert result is params
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_get_draft_before_hook_writer_exception(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_get_draft_before_hook_writer_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_draft_before_hook
 
         mock_writer.side_effect = RuntimeError("no context")
@@ -2384,9 +2262,7 @@ class TestEdgeCases:
         assert result is params
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_get_contacts_before_hook_writer_exception(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_get_contacts_before_hook_writer_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_before_hook
 
         mock_writer.side_effect = RuntimeError("no context")
@@ -2395,9 +2271,7 @@ class TestEdgeCases:
         assert result is params
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_search_people_before_hook_writer_exception(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_search_people_before_hook_writer_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_search_people_before_hook
 
         mock_writer.side_effect = RuntimeError("no context")
@@ -2415,9 +2289,7 @@ class TestGmailAfterHookExceptions:
     """Cover exception branches in Gmail after-execute hooks."""
 
     @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
-    def test_message_detail_exception_returns_raw(
-        self, mock_template: MagicMock
-    ) -> None:
+    def test_message_detail_exception_returns_raw(self, mock_template: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_message_detail_after_hook
 
         mock_template.side_effect = KeyError("bad key")
@@ -2437,9 +2309,7 @@ class TestGmailAfterHookExceptions:
         mock_writer.return_value = _noop_writer()
         mock_process.side_effect = TypeError("unexpected")
         response = _make_response({"raw": "thread_data"})
-        result = gmail_thread_after_hook(
-            "GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response
-        )
+        result = gmail_thread_after_hook("GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response)
         assert result == {"raw": "thread_data"}
 
     @patch("app.utils.composio_hooks.gmail_hooks.process_list_drafts_response")
@@ -2466,15 +2336,11 @@ class TestGmailAfterHookExceptions:
 
         mock_template.side_effect = KeyError("bad key")
         response = _make_response({"raw": "email"})
-        result = gmail_fetch_by_id_after_hook(
-            "GMAIL_FETCH_EMAIL_BY_ID", "GMAIL", response
-        )
+        result = gmail_fetch_by_id_after_hook("GMAIL_FETCH_EMAIL_BY_ID", "GMAIL", response)
         assert result == {"raw": "email"}
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_send_draft_after_exception_returns_raw(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_send_draft_after_exception_returns_raw(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_after_hook
 
         mock_writer.side_effect = RuntimeError("no writer")
@@ -2483,9 +2349,7 @@ class TestGmailAfterHookExceptions:
         assert result == {"successful": True, "id": "x"}
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_get_contacts_after_exception_returns_raw(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_get_contacts_after_exception_returns_raw(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_after_hook
 
         mock_writer.side_effect = RuntimeError("no writer")
@@ -2494,29 +2358,21 @@ class TestGmailAfterHookExceptions:
         assert result == {"response_data": {"connections": []}}
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_search_people_after_hook_error_response(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_search_people_after_hook_error_response(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_search_people_after_hook
 
         mock_writer.return_value = _noop_writer()
         response = _make_response({"error": "Not found"})
-        result = gmail_search_people_after_hook(
-            "GMAIL_SEARCH_PEOPLE", "GMAIL", response
-        )
+        result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", response)
         assert result == {"error": "Not found"}
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_search_people_after_exception_returns_raw(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_search_people_after_exception_returns_raw(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_search_people_after_hook
 
         mock_writer.side_effect = RuntimeError("broken")
         response = _make_response({"response_data": {"results": []}})
-        result = gmail_search_people_after_hook(
-            "GMAIL_SEARCH_PEOPLE", "GMAIL", response
-        )
+        result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", response)
         assert result == {"response_data": {"results": []}}
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
@@ -2541,18 +2397,14 @@ class TestGmailAfterHookExceptions:
                                 "emailAddresses": [
                                     {"value": "t@x.com", "metadata": {"primary": True}}
                                 ],
-                                "phoneNumbers": [
-                                    {"value": "+1111", "metadata": {"primary": True}}
-                                ],
+                                "phoneNumbers": [{"value": "+1111", "metadata": {"primary": True}}],
                             }
                         }
                     ],
                 },
             }
         )
-        result = gmail_search_people_after_hook(
-            "GMAIL_SEARCH_PEOPLE", "GMAIL", response
-        )
+        result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", response)
         assert result["people"][0]["phone"] == "+1111"
 
 
@@ -2691,9 +2543,7 @@ class TestRedditTwitterAfterHookExceptions:
 
         mock_writer.side_effect = RuntimeError("broken")
         response = _make_response({"data": {"id": "p1"}})
-        result = reddit_post_detail_after_hook(
-            "REDDIT_RETRIEVE_REDDIT_POST", "REDDIT", response
-        )
+        result = reddit_post_detail_after_hook("REDDIT_RETRIEVE_REDDIT_POST", "REDDIT", response)
         assert isinstance(result, dict)
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
@@ -2702,9 +2552,7 @@ class TestRedditTwitterAfterHookExceptions:
 
         mock_writer.side_effect = RuntimeError("broken")
         response = _make_response([{}, {"data": {"children": []}}])
-        result = reddit_comments_after_hook(
-            "REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response
-        )
+        result = reddit_comments_after_hook("REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", response)
         # On exception, returns response.get("data") which is the list
         assert isinstance(result, list)
 
@@ -2716,9 +2564,7 @@ class TestRedditTwitterAfterHookExceptions:
 
         mock_writer.side_effect = RuntimeError("broken")
         response = _make_response({"id": "new"})
-        result = reddit_content_created_after_hook(
-            "REDDIT_CREATE_REDDIT_POST", "REDDIT", response
-        )
+        result = reddit_content_created_after_hook("REDDIT_CREATE_REDDIT_POST", "REDDIT", response)
         assert isinstance(result, dict)
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
@@ -2727,9 +2573,7 @@ class TestRedditTwitterAfterHookExceptions:
 
         mock_writer.side_effect = RuntimeError("broken")
         params = _make_params({"subreddit": "test"})
-        result = reddit_content_before_hook(
-            "REDDIT_CREATE_REDDIT_POST", "REDDIT", params
-        )
+        result = reddit_content_before_hook("REDDIT_CREATE_REDDIT_POST", "REDDIT", params)
         assert result is params
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
@@ -2738,22 +2582,16 @@ class TestRedditTwitterAfterHookExceptions:
 
         mock_writer.side_effect = RuntimeError("broken")
         params = _make_params({})
-        result = reddit_delete_before_hook(
-            "REDDIT_DELETE_REDDIT_POST", "REDDIT", params
-        )
+        result = reddit_delete_before_hook("REDDIT_DELETE_REDDIT_POST", "REDDIT", params)
         assert result is params
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
-    def test_reddit_retrieve_before_hook_exception(
-        self, mock_writer: MagicMock
-    ) -> None:
+    def test_reddit_retrieve_before_hook_exception(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.reddit_hooks import reddit_retrieve_before_hook
 
         mock_writer.side_effect = RuntimeError("broken")
         params = _make_params({})
-        result = reddit_retrieve_before_hook(
-            "REDDIT_RETRIEVE_REDDIT_POST", "REDDIT", params
-        )
+        result = reddit_retrieve_before_hook("REDDIT_RETRIEVE_REDDIT_POST", "REDDIT", params)
         assert result is params
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
@@ -2764,9 +2602,7 @@ class TestRedditTwitterAfterHookExceptions:
 
         mock_writer.side_effect = RuntimeError("broken")
         params = _make_params({"text": "Test"})
-        result = twitter_create_post_before_hook(
-            "TWITTER_CREATION_OF_A_POST", "TWITTER", params
-        )
+        result = twitter_create_post_before_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", params)
         assert result is params
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
@@ -2808,9 +2644,7 @@ class TestRedditTwitterAfterHookExceptions:
 
         mock_writer.side_effect = RuntimeError("broken")
         response = _make_response({"data": []})
-        result = twitter_followers_after_hook(
-            "TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response
-        )
+        result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
         assert isinstance(result, dict)
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
@@ -2821,7 +2655,5 @@ class TestRedditTwitterAfterHookExceptions:
 
         mock_writer.side_effect = RuntimeError("broken")
         response = _make_response({"data": {"id": "p1"}})
-        result = twitter_post_created_after_hook(
-            "TWITTER_CREATION_OF_A_POST", "TWITTER", response
-        )
+        result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
         assert isinstance(result, dict)

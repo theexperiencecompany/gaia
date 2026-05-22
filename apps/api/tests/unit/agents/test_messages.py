@@ -15,8 +15,8 @@ and verify the assembled message list.
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
+import pytest
 
 from app.agents.core.messages import construct_langchain_messages
 from app.models.message_models import (
@@ -25,7 +25,6 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
-
 
 SYSTEM_MSG = SystemMessage(content="System prompt here")
 DYNAMIC_MSG = SystemMessage(

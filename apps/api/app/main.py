@@ -6,12 +6,12 @@ This module initializes and runs the FastAPI application.
 
 import time
 
-import app.patches  # noqa: F401 to apply patches
-from shared.py.wide_events import log
+from fastapi import FastAPI  # noqa: F401
+
 from app.config.sentry import init_sentry
 from app.core.app_factory import create_app
-
-from fastapi import FastAPI  # noqa: F401
+import app.patches  # noqa: F401 to apply patches
+from shared.py.wide_events import log
 
 # Create the FastAPI application
 log.set(service={"name": "gaia-api"})

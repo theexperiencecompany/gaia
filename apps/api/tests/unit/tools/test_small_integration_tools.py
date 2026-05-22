@@ -17,7 +17,8 @@ decorator, call register_*_custom_tools() to capture the inner functions,
 then invoke them directly with mock auth_credentials and request objects.
 """
 
-from typing import Any, Callable, Dict
+from collections.abc import Callable
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -27,7 +28,7 @@ from app.models.common_models import GatherContextInput
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 FAKE_USER_ID = "user-123"
-AUTH_CREDS_USER_ONLY: Dict[str, Any] = {
+AUTH_CREDS_USER_ONLY: dict[str, Any] = {
     "user_id": FAKE_USER_ID,
 }
 EXECUTE_REQUEST = MagicMock()
@@ -36,10 +37,10 @@ EXECUTE_REQUEST = MagicMock()
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _make_capturing_composio() -> tuple[MagicMock, Dict[str, Callable[..., Any]]]:
+def _make_capturing_composio() -> tuple[MagicMock, dict[str, Callable[..., Any]]]:
     """Create a Composio mock whose custom_tool decorator captures inner functions."""
     composio = MagicMock()
-    captured: Dict[str, Callable[..., Any]] = {}
+    captured: dict[str, Callable[..., Any]] = {}
 
     def _custom_tool(**kwargs: Any) -> Callable[..., Any]:
         def wrapper(fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -62,7 +63,7 @@ GITHUB_MODULE = "app.agents.tools.integrations.github_tool"
 class TestGitHubGatherContext:
     """Tests for GitHub CUSTOM_GATHER_CONTEXT."""
 
-    def _register(self) -> Dict[str, Callable[..., Any]]:
+    def _register(self) -> dict[str, Callable[..., Any]]:
         composio, captured = _make_capturing_composio()
         from app.agents.tools.integrations.github_tool import (
             register_github_custom_tools,
@@ -165,7 +166,7 @@ AIRTABLE_MODULE = "app.agents.tools.integrations.airtable_tool"
 class TestAirtableGatherContext:
     """Tests for Airtable CUSTOM_GATHER_CONTEXT."""
 
-    def _register(self) -> Dict[str, Callable[..., Any]]:
+    def _register(self) -> dict[str, Callable[..., Any]]:
         composio, captured = _make_capturing_composio()
         from app.agents.tools.integrations.airtable_tool import (
             register_airtable_custom_tools,
@@ -255,7 +256,7 @@ SLACK_MODULE = "app.agents.tools.integrations.slack_tool"
 class TestSlackGatherContext:
     """Tests for Slack CUSTOM_GATHER_CONTEXT."""
 
-    def _register(self) -> Dict[str, Callable[..., Any]]:
+    def _register(self) -> dict[str, Callable[..., Any]]:
         composio, captured = _make_capturing_composio()
         from app.agents.tools.integrations.slack_tool import register_slack_custom_tools
 
@@ -327,7 +328,7 @@ TODOIST_MODULE = "app.agents.tools.integrations.todoist_tool"
 class TestTodoistGatherContext:
     """Tests for Todoist CUSTOM_GATHER_CONTEXT."""
 
-    def _register(self) -> Dict[str, Callable[..., Any]]:
+    def _register(self) -> dict[str, Callable[..., Any]]:
         composio, captured = _make_capturing_composio()
         from app.agents.tools.integrations.todoist_tool import (
             register_todoist_custom_tools,
@@ -366,9 +367,7 @@ class TestTodoistGatherContext:
     @patch(f"{TODOIST_MODULE}.execute_tool")
     def test_data_not_dict(self, mock_exec: MagicMock) -> None:
         """When execute_tool returns a list directly."""
-        mock_exec.return_value = [
-            {"id": "1", "content": "Task", "due": {"date": "2000-01-01"}}
-        ]
+        mock_exec.return_value = [{"id": "1", "content": "Task", "due": {"date": "2000-01-01"}}]
 
         captured = self._register()
         fn = captured["CUSTOM_GATHER_CONTEXT"]
@@ -400,7 +399,7 @@ ASANA_MODULE = "app.agents.tools.integrations.asana_tool"
 class TestAsanaGatherContext:
     """Tests for Asana CUSTOM_GATHER_CONTEXT."""
 
-    def _register(self) -> Dict[str, Callable[..., Any]]:
+    def _register(self) -> dict[str, Callable[..., Any]]:
         composio, captured = _make_capturing_composio()
         from app.agents.tools.integrations.asana_tool import register_asana_custom_tools
 
@@ -456,7 +455,7 @@ CLICKUP_MODULE = "app.agents.tools.integrations.clickup_tool"
 class TestClickUpGatherContext:
     """Tests for ClickUp CUSTOM_GATHER_CONTEXT."""
 
-    def _register(self) -> Dict[str, Callable[..., Any]]:
+    def _register(self) -> dict[str, Callable[..., Any]]:
         composio, captured = _make_capturing_composio()
         from app.agents.tools.integrations.clickup_tool import (
             register_clickup_custom_tools,
@@ -519,7 +518,7 @@ GOOGLE_TASKS_MODULE = "app.agents.tools.integrations.google_tasks_tool"
 class TestGoogleTasksGatherContext:
     """Tests for Google Tasks CUSTOM_GATHER_CONTEXT."""
 
-    def _register(self) -> Dict[str, Callable[..., Any]]:
+    def _register(self) -> dict[str, Callable[..., Any]]:
         composio, captured = _make_capturing_composio()
         from app.agents.tools.integrations.google_tasks_tool import (
             register_google_tasks_custom_tools,
@@ -576,7 +575,7 @@ TRELLO_MODULE = "app.agents.tools.integrations.trello_tool"
 class TestTrelloGatherContext:
     """Tests for Trello CUSTOM_GATHER_CONTEXT."""
 
-    def _register(self) -> Dict[str, Callable[..., Any]]:
+    def _register(self) -> dict[str, Callable[..., Any]]:
         composio, captured = _make_capturing_composio()
         from app.agents.tools.integrations.trello_tool import (
             register_trello_custom_tools,
@@ -629,7 +628,7 @@ URGENCY_MODULE = "app.agents.tools.integrations.urgency_tool"
 class TestUrgencyAggregator:
     """Tests for CUSTOM_URGENCY_AGGREGATOR."""
 
-    def _register(self) -> Dict[str, Callable[..., Any]]:
+    def _register(self) -> dict[str, Callable[..., Any]]:
         composio, captured = _make_capturing_composio()
         from app.agents.tools.integrations.urgency_tool import (
             register_urgency_custom_tools,
@@ -639,7 +638,7 @@ class TestUrgencyAggregator:
         assert "GAIA_CUSTOM_URGENCY_AGGREGATOR" in names
         return captured
 
-    def _make_input(self, snapshots: Dict[str, Any]) -> Any:
+    def _make_input(self, snapshots: dict[str, Any]) -> Any:
         from app.agents.tools.integrations.urgency_tool import UrgencyAggregatorInput
 
         return UrgencyAggregatorInput(snapshots=snapshots)
@@ -762,9 +761,7 @@ class TestUrgencyAggregator:
             EXECUTE_REQUEST,
             {},
         )
-        items = [
-            i for i in result["urgent_items"] if i["integration"] == "googlecalendar"
-        ]
+        items = [i for i in result["urgent_items"] if i["integration"] == "googlecalendar"]
         assert len(items) == 1
         assert items[0]["priority"] == "medium"
 
@@ -778,9 +775,7 @@ class TestUrgencyAggregator:
             EXECUTE_REQUEST,
             {},
         )
-        items = [
-            i for i in result["urgent_items"] if i["integration"] == "googlecalendar"
-        ]
+        items = [i for i in result["urgent_items"] if i["integration"] == "googlecalendar"]
         assert len(items) == 1
         assert items[0]["count"] == 1
 
@@ -857,9 +852,7 @@ class TestUrgencyAggregator:
             EXECUTE_REQUEST,
             {},
         )
-        items = [
-            i for i in result["urgent_items"] if i["integration"] == "microsoft_teams"
-        ]
+        items = [i for i in result["urgent_items"] if i["integration"] == "microsoft_teams"]
         assert len(items) == 1
         assert items[0]["priority"] == "medium"
         assert items[0]["count"] == 3
@@ -874,9 +867,7 @@ class TestUrgencyAggregator:
             EXECUTE_REQUEST,
             {},
         )
-        items = [
-            i for i in result["urgent_items"] if i["integration"] == "microsoft_teams"
-        ]
+        items = [i for i in result["urgent_items"] if i["integration"] == "microsoft_teams"]
         assert len(items) == 0
 
     def test_reddit_unread_messages(self) -> None:
@@ -902,9 +893,7 @@ class TestUrgencyAggregator:
             self._make_input(
                 {
                     "gmail": {"inbox_unread_count": 5},  # medium, count=5
-                    "linear": {
-                        "overdue_issues": [{"title": "a"}, {"title": "b"}]
-                    },  # high, count=2
+                    "linear": {"overdue_issues": [{"title": "a"}, {"title": "b"}]},  # high, count=2
                     "reddit": {"unread_message_count": 10},  # low, count=10
                     "github": {
                         "review_requests": [{"title": "PR"}],

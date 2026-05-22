@@ -2,8 +2,8 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 # Base URL for integration public endpoints
 # routes.py: prefix="/integrations", public.py router has no extra prefix
@@ -88,9 +88,7 @@ class TestGetPublicIntegration:
         assert resp.json()["authType"] == "bearer"
 
     @pytest.mark.asyncio
-    async def test_native_internal_integration_skipped(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_native_internal_integration_skipped(self, client: AsyncClient) -> None:
         """Internal integrations are not returned as native matches."""
         fake_native = MagicMock()
         fake_native.id = "internal_tool"
@@ -104,9 +102,7 @@ class TestGetPublicIntegration:
                 "app.api.v1.endpoints.integrations.public.OAUTH_INTEGRATIONS",
                 [fake_native],
             ),
-            patch(
-                "app.api.v1.endpoints.integrations.public.integrations_collection"
-            ) as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
                 "app.api.v1.endpoints.integrations.public.build_slug_lookup_pipeline",
                 return_value=[],
@@ -136,9 +132,7 @@ class TestGetPublicIntegration:
 
         with (
             patch("app.api.v1.endpoints.integrations.public.OAUTH_INTEGRATIONS", []),
-            patch(
-                "app.api.v1.endpoints.integrations.public.integrations_collection"
-            ) as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
                 "app.api.v1.endpoints.integrations.public.build_slug_lookup_pipeline",
                 return_value=[],
@@ -182,9 +176,7 @@ class TestGetPublicIntegration:
 
         with (
             patch("app.api.v1.endpoints.integrations.public.OAUTH_INTEGRATIONS", []),
-            patch(
-                "app.api.v1.endpoints.integrations.public.integrations_collection"
-            ) as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
                 "app.api.v1.endpoints.integrations.public.build_slug_lookup_pipeline",
                 return_value=[],
@@ -225,9 +217,7 @@ class TestGetPublicIntegration:
 
         with (
             patch("app.api.v1.endpoints.integrations.public.OAUTH_INTEGRATIONS", []),
-            patch(
-                "app.api.v1.endpoints.integrations.public.integrations_collection"
-            ) as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
                 "app.api.v1.endpoints.integrations.public.build_slug_lookup_pipeline",
                 return_value=[],
@@ -271,9 +261,7 @@ class TestAddPublicIntegration:
 
     @pytest.mark.asyncio
     async def test_integration_not_found(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.integrations.public.integrations_collection"
-        ) as mock_coll:
+        with patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll:
             mock_coll.find_one = AsyncMock(return_value=None)
             resp = await client.post(
                 f"{BASE}/public/unknown/add",
@@ -292,9 +280,7 @@ class TestAddPublicIntegration:
         existing = {"user_id": "u1", "integration_id": "integ1", "status": "connected"}
 
         with (
-            patch(
-                "app.api.v1.endpoints.integrations.public.integrations_collection"
-            ) as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
                 "app.api.v1.endpoints.integrations.public.user_integrations_collection"
             ) as mock_user_coll,
@@ -326,9 +312,7 @@ class TestAddPublicIntegration:
         }
 
         with (
-            patch(
-                "app.api.v1.endpoints.integrations.public.integrations_collection"
-            ) as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
                 "app.api.v1.endpoints.integrations.public.user_integrations_collection"
             ) as mock_user_coll,
@@ -367,9 +351,7 @@ class TestAddPublicIntegration:
         connect_result.message = "Done"
 
         with (
-            patch(
-                "app.api.v1.endpoints.integrations.public.integrations_collection"
-            ) as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
                 "app.api.v1.endpoints.integrations.public.user_integrations_collection"
             ) as mock_user_coll,
@@ -415,9 +397,7 @@ class TestAddPublicIntegration:
         connect_result.message = None
 
         with (
-            patch(
-                "app.api.v1.endpoints.integrations.public.integrations_collection"
-            ) as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
                 "app.api.v1.endpoints.integrations.public.user_integrations_collection"
             ) as mock_user_coll,
@@ -440,9 +420,7 @@ class TestAddPublicIntegration:
         assert resp.json()["message"] == "Integration added successfully"
 
     @pytest.mark.asyncio
-    async def test_add_user_integration_value_error_suppressed(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_add_user_integration_value_error_suppressed(self, client: AsyncClient) -> None:
         """ValueError from add_user_integration is suppressed (duplicate)."""
         original_doc = {
             "integration_id": "integ5",
@@ -458,9 +436,7 @@ class TestAddPublicIntegration:
         connect_result.message = "ok"
 
         with (
-            patch(
-                "app.api.v1.endpoints.integrations.public.integrations_collection"
-            ) as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
                 "app.api.v1.endpoints.integrations.public.user_integrations_collection"
             ) as mock_user_coll,
@@ -488,9 +464,7 @@ class TestAddPublicIntegration:
 
     @pytest.mark.asyncio
     async def test_unexpected_error_returns_500(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.integrations.public.integrations_collection"
-        ) as mock_coll:
+        with patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll:
             mock_coll.find_one = AsyncMock(side_effect=RuntimeError("boom"))
             resp = await client.post(
                 f"{BASE}/public/bad/add",
@@ -566,14 +540,10 @@ class TestSearchIntegrations:
                 new_callable=AsyncMock,
                 return_value=search_results,
             ),
-            patch(
-                "app.api.v1.endpoints.integrations.public.integrations_collection"
-            ) as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
                 "app.api.v1.endpoints.integrations.public.generate_integration_slug",
-                side_effect=lambda name, category, integration_id: (
-                    f"slug-{integration_id}"
-                ),
+                side_effect=lambda name, category, integration_id: f"slug-{integration_id}",
             ),
         ):
             mock_coll.find = MagicMock(return_value=mock_cursor)
@@ -602,9 +572,7 @@ class TestSearchIntegrations:
                 new_callable=AsyncMock,
                 return_value=search_results,
             ),
-            patch(
-                "app.api.v1.endpoints.integrations.public.integrations_collection"
-            ) as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
         ):
             mock_coll.find = MagicMock(return_value=mock_cursor)
             resp = await client.get(f"{BASE}/search", params={"q": "missing"})

@@ -15,7 +15,6 @@ from unittest.mock import patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # async_timer
 # ---------------------------------------------------------------------------
@@ -272,7 +271,7 @@ class TestSyncTimer:
 
             @sync_timer
             def fail() -> None:
-                raise IOError("disk error")
+                raise OSError("disk error")
 
             with pytest.raises(IOError, match="disk error"):
                 fail()
@@ -987,9 +986,7 @@ class TestTimingEdgeCases:
         [ValueError, TypeError, RuntimeError, IOError, KeyError],
         ids=["ValueError", "TypeError", "RuntimeError", "IOError", "KeyError"],
     )
-    def test_sync_timer_propagates_various_exceptions(
-        self, exception_cls: type
-    ) -> None:
+    def test_sync_timer_propagates_various_exceptions(self, exception_cls: type) -> None:
         with (
             patch("app.decorators.timing.log"),
             patch("app.decorators.timing.time") as mock_time,
@@ -1010,9 +1007,7 @@ class TestTimingEdgeCases:
         [ValueError, TypeError, RuntimeError, IOError, KeyError],
         ids=["ValueError", "TypeError", "RuntimeError", "IOError", "KeyError"],
     )
-    async def test_async_timer_propagates_various_exceptions(
-        self, exception_cls: type
-    ) -> None:
+    async def test_async_timer_propagates_various_exceptions(self, exception_cls: type) -> None:
         with (
             patch("app.decorators.timing.log"),
             patch("app.decorators.timing.time") as mock_time,

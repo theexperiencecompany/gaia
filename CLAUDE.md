@@ -165,6 +165,20 @@ The full design system is documented in **[`DESIGN.md`](./DESIGN.md)** at the re
 **Chat bubble rules** are in `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`.
 **Visual style guide** (rendered as interactive docs) is in `docs/design-system.mdx` — sourced from `DESIGN.md`.
 
+### Component Library — Never Build From Scratch
+
+**Never create custom button, input, spinner, tooltip, modal, or other UI primitive components from scratch.** Always use HeroUI first:
+
+- `<Button>` — never `<button>`. Use `color`, `variant`, `radius`, `size`, `endContent`, `startContent`, `isLoading`, `isIconOnly` props.
+- `<Input>` / `<Textarea>` — never raw `<input>` / `<textarea>`
+- `<Spinner>` / `<Skeleton>` — never custom loaders or icon-based spinners
+- `<Tooltip>`, `<Popover>`, `<Modal>`, `<Dropdown>` — never custom implementations
+- `<Link>` — never `<a>` tags (use HeroUI or Next.js Link)
+- `<Chip>` — for status badges and tags
+- `<Divider>` — never `<hr>`
+
+If HeroUI doesn't cover the use case, reach for Shadcn/Radix. Only build a custom component when no library equivalent exists.
+
 ## Code Style
 
 ### TypeScript/JavaScript
@@ -226,6 +240,15 @@ When investigating a bug, feature, or unfamiliar area of the codebase:
 - **Explore the intricacies** — check edge cases, related config, middleware, environment variables, and cross-app interactions. Do not stop at the surface.
 - **Use relevant skills** — before starting any significant task, check if a skill applies (`writing-plans`, `accurate-testing`, `logging-best-practices`, `copywriting`, etc.) and invoke it via the `Skill` tool.
 
+### Reporting Issues
+
+When asked to find bugs or issues in the code, **only report problems that a real user would actually encounter**:
+
+- Focus on broken UI, wrong data, missing functionality, bad UX flows, and visual bugs.
+- **Do NOT flag theoretical race conditions or extreme timing edge cases.** If an issue requires contriving a microsecond-level timing scenario to reproduce, it is not a real issue.
+- Ask yourself: "Would a QA tester find this bug in normal usage?" If not, don't report it.
+- Prioritize: functional bugs > UX issues > visual inconsistencies > code quality. Skip hypothetical concerns.
+
 ### Task Tracking
 
 **Always create todos for multi-step work** — use TaskCreate at the start of any non-trivial task. Update status (`in_progress` → `completed`) as you go. Never leave tasks stale.
@@ -234,6 +257,7 @@ When investigating a bug, feature, or unfamiliar area of the codebase:
 
 - **Plans must go in `.agents/plans/`** — never create plan files anywhere else. This directory is gitignored.
 - **Plans must be comprehensive** — include architecture decisions, step-by-step implementation, edge cases, and rollback considerations before writing any code.
+- **Plans contain only final decisions** — never include thought process, reasoning, pros/cons debates, or "why I chose X over Y" commentary. A plan is a spec, not a journal. If it reads like someone thinking out loud, rewrite it.
 - Use the `writing-plans` skill before starting any significant implementation.
 
 ### Testing
@@ -344,3 +368,68 @@ rm -rf directory       # NOT: rm -r directory
 - Nx daemon issues → daemon is disabled (`useDaemonProcess: false` in `nx.json`)
 - Web app uses `output: "standalone"` — required for Electron bundling, do not remove
 - Console logs are stripped in production builds (except `console.error`)
+
+
+<!-- nx configuration start-->
+<!-- Leave the start & end comments to automatically receive updates. -->
+
+## General Guidelines for working with Nx
+
+- For navigating/exploring the workspace, invoke the `nx-workspace` skill first - it has patterns for querying projects, targets, and dependencies
+- When running tasks (for example build, lint, test, e2e, etc.), always prefer running the task through `nx` (i.e. `nx run`, `nx run-many`, `nx affected`) instead of using the underlying tooling directly
+- Prefix nx commands with the workspace's package manager (e.g., `pnpm nx build`, `npm exec nx test`) - avoids using globally installed CLI
+- You have access to the Nx MCP server and its tools, use them to help the user
+- For Nx plugin best practices, check `node_modules/@nx/<plugin>/PLUGIN.md`. Not all plugins have this file - proceed without it if unavailable.
+- NEVER guess CLI flags - always check nx_docs or `--help` first when unsure
+
+## Scaffolding & Generators
+
+- For scaffolding tasks (creating apps, libs, project structure, setup), ALWAYS invoke the `nx-generate` skill FIRST before exploring or calling MCP tools
+
+## When to use nx_docs
+
+- USE for: advanced config options, unfamiliar flags, migration guides, plugin configuration, edge cases
+- DON'T USE for: basic generator syntax (`nx g @nx/react:app`), standard commands, things you already know
+- The `nx-generate` skill handles generator discovery internally - don't call nx_docs just to look up generator syntax
+
+
+<!-- nx configuration end-->
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
+- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
+- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
+- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview` + `list_communities`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+|------|----------|
+| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
+| `get_review_context` | Need source snippets for review — token-efficient |
+| `get_impact_radius` | Understanding blast radius of a change |
+| `get_affected_flows` | Finding which execution paths are impacted |
+| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes` | Finding functions/classes by name or keyword |
+| `get_architecture_overview` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes` for code review.
+3. Use `get_affected_flows` to understand impact.
+4. Use `query_graph` pattern="tests_for" to check coverage.

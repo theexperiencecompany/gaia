@@ -2,11 +2,10 @@
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from fastapi import HTTPException
+import pytest
 
 from app.services.bot_service import BOT_RATE_LIMIT, BOT_RATE_WINDOW, BotService
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -140,9 +139,7 @@ class TestGetOrCreateSession:
         )
         mock_conversations.find_one = AsyncMock(return_value={"_id": "some-id"})
 
-        result = await BotService.get_or_create_session(
-            "discord", "user123", None, sample_user
-        )
+        result = await BotService.get_or_create_session("discord", "user123", None, sample_user)
 
         assert result == "conv-existing"
 
@@ -156,9 +153,7 @@ class TestGetOrCreateSession:
         mock_bot_sessions.find_one = AsyncMock(return_value=None)
         mock_bot_sessions.update_one = AsyncMock()
 
-        result = await BotService.get_or_create_session(
-            "discord", "user123", None, sample_user
-        )
+        result = await BotService.get_or_create_session("discord", "user123", None, sample_user)
 
         assert result is not None
         mock_create_conversation.assert_awaited_once()
@@ -181,9 +176,7 @@ class TestGetOrCreateSession:
         mock_conversations.find_one = AsyncMock(return_value=None)
         mock_bot_sessions.update_one = AsyncMock()
 
-        result = await BotService.get_or_create_session(
-            "discord", "user123", None, sample_user
-        )
+        result = await BotService.get_or_create_session("discord", "user123", None, sample_user)
 
         assert result is not None
         assert result != "conv-deleted"
@@ -200,9 +193,7 @@ class TestGetOrCreateSession:
         mock_bot_sessions.find_one = AsyncMock(return_value=None)
         mock_bot_sessions.update_one = AsyncMock()
 
-        result = await BotService.get_or_create_session(
-            "discord", "user123", None, user
-        )
+        result = await BotService.get_or_create_session("discord", "user123", None, user)
 
         assert result is not None
         mock_create_conversation.assert_awaited_once()
@@ -245,9 +236,7 @@ class TestResetSession:
         result = await BotService.reset_session("discord", "user123", None, sample_user)
 
         assert result is not None
-        mock_bot_sessions.delete_one.assert_awaited_once_with(
-            {"session_key": "discord:user123:dm"}
-        )
+        mock_bot_sessions.delete_one.assert_awaited_once_with({"session_key": "discord:user123:dm"})
 
     async def test_reset_with_channel_id(
         self,

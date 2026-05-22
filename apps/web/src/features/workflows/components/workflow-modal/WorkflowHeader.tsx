@@ -20,7 +20,7 @@ import type { Workflow } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 
 interface WorkflowHeaderProps {
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "preview";
   control: Control<WorkflowFormData>;
   errors: FieldErrors<WorkflowFormData>;
   currentWorkflow: Workflow | null;

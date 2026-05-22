@@ -3,23 +3,24 @@ This is a simplified version of the auth middleware that avoids complex type che
 with the WorkOS SDK. It implements the same functionality but with a more dynamic approach.
 """
 
-from datetime import datetime
-from datetime import timezone as tz
-from typing import Any, Awaitable, Callable, Dict, Optional
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from typing import Any
 
-from app.api.v1.middleware.agent_auth import verify_agent_token
-from app.config.settings import settings
-from shared.py.wide_events import log
-from app.db.mongodb.collections import users_collection
-from app.utils.auth_utils import authenticate_workos_session
 from bson import ObjectId
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 from workos import AsyncWorkOSClient
 
+from app.api.v1.middleware.agent_auth import verify_agent_token
+from app.config.settings import settings
+from app.db.mongodb.collections import users_collection
+from app.utils.auth_utils import authenticate_workos_session
+from shared.py.wide_events import log
 
-def get_current_user(request: Request) -> Optional[Dict[str, Any]]:
+
+def get_current_user(request: Request) -> dict[str, Any] | None:
     """
     FastAPI dependency to get the current authenticated user from request state.
 
@@ -39,8 +40,8 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
         app: ASGIApp,
-        workos_client: Optional[AsyncWorkOSClient] = None,
-        exclude_paths: Optional[list[str]] = None,
+        workos_client: AsyncWorkOSClient | None = None,
+        exclude_paths: list[str] | None = None,
     ):
         super().__init__(app)
         # Initialize WorkOS client or use provided one
@@ -123,10 +124,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             except Exception as e:
                 log.error(f"Authentication middleware error: {e}")
                 # Don't block request on auth failures - routes can handle this
-        if (
-            not request.state.authenticated
-            and request.url.path in self.agent_only_paths
-        ):
+        if not request.state.authenticated and request.url.path in self.agent_only_paths:
             auth_header = request.headers.get("Authorization")
             agent_info = None
             if auth_header and auth_header.startswith("Bearer "):
@@ -175,7 +173,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
 
     async def _authenticate_session(
         self, wos_session: str
-    ) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+    ) -> tuple[dict[str, Any] | None, str | None]:
         """
         Authenticate a WorkOS session and refresh if needed.
 
@@ -198,7 +196,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 # Update user's last activity
                 await users_collection.update_one(
                     {"email": user_info["email"]},
-                    {"$set": {"last_active_at": datetime.now(tz.utc)}},
+                    {"$set": {"last_active_at": datetime.now(UTC)}},
                 )
 
                 return user_info, new_session

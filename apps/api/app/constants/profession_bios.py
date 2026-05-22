@@ -1,7 +1,6 @@
 """Profession-based bio templates for users without Gmail integration."""
 
 import random
-from typing import Dict, List
 
 # Profession enum matching frontend options
 PROFESSIONS = (
@@ -29,7 +28,7 @@ PROFESSIONS = (
 
 # Creative bio templates per profession
 # {name} will be replaced with user's name
-PROFESSION_BIOS: Dict[str, List[str]] = {
+PROFESSION_BIOS: dict[str, list[str]] = {
     "student": [
         "{name} is a ambitious student harnessing GAIA's intelligent automation to ace deadlines, manage study schedules, and turn chaos into straight A's. Currently mastering the art of productivity, one automated workflow at a time.",
         "Meet {name}, a student who discovered that GAIA is basically the study buddy who never sleeps, never judges your 3am panic sessions, and always remembers when assignments are due. Transforming academic stress into organized success.",

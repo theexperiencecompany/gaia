@@ -19,10 +19,10 @@ Usage:
         pass
 """
 
+from collections.abc import Callable
 import functools
 import inspect
 import time
-from typing import Callable
 
 from shared.py.wide_events import log
 
@@ -105,8 +105,7 @@ def timer(func: Callable) -> Callable:
     """
     if inspect.iscoroutinefunction(func):
         return async_timer(func)
-    else:
-        return sync_timer(func)
+    return sync_timer(func)
 
 
 def detailed_timer(include_args: bool = False, include_kwargs: bool = False):
@@ -136,9 +135,7 @@ def detailed_timer(include_args: bool = False, include_kwargs: bool = False):
                 try:
                     result = await func(*args, **kwargs)
                     execution_time = time.time() - start_time
-                    log.info(
-                        f"⏱️  {func.__name__}{arg_info} completed in {execution_time:.3f}s"
-                    )
+                    log.info(f"⏱️  {func.__name__}{arg_info} completed in {execution_time:.3f}s")
                     if execution_time > 1.0:
                         log.warning(
                             "slow function",
@@ -154,38 +151,35 @@ def detailed_timer(include_args: bool = False, include_kwargs: bool = False):
                     raise
 
             return async_wrapper
-        else:
 
-            @functools.wraps(func)
-            def sync_wrapper(*args, **kwargs):
-                start_time = time.time()
-                arg_info = ""
-                if include_args and args:
-                    arg_info += f" args={args[:3]}{'...' if len(args) > 3 else ''}"
-                if include_kwargs and kwargs:
-                    arg_info += f" kwargs={dict(list(kwargs.items())[:2])}{'...' if len(kwargs) > 2 else ''}"
+        @functools.wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            start_time = time.time()
+            arg_info = ""
+            if include_args and args:
+                arg_info += f" args={args[:3]}{'...' if len(args) > 3 else ''}"
+            if include_kwargs and kwargs:
+                arg_info += (
+                    f" kwargs={dict(list(kwargs.items())[:2])}{'...' if len(kwargs) > 2 else ''}"
+                )
 
-                try:
-                    result = func(*args, **kwargs)
-                    execution_time = time.time() - start_time
-                    log.info(
-                        f"⏱️  {func.__name__}{arg_info} completed in {execution_time:.3f}s"
+            try:
+                result = func(*args, **kwargs)
+                execution_time = time.time() - start_time
+                log.info(f"⏱️  {func.__name__}{arg_info} completed in {execution_time:.3f}s")
+                if execution_time > 1.0:
+                    log.warning(
+                        "slow function",
+                        function=func.__name__,
+                        duration_ms=round(execution_time * 1000, 2),
                     )
-                    if execution_time > 1.0:
-                        log.warning(
-                            "slow function",
-                            function=func.__name__,
-                            duration_ms=round(execution_time * 1000, 2),
-                        )
-                    return result
-                except Exception as e:
-                    execution_time = time.time() - start_time
-                    log.error(
-                        f"⏱️  {func.__name__}{arg_info} failed after {execution_time:.3f}s: {e}"
-                    )
-                    raise
+                return result
+            except Exception as e:
+                execution_time = time.time() - start_time
+                log.error(f"⏱️  {func.__name__}{arg_info} failed after {execution_time:.3f}s: {e}")
+                raise
 
-            return sync_wrapper
+        return sync_wrapper
 
     return decorator
 

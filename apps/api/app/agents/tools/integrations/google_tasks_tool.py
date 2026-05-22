@@ -1,7 +1,7 @@
 """Google Tasks custom tools using Composio custom tool infrastructure."""
 
 from datetime import date
-from typing import Any, Dict, List
+from typing import Any
 
 from composio import Composio
 
@@ -9,15 +9,15 @@ from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 
 
-def register_google_tasks_custom_tools(composio: Composio) -> List[str]:
+def register_google_tasks_custom_tools(composio: Composio) -> list[str]:
     """Register Google Tasks tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="GOOGLETASKS")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get Google Tasks context snapshot: task lists and overdue/due-today tasks.
 
         Zero required parameters. Returns task lists and urgent tasks.

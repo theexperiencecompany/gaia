@@ -24,7 +24,6 @@ from app.services.vfs.path_resolver import (
     validate_user_access,
 )
 
-
 # ---------------------------------------------------------------------------
 # normalize_path
 # ---------------------------------------------------------------------------
@@ -121,10 +120,7 @@ class TestSimplePathGetters:
 class TestGetToolOutputPath:
     def test_basic(self) -> None:
         result = get_tool_output_path("u1", "conv1", "executor", "tc1", "search")
-        assert (
-            result
-            == "/users/u1/global/executor/sessions/conv1/executor/tc1_search.json"
-        )
+        assert result == "/users/u1/global/executor/sessions/conv1/executor/tc1_search.json"
 
     def test_sanitizes_names(self) -> None:
         result = get_tool_output_path("u1", "conv1", "agent/bad", "tc:1", "tool*name")
@@ -142,18 +138,13 @@ class TestNotesAndFilesPaths:
         assert get_notes_path("u1", "executor") == "/users/u1/global/executor/notes"
 
     def test_subagent_notes(self) -> None:
-        assert (
-            get_notes_path("u1", "gmail_agent")
-            == "/users/u1/global/subagents/gmail_agent/notes"
-        )
+        assert get_notes_path("u1", "gmail_agent") == "/users/u1/global/subagents/gmail_agent/notes"
 
     def test_executor_files(self) -> None:
         assert get_files_path("u1", "executor") == "/users/u1/global/executor/files"
 
     def test_subagent_files(self) -> None:
-        assert (
-            get_files_path("u1", "github") == "/users/u1/global/subagents/github/files"
-        )
+        assert get_files_path("u1", "github") == "/users/u1/global/subagents/github/files"
 
 
 # ---------------------------------------------------------------------------
@@ -282,9 +273,7 @@ class TestBuildPath:
         assert result == "/users/u1/skills"
 
     def test_with_filename(self) -> None:
-        result = build_path(
-            "u1", agent_name="executor", folder_type="files", filename="data.json"
-        )
+        result = build_path("u1", agent_name="executor", folder_type="files", filename="data.json")
         assert result == "/users/u1/global/executor/files/data.json"
 
     def test_subagent(self) -> None:

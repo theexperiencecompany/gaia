@@ -5,29 +5,28 @@ headers auth (cached, uncached, missing user), excluded paths, already-
 authenticated requests, and edge cases around missing settings.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
 from jose import JWTError
+import pytest
 
 from app.core.bot_auth_middleware import BotAuthMiddleware
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-FAKE_USER_DATA: Dict[str, Any] = {
+FAKE_USER_DATA: dict[str, Any] = {
     "_id": "user_abc123",
     "email": "bot@example.com",
     "name": "Bot User",
     "picture": "https://example.com/pic.png",
 }
 
-FAKE_JWT_PAYLOAD: Dict[str, Any] = {
+FAKE_JWT_PAYLOAD: dict[str, Any] = {
     "user_id": "user_abc123",
     "platform": "discord",
     "platform_user_id": "disc_999",
@@ -35,26 +34,24 @@ FAKE_JWT_PAYLOAD: Dict[str, Any] = {
 
 
 def _build_app(
-    exclude_paths: Optional[list[str]] = None,
+    exclude_paths: list[str] | None = None,
 ) -> FastAPI:
     """Create a minimal FastAPI app with BotAuthMiddleware installed."""
     app = FastAPI()
     app.add_middleware(BotAuthMiddleware, exclude_paths=exclude_paths)
 
     @app.get("/health")
-    async def health() -> Dict[str, str]:
+    async def health() -> dict[str, str]:
         return {"status": "ok"}
 
     @app.get("/api/test")
-    async def api_test(request: Request) -> Dict[str, Any]:
+    async def api_test(request: Request) -> dict[str, Any]:
         return {
             "authenticated": getattr(request.state, "authenticated", False),
             "user": getattr(request.state, "user", None),
             "bot_api_key_valid": getattr(request.state, "bot_api_key_valid", False),
             "bot_platform": getattr(request.state, "bot_platform", None),
-            "bot_platform_user_id": getattr(
-                request.state, "bot_platform_user_id", None
-            ),
+            "bot_platform_user_id": getattr(request.state, "bot_platform_user_id", None),
         }
 
     return app
@@ -90,7 +87,7 @@ class TestExcludedPaths:
         app = _build_app(exclude_paths=["/custom-path"])
 
         @app.get("/custom-path")
-        async def custom() -> Dict[str, str]:
+        async def custom() -> dict[str, str]:
             return {"ok": "true"}
 
         transport = ASGITransport(app=app)
@@ -123,7 +120,7 @@ class TestAlreadyAuthenticated:
         app.add_middleware(PreAuthMiddleware)
 
         @app.get("/api/test")
-        async def endpoint(request: Request) -> Dict[str, Any]:
+        async def endpoint(request: Request) -> dict[str, Any]:
             return {
                 "authenticated": request.state.authenticated,
                 "user_id": request.state.user.get("user_id"),
@@ -603,9 +600,7 @@ class TestVerifyApiKeyEdge:
             new=MagicMock(spec=[]),
         ):
             transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="https://test"
-            ) as client:
+            async with AsyncClient(transport=transport, base_url="https://test") as client:
                 resp = await client.get(
                     "/api/test",
                     headers={"X-Bot-API-Key": "any-key"},

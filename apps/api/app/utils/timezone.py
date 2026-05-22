@@ -5,9 +5,8 @@ This module provides functions to handle timezone operations while preserving
 the actual time values (not converting them across timezones).
 """
 
-from datetime import datetime, tzinfo
-from datetime import timezone as builtin_timezone
-from typing import Optional, Union
+from datetime import UTC, datetime, timezone as builtin_timezone, tzinfo
+from typing import Union
 
 import pytz
 
@@ -26,7 +25,7 @@ def replace_timezone_info(
 
     Example:
         >>> dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=timezone.utc)  # 7PM UTC
-        >>> result = replace_timezone_info(dt, 'Asia/Kolkata')
+        >>> result = replace_timezone_info(dt, "Asia/Kolkata")
         >>> # Result: 7PM in Asia/Kolkata timezone (not 12:30AM next day!)
 
     Args:
@@ -58,7 +57,7 @@ def replace_timezone_info(
         )
 
     # Determine the target timezone to apply
-    target_timezone_info: Optional[tzinfo] = None
+    target_timezone_info: tzinfo | None = None
 
     if new_timezone is not None:
         target_timezone_info = parse_timezone(new_timezone)
@@ -68,14 +67,12 @@ def replace_timezone_info(
             timezone_source = datetime.fromisoformat(timezone_source)
         elif timezone_source is None:
             # Fallback to current UTC time if timezone_source is None
-            timezone_source = datetime.now(tz=builtin_timezone.utc)
+            timezone_source = datetime.now(tz=UTC)
 
         target_timezone_info = timezone_source.tzinfo
 
     if target_timezone_info is None:
-        raise ValueError(
-            "Could not determine target timezone from provided parameters."
-        )
+        raise ValueError("Could not determine target timezone from provided parameters.")
 
     # Replace timezone info while keeping the same time values
     # This is the key operation: replace() keeps the time but changes timezone metadata
@@ -102,7 +99,7 @@ def parse_timezone(
     if isinstance(timezone_input, str):
         # Handle common timezone string formats
         if timezone_input.upper() == "UTC":
-            return builtin_timezone.utc
+            return UTC
 
         try:
             # Try parsing as pytz timezone (e.g., 'America/New_York')
@@ -134,7 +131,7 @@ def convert_datetime_to_timezone(
 
     Example:
         >>> utc_dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=timezone.utc)  # 7PM UTC
-        >>> kolkata_dt = convert_datetime_to_timezone(utc_dt, 'Asia/Kolkata')
+        >>> kolkata_dt = convert_datetime_to_timezone(utc_dt, "Asia/Kolkata")
         >>> # Result: 12:30AM next day in Asia/Kolkata (actual time conversion)
 
     Args:
@@ -153,9 +150,7 @@ def convert_datetime_to_timezone(
 
     # Ensure source datetime has timezone info
     if source_datetime.tzinfo is None:
-        raise ValueError(
-            "Source datetime must have timezone information for conversion."
-        )
+        raise ValueError("Source datetime must have timezone information for conversion.")
 
     # Parse target timezone
     target_tz = parse_timezone(target_timezone)
@@ -177,7 +172,7 @@ def set_timezone_preserving_time(
 
     Example:
         >>> dt_string = "2025-06-18T19:00:00"  # 7PM, no timezone
-        >>> result = set_timezone_preserving_time(dt_string, 'Asia/Kolkata')
+        >>> result = set_timezone_preserving_time(dt_string, "Asia/Kolkata")
         >>> # Result: 7PM in Asia/Kolkata timezone
 
     Args:
@@ -236,9 +231,7 @@ def get_timezone_from_datetime(target_datetime: Union[str, datetime]) -> str:
         target_datetime = datetime.fromisoformat(target_datetime)
 
     if target_datetime.tzinfo is None:
-        raise ValueError(
-            "Datetime must have timezone information to extract timezone name."
-        )
+        raise ValueError("Datetime must have timezone information to extract timezone name.")
 
     tz_name = target_datetime.tzinfo.tzname(target_datetime)
     if not tz_name:
@@ -248,7 +241,7 @@ def get_timezone_from_datetime(target_datetime: Union[str, datetime]) -> str:
 
 
 # Commonly used timezone constants for convenience
-TIMEZONE_UTC = builtin_timezone.utc
+TIMEZONE_UTC = UTC
 TIMEZONE_KOLKATA = "Asia/Kolkata"
 TIMEZONE_NEW_YORK = "America/New_York"
 TIMEZONE_LONDON = "Europe/London"

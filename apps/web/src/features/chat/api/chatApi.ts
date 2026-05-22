@@ -47,6 +47,7 @@ export interface Conversation {
   description: string;
   starred?: boolean;
   is_system_generated?: boolean;
+  is_onboarding_conversation?: boolean;
   system_purpose?: SystemPurpose;
   is_unread?: boolean;
   source?: ConversationSource;
@@ -96,6 +97,7 @@ export const chatApi = {
       description: string;
       starred?: boolean;
       is_system_generated?: boolean;
+      is_onboarding_conversation?: boolean;
       system_purpose?: SystemPurpose;
       is_unread?: boolean;
       createdAt: string;
@@ -241,6 +243,7 @@ export const chatApi = {
       content: string;
       role: "user" | "assistant";
     } | null = null,
+    isOnboardingDemo: boolean = false,
   ) => {
     const controller = externalController || new AbortController();
     // Extract fileIds from fileData for backward compatibility
@@ -279,6 +282,7 @@ export const chatApi = {
           selectedWorkflow,
           selectedCalendarEvent,
           replyToMessage,
+          is_onboarding_demo: isOnboardingDemo,
           messages: convoMessages
             .slice(-30)
             .filter(({ response }) => response.trim().length > 0)

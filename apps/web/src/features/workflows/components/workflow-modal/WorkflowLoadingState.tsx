@@ -6,7 +6,7 @@ import WorkflowSteps from "../shared/WorkflowSteps";
 
 interface WorkflowLoadingStateProps {
   phase: "creating" | "generating" | "error" | "success";
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "preview";
   error?: string | null;
   workflow?: Workflow | null;
   onClose: () => void;

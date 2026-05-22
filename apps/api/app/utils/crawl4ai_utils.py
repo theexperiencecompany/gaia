@@ -1,12 +1,12 @@
 import asyncio
 from collections import defaultdict, deque
-from typing import Dict, Optional, Sequence
+from collections.abc import Sequence
 from urllib.parse import urlsplit, urlunsplit
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
 
-from shared.py.wide_events import log
 from app.constants.search import CRAWL4AI_WAIT_UNTIL
+from shared.py.wide_events import log
 
 
 def _normalize_url(url: str) -> str:
@@ -29,7 +29,7 @@ def _normalize_url(url: str) -> str:
 def _pop_available_index(
     bucket: deque[int],
     remaining_indices: set[int],
-) -> Optional[int]:
+) -> int | None:
     while bucket:
         idx = bucket.popleft()
         if idx in remaining_indices:
@@ -43,7 +43,7 @@ def _match_result_to_request_index(
     remaining_indices: set[int],
     requested_by_exact: dict[str, deque[int]],
     requested_by_normalized: dict[str, deque[int]],
-) -> Optional[int]:
+) -> int | None:
     candidate_urls = []
     result_url = getattr(result, "url", None)
     redirected_url = getattr(result, "redirected_url", None)
@@ -78,14 +78,10 @@ def _extract_content_or_error(
     *,
     result: object,
     context_name: str,
-    max_content_chars: Optional[int],
-) -> tuple[Optional[str], Optional[str]]:
+    max_content_chars: int | None,
+) -> tuple[str | None, str | None]:
     markdown = getattr(result, "markdown", None)
-    if (
-        getattr(result, "success", False)
-        and isinstance(markdown, str)
-        and markdown.strip()
-    ):
+    if getattr(result, "success", False) and isinstance(markdown, str) and markdown.strip():
         if max_content_chars is not None:
             return markdown[:max_content_chars], None
         return markdown, None
@@ -100,12 +96,10 @@ async def _recover_with_single_url_crawls(
     page_timeout_ms: int,
     total_timeout_seconds: float,
     context_name: str,
-    max_content_chars: Optional[int],
-) -> tuple[Dict[str, str], Dict[str, str]]:
+    max_content_chars: int | None,
+) -> tuple[dict[str, str], dict[str, str]]:
     """Best-effort recovery path after batch timeout to avoid all-or-nothing failures."""
-    recovery_timeout = max(
-        10.0, min(total_timeout_seconds, page_timeout_ms / 1000 + 10.0)
-    )
+    recovery_timeout = max(10.0, min(total_timeout_seconds, page_timeout_ms / 1000 + 10.0))
 
     run_config = CrawlerRunConfig(
         page_timeout=page_timeout_ms,
@@ -113,12 +107,10 @@ async def _recover_with_single_url_crawls(
         semaphore_count=1,
         verbose=False,
     )
-    browser_config = BrowserConfig(
-        headless=True, browser_mode="dedicated", verbose=False
-    )
+    browser_config = BrowserConfig(headless=True, browser_mode="dedicated", verbose=False)
 
-    contents: Dict[str, str] = {}
-    errors: Dict[str, str] = {}
+    contents: dict[str, str] = {}
+    errors: dict[str, str] = {}
 
     try:
         async with AsyncWebCrawler(config=browser_config) as crawler:
@@ -128,7 +120,7 @@ async def _recover_with_single_url_crawls(
                         crawler.arun_many(urls=[url], config=run_config),
                         timeout=recovery_timeout,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     errors[url] = (
                         f"{context_name} timed out after {total_timeout_seconds:.0f}s "
                         "(recovery: single URL timeout)"
@@ -152,8 +144,10 @@ async def _recover_with_single_url_crawls(
                 elif error is not None:
                     errors[url] = error
     except Exception as e:
-        fallback_error = f"{context_name} timed out after {total_timeout_seconds:.0f}s and recovery failed: {e}"
-        return {}, {url: fallback_error for url in urls}
+        fallback_error = (
+            f"{context_name} timed out after {total_timeout_seconds:.0f}s and recovery failed: {e}"
+        )
+        return {}, dict.fromkeys(urls, fallback_error)
 
     return contents, errors
 
@@ -164,9 +158,9 @@ async def batch_fetch_with_crawl4ai(
     page_timeout_ms: int,
     total_timeout_seconds: float,
     semaphore_count: int,
-    max_content_chars: Optional[int] = None,
+    max_content_chars: int | None = None,
     context_name: str = "crawl4ai",
-) -> tuple[Dict[str, str], Dict[str, str]]:
+) -> tuple[dict[str, str], dict[str, str]]:
     """Fetch multiple URLs with a single crawl4ai crawler via arun_many."""
     if not urls:
         return {}, {}
@@ -177,9 +171,7 @@ async def batch_fetch_with_crawl4ai(
         semaphore_count=semaphore_count,
         verbose=False,
     )
-    browser_config = BrowserConfig(
-        headless=True, browser_mode="dedicated", verbose=False
-    )
+    browser_config = BrowserConfig(headless=True, browser_mode="dedicated", verbose=False)
 
     try:
         async with AsyncWebCrawler(config=browser_config) as crawler:
@@ -187,7 +179,7 @@ async def batch_fetch_with_crawl4ai(
                 crawler.arun_many(urls=list(urls), config=run_config),
                 timeout=total_timeout_seconds,
             )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         log.warning(
             f"{context_name} batch timed out after {total_timeout_seconds:.0f}s; "
             "retrying URLs individually"
@@ -204,7 +196,7 @@ async def batch_fetch_with_crawl4ai(
     except Exception as e:
         error = f"{context_name} batch error: {e}"
         log.warning(error)
-        return {}, {url: error for url in urls}
+        return {}, dict.fromkeys(urls, error)
 
     requested_by_exact: dict[str, deque[int]] = defaultdict(deque)
     requested_by_normalized: dict[str, deque[int]] = defaultdict(deque)
@@ -236,8 +228,8 @@ async def batch_fetch_with_crawl4ai(
             matched_results[index] = result
             remaining_indices.discard(index)
 
-    contents: Dict[str, str] = {}
-    errors: Dict[str, str] = {}
+    contents: dict[str, str] = {}
+    errors: dict[str, str] = {}
 
     for index, requested_url in enumerate(urls):
         result = matched_results.get(index)
@@ -261,9 +253,7 @@ async def batch_fetch_with_crawl4ai(
 
     unmatched_count = max(len(unmatched_results) - len(matched_results), 0)
     if unmatched_count:
-        log.warning(
-            f"{context_name} could not map {unmatched_count} results to requested URLs"
-        )
+        log.warning(f"{context_name} could not map {unmatched_count} results to requested URLs")
 
     for url in urls:
         if url not in contents and url not in errors:

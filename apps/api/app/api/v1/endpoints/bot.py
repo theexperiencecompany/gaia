@@ -1,11 +1,13 @@
 import asyncio
+from datetime import UTC, datetime
 import json
 import secrets
-from datetime import datetime, timezone
 from typing import Annotated
 from uuid import uuid4
 
-from shared.py.wide_events import log
+from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile
+from fastapi.responses import StreamingResponse
+
 from app.config.settings import settings
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX, PLATFORM_LINK_TOKEN_TTL
 from app.core.stream_manager import stream_manager
@@ -33,8 +35,7 @@ from app.services.chat_service import run_chat_stream_background
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_connected_integrations
 from app.services.platform_link_service import Platform, PlatformLinkService
-from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -196,7 +197,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
             stream_id=stream_id,
             body=message_request,
             user=user,
-            user_time=datetime.now(timezone.utc),
+            user_time=datetime.now(UTC),
             conversation_id=conversation_id,
             source=body.platform,
         )
@@ -474,9 +475,7 @@ async def transcribe_bot_audio(
         )
 
     try:
-        normalized = validate_audio_payload(
-            content_type=file.content_type, size=len(audio_bytes)
-        )
+        normalized = validate_audio_payload(content_type=file.content_type, size=len(audio_bytes))
     except AudioTooLargeError as e:
         raise HTTPException(status_code=413, detail=str(e))
     except UnsupportedAudioFormatError as e:

@@ -1,10 +1,14 @@
 import asyncio
-from datetime import datetime, timezone
-from typing import List, Literal, Optional
+from datetime import UTC, datetime
+from typing import Literal
 from zoneinfo import ZoneInfo
 
+from bson import ObjectId
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from app.agents.prompts.onboarding_prompts import (
+    ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT,
+)
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     WORKFLOW_EXECUTION_PROMPT,
@@ -13,19 +17,21 @@ from app.agents.templates.agent_template import (
     EXECUTOR_PROMPT_TEMPLATE,
     get_comms_static_prompt,
 )
+from app.db.mongodb.collections import conversations_collection, users_collection
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.user_models import OnboardingPhase
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.memory_service import memory_service
 from app.services.workflow import WorkflowService
-from shared.py.wide_events import log
 from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
 )
+from shared.py.wide_events import log
 
 # Sentinel marker on dynamic-context SystemMessages so
 # manage_system_prompts_node can keep only the latest one.
@@ -33,10 +39,10 @@ DYNAMIC_CONTEXT_MARKER = "dynamic_context"
 
 
 def create_system_message(
-    user_id: Optional[str] = None,
-    user_name: Optional[str] = None,
+    user_id: str | None = None,
+    user_name: str | None = None,
     agent_type: Literal["comms", "executor"] = "comms",
-    source: Optional[str] = None,
+    source: str | None = None,
 ) -> SystemMessage:
     """Return the STATIC main system prompt for the given agent.
 
@@ -58,7 +64,7 @@ def create_system_message(
 
 
 def build_current_time_message(
-    user_timezone: Optional[str] = None,
+    user_timezone: str | None = None,
 ) -> HumanMessage:
     """Return a tiny HumanMessage carrying the current UTC + local time.
 
@@ -72,13 +78,11 @@ def build_current_time_message(
     costs us nothing on the cache budget but keeps ``system_instruction``
     fully stable.
     """
-    utc_now = datetime.now(timezone.utc).strftime("%A, %B %d, %Y, %H:%M UTC")
+    utc_now = datetime.now(UTC).strftime("%A, %B %d, %Y, %H:%M UTC")
     parts = [f"[Current UTC Time: {utc_now}]"]
     if user_timezone:
         try:
-            local_now = datetime.now(ZoneInfo(user_timezone)).strftime(
-                "%A, %B %d, %Y, %H:%M"
-            )
+            local_now = datetime.now(ZoneInfo(user_timezone)).strftime("%A, %B %d, %Y, %H:%M")
             parts.append(f"[User Local Time ({user_timezone}): {local_now}]")
         except Exception as e:
             log.warning(f"Error formatting user local time: {e}")
@@ -100,9 +104,7 @@ async def _get_user_memories_section(query: str, user_id: str) -> str:
         Formatted memories section or empty string
     """
     try:
-        results = await memory_service.search_memories(
-            query=query, user_id=user_id, limit=5
-        )
+        results = await memory_service.search_memories(query=query, user_id=user_id, limit=5)
         if results and (memories := getattr(results, "memories", None)):
             log.info(f"Added {len(memories)} memories to context")
             return "\n\nBased on our previous conversations:\n" + "\n".join(
@@ -151,15 +153,16 @@ def _mark_dynamic_context(msg: SystemMessage) -> SystemMessage:
 
 
 async def build_dynamic_context_message(
-    user_id: Optional[str],
-    query: Optional[str],
-    user_name: Optional[str] = None,
-    user_timezone: Optional[str] = None,
-    user_preferences: Optional[dict] = None,
-    source: Optional[str] = None,
+    user_id: str | None,
+    query: str | None,
+    user_name: str | None = None,
+    user_timezone: str | None = None,
+    user_preferences: dict | None = None,
+    writing_style: dict | None = None,
+    source: str | None = None,
     include_openui: bool = False,
-    memories_text: Optional[str] = None,
-    skills_text: Optional[str] = None,
+    memories_text: str | None = None,
+    skills_text: str | None = None,
 ) -> SystemMessage:
     """Build the single dynamic-context system message.
 
@@ -208,8 +211,10 @@ async def build_dynamic_context_message(
             user_stable_parts.append(f"User Name: {user_name}")
         if user_timezone:
             user_stable_parts.append(f"User Timezone: {user_timezone}")
-        if user_preferences:
-            if formatted := format_user_preferences_for_agent(user_preferences):
+        if user_preferences or writing_style:
+            if formatted := format_user_preferences_for_agent(
+                user_preferences or {}, writing_style=writing_style
+            ):
                 user_stable_parts.append(f"User Preferences:\n{formatted}")
 
         # --- Fetches (may change turn-to-turn) -----------------------------
@@ -274,9 +279,9 @@ async def build_dynamic_context_message(
 async def get_memory_message(
     user_id: str,
     query: str,
-    user_name: Optional[str] = None,
-    user_timezone: Optional[str] = None,
-    user_preferences: Optional[dict] = None,
+    user_name: str | None = None,
+    user_timezone: str | None = None,
+    user_preferences: dict | None = None,
 ) -> SystemMessage:
     """Deprecated: thin wrapper over build_dynamic_context_message."""
     return await build_dynamic_context_message(
@@ -289,8 +294,8 @@ async def get_memory_message(
 
 
 def get_platform_context_message(
-    source: Optional[str] = None,
-) -> Optional[SystemMessage]:
+    source: str | None = None,
+) -> SystemMessage | None:
     """Deprecated. Platform restrictions now live in the static per-channel
     comms prompt selected by ``create_system_message(source=...)``. This
     shim is kept only so older call sites don't break during migration;
@@ -301,7 +306,7 @@ def get_platform_context_message(
 
 
 def format_tool_selection_message(
-    selected_tool: str, existing_content: str, tool_category: Optional[str] = None
+    selected_tool: str, existing_content: str, tool_category: str | None = None
 ) -> str:
     """Format tool selection message, handling both standalone and combined requests.
 
@@ -337,8 +342,8 @@ Execute immediately without asking for clarification."""
 
 async def format_workflow_execution_message(
     selected_workflow: SelectedWorkflowData,
-    user_id: Optional[str] = None,
-    trigger_context: Optional[dict] = None,
+    user_id: str | None = None,
+    trigger_context: dict | None = None,
     existing_content: str = "",
 ) -> str:
     """Format workflow execution message, handling both manual and automated triggers."""
@@ -381,8 +386,7 @@ async def format_workflow_execution_message(
         return EMAIL_TRIGGERED_WORKFLOW_PROMPT.format(
             email_sender=email_data.get("sender", "Unknown"),
             email_subject=email_data.get("subject", "No Subject"),
-            email_content_preview=msg_text[:200]
-            + ("..." if len(msg_text) > 200 else ""),
+            email_content_preview=msg_text[:200] + ("..." if len(msg_text) > 200 else ""),
             trigger_timestamp=trigger_context.get("triggered_at", "Unknown"),
             **common_args,
         )
@@ -417,9 +421,7 @@ Time: {time}"""
     return f"{context}\n\n{existing_content}" if existing_content else context
 
 
-def format_reply_context(
-    reply_to_message: ReplyToMessageData, existing_content: str = ""
-) -> str:
+def format_reply_context(reply_to_message: ReplyToMessageData, existing_content: str = "") -> str:
     """Format reply-to-message context for AI conversation.
 
     This adds context about which message the user is replying to,
@@ -432,25 +434,83 @@ def format_reply_context(
     return f"{context}\n\n{existing_content}" if existing_content else context
 
 
-def format_files_list(
-    files_data: Optional[List[FileData]], file_ids: Optional[List[str]] = None
-) -> str:
+# Must match the prefix the frontend's RevealTodos run-now demo sends.
+_RUN_NOW_DEMO_PREFIX = "Execute this todo for me:"
+
+
+async def get_onboarding_system_prompt_if_applicable(
+    user_id: str,
+    conversation_id: str,
+    latest_user_message: str | None = None,
+) -> str | None:
+    try:
+        conv = await conversations_collection.find_one(
+            {"conversation_id": conversation_id},
+            {"is_onboarding_conversation": 1, "messages": 1},
+        )
+        is_tagged_onboarding = bool(conv and conv.get("is_onboarding_conversation"))
+        is_run_now_demo = bool(
+            latest_user_message and latest_user_message.lstrip().startswith(_RUN_NOW_DEMO_PREFIX)
+        )
+
+        if not is_tagged_onboarding and not is_run_now_demo:
+            return None
+
+        if is_tagged_onboarding:
+            message_count = len(conv.get("messages", [])) if conv else 0
+            if message_count >= 7:
+                await users_collection.update_one(
+                    {"_id": ObjectId(user_id)},
+                    {"$set": {"onboarding.phase": OnboardingPhase.COMPLETED}},
+                )
+                log.info(
+                    f"[onboarding_prompt] Auto-completed onboarding for {user_id} after {message_count} messages"
+                )
+                return None
+
+        user_doc = await users_collection.find_one(
+            {"_id": ObjectId(user_id)},
+            {"onboarding.phase": 1, "name": 1, "onboarding.preferences": 1},
+        )
+        if not user_doc:
+            return None
+
+        phase = user_doc.get("onboarding", {}).get("phase", "initial")
+        if phase == OnboardingPhase.COMPLETED:
+            return None
+
+        name = user_doc.get("name", "there")
+        onboarding = user_doc.get("onboarding", {})
+        profession = onboarding.get("preferences", {}).get("profession", "")
+        triage_summary = onboarding.get("triage_summary", "")
+
+        onboarding_context = (
+            f"Profession: {profession}" if profession else "Profession: not specified"
+        )
+        if triage_summary:
+            onboarding_context += f"\nInbox summary: {triage_summary}"
+
+        return ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
+            name=name,
+            onboarding_context=onboarding_context,
+        )
+
+    except Exception as e:
+        log.warning(f"[onboarding_prompt] Failed to check onboarding conversation: {e}")
+        return None
+
+
+def format_files_list(files_data: list[FileData] | None, file_ids: list[str] | None = None) -> str:
     """Format file information for agent context with usage instructions."""
     if not files_data or (file_ids is not None and not file_ids):
         return "No files uploaded."
 
     # Filter to specific files if IDs provided, otherwise use all
-    files = (
-        files_data
-        if file_ids is None
-        else [f for f in files_data if f.fileId in file_ids]
-    )
+    files = files_data if file_ids is None else [f for f in files_data if f.fileId in file_ids]
     if not files:
         return "No files uploaded."
 
-    file_list = "\n".join(
-        f"- Name: {file.filename} Id: {file.fileId}" for file in files
-    )
+    file_list = "\n".join(f"- Name: {file.filename} Id: {file.fileId}" for file in files)
 
     return f"""
 Uploaded Files:

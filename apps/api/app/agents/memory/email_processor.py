@@ -25,41 +25,72 @@ Key improvements:
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 import re
 import time
-from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any
 
 from bson import ObjectId
 
-from app.helpers.email_helpers import (
-    mark_email_processing_complete,
-    process_email_content,
-    store_emails_to_mem0,
-    store_single_profile,
-)
-from app.agents.memory.profile_crawler import (
-    crawl_profile_url,
-    crawl_profile_urls_batch,
-)
+from app.agents.memory.profile_crawler import crawl_profile_url
 from app.agents.memory.profile_extractor import (
     PLATFORM_CONFIG,
     build_profile_url,
     extract_username_with_llm,
     validate_username,
 )
-from shared.py.wide_events import log
-from app.constants.email import BATCH_SIZE, EMAIL_QUERY, MAX_RESULTS
+from app.constants.email import (
+    BATCH_SIZE,
+    EMAIL_QUERY,
+    MAX_RESULTS,
+    ONBOARDING_EMAIL_SCAN_LIMIT,
+)
 from app.db.mongodb.collections import users_collection
+from app.helpers.email_helpers import (
+    mark_email_processing_complete,
+    process_email_content,
+    store_emails_to_mem0,
+    store_single_profile,
+)
 from app.services.mail.mail_service import search_messages
 from app.services.memory_service import memory_service
-from app.services.onboarding.post_onboarding_service import (
-    emit_progress,
-    process_post_onboarding_personalization,
-)
+from shared.py.wide_events import log
 
 
-async def _search_platform_emails_parallel(user_id: str) -> Dict[str, List[Dict]]:
+@dataclass
+class _StepTimer:
+    """Accumulates labeled step timings for a structured summary log."""
+
+    _steps: list[tuple[str, float]] = field(default_factory=list)
+    _start: float = field(default_factory=time.monotonic)
+
+    def record(self, label: str, elapsed: float) -> None:
+        self._steps.append((label, elapsed))
+
+    def summary(self) -> str:
+        total = time.monotonic() - self._start
+        col = 52
+        lines = [
+            "",
+            "=" * (col + 12),
+            f"  {'ONBOARDING EMAIL PIPELINE — TIMING BREAKDOWN':<{col}}",
+            "=" * (col + 12),
+        ]
+        for label, elapsed in self._steps:
+            bar = "█" * min(int(elapsed / 2), 20)
+            lines.append(f"  {label:<{col}} {elapsed:>6.1f}s  {bar}")
+        lines += [
+            "-" * (col + 12),
+            f"  {'TOTAL':<{col}} {total:>6.1f}s",
+            "=" * (col + 12),
+            "",
+        ]
+        return "\n".join(lines)
+
+
+async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict]]:
     """
     Search Gmail API in parallel for emails from all platform domains.
 
@@ -88,12 +119,10 @@ async def _search_platform_emails_parallel(user_id: str) -> Dict[str, List[Dict]
         search_tasks.append((platform, task))
 
     # Execute all searches in parallel
-    results = await asyncio.gather(
-        *[task for _, task in search_tasks], return_exceptions=True
-    )
+    results = await asyncio.gather(*[task for _, task in search_tasks], return_exceptions=True)
 
     # Build platform -> emails mapping
-    platform_emails: Dict[str, List[Dict]] = {}
+    platform_emails: dict[str, list[dict]] = {}
     for (platform, _), result in zip(search_tasks, results):
         if isinstance(result, Exception):
             log.error(f"Search failed for {platform}: {result}")
@@ -114,8 +143,8 @@ async def _search_platform_emails_parallel(user_id: str) -> Dict[str, List[Dict]
 
 
 async def _search_platform_emails(
-    user_id: str, platform: str, query: str, max_results: int = 50
-) -> List[Dict]:
+    user_id: str, platform: str, query: str, max_results: int = 10
+) -> list[dict]:
     """
     Search Gmail for emails from a specific platform.
 
@@ -143,7 +172,74 @@ async def _search_platform_emails(
         return []
 
 
-async def process_gmail_to_memory(user_id: str) -> Dict:
+def _extract_display_name(raw_from: str) -> str:
+    if not raw_from:
+        return ""
+    name = raw_from.split("<", 1)[0].strip().strip('"')
+    if not name:
+        return raw_from.split("@", 1)[0].strip("<>") or raw_from
+    return name[:30]
+
+
+async def fetch_emails_for_onboarding(
+    user_id: str,
+    months: int = 1,
+    batch_size: int = 100,
+    max_total: int = ONBOARDING_EMAIL_SCAN_LIMIT,
+    on_batch: Callable[[int, str | None], Awaitable[None]] | None = None,
+    fmt: str = "metadata",
+    into: list[dict] | None = None,
+) -> list[dict]:
+    """Fetch the last `months` months of received emails for onboarding.
+
+    Uses Gmail metadata format by default (no body) so batches can be 100 wide.
+    Callers that need bodies (writing style, social profile regex) pass fmt="full".
+    on_batch receives (running_count, latest_sender_display_name_or_None).
+    If `into` is provided, batches are appended to it live so concurrent
+    consumers can observe partial progress.
+    """
+    query = f"in:inbox newer_than:{months * 30}d"
+    all_emails: list[dict] = into if into is not None else []
+    page_token: str | None = None
+    metadata_mode = fmt == "metadata"
+
+    try:
+        while len(all_emails) < max_total:
+            remaining = min(batch_size, max_total - len(all_emails))
+            result = await search_messages(
+                user_id=user_id,
+                query=query,
+                max_results=remaining,
+                page_token=page_token,
+                format=fmt,
+                include_payload=not metadata_mode,
+                verbose=not metadata_mode,
+            )
+            batch = result.get("messages", [])
+            if not batch:
+                break
+            all_emails.extend(batch)
+            if on_batch is not None:
+                latest_sender = _extract_display_name(
+                    batch[-1].get("from") or batch[-1].get("sender") or ""
+                )
+                await on_batch(len(all_emails), latest_sender or None)
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                break
+    except Exception as e:
+        log.error(
+            f"[fetch_emails_for_onboarding] Failed for {user_id} after {len(all_emails)} emails: {e}",
+            exc_info=True,
+        )
+
+    log.info(
+        f"[fetch_emails_for_onboarding] Fetched {len(all_emails)} emails for {user_id} (fmt={fmt})"
+    )
+    return all_emails
+
+
+async def process_gmail_to_memory(user_id: str) -> dict:
     """
     Process user's Gmail emails into Mem0 memories.
 
@@ -156,6 +252,7 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
 
     Returns dict with processing stats.
     """
+    timer = _StepTimer()
     user = await users_collection.find_one({"_id": ObjectId(user_id)})
     if user and user.get("email_memory_processed", False):
         log.info(f"User {user_id} emails already processed, skipping")
@@ -183,21 +280,7 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     email_storage_tasks = []
 
     # START PARALLEL TRACK: Profile extraction via targeted Gmail searches
-    profile_extraction_task = asyncio.create_task(
-        _extract_profiles_from_parallel_searches(user_id)
-    )
-
-    # Emit initial progress
-    try:
-        await emit_progress(
-            user_id,
-            "exploring",
-            "🌌 Exploring your universe...",
-            15,
-            {"current": 0, "total": MAX_RESULTS},
-        )
-    except Exception as e:
-        log.warning(f"Failed to emit initial progress: {e}")
+    profile_extraction_task = asyncio.create_task(_extract_profiles_from_parallel_searches(user_id))
 
     # Check for last scan timestamp
     last_scan_timestamp = None
@@ -215,18 +298,26 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
             timestamp_seconds = int(last_scan_timestamp.timestamp())
             current_query = f"{EMAIL_QUERY} after:{timestamp_seconds}"
 
+    t0_fetch_phase = time.monotonic()
     try:
         while total_fetched < MAX_RESULTS:
             remaining = MAX_RESULTS - total_fetched
             batch_size = min(BATCH_SIZE, remaining)
             batch_count += 1
 
+            t0_search = time.monotonic()
             result = await search_messages(
                 user_id=user_id,
                 query=current_query,
                 max_results=batch_size,
                 page_token=page_token,
             )
+            fetch_elapsed = time.monotonic() - t0_search
+            log.info(
+                f"[timing] Gmail fetch batch {batch_count}: {fetch_elapsed:.1f}s "
+                f"(fetched so far: {total_fetched + len(result.get('messages', []))})"
+            )
+            timer.record(f"Gmail API fetch — batch {batch_count}", fetch_elapsed)
 
             batch_emails = result.get("messages", [])
 
@@ -239,23 +330,20 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
             # Update stats
             total_fetched += len(batch_emails)
 
-            # Emit progress update
-            try:
-                progress_percent = min(15 + int((total_fetched / MAX_RESULTS) * 40), 55)
-                await emit_progress(
-                    user_id,
-                    "exploring",
-                    "🌌 Exploring your universe...",
-                    progress_percent,
-                    {"current": total_fetched, "total": MAX_RESULTS},
-                )
-            except Exception as e:
-                log.warning(f"Failed to emit progress update: {e}")
-
             # Process content (platform emails automatically excluded)
+            t0_parse = time.monotonic()
             processed_batch, failed = process_email_content(batch_emails)
+            parse_elapsed = time.monotonic() - t0_parse
             total_parsed += len(processed_batch)
             total_failed += failed
+            log.info(
+                f"[timing] Email content parsing batch {batch_count}: {parse_elapsed:.3f}s "
+                f"({len(processed_batch)} parsed, {failed} failed/skipped)"
+            )
+            timer.record(
+                f"Email parse (HTML→text) — batch {batch_count} ({len(processed_batch)} emails)",
+                parse_elapsed,
+            )
 
             # Store batch to Mem0 with sync mode during onboarding (ensures completion)
             if processed_batch:
@@ -265,7 +353,7 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
                         processed_batch,
                         user_name,
                         user_email,
-                        async_mode=False,
+                        async_mode=True,
                     )
                 )
                 email_storage_tasks.append(task)
@@ -276,20 +364,25 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     except Exception as e:
         log.error(f"Error in email processing pipeline: {e}")
 
+    timer.record("Gmail fetch + parse phase (total)", time.monotonic() - t0_fetch_phase)
+
     # Await all email storage tasks in parallel with error handling
     log.info(
-        f"Awaiting {len(email_storage_tasks)} email storage tasks to complete in parallel..."
+        f"[timing] Awaiting {len(email_storage_tasks)} Mem0 storage tasks ({total_parsed} emails total)..."
     )
     storage_results: list[Any] = []
     storage_errors = 0
     if email_storage_tasks:
         try:
-            # Gather all results, including exceptions
-            storage_results = await asyncio.gather(
-                *email_storage_tasks, return_exceptions=True
+            t0_storage = time.monotonic()
+            storage_results = await asyncio.gather(*email_storage_tasks, return_exceptions=True)
+            storage_elapsed = time.monotonic() - t0_storage
+            timer.record(
+                f"Mem0 email storage await ({len(email_storage_tasks)} batches queued)",
+                storage_elapsed,
             )
+            log.info(f"[timing] Mem0 email storage tasks dispatched in {storage_elapsed:.1f}s")
 
-            # Count successes and errors
             for idx, result in enumerate(storage_results):
                 if isinstance(result, Exception):
                     storage_errors += 1
@@ -306,9 +399,15 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
 
     # Wait for profile extraction task (also with error handling)
     profiles_stored = 0
+    extracted_profiles: list[dict] = []
     try:
-        profile_result: Dict[str, int] = await profile_extraction_task
+        t0_profile = time.monotonic()
+        profile_result: dict = await profile_extraction_task
+        profile_elapsed = time.monotonic() - t0_profile
+        timer.record("Profile extraction track (wait for completion)", profile_elapsed)
+        log.info(f"[timing] Profile extraction track finished: {profile_elapsed:.1f}s")
         profiles_stored = profile_result.get("profiles_stored", 0)
+        extracted_profiles = profile_result.get("extracted_profiles", [])
     except Exception as e:
         log.error(f"Profile extraction task failed: {e}")
         # Continue anyway - don't let profile failures block completion
@@ -327,36 +426,28 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     # This ensures the frontend gets the "show me around" button
     try:
         if processing_complete:
-            await mark_email_processing_complete(
-                user_id, total_parsed + profiles_stored
-            )
+            t0_mark = time.monotonic()
+            await mark_email_processing_complete(user_id, total_parsed + profiles_stored)
+            mark_elapsed = time.monotonic() - t0_mark
+            timer.record("DB mark-complete write", mark_elapsed)
+            log.info(f"[timing] mark_email_processing_complete: {mark_elapsed:.1f}s")
             log.info(f"✓ Marked email processing as complete for user {user_id}")
     except Exception as e:
         log.error(f"Failed to mark email processing complete: {e}")
         # Continue anyway - we still want to trigger post-onboarding
 
-    # Trigger post-onboarding personalization (always run, even if storage had errors)
-    try:
-        await process_post_onboarding_personalization(user_id)
-        log.info(f"✓ Post-onboarding personalization triggered for user {user_id}")
-    except Exception as e:
-        log.error(f"Post-onboarding personalization failed: {e}", exc_info=True)
-        # Don't fail the entire process - user still gets onboarded
-
     # Update the scan timestamp after processing (regardless of success/failure)
     # This prevents re-scanning the same emails
     try:
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
         await users_collection.update_one(
             {"_id": ObjectId(user_id)},
-            {
-                "$set": {
-                    "integration_scan_states.gmail.last_scan_timestamp": current_time
-                }
-            },
+            {"$set": {"integration_scan_states.gmail.last_scan_timestamp": current_time}},
         )
     except Exception as e:
         log.error(f"Failed to update Gmail scan timestamp: {e}")
+
+    log.info(timer.summary())
 
     return {
         "total": total_fetched,
@@ -364,10 +455,11 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
         "failed": total_failed,
         "profiles_stored": profiles_stored,
         "processing_complete": processing_complete,
+        "extracted_profiles": extracted_profiles,
     }
 
 
-async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
+async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
     """
     Extract and store profiles using parallel Gmail searches for each platform.
 
@@ -391,7 +483,11 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
         user_name = user.get("name") if user else None
 
         # Step 1: Parallel Gmail searches for all platforms
+        t0_platform_search = time.monotonic()
         platform_emails = await _search_platform_emails_parallel(user_id)
+        log.info(
+            f"[email_processor:timing] _search_platform_emails_parallel: {time.monotonic() - t0_platform_search:.1f}s"
+        )
 
         # Filter out platforms with no emails
         platforms_with_emails = {
@@ -402,11 +498,10 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
             return {"profiles_stored": 0}
 
         # Step 2: Extract usernames and crawl profiles in parallel
+        crawl_semaphore = asyncio.Semaphore(20)
         platform_tasks = []
         discovered_profile_tasks = []  # Track discovery tasks
-        crawled_urls: set[str] = (
-            set()
-        )  # Global deduplication: track all URLs already crawled
+        crawled_urls: set[str] = set()  # Global deduplication: track all URLs already crawled
 
         for platform, emails in platforms_with_emails.items():
             task = asyncio.create_task(
@@ -414,20 +509,26 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
                     user_id,
                     platform,
                     emails,
+                    crawl_semaphore,
                     user_name,
                     crawled_urls,
-                    async_mode=False,
+                    async_mode=True,
                 )
             )
             platform_tasks.append((platform, task))
 
         # Wait for all platform processing
+        t0_platform_gather = time.monotonic()
         results = await asyncio.gather(
             *[task for _, task in platform_tasks], return_exceptions=True
         )
+        log.info(
+            f"[email_processor:timing] asyncio.gather platform_tasks: {time.monotonic() - t0_platform_gather:.1f}s"
+        )
 
-        # Step 3: Count successful profiles and collect discovery tasks
+        # Step 3: Count successful profiles, collect pairs and discovery tasks
         profiles_stored = 0
+        extracted_profiles: list[dict] = []
         for (platform, _), result in zip(platform_tasks, results):
             if isinstance(result, Exception):
                 log.error(f"Platform {platform} extraction failed: {result}")
@@ -435,17 +536,20 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
                 if "discovery_task" in result:
                     discovered_profile_tasks.append(result["discovery_task"])
                 profiles_stored += 1
+                extracted_profiles.append({"platform": result["platform"], "url": result["url"]})
 
         # Step 4: Wait for discovered profiles and add to count
         discovered_count = 0
         if discovered_profile_tasks:
+            t0_discovery = time.monotonic()
             discovery_results = await asyncio.gather(
                 *discovered_profile_tasks, return_exceptions=True
             )
+            log.info(
+                f"[email_processor:timing] asyncio.gather discovered_profile_tasks: {time.monotonic() - t0_discovery:.1f}s"
+            )
             for result in discovery_results:
-                if isinstance(
-                    result, int
-                ):  # Discovery task returns count of profiles stored
+                if isinstance(result, int):  # Discovery task returns count of profiles stored
                     discovered_count += result
                 elif isinstance(result, Exception):
                     log.error(f"Discovery task failed: {result}")
@@ -456,21 +560,25 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
             f"{profiles_stored}/{len(platforms_with_emails)} profiles stored (including {discovered_count} discovered)"
         )
 
-        return {"profiles_stored": profiles_stored}
+        return {
+            "profiles_stored": profiles_stored,
+            "extracted_profiles": extracted_profiles,
+        }
 
     except Exception as e:
         log.error(f"Error in profile extraction from parallel searches: {e}")
-        return {"profiles_stored": 0}
+        return {"profiles_stored": 0, "extracted_profiles": []}
 
 
 async def _process_single_platform(
     user_id: str,
     platform: str,
-    emails: List[Dict],
+    emails: list[dict],
+    semaphore: asyncio.Semaphore,
     user_name: str | None = None,
     crawled_urls: set | None = None,
     async_mode: bool = False,
-) -> Dict:
+) -> dict:
     """
     Process a single platform: Extract -> Crawl -> Return content.
     Returns dict with profile content or error.
@@ -480,8 +588,13 @@ async def _process_single_platform(
         async_mode: Memory storage mode (False for onboarding to ensure completion)
     """
     try:
-        # 1. Extract username
+        t0_platform = time.monotonic()
+
+        # 1. Extract username via LLM
+        t0_llm = time.monotonic()
         username = await extract_username_with_llm(platform, emails, user_name)
+        llm_elapsed = time.monotonic() - t0_llm
+        log.info(f"[timing:{platform}] LLM username extraction: {llm_elapsed:.1f}s → '{username}'")
 
         if not validate_username(username, platform):
             log.warning(
@@ -492,9 +605,7 @@ async def _process_single_platform(
 
         profile_url = build_profile_url(username, platform)
         if not profile_url:
-            log.warning(
-                f"Could not build profile URL for {platform} with username: {username}"
-            )
+            log.warning(f"Could not build profile URL for {platform} with username: {username}")
             return {"error": f"Could not build URL for {platform}"}
 
         # Check if already crawled (deduplication)
@@ -506,15 +617,20 @@ async def _process_single_platform(
             crawled_urls.add(profile_url)
 
         # 2. Crawl profile
-        crawl_result = await crawl_profile_url(profile_url, platform)
+        t0_crawl = time.monotonic()
+        crawl_result = await crawl_profile_url(profile_url, platform, semaphore)
+        crawl_elapsed = time.monotonic() - t0_crawl
+        log.info(
+            f"[timing:{platform}] Profile crawl: {crawl_elapsed:.1f}s "
+            f"({'OK' if crawl_result['content'] else 'FAILED'})"
+        )
 
         if not crawl_result["content"] or crawl_result["error"]:
-            log.warning(
-                f"Failed to crawl {platform} profile: {crawl_result.get('error')}"
-            )
+            log.warning(f"Failed to crawl {platform} profile: {crawl_result.get('error')}")
             return {"error": crawl_result.get("error", "Crawl failed")}
 
         # 3. Store profile with configured mode
+        t0_store = time.monotonic()
         await store_single_profile(
             user_id,
             platform,
@@ -523,11 +639,17 @@ async def _process_single_platform(
             user_name,
             async_mode=async_mode,
         )
+        store_elapsed = time.monotonic() - t0_store
+        log.info(f"[timing:{platform}] Mem0 profile store: {store_elapsed:.1f}s")
+        log.info(
+            f"[timing:{platform}] TOTAL {time.monotonic() - t0_platform:.1f}s "
+            f"(llm={llm_elapsed:.1f}s, crawl={crawl_elapsed:.1f}s, store={store_elapsed:.1f}s)"
+        )
 
         # 4. Extract additional social links from profile content
         discovery_task = asyncio.create_task(
             _discover_and_store_linked_profiles(
-                user_id, crawl_result["content"], platform, crawled_urls
+                user_id, crawl_result["content"], platform, semaphore, crawled_urls
             )
         )
 
@@ -548,6 +670,7 @@ async def _discover_and_store_linked_profiles(
     user_id: str,
     profile_content: str,
     source_platform: str,
+    semaphore: asyncio.Semaphore,
     crawled_urls: set | None = None,
 ) -> int:
     """
@@ -557,6 +680,7 @@ async def _discover_and_store_linked_profiles(
         user_id: User ID
         profile_content: Crawled profile HTML/text content
         source_platform: Platform this content came from
+        semaphore: Semaphore for rate limiting crawls
 
     Returns:
         Number of discovered profiles successfully stored
@@ -622,38 +746,18 @@ async def _discover_and_store_linked_profiles(
         for key, profile_info in discovered_profiles.items():
             platform = profile_info["platform"]
             url = profile_info["url"]
-            crawl_tasks.append((url, platform))
+            task = crawl_profile_url(url, platform, semaphore)
+            crawl_tasks.append((platform, url, task))
 
-        # Wait for all crawls (single crawler + arun_many)
-        crawled_results = await crawl_profile_urls_batch(crawl_tasks)
-
-        result_by_url = {
-            r.get("url"): r
-            for r in crawled_results
-            if isinstance(r, dict) and r.get("url")
-        }
-
-        results = [
-            result_by_url.get(
-                url,
-                {
-                    "url": url,
-                    "platform": platform,
-                    "content": None,
-                    "error": "missing crawl result",
-                },
-            )
-            for url, platform in crawl_tasks
-        ]
+        # Wait for all crawls
+        results = await asyncio.gather(
+            *[task for _, _, task in crawl_tasks], return_exceptions=True
+        )
 
         # Store successful profiles
         profile_messages = []
-        for (url, platform), result in zip(crawl_tasks, results):
-            if (
-                isinstance(result, dict)
-                and result.get("content")
-                and not result.get("error")
-            ):
+        for (platform, url, _), result in zip(crawl_tasks, results):
+            if isinstance(result, dict) and result.get("content") and not result.get("error"):
                 memory_content = f"""User's {platform} profile: {url}
 
 {result["content"]}
@@ -668,19 +772,18 @@ async def _discover_and_store_linked_profiles(
                 metadata={
                     "type": "social_profile",
                     "source": f"discovered_from_{source_platform}",
-                    "discovered_at": datetime.now(timezone.utc).isoformat(),
+                    "discovered_at": datetime.now(UTC).isoformat(),
                     "batch_size": len(profile_messages),
                 },
-                async_mode=False,
+                async_mode=True,
             )
             if success:
                 log.info(
                     f"✓ Stored {len(profile_messages)} discovered profiles from {source_platform}"
                 )
                 return len(profile_messages)
-            else:
-                log.error(f"Failed to store discovered profiles from {source_platform}")
-                return 0
+            log.error(f"Failed to store discovered profiles from {source_platform}")
+            return 0
 
         return 0
 

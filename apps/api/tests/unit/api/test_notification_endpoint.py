@@ -6,8 +6,8 @@ routing, status codes, response bodies, auth, and validation.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 NOTIF_BASE = "/api/v1/notifications"
 
@@ -122,9 +122,7 @@ class TestGetChannelPreferences:
         "app.api.v1.endpoints.notification.fetch_channel_preferences",
         new_callable=AsyncMock,
     )
-    async def test_get_channel_preferences_error(
-        self, mock_fetch: AsyncMock, client: AsyncClient
-    ):
+    async def test_get_channel_preferences_error(self, mock_fetch: AsyncMock, client: AsyncClient):
         mock_fetch.side_effect = Exception("db fail")
         response = await client.get(f"{NOTIF_BASE}/preferences/channels")
         assert response.status_code == 500
@@ -197,9 +195,7 @@ class TestExecuteAction:
         "app.api.v1.endpoints.notification.notification_service.execute_action",
         new_callable=AsyncMock,
     )
-    async def test_execute_action_success(
-        self, mock_exec: AsyncMock, client: AsyncClient
-    ):
+    async def test_execute_action_success(self, mock_exec: AsyncMock, client: AsyncClient):
         result = MagicMock()
         result.success = True
         result.message = "Done"
@@ -214,9 +210,7 @@ class TestExecuteAction:
         "app.api.v1.endpoints.notification.notification_service.execute_action",
         new_callable=AsyncMock,
     )
-    async def test_execute_action_failure(
-        self, mock_exec: AsyncMock, client: AsyncClient
-    ):
+    async def test_execute_action_failure(self, mock_exec: AsyncMock, client: AsyncClient):
         result = MagicMock()
         result.success = False
         result.message = "Action failed"
@@ -228,9 +222,7 @@ class TestExecuteAction:
         "app.api.v1.endpoints.notification.notification_service.execute_action",
         new_callable=AsyncMock,
     )
-    async def test_execute_action_exception(
-        self, mock_exec: AsyncMock, client: AsyncClient
-    ):
+    async def test_execute_action_exception(self, mock_exec: AsyncMock, client: AsyncClient):
         mock_exec.side_effect = Exception("boom")
         response = await client.post(f"{NOTIF_BASE}/n1/actions/a1/execute")
         assert response.status_code == 500
@@ -249,9 +241,7 @@ class TestMarkAsRead:
         "app.api.v1.endpoints.notification.notification_service.mark_as_read",
         new_callable=AsyncMock,
     )
-    async def test_mark_as_read_success(
-        self, mock_mark: AsyncMock, client: AsyncClient
-    ):
+    async def test_mark_as_read_success(self, mock_mark: AsyncMock, client: AsyncClient):
         mock_mark.return_value = {"id": "n1", "status": "read"}
         response = await client.post(f"{NOTIF_BASE}/n1/read")
         assert response.status_code == 200
@@ -261,9 +251,7 @@ class TestMarkAsRead:
         "app.api.v1.endpoints.notification.notification_service.mark_as_read",
         new_callable=AsyncMock,
     )
-    async def test_mark_as_read_not_found(
-        self, mock_mark: AsyncMock, client: AsyncClient
-    ):
+    async def test_mark_as_read_not_found(self, mock_mark: AsyncMock, client: AsyncClient):
         mock_mark.return_value = None
         response = await client.post(f"{NOTIF_BASE}/n1/read")
         assert response.status_code == 404
@@ -291,9 +279,7 @@ class TestBulkActions:
         "app.api.v1.endpoints.notification.notification_service.bulk_actions",
         new_callable=AsyncMock,
     )
-    async def test_bulk_actions_success(
-        self, mock_bulk: AsyncMock, client: AsyncClient
-    ):
+    async def test_bulk_actions_success(self, mock_bulk: AsyncMock, client: AsyncClient):
         mock_bulk.return_value = {"n1": True, "n2": True}
         response = await client.post(
             f"{NOTIF_BASE}/bulk-actions",
@@ -308,9 +294,7 @@ class TestBulkActions:
         "app.api.v1.endpoints.notification.notification_service.bulk_actions",
         new_callable=AsyncMock,
     )
-    async def test_bulk_actions_empty_ids(
-        self, mock_bulk: AsyncMock, client: AsyncClient
-    ):
+    async def test_bulk_actions_empty_ids(self, mock_bulk: AsyncMock, client: AsyncClient):
         # The empty-ids HTTPException(400) is inside a bare except that
         # re-raises as 500, so the endpoint actually returns 500.
         response = await client.post(
@@ -342,9 +326,7 @@ class TestRegisterDevice:
     """POST /api/v1/notifications/register-device"""
 
     @patch("app.api.v1.endpoints.notification.get_device_token_service")
-    async def test_register_device_success(
-        self, mock_svc_factory: MagicMock, client: AsyncClient
-    ):
+    async def test_register_device_success(self, mock_svc_factory: MagicMock, client: AsyncClient):
         svc = AsyncMock()
         svc.get_user_device_count.return_value = 0
         svc.register_device_token.return_value = True
@@ -442,9 +424,7 @@ class TestUnregisterDevice:
         assert response.json()["success"] is False
 
     @patch("app.api.v1.endpoints.notification.get_device_token_service")
-    async def test_unregister_device_error(
-        self, mock_svc_factory: MagicMock, client: AsyncClient
-    ):
+    async def test_unregister_device_error(self, mock_svc_factory: MagicMock, client: AsyncClient):
         svc = AsyncMock()
         svc.unregister_device_token.side_effect = Exception("boom")
         mock_svc_factory.return_value = svc
@@ -468,9 +448,7 @@ class TestGetNotification:
         "app.api.v1.endpoints.notification.notification_service.get_notification",
         new_callable=AsyncMock,
     )
-    async def test_get_notification_success(
-        self, mock_get: AsyncMock, client: AsyncClient
-    ):
+    async def test_get_notification_success(self, mock_get: AsyncMock, client: AsyncClient):
         mock_get.return_value = {"id": "n1", "title": "Hello"}
         response = await client.get(f"{NOTIF_BASE}/n1")
         assert response.status_code == 200
@@ -481,9 +459,7 @@ class TestGetNotification:
         "app.api.v1.endpoints.notification.notification_service.get_notification",
         new_callable=AsyncMock,
     )
-    async def test_get_notification_not_found(
-        self, mock_get: AsyncMock, client: AsyncClient
-    ):
+    async def test_get_notification_not_found(self, mock_get: AsyncMock, client: AsyncClient):
         mock_get.return_value = None
         response = await client.get(f"{NOTIF_BASE}/n1")
         assert response.status_code == 404
@@ -492,9 +468,7 @@ class TestGetNotification:
         "app.api.v1.endpoints.notification.notification_service.get_notification",
         new_callable=AsyncMock,
     )
-    async def test_get_notification_error(
-        self, mock_get: AsyncMock, client: AsyncClient
-    ):
+    async def test_get_notification_error(self, mock_get: AsyncMock, client: AsyncClient):
         mock_get.side_effect = Exception("boom")
         response = await client.get(f"{NOTIF_BASE}/n1")
         assert response.status_code == 500

@@ -1,10 +1,8 @@
 """ChromaDB store for public integrations semantic search."""
 
-from typing import Optional
-
 from app.core.lazy_loader import providers
-from shared.py.wide_events import log
 from app.db.chroma.chromadb import ChromaClient
+from shared.py.wide_events import log
 
 COLLECTION_NAME = "public_integrations"
 
@@ -24,9 +22,7 @@ async def index_public_integration(
             create_if_not_exists=True,
         )
 
-        tools_text = " ".join(
-            [f"{t.get('name', '')}: {t.get('description', '')}" for t in tools]
-        )
+        tools_text = " ".join([f"{t.get('name', '')}: {t.get('description', '')}" for t in tools])
         content = f"{name}\n{description}\n{tools_text}"
 
         await chroma.aadd_texts(
@@ -60,7 +56,7 @@ async def remove_public_integration(integration_id: str) -> None:
 async def search_public_integrations(
     query: str,
     limit: int = 20,
-    category: Optional[str] = None,
+    category: str | None = None,
 ) -> list[dict]:
     """Search public integrations. Returns list of {integration_id, relevance_score}."""
     try:
@@ -78,8 +74,7 @@ async def search_public_integrations(
 
         return [
             {
-                "integration_id": doc.metadata.get("integration_id")
-                or getattr(doc, "id", None),
+                "integration_id": doc.metadata.get("integration_id") or getattr(doc, "id", None),
                 "relevance_score": score,
             }
             for doc, score in results

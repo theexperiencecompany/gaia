@@ -17,17 +17,16 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.store.memory import InMemoryStore
+import pytest
 
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
 from tests.integration.conftest import SimpleState
-
 
 # ---------------------------------------------------------------------------
 # Helpers / shared patches
@@ -63,6 +62,7 @@ def _make_mock_tool_registry():
     # Read the actual initial_tool_ids from build_graph source so the mock
     # provides stubs for every tool the graph expects at runtime.
     import inspect
+
     from app.agents.core.graph_builder import build_graph as _bg_mod
 
     src = inspect.getsource(_bg_mod.build_executor_graph)
@@ -79,9 +79,7 @@ def _make_mock_tool_registry():
         raw_ids = []
 
     # Build stubs only for tools NOT injected by build_executor_graph itself
-    tool_dict = {
-        tid: _make_stub_tool(tid) for tid in raw_ids if tid not in injected_by_graph
-    }
+    tool_dict = {tid: _make_stub_tool(tid) for tid in raw_ids if tid not in injected_by_graph}
 
     registry = MagicMock()
     registry.get_tool_dict.return_value = tool_dict
@@ -171,9 +169,7 @@ class TestExecutorGraphCompiles:
                 in_memory_checkpointer=True,
             ) as graph:
                 node_names = set(graph.nodes)
-                assert "agent" in node_names, (
-                    "Compiled executor graph must contain an 'agent' node"
-                )
+                assert "agent" in node_names, "Compiled executor graph must contain an 'agent' node"
                 assert "tools" in node_names, (
                     "Compiled executor graph must contain a 'tools' node for tool execution"
                 )
@@ -288,9 +284,7 @@ class TestSelectToolsNode:
                 in_memory_checkpointer=True,
             ) as graph:
                 tool_node = graph.nodes.get("tools")
-                assert tool_node is not None, (
-                    "Compiled executor graph must contain a 'tools' node"
-                )
+                assert tool_node is not None, "Compiled executor graph must contain a 'tools' node"
                 # Unwrap to the underlying DynamicToolNode callable
                 underlying = getattr(tool_node, "bound", tool_node)
                 assert isinstance(underlying, DynamicToolNode), (
@@ -354,9 +348,7 @@ class TestSelectToolsNode:
                 in_memory_checkpointer=True,
             ) as graph:
                 tool_node = graph.nodes.get("tools")
-                assert tool_node is not None, (
-                    "Compiled executor graph must contain a 'tools' node"
-                )
+                assert tool_node is not None, "Compiled executor graph must contain a 'tools' node"
                 underlying = getattr(tool_node, "bound", tool_node)
                 assert isinstance(underlying, DynamicToolNode), (
                     "The 'tools' node must be a DynamicToolNode"
@@ -565,7 +557,7 @@ class TestTodoPremModelHook:
 
         tools = create_todo_tools(source="executor")
         actual_names = {t.name for t in tools}
-        assert TODO_TOOL_NAMES == actual_names, (
+        assert actual_names == TODO_TOOL_NAMES, (
             f"TODO_TOOL_NAMES {TODO_TOOL_NAMES} does not match "
             f"tools from create_todo_tools: {actual_names}"
         )

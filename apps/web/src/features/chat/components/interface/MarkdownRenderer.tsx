@@ -39,12 +39,14 @@ export interface MarkdownRendererProps {
   content: string;
   className?: string;
   isStreaming?: boolean;
+  hideCodeToolbar?: boolean;
 }
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   content,
   className,
   isStreaming,
+  hideCodeToolbar,
 }) => {
   const { openDialog } = useImageDialog();
 
@@ -58,7 +60,11 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       <ReactMarkdown
         components={{
           code: ({ className, children, ...props }) => (
-            <CodeBlock className={className} {...props}>
+            <CodeBlock
+              className={className}
+              hideToolbar={hideCodeToolbar}
+              {...props}
+            >
               {children}
             </CodeBlock>
           ),

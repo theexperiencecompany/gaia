@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
+import { Tab, Tabs } from "@heroui/tabs";
 import {
   Cancel01Icon,
   CodeIcon,
@@ -120,13 +121,14 @@ function FileContentRenderer({
   filename: string;
   viewMode: ViewMode;
 }) {
-  const markdownClassName = "px-4 pb-3";
+  const markdownClassName = "px-3 pb-2";
 
   if (viewMode === "source") {
     const language = getLanguage(filename);
     return (
       <MarkdownRenderer
         className={markdownClassName}
+        hideCodeToolbar
         content={`\`\`\`${language}\n${content}\n\`\`\``}
       />
     );
@@ -144,7 +146,7 @@ function FileContentRenderer({
         <iframe
           title={filename}
           srcDoc={previewDoc}
-          className="block h-full w-full border-0 bg-white"
+          className="block h-full w-full bg-white"
           sandbox=""
         />
       </div>
@@ -278,27 +280,35 @@ export default function FileViewerPanel({
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-zinc-950">
-      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-zinc-800 bg-zinc-900 px-2">
+    <div className="flex h-full min-h-0 flex-col bg-zinc-800">
+      <div className="flex h-12 shrink-0 items-center gap-2 bg-zinc-800 px-2">
         {isPreviewable ? (
-          <div className="flex rounded-md border border-zinc-700 bg-zinc-950 p-0.5">
-            <button
-              type="button"
-              onClick={() => setViewMode("preview")}
-              className={`rounded-sm p-1.5 transition-colors ${viewMode === "preview" ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"}`}
-              aria-label="Preview mode"
-            >
-              <File01Icon size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("source")}
-              className={`rounded-sm p-1.5 transition-colors ${viewMode === "source" ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"}`}
-              aria-label="Code mode"
-            >
-              <CodeIcon size={16} />
-            </button>
-          </div>
+          <Tabs
+            aria-label="View mode"
+            selectedKey={viewMode}
+            onSelectionChange={(key) => setViewMode(key as ViewMode)}
+            size="sm"
+            variant="solid"
+          >
+            <Tab
+              key="preview"
+              title={
+                <div className="flex items-center gap-1.5">
+                  <File01Icon size={14} />
+                  <span>Preview</span>
+                </div>
+              }
+            />
+            <Tab
+              key="source"
+              title={
+                <div className="flex items-center gap-1.5">
+                  <CodeIcon size={14} />
+                  <span>Code</span>
+                </div>
+              }
+            />
+          </Tabs>
         ) : null}
 
         <p className="min-w-0 flex-1 truncate text-sm text-zinc-200">

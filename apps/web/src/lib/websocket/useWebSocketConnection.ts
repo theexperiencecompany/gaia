@@ -49,6 +49,7 @@ export function useWebSocketConnection() {
     } else {
       console.log("[WebSocket] Not connecting - no user email available");
     }
+    return undefined;
   }, [user?.email]);
 
   // Handle page visibility changes — subscribe once, read latest email from ref

@@ -1,7 +1,7 @@
 """Unit tests for app.agents.tools.reminder_tool."""
 
 from datetime import datetime, timedelta
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,13 +24,11 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.reminder_tool"
 
 
-def _cfg(
-    user_id: str = FAKE_USER_ID, user_time: str = "2026-03-20T10:00:00"
-) -> Dict[str, Any]:
+def _cfg(user_id: str = FAKE_USER_ID, user_time: str = "2026-03-20T10:00:00") -> dict[str, Any]:
     return {"configurable": {"user_id": user_id, "user_time": user_time}}
 
 
-def _cfg_no_user() -> Dict[str, Any]:
+def _cfg_no_user() -> dict[str, Any]:
     return {"configurable": {}}
 
 
@@ -89,9 +87,7 @@ class TestApplyTimezoneOffset:
 class TestCreateReminderTool:
     @patch(f"{MODULE}.reminder_scheduler")
     @patch(f"{MODULE}.CreateReminderToolRequest")
-    async def test_happy_path(
-        self, mock_req_cls: MagicMock, mock_scheduler: MagicMock
-    ) -> None:
+    async def test_happy_path(self, mock_req_cls: MagicMock, mock_scheduler: MagicMock) -> None:
         mock_instance = MagicMock()
         mock_instance.to_create_reminder_request.return_value = MagicMock()
         mock_req_cls.return_value = mock_instance
@@ -129,9 +125,7 @@ class TestCreateReminderTool:
         assert result == {"error": "User time is required to create a reminder"}
 
     @patch(f"{MODULE}.reminder_scheduler")
-    @patch(
-        f"{MODULE}.CreateReminderToolRequest", side_effect=ValueError("Invalid cron")
-    )
+    @patch(f"{MODULE}.CreateReminderToolRequest", side_effect=ValueError("Invalid cron"))
     async def test_validation_error(
         self, mock_req_cls: MagicMock, mock_scheduler: MagicMock
     ) -> None:
@@ -146,9 +140,7 @@ class TestCreateReminderTool:
 
     @patch(f"{MODULE}.reminder_scheduler")
     @patch(f"{MODULE}.CreateReminderToolRequest")
-    async def test_service_error(
-        self, mock_req_cls: MagicMock, mock_scheduler: MagicMock
-    ) -> None:
+    async def test_service_error(self, mock_req_cls: MagicMock, mock_scheduler: MagicMock) -> None:
         mock_instance = MagicMock()
         mock_instance.to_create_reminder_request.return_value = MagicMock()
         mock_req_cls.return_value = mock_instance
@@ -317,9 +309,7 @@ class TestUpdateReminderTool:
         assert call_args[0][1]["repeat"] == "0 9 * * *"
 
     @patch(f"{MODULE}.reminder_scheduler")
-    async def test_update_with_stop_after_and_tz(
-        self, mock_scheduler: MagicMock
-    ) -> None:
+    async def test_update_with_stop_after_and_tz(self, mock_scheduler: MagicMock) -> None:
         mock_scheduler.update_reminder = AsyncMock(return_value=True)
 
         from app.agents.tools.reminder_tool import update_reminder_tool

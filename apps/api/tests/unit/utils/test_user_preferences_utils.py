@@ -1,6 +1,6 @@
 """Unit tests for user preferences utility functions."""
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -13,7 +13,6 @@ from app.utils.user_preferences_utils import (
     get_user_preference_summary,
     validate_user_preferences,
 )
-
 
 # ---------------------------------------------------------------------------
 # format_response_style_instruction
@@ -98,7 +97,7 @@ class TestFormatProfessionForDisplay:
 class TestBuildUserContextParts:
     @patch("app.utils.user_preferences_utils.log")
     def test_all_fields_present(self, mock_log: Any) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": "software engineer",
             "response_style": "brief",
             "custom_instructions": "Always use Python examples",
@@ -131,7 +130,7 @@ class TestBuildUserContextParts:
 
     @patch("app.utils.user_preferences_utils.log")
     def test_none_values_ignored(self, mock_log: Any) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": None,
             "response_style": None,
             "custom_instructions": None,
@@ -141,7 +140,7 @@ class TestBuildUserContextParts:
 
     @patch("app.utils.user_preferences_utils.log")
     def test_empty_string_values_ignored(self, mock_log: Any) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": "",
             "response_style": "",
             "custom_instructions": "",
@@ -205,7 +204,7 @@ class TestFormatUserPreferencesForAgent:
 
     @patch("app.utils.user_preferences_utils.log")
     def test_valid_preferences_returns_joined_string(self, mock_log: Any) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": "designer",
             "response_style": "detailed",
             "custom_instructions": "Use visual examples",
@@ -215,10 +214,7 @@ class TestFormatUserPreferencesForAgent:
         lines = result.split("\n")
         assert len(lines) == 3
         assert lines[0] == "User Profession: Designer"
-        assert (
-            lines[1]
-            == "Communication Style: Provide detailed and comprehensive responses"
-        )
+        assert lines[1] == "Communication Style: Provide detailed and comprehensive responses"
         assert lines[2] == "Special Instructions: Use visual examples"
 
     @patch("app.utils.user_preferences_utils.log")
@@ -228,7 +224,7 @@ class TestFormatUserPreferencesForAgent:
 
     @patch("app.utils.user_preferences_utils.log")
     def test_all_empty_values_returns_none(self, mock_log: Any) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": "",
             "response_style": "",
             "custom_instructions": "",
@@ -238,7 +234,7 @@ class TestFormatUserPreferencesForAgent:
 
     @patch("app.utils.user_preferences_utils.log")
     def test_all_none_values_returns_none(self, mock_log: Any) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": None,
             "response_style": None,
             "custom_instructions": None,
@@ -265,7 +261,7 @@ class TestFormatUserPreferencesForAgent:
 class TestValidateUserPreferences:
     @patch("app.utils.user_preferences_utils.log")
     def test_valid_data_all_fields(self, mock_log: Any) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": "data scientist",
             "response_style": "brief",
             "custom_instructions": "Use code examples",
@@ -279,7 +275,7 @@ class TestValidateUserPreferences:
 
     @patch("app.utils.user_preferences_utils.log")
     def test_profession_too_long_excluded(self, mock_log: Any) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": "a" * 51,
             "response_style": "brief",
         }
@@ -295,7 +291,7 @@ class TestValidateUserPreferences:
 
     @patch("app.utils.user_preferences_utils.log")
     def test_custom_instructions_too_long_excluded(self, mock_log: Any) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "custom_instructions": "x" * 501,
             "response_style": "casual",
         }
@@ -311,7 +307,7 @@ class TestValidateUserPreferences:
 
     @patch("app.utils.user_preferences_utils.log")
     def test_empty_strings_excluded(self, mock_log: Any) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": "",
             "response_style": "",
             "custom_instructions": "",
@@ -342,7 +338,7 @@ class TestValidateUserPreferences:
 
     @patch("app.utils.user_preferences_utils.log")
     def test_none_values_excluded(self, mock_log: Any) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": None,
             "response_style": None,
             "custom_instructions": None,
@@ -352,7 +348,7 @@ class TestValidateUserPreferences:
 
     @patch("app.utils.user_preferences_utils.log")
     def test_values_are_stripped(self, mock_log: Any) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": "  doctor  ",
             "response_style": "  brief  ",
             "custom_instructions": "  Be concise  ",
@@ -369,7 +365,7 @@ class TestValidateUserPreferences:
 
     @patch("app.utils.user_preferences_utils.log")
     def test_extra_keys_ignored(self, mock_log: Any) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": "nurse",
             "unknown_key": "should be ignored",
             "another": 42,
@@ -420,7 +416,7 @@ class TestGetUserPreferenceSummary:
         assert result == "Has custom instructions"
 
     def test_all_present(self) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": "designer",
             "response_style": "casual",
             "custom_instructions": "Use examples",
@@ -444,7 +440,7 @@ class TestGetUserPreferenceSummary:
         assert result == "Profession: dev..."
 
     def test_all_none_values_returns_no_preferences(self) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": None,
             "response_style": None,
             "custom_instructions": None,
@@ -452,7 +448,7 @@ class TestGetUserPreferenceSummary:
         assert get_user_preference_summary(preferences) == "No preferences set"
 
     def test_all_empty_values_returns_no_preferences(self) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": "",
             "response_style": "",
             "custom_instructions": "",
@@ -460,7 +456,7 @@ class TestGetUserPreferenceSummary:
         assert get_user_preference_summary(preferences) == "No preferences set"
 
     def test_pipe_separator_between_parts(self) -> None:
-        preferences: Dict[str, Any] = {
+        preferences: dict[str, Any] = {
             "profession": "nurse",
             "response_style": "detailed",
         }

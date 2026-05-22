@@ -7,9 +7,9 @@ transformation, and error handling inside the service is exercised.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from bson import ObjectId
 from fastapi import HTTPException
+import pytest
 
 from tests.conftest import FAKE_USER
 
@@ -168,9 +168,7 @@ class TestUpdateDescription:
 
         with patch(COLLECTION) as mock_col:
             mock_col.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
-            result = await update_conversation_description(
-                "conv_abc", "New description", FAKE_USER
-            )
+            result = await update_conversation_description("conv_abc", "New description", FAKE_USER)
 
         assert result["description"] == "New description"
 

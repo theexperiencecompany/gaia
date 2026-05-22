@@ -27,7 +27,7 @@ import {
 import type { GaiaClient } from "../api";
 import type { ChatRequest } from "../types";
 import { formatBotError } from "./formatters";
-import { chunkResponse, truncateResponse } from "./index";
+import { chunkResponse, truncateResponse } from "./text";
 
 export interface StreamingOptions {
   editIntervalMs: number;

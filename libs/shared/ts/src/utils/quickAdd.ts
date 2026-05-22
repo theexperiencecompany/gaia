@@ -1,4 +1,17 @@
 import { Priority } from "../types/todo";
+import type {
+  QuickAddOptions,
+  QuickAddProject,
+  QuickAddProjectMatch,
+  QuickAddResult,
+} from "./quickAdd.types";
+
+export type {
+  QuickAddOptions,
+  QuickAddProject,
+  QuickAddProjectMatch,
+  QuickAddResult,
+} from "./quickAdd.types";
 
 /**
  * A pure quick-add parser that mirrors the rules used by the web client's
@@ -18,33 +31,6 @@ import { Priority } from "../types/todo";
  */
 
 const DAY_MS = 86_400_000;
-
-export interface QuickAddProject {
-  id: string;
-  name: string;
-}
-
-export interface QuickAddProjectMatch {
-  id?: string;
-  name: string;
-}
-
-export interface QuickAddOptions {
-  projects?: QuickAddProject[];
-  /** Override "now" — useful for tests. Defaults to `new Date()`. */
-  now?: Date;
-  /** IANA timezone string. Defaults to the runtime's resolved timezone. */
-  timezone?: string;
-}
-
-export interface QuickAddResult {
-  cleanedText: string;
-  project?: QuickAddProjectMatch;
-  labels: string[];
-  priority?: Priority;
-  dueDate: Date | null;
-  timezone?: string;
-}
 
 const WEEKDAY_NAMES = [
   "sunday",

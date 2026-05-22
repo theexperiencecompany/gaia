@@ -19,6 +19,32 @@ interface WorkflowFailedMessage {
   error: string;
 }
 
+type Navigate = (path: string) => void;
+
+let navigate: Navigate | null = null;
+
+const ONBOARDING_ROUTE = /^\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)?onboarding(?:\/|$)/;
+
+function isOnOnboardingRoute(): boolean {
+  if (typeof window === "undefined") return false;
+  return ONBOARDING_ROUTE.test(window.location.pathname);
+}
+
+function notifyWorkflowGenerated(todoId: string) {
+  if (isOnOnboardingRoute()) return;
+  toast.success(
+    "Workflow generated!",
+    navigate !== null
+      ? {
+          action: {
+            label: "Open",
+            onClick: () => navigate?.(`/todos?todoId=${todoId}`),
+          },
+        }
+      : undefined,
+  );
+}
+
 function extractWorkflowCategories(steps: Workflow["steps"]): string[] {
   return [
     ...new Set(steps.map((s) => s.category).filter((c): c is string => !!c)),
@@ -76,7 +102,7 @@ export function startWorkflowPolling(todoId: string) {
       if (status.has_workflow && status.workflow) {
         pendingPolls.delete(todoId);
         applyWorkflowToStore(todoId, status.workflow);
-        toast.success("Workflow generated!");
+        notifyWorkflowGenerated(todoId);
         return;
       }
 
@@ -109,36 +135,27 @@ export function startWorkflowPolling(todoId: string) {
 export function useTodoWorkflowGlobalListener() {
   const router = useRouter();
 
-  const handleGenerated = useCallback(
-    (msg: unknown) => {
-      const message = msg as WorkflowGeneratedMessage;
-      const { todo_id, workflow } = message;
+  useEffect(() => {
+    navigate = (path) => router.push(path);
+    return () => {
+      navigate = null;
+    };
+  }, [router]);
 
-      if (!todo_id || !workflow) return;
+  const handleGenerated = useCallback((msg: unknown) => {
+    const { todo_id, workflow } = msg as WorkflowGeneratedMessage;
+    if (!todo_id || !workflow) return;
 
-      // Cancel polling — WS delivered successfully
-      pendingPolls.delete(todo_id);
-
-      applyWorkflowToStore(todo_id, workflow);
-      toast.success("Workflow generated!", {
-        action: {
-          label: "Open",
-          onClick: () => router.push(`/todos?todoId=${todo_id}`),
-        },
-      });
-    },
-    [router],
-  );
+    pendingPolls.delete(todo_id);
+    applyWorkflowToStore(todo_id, workflow);
+    notifyWorkflowGenerated(todo_id);
+  }, []);
 
   const handleFailed = useCallback((msg: unknown) => {
-    const message = msg as WorkflowFailedMessage;
-    const { todo_id } = message;
-
+    const { todo_id } = msg as WorkflowFailedMessage;
     if (!todo_id) return;
 
-    // Cancel polling
     pendingPolls.delete(todo_id);
-
     useTodoStore.setState((state) => {
       const { [todo_id]: _, ...rest } = state.workflowStatusCache;
       return { workflowStatusCache: rest };

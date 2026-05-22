@@ -5,18 +5,18 @@
   "type": "module",
   "scripts": {
     "build": "tsup",
+    "deploy-commands": "tsx src/deploy-commands.ts",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
-    "deploy-commands": "tsx src/deploy-commands.ts"
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@gaia/shared": "workspace:*",
     "discord.js": "^14.16.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^24.3.0",
     "tsup": "^8.4.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }

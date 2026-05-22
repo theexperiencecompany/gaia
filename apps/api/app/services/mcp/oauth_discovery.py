@@ -6,9 +6,6 @@ Handles OAuth 2.1 discovery flow per MCP specification:
 - RFC 8414 Authorization Server Metadata discovery
 """
 
-from typing import Optional
-
-from shared.py.wide_events import log
 from app.models.mcp_config import MCPConfig
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.mcp_oauth_utils import (
@@ -22,13 +19,14 @@ from app.utils.mcp_oauth_utils import (
     validate_https_url,
     validate_oauth_endpoints,
 )
+from shared.py.wide_events import log
 
 
 async def discover_oauth_config(
     token_store: MCPTokenStore,
     integration_id: str,
     mcp_config: MCPConfig,
-    challenge_data: Optional[dict] = None,
+    challenge_data: dict | None = None,
 ) -> dict:
     """Full MCP OAuth discovery flow per specification."""
     cached = await token_store.get_oauth_discovery(integration_id)

@@ -19,9 +19,9 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-import pytest
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+import pytest
 
 # ---------------------------------------------------------------------------
 # CRITICAL: import from the real production module.  If this import breaks,
@@ -29,7 +29,6 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 # ---------------------------------------------------------------------------
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -195,9 +194,7 @@ async def comms_graph_simple():
     io_patches = _follow_up_node_io_patches()
 
     with _apply_all_patches(store_mock, io_patches):
-        async with build_comms_graph(
-            chat_llm=fake_llm, in_memory_checkpointer=True
-        ) as graph:
+        async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
             yield graph
 
 
@@ -216,17 +213,13 @@ async def comms_graph_with_tool_call():
         "id": "call_executor_001",
         "type": "tool_call",
     }
-    fake_llm = create_fake_llm_with_tool_calls(
-        [tool_call_spec, "Done! The weather is sunny."]
-    )
+    fake_llm = create_fake_llm_with_tool_calls([tool_call_spec, "Done! The weather is sunny."])
     store_mock = _make_chroma_store_mock()
 
     io_patches = _follow_up_node_io_patches()
 
     with _apply_all_patches(store_mock, io_patches):
-        async with build_comms_graph(
-            chat_llm=fake_llm, in_memory_checkpointer=True
-        ) as graph:
+        async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
             yield graph
 
 
@@ -267,9 +260,7 @@ class TestRealCommsAgent:
                 return_value=None,
             ),
         ):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 # The graph object must exist and expose the langgraph compiled-graph API
                 assert graph is not None
                 assert hasattr(graph, "ainvoke")
@@ -307,26 +298,20 @@ class TestRealCommsAgent:
         assert len(messages) >= 2, "Expected at least the input messages + LLM reply"
 
         ai_messages = [m for m in messages if isinstance(m, AIMessage)]
-        assert len(ai_messages) >= 1, (
-            "Graph should have produced at least one AIMessage"
-        )
+        assert len(ai_messages) >= 1, "Graph should have produced at least one AIMessage"
 
         # The manage_system_prompts_node keeps only the latest non-memory system
         # prompt; there should be at most one non-memory system message.
         system_messages = [m for m in messages if m.type == "system"]
         non_memory_system = [
-            m
-            for m in system_messages
-            if not m.additional_kwargs.get("memory_message", False)
+            m for m in system_messages if not m.additional_kwargs.get("memory_message", False)
         ]
         assert len(non_memory_system) <= 1, (
             "manage_system_prompts_node should keep at most one non-memory system prompt, "
             f"found {len(non_memory_system)}"
         )
 
-    async def test_filter_messages_node_removes_unanswered_tool_calls(
-        self, comms_graph_simple
-    ):
+    async def test_filter_messages_node_removes_unanswered_tool_calls(self, comms_graph_simple):
         """
         Seed the state with an AI message that has an unanswered tool call.
         After the graph runs its pre_model_hooks (filter_messages_node), that
@@ -382,9 +367,7 @@ class TestRealCommsAgent:
             "The graph should have produced a new AIMessage with no pending tool calls."
         )
 
-    async def test_pre_model_hook_does_not_persist_to_checkpoint(
-        self, comms_graph_simple
-    ):
+    async def test_pre_model_hook_does_not_persist_to_checkpoint(self, comms_graph_simple):
         """
         manage_system_prompts_node runs as a pre_model_hook — it modifies the
         messages passed to the model ephemerally (filtering duplicates for the
@@ -410,17 +393,13 @@ class TestRealCommsAgent:
 
         # Graph must complete and produce an AI response.
         ai_messages = [m for m in result["messages"] if m.type == "ai"]
-        assert len(ai_messages) >= 1, (
-            "Graph should have produced at least one AIMessage"
-        )
+        assert len(ai_messages) >= 1, "Graph should have produced at least one AIMessage"
 
         # Both system messages remain in the persisted state because
         # pre_model_hooks only filter for the LLM call, not the checkpoint.
         system_messages = [m for m in result["messages"] if m.type == "system"]
         non_memory = [
-            m
-            for m in system_messages
-            if not m.additional_kwargs.get("memory_message", False)
+            m for m in system_messages if not m.additional_kwargs.get("memory_message", False)
         ]
         assert len(non_memory) == 2, (
             f"Both non-memory system prompts should remain in persisted state; "
@@ -458,8 +437,7 @@ class TestRealCommsAgent:
         # The tool call ID must match what our fake LLM emitted.
         tool_call_ids = {tm.tool_call_id for tm in tool_messages}
         assert "call_executor_001" in tool_call_ids, (
-            f"Expected ToolMessage with tool_call_id='call_executor_001', "
-            f"got ids: {tool_call_ids}"
+            f"Expected ToolMessage with tool_call_id='call_executor_001', got ids: {tool_call_ids}"
         )
 
     async def test_tool_routing_then_final_response(self, comms_graph_with_tool_call):
@@ -491,9 +469,7 @@ class TestRealCommsAgent:
 
         # Final AI message: plain text
         final_ai = [m for m in ai_messages if not getattr(m, "tool_calls", None)]
-        assert len(final_ai) >= 1, (
-            "Expected a final plain-text AI response after tool execution"
-        )
+        assert len(final_ai) >= 1, "Expected a final plain-text AI response after tool execution"
 
     # ------------------------------------------------------------------
     # 4. State structure
@@ -570,12 +546,8 @@ class TestRealCommsAgent:
         state_a = await comms_graph_simple.aget_state(config_a)
         state_b = await comms_graph_simple.aget_state(config_b)
 
-        msgs_a = [
-            m.content for m in state_a.values["messages"] if isinstance(m, HumanMessage)
-        ]
-        msgs_b = [
-            m.content for m in state_b.values["messages"] if isinstance(m, HumanMessage)
-        ]
+        msgs_a = [m.content for m in state_a.values["messages"] if isinstance(m, HumanMessage)]
+        msgs_b = [m.content for m in state_b.values["messages"] if isinstance(m, HumanMessage)]
 
         assert "Message from thread A" in msgs_a
         assert "Message from thread B" not in msgs_a
@@ -612,9 +584,7 @@ class TestRealCommsAgent:
         )
 
         with _apply_all_patches(store_mock, io_patches):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 config = _thread_config()
                 await graph.ainvoke(
                     {"messages": [HumanMessage(content="Hi, summarise my day")]},
@@ -632,10 +602,7 @@ class TestRealCommsAgent:
         keys_written = {
             k for call in writer_calls for k in (call if isinstance(call, dict) else {})
         }
-        assert (
-            "main_response_complete" in keys_written
-            or "follow_up_actions" in keys_written
-        ), (
+        assert "main_response_complete" in keys_written or "follow_up_actions" in keys_written, (
             f"Expected follow_up_actions_node to write 'main_response_complete' or "
             f"'follow_up_actions'; got keys: {keys_written}"
         )
@@ -667,9 +634,7 @@ class TestRealCommsAgent:
         )
 
         with _apply_all_patches(store_mock, io_patches):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 config = _thread_config()
                 # Two messages so len(messages) >= 2 — the node won't early-exit
                 await graph.ainvoke(
@@ -728,9 +693,7 @@ class TestRealCommsAgent:
                 ),
             ],
         ):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 config = _thread_config()
                 with pytest.raises(RuntimeError) as exc_info:
                     await graph.ainvoke(
@@ -762,9 +725,7 @@ class TestRealCommsAgent:
         io_patches = _follow_up_node_io_patches()
 
         with _apply_all_patches(store_mock, io_patches):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 config = _thread_config()
                 # An empty messages list — must not crash; graph may return
                 # normally or raise a meaningful validation error, but must
@@ -802,17 +763,13 @@ class TestRealCommsAgent:
             "id": "malformed_call_001",
             "type": "tool_call",
         }
-        fake_llm = create_fake_llm_with_tool_calls(
-            [malformed_tool_call, "I encountered an issue."]
-        )
+        fake_llm = create_fake_llm_with_tool_calls([malformed_tool_call, "I encountered an issue."])
         store_mock = _make_chroma_store_mock()
 
         io_patches = _follow_up_node_io_patches()
 
         with _apply_all_patches(store_mock, io_patches):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 config = _thread_config()
                 # Must not raise — error should be surfaced as a ToolMessage
                 result = await graph.ainvoke(
@@ -850,7 +807,7 @@ class TestRealCommsAgent:
         store_mock = _make_chroma_store_mock()
 
         # The LLM raises TimeoutError immediately when invoked
-        timeout_error = asyncio.TimeoutError("LLM request timed out")
+        timeout_error = TimeoutError("LLM request timed out")
 
         class TimeoutFakeLLM(FakeMessagesListChatModel):
             def bind_tools(self, tools: Any, **kwargs: Any) -> "TimeoutFakeLLM":
@@ -864,9 +821,7 @@ class TestRealCommsAgent:
         io_patches = _follow_up_node_io_patches()
 
         with _apply_all_patches(store_mock, io_patches):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 config = _thread_config()
                 with pytest.raises((asyncio.TimeoutError, TimeoutError)) as exc_info:
                     await graph.ainvoke(

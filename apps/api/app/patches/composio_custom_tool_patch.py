@@ -10,7 +10,7 @@ Composio no longer returns OAuth ``access_token`` values inside
 The injected ``user_id`` is the only value tools should rely on here.
 """
 
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 from composio.core.models.custom_tools import CustomTool
 from pydantic import BaseModel
@@ -58,7 +58,7 @@ def _patched_call(self: Any, **kwargs: Any) -> Any:
 
     # Normalize Pydantic objects in kwargs to plain dicts to avoid class
     # mismatch between dynamically-generated models and the original classes.
-    normalized: Union[Dict[str, Any], List[Any], Any] = _to_dict_recursive(kwargs)
+    normalized: Union[dict[str, Any], list[Any], Any] = _to_dict_recursive(kwargs)
 
     # Validate the request model.
     request = self.request_model.model_validate(normalized)

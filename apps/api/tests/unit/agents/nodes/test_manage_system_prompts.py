@@ -10,7 +10,6 @@ for back-compat with older persisted state.
 from typing import cast
 from unittest.mock import MagicMock, patch
 
-import pytest
 from langchain_core.messages import (
     AIMessage,
     AnyMessage,
@@ -19,6 +18,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
+import pytest
 
 from app.agents.core.nodes.manage_system_prompts import (
     _is_dynamic_context,
@@ -72,9 +72,7 @@ class TestManageSystemPrompts:
             HumanMessage(content="hi"),
             _static("latest prompt"),
         ]
-        result = manage_system_prompts_node(
-            cast(State, {"messages": msgs}), _config(), _store()
-        )
+        result = manage_system_prompts_node(cast(State, {"messages": msgs}), _config(), _store())
         system_msgs = [m for m in result["messages"] if m.type == "system"]
         assert len(system_msgs) == 1
         assert system_msgs[0].content == "latest prompt"
@@ -85,9 +83,7 @@ class TestManageSystemPrompts:
             _dynamic("ctx2"),
             _dynamic("ctx3"),
         ]
-        result = manage_system_prompts_node(
-            cast(State, {"messages": msgs}), _config(), _store()
-        )
+        result = manage_system_prompts_node(cast(State, {"messages": msgs}), _config(), _store())
         system_msgs = [m for m in result["messages"] if m.type == "system"]
         assert len(system_msgs) == 1
         assert system_msgs[0].content == "ctx3"
@@ -101,9 +97,7 @@ class TestManageSystemPrompts:
             _dynamic("new ctx"),
             _static("new main"),
         ]
-        result = manage_system_prompts_node(
-            cast(State, {"messages": msgs}), _config(), _store()
-        )
+        result = manage_system_prompts_node(cast(State, {"messages": msgs}), _config(), _store())
         contents = [m.content for m in result["messages"] if m.type == "system"]
         assert set(contents) == {"new main", "new ctx"}
 
@@ -119,9 +113,7 @@ class TestManageSystemPrompts:
             AIMessage(content="hi there"),
             ToolMessage(content="result", tool_call_id="tc1"),
         ]
-        result = manage_system_prompts_node(
-            cast(State, {"messages": msgs}), _config(), _store()
-        )
+        result = manage_system_prompts_node(cast(State, {"messages": msgs}), _config(), _store())
         types = [m.type for m in result["messages"]]
         assert types.count("human") == 1
         assert types.count("ai") == 1
@@ -145,9 +137,7 @@ class TestManageSystemPrompts:
             AIMessage(content="reply"),
             _static("latest prompt"),
         ]
-        result = manage_system_prompts_node(
-            cast(State, {"messages": msgs}), _config(), _store()
-        )
+        result = manage_system_prompts_node(cast(State, {"messages": msgs}), _config(), _store())
         actual = [m.content for m in result["messages"]]
         # Output: static first, dynamic second, then the non-system messages in
         # their original relative order.

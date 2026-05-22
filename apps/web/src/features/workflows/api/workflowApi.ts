@@ -295,10 +295,10 @@ export const workflowApi = {
     );
   },
 
-  // Get available trigger schemas
+  // silent: non-critical metadata; UI falls back to the slug, never toast.
   getTriggerSchemas: async (): Promise<TriggerSchema[]> => {
     return apiService.get<TriggerSchema[]>("/triggers/schema", {
-      errorMessage: "Failed to fetch trigger schemas",
+      silent: true,
     });
   },
 

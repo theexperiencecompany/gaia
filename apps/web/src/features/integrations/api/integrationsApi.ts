@@ -102,7 +102,11 @@ export const integrationsApi = {
     if (typeof window === "undefined")
       return { status: "error", name: "Unknown" };
 
-    const redirectPath = window.location.pathname + window.location.search;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("integration");
+    url.searchParams.delete("oauth_success");
+    url.searchParams.delete("oauth_error");
+    const redirectPath = url.pathname + url.search;
 
     const response = (await apiService.post(
       `/integrations/connect/${integrationId.toLowerCase()}`,

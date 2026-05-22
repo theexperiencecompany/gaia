@@ -109,10 +109,24 @@ export async function runConcurrentInteractiveCommands(
         reject(error);
       });
 
-      proc.on("close", (code) => {
+      proc.on("close", (code, signal) => {
         closedCount += 1;
 
-        const exitedCleanly = code === null || code === 0;
+        // Treat SIGINT / SIGTERM as a clean exit: foreground commands like
+        // `gaia logs` and `gaia dev` are *expected* to be terminated by
+        // Ctrl-C, and a child terminated by signal reports code 128+N (130
+        // for SIGINT, 143 for SIGTERM) which would otherwise look like an
+        // error to the parent.
+        const sigExit =
+          signal === "SIGINT" ||
+          signal === "SIGTERM" ||
+          code === 130 ||
+          code === 143 ||
+          stopping;
+        // A signal-terminated child reports code === null, so only treat that
+        // as clean when it's an expected shutdown (sigExit). An unexpected
+        // SIGKILL/SIGSEGV must still surface as an error.
+        const exitedCleanly = code === 0 || sigExit;
         if (!exitedCleanly && !settled) {
           settled = true;
           cleanupSignalHandlers();

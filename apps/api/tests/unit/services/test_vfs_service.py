@@ -1,6 +1,6 @@
 """Comprehensive tests for app/services/vfs/mongo_vfs.py."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -38,8 +38,8 @@ def _make_node(
         "size_bytes": len(content.encode()) if content else 0,
         "metadata": {},
         "user_id": user_id,
-        "created_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
         **extra,
     }
 
@@ -112,9 +112,7 @@ class TestMongoVFSSyncMethods:
 
     def test_write_access_system_path_normalized_denied(self):
         with pytest.raises(VFSAccessError, match="read-only"):
-            self.vfs._validate_write_access(
-                "/system/skills/x", USER_ID, original_path=None
-            )
+            self.vfs._validate_write_access("/system/skills/x", USER_ID, original_path=None)
 
     def test_write_access_allow_system_flag(self):
         # Should not raise
@@ -732,9 +730,7 @@ class TestMongoVFSSearch:
         with patch(MOCK_COLLECTION) as col:
             col.find = MagicMock(return_value=mock_cursor)
 
-            result = await vfs.search(
-                "*.txt", USER_ID, base_path=f"/users/{USER_ID}/global/sub"
-            )
+            result = await vfs.search("*.txt", USER_ID, base_path=f"/users/{USER_ID}/global/sub")
 
         assert result.total_count == 1
 
@@ -817,9 +813,7 @@ class TestMongoVFSDelete:
         vfs = MongoVFS()
         path = f"/users/{USER_ID}/global/mydir"
         folder = _make_node(path, node_type="folder", content=None)
-        child = _make_node(
-            f"{path}/big.bin", content=None, gridfs_id="ccddee112233aabbff445566"
-        )
+        child = _make_node(f"{path}/big.bin", content=None, gridfs_id="ccddee112233aabbff445566")
 
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[child])
@@ -950,9 +944,7 @@ class TestMongoVFSCopy:
         with (
             patch(MOCK_COLLECTION) as col,
             patch.object(vfs, "read", new_callable=AsyncMock, return_value="data"),
-            patch.object(
-                vfs, "write", new_callable=AsyncMock, return_value=dest
-            ) as mock_write,
+            patch.object(vfs, "write", new_callable=AsyncMock, return_value=dest) as mock_write,
         ):
             col.find_one = AsyncMock(return_value=node)
 
@@ -1043,16 +1035,12 @@ class TestMongoVFSGetGridFS:
         vfs = MongoVFS()
         mock_db = MagicMock()
 
-        with patch(
-            "app.services.vfs.mongo_vfs._get_mongodb_instance"
-        ) as mock_get_mongo:
+        with patch("app.services.vfs.mongo_vfs._get_mongodb_instance") as mock_get_mongo:
             mock_mongo = MagicMock()
             mock_mongo.database = mock_db
             mock_get_mongo.return_value = mock_mongo
 
-            with patch(
-                "app.services.vfs.mongo_vfs.AsyncIOMotorGridFSBucket"
-            ) as mock_bucket_cls:
+            with patch("app.services.vfs.mongo_vfs.AsyncIOMotorGridFSBucket") as mock_bucket_cls:
                 mock_bucket_cls.return_value = "bucket_instance"
 
                 result = await vfs._get_gridfs()

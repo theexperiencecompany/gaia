@@ -4,7 +4,7 @@ Tests the /api/v1/integrations/users/me/integrations endpoints with mocked
 service layer to verify routing, auth enforcement, and response codes.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -15,7 +15,6 @@ from app.models.integration_models import (
     UserIntegrationResponse,
     UserIntegrationsListResponse,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -46,8 +45,8 @@ def _make_user_integration_response(**overrides) -> UserIntegrationResponse:
     defaults = {
         "integration_id": "gmail",
         "status": "connected",
-        "created_at": datetime.now(timezone.utc),
-        "connected_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
+        "connected_at": datetime.now(UTC),
         "integration": _make_integration_response(),
     }
     defaults.update(overrides)
@@ -91,9 +90,7 @@ class TestUserIntegrationEndpoints:
         "app.api.v1.endpoints.integrations.user.get_user_integrations",
         new_callable=AsyncMock,
     )
-    async def test_list_user_integrations_empty_returns_200(
-        self, mock_get, test_client
-    ):
+    async def test_list_user_integrations_empty_returns_200(self, mock_get, test_client):
         """GET user integrations with no items should return 200 and empty list."""
         mock_get.return_value = UserIntegrationsListResponse(
             integrations=[],
@@ -136,9 +133,7 @@ class TestUserIntegrationEndpoints:
         "app.api.v1.endpoints.integrations.user.get_user_integrations",
         new_callable=AsyncMock,
     )
-    async def test_list_user_integrations_service_error_returns_500(
-        self, mock_get, test_client
-    ):
+    async def test_list_user_integrations_service_error_returns_500(self, mock_get, test_client):
         """GET user integrations should return 500 when service raises."""
         mock_get.side_effect = RuntimeError("DB connection lost")
 
@@ -166,7 +161,7 @@ class TestUserIntegrationEndpoints:
             user_id="integration-test-user-1",
             integration_id="gmail",
             status="created",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
 
         response = await test_client.post(
@@ -186,13 +181,9 @@ class TestUserIntegrationEndpoints:
         "app.api.v1.endpoints.integrations.user.add_user_integration_service",
         new_callable=AsyncMock,
     )
-    async def test_add_integration_already_exists_returns_400(
-        self, mock_add, test_client
-    ):
+    async def test_add_integration_already_exists_returns_400(self, mock_add, test_client):
         """POST to add duplicate integration should return 400."""
-        mock_add.side_effect = ValueError(
-            "Integration 'gmail' already added to workspace"
-        )
+        mock_add.side_effect = ValueError("Integration 'gmail' already added to workspace")
 
         response = await test_client.post(
             _BASE,
@@ -221,9 +212,7 @@ class TestUserIntegrationEndpoints:
         "app.api.v1.endpoints.integrations.user.add_user_integration_service",
         new_callable=AsyncMock,
     )
-    async def test_add_integration_service_error_returns_500(
-        self, mock_add, test_client
-    ):
+    async def test_add_integration_service_error_returns_500(self, mock_add, test_client):
         """POST should return 500 when service raises unexpected error."""
         mock_add.side_effect = RuntimeError("Unexpected DB error")
 
@@ -253,8 +242,8 @@ class TestUserIntegrationEndpoints:
             user_id="integration-test-user-1",
             integration_id="gcal",
             status="connected",
-            created_at=datetime.now(timezone.utc),
-            connected_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            connected_at=datetime.now(UTC),
         )
 
         response = await test_client.post(
@@ -291,9 +280,7 @@ class TestUserIntegrationEndpoints:
         "app.api.v1.endpoints.integrations.user.remove_user_integration",
         new_callable=AsyncMock,
     )
-    async def test_remove_integration_not_found_returns_404(
-        self, mock_remove, test_client
-    ):
+    async def test_remove_integration_not_found_returns_404(self, mock_remove, test_client):
         """DELETE non-existent integration should return 404."""
         mock_remove.return_value = False
 
@@ -306,9 +293,7 @@ class TestUserIntegrationEndpoints:
         "app.api.v1.endpoints.integrations.user.remove_user_integration",
         new_callable=AsyncMock,
     )
-    async def test_remove_integration_service_error_returns_500(
-        self, mock_remove, test_client
-    ):
+    async def test_remove_integration_service_error_returns_500(self, mock_remove, test_client):
         """DELETE should return 500 when service raises unexpected error."""
         mock_remove.side_effect = RuntimeError("DB write failed")
 
@@ -354,25 +339,17 @@ class TestIntegrationEndpointAuthEnforcement:
     from any endpoint, the corresponding test will fail.
     """
 
-    async def test_list_integrations_unauthenticated_returns_401(
-        self, unauthenticated_client
-    ):
+    async def test_list_integrations_unauthenticated_returns_401(self, unauthenticated_client):
         """GET /integrations/users/me/integrations without auth must return 401."""
         response = await unauthenticated_client.get(_BASE)
         assert response.status_code == 401
 
-    async def test_add_integration_unauthenticated_returns_401(
-        self, unauthenticated_client
-    ):
+    async def test_add_integration_unauthenticated_returns_401(self, unauthenticated_client):
         """POST /integrations/users/me/integrations without auth must return 401."""
-        response = await unauthenticated_client.post(
-            _BASE, json={"integration_id": "gmail"}
-        )
+        response = await unauthenticated_client.post(_BASE, json={"integration_id": "gmail"})
         assert response.status_code == 401
 
-    async def test_remove_integration_unauthenticated_returns_401(
-        self, unauthenticated_client
-    ):
+    async def test_remove_integration_unauthenticated_returns_401(self, unauthenticated_client):
         """DELETE /integrations/users/me/integrations/{id} without auth must return 401."""
         response = await unauthenticated_client.delete(f"{_BASE}/gmail")
         assert response.status_code == 401
@@ -400,17 +377,13 @@ class TestIntegrationEndpointLogic:
         "app.api.v1.endpoints.integrations.user.add_user_integration_service",
         new_callable=AsyncMock,
     )
-    async def test_add_already_connected_integration_returns_400(
-        self, mock_add, test_client
-    ):
+    async def test_add_already_connected_integration_returns_400(self, mock_add, test_client):
         """POST with an already-connected integration must return 400.
 
         The endpoint maps ValueError to 400. If that mapping is removed,
         this test fails.
         """
-        mock_add.side_effect = ValueError(
-            "Integration 'gmail' already added to workspace"
-        )
+        mock_add.side_effect = ValueError("Integration 'gmail' already added to workspace")
 
         response = await test_client.post(_BASE, json={"integration_id": "gmail"})
 
@@ -422,9 +395,7 @@ class TestIntegrationEndpointLogic:
         "app.api.v1.endpoints.integrations.user.remove_user_integration",
         new_callable=AsyncMock,
     )
-    async def test_remove_nonexistent_integration_returns_404(
-        self, mock_remove, test_client
-    ):
+    async def test_remove_nonexistent_integration_returns_404(self, mock_remove, test_client):
         """DELETE a non-existent integration must return 404.
 
         The endpoint checks the bool return value of remove_user_integration
@@ -443,9 +414,7 @@ class TestIntegrationEndpointLogic:
         "app.api.v1.endpoints.integrations.user.remove_user_integration",
         new_callable=AsyncMock,
     )
-    async def test_remove_existing_integration_does_not_return_404(
-        self, mock_remove, test_client
-    ):
+    async def test_remove_existing_integration_does_not_return_404(self, mock_remove, test_client):
         """DELETE an existing integration must NOT return 404.
 
         Complements test_remove_nonexistent_integration_returns_404 – ensures

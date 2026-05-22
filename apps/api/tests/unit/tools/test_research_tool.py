@@ -9,7 +9,7 @@ Covers:
 - Exception in main try block
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,12 +17,12 @@ import pytest
 MODULE = "app.agents.tools.research_tool"
 
 
-def _make_config(user_id: Optional[str] = "user-123") -> Dict[str, Any]:
+def _make_config(user_id: str | None = "user-123") -> dict[str, Any]:
     """Build a minimal RunnableConfig-like dict."""
     return {"configurable": {"user_id": user_id}}
 
 
-def _no_user_config() -> Dict[str, Any]:
+def _no_user_config() -> dict[str, Any]:
     return {"configurable": {}}
 
 
@@ -103,9 +103,7 @@ class TestDeepResearch:
         )
         assert result["cached"] is True
         assert result["query"] == "test"
-        _patch_stream_writer.assert_any_call(
-            {"progress": "Loaded research from cache!"}
-        )
+        _patch_stream_writer.assert_any_call({"progress": "Loaded research from cache!"})
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.get_user_id_from_config", return_value="user-123")
@@ -260,9 +258,7 @@ class TestDeepResearch:
     ) -> None:
         mock_decompose.return_value = ["sub-q1"]
         mock_ddg.return_value = {"results": [{"url": "https://a.com"}]}
-        mock_rank.return_value = [
-            {"url": "https://a.com", "snippet": "Search snippet text"}
-        ]
+        mock_rank.return_value = [{"url": "https://a.com", "snippet": "Search snippet text"}]
         mock_batch_crawl4ai.return_value = ({}, {"https://a.com": "fail"})
 
         from app.agents.tools.research_tool import deep_research

@@ -1,7 +1,8 @@
 """Unit tests for memory_tasks ARQ worker."""
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from app.workers.tasks.memory_tasks import store_memories_batch
 
@@ -101,9 +102,7 @@ class TestStoreMemoriesBatch:
         assert any("Acme Corp" in c for c in contents), "Offer letter email missing"
         assert any("San Francisco" in c for c in contents), "Flight email missing"
 
-    async def test_mem0_filters_all_returns_non_memorable_message(
-        self, ctx, single_email
-    ):
+    async def test_mem0_filters_all_returns_non_memorable_message(self, ctx, single_email):
         with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(return_value=False)
 
@@ -201,9 +200,7 @@ class TestStoreMemoriesBatch:
 
     async def test_exception_in_service_returns_error_string(self, ctx, single_email):
         with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(
-                side_effect=RuntimeError("Mem0 is unavailable")
-            )
+            mock_svc.store_memory_batch = AsyncMock(side_effect=RuntimeError("Mem0 is unavailable"))
 
             result = await store_memories_batch(ctx, "user_abc", single_email)
 
@@ -281,9 +278,7 @@ class TestStoreMemoriesBatch:
             f"All 5 emails must be saved; only {len(stored_messages)} were stored"
         )
         for i in range(1, 6):
-            matching = [
-                m for m in stored_messages if f"Email body number {i}" in m["content"]
-            ]
+            matching = [m for m in stored_messages if f"Email body number {i}" in m["content"]]
             assert matching, f"Email {i} content was not saved to the DB"
         assert call_kwargs["user_id"] == "user_batch"
 

@@ -4,15 +4,16 @@ Integration Connection Decorator
 This module provides a decorator to check integration requirements before tool execution.
 """
 
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, Optional
+from typing import Any
 
-from shared.py.wide_events import log
 from app.utils.integration_checker import check_and_prompt_integration
 from app.utils.oauth_utils import get_tokens_by_user_id
+from shared.py.wide_events import log
 
 
-def require_integration(tool_category: str, tool_name: Optional[str] = None):
+def require_integration(tool_category: str, tool_name: str | None = None):
     """
     Decorator to check if user has required integration before executing a tool.
 
@@ -44,9 +45,7 @@ def require_integration(tool_category: str, tool_name: Optional[str] = None):
                 config = kwargs.get("config")
 
             if not config:
-                log.warning(
-                    f"No RunnableConfig found for tool: {tool_name or func.__name__}"
-                )
+                log.warning(f"No RunnableConfig found for tool: {tool_name or func.__name__}")
                 return "Configuration error: Unable to verify integration permissions."
 
             # Extract access token from config
@@ -56,9 +55,7 @@ def require_integration(tool_category: str, tool_name: Optional[str] = None):
             )
 
             if not access_token:
-                log.warning(
-                    f"No access token found for tool: {tool_name or func.__name__}"
-                )
+                log.warning(f"No access token found for tool: {tool_name or func.__name__}")
                 return "Authentication required: Please ensure you're logged in."
 
             # Check if user has required integration

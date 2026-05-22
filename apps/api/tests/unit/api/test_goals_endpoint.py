@@ -5,12 +5,12 @@ functions are mocked; only HTTP status codes, response shapes, and error
 handling are verified.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from fastapi import HTTPException
 from httpx import AsyncClient
+import pytest
 
 from tests.conftest import FAKE_USER
 
@@ -20,7 +20,7 @@ from tests.conftest import FAKE_USER
 
 API = "/api/v1"
 USER_ID = FAKE_USER["user_id"]
-NOW = datetime.now(timezone.utc).isoformat()
+NOW = datetime.now(UTC).isoformat()
 
 
 def _goal_response(
@@ -80,9 +80,7 @@ class TestCreateGoal:
             )
         assert resp.status_code == 200
 
-    async def test_create_goal_validation_error_missing_title(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_create_goal_validation_error_missing_title(self, client: AsyncClient) -> None:
         resp = await client.post(f"{API}/goals", json={})
         assert resp.status_code == 422
 
@@ -95,9 +93,7 @@ class TestCreateGoal:
             resp = await client.post(f"{API}/goals", json={"title": "Learn Rust"})
         assert resp.status_code == 500
 
-    async def test_create_goal_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_create_goal_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(f"{API}/goals", json={"title": "Learn Rust"})
         assert resp.status_code == 401
 
@@ -238,16 +234,12 @@ class TestDeleteGoal:
         with patch(
             "app.api.v1.endpoints.goals.delete_goal_service",
             new_callable=AsyncMock,
-            side_effect=HTTPException(
-                status_code=500, detail="Failed to delete the goal"
-            ),
+            side_effect=HTTPException(status_code=500, detail="Failed to delete the goal"),
         ):
             resp = await client.delete(f"{API}/goals/g1")
         assert resp.status_code == 500
 
-    async def test_delete_goal_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_delete_goal_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.delete(f"{API}/goals/g1")
         assert resp.status_code == 401
 
@@ -292,9 +284,7 @@ class TestUpdateNodeStatus:
         with patch(
             "app.api.v1.endpoints.goals.update_node_status_service",
             new_callable=AsyncMock,
-            side_effect=HTTPException(
-                status_code=404, detail="Node not found in roadmap"
-            ),
+            side_effect=HTTPException(status_code=404, detail="Node not found in roadmap"),
         ):
             resp = await client.patch(
                 f"{API}/goals/g1/roadmap/nodes/bad_node",
@@ -308,9 +298,7 @@ class TestUpdateNodeStatus:
         resp = await client.patch(f"{API}/goals/g1/roadmap/nodes/n1", json={})
         assert resp.status_code == 422
 
-    async def test_update_node_validation_error_bad_type(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_update_node_validation_error_bad_type(self, client: AsyncClient) -> None:
         resp = await client.patch(
             f"{API}/goals/g1/roadmap/nodes/n1",
             json={"is_complete": "not_a_bool"},
@@ -329,9 +317,7 @@ class TestUpdateNodeStatus:
             )
         assert resp.status_code == 500
 
-    async def test_update_node_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_update_node_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.patch(
             f"{API}/goals/g1/roadmap/nodes/n1",
             json={"is_complete": True},
