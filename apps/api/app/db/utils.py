@@ -1,5 +1,6 @@
+from typing import Any
+
 from bson import ObjectId
-from typing import Any, Dict
 
 
 def serialize_document(document: dict) -> dict:
@@ -20,7 +21,7 @@ def serialize_document(document: dict) -> dict:
     if not document:
         return document
 
-    result: Dict[str, Any] = {}
+    result: dict[str, Any] = {}
     # Convert the primary _id to id and add to result
     if "_id" in document:
         result["id"] = str(document.pop("_id"))

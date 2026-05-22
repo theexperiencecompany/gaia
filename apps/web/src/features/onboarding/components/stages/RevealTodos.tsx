@@ -16,8 +16,6 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { CheckmarkCircle02Icon, Mail01Icon } from "@icons";
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useCallback } from "react";
@@ -32,7 +30,8 @@ import type { Action, OnboardingState } from "../../state/types";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
 import { OnboardingTodoCards } from "../OnboardingTodoCards";
 import { RevealIntroBubble } from "../RevealIntroBubble";
-import { OnboardingChatStream } from "./Chat";
+import { OnboardingChatStream } from "./ChatStream";
+import { SelectedTodoIndicator } from "./SelectedTodoIndicator";
 
 interface RevealTodosProps {
   state: OnboardingState;
@@ -45,43 +44,6 @@ function generateConvoId(): string {
     return crypto.randomUUID();
   }
   return `onboarding-todo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-export interface SelectedTodoIndicatorProps {
-  title: string;
-  sourceEmail: { sender: string; subject: string } | null;
-}
-
-export function SelectedTodoIndicator({
-  title,
-  sourceEmail,
-}: SelectedTodoIndicatorProps) {
-  return (
-    <div className="rounded-2xl bg-zinc-900 p-3">
-      <Chip
-        color="success"
-        variant="flat"
-        size="sm"
-        startContent={<CheckmarkCircle02Icon className="size-3.5" />}
-      >
-        Selected todo
-      </Chip>
-      <div className="mt-2 text-sm text-white">{title}</div>
-      {sourceEmail && (
-        <div className="mt-3 flex items-start gap-2 rounded-xl bg-zinc-800 p-3">
-          <Mail01Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-500" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-xs text-zinc-400">
-              {sourceEmail.sender}
-            </div>
-            <div className="truncate text-xs text-zinc-500">
-              {sourceEmail.subject}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
 
 export function RevealTodosComposer({

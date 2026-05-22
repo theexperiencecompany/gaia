@@ -1,25 +1,26 @@
 """Reddit custom tools using Composio custom tool infrastructure."""
 
-from typing import Any, Dict, List
+from typing import Any
 
-from shared.py.wide_events import log
+from composio import Composio
+
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
 from app.utils.errors import AppError
-from composio import Composio
+from shared.py.wide_events import log
 
 REDDIT_API_BASE = "https://oauth.reddit.com"
 REDDIT_TOOLKIT = "REDDIT"
 _REDDIT_HEADERS = {"User-Agent": "GAIA/1.0"}
 
 
-def register_reddit_custom_tools(composio: Composio) -> List[str]:
+def register_reddit_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="REDDIT")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get Reddit context snapshot: user profile, subscribed subreddits, and unread messages.
 
         Zero required parameters. Returns authenticated user's Reddit state.
@@ -32,29 +33,37 @@ def register_reddit_custom_tools(composio: Composio) -> List[str]:
                 status_code=500,
             )
 
-        me: Dict[str, Any] = {}
+        me: dict[str, Any] = {}
         try:
-            me = proxy_request_sync(
-                user_id=user_id,
-                toolkit=REDDIT_TOOLKIT,
-                endpoint=f"{REDDIT_API_BASE}/api/v1/me",
-                method="GET",
-                headers=_REDDIT_HEADERS,
-            ) or {}
+            me = (
+                proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=REDDIT_TOOLKIT,
+                    endpoint=f"{REDDIT_API_BASE}/api/v1/me",
+                    method="GET",
+                    headers=_REDDIT_HEADERS,
+                )
+                or {}
+            )
         except Exception as e:
-            log.set(user_id=user_id, endpoint=f"{REDDIT_API_BASE}/api/v1/me", toolkit=REDDIT_TOOLKIT)
+            log.set(
+                user_id=user_id, endpoint=f"{REDDIT_API_BASE}/api/v1/me", toolkit=REDDIT_TOOLKIT
+            )
             log.error("Reddit /me fetch failed", exc=e)
 
-        subreddits: List[Dict[str, Any]] = []
+        subreddits: list[dict[str, Any]] = []
         try:
-            subs_data = proxy_request_sync(
-                user_id=user_id,
-                toolkit=REDDIT_TOOLKIT,
-                endpoint=f"{REDDIT_API_BASE}/subreddits/mine/subscriber",
-                method="GET",
-                query={"limit": 5},
-                headers=_REDDIT_HEADERS,
-            ) or {}
+            subs_data = (
+                proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=REDDIT_TOOLKIT,
+                    endpoint=f"{REDDIT_API_BASE}/subreddits/mine/subscriber",
+                    method="GET",
+                    query={"limit": 5},
+                    headers=_REDDIT_HEADERS,
+                )
+                or {}
+            )
             children = subs_data.get("data", {}).get("children", [])
             subreddits = [
                 {
@@ -65,19 +74,26 @@ def register_reddit_custom_tools(composio: Composio) -> List[str]:
                 for c in children
             ]
         except Exception as e:
-            log.set(user_id=user_id, endpoint=f"{REDDIT_API_BASE}/subreddits/mine/subscriber", toolkit=REDDIT_TOOLKIT)
+            log.set(
+                user_id=user_id,
+                endpoint=f"{REDDIT_API_BASE}/subreddits/mine/subscriber",
+                toolkit=REDDIT_TOOLKIT,
+            )
             log.error("Reddit subreddits fetch failed", exc=e)
 
-        unread_messages: List[Dict[str, Any]] = []
+        unread_messages: list[dict[str, Any]] = []
         try:
-            messages_data = proxy_request_sync(
-                user_id=user_id,
-                toolkit=REDDIT_TOOLKIT,
-                endpoint=f"{REDDIT_API_BASE}/message/unread",
-                method="GET",
-                query={"limit": 5},
-                headers=_REDDIT_HEADERS,
-            ) or {}
+            messages_data = (
+                proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=REDDIT_TOOLKIT,
+                    endpoint=f"{REDDIT_API_BASE}/message/unread",
+                    method="GET",
+                    query={"limit": 5},
+                    headers=_REDDIT_HEADERS,
+                )
+                or {}
+            )
             children = messages_data.get("data", {}).get("children", [])
             unread_messages = [
                 {
@@ -89,7 +105,11 @@ def register_reddit_custom_tools(composio: Composio) -> List[str]:
                 for c in children
             ]
         except Exception as e:
-            log.set(user_id=user_id, endpoint=f"{REDDIT_API_BASE}/message/unread", toolkit=REDDIT_TOOLKIT)
+            log.set(
+                user_id=user_id,
+                endpoint=f"{REDDIT_API_BASE}/message/unread",
+                toolkit=REDDIT_TOOLKIT,
+            )
             log.error("Reddit unread messages fetch failed", exc=e)
 
         return {

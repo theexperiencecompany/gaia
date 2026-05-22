@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from shared.py.wide_events import (
-    WideEventLogger,
     _LEVEL_ORDER,
+    WideEventLogger,
     _max_level,
     _trace_id,
     _wide_event,
@@ -16,7 +16,6 @@ from shared.py.wide_events import (
     log,
     wide_task,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

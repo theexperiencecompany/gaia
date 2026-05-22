@@ -137,19 +137,19 @@ class OpenUIErrorBoundary extends React.Component<
     return { hasError: true, errorMessage: error.message };
   }
 
-  componentDidUpdate(prevProps: { code: string }) {
+  override componentDidUpdate(prevProps: { code: string }) {
     if (this.state.hasError && prevProps.code !== this.props.code) {
       this.setState({ hasError: false, errorMessage: "" });
     }
   }
 
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
+  override componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error("[OpenUIRenderer] Render error:", error, info, {
       code: this.props.code,
     });
   }
 
-  render() {
+  override render() {
     if (this.state.hasError) {
       return (
         <OpenUIErrorCard

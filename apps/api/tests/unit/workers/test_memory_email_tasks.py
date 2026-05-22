@@ -1,7 +1,8 @@
 """Unit tests for memory_email_tasks ARQ worker."""
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from app.workers.tasks.memory_email_tasks import process_gmail_emails_to_memory
 

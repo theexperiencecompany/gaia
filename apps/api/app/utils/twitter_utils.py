@@ -4,11 +4,11 @@ These helpers wrap Twitter API v2 calls behind Composio's proxy. The proxy
 attaches the user's OAuth token server-side; callers only supply `user_id`.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from shared.py.wide_events import log
 from app.services.composio.proxy_client import proxy_request_sync
 from app.utils.errors import AppError
+from shared.py.wide_events import log
 
 TWITTER_API_BASE = "https://api.twitter.com/2"
 TWITTER_TOOLKIT = "TWITTER"
@@ -19,8 +19,8 @@ def _proxy(
     *,
     endpoint: str,
     method: str,
-    body: Optional[Dict[str, Any]] = None,
-    query: Optional[Dict[str, Any]] = None,
+    body: dict[str, Any] | None = None,
+    query: dict[str, Any] | None = None,
 ) -> Any:
     return proxy_request_sync(
         user_id=user_id,
@@ -32,7 +32,7 @@ def _proxy(
     )
 
 
-def get_my_user_id(user_id: str) -> Optional[str]:
+def get_my_user_id(user_id: str) -> str | None:
     """Get the authenticated user's Twitter ID."""
     log.set(operation="twitter_get_my_user_id")
     try:
@@ -43,9 +43,7 @@ def get_my_user_id(user_id: str) -> Optional[str]:
         return None
 
 
-def lookup_user_by_username(
-    user_id: str, username: str
-) -> Optional[Dict[str, Any]]:
+def lookup_user_by_username(user_id: str, username: str) -> dict[str, Any] | None:
     """Look up a user by username."""
     try:
         data = _proxy(
@@ -64,9 +62,7 @@ def lookup_user_by_username(
         return None
 
 
-def follow_user(
-    user_id: str, my_user_id: str, target_user_id: str
-) -> Dict[str, Any]:
+def follow_user(user_id: str, my_user_id: str, target_user_id: str) -> dict[str, Any]:
     """Follow a user by ID."""
     try:
         data = _proxy(
@@ -85,16 +81,12 @@ def follow_user(
         return {"success": False, "error": str(e)}
 
 
-def unfollow_user(
-    user_id: str, my_user_id: str, target_user_id: str
-) -> Dict[str, Any]:
+def unfollow_user(user_id: str, my_user_id: str, target_user_id: str) -> dict[str, Any]:
     """Unfollow a user by ID."""
     try:
         data = _proxy(
             user_id,
-            endpoint=(
-                f"{TWITTER_API_BASE}/users/{my_user_id}/following/{target_user_id}"
-            ),
+            endpoint=(f"{TWITTER_API_BASE}/users/{my_user_id}/following/{target_user_id}"),
             method="DELETE",
         )
         return {"success": True, "data": data}
@@ -110,13 +102,13 @@ def unfollow_user(
 def create_tweet(
     user_id: str,
     text: str,
-    reply_to_tweet_id: Optional[str] = None,
-    media_ids: Optional[List[str]] = None,
-    quote_tweet_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    reply_to_tweet_id: str | None = None,
+    media_ids: list[str] | None = None,
+    quote_tweet_id: str | None = None,
+) -> dict[str, Any]:
     """Create a tweet."""
     try:
-        body: Dict[str, Any] = {"text": text}
+        body: dict[str, Any] = {"text": text}
         if reply_to_tweet_id:
             body["reply"] = {"in_reply_to_tweet_id": reply_to_tweet_id}
         if media_ids:
@@ -124,9 +116,7 @@ def create_tweet(
         if quote_tweet_id:
             body["quote_tweet_id"] = quote_tweet_id
 
-        data = _proxy(
-            user_id, endpoint=f"{TWITTER_API_BASE}/tweets", method="POST", body=body
-        )
+        data = _proxy(user_id, endpoint=f"{TWITTER_API_BASE}/tweets", method="POST", body=body)
         return {"success": True, "data": (data or {}).get("data", {})}
     except AppError as e:
         return {
@@ -141,11 +131,9 @@ def search_tweets(
     user_id: str,
     query: str,
     max_results: int = 10,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Search recent tweets."""
-    log.set(
-        operation="twitter_search_tweets", search_query=query, max_results=max_results
-    )
+    log.set(operation="twitter_search_tweets", search_query=query, max_results=max_results)
     try:
         data = _proxy(
             user_id,

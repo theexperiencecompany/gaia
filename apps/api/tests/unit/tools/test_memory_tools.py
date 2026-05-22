@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.memory_tools."""
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -16,19 +16,19 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.memory_tools"
 
 
-def _make_config(user_id: str = FAKE_USER_ID) -> Dict[str, Any]:
+def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
     """Return a minimal RunnableConfig-like dict with metadata.user_id."""
     return {"metadata": {"user_id": user_id}}
 
 
-def _make_config_no_user() -> Dict[str, Any]:
+def _make_config_no_user() -> dict[str, Any]:
     """Config with no user_id to trigger auth errors."""
     return {"metadata": {}}
 
 
 def _make_empty_config() -> None:
     """Falsy config to trigger the early 'config required' check."""
-    return None
+    return
 
 
 def _make_memory_entry(

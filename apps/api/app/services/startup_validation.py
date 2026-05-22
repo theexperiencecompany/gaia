@@ -2,12 +2,12 @@
 Startup validation for GAIA.
 """
 
-from shared.py.wide_events import log
 from app.core.lazy_loader import lazy_provider
 from app.db.mongodb.collections import (
     ai_models_collection,
     plans_collection,
 )
+from shared.py.wide_events import log
 
 
 # @Cacheable(key="startup:models_seeded", ttl=2592000)  # 30 days cache
@@ -46,9 +46,7 @@ async def validate_startup_requirements():
                 log.error("❌ AI models not seeded")
             if not payment_ok:
                 log.error("❌ Payment plans not set up")
-            raise RuntimeError(
-                "Startup requirements not met. Please run: ./scripts/setup.sh"
-            )
+            raise RuntimeError("Startup requirements not met. Please run: ./scripts/setup.sh")
 
     except Exception as e:
         log.error(f"Startup validation failed: {e}")

@@ -2,13 +2,13 @@
 Utility functions for converting legacy tool data to unified format.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 
 from app.models.chat_models import ToolDataEntry, tool_fields
 
 
-def convert_legacy_tool_data(message: Dict[str, Any]) -> Dict[str, Any]:
+def convert_legacy_tool_data(message: dict[str, Any]) -> dict[str, Any]:
     """
     Convert legacy individual tool fields to unified tool_data array format.
 
@@ -24,7 +24,7 @@ def convert_legacy_tool_data(message: Dict[str, Any]) -> Dict[str, Any]:
     # Create a copy to avoid modifying original
     converted_message = message.copy()
     tool_data_entries = []
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(UTC).isoformat()
 
     # Check if message already has unified tool_data - preserve it
     existing_tool_data = converted_message.get("tool_data", [])
@@ -59,7 +59,7 @@ def convert_legacy_tool_data(message: Dict[str, Any]) -> Dict[str, Any]:
     return converted_message
 
 
-def convert_conversation_messages(conversation: Dict[str, Any]) -> Dict[str, Any]:
+def convert_conversation_messages(conversation: dict[str, Any]) -> dict[str, Any]:
     """
     Convert all messages in a conversation from legacy format to unified tool_data format.
 

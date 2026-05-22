@@ -1,17 +1,17 @@
+from collections.abc import AsyncGenerator
 import io
 import json
 import re
 import uuid
-from typing import AsyncGenerator
 
 import cloudinary
 import cloudinary.uploader
 from fastapi import HTTPException, UploadFile
 
-from shared.py.wide_events import log
 from app.agents.prompts.image_prompts import IMAGE_PROMPT_REFINER
 from app.utils.chat_utils import do_prompt_no_stream
 from app.utils.image_utils import convert_image_to_text, generate_image
+from shared.py.wide_events import log
 
 
 def generate_public_id(refined_text: str, max_length: int = 50) -> str:
@@ -101,7 +101,7 @@ async def api_generate_image(message: str, improve_prompt=True) -> dict:
         }
 
     except Exception as e:
-        log.error(f"Error occurred while processing image generation: {str(e)}")
+        log.error(f"Error occurred while processing image generation: {e!s}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
@@ -129,7 +129,7 @@ async def image_to_text_endpoint(message: str, file: UploadFile) -> dict:
         return {"response": response}
 
     except Exception as e:
-        log.error(f"Error occurred while processing image-to-text: {str(e)}")
+        log.error(f"Error occurred while processing image-to-text: {e!s}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
@@ -155,6 +155,6 @@ async def generate_image_stream(query_text: str) -> AsyncGenerator[str, None]:
         yield f"data: {json.dumps({'image_data': image_result})}\n\n"
         yield "data: [DONE]\n\n"
     except Exception as e:
-        log.error(f"Error generating image: {str(e)}")
-        yield f"data: {json.dumps({'error': f'Failed to generate image: {str(e)}'})}\n\n"
+        log.error(f"Error generating image: {e!s}")
+        yield f"data: {json.dumps({'error': f'Failed to generate image: {e!s}'})}\n\n"
         yield "data: [DONE]\n\n"

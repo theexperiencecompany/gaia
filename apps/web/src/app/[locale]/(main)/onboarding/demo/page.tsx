@@ -25,11 +25,11 @@ import { WorkflowsRevealCard } from "@/features/onboarding/components/reveal/Wor
 import { WritingStyleRevealCard } from "@/features/onboarding/components/reveal/WritingStyleRevealCard";
 import { ClarifyComposer } from "@/features/onboarding/components/stages/Clarify";
 import { Platforms } from "@/features/onboarding/components/stages/Platforms";
-import { SelectedTodoIndicator } from "@/features/onboarding/components/stages/RevealTodos";
 import {
   RevealWritingStyle,
   RevealWritingStyleComposer,
 } from "@/features/onboarding/components/stages/RevealWritingStyle";
+import { SelectedTodoIndicator } from "@/features/onboarding/components/stages/SelectedTodoIndicator";
 import { Workflows } from "@/features/onboarding/components/stages/Workflows";
 import { professionOptions } from "@/features/onboarding/constants";
 import { BOT_BUBBLE_DEFAULTS } from "@/features/onboarding/constants/bubbleDefaults";

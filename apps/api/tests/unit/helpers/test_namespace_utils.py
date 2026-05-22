@@ -6,7 +6,6 @@ import pytest
 
 from app.helpers.namespace_utils import derive_integration_namespace
 
-
 # ---------------------------------------------------------------------------
 # derive_integration_namespace
 # ---------------------------------------------------------------------------

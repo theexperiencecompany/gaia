@@ -2,7 +2,6 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-
 INTEGRATION_ID = "integ-001"
 SLUG = "my-tool-mcp-custom-integ001"
 
@@ -54,9 +53,7 @@ class TestSearchIntegrations:
                 new_callable=AsyncMock,
                 return_value=search_results,
             ),
-            patch(
-                "app.api.v1.endpoints.integrations.public.integrations_collection"
-            ) as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
         ):
             mock_coll.find = MagicMock(return_value=cursor)
 
@@ -83,9 +80,7 @@ class TestGetPublicIntegration:
         cursor.to_list = AsyncMock(return_value=[])
 
         with (
-            patch(
-                "app.api.v1.endpoints.integrations.public.integrations_collection"
-            ) as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
                 "app.api.v1.endpoints.integrations.public.parse_integration_slug",
                 return_value={},
@@ -105,9 +100,7 @@ class TestGetPublicIntegration:
                 "app.api.v1.endpoints.integrations.public.parse_integration_slug",
                 return_value={"shortid": "abc123"},
             ),
-            patch(
-                "app.api.v1.endpoints.integrations.public.integrations_collection"
-            ) as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
         ):
             mock_coll.aggregate = MagicMock(return_value=cursor)
 

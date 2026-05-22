@@ -2,10 +2,12 @@
 Reminder scheduler for managing reminder tasks.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
-from shared.py.wide_events import log
+from arq.connections import RedisSettings
+from bson import ObjectId
+
 from app.db.mongodb.collections import reminders_collection
 from app.models.reminder_models import (
     CreateReminderRequest,
@@ -20,8 +22,7 @@ from app.models.scheduler_models import (
 )
 from app.services.scheduler_service import BaseSchedulerService
 from app.utils.cron_utils import get_next_run_time
-from arq.connections import RedisSettings
-from bson import ObjectId
+from shared.py.wide_events import log
 
 
 class ReminderScheduler(BaseSchedulerService):
@@ -30,7 +31,7 @@ class ReminderScheduler(BaseSchedulerService):
     Inherits from BaseSchedulerService for common scheduling functionality.
     """
 
-    def __init__(self, redis_settings: Optional[RedisSettings] = None):
+    def __init__(self, redis_settings: RedisSettings | None = None):
         """
         Initialize the reminder scheduler.
 
@@ -43,9 +44,7 @@ class ReminderScheduler(BaseSchedulerService):
         """Get the ARQ job name for reminder processing."""
         return "process_reminder"
 
-    async def create_reminder(
-        self, reminder_data: CreateReminderRequest, user_id: str
-    ) -> str:
+    async def create_reminder(self, reminder_data: CreateReminderRequest, user_id: str) -> str:
         """
         Create a new reminder and schedule it.
 
@@ -57,7 +56,7 @@ class ReminderScheduler(BaseSchedulerService):
             Created reminder ID
         """
         is_recurring = reminder_data.repeat is not None
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         scheduled_at = reminder_data.scheduled_at
         seconds_until_scheduled = (
             int((scheduled_at - now).total_seconds())
@@ -90,31 +89,23 @@ class ReminderScheduler(BaseSchedulerService):
                     base_time=schedule_config.base_time,
                 )
             else:
-                raise ValueError(
-                    "scheduled_at must be provided or repeat must be specified"
-                )
+                raise ValueError("scheduled_at must be provided or repeat must be specified")
 
         reminder_dict = reminder_data.model_dump()
         reminder_dict["scheduled_at"] = schedule_config.scheduled_at
         reminder = ReminderModel(**reminder_dict, user_id=user_id)
 
         # Insert into MongoDB
-        result = await reminders_collection.insert_one(
-            document=self._serialize_reminder(reminder)
-        )
+        result = await reminders_collection.insert_one(document=self._serialize_reminder(reminder))
         reminder_id = str(result.inserted_id)
 
         # Schedule the task using base scheduler
         await self.schedule_task(reminder_id, schedule_config)
 
-        log.info(
-            f"Created and scheduled reminder {reminder_id} for {reminder.scheduled_at}"
-        )
+        log.info(f"Created and scheduled reminder {reminder_id} for {reminder.scheduled_at}")
         return reminder_id
 
-    async def update_reminder(
-        self, reminder_id: str, update_data: dict, user_id: str
-    ) -> bool:
+    async def update_reminder(self, reminder_id: str, update_data: dict, user_id: str) -> bool:
         """
         Update an existing reminder.
 
@@ -128,7 +119,7 @@ class ReminderScheduler(BaseSchedulerService):
         """
         log.set(reminder_id=reminder_id, reminder_user_id=user_id)
         # Add updated_at timestamp
-        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        update_data["updated_at"] = datetime.now(UTC).isoformat()
 
         filters: dict = {"_id": ObjectId(reminder_id)}
         if user_id:
@@ -144,9 +135,7 @@ class ReminderScheduler(BaseSchedulerService):
                 if update_data["status"] == ReminderStatus.SCHEDULED:
                     await self.reschedule_task(
                         reminder_id,
-                        new_scheduled_at=datetime.fromisoformat(
-                            update_data["scheduled_at"]
-                        ),
+                        new_scheduled_at=datetime.fromisoformat(update_data["scheduled_at"]),
                     )
 
             return True
@@ -156,10 +145,10 @@ class ReminderScheduler(BaseSchedulerService):
     async def list_user_reminders(
         self,
         user_id: str,
-        status: Optional[ReminderStatus] = None,
+        status: ReminderStatus | None = None,
         limit: int = 100,
         skip: int = 0,
-    ) -> List[ReminderModel]:
+    ) -> list[ReminderModel]:
         """
         List reminders for a user.
 
@@ -189,18 +178,14 @@ class ReminderScheduler(BaseSchedulerService):
 
         return results
 
-    async def get_reminder(
-        self, task_id: str, user_id: Optional[str] = None
-    ) -> Optional[ReminderModel]:
+    async def get_reminder(self, task_id: str, user_id: str | None = None) -> ReminderModel | None:
         """Get a reminder by ID."""
         task = await self.get_task(task_id, user_id)
         return task if isinstance(task, ReminderModel) else None
 
     # Implementation of abstract methods from BaseSchedulerService
 
-    async def get_task(
-        self, task_id: str, user_id: Optional[str] = None
-    ) -> Optional[BaseScheduledTask]:
+    async def get_task(self, task_id: str, user_id: str | None = None) -> BaseScheduledTask | None:
         """Get a reminder by ID."""
         filters: dict = {"_id": ObjectId(task_id)}
         if user_id:
@@ -220,9 +205,7 @@ class ReminderScheduler(BaseSchedulerService):
 
             # Ensure task is a ReminderModel
             if not isinstance(task, ReminderModel):
-                return TaskExecutionResult(
-                    success=False, message="Task is not a ReminderModel"
-                )
+                return TaskExecutionResult(success=False, message="Task is not a ReminderModel")
 
             await execute_reminder_by_agent(task)
 
@@ -230,24 +213,22 @@ class ReminderScheduler(BaseSchedulerService):
                 success=True, message=f"Successfully executed reminder {task.id}"
             )
         except Exception as e:
-            return TaskExecutionResult(
-                success=False, message=f"Failed to execute reminder: {str(e)}"
-            )
+            return TaskExecutionResult(success=False, message=f"Failed to execute reminder: {e!s}")
 
     async def update_task_status(
         self,
         task_id: str,
         status: ScheduledTaskStatus,
-        update_data: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
+        update_data: dict[str, Any] | None = None,
+        user_id: str | None = None,
     ) -> bool:
         """Update reminder status."""
-        update_fields: Dict[str, Any] = {"status": status}
+        update_fields: dict[str, Any] = {"status": status}
         if update_data:
             update_fields.update(update_data)
 
         if "updated_at" not in update_fields:
-            update_fields["updated_at"] = datetime.now(timezone.utc)
+            update_fields["updated_at"] = datetime.now(UTC)
 
         filters: dict = {"_id": ObjectId(task_id)}
         if user_id:
@@ -257,13 +238,13 @@ class ReminderScheduler(BaseSchedulerService):
 
         return result.modified_count > 0
 
-    async def get_pending_task(self, current_time: datetime) -> List[BaseScheduledTask]:
+    async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
         """Get all scheduled reminders that should be enqueued."""
         cursor = reminders_collection.find(
             {"status": ReminderStatus.SCHEDULED, "scheduled_at": {"$gte": current_time}}
         )
 
-        tasks: List[BaseScheduledTask] = []
+        tasks: list[BaseScheduledTask] = []
         async for doc in cursor:
             if "_id" in doc:
                 doc["_id"] = str(doc["_id"])

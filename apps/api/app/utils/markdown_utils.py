@@ -1,7 +1,6 @@
 """Utilities for markdown detection and conversion."""
 
 import re
-from typing import Optional
 
 import markdown2
 
@@ -119,7 +118,7 @@ def convert_markdown_to_plain_text(markdown_text: str) -> str:
         return markdown_text
 
 
-def split_yaml_frontmatter(content: str) -> Optional[tuple[str, str]]:
+def split_yaml_frontmatter(content: str) -> tuple[str, str] | None:
     """Split YAML frontmatter from markdown body.
 
     Expected format:

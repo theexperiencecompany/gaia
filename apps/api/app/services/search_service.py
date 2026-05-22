@@ -6,7 +6,6 @@ import time
 
 from fastapi import HTTPException, status
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import (
     conversations_collection,
     notes_collection,
@@ -14,6 +13,7 @@ from app.db.mongodb.collections import (
 from app.db.utils import serialize_document
 from app.utils.general_utils import get_context_window
 from app.utils.tool_data_utils import convert_legacy_tool_data
+from shared.py.wide_events import log
 
 
 async def search_messages(query: str, user_id: str) -> dict:
@@ -122,9 +122,7 @@ async def search_messages(query: str, user_id: str) -> dict:
         notes_with_snippets = [
             {
                 **serialize_document(note),
-                "snippet": get_context_window(
-                    note["plaintext"], query, chars_before=30
-                ),
+                "snippet": get_context_window(note["plaintext"], query, chars_before=30),
             }
             for note in notes_results
         ]
@@ -150,5 +148,5 @@ async def search_messages(query: str, user_id: str) -> dict:
         log.error(f"Error in search_messages: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to perform search: {str(e)}",
+            detail=f"Failed to perform search: {e!s}",
         )

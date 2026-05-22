@@ -10,8 +10,8 @@ Tests cover:
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 PLANS_URL = "/api/v1/payments/plans"
 SUBSCRIPTIONS_URL = "/api/v1/payments/subscriptions"
@@ -146,15 +146,11 @@ class TestCreateSubscription:
 
         mock_create.assert_awaited_once_with("507f1f77bcf86cd799439011", "prod_abc", 1)
 
-    async def test_create_subscription_missing_product_id_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_create_subscription_missing_product_id_returns_422(self, client: AsyncClient):
         response = await client.post(SUBSCRIPTIONS_URL, json={})
         assert response.status_code == 422
 
-    async def test_create_subscription_service_error_returns_500(
-        self, client: AsyncClient
-    ):
+    async def test_create_subscription_service_error_returns_500(self, client: AsyncClient):
         """Endpoint catches exceptions and returns 500."""
         with patch(
             "app.services.payments.payment_service.payment_service.create_subscription",
@@ -244,9 +240,7 @@ class TestGetSubscriptionStatus:
         assert response.status_code == 200
 
     async def test_get_subscription_status_subscribed_user(self, client: AsyncClient):
-        mock_status = MagicMock(
-            **_make_subscription_status(is_subscribed=True, days_remaining=25)
-        )
+        mock_status = MagicMock(**_make_subscription_status(is_subscribed=True, days_remaining=25))
         with patch(
             "app.services.payments.payment_service.payment_service.get_user_subscription_status",
             new_callable=AsyncMock,
@@ -256,9 +250,7 @@ class TestGetSubscriptionStatus:
 
         assert response.status_code == 200
 
-    async def test_get_subscription_status_service_error_returns_500(
-        self, client: AsyncClient
-    ):
+    async def test_get_subscription_status_service_error_returns_500(self, client: AsyncClient):
         """Exception is caught by endpoint try/except and returns 500."""
         with patch(
             "app.services.payments.payment_service.payment_service.get_user_subscription_status",

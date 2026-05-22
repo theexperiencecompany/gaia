@@ -2,11 +2,10 @@
 Clean and lean workflow models for GAIA workflow system.
 """
 
-import uuid
-from datetime import datetime
-from datetime import timezone as dt_timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
+import uuid
 
 from pydantic import (
     BaseModel,
@@ -17,7 +16,6 @@ from pydantic import (
     model_validator,
 )
 
-from shared.py.wide_events import log
 from app.models.scheduler_models import BaseScheduledTask
 from app.models.trigger_configs import TriggerConfigData
 from app.utils.cron_utils import (
@@ -25,6 +23,7 @@ from app.utils.cron_utils import (
     parse_timezone,
     validate_cron_expression,
 )
+from shared.py.wide_events import log
 
 
 class TriggerType(str, Enum):
@@ -49,9 +48,7 @@ class WorkflowStep(BaseModel):
         default="general",
         description="Category for routing (e.g., gmail, notion, todos, reminders)",
     )
-    description: str = Field(
-        description="Detailed description of what this step accomplishes"
-    )
+    description: str = Field(description="Detailed description of what this step accomplishes")
 
 
 # LLM Output Models for Workflow Generation
@@ -66,7 +63,7 @@ class GeneratedStep(BaseModel):
 class GeneratedWorkflow(BaseModel):
     """Schema for LLM workflow generation output."""
 
-    steps: List[GeneratedStep] = Field(description="List of workflow steps")
+    steps: list[GeneratedStep] = Field(description="List of workflow steps")
 
 
 class TriggerConfig(BaseModel):
@@ -84,37 +81,33 @@ class TriggerConfig(BaseModel):
 
     # Specific trigger slug (e.g., "calendar_event_created", "github_commit_event")
     # Used by frontend to identify which trigger is selected
-    trigger_name: Optional[str] = Field(
+    trigger_name: str | None = Field(
         default=None,
         description="Specific trigger slug for identification",
     )
 
     # Type-safe provider config using discriminated union
-    trigger_data: Optional[TriggerConfigData] = Field(
+    trigger_data: TriggerConfigData | None = Field(
         default=None,
         description="Provider-specific trigger configuration",
     )
 
     # Composio trigger tracking
-    composio_trigger_ids: Optional[List[str]] = Field(
+    composio_trigger_ids: list[str] | None = Field(
         default=None,
         description="List of Composio trigger IDs registered for this workflow",
     )
 
     # Schedule configuration (generic, not provider-specific)
-    cron_expression: Optional[str] = Field(
+    cron_expression: str | None = Field(
         default=None, description="Cron expression for scheduled workflows"
     )
-    timezone: Optional[str] = Field(
-        default="UTC", description="Timezone for scheduled execution"
-    )
-    next_run: Optional[datetime] = Field(
-        default=None, description="Next scheduled execution time"
-    )
+    timezone: str | None = Field(default="UTC", description="Timezone for scheduled execution")
+    next_run: datetime | None = Field(default=None, description="Next scheduled execution time")
 
     def calculate_next_run(
-        self, base_time: Optional[datetime] = None, user_timezone: Optional[str] = None
-    ) -> Optional[datetime]:
+        self, base_time: datetime | None = None, user_timezone: str | None = None
+    ) -> datetime | None:
         """
         Calculate the next run time based on cron expression with timezone awareness.
 
@@ -139,7 +132,7 @@ class TriggerConfig(BaseModel):
             # If base_time is provided, convert it to the user's timezone for cron calculation
             if base_time:
                 if base_time.tzinfo is None:
-                    base_time = base_time.replace(tzinfo=dt_timezone.utc)
+                    base_time = base_time.replace(tzinfo=UTC)
                 # Convert to user timezone for cron calculation
                 if tz_name != "UTC":
                     base_time = base_time.astimezone(tz)
@@ -151,8 +144,8 @@ class TriggerConfig(BaseModel):
             next_run = get_next_run_time(self.cron_expression, base_time, tz_name)
 
             # Ensure result is in UTC for storage
-            if next_run.tzinfo != dt_timezone.utc:
-                next_run = next_run.astimezone(dt_timezone.utc)
+            if next_run.tzinfo != UTC:
+                next_run = next_run.astimezone(UTC)
 
             return next_run
         except Exception as e:
@@ -160,7 +153,7 @@ class TriggerConfig(BaseModel):
             return None
 
     def update_next_run(
-        self, base_time: Optional[datetime] = None, user_timezone: Optional[str] = None
+        self, base_time: datetime | None = None, user_timezone: str | None = None
     ) -> bool:
         """
         Update the next_run field with timezone awareness and return True if changed.
@@ -190,7 +183,7 @@ class Workflow(BaseScheduledTask):
     """Main workflow model extending BaseScheduledTask for scheduling capabilities."""
 
     # Override ID generation for workflows - always generate ID
-    id: Optional[str] = Field(
+    id: str | None = Field(
         default_factory=lambda: f"wf_{uuid.uuid4().hex[:12]}",
         description="Unique identifier",
     )
@@ -206,7 +199,7 @@ class Workflow(BaseScheduledTask):
         default="",
         description="Detailed execution instructions for AI. Falls back to description if not set.",
     )
-    steps: List[WorkflowStep] = Field(
+    steps: list[WorkflowStep] = Field(
         description="List of workflow steps to execute", max_length=10
     )
 
@@ -218,10 +211,10 @@ class Workflow(BaseScheduledTask):
         default=True,
         description="Whether the workflow is activated and can be executed",
     )
-    last_executed_at: Optional[datetime] = Field(default=None)
+    last_executed_at: datetime | None = Field(default=None)
 
     @field_serializer("last_executed_at")
-    def serialize_last_executed_at(self, value: Optional[datetime]) -> Optional[str]:
+    def serialize_last_executed_at(self, value: datetime | None) -> str | None:
         return value.isoformat() if value is not None else None
 
     # Community features
@@ -229,38 +222,30 @@ class Workflow(BaseScheduledTask):
         default=False,
         description="Whether this workflow is published to the community marketplace",
     )
-    slug: Optional[str] = Field(
+    slug: str | None = Field(
         default=None,
         description="Human-readable URL slug derived from title. Unique among public workflows.",
     )
-    created_by: Optional[str] = Field(
+    created_by: str | None = Field(
         default=None,
         description="User ID of the original creator (for public workflows)",
     )
 
     # Execution tracking
-    current_step_index: int = Field(
-        default=0, description="Index of currently executing step"
-    )
-    execution_logs: List[str] = Field(
-        default_factory=list, description="Execution logs"
-    )
-    error_message: Optional[str] = Field(
-        default=None, description="Error message if workflow failed"
-    )
+    current_step_index: int = Field(default=0, description="Index of currently executing step")
+    execution_logs: list[str] = Field(default_factory=list, description="Execution logs")
+    error_message: str | None = Field(default=None, description="Error message if workflow failed")
 
     # Statistics
     total_executions: int = Field(default=0, description="Total number of executions")
-    successful_executions: int = Field(
-        default=0, description="Number of successful executions"
-    )
+    successful_executions: int = Field(default=0, description="Number of successful executions")
 
     # Todo workflow flags (for auto-generated workflows linked to todos)
     is_todo_workflow: bool = Field(
         default=False,
         description="Whether this workflow was auto-generated for a todo item",
     )
-    source_todo_id: Optional[str] = Field(
+    source_todo_id: str | None = Field(
         default=None,
         description="ID of the source todo if is_todo_workflow=True",
     )
@@ -270,11 +255,11 @@ class Workflow(BaseScheduledTask):
         default=False,
         description="Auto-provisioned by GAIA when an integration is connected.",
     )
-    source_integration: Optional[str] = Field(
+    source_integration: str | None = Field(
         default=None,
         description="Which integration provisioned this workflow. e.g. 'gmail', 'googlecalendar'.",
     )
-    system_workflow_key: Optional[str] = Field(
+    system_workflow_key: str | None = Field(
         default=None,
         description=(
             "Stable identifier linking this document back to its definition in code. "
@@ -282,12 +267,12 @@ class Workflow(BaseScheduledTask):
         ),
     )
 
-    selected_integrations: Optional[List[str]] = Field(
+    selected_integrations: list[str] | None = Field(
         default=None,
         description="Integration slugs the user picked to bias step generation.",
     )
 
-    creator: Optional[Dict[str, Any]] = Field(
+    creator: dict[str, Any] | None = Field(
         default=None,
         description="Creator info hydrated for public workflow lookups.",
     )
@@ -331,7 +316,7 @@ class Workflow(BaseScheduledTask):
 
         # Set default scheduled_at if still not provided
         if "scheduled_at" not in data:
-            data["scheduled_at"] = datetime.now(dt_timezone.utc)
+            data["scheduled_at"] = datetime.now(UTC)
 
         super().__init__(**data)
 
@@ -359,15 +344,13 @@ class CreateWorkflowRequest(BaseModel):
     """Request model for creating a new workflow."""
 
     title: str = Field(min_length=1, description="Title of the workflow")
-    description: Optional[str] = Field(
+    description: str | None = Field(
         default=None,
         description="Short optional display description (1-2 sentences)",
     )
-    prompt: str = Field(
-        min_length=1, description="Detailed execution instructions for the AI"
-    )
+    prompt: str = Field(min_length=1, description="Detailed execution instructions for the AI")
     trigger_config: TriggerConfig = Field(description="Trigger configuration")
-    steps: Optional[List[WorkflowStep]] = Field(
+    steps: list[WorkflowStep] | None = Field(
         default=None,
         description="Optional pre-existing steps (e.g., from explore/community workflows). If provided, step generation will be skipped.",
         max_length=10,
@@ -375,7 +358,7 @@ class CreateWorkflowRequest(BaseModel):
     generate_immediately: bool = Field(
         default=False, description="Generate steps immediately vs background"
     )
-    selected_integrations: Optional[List[str]] = Field(
+    selected_integrations: list[str] | None = Field(
         default=None,
         description="Integration slugs selected by the user to hint step generation.",
     )
@@ -385,11 +368,11 @@ class CreateWorkflowRequest(BaseModel):
         default=False,
         description="Auto-provisioned by GAIA when an integration is connected.",
     )
-    source_integration: Optional[str] = Field(
+    source_integration: str | None = Field(
         default=None,
         description="Which integration provisioned this workflow.",
     )
-    system_workflow_key: Optional[str] = Field(
+    system_workflow_key: str | None = Field(
         default=None,
         description="Stable key linking to the original definition in code.",
     )
@@ -412,13 +395,13 @@ class CreateWorkflowRequest(BaseModel):
 class UpdateWorkflowRequest(BaseModel):
     """Request model for updating an existing workflow."""
 
-    title: Optional[str] = Field(default=None)
-    description: Optional[str] = Field(default=None)
-    prompt: Optional[str] = Field(default=None)
-    steps: Optional[List[WorkflowStep]] = Field(default=None)
-    trigger_config: Optional[TriggerConfig] = Field(default=None)
-    activated: Optional[bool] = Field(default=None)
-    selected_integrations: Optional[List[str]] = Field(default=None)
+    title: str | None = Field(default=None)
+    description: str | None = Field(default=None)
+    prompt: str | None = Field(default=None)
+    steps: list[WorkflowStep] | None = Field(default=None)
+    trigger_config: TriggerConfig | None = Field(default=None)
+    activated: bool | None = Field(default=None)
+    selected_integrations: list[str] | None = Field(default=None)
 
     @field_validator("title", "prompt")
     @classmethod
@@ -448,13 +431,13 @@ class WorkflowResponse(BaseModel):
 class WorkflowListResponse(BaseModel):
     """Response model for listing workflows."""
 
-    workflows: List[Workflow]
+    workflows: list[Workflow]
 
 
 class WorkflowExecutionRequest(BaseModel):
     """Request model for executing a workflow."""
 
-    context: Optional[Dict[str, Any]] = Field(
+    context: dict[str, Any] | None = Field(
         default=None, description="Additional context for execution"
     )
 
@@ -475,21 +458,19 @@ class WorkflowStatusResponse(BaseModel):
     total_steps: int
     progress_percentage: float
     last_updated: datetime
-    error_message: Optional[str] = Field(default=None)
-    logs: List[str] = Field(default_factory=list)
+    error_message: str | None = Field(default=None)
+    logs: list[str] = Field(default_factory=list)
 
 
 class RegenerateStepsRequest(BaseModel):
     """Request model for regenerating workflow steps."""
 
-    instruction: str = Field(
-        min_length=1, description="Instruction for how to modify the workflow"
-    )
-    reason: Optional[str] = Field(default=None, description="Reason for regeneration")
+    instruction: str = Field(min_length=1, description="Instruction for how to modify the workflow")
+    reason: str | None = Field(default=None, description="Reason for regeneration")
     force_different_tools: bool = Field(
         default=False, description="Force the use of different tools"
     )
-    selected_integrations: Optional[List[str]] = Field(
+    selected_integrations: list[str] | None = Field(
         default=None,
         description="Integration slugs to bias regeneration; falls back to persisted selection.",
     )
@@ -510,7 +491,7 @@ class UnpublishWorkflowRequest(BaseModel):
 class PublicWorkflowsResponse(BaseModel):
     """Response model for listing public workflows."""
 
-    workflows: List[Dict[str, Any]] = Field(
+    workflows: list[dict[str, Any]] = Field(
         description="List of public workflows with creator info"
     )
     total: int = Field(description="Total number of public workflows")
@@ -521,19 +502,17 @@ class PublishWorkflowResponse(BaseModel):
 
     message: str = Field(description="Success message")
     workflow_id: str = Field(description="ID of the published workflow")
-    slug: Optional[str] = Field(
-        default=None, description="Public URL slug for the workflow"
-    )
+    slug: str | None = Field(default=None, description="Public URL slug for the workflow")
 
 
 class GenerateWorkflowPromptRequest(BaseModel):
     """Request model for AI-generated workflow instructions."""
 
-    title: Optional[str] = None
-    description: Optional[str] = None
-    trigger_config: Optional[Dict[str, Any]] = None
-    existing_prompt: Optional[str] = None  # non-empty → improve mode
-    selected_integrations: Optional[List[str]] = Field(
+    title: str | None = None
+    description: str | None = None
+    trigger_config: dict[str, Any] | None = None
+    existing_prompt: str | None = None  # non-empty → improve mode
+    selected_integrations: list[str] | None = Field(
         default=None,
         description="Integration slugs the user picked, used to bias the suggestion.",
     )
@@ -543,10 +522,10 @@ class SuggestedTrigger(BaseModel):
     """AI-suggested trigger configuration returned alongside generated instructions."""
 
     type: str = Field(description="Trigger type: manual, schedule, or integration")
-    cron_expression: Optional[str] = Field(
+    cron_expression: str | None = Field(
         default=None, description="Cron expression for scheduled triggers"
     )
-    trigger_name: Optional[str] = Field(
+    trigger_name: str | None = Field(
         default=None,
         description="Specific integration trigger slug (e.g., gmail_new_message)",
     )
@@ -575,7 +554,7 @@ class GeneratedPromptOutput(BaseModel):
             "or 'integration' (external event like email, calendar, webhook)."
         )
     )
-    cron_expression: Optional[str] = Field(
+    cron_expression: str | None = Field(
         default=None,
         description=(
             "5-field cron expression when trigger_type is 'schedule'. Examples: "
@@ -584,7 +563,7 @@ class GeneratedPromptOutput(BaseModel):
             "Must be null when trigger_type is not 'schedule'."
         ),
     )
-    trigger_name: Optional[str] = Field(
+    trigger_name: str | None = Field(
         default=None,
         description=(
             "When trigger_type is 'integration', the specific trigger slug from the "
@@ -598,4 +577,4 @@ class GenerateWorkflowPromptResponse(BaseModel):
     """Response model for AI-generated workflow instructions."""
 
     prompt: str
-    suggested_trigger: Optional[SuggestedTrigger] = None
+    suggested_trigger: SuggestedTrigger | None = None

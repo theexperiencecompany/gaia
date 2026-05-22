@@ -5,12 +5,13 @@ Handles MCP OAuth callbacks and connection testing.
 Connection/disconnection is handled by the unified /integrations endpoints.
 """
 
-from typing import Optional
 from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from shared.py.wide_events import log
 from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import (
     get_api_base_url,
@@ -19,8 +20,7 @@ from app.helpers.mcp_helpers import (
 )
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_client import get_mcp_client
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse, RedirectResponse
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -126,9 +126,9 @@ async def test_mcp_connection(
 @router.get("/oauth/callback")
 async def mcp_oauth_callback(
     state: str = Query(...),
-    code: Optional[str] = Query(None),  # Optional - may be missing if error
-    error: Optional[str] = Query(None),  # OAuth error code
-    error_description: Optional[str] = Query(None),  # OAuth error description
+    code: str | None = Query(None),  # Optional - may be missing if error
+    error: str | None = Query(None),  # OAuth error code
+    error_description: str | None = Query(None),  # OAuth error description
     user: dict = Depends(get_current_user),
 ):
     """Handle OAuth callback from MCP server.
@@ -205,9 +205,7 @@ async def mcp_oauth_callback(
         # handle_oauth_callback() already calls connect() internally
         # and returns tools, so we don't need to call connect() again
         if tools:
-            log.info(
-                f"Connected with {len(tools)} tools for {integration_id} after OAuth"
-            )
+            log.info(f"Connected with {len(tools)} tools for {integration_id} after OAuth")
 
             tool_registry = await get_tool_registry()
             await tool_registry.load_user_mcp_tools(str(user_id))

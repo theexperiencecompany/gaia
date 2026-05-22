@@ -1,10 +1,9 @@
-from typing import Optional
+from fastapi import HTTPException
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import ai_models_collection
 from app.decorators.caching import Cacheable
 from app.models.models_models import ModelConfig
-from fastapi import HTTPException
+from shared.py.wide_events import log
 
 
 @Cacheable(
@@ -13,7 +12,7 @@ from fastapi import HTTPException
     model=ModelConfig,
     ignore_none=True,
 )
-async def get_model_by_id(model_id: str) -> Optional[ModelConfig]:
+async def get_model_by_id(model_id: str) -> ModelConfig | None:
     """
     Get a specific model by its ID.
 
@@ -44,7 +43,7 @@ async def get_model_by_id(model_id: str) -> Optional[ModelConfig]:
     model=ModelConfig,
     ignore_none=True,
 )
-async def get_default_model() -> Optional[ModelConfig]:
+async def get_default_model() -> ModelConfig | None:
     """
     Get the default model.
 
@@ -52,9 +51,7 @@ async def get_default_model() -> Optional[ModelConfig]:
         Default model configuration
     """
     try:
-        model_doc = await ai_models_collection.find_one(
-            {"is_default": True, "is_active": True}
-        )
+        model_doc = await ai_models_collection.find_one({"is_default": True, "is_active": True})
 
         if not model_doc:
             # Fallback to any active model if no default is set

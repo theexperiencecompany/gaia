@@ -16,11 +16,21 @@ always require confirmation due to config_fields (calendar_ids, channel_ids, etc
 
 from typing import Annotated, Literal
 
+from langchain_core.runnables.config import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
+
 from app.agents.tools.workflow_shared_tools import (
     SUBAGENT_WORKFLOW_TOOLS as _SUBAGENT_WORKFLOW_TOOLS,
     list_workflows,
     search_triggers,
 )
+from app.decorators import with_rate_limiting
+from app.models.workflow_models import WorkflowExecutionRequest
+from app.services.workflow import WorkflowService
+from app.services.workflow.context_extractor import WorkflowContextExtractor
+from app.services.workflow.subagent_output import parse_subagent_response
+from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
 from app.utils.workflow_utils import (
     build_from_conversation_task,
     build_new_workflow_task,
@@ -34,15 +44,6 @@ from app.utils.workflow_utils import (
     success_response,
 )
 from shared.py.wide_events import log
-from app.decorators import with_rate_limiting
-from app.models.workflow_models import WorkflowExecutionRequest
-from app.services.workflow import WorkflowService
-from app.services.workflow.context_extractor import WorkflowContextExtractor
-from app.services.workflow.subagent_output import parse_subagent_response
-from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
-from langchain_core.runnables.config import RunnableConfig
-from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 
 SUBAGENT_WORKFLOW_TOOLS = _SUBAGENT_WORKFLOW_TOOLS
 
@@ -159,9 +160,7 @@ async def create_workflow(
 
             # Check if we can create directly (simple, unambiguous workflows)
             if can_create_directly(draft):
-                log.info(
-                    f"[create_workflow] Attempting direct creation for: {draft.title}"
-                )
+                log.info(f"[create_workflow] Attempting direct creation for: {draft.title}")
 
                 # Try to create the workflow directly
                 direct_result = await create_workflow_directly(
@@ -176,9 +175,7 @@ async def create_workflow(
                     return direct_result
 
                 # Fall through to draft card if direct creation failed
-                log.info(
-                    "[create_workflow] Direct creation failed, falling back to draft"
-                )
+                log.info("[create_workflow] Direct creation failed, falling back to draft")
 
             # Stream workflow draft to frontend for user confirmation
             writer(result.draft.to_stream_payload())
@@ -189,13 +186,11 @@ async def create_workflow(
                 "Workflow draft sent to user for confirmation.",
             )
 
-        elif result.mode == "clarifying":
+        if result.mode == "clarifying":
             # Subagent needs to ask the user a question.
             # Return the question text so the executor can relay it
             # through comms to the user.
-            question = (
-                result.message or "The workflow assistant needs more information."
-            )
+            question = result.message or "The workflow assistant needs more information."
             return success_response(
                 {
                     "status": "clarifying",
@@ -205,7 +200,7 @@ async def create_workflow(
                 f"The workflow assistant needs clarification from the user: {question}",
             )
 
-        elif result.mode == "parse_error":
+        if result.mode == "parse_error":
             # Subagent returned something we couldn't parse.
             # Let the executor know so it can inform the user or retry.
             log.warning(f"[create_workflow] Parse error: {result.parse_error}")
@@ -215,11 +210,10 @@ async def create_workflow(
                 "Please try again or rephrase your request.",
             )
 
-        else:
-            return success_response(
-                {"status": "completed", "mode": mode},
-                "Workflow creation completed.",
-            )
+        return success_response(
+            {"status": "completed", "mode": mode},
+            "Workflow creation completed.",
+        )
 
     except Exception as e:
         log.error(f"[create_workflow] Exception: {e}", exc_info=True)

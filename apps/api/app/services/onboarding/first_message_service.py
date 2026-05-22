@@ -1,10 +1,8 @@
 """Generate GAIA's first message to a new user after onboarding intelligence."""
 
 import time
-from typing import Optional
 
 from langchain_core.messages import HumanMessage
-from shared.py.wide_events import log
 
 from app.agents.prompts.onboarding_prompts import (
     FIRST_MESSAGE_GENERATION_PROMPT_GMAIL,
@@ -16,42 +14,37 @@ from app.models.onboarding_models import (
     WritingStyleProfile,
 )
 from app.services.onboarding.clarify_service import format_clarify_context
+from shared.py.wide_events import log
 
 
 async def generate_first_message(
     user_id: str,
     name: str,
     profession: str,
-    triage: Optional[InboxTriage],
+    triage: InboxTriage | None,
     created_todos: list[dict],
     created_workflows: list[dict],
-    writing_style: Optional[WritingStyleProfile],
+    writing_style: WritingStyleProfile | None,
     has_gmail: bool,
     focus: str = "",
-    executed_todos: Optional[list[dict]] = None,
-    clarify_answers: Optional[list[dict]] = None,
+    executed_todos: list[dict] | None = None,
+    clarify_answers: list[dict] | None = None,
 ) -> str:
     """Generate GAIA's first message to a new user."""
     t0 = time.monotonic()
     try:
         executed_ids = {t["id"] for t in (executed_todos or []) if t.get("id")}
         queued_todos = [t for t in created_todos if t.get("id") not in executed_ids]
-        todos_text = (
-            ", ".join(t["title"] for t in queued_todos) if queued_todos else "none"
-        )
+        todos_text = ", ".join(t["title"] for t in queued_todos) if queued_todos else "none"
         workflows_text = (
-            ", ".join(w["title"] for w in created_workflows)
-            if created_workflows
-            else "none"
+            ", ".join(w["title"] for w in created_workflows) if created_workflows else "none"
         )
         todos_executed_text = (
             ", ".join(t["title"] for t in executed_todos) if executed_todos else "none"
         )
 
         if has_gmail:
-            writing_style_summary = (
-                writing_style.summary if writing_style else "not yet analyzed"
-            )
+            writing_style_summary = writing_style.summary if writing_style else "not yet analyzed"
 
             important_emails_text = ""
             total_scanned = 0
@@ -63,9 +56,7 @@ async def generate_first_message(
                 total_unread = triage.total_unread
                 patterns_text = "\n".join(f"- {p}" for p in triage.patterns)
                 for e in triage.important_emails[:8]:
-                    important_emails_text += (
-                        f"- {e.sender} | {e.subject} | {e.why_important}\n"
-                    )
+                    important_emails_text += f"- {e.sender} | {e.subject} | {e.why_important}\n"
 
             prompt = FIRST_MESSAGE_GENERATION_PROMPT_GMAIL.format(
                 name=name,

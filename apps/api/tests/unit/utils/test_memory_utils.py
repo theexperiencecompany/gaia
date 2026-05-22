@@ -14,7 +14,6 @@ from app.utils.memory_utils import (
     store_user_message_memory,
 )
 
-
 # ---------------------------------------------------------------------------
 # store_user_message_memory
 # ---------------------------------------------------------------------------
@@ -37,9 +36,7 @@ class TestStoreUserMessageMemory:
         assert "timestamp" in result
 
     @patch("app.utils.memory_utils.memory_service")
-    async def test_passes_correct_params_to_service(
-        self, mock_mem_svc: MagicMock
-    ) -> None:
+    async def test_passes_correct_params_to_service(self, mock_mem_svc: MagicMock) -> None:
         mock_mem_svc.store_memory = AsyncMock(return_value=MagicMock())
 
         await store_user_message_memory("u1", "Hello world", "conv_2")
@@ -55,18 +52,14 @@ class TestStoreUserMessageMemory:
         assert "timestamp" in call_kwargs["metadata"]
 
     @patch("app.utils.memory_utils.memory_service")
-    async def test_returns_none_when_store_returns_none(
-        self, mock_mem_svc: MagicMock
-    ) -> None:
+    async def test_returns_none_when_store_returns_none(self, mock_mem_svc: MagicMock) -> None:
         mock_mem_svc.store_memory = AsyncMock(return_value=None)
 
         result = await store_user_message_memory("u1", "msg", "conv_1")
         assert result is None
 
     @patch("app.utils.memory_utils.memory_service")
-    async def test_returns_none_when_store_returns_falsy(
-        self, mock_mem_svc: MagicMock
-    ) -> None:
+    async def test_returns_none_when_store_returns_falsy(self, mock_mem_svc: MagicMock) -> None:
         mock_mem_svc.store_memory = AsyncMock(return_value=0)
 
         result = await store_user_message_memory("u1", "msg", "conv_1")
@@ -88,11 +81,7 @@ class TestStoreUserMessageMemory:
         assert result is not None
         # Should be parseable as ISO format
         ts = datetime.fromisoformat(result["timestamp"])
-        assert (
-            ts.tzinfo is not None
-            or "+" in result["timestamp"]
-            or "Z" in result["timestamp"]
-        )
+        assert ts.tzinfo is not None or "+" in result["timestamp"] or "Z" in result["timestamp"]
 
 
 # ---------------------------------------------------------------------------

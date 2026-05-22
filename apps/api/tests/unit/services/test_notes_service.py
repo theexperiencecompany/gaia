@@ -1,10 +1,10 @@
 """Unit tests for notes service operations."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
 from fastapi import HTTPException
+import pytest
 
 from app.models.notes_models import NoteModel, NoteResponse
 from app.services.notes_service import (
@@ -15,7 +15,6 @@ from app.services.notes_service import (
     get_note,
     update_note,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -35,9 +34,7 @@ def mock_redis():
     with (
         patch("app.services.notes_service.get_cache", new_callable=AsyncMock) as m_get,
         patch("app.services.notes_service.set_cache", new_callable=AsyncMock) as m_set,
-        patch(
-            "app.services.notes_service.delete_cache", new_callable=AsyncMock
-        ) as m_del,
+        patch("app.services.notes_service.delete_cache", new_callable=AsyncMock) as m_del,
     ):
         yield m_get, m_set, m_del
 
@@ -83,9 +80,7 @@ def sample_note_model():
 
 @pytest.mark.unit
 class TestGetNote:
-    async def test_returns_cached_note(
-        self, mock_notes_collection, mock_redis, sample_note_oid
-    ):
+    async def test_returns_cached_note(self, mock_notes_collection, mock_redis, sample_note_oid):
         m_get, _m_set, _m_del = mock_redis
         cached_data = {
             "id": str(sample_note_oid),
@@ -155,9 +150,7 @@ class TestGetAllNotes:
         assert isinstance(result[0], NoteResponse)
         mock_notes_collection.find.assert_not_called()
 
-    async def test_returns_notes_from_db_and_caches(
-        self, mock_notes_collection, mock_redis
-    ):
+    async def test_returns_notes_from_db_and_caches(self, mock_notes_collection, mock_redis):
         m_get, m_set, _m_del = mock_redis
         m_get.return_value = None
 
@@ -181,9 +174,7 @@ class TestGetAllNotes:
         assert result[0].plaintext == "DB"
         m_set.assert_called_once()
 
-    async def test_returns_empty_list_when_no_notes(
-        self, mock_notes_collection, mock_redis
-    ):
+    async def test_returns_empty_list_when_no_notes(self, mock_notes_collection, mock_redis):
         m_get, m_set, _m_del = mock_redis
         m_get.return_value = None
 
@@ -195,9 +186,7 @@ class TestGetAllNotes:
 
         assert result == []
 
-    async def test_skips_cache_when_notes_key_missing(
-        self, mock_notes_collection, mock_redis
-    ):
+    async def test_skips_cache_when_notes_key_missing(self, mock_notes_collection, mock_redis):
         """When cache returns a dict but without 'notes' key, fall through to DB."""
         m_get, _m_set, _m_del = mock_redis
         m_get.return_value = {"other_key": "value"}

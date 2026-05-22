@@ -3,14 +3,15 @@ import ipaddress
 import socket
 from urllib.parse import urljoin, urlparse
 
+from bs4 import BeautifulSoup
+from fastapi import HTTPException, status
 import httpx
-from shared.py.wide_events import log
+
 from app.db.mongodb.collections import search_urls_collection
 from app.db.redis import get_cache, set_cache
 from app.db.utils import serialize_document
 from app.models.search_models import URLResponse
-from bs4 import BeautifulSoup
-from fastapi import HTTPException, status
+from shared.py.wide_events import log
 
 # Cap scraped HTML to 2 MiB so a single URL cannot exhaust memory
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
@@ -135,11 +136,7 @@ async def _validate_url_for_fetch(url: str) -> None:
 
     # Detect IP-literal hosts (including bracketed IPv6) and check directly —
     # skip the DNS step so the error message is consistent
-    candidate = (
-        hostname[1:-1]
-        if hostname.startswith("[") and hostname.endswith("]")
-        else hostname
-    )
+    candidate = hostname[1:-1] if hostname.startswith("[") and hostname.endswith("]") else hostname
     try:
         ip = ipaddress.ip_address(candidate)
     except ValueError:
@@ -176,9 +173,7 @@ async def fetch_url_metadata(url: str) -> URLResponse:
     await _validate_url_for_fetch(url)
 
     cache_key = f"url_metadata:{url}"
-    metadata = await get_cache(cache_key) or await search_urls_collection.find_one(
-        {"url": url}
-    )
+    metadata = await get_cache(cache_key) or await search_urls_collection.find_one({"url": url})
 
     if metadata:
         return URLResponse(**metadata)
@@ -195,9 +190,7 @@ async def scrape_url_metadata(url: str) -> dict:
         current_url = url
         response: httpx.Response | None = None
         # Manual redirect following so each hop re-passes the SSRF guard
-        async with httpx.AsyncClient(
-            timeout=_REQUEST_TIMEOUT, follow_redirects=False
-        ) as client:
+        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT, follow_redirects=False) as client:
             for _ in range(_MAX_REDIRECTS + 1):
                 response = await client.get(current_url)
                 if response.is_redirect:
@@ -237,7 +230,7 @@ async def scrape_url_metadata(url: str) -> dict:
             attr_value = tag.attrs[attr_name]
             if isinstance(attr_value, str):
                 return attr_value.strip()
-            elif isinstance(attr_value, list) and attr_value:
+            if isinstance(attr_value, list) and attr_value:
                 return str(attr_value[0]).strip()
             return None
 
@@ -266,9 +259,7 @@ async def scrape_url_metadata(url: str) -> dict:
         og_image_content = get_attr_value(og_image_tag, "content")
         og_image = to_absolute(og_image_content) if og_image_content else None
 
-        logo_tag = soup.find("meta", property="og:logo") or soup.find(
-            "link", rel="logo"
-        )
+        logo_tag = soup.find("meta", property="og:logo") or soup.find("link", rel="logo")
         website_image = None
         if logo_tag:
             logo_content = get_attr_value(logo_tag, "content")

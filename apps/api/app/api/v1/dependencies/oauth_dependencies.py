@@ -1,13 +1,13 @@
 import asyncio
-from datetime import datetime, timezone as dt_timezone
+from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from bson import ObjectId
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
-from shared.py.wide_events import log
 
 from app.db.mongodb.collections import users_collection
+from shared.py.wide_events import log
 
 _TIMEZONE_BACKFILL_TASKS: set[asyncio.Task[Any]] = set()
 
@@ -30,7 +30,7 @@ async def _backfill_user_timezone(user_id: str, tz: str) -> None:
     try:
         await users_collection.update_one(
             {"_id": ObjectId(user_id)},
-            {"$set": {"timezone": tz, "updated_at": datetime.now(dt_timezone.utc)}},
+            {"$set": {"timezone": tz, "updated_at": datetime.now(UTC)}},
         )
         log.info(
             "Backfilled user.timezone from x-timezone header",
@@ -57,9 +57,7 @@ async def get_current_user(request: Request):
     """
     if not hasattr(request.state, "authenticated") or not request.state.authenticated:
         log.info("No authenticated user found in request state")
-        raise HTTPException(
-            status_code=401, detail="Unauthorized: Authentication required"
-        )
+        raise HTTPException(status_code=401, detail="Unauthorized: Authentication required")
     if not request.state.user:
         log.error("User marked as authenticated but no user data found")
         raise HTTPException(status_code=401, detail="Unauthorized: User data missing")
@@ -183,11 +181,7 @@ async def get_user_timezone_from_preferences(
             return stored_tz
 
         header_tz = (x_timezone or "").strip()
-        if (
-            header_tz
-            and header_tz.upper() != "UTC"
-            and _is_valid_iana_or_offset(header_tz)
-        ):
+        if header_tz and header_tz.upper() != "UTC" and _is_valid_iana_or_offset(header_tz):
             log.set(timezone_source="x_timezone_header", user_timezone=header_tz)
             log.warning(
                 "user.timezone missing; using x-timezone header fallback",

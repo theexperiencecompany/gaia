@@ -245,9 +245,7 @@ TextDocument(title, body, fields)
 # ---------------------------------------------------------------------------
 
 _escaped_paradigm = OPENUI_PARADIGM.replace("{", "{{").replace("}", "}}")
-_escaped_component_library = OPENUI_COMPONENT_LIBRARY_PROMPT.replace("{", "{{").replace(
-    "}", "}}"
-)
+_escaped_component_library = OPENUI_COMPONENT_LIBRARY_PROMPT.replace("{", "{{").replace("}", "}}")
 
 OPENUI_INSTRUCTIONS = f"""
 ---OpenUI Lang (Rich UI Components)---

@@ -24,13 +24,13 @@ Usage:
 
 import argparse
 import asyncio
+from datetime import UTC, datetime
 import json
+from pathlib import Path
 import random
 import sys
-import uuid
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
+import uuid
 
 # Add the backend directory to Python path so we can import from app
 backend_dir = Path(__file__).parent.parent
@@ -1323,7 +1323,7 @@ def create_workflow_document(config: dict[str, Any], user_id: str) -> dict[str, 
         step = WorkflowStep(**step_config)
         steps.append(step.model_dump(mode="json"))
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     return {
         "_id": workflow_id,
@@ -1410,9 +1410,7 @@ async def seed_explore_workflows(
         return
 
     if not force:
-        response = input(
-            f"\n❓ Seed {len(workflow_configs)} explore workflows? (y/N): "
-        )
+        response = input(f"\n❓ Seed {len(workflow_configs)} explore workflows? (y/N): ")
         if response.lower() != "y":
             print("❌ Cancelled.")
             return

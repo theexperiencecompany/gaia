@@ -2,14 +2,13 @@
 FastAPI endpoints for reminder management.
 """
 
-from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 
 from app.api.v1.dependencies.oauth_dependencies import (
     GET_USER_TZ_TYPE,
     get_current_user,
     get_user_timezone,
 )
-from shared.py.wide_events import ReminderContext, log
 from app.decorators import tiered_rate_limit
 from app.models.reminder_models import (
     CreateReminderRequest,
@@ -19,15 +18,12 @@ from app.models.reminder_models import (
 )
 from app.services.reminder_service import reminder_scheduler
 from app.utils.cron_utils import get_next_run_time, validate_cron_expression
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi import status as http_status
+from shared.py.wide_events import ReminderContext, log
 
 router = APIRouter(prefix="/reminders", tags=["reminders"])
 
 
-@router.post(
-    "", response_model=ReminderResponse, status_code=http_status.HTTP_201_CREATED
-)
+@router.post("", response_model=ReminderResponse, status_code=http_status.HTTP_201_CREATED)
 @tiered_rate_limit("reminder_operations")
 async def create_reminder_endpoint(
     reminder_data: CreateReminderRequest,
@@ -79,9 +75,7 @@ async def create_reminder_endpoint(
             reminder=ReminderContext(
                 operation="create",
                 id=str(reminder.id),
-                recurrence=reminder.recurrence
-                if hasattr(reminder, "recurrence")
-                else None,
+                recurrence=reminder.recurrence if hasattr(reminder, "recurrence") else None,
                 next_run_time=str(reminder.next_run_time)
                 if hasattr(reminder, "next_run_time") and reminder.next_run_time
                 else None,
@@ -100,9 +94,7 @@ async def create_reminder_endpoint(
 
 
 @router.get("/{reminder_id}", response_model=ReminderResponse)
-async def get_reminder_endpoint(
-    reminder_id: str, user: dict = Depends(get_current_user)
-):
+async def get_reminder_endpoint(reminder_id: str, user: dict = Depends(get_current_user)):
     """
     Get a reminder by ID.
 
@@ -140,9 +132,7 @@ async def get_reminder_endpoint(
             reminder=ReminderContext(
                 operation="get",
                 id=str(reminder.id),
-                recurrence=reminder.recurrence
-                if hasattr(reminder, "recurrence")
-                else None,
+                recurrence=reminder.recurrence if hasattr(reminder, "recurrence") else None,
             )
         )
         log.set(outcome="success")
@@ -204,9 +194,7 @@ async def update_reminder_endpoint(
             )
 
         # Get updated reminder
-        updated_reminder = await reminder_scheduler.get_reminder(
-            reminder_id, user_id=user_id
-        )
+        updated_reminder = await reminder_scheduler.get_reminder(reminder_id, user_id=user_id)
         if not updated_reminder:
             raise HTTPException(
                 status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -235,9 +223,7 @@ async def update_reminder_endpoint(
 
 
 @router.delete("/{reminder_id}", status_code=http_status.HTTP_204_NO_CONTENT)
-async def cancel_reminder_endpoint(
-    reminder_id: str, user: dict = Depends(get_current_user)
-):
+async def cancel_reminder_endpoint(reminder_id: str, user: dict = Depends(get_current_user)):
     """
     Cancel a reminder.
 
@@ -278,10 +264,10 @@ async def cancel_reminder_endpoint(
         )
 
 
-@router.get("", response_model=List[ReminderResponse])
+@router.get("", response_model=list[ReminderResponse])
 async def list_reminders_endpoint(
     user: dict = Depends(get_current_user),
-    status: Optional[ReminderStatus] = Query(None, description="Filter by status"),
+    status: ReminderStatus | None = Query(None, description="Filter by status"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
     skip: int = Query(0, ge=0, description="Number of results to skip"),
 ):
@@ -336,9 +322,7 @@ async def list_reminders_endpoint(
 
 
 @router.post("/{reminder_id}/pause", response_model=ReminderResponse)
-async def pause_reminder_endpoint(
-    reminder_id: str, user: dict = Depends(get_current_user)
-):
+async def pause_reminder_endpoint(reminder_id: str, user: dict = Depends(get_current_user)):
     """
     Pause a reminder.
 
@@ -373,9 +357,7 @@ async def pause_reminder_endpoint(
             )
 
         # Get updated reminder
-        updated_reminder = await reminder_scheduler.get_reminder(
-            reminder_id, user_id=user_id
-        )
+        updated_reminder = await reminder_scheduler.get_reminder(reminder_id, user_id=user_id)
         if not updated_reminder:
             raise HTTPException(
                 status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -393,9 +375,7 @@ async def pause_reminder_endpoint(
 
 
 @router.post("/{reminder_id}/resume", response_model=ReminderResponse)
-async def resume_reminder_endpoint(
-    reminder_id: str, user: dict = Depends(get_current_user)
-):
+async def resume_reminder_endpoint(reminder_id: str, user: dict = Depends(get_current_user)):
     """
     Resume a paused reminder.
 
@@ -419,9 +399,7 @@ async def resume_reminder_endpoint(
         log.set(user={"id": user_id}, reminder={"id": reminder_id})
 
         # Check if reminder exists and user owns it
-        existing_reminder = await reminder_scheduler.get_reminder(
-            reminder_id, user_id=user_id
-        )
+        existing_reminder = await reminder_scheduler.get_reminder(reminder_id, user_id=user_id)
         if not existing_reminder:
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND,
@@ -453,9 +431,7 @@ async def resume_reminder_endpoint(
             )
 
         # Get updated reminder
-        updated_reminder = await reminder_scheduler.get_reminder(
-            reminder_id, user_id=user_id
-        )
+        updated_reminder = await reminder_scheduler.get_reminder(reminder_id, user_id=user_id)
         if not updated_reminder:
             raise HTTPException(
                 status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,

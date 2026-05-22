@@ -11,7 +11,6 @@ from app.utils.internet_utils import (
     scrape_url_metadata,
 )
 
-
 # ---------------------------------------------------------------------------
 # is_valid_url
 # ---------------------------------------------------------------------------
@@ -241,9 +240,7 @@ class TestScrapeUrlMetadata:
         assert result["url"] == "https://example.com"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
-    async def test_http_error_returns_empty_metadata(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_http_error_returns_empty_metadata(self, mock_client_cls: MagicMock) -> None:
         """HTTP error (4xx/5xx) returns dict with all-None fields except url."""
         mock_client = AsyncMock()
         mock_client.get.return_value = _mock_response("", status_code=500)
@@ -259,9 +256,7 @@ class TestScrapeUrlMetadata:
         assert result["url"] == "https://example.com/fail"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
-    async def test_timeout_returns_empty_metadata(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_timeout_returns_empty_metadata(self, mock_client_cls: MagicMock) -> None:
         """Timeout during request returns dict with all-None fields except url."""
         mock_client = AsyncMock()
         mock_client.get.side_effect = httpx.TimeoutException("timed out")
@@ -303,9 +298,7 @@ class TestScrapeUrlMetadata:
         assert result["description"] == "desc"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
-    async def test_relative_favicon_converted_to_absolute(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_relative_favicon_converted_to_absolute(self, mock_client_cls: MagicMock) -> None:
         """Relative favicon href is joined with the base URL to form an absolute path."""
         mock_client = AsyncMock()
         mock_client.get.return_value = _mock_response(HTML_RELATIVE_FAVICON)
@@ -316,9 +309,7 @@ class TestScrapeUrlMetadata:
         assert result["favicon"] == "https://example.com/static/icon.png"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
-    async def test_og_image_used_as_website_image(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_og_image_used_as_website_image(self, mock_client_cls: MagicMock) -> None:
         """When no logo tag is present, og:image is used as website_image."""
         mock_client = AsyncMock()
         mock_client.get.return_value = _mock_response(HTML_OG_IMAGE_AS_WEBSITE_IMAGE)
@@ -386,9 +377,7 @@ class TestScrapeUrlMetadata:
         assert result["favicon"] == "https://example.com/apple-touch.png"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
-    async def test_logo_link_tag_used_as_website_image(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_logo_link_tag_used_as_website_image(self, mock_client_cls: MagicMock) -> None:
         """link rel=logo tag href is used as website_image."""
         mock_client = AsyncMock()
         mock_client.get.return_value = _mock_response(HTML_LOGO_LINK_TAG)
@@ -399,9 +388,7 @@ class TestScrapeUrlMetadata:
         assert result["website_image"] == "https://example.com/link-logo.png"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
-    async def test_empty_html_returns_all_none(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_empty_html_returns_all_none(self, mock_client_cls: MagicMock) -> None:
         """Completely empty HTML returns all-None fields except url."""
         mock_client = AsyncMock()
         mock_client.get.return_value = _mock_response(HTML_EMPTY)
@@ -417,9 +404,7 @@ class TestScrapeUrlMetadata:
         assert result["url"] == "https://example.com"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
-    async def test_og_image_used_as_favicon_fallback(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_og_image_used_as_favicon_fallback(self, mock_client_cls: MagicMock) -> None:
         """When no favicon link tag exists, og:image is used as favicon fallback."""
         mock_client = AsyncMock()
         mock_client.get.return_value = _mock_response(HTML_OG_IMAGE_AS_WEBSITE_IMAGE)
@@ -518,9 +503,7 @@ class TestFetchUrlMetadata:
         result = await fetch_url_metadata("https://example.com")
 
         mock_get_cache.assert_awaited_once()
-        mock_collection.find_one.assert_awaited_once_with(
-            {"url": "https://example.com"}
-        )
+        mock_collection.find_one.assert_awaited_once_with({"url": "https://example.com"})
         # Should not re-scrape or re-cache
         mock_set_cache.assert_not_awaited()
         assert result.title == "DB Title"

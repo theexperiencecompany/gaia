@@ -8,14 +8,13 @@ import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.types import Command
+import pytest
 
 from app.agents.middleware.vfs_compaction import VFSCompactionMiddleware
 from app.constants.summarization import MIN_COMPACTION_SIZE
-
 
 # ---------------------------------------------------------------------------
 # Helpers

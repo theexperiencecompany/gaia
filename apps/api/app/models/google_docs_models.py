@@ -1,5 +1,3 @@
-from typing import List
-
 from pydantic import BaseModel, Field
 
 
@@ -20,7 +18,7 @@ class ShareDocInput(BaseModel):
     """Input for bulk sharing a Google Doc with multiple recipients."""
 
     document_id: str = Field(..., description="ID of the document to share")
-    recipients: List[ShareRecipient] = Field(
+    recipients: list[ShareRecipient] = Field(
         ...,
         description="List of recipients to share the document with",
         min_length=1,
@@ -36,7 +34,7 @@ class CreateTOCInput(BaseModel):
         description="Position to insert TOC (1 = beginning of document)",
         ge=1,
     )
-    include_heading_levels: List[int] = Field(
+    include_heading_levels: list[int] = Field(
         default=[1, 2, 3],
         description="Which heading levels to include (1=H1, 2=H2, etc.)",
     )

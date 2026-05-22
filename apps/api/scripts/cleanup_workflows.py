@@ -5,17 +5,17 @@ This removes workflows with malformed or outdated step structures.
 """
 
 import asyncio
-import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+import sys
 
 # Add the backend directory to Python path so we can import from app
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
 
-from shared.py.wide_events import log as logger  # noqa: E402
 from app.db.mongodb.collections import workflows_collection  # noqa: E402
+from shared.py.wide_events import log as logger  # noqa: E402
 
 
 async def cleanup_old_workflow_steps():
@@ -26,7 +26,7 @@ async def cleanup_old_workflow_steps():
         # 2. Steps created more than 30 days ago without executions
         # 3. Steps with malformed tool configurations
 
-        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
 
         # Query for workflows to clean up
         cleanup_query = {
@@ -76,9 +76,7 @@ async def cleanup_old_workflow_steps():
 
         # Ask for confirmation in interactive mode
         if sys.stdin.isatty():
-            response = input(
-                f"\nDo you want to delete {workflows_to_cleanup} workflows? (y/N): "
-            )
+            response = input(f"\nDo you want to delete {workflows_to_cleanup} workflows? (y/N): ")
             if response.lower() != "y":
                 logger.info("Cleanup cancelled by user.")
                 return False
@@ -91,7 +89,7 @@ async def cleanup_old_workflow_steps():
         return True
 
     except Exception as e:
-        logger.error(f"Cleanup failed with error: {str(e)}")
+        logger.error(f"Cleanup failed with error: {e!s}")
         return False
 
 
@@ -125,7 +123,7 @@ async def cleanup_orphaned_workflow_data():
         return True
 
     except Exception as e:
-        logger.error(f"Orphaned data cleanup failed: {str(e)}")
+        logger.error(f"Orphaned data cleanup failed: {e!s}")
         return False
 
 
@@ -150,7 +148,7 @@ async def run_all_cleanup():
                 logger.error(f"❌ {cleanup_name} failed")
                 all_successful = False
         except Exception as e:
-            logger.error(f"❌ {cleanup_name} failed with exception: {str(e)}")
+            logger.error(f"❌ {cleanup_name} failed with exception: {e!s}")
             all_successful = False
 
     if all_successful:

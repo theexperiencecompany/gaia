@@ -1,7 +1,7 @@
 """Unit tests for app.utils.auth_utils — WorkOS session authentication."""
 
 import builtins
-from typing import Any, Dict, Optional
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -39,8 +39,8 @@ def _make_workos_user(
 
 def _make_auth_response(
     authenticated: bool = True,
-    user: Optional[MagicMock] = None,
-    reason: Optional[str] = None,
+    user: MagicMock | None = None,
+    reason: str | None = None,
 ) -> MagicMock:
     """Create a mock authentication response."""
     response = MagicMock()
@@ -52,9 +52,9 @@ def _make_auth_response(
 
 def _make_refresh_result(
     authenticated: bool = True,
-    user: Optional[MagicMock] = None,
-    sealed_session: Optional[str] = None,
-    reason: Optional[str] = None,
+    user: MagicMock | None = None,
+    sealed_session: str | None = None,
+    reason: str | None = None,
 ) -> MagicMock:
     """Create a mock refresh result with a controlled __dict__.
 
@@ -77,8 +77,8 @@ def _make_refresh_result(
 
 def _make_session(
     auth_response: MagicMock,
-    refresh_result: Optional[MagicMock] = None,
-    refresh_side_effect: Optional[Exception] = None,
+    refresh_result: MagicMock | None = None,
+    refresh_side_effect: Exception | None = None,
 ) -> MagicMock:
     """Create a mock sealed session object."""
     session = MagicMock()
@@ -104,7 +104,7 @@ def _db_user_doc(
     user_id: str = "64abc123def4567890abcdef",
     name: str = "Alice Smith",
     timezone: str = "America/New_York",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create a mock MongoDB user document."""
     return {
         "_id": user_id,
@@ -216,9 +216,7 @@ class TestAuthenticateWorkosSession:
     async def test_auth_fails_refresh_not_authenticated(self) -> None:
         """When both authenticate() and refresh() fail, return ({}, None)."""
         auth_response = _make_auth_response(authenticated=False, reason="expired")
-        refresh_result = _make_refresh_result(
-            authenticated=False, reason="refresh_token_expired"
-        )
+        refresh_result = _make_refresh_result(authenticated=False, reason="refresh_token_expired")
         session = _make_session(auth_response, refresh_result=refresh_result)
         client = _make_workos_client(session)
 
@@ -239,9 +237,7 @@ class TestAuthenticateWorkosSession:
     async def test_auth_fails_refresh_raises_exception(self) -> None:
         """When refresh() raises an exception, return ({}, None)."""
         auth_response = _make_auth_response(authenticated=False)
-        session = _make_session(
-            auth_response, refresh_side_effect=RuntimeError("network error")
-        )
+        session = _make_session(auth_response, refresh_side_effect=RuntimeError("network error"))
         client = _make_workos_client(session)
 
         with patch(_PATCH_LOG), patch(_PATCH_SETTINGS) as mock_settings:
@@ -293,9 +289,7 @@ class TestAuthenticateWorkosSession:
 
         assert user_info == {}
         assert new_session is None
-        mock_log.error.assert_called_once_with(
-            "Refresh result doesn't have expected structure"
-        )
+        mock_log.error.assert_called_once_with("Refresh result doesn't have expected structure")
 
     # -- workos_user is None after auth ------------------------------------
 
@@ -336,9 +330,7 @@ class TestAuthenticateWorkosSession:
 
         assert user_info == {}
         assert new_session == "refreshed_session_tok"
-        mock_log.error.assert_any_call(
-            "Refresh successful but no user data in refresh result"
-        )
+        mock_log.error.assert_any_call("Refresh successful but no user data in refresh result")
 
     # -- User not found in database ----------------------------------------
 
@@ -442,9 +434,7 @@ class TestAuthenticateWorkosSession:
         client = _make_workos_client(session)
 
         with patch(_PATCH_USERS_COLLECTION) as mock_col, patch(_PATCH_LOG) as mock_log:
-            mock_col.find_one = AsyncMock(
-                side_effect=Exception("MongoDB connection lost")
-            )
+            mock_col.find_one = AsyncMock(side_effect=Exception("MongoDB connection lost"))
 
             user_info, new_session = await authenticate_workos_session(
                 session_token="tok", workos_client=client
@@ -664,9 +654,7 @@ class TestAuthenticateWorkosSession:
     async def test_refresh_failure_logs_warning_with_reason(self) -> None:
         """When refresh fails, log.warning includes the reason."""
         auth_response = _make_auth_response(authenticated=False)
-        refresh_result = _make_refresh_result(
-            authenticated=False, reason="session_revoked"
-        )
+        refresh_result = _make_refresh_result(authenticated=False, reason="session_revoked")
         session = _make_session(auth_response, refresh_result=refresh_result)
         client = _make_workos_client(session)
 
@@ -683,9 +671,7 @@ class TestAuthenticateWorkosSession:
     async def test_refresh_exception_logs_error(self) -> None:
         """When refresh raises, log.error includes the exception message."""
         auth_response = _make_auth_response(authenticated=False)
-        session = _make_session(
-            auth_response, refresh_side_effect=ValueError("bad token format")
-        )
+        session = _make_session(auth_response, refresh_side_effect=ValueError("bad token format"))
         client = _make_workos_client(session)
 
         with patch(_PATCH_LOG) as mock_log, patch(_PATCH_SETTINGS) as mock_settings:
@@ -731,14 +717,10 @@ class TestAuthenticateWorkosSession:
             patch(_PATCH_LOG),
             patch(_PATCH_SETTINGS) as mock_settings,
         ):
-            mock_settings.WORKOS_COOKIE_PASSWORD = (
-                "pw_123"  # NOSONAR  # pragma: allowlist secret
-            )
+            mock_settings.WORKOS_COOKIE_PASSWORD = "pw_123"  # NOSONAR  # pragma: allowlist secret
             mock_col.find_one = AsyncMock(return_value=db_doc)
 
-            await authenticate_workos_session(
-                session_token="my_sealed_token", workos_client=client
-            )
+            await authenticate_workos_session(session_token="my_sealed_token", workos_client=client)
 
         client.user_management.load_sealed_session.assert_awaited_once_with(
             sealed_session="my_sealed_token",

@@ -1,6 +1,5 @@
 """Unit tests for DeviceTokenService."""
 
-from typing import List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,7 +11,7 @@ from app.services.device_token_service import DeviceTokenService
 class _AsyncIterator:
     """Helper to create a proper async iterator from a list of items."""
 
-    def __init__(self, items: List):
+    def __init__(self, items: list):
         self._items = iter(items)
 
     def __aiter__(self):
@@ -52,9 +51,7 @@ def service(mock_collection):
 @pytest.mark.unit
 class TestRegisterDeviceToken:
     async def test_register_new_token(self, service, mock_collection):
-        mock_collection.update_one = AsyncMock(
-            return_value=MagicMock(upserted_id="new_id")
-        )
+        mock_collection.update_one = AsyncMock(return_value=MagicMock(upserted_id="new_id"))
 
         result = await service.register_device_token(
             "user1", "ExponentPushToken[abc]", PlatformType.IOS
@@ -79,9 +76,7 @@ class TestRegisterDeviceToken:
         assert result is True
 
     async def test_register_with_device_id(self, service, mock_collection):
-        mock_collection.update_one = AsyncMock(
-            return_value=MagicMock(upserted_id="new_id")
-        )
+        mock_collection.update_one = AsyncMock(return_value=MagicMock(upserted_id="new_id"))
 
         result = await service.register_device_token(
             "user1", "ExponentPushToken[abc]", PlatformType.IOS, device_id="device123"
@@ -132,9 +127,7 @@ class TestGetUserDeviceCount:
 @pytest.mark.unit
 class TestVerifyTokenOwnership:
     async def test_returns_true_when_owned(self, service, mock_collection):
-        mock_collection.find_one = AsyncMock(
-            return_value={"token": "tok", "user_id": "user1"}
-        )
+        mock_collection.find_one = AsyncMock(return_value={"token": "tok", "user_id": "user1"})
 
         result = await service.verify_token_ownership("tok", "user1")
 
@@ -165,9 +158,7 @@ class TestUnregisterDeviceToken:
     async def test_unregister_success(self, service, mock_collection):
         mock_collection.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
 
-        result = await service.unregister_device_token(
-            "ExponentPushToken[abc]", "user1"
-        )
+        result = await service.unregister_device_token("ExponentPushToken[abc]", "user1")
 
         assert result is True
         mock_collection.delete_one.assert_awaited_once_with(
@@ -252,13 +243,9 @@ class TestGetUserTokens:
         result = await service.get_user_tokens("user1")
 
         assert result == ["tok1", "tok2"]
-        mock_collection.find.assert_called_once_with(
-            {"user_id": "user1", "is_active": True}
-        )
+        mock_collection.find.assert_called_once_with({"user_id": "user1", "is_active": True})
 
-    async def test_returns_all_tokens_when_not_active_only(
-        self, service, mock_collection
-    ):
+    async def test_returns_all_tokens_when_not_active_only(self, service, mock_collection):
         docs = [{"token": "tok1"}]
         mock_collection.find = MagicMock(return_value=_AsyncIterator(docs))
 

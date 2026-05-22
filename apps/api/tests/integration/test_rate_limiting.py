@@ -10,9 +10,9 @@ Uses fakeredis so no external Redis instance is required.
 """
 
 import asyncio
+from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime, timezone
-from typing import Generator
+from datetime import UTC, datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
@@ -34,7 +34,6 @@ from app.config.rate_limits import (
 )
 from app.models.payment_models import PlanType
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -45,7 +44,7 @@ def frozen_time(iso: str) -> Generator[datetime, None, None]:
     """Patch ``datetime.now`` in the rate_limits and tiered_rate_limiter modules
     to return a fixed UTC datetime.  Unlike freezegun this does not touch every
     module in the process, avoiding the transformers/torch NameError."""
-    frozen = datetime.fromisoformat(iso).replace(tzinfo=timezone.utc)
+    frozen = datetime.fromisoformat(iso).replace(tzinfo=UTC)
 
     _original_rate_limits_datetime = __import__(
         "app.config.rate_limits", fromlist=["datetime"]
@@ -66,9 +65,7 @@ def frozen_time(iso: str) -> Generator[datetime, None, None]:
         yield frozen
 
 
-def _make_limiter_with_fake_redis() -> tuple[
-    TieredRateLimiter, fakeredis.aioredis.FakeRedis
-]:
+def _make_limiter_with_fake_redis() -> tuple[TieredRateLimiter, fakeredis.aioredis.FakeRedis]:
     """Create a TieredRateLimiter backed by fakeredis."""
     fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     limiter = TieredRateLimiter()
@@ -87,9 +84,7 @@ class _FakeRedisCache:
     async def get(self, key: str, model: type | None = None) -> str | None:
         return await self.redis.get(key)
 
-    async def set(
-        self, key: str, value: str, ttl: int = 3600, model: type | None = None
-    ) -> None:
+    async def set(self, key: str, value: str, ttl: int = 3600, model: type | None = None) -> None:
         await self.redis.setex(key, ttl, value)
 
     async def delete(self, key: str) -> None:
@@ -119,9 +114,7 @@ class TestRateLimitConfiguration:
 
     def test_each_feature_has_free_and_pro_tiers(self) -> None:
         for key, limits in FEATURE_LIMITS.items():
-            assert isinstance(limits, TieredRateLimits), (
-                f"{key} is not TieredRateLimits"
-            )
+            assert isinstance(limits, TieredRateLimits), f"{key} is not TieredRateLimits"
             assert isinstance(limits.free, RateLimitConfig), f"{key}.free wrong type"
             assert isinstance(limits.pro, RateLimitConfig), f"{key}.pro wrong type"
 
@@ -166,19 +159,19 @@ class TestTimeWindowHelpers:
     def test_get_reset_time_day(self) -> None:
         with frozen_time("2026-04-01T14:30:00"):
             reset = get_reset_time(RateLimitPeriod.DAY)
-            expected = datetime(2026, 4, 2, 0, 0, 0, tzinfo=timezone.utc)
+            expected = datetime(2026, 4, 2, 0, 0, 0, tzinfo=UTC)
             assert reset == expected
 
     def test_get_reset_time_month(self) -> None:
         with frozen_time("2026-04-01T14:30:00"):
             reset = get_reset_time(RateLimitPeriod.MONTH)
-            expected = datetime(2026, 5, 1, 0, 0, 0, tzinfo=timezone.utc)
+            expected = datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC)
             assert reset == expected
 
     def test_get_reset_time_month_december_rolls_year(self) -> None:
         with frozen_time("2026-12-15T10:00:00"):
             reset = get_reset_time(RateLimitPeriod.MONTH)
-            expected = datetime(2027, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+            expected = datetime(2027, 1, 1, 0, 0, 0, tzinfo=UTC)
             assert reset == expected
 
     def test_get_time_window_key_day(self) -> None:
@@ -286,9 +279,7 @@ class TestTieredRateLimiterCheckAndIncrement:
 
             # Verify the counter is at 2 for the day key (must read inside frozen_time
             # so the time window key matches what was written)
-            day_key = self.limiter._get_redis_key(
-                "pro_user", "generate_image", RateLimitPeriod.DAY
-            )
+            day_key = self.limiter._get_redis_key("pro_user", "generate_image", RateLimitPeriod.DAY)
             counter = await self.fake_redis.get(day_key)
             assert int(counter) == 2
 
@@ -315,9 +306,7 @@ class TestTieredRateLimiterCheckAndIncrement:
             )
 
             # Reset the day counter so the daily check passes again
-            day_key = self.limiter._get_redis_key(
-                "user1", "generate_image", RateLimitPeriod.DAY
-            )
+            day_key = self.limiter._get_redis_key("user1", "generate_image", RateLimitPeriod.DAY)
             await self.fake_redis.set(day_key, "0")
 
             # Monthly is now at 2 (the limit), so next call should fail
@@ -346,9 +335,7 @@ class TestRateLimitRecovery:
 
     async def test_daily_limit_resets_next_day(self) -> None:
         """Exhaust limit on day 1, then advance clock to day 2 and verify reset."""
-        with patch.object(
-            self.limiter, "_sync_usage_real_time", new_callable=AsyncMock
-        ):
+        with patch.object(self.limiter, "_sync_usage_real_time", new_callable=AsyncMock):
             # Day 1: exhaust the limit (generate_image free = 1/day)
             with frozen_time("2026-04-01T12:00:00"):
                 await self.limiter.check_and_increment(
@@ -374,9 +361,7 @@ class TestRateLimitRecovery:
 
     async def test_monthly_limit_resets_next_month(self) -> None:
         """Set counter to monthly limit, advance to next month, verify reset."""
-        with patch.object(
-            self.limiter, "_sync_usage_real_time", new_callable=AsyncMock
-        ):
+        with patch.object(self.limiter, "_sync_usage_real_time", new_callable=AsyncMock):
             with frozen_time("2026-04-30T23:00:00"):
                 month_key = self.limiter._get_redis_key(
                     "user1", "generate_image", RateLimitPeriod.MONTH
@@ -490,7 +475,7 @@ class TestRateLimitExceptionDetail:
         assert "Upgrade to PRO" in exc.detail["message"]
 
     def test_exception_with_reset_time(self) -> None:
-        reset = datetime(2026, 4, 2, 0, 0, 0, tzinfo=timezone.utc)
+        reset = datetime(2026, 4, 2, 0, 0, 0, tzinfo=UTC)
         exc = RateLimitExceededException(feature="generate_image", reset_time=reset)
         assert exc.detail["reset_time"] == reset.isoformat()
 
@@ -526,9 +511,7 @@ class TestConcurrentRequests:
             ]
             await asyncio.gather(*tasks)
 
-            day_key = self.limiter._get_redis_key(
-                "user1", "chat_messages", RateLimitPeriod.DAY
-            )
+            day_key = self.limiter._get_redis_key("user1", "chat_messages", RateLimitPeriod.DAY)
             counter = await self.fake_redis.get(day_key)
             assert int(counter) == num_requests
 
@@ -582,9 +565,7 @@ class TestRedisKeyStructure:
 
     def test_daily_key_format(self) -> None:
         with frozen_time("2026-04-01T14:00:00"):
-            key = self.limiter._get_redis_key(
-                "user123", "web_search", RateLimitPeriod.DAY
-            )
+            key = self.limiter._get_redis_key("user123", "web_search", RateLimitPeriod.DAY)
             # Key embeds the enum repr and the YYYYMMDD window
             assert "user123" in key
             assert "web_search" in key
@@ -593,9 +574,7 @@ class TestRedisKeyStructure:
 
     def test_monthly_key_format(self) -> None:
         with frozen_time("2026-04-01T14:00:00"):
-            key = self.limiter._get_redis_key(
-                "user123", "web_search", RateLimitPeriod.MONTH
-            )
+            key = self.limiter._get_redis_key("user123", "web_search", RateLimitPeriod.MONTH)
             assert "user123" in key
             assert "web_search" in key
             assert "202604" in key

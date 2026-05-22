@@ -1,19 +1,18 @@
 """Helper functions for email processing."""
 
+from datetime import UTC, datetime
 import time
 import unicodedata
-from datetime import datetime, timezone
-from typing import Dict, List
 
-import html2text
 from bson import ObjectId
+import html2text
 
 from app.agents.memory.profile_extractor import PLATFORM_CONFIG
 from app.agents.prompts.email_filter_prompts import EMAIL_MEMORY_EXTRACTION_PROMPT
 from app.constants.email import NO_SUBJECT, UNKNOWN_SENDER
-from shared.py.wide_events import log
 from app.db.mongodb.collections import users_collection
 from app.services.memory_service import memory_service
+from shared.py.wide_events import log
 
 # HTML to text converter
 _html_converter = html2text.HTML2Text()
@@ -49,7 +48,7 @@ def remove_invisible_chars(s: str) -> str:
     return "".join(c for c in s if unicodedata.category(c) not in ("Cf", "Cc"))
 
 
-def process_email_content(emails: List[Dict]) -> tuple[List[Dict], int]:
+def process_email_content(emails: list[dict]) -> tuple[list[dict], int]:
     """
     Process email content converting HTML to clean text.
     Skips platform emails (they're only used for profile discovery).
@@ -98,8 +97,7 @@ def process_email_content(emails: List[Dict]) -> tuple[List[Dict], int]:
                     "metadata": {
                         "type": "email",
                         "source": "gmail",
-                        "message_id": email_data.get("messageId")
-                        or email_data.get("id"),
+                        "message_id": email_data.get("messageId") or email_data.get("id"),
                         "sender": email_data.get("sender")
                         or email_data.get("from", UNKNOWN_SENDER),
                         "subject": email_data.get("subject", NO_SUBJECT),
@@ -114,7 +112,7 @@ def process_email_content(emails: List[Dict]) -> tuple[List[Dict], int]:
 
 async def store_emails_to_mem0(
     user_id: str,
-    processed_emails: List[Dict],
+    processed_emails: list[dict],
     user_name: str | None = None,
     user_email: str | None = None,
     async_mode: bool = True,
@@ -160,7 +158,7 @@ Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
             messages=messages,
             user_id=user_id,
             metadata={
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "source": "gmail_batch",
                 "batch_size": len(messages),
                 "user_name": user_name,
@@ -201,7 +199,7 @@ async def mark_email_processing_complete(user_id: str, memory_count: int) -> Non
         {
             "$set": {
                 "email_memory_processed": True,
-                "email_memory_processed_at": datetime.now(timezone.utc),
+                "email_memory_processed_at": datetime.now(UTC),
                 "email_memory_count": memory_count,
             }
         },
@@ -238,7 +236,7 @@ async def store_single_profile(
                 "platform": platform,
                 "url": profile_url,
                 "source": "gmail_extraction",
-                "discovered_at": datetime.now(timezone.utc).isoformat(),
+                "discovered_at": datetime.now(UTC).isoformat(),
                 "user_name": user_name,
             },
             async_mode=async_mode,

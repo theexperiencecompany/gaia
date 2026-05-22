@@ -1,10 +1,9 @@
 from pydantic import BaseModel
-from typing import Optional
 
 
 class GoalCreate(BaseModel):
     title: str
-    description: Optional[str] = ""
+    description: str | None = ""
 
 
 class GoalResponse(BaseModel):
@@ -12,11 +11,11 @@ class GoalResponse(BaseModel):
     title: str
     progress: int
     description: str
-    roadmap: Optional[dict]
+    roadmap: dict | None
     user_id: str
     created_at: str
-    todo_project_id: Optional[str] = None
-    todo_id: Optional[str] = None
+    todo_project_id: str | None = None
+    todo_id: str | None = None
 
 
 class RoadmapUnavailableResponse(BaseModel):

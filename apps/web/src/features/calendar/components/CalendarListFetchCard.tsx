@@ -56,4 +56,6 @@ export default function CalendarListFetchCard({
         </ScrollShadow>
       </div>
     );
+
+  return null;
 }

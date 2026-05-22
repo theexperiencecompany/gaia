@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 
 import cloudinary
 import cloudinary.exceptions
@@ -11,8 +10,8 @@ from shared.py.wide_events import log
 
 def upload_file_to_cloudinary(
     public_id: str,
-    file_data: Optional[bytes] = None,
-    file_path: Optional[str] = None,
+    file_data: bytes | None = None,
+    file_path: str | None = None,
 ) -> str:
     """
     Uploads a file to Cloudinary and returns the URL.
@@ -66,9 +65,7 @@ def upload_file_to_cloudinary(
         file_url = upload_result.get("secure_url")
         if not file_url:
             log.error("Missing secure_url in Cloudinary upload response")
-            raise HTTPException(
-                status_code=500, detail="Invalid response from file upload service"
-            )
+            raise HTTPException(status_code=500, detail="Invalid response from file upload service")
 
         source_type = "file_data" if file_data else "file_path"
         log.info(f"File uploaded successfully from {source_type}. URL: {file_url}")
@@ -76,9 +73,7 @@ def upload_file_to_cloudinary(
 
     except cloudinary.exceptions.Error as e:
         log.error(f"Cloudinary upload failed: {e}")
-        raise HTTPException(
-            status_code=500, detail="Failed to upload file to Cloudinary"
-        )
+        raise HTTPException(status_code=500, detail="Failed to upload file to Cloudinary")
     except Exception as e:
         log.error(f"Unexpected error during upload: {e}")
         raise HTTPException(

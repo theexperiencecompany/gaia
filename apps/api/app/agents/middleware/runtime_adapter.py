@@ -10,7 +10,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from app.override.langgraph_bigtool.utils import State
 from langchain.agents.middleware.types import (
     AgentState,
     ModelRequest,
@@ -26,10 +25,12 @@ from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
 from langgraph.types import StreamWriter
 
+from app.override.langgraph_bigtool.utils import State
+
 
 def _noop_stream_writer(_: object) -> None:
     """Default stream writer used when graph stream writer is unavailable."""
-    return None
+    return
 
 
 def to_agent_state(state: State | dict[str, Any]) -> AgentState[Any]:

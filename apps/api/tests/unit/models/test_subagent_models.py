@@ -91,23 +91,15 @@ class TestSubagentEquality:
         # whose equality is by-field, but we keep identity here so the test is
         # robust regardless of Pydantic's __eq__ semantics.
         config = _make_config()
-        a = Subagent(
-            id="x", name="X", provider="x", managed_by="internal", config=config
-        )
-        b = Subagent(
-            id="x", name="X", provider="x", managed_by="internal", config=config
-        )
+        a = Subagent(id="x", name="X", provider="x", managed_by="internal", config=config)
+        b = Subagent(id="x", name="X", provider="x", managed_by="internal", config=config)
 
         assert a == b
 
     def test_different_id_compares_unequal(self) -> None:
         config = _make_config()
-        a = Subagent(
-            id="x", name="X", provider="x", managed_by="internal", config=config
-        )
-        b = Subagent(
-            id="y", name="X", provider="x", managed_by="internal", config=config
-        )
+        a = Subagent(id="x", name="X", provider="x", managed_by="internal", config=config)
+        b = Subagent(id="y", name="X", provider="x", managed_by="internal", config=config)
 
         assert a != b
 

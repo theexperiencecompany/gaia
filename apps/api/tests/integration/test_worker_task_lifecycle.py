@@ -11,12 +11,12 @@ Redis, external services). Verifies that each task function:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from bson import ObjectId
 from freezegun import freeze_time as _freeze_time
+import pytest
 
 from app.models.user_models import BioStatus
 from app.workers.lifecycle.startup import startup
@@ -66,25 +66,19 @@ class TestReminderTaskExecution:
     async def test_process_reminder_success(self):
         """Import the real task, call it, verify it invokes process_task_execution."""
 
-        with patch(
-            "app.workers.tasks.reminder_tasks.reminder_scheduler"
-        ) as mock_scheduler:
+        with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
             mock_scheduler.process_task_execution = AsyncMock()
 
             result = await process_reminder(ARQ_CTX, FAKE_REMINDER_ID)
 
-            mock_scheduler.process_task_execution.assert_awaited_once_with(
-                FAKE_REMINDER_ID
-            )
+            mock_scheduler.process_task_execution.assert_awaited_once_with(FAKE_REMINDER_ID)
             assert FAKE_REMINDER_ID in result
             assert "Successfully" in result
 
     async def test_process_reminder_propagates_scheduler_error(self):
         """If the scheduler raises, the error should propagate (not be swallowed)."""
 
-        with patch(
-            "app.workers.tasks.reminder_tasks.reminder_scheduler"
-        ) as mock_scheduler:
+        with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
             mock_scheduler.process_task_execution = AsyncMock(
                 side_effect=RuntimeError("DB connection lost")
             )
@@ -111,7 +105,7 @@ class TestReminderTaskExecution:
             assert call_filter["status"]["$in"] == ["completed", "cancelled"]
 
             # Verify the cutoff date is 30 days ago from the frozen time
-            expected_cutoff = datetime(2026, 3, 2, 12, 0, 0, tzinfo=timezone.utc)
+            expected_cutoff = datetime(2026, 3, 2, 12, 0, 0, tzinfo=UTC)
             actual_cutoff = call_filter["updated_at"]["$lt"]
             assert abs((actual_cutoff - expected_cutoff).total_seconds()) < 2
 
@@ -197,9 +191,7 @@ class TestMemoryTaskProcessing:
         """Empty batch should short-circuit without calling memory_service."""
 
         with patch("app.workers.tasks.memory_tasks.memory_service") as mock_mem:
-            result = await store_memories_batch(
-                ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=[]
-            )
+            result = await store_memories_batch(ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=[])
 
             mock_mem.store_memory_batch.assert_not_called()
             assert "No emails to process" in result
@@ -213,9 +205,7 @@ class TestMemoryTaskProcessing:
         ]
 
         with patch("app.workers.tasks.memory_tasks.memory_service") as mock_mem:
-            result = await store_memories_batch(
-                ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=emails
-            )
+            result = await store_memories_batch(ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=emails)
 
             mock_mem.store_memory_batch.assert_not_called()
             assert "No valid emails" in result
@@ -233,9 +223,7 @@ class TestMemoryTaskProcessing:
         with patch("app.workers.tasks.memory_tasks.memory_service") as mock_mem:
             mock_mem.store_memory_batch = AsyncMock(return_value=False)
 
-            result = await store_memories_batch(
-                ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=emails
-            )
+            result = await store_memories_batch(ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=emails)
 
             assert "filtered all" in result.lower() or "non-memorable" in result.lower()
 
@@ -250,13 +238,9 @@ class TestMemoryTaskProcessing:
         ]
 
         with patch("app.workers.tasks.memory_tasks.memory_service") as mock_mem:
-            mock_mem.store_memory_batch = AsyncMock(
-                side_effect=ConnectionError("Mem0 unreachable")
-            )
+            mock_mem.store_memory_batch = AsyncMock(side_effect=ConnectionError("Mem0 unreachable"))
 
-            result = await store_memories_batch(
-                ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=emails
-            )
+            result = await store_memories_batch(ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=emails)
 
             # The task catches exceptions and returns an error string
             assert "Error" in result
@@ -275,9 +259,7 @@ class TestEmailMemoryExtraction:
     async def test_already_processed_short_circuits(self):
         """If emails are already processed, return early."""
 
-        with patch(
-            "app.workers.tasks.memory_email_tasks.process_gmail_to_memory"
-        ) as mock_proc:
+        with patch("app.workers.tasks.memory_email_tasks.process_gmail_to_memory") as mock_proc:
             mock_proc.return_value = {
                 "already_processed": True,
                 "total": 0,
@@ -292,9 +274,7 @@ class TestEmailMemoryExtraction:
     async def test_successful_processing(self):
         """Successful run should report total and successful counts."""
 
-        with patch(
-            "app.workers.tasks.memory_email_tasks.process_gmail_to_memory"
-        ) as mock_proc:
+        with patch("app.workers.tasks.memory_email_tasks.process_gmail_to_memory") as mock_proc:
             mock_proc.return_value = {
                 "already_processed": False,
                 "total": 50,
@@ -311,9 +291,7 @@ class TestEmailMemoryExtraction:
     async def test_incomplete_processing_reports_failure(self):
         """When processing is incomplete, the message should reflect failure."""
 
-        with patch(
-            "app.workers.tasks.memory_email_tasks.process_gmail_to_memory"
-        ) as mock_proc:
+        with patch("app.workers.tasks.memory_email_tasks.process_gmail_to_memory") as mock_proc:
             mock_proc.return_value = {
                 "already_processed": False,
                 "total": 50,
@@ -347,7 +325,7 @@ class TestCleanupTaskSafety:
                 "completed": True,
                 "bio_status": BioStatus.PROCESSING,
             },
-            "updated_at": datetime(2026, 3, 31, 10, 0, 0, tzinfo=timezone.utc),
+            "updated_at": datetime(2026, 3, 31, 10, 0, 0, tzinfo=UTC),
         }
 
         mock_cursor = MagicMock()
@@ -401,7 +379,7 @@ class TestCleanupTaskSafety:
         stuck_user = {
             "_id": ObjectId(),
             "onboarding": {"completed": True, "bio_status": "processing"},
-            "updated_at": datetime(2026, 3, 30, tzinfo=timezone.utc),
+            "updated_at": datetime(2026, 3, 30, tzinfo=UTC),
         }
 
         mock_cursor = MagicMock()
@@ -446,9 +424,7 @@ class TestTaskErrorHandling:
     async def test_process_reminder_with_none_id_propagates(self):
         """Passing None as reminder_id should propagate through to the scheduler."""
 
-        with patch(
-            "app.workers.tasks.reminder_tasks.reminder_scheduler"
-        ) as mock_scheduler:
+        with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
             mock_scheduler.process_task_execution = AsyncMock(
                 side_effect=TypeError("expected str, got NoneType")
             )
@@ -459,9 +435,7 @@ class TestTaskErrorHandling:
     async def test_email_task_propagates_processor_error(self):
         """If process_gmail_to_memory raises, it should propagate."""
 
-        with patch(
-            "app.workers.tasks.memory_email_tasks.process_gmail_to_memory"
-        ) as mock_proc:
+        with patch("app.workers.tasks.memory_email_tasks.process_gmail_to_memory") as mock_proc:
             mock_proc.side_effect = ValueError("Invalid user ID format")
 
             with pytest.raises(ValueError, match="Invalid user ID format"):
@@ -543,9 +517,7 @@ class TestWorkflowTaskExecution:
                 new_callable=AsyncMock,
                 return_value=mock_messages,
             ),
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowService"
-            ) as mock_wf_service,
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_service,
             patch(
                 "app.workers.tasks.workflow_tasks.create_workflow_completion_notification",
                 new_callable=AsyncMock,
@@ -612,12 +584,8 @@ class TestWorkflowTaskExecution:
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("Agent crashed"),
             ),
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowService"
-            ) as mock_wf_service,
-            patch(
-                "app.workers.tasks.workflow_tasks.notification_service"
-            ) as mock_notif,
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_service,
+            patch("app.workers.tasks.workflow_tasks.notification_service") as mock_notif,
         ):
             mock_wf_service.increment_execution_count = AsyncMock()
             mock_notif.create_notification = AsyncMock()
@@ -695,9 +663,7 @@ class TestUserTasks:
             "_id": ObjectId(),
             "email": "inactive@example.com",
             "name": "Inactive User",
-            "last_active_at": datetime(2026, 3, 20, tzinfo=timezone.utc).replace(
-                tzinfo=None
-            ),
+            "last_active_at": datetime(2026, 3, 20, tzinfo=UTC).replace(tzinfo=None),
             "is_active": True,
         }
 

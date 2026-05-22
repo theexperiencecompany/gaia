@@ -2,40 +2,16 @@ import fs from "fs";
 import matter from "gray-matter";
 import path from "path";
 import { cache } from "react";
+import type { BlogPost, BlogPostFrontmatter } from "./blog.types";
+
+export type {
+  Author,
+  BlogPost,
+  BlogPostFrontmatter,
+  BlogPostMeta,
+} from "./blog.types";
 
 const postsDirectory = path.join(process.cwd(), "content/blog");
-
-export interface Author {
-  name: string;
-  role: string;
-  avatar: string;
-  linkedin?: string;
-  twitter?: string;
-}
-
-export interface BlogPost {
-  slug: string;
-  title: string;
-  date: string;
-  authors: Author[];
-  category: string;
-  image: string;
-  content: string;
-  featured?: boolean;
-}
-
-/** BlogPost without content — safe to pass across RSC→client boundaries */
-export type BlogPostMeta = Omit<BlogPost, "content">;
-
-export interface BlogPostFrontmatter {
-  title: string;
-  date: string;
-  authors: Author[];
-  category: string;
-  image: string;
-  slug: string;
-  featured?: boolean;
-}
 
 /**
  * Get all blog post slugs

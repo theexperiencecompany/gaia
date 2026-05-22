@@ -63,9 +63,7 @@ def gmail_send_email_schema_modifier(tool: str, toolkit: str, schema: Tool) -> T
 
 
 @register_schema_modifier(tools=list(_GMAIL_COMPOSE_TOOLS))
-def gmail_compose_hide_is_html_schema_modifier(
-    tool: str, toolkit: str, schema: Tool
-) -> Tool:
+def gmail_compose_hide_is_html_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
     """Hide the ``is_html`` parameter from the agent-facing schema.
 
     The before-hook always converts the body to HTML and sets the flag, so
@@ -85,9 +83,7 @@ def gmail_compose_hide_is_html_schema_modifier(
     return schema
 
 
-@register_schema_modifier(
-    tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"]
-)
+@register_schema_modifier(tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
 def gmail_fetch_emails_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
     """
     Set sensible defaults for GMAIL_FETCH_EMAILS and GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID.
@@ -287,9 +283,7 @@ def gmail_compose_before_hook(
 
 
 @register_after_hook(tools=["GMAIL_FETCH_EMAILS"])
-def gmail_fetch_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+def gmail_fetch_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process email fetch response and send data to frontend."""
     try:
         writer = get_stream_writer()
@@ -346,9 +340,7 @@ def gmail_message_detail_after_hook(
 
 
 @register_after_hook(tools=["GMAIL_FETCH_MESSAGE_BY_THREAD_ID"])
-def gmail_thread_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+def gmail_thread_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process thread response and send data to frontend."""
     try:
         writer = get_stream_writer()
@@ -394,9 +386,7 @@ def gmail_thread_after_hook(
 
 
 @register_after_hook(tools=["GMAIL_LIST_DRAFTS"])
-def gmail_drafts_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+def gmail_drafts_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process drafts list response to minimize raw data."""
     try:
         if not response or "error" in response["data"]:
@@ -412,9 +402,7 @@ def gmail_drafts_after_hook(
 
 
 @register_after_hook(tools=["GMAIL_GET_DRAFT"])
-def gmail_draft_detail_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+def gmail_draft_detail_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process single draft response to minimize raw data."""
     try:
         if not response or "error" in response["data"]:
@@ -430,9 +418,7 @@ def gmail_draft_detail_after_hook(
 
 
 @register_after_hook(tools=["GMAIL_FETCH_ATTACHMENT"])
-def gmail_attachment_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+def gmail_attachment_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process attachment response to extract metadata only."""
     try:
         if not response["successful"]:
@@ -485,11 +471,7 @@ def gmail_trash_before_hook(tool: str, toolkit: str, params: Any) -> Any:
         if not writer:  # type: ignore[truthy-function]
             return params
 
-        action = (
-            "Moving to trash"
-            if tool == "GMAIL_TRASH_MESSAGE"
-            else "Restoring from trash"
-        )
+        action = "Moving to trash" if tool == "GMAIL_TRASH_MESSAGE" else "Restoring from trash"
 
         payload = {"progress": f"{action}..."}
         writer(payload)
@@ -500,9 +482,7 @@ def gmail_trash_before_hook(tool: str, toolkit: str, params: Any) -> Any:
     return params
 
 
-@register_before_hook(
-    tools=["GMAIL_CREATE_LABEL", "GMAIL_UPDATE_LABEL", "GMAIL_DELETE_LABEL"]
-)
+@register_before_hook(tools=["GMAIL_CREATE_LABEL", "GMAIL_UPDATE_LABEL", "GMAIL_DELETE_LABEL"])
 def gmail_label_before_hook(tool: str, toolkit: str, params: Any) -> Any:
     """Handle label management progress."""
     try:
@@ -543,9 +523,7 @@ def gmail_modify_labels_before_hook(tool: str, toolkit: str, params: Any) -> Any
         label_ids = arguments.get("label_ids", [])
 
         action = (
-            "Adding labels to"
-            if tool == "GMAIL_ADD_LABEL_TO_EMAIL"
-            else "Removing labels from"
+            "Adding labels to" if tool == "GMAIL_ADD_LABEL_TO_EMAIL" else "Removing labels from"
         )
         message_count = len(message_ids) if isinstance(message_ids, list) else 1
 
@@ -659,9 +637,7 @@ def gmail_search_people_before_hook(tool: str, toolkit: str, params: Any) -> Any
 
 
 @register_after_hook(tools=["GMAIL_FETCH_EMAIL_BY_ID"])
-def gmail_fetch_by_id_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+def gmail_fetch_by_id_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process single email fetch response to minimize raw data."""
     try:
         if not response or "error" in response["data"]:
@@ -677,9 +653,7 @@ def gmail_fetch_by_id_after_hook(
 
 
 @register_after_hook(tools=["GMAIL_SEND_DRAFT"])
-def gmail_send_draft_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+def gmail_send_draft_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process draft sending response."""
     try:
         writer = get_stream_writer()
@@ -708,8 +682,7 @@ def gmail_send_draft_after_hook(
                 "successful": True,
                 "message": "Draft sent successfully",
             }
-        else:
-            return response["data"]
+        return response["data"]
 
     except Exception as e:
         log.error(f"Error in gmail_send_draft_after_hook: {e}")
@@ -717,9 +690,7 @@ def gmail_send_draft_after_hook(
 
 
 @register_after_hook(tools=["GMAIL_GET_CONTACTS"])
-def gmail_get_contacts_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+def gmail_get_contacts_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process contacts list response to minimize raw data."""
     try:
         writer = get_stream_writer()
@@ -799,9 +770,7 @@ def gmail_get_contacts_after_hook(
 
 
 @register_after_hook(tools=["GMAIL_SEARCH_PEOPLE"])
-def gmail_search_people_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+def gmail_search_people_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process people search response to minimize raw data."""
     try:
         writer = get_stream_writer()

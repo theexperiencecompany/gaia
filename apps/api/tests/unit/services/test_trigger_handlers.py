@@ -1,8 +1,8 @@
 """Tests for Google Sheets trigger handler."""
 
+from pathlib import Path
 import sys
 import types
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -34,7 +34,6 @@ from app.services.triggers.handlers.google_sheets import (  # noqa: E402
     GoogleSheetsTriggerHandler,
     google_sheets_trigger_handler,
 )
-
 
 # ---------------------------------------------------------------------------
 # Properties and class attributes
@@ -125,9 +124,7 @@ class TestGetConfigOptionsSpreadsheets:
         assert "(Shared)" in result[1]["label"]
 
     @patch("app.services.triggers.handlers.google_sheets.get_composio_service")
-    async def test_returns_empty_on_tool_not_found(
-        self, mock_get_svc: MagicMock
-    ) -> None:
+    async def test_returns_empty_on_tool_not_found(self, mock_get_svc: MagicMock) -> None:
         mock_svc = MagicMock()
         mock_svc.get_tool = MagicMock(return_value=None)
         mock_get_svc.return_value = mock_svc
@@ -159,9 +156,7 @@ class TestGetConfigOptionsSpreadsheets:
         assert result == []
 
     @patch("app.services.triggers.handlers.google_sheets.get_composio_service")
-    async def test_skips_sheets_without_id_or_name(
-        self, mock_get_svc: MagicMock
-    ) -> None:
+    async def test_skips_sheets_without_id_or_name(self, mock_get_svc: MagicMock) -> None:
         mock_tool = MagicMock()
         mock_tool.invoke = MagicMock(
             return_value={
@@ -357,27 +352,21 @@ class TestRegister:
         mock_config.trigger_data = "not_the_right_type"
 
         with pytest.raises(TypeError, match="Expected GoogleSheetsNewRowConfig"):
-            await self.handler.register(
-                "user1", "wf1", "google_sheets_new_row", mock_config
-            )
+            await self.handler.register("user1", "wf1", "google_sheets_new_row", mock_config)
 
     async def test_wrong_config_type_for_new_sheet_raises(self) -> None:
         mock_config = MagicMock()
         mock_config.trigger_data = "not_the_right_type"
 
         with pytest.raises(TypeError, match="Expected GoogleSheetsNewSheetConfig"):
-            await self.handler.register(
-                "user1", "wf1", "google_sheets_new_sheet", mock_config
-            )
+            await self.handler.register("user1", "wf1", "google_sheets_new_sheet", mock_config)
 
     @patch.object(
         GoogleSheetsTriggerHandler,
         "_register_triggers_parallel",
         new_callable=AsyncMock,
     )
-    async def test_new_row_with_spreadsheets_and_sheets(
-        self, mock_parallel: AsyncMock
-    ) -> None:
+    async def test_new_row_with_spreadsheets_and_sheets(self, mock_parallel: AsyncMock) -> None:
         from app.models.trigger_configs import GoogleSheetsNewRowConfig
 
         mock_parallel.return_value = ["trigger_id_1"]
@@ -389,9 +378,7 @@ class TestRegister:
         mock_config = MagicMock()
         mock_config.trigger_data = trigger_data
 
-        result = await self.handler.register(
-            "user1", "wf1", "google_sheets_new_row", mock_config
-        )
+        result = await self.handler.register("user1", "wf1", "google_sheets_new_row", mock_config)
 
         assert result == ["trigger_id_1"]
         mock_parallel.assert_called_once()
@@ -411,9 +398,7 @@ class TestRegister:
         mock_config = MagicMock()
         mock_config.trigger_data = trigger_data
 
-        await self.handler.register(
-            "user1", "wf1", "google_sheets_new_row", mock_config
-        )
+        await self.handler.register("user1", "wf1", "google_sheets_new_row", mock_config)
 
         configs_arg = mock_parallel.call_args.kwargs["configs"]
         assert len(configs_arg) == 1
@@ -434,9 +419,7 @@ class TestRegister:
         mock_config = MagicMock()
         mock_config.trigger_data = trigger_data
 
-        await self.handler.register(
-            "user1", "wf1", "google_sheets_new_sheet", mock_config
-        )
+        await self.handler.register("user1", "wf1", "google_sheets_new_sheet", mock_config)
 
         configs_arg = mock_parallel.call_args.kwargs["configs"]
         assert len(configs_arg) == 2
@@ -454,9 +437,7 @@ class TestRegister:
         mock_config = MagicMock()
         mock_config.trigger_data = trigger_data
 
-        await self.handler.register(
-            "user1", "wf1", "google_sheets_new_row", mock_config
-        )
+        await self.handler.register("user1", "wf1", "google_sheets_new_row", mock_config)
 
         configs_arg = mock_parallel.call_args.kwargs["configs"]
         assert len(configs_arg) == 1
@@ -467,9 +448,7 @@ class TestRegister:
         "_register_triggers_parallel",
         new_callable=AsyncMock,
     )
-    async def test_sheet_name_without_composite_key(
-        self, mock_parallel: AsyncMock
-    ) -> None:
+    async def test_sheet_name_without_composite_key(self, mock_parallel: AsyncMock) -> None:
         from app.models.trigger_configs import GoogleSheetsNewRowConfig
 
         mock_parallel.return_value = ["t1"]
@@ -480,9 +459,7 @@ class TestRegister:
         mock_config = MagicMock()
         mock_config.trigger_data = trigger_data
 
-        await self.handler.register(
-            "user1", "wf1", "google_sheets_new_row", mock_config
-        )
+        await self.handler.register("user1", "wf1", "google_sheets_new_row", mock_config)
 
         configs_arg = mock_parallel.call_args.kwargs["configs"]
         assert len(configs_arg) == 1
@@ -506,9 +483,7 @@ class TestRegister:
         mock_config = MagicMock()
         mock_config.trigger_data = trigger_data
 
-        await self.handler.register(
-            "user1", "wf1", "google_sheets_new_row", mock_config
-        )
+        await self.handler.register("user1", "wf1", "google_sheets_new_row", mock_config)
 
         configs_arg = mock_parallel.call_args.kwargs["configs"]
         # sp2::Sheet1 doesn't match sp1, so it's skipped
@@ -559,18 +534,14 @@ class TestFindWorkflows:
 
         mock_coll.find = MagicMock(return_value=mock_cursor())
 
-        result = await self.handler.find_workflows(
-            "GOOGLESHEETS_NEW_ROWS_TRIGGER", "tid1", {}
-        )
+        result = await self.handler.find_workflows("GOOGLESHEETS_NEW_ROWS_TRIGGER", "tid1", {})
         assert result == []
 
     @patch("app.services.triggers.handlers.google_sheets.workflows_collection")
     async def test_handles_db_error(self, mock_coll: MagicMock) -> None:
         mock_coll.find = MagicMock(side_effect=RuntimeError("db down"))
 
-        result = await self.handler.find_workflows(
-            "GOOGLESHEETS_NEW_ROWS_TRIGGER", "tid1", {}
-        )
+        result = await self.handler.find_workflows("GOOGLESHEETS_NEW_ROWS_TRIGGER", "tid1", {})
         assert result == []
 
     @patch("app.services.triggers.handlers.google_sheets.workflows_collection")
@@ -583,9 +554,7 @@ class TestFindWorkflows:
 
         mock_coll.find = MagicMock(return_value=mock_cursor())
 
-        result = await self.handler.find_workflows(
-            "GOOGLESHEETS_NEW_ROWS_TRIGGER", "tid1", {}
-        )
+        result = await self.handler.find_workflows("GOOGLESHEETS_NEW_ROWS_TRIGGER", "tid1", {})
         assert result == []
 
     @patch("app.services.triggers.handlers.google_sheets.workflows_collection")

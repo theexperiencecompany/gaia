@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+import pytest
 
 from app.agents.core.nodes.memory_node import (
     MAX_TOOL_OUTPUT_SIZE,
@@ -187,9 +187,7 @@ class TestMemoryNode:
         config = self._make_config()  # no user_id, no subagent_id
         store = MagicMock()
 
-        with patch(
-            "app.agents.core.nodes.memory_node.asyncio.create_task"
-        ) as mock_create:
+        with patch("app.agents.core.nodes.memory_node.asyncio.create_task") as mock_create:
             result = await memory_node(state, config, store)
 
         assert result is state
@@ -232,9 +230,7 @@ class TestMemoryNode:
     async def test_background_task_exception_is_swallowed(self):
         """store_memory_batch exceptions must be caught inside _store_user_memory_background."""
         with patch("app.agents.core.nodes.memory_node.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(
-                side_effect=RuntimeError("mem0 is down")
-            )
+            mock_svc.store_memory_batch = AsyncMock(side_effect=RuntimeError("mem0 is down"))
 
             # Must not raise — the except block must absorb RuntimeError
             await _store_user_memory_background(

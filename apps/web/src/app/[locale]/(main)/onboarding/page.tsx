@@ -103,10 +103,7 @@ export default function Onboarding() {
     setIntroDone(true);
   };
 
-  const { welcome: welcomeChat, todoDemo: todoDemoChat } = useChatStage(
-    state,
-    dispatch,
-  );
+  const { todoDemo: todoDemoChat } = useChatStage(state, dispatch);
 
   const stageContent = (() => {
     switch (stage) {

@@ -1,24 +1,25 @@
 """Google Maps custom tools using Composio custom tool infrastructure."""
 
-from typing import Any, Dict, List
+from typing import Any
 
-from shared.py.wide_events import log
+from composio import Composio
+
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
 from app.utils.errors import AppError
-from composio import Composio
+from shared.py.wide_events import log
 
 MAPS_API_BASE = "https://maps.googleapis.com/maps/api"
 MAPS_TOOLKIT = "GOOGLE_MAPS"
 
 
-def register_google_maps_custom_tools(composio: Composio) -> List[str]:
+def register_google_maps_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="GOOGLE_MAPS")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get Google Maps context snapshot: API connectivity and available services.
 
         Zero required parameters. Confirms API access and returns available capabilities.
@@ -32,13 +33,16 @@ def register_google_maps_custom_tools(composio: Composio) -> List[str]:
             )
 
         try:
-            data = proxy_request_sync(
-                user_id=user_id,
-                toolkit=MAPS_TOOLKIT,
-                endpoint=f"{MAPS_API_BASE}/geocode/json",
-                method="GET",
-                query={"address": "New York, NY", "result_type": "locality"},
-            ) or {}
+            data = (
+                proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=MAPS_TOOLKIT,
+                    endpoint=f"{MAPS_API_BASE}/geocode/json",
+                    method="GET",
+                    query={"address": "New York, NY", "result_type": "locality"},
+                )
+                or {}
+            )
             status = data.get("status", "UNKNOWN")
             connected = status == "OK"
         except Exception as e:

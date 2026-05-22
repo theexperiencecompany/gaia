@@ -12,7 +12,7 @@ def create_cache_key_hash(func_name: str, *args, **kwargs) -> str:
     """
     try:
         # Just stringify everything and hash it
-        data_str = f"{func_name}:{str(args)}:{str(sorted(kwargs.items()))}"
+        data_str = f"{func_name}:{args!s}:{sorted(kwargs.items())!s}"
         # Use full hash for better uniqueness, Redis can handle it
         hash_key = hashlib.sha256(data_str.encode()).hexdigest()
         return f"{func_name}:{hash_key}"

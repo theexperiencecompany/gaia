@@ -11,12 +11,12 @@ Triggers are indexed in ChromaDB by chroma_triggers_store.py at startup.
 
 from typing import Any
 
-from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.chroma.chroma_triggers_store import (
     TRIGGERS_NAMESPACE,
     get_triggers_store,
 )
+from shared.py.wide_events import log
 
 
 class TriggerSearchService:
@@ -66,9 +66,7 @@ class TriggerSearchService:
             # Cache connection checks per integration
             if integration_id not in checked_integrations:
                 try:
-                    is_connected = await check_integration_status(
-                        integration_id, user_id
-                    )
+                    is_connected = await check_integration_status(integration_id, user_id)
                     checked_integrations[integration_id] = is_connected
                 except Exception as e:
                     log.warning(f"Failed to check connection for {integration_id}: {e}")
@@ -135,9 +133,7 @@ class TriggerSearchService:
                             schema["config_fields"][field_name] = {
                                 "type": getattr(field_config, "type", "string"),
                                 "description": getattr(field_config, "description", ""),
-                                "default": None
-                                if default_val is _sentinel
-                                else default_val,
+                                "default": None if default_val is _sentinel else default_val,
                                 "required": default_val is _sentinel,
                             }
 
@@ -167,9 +163,7 @@ class TriggerSearchService:
             # Check connection once per integration
             if integration.id not in checked_integrations:
                 try:
-                    is_connected = await check_integration_status(
-                        integration.id, user_id
-                    )
+                    is_connected = await check_integration_status(integration.id, user_id)
                     checked_integrations[integration.id] = is_connected
                 except Exception:
                     checked_integrations[integration.id] = False

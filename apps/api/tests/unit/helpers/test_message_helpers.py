@@ -2,8 +2,8 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import SystemMessage
+import pytest
 
 from app.helpers.message_helpers import (
     _get_gaia_knowledge_section,
@@ -23,7 +23,6 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 
-
 # ---------------------------------------------------------------------------
 # create_system_message
 # ---------------------------------------------------------------------------
@@ -40,9 +39,7 @@ class TestCreateSystemMessage:
         content (OpenUI on web, platform restrictions on WhatsApp)."""
         web_a = create_system_message(user_name="Foo", agent_type="comms", source="web")
         web_b = create_system_message(user_name="Bar", agent_type="comms", source="web")
-        whatsapp = create_system_message(
-            user_name="Foo", agent_type="comms", source="whatsapp"
-        )
+        whatsapp = create_system_message(user_name="Foo", agent_type="comms", source="whatsapp")
         assert isinstance(web_a, SystemMessage)
         assert web_a.content == web_b.content
         assert web_a.content != whatsapp.content
@@ -167,9 +164,7 @@ class TestGetGaiaKnowledgeSection:
     @pytest.mark.asyncio
     async def test_exception_returns_empty(self) -> None:
         with patch("app.helpers.message_helpers.gaia_knowledge_service") as mock_svc:
-            mock_svc.search_knowledge = AsyncMock(
-                side_effect=RuntimeError("chroma fail")
-            )
+            mock_svc.search_knowledge = AsyncMock(side_effect=RuntimeError("chroma fail"))
             result = await _get_gaia_knowledge_section("q")
 
         assert result == ""

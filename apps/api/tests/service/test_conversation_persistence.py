@@ -7,10 +7,10 @@ so update_messages() runs its actual code path unmodified.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-import pytest
 from fastapi import HTTPException
+import pytest
 
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.services.conversation_service import update_messages
@@ -20,9 +20,7 @@ from app.services.conversation_service import update_messages
 class TestUpdateMessagesReal:
     """Call the real update_messages() against real MongoDB."""
 
-    async def test_messages_persisted(
-        self, conversations_collection, make_conversation
-    ):
+    async def test_messages_persisted(self, conversations_collection, make_conversation):
         """update_messages must $push user+bot messages to real MongoDB."""
         user = {"user_id": "user-1"}
         conv_id = await make_conversation("user-1")
@@ -33,12 +31,12 @@ class TestUpdateMessagesReal:
                 MessageModel(
                     type="user",
                     response="Hello GAIA",
-                    date=datetime.now(timezone.utc).isoformat(),
+                    date=datetime.now(UTC).isoformat(),
                 ),
                 MessageModel(
                     type="bot",
                     response="Hello! How can I help?",
-                    date=datetime.now(timezone.utc).isoformat(),
+                    date=datetime.now(UTC).isoformat(),
                 ),
             ],
         )
@@ -66,7 +64,7 @@ class TestUpdateMessagesReal:
                 MessageModel(
                     type="bot",
                     response="Ghost",
-                    date=datetime.now(timezone.utc).isoformat(),
+                    date=datetime.now(UTC).isoformat(),
                 ),
             ],
         )
@@ -76,9 +74,7 @@ class TestUpdateMessagesReal:
 
         assert exc_info.value.status_code == 404
 
-    async def test_tool_data_survives_roundtrip(
-        self, conversations_collection, make_conversation
-    ):
+    async def test_tool_data_survives_roundtrip(self, conversations_collection, make_conversation):
         """tool_data on a bot message must survive MongoDB serialization."""
         user = {"user_id": "user-2"}
         conv_id = await make_conversation("user-2")
@@ -89,12 +85,12 @@ class TestUpdateMessagesReal:
                 MessageModel(
                     type="bot",
                     response="Here are results",
-                    date=datetime.now(timezone.utc).isoformat(),
+                    date=datetime.now(UTC).isoformat(),
                     tool_data=[
                         {
                             "tool_name": "search_results",
                             "data": {"items": ["a", "b"]},
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "timestamp": datetime.now(UTC).isoformat(),
                         }
                     ],
                 ),
@@ -108,9 +104,7 @@ class TestUpdateMessagesReal:
         assert saved["tool_data"][0]["tool_name"] == "search_results"
         assert saved["tool_data"][0]["data"]["items"] == ["a", "b"]
 
-    async def test_consecutive_updates_append(
-        self, conversations_collection, make_conversation
-    ):
+    async def test_consecutive_updates_append(self, conversations_collection, make_conversation):
         """Multiple update_messages calls must append, not overwrite."""
         user = {"user_id": "user-3"}
         conv_id = await make_conversation("user-3")
@@ -122,7 +116,7 @@ class TestUpdateMessagesReal:
                     MessageModel(
                         type="bot",
                         response=f"Message {i}",
-                        date=datetime.now(timezone.utc).isoformat(),
+                        date=datetime.now(UTC).isoformat(),
                     ),
                 ],
             )
@@ -143,7 +137,7 @@ class TestUpdateMessagesReal:
                 MessageModel(
                     type="bot",
                     response="From B",
-                    date=datetime.now(timezone.utc).isoformat(),
+                    date=datetime.now(UTC).isoformat(),
                 ),
             ],
         )

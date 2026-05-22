@@ -1,13 +1,14 @@
-from typing import Annotated, Optional
+from typing import Annotated
 
-from shared.py.wide_events import log
+from langchain_core.documents import Document
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection
 from app.decorators import with_doc, with_rate_limiting
 from app.templates.docstrings.file_tool_docs import QUERY_FILE
-from langchain_core.documents import Document
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
+from shared.py.wide_events import log
 
 
 @tool
@@ -19,7 +20,7 @@ async def query_file(
         "",
     ],
     file_id: Annotated[
-        Optional[str],
+        str | None,
         "The ID of the file to query. If not provided, it will search all files.",
     ],
     config: RunnableConfig,
@@ -44,12 +45,7 @@ async def query_file(
         log.info(f"Similar documents found: {similar_documents}")
 
         document_ids = list(
-            set(
-                [
-                    document.metadata.get("file_id")
-                    for document, score in similar_documents
-                ]
-            )
+            set([document.metadata.get("file_id") for document, score in similar_documents])
         )
 
         log.info(f"Document IDs: {document_ids}")
@@ -69,7 +65,7 @@ async def query_file(
         )
 
     except Exception as e:
-        log.error(f"Error in querying document: {str(e)}")
+        log.error(f"Error in querying document: {e!s}")
         raise e
 
 
@@ -77,7 +73,7 @@ async def _get_similar_documents(
     query: str,
     conversation_id: str,
     user_id: str,
-    file_id: Optional[str] = None,
+    file_id: str | None = None,
 ) -> list[tuple[Document, float]]:
     """
     Helper function to retrieve documents similar to the query from ChromaDB.
@@ -120,9 +116,7 @@ async def _get_similar_documents(
     )
 
 
-def _construct_content(
-    documents: list, similar_documents: list[tuple[Document, float]]
-) -> str:
+def _construct_content(documents: list, similar_documents: list[tuple[Document, float]]) -> str:
     """
     Helper function to construct a formatted response from similar documents.
 
@@ -172,9 +166,7 @@ def _construct_content(
             content += f"Document ID: {document_id}\n"
             content += f"Description: {document_content.get('data', {}).get('content', 'Description not available!')}\n\n"
         else:
-            log.error(
-                f"Unexpected document description type: {type(document['description'])}"
-            )
+            log.error(f"Unexpected document description type: {type(document['description'])}")
             content += f"Document ID: {document_id}\n"
             content += "Description: Invalid format\n\n"
 

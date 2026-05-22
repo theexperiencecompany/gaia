@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.document_tool."""
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,7 +14,7 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.document_tool"
 
 
-def _make_config(user_id: str = FAKE_USER_ID) -> Dict[str, Any]:
+def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
     """Return a minimal RunnableConfig-like dict."""
     return {"metadata": {"user_id": user_id}}
 
@@ -23,9 +23,9 @@ def _writer_mock() -> MagicMock:
     return MagicMock()
 
 
-def _make_doc_result(**overrides: Any) -> Dict[str, Any]:
+def _make_doc_result(**overrides: Any) -> dict[str, Any]:
     """Return a sample result dict from DocumentProcessor.generate_document."""
-    defaults: Dict[str, Any] = {
+    defaults: dict[str, Any] = {
         "filename": "test_document.pdf",
         "cloudinary_url": "https://res.cloudinary.com/demo/test.pdf",
         "is_plain_text": False,
@@ -169,9 +169,7 @@ class TestGenerateDocument:
         """When document generation fails, an exception is raised."""
         mock_writer_factory.return_value = _writer_mock()
         mock_instance = MagicMock()
-        mock_instance.generate_document = AsyncMock(
-            side_effect=Exception("Pandoc not found")
-        )
+        mock_instance.generate_document = AsyncMock(side_effect=Exception("Pandoc not found"))
         mock_processor_cls.return_value = mock_instance
 
         from app.agents.tools.document_tool import generate_document

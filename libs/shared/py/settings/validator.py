@@ -5,7 +5,7 @@ Validates presence of env-backed settings, grouped by feature.
 Makes missing config obvious with actionable logs.
 """
 
-from typing import Any, List, Tuple
+from typing import Any
 
 from shared.py.logging import get_contextual_logger
 
@@ -18,7 +18,7 @@ class SettingsGroup:
     def __init__(
         self,
         name: str,
-        keys: List[str],
+        keys: list[str],
         description: str,
         affected_features: str,
         required_in_prod: bool = True,
@@ -47,8 +47,8 @@ class SettingsValidator:
     """Validates settings against registered groups."""
 
     def __init__(self) -> None:
-        self.groups: List[SettingsGroup] = []
-        self.missing_groups: List[Tuple[SettingsGroup, List[str]]] = []
+        self.groups: list[SettingsGroup] = []
+        self.missing_groups: list[tuple[SettingsGroup, list[str]]] = []
         self.show_warnings: bool = True
         self.is_production: bool = True
 
@@ -62,9 +62,7 @@ class SettingsValidator:
         self.is_production = is_production
         self.missing_groups = []
 
-    def validate_settings(
-        self, settings_obj: Any
-    ) -> List[Tuple[SettingsGroup, List[str]]]:
+    def validate_settings(self, settings_obj: Any) -> list[tuple[SettingsGroup, list[str]]]:
         """
         Validate settings against registered groups.
 
@@ -80,9 +78,9 @@ class SettingsValidator:
                 if not hasattr(settings_obj, key) or getattr(settings_obj, key) is None:
                     missing_keys.append(key)
 
-            if group.all_required and missing_keys:
-                self.missing_groups.append((group, missing_keys))
-            elif not group.all_required and len(missing_keys) == len(group.keys):
+            if (group.all_required and missing_keys) or (
+                not group.all_required and len(missing_keys) == len(group.keys)
+            ):
                 self.missing_groups.append((group, missing_keys))
 
         return self.missing_groups
@@ -96,11 +94,7 @@ class SettingsValidator:
             if self.is_production and not group.required_in_prod:
                 continue
 
-            prefix = (
-                "CRITICAL"
-                if self.is_production and group.required_in_prod
-                else "WARNING"
-            )
+            prefix = "CRITICAL" if self.is_production and group.required_in_prod else "WARNING"
 
             warning_msg = (
                 f"{prefix}: Missing configuration for {group.name} - "

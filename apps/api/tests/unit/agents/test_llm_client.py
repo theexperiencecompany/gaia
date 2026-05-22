@@ -10,16 +10,18 @@ Covers:
 - chatbot: free-llm path, paid-llm path, error handling
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage
+import pytest
 
+from app.agents.core.state import State
+from app.agents.llm.chatbot import chatbot
 from app.agents.llm.client import (
+    _LLM_RETRYABLE_EXCEPTIONS,
     PROVIDER_MODELS,
     PROVIDER_PRIORITY,
-    _LLM_RETRYABLE_EXCEPTIONS,
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
@@ -28,9 +30,6 @@ from app.agents.llm.client import (
     invoke_with_fallback,
     register_llm_providers,
 )
-from app.agents.llm.chatbot import chatbot
-from app.agents.core.state import State
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -45,7 +44,7 @@ def _make_fake_provider(name: str = "fake") -> MagicMock:
     return mock
 
 
-def _make_llm_provider(name: str) -> Dict[str, Any]:
+def _make_llm_provider(name: str) -> dict[str, Any]:
     return {"name": name, "instance": _make_fake_provider(name)}
 
 
@@ -62,7 +61,7 @@ class TestGetAvailableProviders:
         gemini_inst = _make_fake_provider("gemini")
         openrouter_inst = _make_fake_provider("openrouter")
 
-        def _get(key: str) -> Optional[MagicMock]:
+        def _get(key: str) -> MagicMock | None:
             return {
                 "openai_llm": openai_inst,
                 "gemini_llm": gemini_inst,
@@ -90,7 +89,7 @@ class TestGetAvailableProviders:
     def test_partial_providers_available(self, mock_providers: MagicMock) -> None:
         gemini_inst = _make_fake_provider("gemini")
 
-        def _get(key: str) -> Optional[MagicMock]:
+        def _get(key: str) -> MagicMock | None:
             if key == "gemini_llm":
                 return gemini_inst
             return None
@@ -110,21 +109,19 @@ class TestGetAvailableProviders:
 @pytest.mark.unit
 class TestGetOrderedProviders:
     def test_default_priority_order(self) -> None:
-        available: Dict[str, Any] = {
+        available: dict[str, Any] = {
             "openai": _make_fake_provider("openai"),
             "gemini": _make_fake_provider("gemini"),
             "openrouter": _make_fake_provider("openrouter"),
         }
-        ordered = _get_ordered_providers(
-            available, preferred_provider=None, fallback_enabled=True
-        )
+        ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
 
         # Should follow PROVIDER_PRIORITY: 1=gemini, 2=openai, 3=openrouter
         names = [p["name"] for p in ordered]
         assert names == ["gemini", "openai", "openrouter"]
 
     def test_preferred_provider_is_first(self) -> None:
-        available: Dict[str, Any] = {
+        available: dict[str, Any] = {
             "openai": _make_fake_provider("openai"),
             "gemini": _make_fake_provider("gemini"),
             "openrouter": _make_fake_provider("openrouter"),
@@ -139,7 +136,7 @@ class TestGetOrderedProviders:
         assert names[1:] == ["gemini", "openrouter"]
 
     def test_preferred_provider_not_available_fallback_enabled(self) -> None:
-        available: Dict[str, Any] = {
+        available: dict[str, Any] = {
             "gemini": _make_fake_provider("gemini"),
         }
         ordered = _get_ordered_providers(
@@ -151,7 +148,7 @@ class TestGetOrderedProviders:
         assert names == ["gemini"]
 
     def test_preferred_provider_not_available_fallback_disabled(self) -> None:
-        available: Dict[str, Any] = {
+        available: dict[str, Any] = {
             "gemini": _make_fake_provider("gemini"),
         }
         ordered = _get_ordered_providers(
@@ -165,7 +162,7 @@ class TestGetOrderedProviders:
         assert names == ["gemini"]
 
     def test_no_fallback_only_preferred(self) -> None:
-        available: Dict[str, Any] = {
+        available: dict[str, Any] = {
             "openai": _make_fake_provider("openai"),
             "gemini": _make_fake_provider("gemini"),
         }
@@ -178,27 +175,23 @@ class TestGetOrderedProviders:
         assert names == ["openai"]
 
     def test_no_preferred_no_fallback(self) -> None:
-        available: Dict[str, Any] = {
+        available: dict[str, Any] = {
             "openai": _make_fake_provider("openai"),
             "gemini": _make_fake_provider("gemini"),
         }
-        ordered = _get_ordered_providers(
-            available, preferred_provider=None, fallback_enabled=False
-        )
+        ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=False)
 
         # No preferred, ordered is empty, so all providers by priority added
         names = [p["name"] for p in ordered]
         assert names == ["gemini", "openai"]
 
     def test_empty_available(self) -> None:
-        ordered = _get_ordered_providers(
-            {}, preferred_provider=None, fallback_enabled=True
-        )
+        ordered = _get_ordered_providers({}, preferred_provider=None, fallback_enabled=True)
 
         assert ordered == []
 
     def test_no_duplicate_when_preferred_is_also_in_priority(self) -> None:
-        available: Dict[str, Any] = {
+        available: dict[str, Any] = {
             "gemini": _make_fake_provider("gemini"),
             "openai": _make_fake_provider("openai"),
         }
@@ -312,9 +305,7 @@ class TestInitLlm:
     ) -> None:
         mock_available.return_value = {}
 
-        with pytest.raises(
-            RuntimeError, match="No LLM providers are properly configured"
-        ):
+        with pytest.raises(RuntimeError, match="No LLM providers are properly configured"):
             init_llm()
 
     @patch("app.agents.llm.client.log")
@@ -371,9 +362,7 @@ class TestInitLlm:
 
         init_llm(preferred_provider="openai")
 
-        mock_ordered.assert_called_once_with(
-            mock_available.return_value, "openai", True
-        )
+        mock_ordered.assert_called_once_with(mock_available.return_value, "openai", True)
 
     @patch("app.agents.llm.client.log")
     @patch("app.agents.llm.client._create_configurable_llm")
@@ -393,9 +382,7 @@ class TestInitLlm:
 
         init_llm(preferred_provider="gemini")
 
-        mock_ordered.assert_called_once_with(
-            mock_available.return_value, "gemini", True
-        )
+        mock_ordered.assert_called_once_with(mock_available.return_value, "gemini", True)
 
     @patch("app.agents.llm.client.log")
     @patch("app.agents.llm.client._create_configurable_llm")
@@ -415,9 +402,7 @@ class TestInitLlm:
 
         init_llm(preferred_provider="openrouter")
 
-        mock_ordered.assert_called_once_with(
-            mock_available.return_value, "openrouter", True
-        )
+        mock_ordered.assert_called_once_with(mock_available.return_value, "openrouter", True)
 
 
 # ---------------------------------------------------------------------------
@@ -571,9 +556,7 @@ class TestInvokeWithFallback:
         llm3 = MagicMock()
         llm3.ainvoke = AsyncMock(return_value=AIMessage(content="third-ok"))
 
-        result = await invoke_with_fallback(
-            [llm1, llm2, llm3], [HumanMessage(content="hi")]
-        )
+        result = await invoke_with_fallback([llm1, llm2, llm3], [HumanMessage(content="hi")])
 
         assert result.content == "third-ok"
 

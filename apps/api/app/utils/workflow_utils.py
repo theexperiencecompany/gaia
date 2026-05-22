@@ -1,10 +1,12 @@
 """Workflow utility functions for GAIA workflow system."""
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 
-from shared.py.wide_events import log
+from langchain_core.runnables.config import RunnableConfig
+from langgraph.types import StreamWriter
+
 from app.db.mongodb.collections import workflows_collection
 from app.db.utils import serialize_document
 from app.models.workflow_models import (
@@ -14,8 +16,7 @@ from app.models.workflow_models import (
 )
 from app.services.workflow.context_extractor import ExtractedContext
 from app.services.workflow.subagent_output import FinalizedOutput
-from langchain_core.runnables.config import RunnableConfig
-from langgraph.types import StreamWriter
+from shared.py.wide_events import log
 
 
 class WorkflowConfigError(Exception):
@@ -43,7 +44,7 @@ async def handle_workflow_error(
         deactivate=deactivate,
     )
     try:
-        update_data: Dict[str, Any] = {"updated_at": datetime.now(timezone.utc)}
+        update_data: dict[str, Any] = {"updated_at": datetime.now(UTC)}
         if deactivate:
             update_data["activated"] = False
 
@@ -53,9 +54,7 @@ async def handle_workflow_error(
         )
         log.error(f"Workflow {workflow_id} error: {error}")
     except Exception as update_error:
-        log.error(
-            f"Failed to update workflow {workflow_id} error state: {update_error}"
-        )
+        log.error(f"Failed to update workflow {workflow_id} error state: {update_error}")
 
 
 def ensure_trigger_config_object(trigger_config: Any) -> TriggerConfig:
@@ -70,9 +69,7 @@ def transform_workflow_document(doc: dict) -> dict:
     transformed_doc = serialize_document(doc)
 
     # Handle trigger_config transformation
-    if "trigger_config" in transformed_doc and isinstance(
-        transformed_doc["trigger_config"], dict
-    ):
+    if "trigger_config" in transformed_doc and isinstance(transformed_doc["trigger_config"], dict):
         transformed_doc["trigger_config"] = ensure_trigger_config_object(
             transformed_doc["trigger_config"]
         )
@@ -137,12 +134,11 @@ def get_user_time(config: RunnableConfig) -> datetime:
         try:
             parsed = datetime.fromisoformat(user_time_str.replace("Z", "+00:00"))
             if parsed.tzinfo is not None:
-                return parsed.astimezone(timezone.utc)
-            else:
-                return parsed.replace(tzinfo=timezone.utc)
+                return parsed.astimezone(UTC)
+            return parsed.replace(tzinfo=UTC)
         except (ValueError, AttributeError):
             pass
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def get_user_timezone(config: RunnableConfig) -> str:
@@ -184,7 +180,7 @@ async def create_workflow_directly(
     user_id: str,
     writer: StreamWriter,
     user_timezone: str = "UTC",
-) -> Optional[dict]:
+) -> dict | None:
     """
     Create a workflow directly from a finalized draft.
 
@@ -201,9 +197,7 @@ async def create_workflow_directly(
     try:
         from app.services.workflow import WorkflowService
 
-        backend_trigger_type = _TRIGGER_TYPE_MAP.get(
-            draft.trigger_type, TriggerType.MANUAL
-        )
+        backend_trigger_type = _TRIGGER_TYPE_MAP.get(draft.trigger_type, TriggerType.MANUAL)
 
         trigger_config = TriggerConfig(
             type=backend_trigger_type,
@@ -274,18 +268,14 @@ Your job:
 Remember to include a JSON block in your response."""
 
 
-def build_from_conversation_task(
-    context: ExtractedContext, user_request: str | None = None
-) -> str:
+def build_from_conversation_task(context: ExtractedContext, user_request: str | None = None) -> str:
     """Build task description for workflow extracted from conversation."""
     steps_text = "\n".join(
         f"- {step.get('title', step)}" if isinstance(step, dict) else f"- {step}"
         for step in context.workflow_steps
     )
 
-    integrations = (
-        ", ".join(context.integrations_used) if context.integrations_used else "None"
-    )
+    integrations = ", ".join(context.integrations_used) if context.integrations_used else "None"
 
     user_instruction = ""
     if user_request and user_request.strip():

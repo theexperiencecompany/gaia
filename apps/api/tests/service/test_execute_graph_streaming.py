@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import json
 
-import pytest
 from langchain_core.messages import HumanMessage
+import pytest
 
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.core.stream_manager import StreamManager
@@ -43,9 +43,7 @@ class TestExecuteGraphStreamingReal:
             patches[6],
             patches[7],
         ):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 state = {"messages": [HumanMessage(content="What is the meaning?")]}
                 config = {
                     "configurable": {
@@ -84,9 +82,7 @@ class TestExecuteGraphStreamingReal:
             patches[6],
             patches[7],
         ):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 state = {"messages": [HumanMessage(content="Say hello")]}
                 config = {
                     "configurable": {
@@ -123,9 +119,7 @@ class TestExecuteGraphStreamingReal:
             patches[6],
             patches[7],
         ):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 state = {"messages": [HumanMessage(content="Long task")]}
                 config = {
                     "configurable": {

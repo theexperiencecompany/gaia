@@ -4,11 +4,12 @@ Each tool routes provider API calls through `proxy_request_sync` instead of
 raw httpx. Tests patch that helper and assert on the request shape.
 """
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.models.common_models import GatherContextInput
 from app.services.composio.custom_tools.gmail_tools import (
     ArchiveEmailInput,
     GetContactListInput,
@@ -20,10 +21,8 @@ from app.services.composio.custom_tools.gmail_tools import (
     StarEmailInput,
     register_gmail_custom_tools,
 )
-from app.models.common_models import GatherContextInput
 
-
-AUTH_CREDS: Dict[str, Any] = {"user_id": "user_test_123"}
+AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
 PROXY_PATH = "app.services.composio.custom_tools.gmail_tools.proxy_request_sync"
 
 
@@ -34,9 +33,9 @@ def mock_proxy():
         yield proxy
 
 
-def _register_and_get_tools() -> Dict[str, Any]:
+def _register_and_get_tools() -> dict[str, Any]:
     """Register tools on a mock Composio client and return the tool functions."""
-    tools: Dict[str, Any] = {}
+    tools: dict[str, Any] = {}
     mock_composio = MagicMock()
 
     def custom_tool_decorator(**_kwargs):
@@ -91,9 +90,7 @@ class TestInputModels:
         assert m.cc is None
 
     def test_snooze_email(self):
-        m = SnoozeEmailInput(
-            message_ids=["x"], snooze_until="2025-01-01T10:00:00Z"
-        )
+        m = SnoozeEmailInput(message_ids=["x"], snooze_until="2025-01-01T10:00:00Z")
         assert m.message_ids == ["x"]
 
 
@@ -105,9 +102,7 @@ class TestInputModels:
 class TestRegistration:
     def test_returns_expected_tool_names(self):
         mock_composio = MagicMock()
-        mock_composio.tools.custom_tool = MagicMock(
-            side_effect=lambda **_kw: lambda fn: fn
-        )
+        mock_composio.tools.custom_tool = MagicMock(side_effect=lambda **_kw: lambda fn: fn)
         names = register_gmail_custom_tools(mock_composio)
         assert names == [
             "GMAIL_MARK_AS_READ",

@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.code_exec_tool."""
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,7 +14,7 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.code_exec_tool"
 
 
-def _make_config(user_id: str = FAKE_USER_ID) -> Dict[str, Any]:
+def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
     """Return a minimal RunnableConfig-like dict."""
     return {"metadata": {"user_id": user_id}}
 
@@ -90,9 +90,7 @@ class TestExecuteCode:
         )
 
         assert "Hello, World!" in result
-        mock_sandbox.run_code.assert_called_once_with(
-            "print('Hello, World!')", language="python"
-        )
+        mock_sandbox.run_code.assert_called_once_with("print('Hello, World!')", language="python")
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.settings")

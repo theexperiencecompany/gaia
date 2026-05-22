@@ -2,29 +2,27 @@
 Device Token Service for Push Notifications
 """
 
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 
-from shared.py.wide_events import log
+from motor.motor_asyncio import AsyncIOMotorCollection
+
 from app.db.mongodb.mongodb import MongoDB
 from app.models.device_token_models import PlatformType
-from motor.motor_asyncio import AsyncIOMotorCollection
+from shared.py.wide_events import log
 
 
 class DeviceTokenService:
     """Service for managing device push notification tokens"""
 
     def __init__(self, mongodb: MongoDB):
-        self.collection: AsyncIOMotorCollection = mongodb.database.get_collection(
-            "device_tokens"
-        )
+        self.collection: AsyncIOMotorCollection = mongodb.database.get_collection("device_tokens")
 
     async def register_device_token(
         self,
         user_id: str,
         token: str,
         platform: PlatformType,
-        device_id: Optional[str] = None,
+        device_id: str | None = None,
     ) -> bool:
         """
         Register or update a device token for push notifications
@@ -39,7 +37,7 @@ class DeviceTokenService:
             True if successful, False otherwise
         """
         try:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             # Use upsert to avoid race condition
             result = await self.collection.update_one(
                 {"token": token},
@@ -112,22 +110,17 @@ class DeviceTokenService:
         """
         try:
             # Delete only if token belongs to user
-            result = await self.collection.delete_one(
-                {"token": token, "user_id": user_id}
-            )
+            result = await self.collection.delete_one({"token": token, "user_id": user_id})
 
             # Mask token for logging (show first 20 and last 4 chars)
             masked_token = f"{token[:20]}...{token[-4:]}" if len(token) > 24 else "***"
 
             if result.deleted_count > 0:
                 log.set(device_token={"user_id": user_id, "action": "unregistered"})
-                log.info(
-                    f"Unregistered device token for user {user_id}: {masked_token}"
-                )
+                log.info(f"Unregistered device token for user {user_id}: {masked_token}")
                 return True
-            else:
-                log.warning(f"Device token not found or not owned by user {user_id}")
-                return False
+            log.warning(f"Device token not found or not owned by user {user_id}")
+            return False
 
         except Exception as e:
             log.error(f"Failed to unregister device token: {e}")
@@ -152,9 +145,7 @@ class DeviceTokenService:
             log.error(f"Failed to unregister user devices: {e}")
             return 0
 
-    async def get_user_tokens(
-        self, user_id: str, active_only: bool = True
-    ) -> List[str]:
+    async def get_user_tokens(self, user_id: str, active_only: bool = True) -> list[str]:
         """
         Get all device tokens for a user
 
@@ -195,7 +186,7 @@ class DeviceTokenService:
                 {
                     "$set": {
                         "is_active": False,
-                        "updated_at": datetime.now(timezone.utc),
+                        "updated_at": datetime.now(UTC),
                     }
                 },
             )
@@ -209,7 +200,7 @@ class DeviceTokenService:
 
 
 # Global service instance
-device_token_service: Optional[DeviceTokenService] = None
+device_token_service: DeviceTokenService | None = None
 
 
 def get_device_token_service() -> DeviceTokenService:

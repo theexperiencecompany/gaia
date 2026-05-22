@@ -10,8 +10,8 @@ Tests cover:
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 BASE_URL = "/api/v1/onboarding"
 STATUS_URL = f"{BASE_URL}/status"
@@ -104,27 +104,21 @@ class TestCompleteOnboarding:
         assert data["success"] is True
         assert data["message"] == "Onboarding completed successfully"
 
-    async def test_complete_onboarding_missing_name_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_complete_onboarding_missing_name_returns_422(self, client: AsyncClient):
         response = await client.post(
             BASE_URL,
             json={"profession": "Developer"},
         )
         assert response.status_code == 422
 
-    async def test_complete_onboarding_missing_profession_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_complete_onboarding_missing_profession_returns_422(self, client: AsyncClient):
         response = await client.post(
             BASE_URL,
             json={"name": "Test User"},
         )
         assert response.status_code == 422
 
-    async def test_complete_onboarding_empty_name_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_complete_onboarding_empty_name_returns_422(self, client: AsyncClient):
         response = await client.post(
             BASE_URL,
             json={"name": "", "profession": "Developer"},
@@ -140,9 +134,7 @@ class TestCompleteOnboarding:
         )
         assert response.status_code == 422
 
-    async def test_complete_onboarding_service_error_returns_500(
-        self, client: AsyncClient
-    ):
+    async def test_complete_onboarding_service_error_returns_500(self, client: AsyncClient):
         with patch(
             _COMPLETE_ONBOARDING,
             new_callable=AsyncMock,
@@ -300,9 +292,7 @@ class TestUpdatePreferences:
         )
         assert response.status_code == 422
 
-    async def test_update_preferences_service_error_returns_500(
-        self, client: AsyncClient
-    ):
+    async def test_update_preferences_service_error_returns_500(self, client: AsyncClient):
         with patch(
             _UPDATE_PREFERENCES,
             new_callable=AsyncMock,
@@ -350,9 +340,7 @@ class TestGetPersonalization:
         assert data["personality_phrase"] == "Curious Explorer"
         assert data["has_personalization"] is True
 
-    async def test_get_personalization_user_not_found_returns_404(
-        self, client: AsyncClient
-    ):
+    async def test_get_personalization_user_not_found_returns_404(self, client: AsyncClient):
         with patch(
             _USERS_COLLECTION + ".find_one",
             new_callable=AsyncMock,
@@ -362,9 +350,7 @@ class TestGetPersonalization:
 
         assert response.status_code == 404
 
-    async def test_get_personalization_service_error_returns_500(
-        self, client: AsyncClient
-    ):
+    async def test_get_personalization_service_error_returns_500(self, client: AsyncClient):
         with patch(
             _USERS_COLLECTION + ".find_one",
             new_callable=AsyncMock,

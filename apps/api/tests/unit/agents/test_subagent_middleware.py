@@ -3,10 +3,9 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import BaseTool
-
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -125,9 +124,7 @@ class TestSetters:
         from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 
         mw = _make_middleware()
-        new_config = ToolRuntimeConfig(
-            initial_tool_names=["x"], enable_retrieve_tools=False
-        )
+        new_config = ToolRuntimeConfig(initial_tool_names=["x"], enable_retrieve_tools=False)
         mw.set_tools(tool_runtime_config=new_config)
         assert mw._tool_runtime_config is new_config
 
@@ -255,9 +252,7 @@ class TestBuildChildToolset:
             store=MagicMock(),
             tool_registry={"vfs_read": reg_tool, "vfs_cmd": _make_tool("vfs_cmd")},
         )
-        tools_by_name, dynamic, retrieve_tool = mw._build_child_toolset(
-            config=_make_config()
-        )
+        tools_by_name, dynamic, retrieve_tool = mw._build_child_toolset(config=_make_config())
         assert dynamic is True
         assert retrieve_tool is not None
         assert "retrieve_tools" in tools_by_name
@@ -292,9 +287,7 @@ class TestBuildChildToolset:
             store=None,
             tool_registry=None,
         )
-        tools_by_name, dynamic, retrieve_tool = mw._build_child_toolset(
-            config=_make_config()
-        )
+        tools_by_name, dynamic, retrieve_tool = mw._build_child_toolset(config=_make_config())
         assert dynamic is False
         assert retrieve_tool is None
         assert "fallback_tool" in tools_by_name
@@ -346,9 +339,7 @@ class TestExecuteSubagent:
         mock_llm.with_config.return_value = mock_llm
 
         tool_call_response = AIMessage(content="")
-        tool_call_response.tool_calls = [
-            {"name": "my_tool", "args": {"x": 1}, "id": "tc1"}
-        ]
+        tool_call_response.tool_calls = [{"name": "my_tool", "args": {"x": 1}, "id": "tc1"}]
 
         final_response = AIMessage(content="All done.")
         final_response.tool_calls = []
@@ -380,9 +371,7 @@ class TestExecuteSubagent:
         mock_llm.with_config.return_value = mock_llm
 
         tool_call_response = AIMessage(content="")
-        tool_call_response.tool_calls = [
-            {"name": "unknown_tool", "args": {}, "id": "tc1"}
-        ]
+        tool_call_response.tool_calls = [{"name": "unknown_tool", "args": {}, "id": "tc1"}]
 
         final_response = AIMessage(content="Sorry.")
         final_response.tool_calls = []
@@ -499,9 +488,7 @@ class TestExecuteSubagent:
             call_count[0] += 1
             if call_count[0] <= 2:
                 resp = AIMessage(content="")
-                resp.tool_calls = [
-                    {"name": "vfs_read", "args": {}, "id": f"tc{call_count[0]}"}
-                ]
+                resp.tool_calls = [{"name": "vfs_read", "args": {}, "id": f"tc{call_count[0]}"}]
                 return resp
             return final_msg
 
@@ -550,9 +537,7 @@ class TestExecuteSubagent:
         mock_llm.with_config.return_value = mock_llm
 
         retrieve_call = AIMessage(content="")
-        retrieve_call.tool_calls = [
-            {"name": "retrieve_tools", "args": {"query": "x"}, "id": "tc1"}
-        ]
+        retrieve_call.tool_calls = [{"name": "retrieve_tools", "args": {"query": "x"}, "id": "tc1"}]
 
         final_response = AIMessage(content="Handled error.")
         final_response.tool_calls = []

@@ -12,7 +12,6 @@ from app.utils.integration_checker import (
     stream_integration_connection_prompt,
 )
 
-
 # ---------------------------------------------------------------------------
 # get_required_integration_for_tool_category
 # ---------------------------------------------------------------------------
@@ -43,9 +42,7 @@ class TestGetRequiredIntegrationForToolCategory:
     def test_mapping_matches_module_constant(self) -> None:
         """Ensure the function uses the TOOL_INTEGRATION_MAPPING dict."""
         for category, integration_id in TOOL_INTEGRATION_MAPPING.items():
-            assert (
-                get_required_integration_for_tool_category(category) == integration_id
-            )
+            assert get_required_integration_for_tool_category(category) == integration_id
 
 
 # ---------------------------------------------------------------------------
@@ -88,9 +85,7 @@ class TestCheckUserHasIntegration:
         assert result is False
 
     @patch("app.utils.integration_checker.get_integration_scopes")
-    async def test_returns_false_when_access_token_empty(
-        self, mock_get_scopes: MagicMock
-    ) -> None:
+    async def test_returns_false_when_access_token_empty(self, mock_get_scopes: MagicMock) -> None:
         result = await check_user_has_integration("", "gmail")
         assert result is False
         mock_get_scopes.assert_not_called()
@@ -129,9 +124,7 @@ class TestCheckUserHasIntegration:
         mock_token_repo: MagicMock,
     ) -> None:
         mock_get_scopes.return_value = ["scope_a"]
-        mock_token_repo.get_token_by_auth_token = AsyncMock(
-            side_effect=Exception("DB error")
-        )
+        mock_token_repo.get_token_by_auth_token = AsyncMock(side_effect=Exception("DB error"))
 
         result = await check_user_has_integration("valid_token", "gmail")
         assert result is False
@@ -230,15 +223,10 @@ class TestStreamIntegrationConnectionPrompt:
         mock_writer = MagicMock()
         mock_get_writer.return_value = mock_writer
 
-        await stream_integration_connection_prompt(
-            "gmail", message="Custom message here"
-        )
+        await stream_integration_connection_prompt("gmail", message="Custom message here")
 
         call_data = mock_writer.call_args[0][0]
-        assert (
-            call_data["integration_connection_required"]["message"]
-            == "Custom message here"
-        )
+        assert call_data["integration_connection_required"]["message"] == "Custom message here"
 
     @patch("app.utils.integration_checker.get_stream_writer")
     @patch("app.utils.integration_checker.get_integration_by_id")
@@ -366,9 +354,7 @@ class TestCheckAndPromptIntegration:
         mock_get_req.return_value = "gmail"
         mock_check.return_value = False
 
-        result = await check_and_prompt_integration(
-            "token", "gmail", tool_name="send_email"
-        )
+        result = await check_and_prompt_integration("token", "gmail", tool_name="send_email")
         assert result is False
         mock_stream.assert_awaited_once_with(
             integration_id="gmail",

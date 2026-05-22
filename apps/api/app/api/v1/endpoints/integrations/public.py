@@ -2,13 +2,22 @@
 
 import re
 
+from fastapi import APIRouter, Depends, HTTPException
+
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
-from shared.py.wide_events import log
+from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.mongodb.collections import (
     integrations_collection,
     user_integrations_collection,
     workflows_collection,
+)
+from app.helpers.integration_helpers import (
+    build_public_integration_pipeline,
+    build_slug_lookup_pipeline,
+    format_public_integration_response,
+    generate_integration_slug,
+    parse_integration_slug,
 )
 from app.models.workflow_models import PublicWorkflowsResponse
 from app.schemas.integrations.requests import ConnectIntegrationRequest
@@ -25,15 +34,7 @@ from app.services.integrations.integration_connection_service import (
 from app.services.integrations.user_integrations import add_user_integration
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from app.utils.creator import creator_lookup_stage, format_creator
-from app.config.oauth_config import OAUTH_INTEGRATIONS
-from app.helpers.integration_helpers import (
-    build_public_integration_pipeline,
-    build_slug_lookup_pipeline,
-    format_public_integration_response,
-    generate_integration_slug,
-    parse_integration_slug,
-)
-from fastapi import APIRouter, Depends, HTTPException
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -49,11 +50,7 @@ async def get_public_integration(
         # 1. Check platform (native) integrations first — in-memory, instant
         # Platform integrations use their ID as slug (e.g., "googlecalendar", "slack")
         native = next(
-            (
-                i
-                for i in OAUTH_INTEGRATIONS
-                if i.id == identifier and i.managed_by != "internal"
-            ),
+            (i for i in OAUTH_INTEGRATIONS if i.id == identifier and i.managed_by != "internal"),
             None,
         )
         if native:
@@ -359,8 +356,7 @@ async def get_related_workflows(
                         "id": step.get("id", ""),
                         "title": step.get("title", ""),
                         "description": step.get("description", ""),
-                        "category": step.get("category")
-                        or step.get("tool_category", "general"),
+                        "category": step.get("category") or step.get("tool_category", "general"),
                     }
                 )
 

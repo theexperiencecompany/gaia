@@ -11,7 +11,6 @@ from app.services.oauth.oauth_state_service import (
     validate_and_consume_oauth_state,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -140,9 +139,7 @@ class TestCreateOAuthState:
         # Verify Redis hset was called with correct key prefix and data
         mock_redis_client.hset.assert_awaited_once()
         call_kwargs = mock_redis_client.hset.call_args
-        state_key = (
-            call_kwargs[0][0] if call_kwargs[0] else call_kwargs.kwargs.get("name")
-        )
+        state_key = call_kwargs[0][0] if call_kwargs[0] else call_kwargs.kwargs.get("name")
         assert state_key.startswith(f"{STATE_KEY_PREFIX}:")
 
         mapping = call_kwargs.kwargs.get("mapping") or call_kwargs[1].get("mapping")
@@ -183,9 +180,7 @@ class TestCreateOAuthState:
         mapping = call_kwargs.kwargs.get("mapping") or call_kwargs[1].get("mapping")
         assert mapping["redirect_path"] == "/c"
 
-    async def test_protocol_relative_redirect_defaults_to_safe_path(
-        self, mock_redis_client
-    ):
+    async def test_protocol_relative_redirect_defaults_to_safe_path(self, mock_redis_client):
         await create_oauth_state(
             user_id="user123",
             redirect_path="//evil.com/steal",
@@ -196,9 +191,7 @@ class TestCreateOAuthState:
         mapping = call_kwargs.kwargs.get("mapping") or call_kwargs[1].get("mapping")
         assert mapping["redirect_path"] == "/c"
 
-    async def test_path_traversal_redirect_defaults_to_safe_path(
-        self, mock_redis_client
-    ):
+    async def test_path_traversal_redirect_defaults_to_safe_path(self, mock_redis_client):
         await create_oauth_state(
             user_id="user123",
             redirect_path="/../../etc/passwd",
@@ -286,9 +279,7 @@ class TestValidateAndConsumeOAuthState:
 
         assert result is None
 
-    async def test_incomplete_state_data_missing_user_id_returns_none(
-        self, mock_redis_client
-    ):
+    async def test_incomplete_state_data_missing_user_id_returns_none(self, mock_redis_client):
         """If user_id is missing from state data, return None."""
         mock_redis_client.hgetall = AsyncMock(
             return_value={
@@ -348,9 +339,7 @@ class TestValidateAndConsumeOAuthState:
 
     async def test_redis_exception_returns_none(self, mock_redis_client):
         """Any Redis error should be caught and return None."""
-        mock_redis_client.hgetall = AsyncMock(
-            side_effect=Exception("Redis connection lost")
-        )
+        mock_redis_client.hgetall = AsyncMock(side_effect=Exception("Redis connection lost"))
 
         result = await validate_and_consume_oauth_state("token_abc")
 
@@ -367,9 +356,7 @@ class TestValidateAndConsumeOAuthState:
                 "integration_id": "gmail",
             }
         )
-        mock_redis_client.delete = AsyncMock(
-            side_effect=Exception("Redis delete error")
-        )
+        mock_redis_client.delete = AsyncMock(side_effect=Exception("Redis delete error"))
 
         result = await validate_and_consume_oauth_state("token_abc")
 

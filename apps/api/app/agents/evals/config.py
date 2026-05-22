@@ -6,7 +6,6 @@ Add new subagents by extending SUBAGENT_CONFIGS list.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 from app.agents.prompts.subagent_prompts import (
     CALENDAR_AGENT_SYSTEM_PROMPT,
@@ -29,7 +28,7 @@ class SubagentEvalConfig:
     dataset_name: str
     dataset_file: str
     prompt_name: str
-    system_prompt: Optional[str] = None
+    system_prompt: str | None = None
 
 
 SUBAGENT_CONFIGS: list[SubagentEvalConfig] = [
@@ -240,7 +239,7 @@ SUBAGENT_CONFIGS: list[SubagentEvalConfig] = [
 ]
 
 
-def get_config(subagent_id: str) -> Optional[SubagentEvalConfig]:
+def get_config(subagent_id: str) -> SubagentEvalConfig | None:
     """Get evaluation config for a subagent by ID."""
     for config in SUBAGENT_CONFIGS:
         if config.id == subagent_id:

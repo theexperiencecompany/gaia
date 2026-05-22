@@ -1,12 +1,12 @@
 """Unit tests for ARQ worker lifecycle (startup, shutdown) and config."""
 
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.workers.lifecycle.shutdown import shutdown
-from app.workers.config.worker_settings import WorkerSettings
+import pytest
 
+from app.workers.config.worker_settings import WorkerSettings
+from app.workers.lifecycle.shutdown import shutdown
 
 # ---------------------------------------------------------------------------
 # startup — imported lazily because the module has side-effects at import time

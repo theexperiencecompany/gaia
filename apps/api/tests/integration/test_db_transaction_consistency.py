@@ -14,14 +14,14 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-import pytest
 from bson import ObjectId
 from fastapi import HTTPException
+import pytest
 
 from app.models.chat_models import (
     ConversationModel,
@@ -90,7 +90,7 @@ def _stored_conversation(
         "conversation_id": conversation_id,
         "description": "Test conversation",
         "messages": messages or [],
-        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "createdAt": datetime.now(UTC).isoformat(),
     }
 
 
@@ -135,9 +135,7 @@ class TestConversationCreationConsistency:
     async def test_create_conversation_unacknowledged_raises(self) -> None:
         """If MongoDB does not acknowledge the insert, service must raise."""
         mock_collection = AsyncMock()
-        mock_collection.insert_one = AsyncMock(
-            return_value=_make_insert_result(acknowledged=False)
-        )
+        mock_collection.insert_one = AsyncMock(return_value=_make_insert_result(acknowledged=False))
 
         conversation = ConversationModel(
             conversation_id=str(uuid4()),
@@ -158,9 +156,7 @@ class TestConversationCreationConsistency:
     async def test_create_conversation_db_error_raises(self) -> None:
         """A MongoDB exception during insert must propagate as HTTPException."""
         mock_collection = AsyncMock()
-        mock_collection.insert_one = AsyncMock(
-            side_effect=Exception("connection refused")
-        )
+        mock_collection.insert_one = AsyncMock(side_effect=Exception("connection refused"))
 
         conversation = ConversationModel(
             conversation_id=str(uuid4()),
@@ -205,9 +201,7 @@ class TestConversationDeletionCleanup:
         """Deleting a conversation must call delete_one with correct filter."""
         conv_id = str(uuid4())
         mock_collection = AsyncMock()
-        mock_collection.delete_one = AsyncMock(
-            return_value=_make_delete_result(deleted=1)
-        )
+        mock_collection.delete_one = AsyncMock(return_value=_make_delete_result(deleted=1))
 
         with patch(
             "app.services.conversation_service.conversations_collection",
@@ -223,9 +217,7 @@ class TestConversationDeletionCleanup:
     async def test_delete_conversation_not_found_raises(self) -> None:
         """Deleting a nonexistent conversation must raise 404."""
         mock_collection = AsyncMock()
-        mock_collection.delete_one = AsyncMock(
-            return_value=_make_delete_result(deleted=0)
-        )
+        mock_collection.delete_one = AsyncMock(return_value=_make_delete_result(deleted=0))
 
         with (
             patch(
@@ -241,9 +233,7 @@ class TestConversationDeletionCleanup:
     async def test_delete_all_conversations_clears_user_data(self) -> None:
         """Bulk-deleting must target only the current user's conversations."""
         mock_collection = AsyncMock()
-        mock_collection.delete_many = AsyncMock(
-            return_value=_make_delete_result(deleted=5)
-        )
+        mock_collection.delete_many = AsyncMock(return_value=_make_delete_result(deleted=5))
 
         with patch(
             "app.services.conversation_service.conversations_collection",
@@ -258,9 +248,7 @@ class TestConversationDeletionCleanup:
     async def test_delete_all_conversations_none_found_raises(self) -> None:
         """If user has no conversations, bulk delete must raise 404."""
         mock_collection = AsyncMock()
-        mock_collection.delete_many = AsyncMock(
-            return_value=_make_delete_result(deleted=0)
-        )
+        mock_collection.delete_many = AsyncMock(return_value=_make_delete_result(deleted=0))
 
         with (
             patch(
@@ -310,8 +298,8 @@ class TestTodoCreationWithSubtasks:
             **todo.model_dump(),
             "_id": inserted_id,
             "user_id": USER_ID,
-            "created_at": datetime.now(timezone.utc),
-            "updated_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
             "completed": False,
             "workflow_activated": True,
             "subtasks": [s.model_dump() for s in subtasks],
@@ -336,9 +324,7 @@ class TestTodoCreationWithSubtasks:
             patch("app.services.todos.todo_service.projects_collection", mock_projects),
             patch("app.services.todos.todo_service.store_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.delete_cache", AsyncMock()),
-            patch(
-                "app.services.todos.todo_service.delete_cache_by_pattern", AsyncMock()
-            ),
+            patch("app.services.todos.todo_service.delete_cache_by_pattern", AsyncMock()),
             patch(
                 "app.services.todos.todo_service.get_cache",
                 AsyncMock(return_value=None),
@@ -375,8 +361,8 @@ class TestTodoCreationWithSubtasks:
             **todo.model_dump(),
             "_id": inserted_id,
             "user_id": USER_ID,
-            "created_at": datetime.now(timezone.utc),
-            "updated_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
             "completed": False,
             "workflow_activated": True,
         }
@@ -399,9 +385,7 @@ class TestTodoCreationWithSubtasks:
             patch("app.services.todos.todo_service.projects_collection", mock_projects),
             patch("app.services.todos.todo_service.store_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.delete_cache", AsyncMock()),
-            patch(
-                "app.services.todos.todo_service.delete_cache_by_pattern", AsyncMock()
-            ),
+            patch("app.services.todos.todo_service.delete_cache_by_pattern", AsyncMock()),
             patch(
                 "app.services.todos.todo_service.get_cache",
                 AsyncMock(return_value=None),
@@ -457,13 +441,9 @@ class TestTodoSyncIntegrity:
             patch("app.services.todos.sync_service.goals_collection", mock_goals),
             patch("app.services.todos.sync_service.todos_collection", mock_todos),
             patch("app.services.todos.sync_service.delete_cache", AsyncMock()),
-            patch(
-                "app.services.todos.sync_service.delete_cache_by_pattern", AsyncMock()
-            ),
+            patch("app.services.todos.sync_service.delete_cache_by_pattern", AsyncMock()),
         ):
-            success = await sync_goal_node_completion(
-                str(goal_oid), "node-1", True, USER_ID
-            )
+            success = await sync_goal_node_completion(str(goal_oid), "node-1", True, USER_ID)
 
         assert success is True
         # Verify the update targeted the correct subtask
@@ -478,9 +458,7 @@ class TestTodoSyncIntegrity:
         mock_goals.find_one = AsyncMock(return_value=None)
 
         with patch("app.services.todos.sync_service.goals_collection", mock_goals):
-            success = await sync_goal_node_completion(
-                str(_oid()), "node-x", True, USER_ID
-            )
+            success = await sync_goal_node_completion(str(_oid()), "node-x", True, USER_ID)
 
         assert success is False
 
@@ -678,9 +656,7 @@ class TestPartialFailureHandling:
             patch("app.services.todos.todo_service.todos_collection", mock_todos),
             patch("app.services.todos.todo_service.projects_collection", mock_projects),
             patch("app.services.todos.todo_service.delete_cache", AsyncMock()),
-            patch(
-                "app.services.todos.todo_service.delete_cache_by_pattern", AsyncMock()
-            ),
+            patch("app.services.todos.todo_service.delete_cache_by_pattern", AsyncMock()),
             patch(
                 "app.services.todos.todo_service.get_cache",
                 AsyncMock(return_value=None),
@@ -702,9 +678,7 @@ class TestPartialFailureHandling:
             patch("app.services.todos.todo_service.todos_collection", mock_todos),
             patch("app.services.todos.todo_service.delete_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.delete_cache", AsyncMock()),
-            patch(
-                "app.services.todos.todo_service.delete_cache_by_pattern", AsyncMock()
-            ),
+            patch("app.services.todos.todo_service.delete_cache_by_pattern", AsyncMock()),
             pytest.raises(ValueError, match="not found"),
         ):
             await TodoService.delete_todo(str(_oid()), USER_ID)
@@ -725,9 +699,7 @@ class TestBulkOperations:
 
         mock_cursor = AsyncMock()
         mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {"_id": ObjectId(tid), "user_id": USER_ID} for tid in todo_ids
-            ]
+            return_value=[{"_id": ObjectId(tid), "user_id": USER_ID} for tid in todo_ids]
         )
 
         mock_todos = AsyncMock()
@@ -738,9 +710,7 @@ class TestBulkOperations:
             patch("app.services.todos.todo_service.todos_collection", mock_todos),
             patch("app.services.todos.todo_service.delete_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.delete_cache", AsyncMock()),
-            patch(
-                "app.services.todos.todo_service.delete_cache_by_pattern", AsyncMock()
-            ),
+            patch("app.services.todos.todo_service.delete_cache_by_pattern", AsyncMock()),
         ):
             result = await TodoService.bulk_delete_todos(todo_ids, USER_ID)
 
@@ -754,9 +724,7 @@ class TestBulkOperations:
 
         mock_cursor = AsyncMock()
         mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {"_id": ObjectId(tid), "user_id": USER_ID} for tid in todo_ids[:3]
-            ]
+            return_value=[{"_id": ObjectId(tid), "user_id": USER_ID} for tid in todo_ids[:3]]
         )
 
         mock_todos = AsyncMock()
@@ -767,9 +735,7 @@ class TestBulkOperations:
             patch("app.services.todos.todo_service.todos_collection", mock_todos),
             patch("app.services.todos.todo_service.delete_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.delete_cache", AsyncMock()),
-            patch(
-                "app.services.todos.todo_service.delete_cache_by_pattern", AsyncMock()
-            ),
+            patch("app.services.todos.todo_service.delete_cache_by_pattern", AsyncMock()),
         ):
             result = await TodoService.bulk_delete_todos(todo_ids, USER_ID)
 
@@ -791,9 +757,7 @@ class TestBulkOperations:
         )
 
         mock_todos = AsyncMock()
-        mock_todos.update_many = AsyncMock(
-            return_value=_make_update_result(modified=4, matched=4)
-        )
+        mock_todos.update_many = AsyncMock(return_value=_make_update_result(modified=4, matched=4))
         mock_todos.find = MagicMock(return_value=mock_cursor)
 
         request = BulkUpdateRequest(
@@ -806,9 +770,7 @@ class TestBulkOperations:
             patch("app.services.todos.todo_service.projects_collection", AsyncMock()),
             patch("app.services.todos.todo_service.update_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.delete_cache", AsyncMock()),
-            patch(
-                "app.services.todos.todo_service.delete_cache_by_pattern", AsyncMock()
-            ),
+            patch("app.services.todos.todo_service.delete_cache_by_pattern", AsyncMock()),
         ):
             result = await TodoService.bulk_update_todos(request, USER_ID)
 

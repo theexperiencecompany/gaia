@@ -261,6 +261,7 @@ export function ChatScreenContent({
       );
       return () => clearInterval(interval);
     }
+    return undefined;
   }, [isTyping, progress, lastUserMessage]);
 
   const displayMessage = progress || thinkingMessage;

@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 import aiohttp
 
@@ -30,7 +30,7 @@ class DiscordChannelAdapter(ExternalPlatformAdapter):
     def _get_bot_token(self) -> str | None:
         return settings.DISCORD_BOT_TOKEN
 
-    def _session_kwargs(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
+    def _session_kwargs(self, ctx: dict[str, Any]) -> dict[str, Any]:
         return {
             "headers": {
                 "Authorization": f"Bot {ctx['token']}",
@@ -39,7 +39,7 @@ class DiscordChannelAdapter(ExternalPlatformAdapter):
         }
 
     async def _setup_sender(
-        self, session: aiohttp.ClientSession, ctx: Dict[str, Any]
+        self, session: aiohttp.ClientSession, ctx: dict[str, Any]
     ) -> tuple[SendFn | None, ChannelDeliveryStatus | None]:
         # Open DM channel
         async with session.post(
@@ -48,9 +48,7 @@ class DiscordChannelAdapter(ExternalPlatformAdapter):
         ) as resp:
             if resp.status not in (200, 201):
                 err = await resp.text()
-                return None, self._error(
-                    f"Discord DM channel error {resp.status}: {err}"
-                )
+                return None, self._error(f"Discord DM channel error {resp.status}: {err}")
             data = await resp.json()
             dm_channel_id = data.get("id")
             if not dm_channel_id:

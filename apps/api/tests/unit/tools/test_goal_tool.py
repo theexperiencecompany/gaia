@@ -1,7 +1,7 @@
 """Unit tests for app.agents.tools.goal_tool."""
 
 import json
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -26,11 +26,11 @@ FAKE_GOAL_ID = "60d5ec49f1a2c8b1e8a7b123"  # Valid 24-char hex ObjectId
 MODULE = "app.agents.tools.goal_tool"
 
 
-def _cfg(user_id: str = FAKE_USER_ID) -> Dict[str, Any]:
+def _cfg(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
     return {"metadata": {"user_id": user_id}}
 
 
-def _cfg_no_user() -> Dict[str, Any]:
+def _cfg_no_user() -> dict[str, Any]:
     return {"metadata": {}}
 
 
@@ -381,9 +381,7 @@ class TestGenerateRoadmap:
     async def test_no_user(self, mock_uid: MagicMock, mock_gsw: MagicMock) -> None:
         from app.agents.tools.goal_tool import generate_roadmap
 
-        result = await generate_roadmap.coroutine(
-            config=_cfg_no_user(), goal_id=FAKE_GOAL_ID
-        )
+        result = await generate_roadmap.coroutine(config=_cfg_no_user(), goal_id=FAKE_GOAL_ID)
         assert result["roadmap"] is None
 
     @patch(f"{MODULE}.goals_collection")
@@ -432,9 +430,7 @@ class TestGenerateRoadmap:
     ) -> None:
         w = _writer()
         mock_gsw.return_value = w
-        mock_coll.find_one = AsyncMock(
-            return_value={"_id": "obj-id", "title": "X", "roadmap": {}}
-        )
+        mock_coll.find_one = AsyncMock(return_value={"_id": "obj-id", "title": "X", "roadmap": {}})
 
         async def _gen(title):
             yield {"error": "LLM failed"}
@@ -458,9 +454,7 @@ class TestGenerateRoadmap:
         mock_stream: MagicMock,
     ) -> None:
         mock_gsw.return_value = _writer()
-        mock_coll.find_one = AsyncMock(
-            return_value={"_id": "obj-id", "title": "X", "roadmap": {}}
-        )
+        mock_coll.find_one = AsyncMock(return_value={"_id": "obj-id", "title": "X", "roadmap": {}})
 
         async def _gen(title):
             yield {"progress": "Working..."}
@@ -629,9 +623,7 @@ class TestGetGoalStatistics:
         from app.agents.tools.goal_tool import get_goal_statistics
 
         # Patch goal_helper since it's imported inside the function
-        with patch(
-            "app.utils.goals_utils.goal_helper", return_value=_goal_dict(title="G1")
-        ):
+        with patch("app.utils.goals_utils.goal_helper", return_value=_goal_dict(title="G1")):
             result = await get_goal_statistics.coroutine(config=_cfg())
 
         assert result["error"] is None

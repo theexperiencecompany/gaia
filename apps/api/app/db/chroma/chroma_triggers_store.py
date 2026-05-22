@@ -8,11 +8,12 @@ and only updated when their configuration changes.
 import hashlib
 from typing import Any
 
+from langgraph.store.base import PutOp
+
 from app.config.oauth_config import OAUTH_INTEGRATIONS
-from shared.py.wide_events import log
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.chromadb import ChromaClient
-from langgraph.store.base import PutOp
+from shared.py.wide_events import log
 
 from .chroma_store import ChromaStore
 
@@ -39,10 +40,7 @@ def _compute_trigger_hash(integration_id: str, trigger: Any) -> str:
     ]
 
     # Include schema if available
-    if (
-        trigger.workflow_trigger_schema
-        and trigger.workflow_trigger_schema.config_schema
-    ):
+    if trigger.workflow_trigger_schema and trigger.workflow_trigger_schema.config_schema:
         schema_str = str(trigger.workflow_trigger_schema.config_schema)
         content_parts.append(schema_str)
 
@@ -111,14 +109,8 @@ async def _get_existing_triggers_from_chroma(collection) -> dict[str, dict]:
 
     try:
         existing_data = await collection.get(include=["metadatas"])
-        if (
-            existing_data
-            and existing_data.get("ids")
-            and existing_data.get("metadatas")
-        ):
-            for doc_id, metadata in zip(
-                existing_data["ids"], existing_data["metadatas"] or []
-            ):
+        if existing_data and existing_data.get("ids") and existing_data.get("metadatas"):
+            for doc_id, metadata in zip(existing_data["ids"], existing_data["metadatas"] or []):
                 if metadata and "::" in doc_id:
                     parts = doc_id.split("::")
                     namespace = parts[0] if len(parts) > 1 else "default"
@@ -133,9 +125,7 @@ async def _get_existing_triggers_from_chroma(collection) -> dict[str, dict]:
                         "namespace": namespace,
                     }
     except Exception as e:
-        log.warning(
-            f"Error fetching existing triggers: {e}, will register all triggers"
-        )
+        log.warning(f"Error fetching existing triggers: {e}, will register all triggers")
 
     return existing_triggers
 

@@ -4,12 +4,12 @@ import urllib.parse
 
 from bson import ObjectId
 from langchain_core.messages import HumanMessage
-from shared.py.wide_events import log
 
 from app.agents.prompts.onboarding_prompts import SOCIAL_PROFILE_FILTER_PROMPT
 from app.core.lazy_loader import providers
 from app.db.mongodb.collections import users_collection
 from app.models.onboarding_models import SocialProfile, SocialProfileFilterOutput
+from shared.py.wide_events import log
 
 # URLs containing these are marketing/newsletter links, not user profiles.
 _TRACKING_INDICATORS = ("utm_source=", "utm_medium=", "utm_campaign=")
@@ -101,8 +101,7 @@ def _is_generic_url(url: str) -> bool:
     for prefix in ("https://", "http://"):
         if lower.startswith(prefix):
             path_part = lower[len(prefix) :]
-            if path_part.startswith("www."):
-                path_part = path_part[4:]
+            path_part = path_part.removeprefix("www.")
             slash_idx = path_part.find("/")
             if slash_idx == -1:
                 return True
@@ -117,8 +116,7 @@ def _extract_handle_from_url(url: str, platform: str) -> str | None:
     try:
         parsed = urllib.parse.urlparse(url.lower())
         path = parsed.path.strip("/")
-        if path.startswith("@"):
-            path = path[1:]
+        path = path.removeprefix("@")
         segments = path.split("/")
         handle = segments[0] if segments else ""
         if not handle or len(handle) > 60:
@@ -141,20 +139,14 @@ async def extract_social_profiles_from_emails(
     candidates: dict[tuple[str, str], dict] = {}
 
     for email in emails:
-        body = (
-            email.get("body", "")
-            or email.get("snippet", "")
-            or email.get("messageText", "")
-        )
+        body = email.get("body", "") or email.get("snippet", "") or email.get("messageText", "")
         sender = email.get("sender", "") or email.get("from", "")
         subject = email.get("subject", "")
-        combined = " ".join([body, sender, subject])
+        combined = f"{body} {sender} {subject}"
         if not combined.strip():
             continue
 
-        is_sent = "SENT" in email.get("labelIds", []) or bool(
-            email.get("from_sent", False)
-        )
+        is_sent = "SENT" in email.get("labelIds", []) or bool(email.get("from_sent", False))
 
         urls = _extract_urls_from_text(combined)
         for url in urls:
@@ -254,9 +246,7 @@ async def extract_social_profiles_from_emails(
     try:
         llm = await providers.aget("gemini_llm")
         if llm is None:
-            log.warning(
-                "[social_profiles_smart] LLM not available, using sent-email fallback"
-            )
+            log.warning("[social_profiles_smart] LLM not available, using sent-email fallback")
             return dedup_profiles_by_platform(sent_fallback)
 
         structured_llm = llm.with_structured_output(SocialProfileFilterOutput)
@@ -319,6 +309,4 @@ async def save_confirmed_profiles(user_id: str, profiles: list[dict]) -> None:
         {"_id": ObjectId(user_id)},
         {"$set": {"onboarding.social_profiles": profiles}},
     )
-    log.info(
-        f"[social_profiles] Saved {len(profiles)} confirmed profiles for {user_id}"
-    )
+    log.info(f"[social_profiles] Saved {len(profiles)} confirmed profiles for {user_id}")

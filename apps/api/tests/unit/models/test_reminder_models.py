@@ -1,10 +1,10 @@
 """Unit tests for reminder Pydantic models."""
 
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
-import pytest
 from pydantic import ValidationError
+import pytest
 
 from app.models.reminder_models import (
     AgentType,
@@ -78,10 +78,10 @@ class TestStaticReminderPayload:
 @pytest.mark.unit
 class TestReminderModel:
     def _base_data(self, **overrides) -> dict:
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "user_id": "user1",
             "agent": "static",
-            "scheduled_at": datetime.now(timezone.utc) + timedelta(hours=1),
+            "scheduled_at": datetime.now(UTC) + timedelta(hours=1),
             "payload": {"title": "Test", "body": "Body"},
         }
         data.update(overrides)
@@ -120,7 +120,7 @@ class TestReminderModel:
 @pytest.mark.unit
 class TestCreateReminderRequest:
     def _future_dt(self, hours: int = 1) -> datetime:
-        return datetime.now(timezone.utc) + timedelta(hours=hours)
+        return datetime.now(UTC) + timedelta(hours=hours)
 
     def test_valid_minimal(self):
         m = CreateReminderRequest(
@@ -141,7 +141,7 @@ class TestCreateReminderRequest:
         assert m.scheduled_at is not None
 
     def test_scheduled_at_in_past_raises(self):
-        past = datetime.now(timezone.utc) - timedelta(hours=1)
+        past = datetime.now(UTC) - timedelta(hours=1)
         with pytest.raises(ValidationError, match="must be in the future"):
             CreateReminderRequest(
                 agent="static",
@@ -193,7 +193,7 @@ class TestCreateReminderRequest:
             )
 
     def test_stop_after_in_past_raises(self):
-        past = datetime.now(timezone.utc) - timedelta(hours=1)
+        past = datetime.now(UTC) - timedelta(hours=1)
         with pytest.raises(ValidationError, match="stop_after must be in the future"):
             CreateReminderRequest(
                 agent="static",
@@ -238,7 +238,7 @@ class TestCreateReminderRequest:
 @pytest.mark.unit
 class TestCreateReminderToolRequest:
     def _base_data(self, **overrides) -> dict:
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "payload": {"title": "Reminder", "body": "Don't forget"},
             "user_time": "2025-06-01T10:00:00+05:30",
         }
@@ -252,9 +252,7 @@ class TestCreateReminderToolRequest:
         assert m.scheduled_at is None
 
     def test_valid_with_scheduled_at(self):
-        m = CreateReminderToolRequest(
-            **self._base_data(scheduled_at="2030-06-15 09:00:00")
-        )
+        m = CreateReminderToolRequest(**self._base_data(scheduled_at="2030-06-15 09:00:00"))
         assert m.scheduled_at == "2030-06-15 09:00:00"
 
     def test_invalid_cron_repeat(self):
@@ -282,17 +280,13 @@ class TestCreateReminderToolRequest:
 
     @pytest.mark.parametrize("offset", ["+05:30", "-08:00", "+00:00"])
     def test_valid_stop_after_timezone_offsets(self, offset):
-        m = CreateReminderToolRequest(
-            **self._base_data(stop_after_timezone_offset=offset)
-        )
+        m = CreateReminderToolRequest(**self._base_data(stop_after_timezone_offset=offset))
         assert m.stop_after_timezone_offset == offset
 
     @pytest.mark.parametrize("offset", ["5:30", "UTC"])
     def test_invalid_stop_after_timezone_offsets(self, offset):
         with pytest.raises(ValidationError, match="Timezone offset must be"):
-            CreateReminderToolRequest(
-                **self._base_data(stop_after_timezone_offset=offset)
-            )
+            CreateReminderToolRequest(**self._base_data(stop_after_timezone_offset=offset))
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +295,7 @@ class TestCreateReminderToolRequest:
 @pytest.mark.unit
 class TestCreateReminderToolRequestConversion:
     def _base_data(self, **overrides) -> dict:
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "payload": {"title": "Reminder", "body": "Don't forget"},
             "user_time": "2025-06-01T10:00:00+05:30",
         }
@@ -316,9 +310,7 @@ class TestCreateReminderToolRequestConversion:
         assert result.stop_after is None
 
     def test_conversion_with_scheduled_at_user_tz(self):
-        m = CreateReminderToolRequest(
-            **self._base_data(scheduled_at="2030-06-15 09:00:00")
-        )
+        m = CreateReminderToolRequest(**self._base_data(scheduled_at="2030-06-15 09:00:00"))
         result = m.to_create_reminder_request()
         assert result.scheduled_at is not None
         assert result.scheduled_at.tzinfo is not None  # type: ignore[union-attr]
@@ -336,9 +328,7 @@ class TestCreateReminderToolRequestConversion:
         assert offset == timedelta(hours=-8)
 
     def test_conversion_with_stop_after_user_tz(self):
-        m = CreateReminderToolRequest(
-            **self._base_data(stop_after="2030-12-31 23:59:59")
-        )
+        m = CreateReminderToolRequest(**self._base_data(stop_after="2030-12-31 23:59:59"))
         result = m.to_create_reminder_request()
         assert result.stop_after is not None
         assert result.stop_after.tzinfo is not None  # type: ignore[union-attr]
@@ -386,7 +376,7 @@ class TestCreateReminderToolRequestConversion:
         )
         result = m.to_create_reminder_request()
         assert result.scheduled_at is not None
-        assert result.scheduled_at.tzinfo == timezone.utc  # type: ignore[union-attr]
+        assert result.scheduled_at.tzinfo == UTC  # type: ignore[union-attr]
 
 
 # ---------------------------------------------------------------------------
@@ -401,7 +391,7 @@ class TestUpdateReminderRequest:
         assert m.status is None
 
     def test_valid_with_fields(self):
-        future = datetime.now(timezone.utc) + timedelta(days=30)
+        future = datetime.now(UTC) + timedelta(days=30)
         m = UpdateReminderRequest(
             agent="static",
             repeat="0 9 * * 1",
@@ -424,7 +414,7 @@ class TestUpdateReminderRequest:
             UpdateReminderRequest(max_occurrences=val)
 
     def test_stop_after_in_past_raises(self):
-        past = datetime.now(timezone.utc) - timedelta(hours=1)
+        past = datetime.now(UTC) - timedelta(hours=1)
         with pytest.raises(ValidationError, match="stop_after must be in the future"):
             UpdateReminderRequest(stop_after=past)
 
@@ -439,7 +429,7 @@ class TestUpdateReminderRequest:
         assert m.stop_after.tzinfo is not None  # type: ignore[union-attr]
 
     def test_serializer_datetime_to_iso(self):
-        future = datetime.now(timezone.utc) + timedelta(days=30)
+        future = datetime.now(UTC) + timedelta(days=30)
         m = UpdateReminderRequest(scheduled_at=future, stop_after=future)
         data = m.model_dump()
         assert isinstance(data["scheduled_at"], str)
@@ -458,8 +448,8 @@ class TestUpdateReminderRequest:
 @pytest.mark.unit
 class TestReminderResponse:
     def _base_data(self, **overrides) -> dict:
-        now = datetime.now(timezone.utc)
-        data: Dict[str, Any] = {
+        now = datetime.now(UTC)
+        data: dict[str, Any] = {
             "id": "rem1",
             "user_id": "user1",
             "agent": "static",
@@ -484,7 +474,7 @@ class TestReminderResponse:
         assert m.stop_after is None
 
     def test_valid_full(self):
-        future = datetime.now(timezone.utc) + timedelta(days=30)
+        future = datetime.now(UTC) + timedelta(days=30)
         m = ReminderResponse(
             **self._base_data(
                 repeat="0 9 * * *",

@@ -12,11 +12,13 @@ Usage:
 """
 
 import asyncio
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from functools import wraps
-from typing import Callable, Dict, List, Optional
 
+from fastapi import HTTPException
 import redis.asyncio as redis
+
 from app.config.rate_limits import (
     FEATURE_LIMITS,
     RateLimitPeriod,
@@ -36,7 +38,6 @@ from app.models.usage_models import (
 )
 from app.services.payments.payment_service import payment_service
 from app.services.usage_service import UsageService
-from fastapi import HTTPException
 from shared.py.wide_events import log
 
 
@@ -44,8 +45,8 @@ class RateLimitExceededException(HTTPException):
     def __init__(
         self,
         feature: str,
-        plan_required: Optional[str] = None,
-        reset_time: Optional[datetime] = None,
+        plan_required: str | None = None,
+        reset_time: datetime | None = None,
     ):
         detail = {
             "error": "rate_limit_exceeded",
@@ -67,15 +68,13 @@ class TieredRateLimiter:
     def __init__(self):
         self.redis = redis_cache
 
-    def _get_redis_key(
-        self, user_id: str, feature: str, period: RateLimitPeriod
-    ) -> str:
+    def _get_redis_key(self, user_id: str, feature: str, period: RateLimitPeriod) -> str:
         time_window = get_time_window_key(period)
         return f"rate_limit:{user_id}:{feature}:{period}:{time_window}"
 
     def _get_ttl(self, period: RateLimitPeriod) -> int:
         reset_time = get_reset_time(period)
-        return int((reset_time - datetime.now(timezone.utc)).total_seconds())
+        return int((reset_time - datetime.now(UTC)).total_seconds())
 
     async def check_and_increment(
         self,
@@ -83,7 +82,7 @@ class TieredRateLimiter:
         feature_key: str,
         user_plan: PlanType,
         credits_used: float = 0.0,
-    ) -> Dict[str, UsageInfo]:
+    ) -> dict[str, UsageInfo]:
         current_limits = get_limits_for_plan(feature_key, user_plan)
         usage_info = {}
 
@@ -104,9 +103,7 @@ class TieredRateLimiter:
             if current_usage >= limit:
                 free_limits = get_limits_for_plan(feature_key, PlanType.FREE)
                 is_plan_gated = getattr(free_limits, period.value) == 0
-                plan_required = (
-                    "pro" if (user_plan == PlanType.FREE and is_plan_gated) else None
-                )
+                plan_required = "pro" if (user_plan == PlanType.FREE and is_plan_gated) else None
                 raise RateLimitExceededException(feature_key, plan_required, reset_time)
 
         # Increment usage atomically
@@ -134,14 +131,10 @@ class TieredRateLimiter:
                         # Double-check limit hasn't been exceeded by concurrent requests
                         if current_val >= limit:
                             await pipe.unwatch()
-                            free_limits = get_limits_for_plan(
-                                feature_key, PlanType.FREE
-                            )
+                            free_limits = get_limits_for_plan(feature_key, PlanType.FREE)
                             is_plan_gated = getattr(free_limits, period.value) == 0
                             plan_required = (
-                                "pro"
-                                if (user_plan == PlanType.FREE and is_plan_gated)
-                                else None
+                                "pro" if (user_plan == PlanType.FREE and is_plan_gated) else None
                             )
                             raise RateLimitExceededException(
                                 feature_key, plan_required, get_reset_time(period)
@@ -202,11 +195,7 @@ class TieredRateLimiter:
 
                 snapshot = UserUsageSnapshot(
                     user_id=user_id,
-                    plan_type=(
-                        user_plan.value
-                        if hasattr(user_plan, "value")
-                        else str(user_plan)
-                    ),
+                    plan_type=(user_plan.value if hasattr(user_plan, "value") else str(user_plan)),
                     features=all_feature_usage,
                     credits=credit_usage_list,  # Add credits to snapshot
                 )
@@ -216,12 +205,10 @@ class TieredRateLimiter:
         except Exception as e:
             # Log error but don't raise - this shouldn't break the main request
             log.error(
-                f"Real-time usage sync failed for user {user_id}, feature {feature_key}: {str(e)}"
+                f"Real-time usage sync failed for user {user_id}, feature {feature_key}: {e!s}"
             )
 
-    async def _collect_feature_usage(
-        self, user_id: str, user_plan: PlanType
-    ) -> List[FeatureUsage]:
+    async def _collect_feature_usage(self, user_id: str, user_plan: PlanType) -> list[FeatureUsage]:
         """Collect feature usage data in parallel."""
         all_feature_usage = []
 
@@ -318,7 +305,7 @@ def tiered_rate_limit(feature_key: str):
             return result
 
         # Store metadata for usage tracking
-        setattr(wrapper, "_rate_limit_metadata", {"feature_key": feature_key})
+        wrapper._rate_limit_metadata = {"feature_key": feature_key}
 
         return wrapper
 

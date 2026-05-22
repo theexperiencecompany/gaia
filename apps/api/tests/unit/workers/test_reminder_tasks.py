@@ -1,8 +1,9 @@
 """Unit tests for reminder_tasks ARQ worker."""
 
-import pytest
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 from app.workers.tasks.reminder_tasks import (
     cleanup_expired_reminders,
@@ -19,27 +20,21 @@ class TestProcessReminder:
         return {}
 
     async def test_success_returns_success_message(self, ctx):
-        with patch(
-            "app.workers.tasks.reminder_tasks.reminder_scheduler"
-        ) as mock_scheduler:
+        with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
             mock_scheduler.process_task_execution = AsyncMock()
             result = await process_reminder(ctx, "reminder_123")
 
-        assert "Successfully processed reminder reminder_123" == result
+        assert result == "Successfully processed reminder reminder_123"
 
     async def test_reminder_scheduler_called_with_id(self, ctx):
-        with patch(
-            "app.workers.tasks.reminder_tasks.reminder_scheduler"
-        ) as mock_scheduler:
+        with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
             mock_scheduler.process_task_execution = AsyncMock()
             await process_reminder(ctx, "reminder_abc")
 
         mock_scheduler.process_task_execution.assert_awaited_once_with("reminder_abc")
 
     async def test_exception_propagates(self, ctx):
-        with patch(
-            "app.workers.tasks.reminder_tasks.reminder_scheduler"
-        ) as mock_scheduler:
+        with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
             mock_scheduler.process_task_execution = AsyncMock(
                 side_effect=RuntimeError("DB connection lost")
             )
@@ -48,12 +43,10 @@ class TestProcessReminder:
 
     async def test_ctx_unused_does_not_affect_outcome(self):
         for ctx in [{}, {"redis": AsyncMock()}, {"job_id": "j1"}]:
-            with patch(
-                "app.workers.tasks.reminder_tasks.reminder_scheduler"
-            ) as mock_scheduler:
+            with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
                 mock_scheduler.process_task_execution = AsyncMock()
                 result = await process_reminder(ctx, "r1")
-            assert "Successfully processed reminder r1" == result
+            assert result == "Successfully processed reminder r1"
 
 
 @pytest.mark.unit
@@ -73,7 +66,7 @@ class TestCleanupExpiredReminders:
             result = await cleanup_expired_reminders(ctx)
 
         assert mock_col.delete_many.called
-        assert "Cleaned up 7 expired reminders" == result
+        assert result == "Cleaned up 7 expired reminders"
 
     async def test_cleanup_zero_deletions_message(self, ctx):
         mock_result = MagicMock()
@@ -84,7 +77,7 @@ class TestCleanupExpiredReminders:
             result = await cleanup_expired_reminders(ctx)
 
         assert mock_col.delete_many.called
-        assert "Cleaned up 0 expired reminders" == result
+        assert result == "Cleaned up 0 expired reminders"
 
     async def test_cleanup_query_filters_completed_and_cancelled(self, ctx):
         mock_result = MagicMock()
@@ -102,16 +95,16 @@ class TestCleanupExpiredReminders:
 
     async def test_cleanup_query_uses_thirty_day_cutoff(self, ctx):
         """The cutoff date in the query must be approx 30 days in the past."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
         mock_result = MagicMock()
         mock_result.deleted_count = 0
 
         with patch("app.db.mongodb.collections.reminders_collection") as mock_col:
             mock_col.delete_many = AsyncMock(return_value=mock_result)
-            before_call = datetime.now(timezone.utc)
+            before_call = datetime.now(UTC)
             await cleanup_expired_reminders(ctx)
-            after_call = datetime.now(timezone.utc)
+            after_call = datetime.now(UTC)
 
         query = mock_col.delete_many.call_args[0][0]
         cutoff = query["updated_at"]["$lt"]
@@ -121,15 +114,11 @@ class TestCleanupExpiredReminders:
 
         # Allow a 5 second window for the cutoff to account for test execution time
         assert (
-            expected_lower - timedelta(seconds=5)
-            <= cutoff
-            <= expected_upper + timedelta(seconds=5)
+            expected_lower - timedelta(seconds=5) <= cutoff <= expected_upper + timedelta(seconds=5)
         )
 
     async def test_cleanup_exception_propagates(self, ctx):
         with patch("app.db.mongodb.collections.reminders_collection") as mock_col:
-            mock_col.delete_many = AsyncMock(
-                side_effect=Exception("MongoDB unavailable")
-            )
+            mock_col.delete_many = AsyncMock(side_effect=Exception("MongoDB unavailable"))
             with pytest.raises(Exception, match="MongoDB unavailable"):
                 await cleanup_expired_reminders(ctx)

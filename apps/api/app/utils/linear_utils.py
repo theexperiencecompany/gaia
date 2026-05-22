@@ -6,10 +6,10 @@ This module provides helper functions for Linear GraphQL API interactions:
 """
 
 from difflib import SequenceMatcher
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from shared.py.wide_events import log
 from app.services.composio.proxy_client import proxy_request_sync
+from shared.py.wide_events import log
 
 LINEAR_GRAPHQL_ENDPOINT = "https://api.linear.app/graphql"
 LINEAR_TOOLKIT = "LINEAR"
@@ -17,9 +17,9 @@ LINEAR_TOOLKIT = "LINEAR"
 
 def graphql_request(
     query: str,
-    variables: Optional[Dict[str, Any]],
-    auth_credentials: Dict[str, Any],
-) -> Dict[str, Any]:
+    variables: dict[str, Any] | None,
+    auth_credentials: dict[str, Any],
+) -> dict[str, Any]:
     """
     Execute a GraphQL request against Linear's API via Composio's proxy.
 
@@ -40,7 +40,7 @@ def graphql_request(
 
     log.set(operation="graphql_request", endpoint=LINEAR_GRAPHQL_ENDPOINT)
 
-    payload: Dict[str, Any] = {"query": query}
+    payload: dict[str, Any] = {"query": query}
     if variables:
         payload["variables"] = variables
 
@@ -54,9 +54,7 @@ def graphql_request(
 
     if isinstance(result, dict) and "errors" in result:
         error_messages = [e.get("message", str(e)) for e in result["errors"]]
-        log.error(
-            f"GraphQL Errors: {error_messages} Query: {query} Variables: {variables}"
-        )
+        log.error(f"GraphQL Errors: {error_messages} Query: {query} Variables: {variables}")
         raise Exception(f"GraphQL errors: {'; '.join(error_messages)}")
 
     return result.get("data", {}) if isinstance(result, dict) else {}
@@ -64,11 +62,11 @@ def graphql_request(
 
 def fuzzy_match(
     query: str,
-    candidates: List[Dict[str, Any]],
+    candidates: list[dict[str, Any]],
     key: str,
     limit: int = 3,
     threshold: float = 0.4,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Fuzzy match a query string against a list of candidates.
 
@@ -144,7 +142,7 @@ def priority_to_str(priority: int) -> str:
     return mapping.get(priority, "none")
 
 
-def format_issue_summary(issue: Dict[str, Any]) -> Dict[str, Any]:
+def format_issue_summary(issue: dict[str, Any]) -> dict[str, Any]:
     """Format an issue into a concise summary for LLM consumption."""
     return {
         "id": issue.get("id"),
@@ -152,15 +150,11 @@ def format_issue_summary(issue: Dict[str, Any]) -> Dict[str, Any]:
         "title": issue.get("title"),
         "state": issue.get("state", {}).get("name") if issue.get("state") else None,
         "priority": priority_to_str(issue.get("priority", 0)),
-        "assignee": issue.get("assignee", {}).get("name")
-        if issue.get("assignee")
-        else None,
+        "assignee": issue.get("assignee", {}).get("name") if issue.get("assignee") else None,
         "dueDate": issue.get("dueDate"),
         "team": issue.get("team", {}).get("key") if issue.get("team") else None,
         "cycle": issue.get("cycle", {}).get("name") if issue.get("cycle") else None,
-        "parent": issue.get("parent", {}).get("identifier")
-        if issue.get("parent")
-        else None,
+        "parent": issue.get("parent", {}).get("identifier") if issue.get("parent") else None,
     }
 
 

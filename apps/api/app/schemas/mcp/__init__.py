@@ -3,15 +3,15 @@
 from app.schemas.mcp.requests import (
     MCPProxyPromptsListRequest,
     MCPProxyResourceReadRequest,
-    MCPProxyResourceTemplatesListRequest,
     MCPProxyResourcesListRequest,
+    MCPProxyResourceTemplatesListRequest,
     MCPProxyToolCallRequest,
 )
 from app.schemas.mcp.responses import (
     MCPProxyPromptsListResponse,
     MCPProxyResourceReadResponse,
-    MCPProxyResourceTemplatesListResponse,
     MCPProxyResourcesListResponse,
+    MCPProxyResourceTemplatesListResponse,
     MCPProxyToolCallResponse,
 )
 

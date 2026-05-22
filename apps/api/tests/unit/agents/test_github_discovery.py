@@ -16,7 +16,6 @@ from app.agents.skills.github_discovery import (
     get_skill_from_repo,
 )
 
-
 # ---------------------------------------------------------------------------
 # DiscoveredSkill
 # ---------------------------------------------------------------------------
@@ -67,9 +66,7 @@ class TestFetchGitTree:
                 "app.agents.skills.github_discovery.httpx.AsyncClient",
                 return_value=mock_client,
             ),
-            patch(
-                "app.agents.skills.github_discovery.get_github_headers", return_value={}
-            ),
+            patch("app.agents.skills.github_discovery.get_github_headers", return_value={}),
             patch("app.agents.skills.github_discovery.check_tree_truncated"),
         ):
             entries, branch = await _fetch_git_tree("owner", "repo", "main")
@@ -104,9 +101,7 @@ class TestFetchGitTree:
                 "app.agents.skills.github_discovery.httpx.AsyncClient",
                 return_value=mock_client,
             ),
-            patch(
-                "app.agents.skills.github_discovery.get_github_headers", return_value={}
-            ),
+            patch("app.agents.skills.github_discovery.get_github_headers", return_value={}),
             patch("app.agents.skills.github_discovery.check_tree_truncated"),
         ):
             entries, branch = await _fetch_git_tree("owner", "repo", "main")
@@ -127,9 +122,7 @@ class TestFetchGitTree:
                 "app.agents.skills.github_discovery.httpx.AsyncClient",
                 return_value=mock_client,
             ),
-            patch(
-                "app.agents.skills.github_discovery.get_github_headers", return_value={}
-            ),
+            patch("app.agents.skills.github_discovery.get_github_headers", return_value={}),
         ):
             entries, branch = await _fetch_git_tree("owner", "repo", "main")
 
@@ -159,13 +152,9 @@ class TestFetchSingleFileContent:
                 "app.agents.skills.github_discovery.httpx.AsyncClient",
                 return_value=mock_client,
             ),
-            patch(
-                "app.agents.skills.github_discovery.get_github_headers", return_value={}
-            ),
+            patch("app.agents.skills.github_discovery.get_github_headers", return_value={}),
         ):
-            result = await _fetch_single_file_content(
-                "owner", "repo", "SKILL.md", "main"
-            )
+            result = await _fetch_single_file_content("owner", "repo", "SKILL.md", "main")
 
         assert result == ("SKILL.md", "# Content")
 
@@ -183,13 +172,9 @@ class TestFetchSingleFileContent:
                 "app.agents.skills.github_discovery.httpx.AsyncClient",
                 return_value=mock_client,
             ),
-            patch(
-                "app.agents.skills.github_discovery.get_github_headers", return_value={}
-            ),
+            patch("app.agents.skills.github_discovery.get_github_headers", return_value={}),
         ):
-            result = await _fetch_single_file_content(
-                "owner", "repo", "missing.md", "main"
-            )
+            result = await _fetch_single_file_content("owner", "repo", "missing.md", "main")
 
         assert result is None
 
@@ -204,9 +189,7 @@ class TestFetchSingleFileContent:
                 "app.agents.skills.github_discovery.httpx.AsyncClient",
                 return_value=mock_client,
             ),
-            patch(
-                "app.agents.skills.github_discovery.get_github_headers", return_value={}
-            ),
+            patch("app.agents.skills.github_discovery.get_github_headers", return_value={}),
         ):
             result = await _fetch_single_file_content("owner", "repo", "bad.md", "main")
 
@@ -241,9 +224,7 @@ class TestFetchFileContentsBatch:
             new_callable=AsyncMock,
             side_effect=[RuntimeError("boom"), ("ok.md", "ok")],
         ):
-            results = await _fetch_file_contents_batch(
-                "owner", "repo", ["bad.md", "ok.md"], "main"
-            )
+            results = await _fetch_file_contents_batch("owner", "repo", ["bad.md", "ok.md"], "main")
         assert len(results) == 1
 
 
@@ -276,9 +257,7 @@ class TestParseSkillFromContent:
             "app.agents.skills.github_discovery.parse_skill_md",
             side_effect=ValueError("bad"),
         ):
-            skill = await _parse_skill_from_content(
-                "bad content", "path", "https://github.com/o/r"
-            )
+            skill = await _parse_skill_from_content("bad content", "path", "https://github.com/o/r")
         assert skill is None
 
 
@@ -383,9 +362,7 @@ class TestDiscoverSkillsFromRepo:
                 "app.agents.skills.github_discovery.find_skill_files",
                 return_value=skill_files,
             ),
-            patch(
-                "app.agents.skills.github_discovery.get_folder_priority", return_value=1
-            ),
+            patch("app.agents.skills.github_discovery.get_folder_priority", return_value=1),
             patch(
                 "app.agents.skills.github_discovery._fetch_file_contents_batch",
                 new_callable=AsyncMock,
@@ -428,9 +405,7 @@ class TestGetSkillFromRepo:
         assert result is None
 
     async def test_finds_matching_skill(self):
-        metadata = SimpleNamespace(
-            name="target-skill", description="d", target="executor"
-        )
+        metadata = SimpleNamespace(name="target-skill", description="d", target="executor")
         with (
             patch(
                 "app.agents.skills.github_discovery.parse_github_url",
@@ -464,9 +439,7 @@ class TestGetSkillFromRepo:
         assert result.name == "target-skill"
 
     async def test_returns_none_when_skill_not_found(self):
-        metadata = SimpleNamespace(
-            name="other-skill", description="d", target="executor"
-        )
+        metadata = SimpleNamespace(name="other-skill", description="d", target="executor")
         with (
             patch(
                 "app.agents.skills.github_discovery.parse_github_url",
@@ -486,9 +459,7 @@ class TestGetSkillFromRepo:
                 new_callable=AsyncMock,
                 return_value=[("SKILL.md", "content")],
             ),
-            patch(
-                "app.agents.skills.github_discovery.get_folder_path", return_value=""
-            ),
+            patch("app.agents.skills.github_discovery.get_folder_path", return_value=""),
             patch(
                 "app.agents.skills.github_discovery.parse_skill_md",
                 return_value=(metadata, "body"),

@@ -1,19 +1,19 @@
 """Utilities for generating user profile card data (holo card) and bio."""
 
+from datetime import UTC, datetime
 import random
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from bson import ObjectId
 from langchain_core.messages import HumanMessage
 
 from app.agents.llm.client import init_llm
 from app.agents.prompts.onboarding_prompts import HOLO_CARD_PROMPT
-from shared.py.wide_events import log
 from app.constants.profession_bios import get_random_bio_for_profession
 from app.db.mongodb.collections import users_collection
 from app.models.onboarding_models import HoloCardLLMOutput
 from app.models.user_models import BioStatus
+from shared.py.wide_events import log
 
 # Available houses for user assignment
 HOUSES = ["frostpeak", "greenvale", "mistgrove", "bluehaven"]
@@ -29,7 +29,7 @@ def assign_random_house() -> str:
     return random.choice(HOUSES)  # nosec B311
 
 
-def generate_random_color() -> Tuple[str, int]:
+def generate_random_color() -> tuple[str, int]:
     """
     Generate a random vibrant color or gradient for holo card overlay.
 
@@ -43,7 +43,7 @@ def generate_random_color() -> Tuple[str, int]:
     """
     is_gradient = random.random() > 0.5  # nosec B311
 
-    def _hsl_to_rgb(h: float, s: float, lightness_val: float) -> Tuple[int, int, int]:
+    def _hsl_to_rgb(h: float, s: float, lightness_val: float) -> tuple[int, int, int]:
         """Convert HSL to RGB values."""
         if s == 0:
             r = g = b = lightness_val
@@ -99,9 +99,7 @@ def generate_random_color() -> Tuple[str, int]:
     return color_string, opacity
 
 
-async def get_user_metadata(
-    user_id: str, user: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+async def get_user_metadata(user_id: str, user: dict[str, Any] | None = None) -> dict[str, Any]:
     """
     Calculate user metadata for profile card.
 
@@ -121,7 +119,7 @@ async def get_user_metadata(
         if not user:
             return {
                 "account_number": 1,
-                "member_since": datetime.now(timezone.utc).strftime("%b %d, %Y"),
+                "member_since": datetime.now(UTC).strftime("%b %d, %Y"),
             }
 
         created_at = user.get("created_at")
@@ -134,7 +132,7 @@ async def get_user_metadata(
         member_since = (
             created_at.strftime("%b %d, %Y")
             if created_at and isinstance(created_at, datetime)
-            else datetime.now(timezone.utc).strftime("%b %d, %Y")
+            else datetime.now(UTC).strftime("%b %d, %Y")
         )
 
         return {"account_number": account_number, "member_since": member_since}
@@ -143,7 +141,7 @@ async def get_user_metadata(
         # Fallback to defaults on error
         return {
             "account_number": 1,
-            "member_since": datetime.now(timezone.utc).strftime("%b %d, %Y"),
+            "member_since": datetime.now(UTC).strftime("%b %d, %Y"),
         }
 
 
@@ -165,17 +163,15 @@ def _phrase_fallback(profession: str) -> str:
 async def generate_holo_card_content(
     user_id: str,
     context_summary: str,
-    user: Optional[Dict[str, Any]] = None,
-) -> Tuple[str, str, BioStatus]:
+    user: dict[str, Any] | None = None,
+) -> tuple[str, str, BioStatus]:
     """Generate the holo card's personality phrase and bio in one structured LLM call."""
     log.set(operation="generate_holo_card_content", user_id=user_id)
 
     if user is None:
         user = await users_collection.find_one({"_id": ObjectId(user_id)})
     name = (user or {}).get("name", "User")
-    profession = (
-        (user or {}).get("onboarding", {}).get("preferences", {}).get("profession", "")
-    )
+    profession = (user or {}).get("onboarding", {}).get("preferences", {}).get("profession", "")
 
     if not context_summary.strip():
         default_bio = get_random_bio_for_profession(name, profession or "other")
@@ -189,9 +185,7 @@ async def generate_holo_card_content(
         )
         llm = init_llm(preferred_provider="gemini").bind(temperature=1.0)
         structured_llm = llm.with_structured_output(HoloCardLLMOutput)
-        result: HoloCardLLMOutput = await structured_llm.ainvoke(
-            [HumanMessage(content=prompt)]
-        )
+        result: HoloCardLLMOutput = await structured_llm.ainvoke([HumanMessage(content=prompt)])
         phrase = result.personality_phrase.strip().strip('"').strip("'")
         bio = result.user_bio.strip()
         log.info(f"Generated holo card content for user {user_id}: phrase='{phrase}'")
@@ -206,7 +200,7 @@ async def generate_holo_card_content(
         )
 
 
-def generate_profile_card_design() -> Dict[str, Any]:
+def generate_profile_card_design() -> dict[str, Any]:
     """
     Generate complete profile card design (house, colors).
 

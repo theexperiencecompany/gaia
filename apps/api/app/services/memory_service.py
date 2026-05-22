@@ -1,19 +1,19 @@
 """Memory service layer for handling all memory operations with latest Mem0 API."""
 
+from datetime import datetime
 import hashlib
 import time
-from datetime import datetime
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, cast
 
 from app.agents.memory.client import memory_client_manager
 from app.constants.cache import MEMORY_SEARCH_CACHE_TTL
 from app.decorators.caching import Cacheable, CacheInvalidator
-from shared.py.wide_events import log
 from app.models.memory_models import (
     MemoryEntry,
     MemoryRelation,
     MemorySearchResult,
 )
+from shared.py.wide_events import log
 
 
 def _memory_search_cache_key(
@@ -56,7 +56,7 @@ class MemoryService:
         """Get the configured async memory client."""
         return await memory_client_manager.get_client()
 
-    def _validate_user_id(self, user_id: Optional[str]) -> Optional[str]:
+    def _validate_user_id(self, user_id: str | None) -> str | None:
         """
         Validate and return user_id.
 
@@ -77,7 +77,7 @@ class MemoryService:
 
         return str(user_id) if user_id else None
 
-    def _parse_memory_result(self, result: Dict[str, Any]) -> Optional[MemoryEntry]:
+    def _parse_memory_result(self, result: dict[str, Any]) -> MemoryEntry | None:
         """
         Parse a single memory result from Mem0 API v2 response.
 
@@ -122,14 +122,10 @@ class MemoryService:
             return memory_entry
 
         except Exception as e:
-            self.logger.error(
-                f"Error creating MemoryEntry from data: {e}, raw data: {result}"
-            )
+            self.logger.error(f"Error creating MemoryEntry from data: {e}, raw data: {result}")
             return None
 
-    def _parse_memory_list(
-        self, memories: List[Dict[str, Any]], user_id: str
-    ) -> List[MemoryEntry]:
+    def _parse_memory_list(self, memories: list[dict[str, Any]], user_id: str) -> list[MemoryEntry]:
         """
         Parse a list of memory results.
 
@@ -153,8 +149,8 @@ class MemoryService:
         return parsed_memories
 
     def _parse_add_result(
-        self, result: Dict[str, Any], is_async: bool = False
-    ) -> Optional[MemoryEntry]:
+        self, result: dict[str, Any], is_async: bool = False
+    ) -> MemoryEntry | None:
         """
         Parse add operation result from Mem0 API v2.
 
@@ -225,9 +221,7 @@ class MemoryService:
             )
             return None
 
-    def _extract_relationships_from_response(
-        self, response: Any
-    ) -> List[Dict[str, Any]]:
+    def _extract_relationships_from_response(self, response: Any) -> list[dict[str, Any]]:
         """
         Extract relationships list from API response.
 
@@ -251,9 +245,7 @@ class MemoryService:
         self.logger.warning(f"Response is not a dict, type: {type(response)}")
         return []
 
-    def _parse_relationships(
-        self, relations: List[Dict[str, Any]]
-    ) -> List[MemoryRelation]:
+    def _parse_relationships(self, relations: list[dict[str, Any]]) -> list[MemoryRelation]:
         """
         Parse relationships from Mem0 API v2 graph memory response.
 
@@ -320,12 +312,12 @@ class MemoryService:
     async def store_memory(
         self,
         message: str,
-        user_id: Optional[str],
-        conversation_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        user_id: str | None,
+        conversation_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
         async_mode: bool = True,
-        custom_instructions: Optional[str] = None,
-    ) -> Optional[MemoryEntry]:
+        custom_instructions: str | None = None,
+    ) -> MemoryEntry | None:
         """
         Store a single memory using Mem0 v2 API.
 
@@ -379,20 +371,18 @@ class MemoryService:
             self.logger.info(f"Memory stored for user {user_id} (mode: {mode_str})")
 
             # v2 API response format: {"results": [...]}
-            results_list: List[Dict[str, Any]]
+            results_list: list[dict[str, Any]]
             if isinstance(result, dict) and "results" in result:
                 raw_results = result["results"]
                 results_list = cast(
-                    List[Dict[str, Any]],
+                    list[dict[str, Any]],
                     raw_results if isinstance(raw_results, list) else [],
                 )
             elif isinstance(result, list):
                 # Fallback for direct list response
-                results_list = cast(List[Dict[str, Any]], result)
+                results_list = cast(list[dict[str, Any]], result)
             else:
-                self.logger.warning(
-                    f"Unexpected response format from mem0 add: {type(result)}"
-                )
+                self.logger.warning(f"Unexpected response format from mem0 add: {type(result)}")
                 return None
 
             if not results_list:
@@ -430,13 +420,13 @@ class MemoryService:
     @CacheInvalidator(key_patterns=["user:{user_id}:memories:*"])
     async def store_memory_batch(
         self,
-        messages: List[Dict[str, str]],
-        user_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        conversation_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        messages: list[dict[str, str]],
+        user_id: str | None = None,
+        agent_id: str | None = None,
+        conversation_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
         async_mode: bool = True,
-        custom_instructions: Optional[str] = None,
+        custom_instructions: str | None = None,
         infer: bool = True,
     ) -> bool:
         """
@@ -491,7 +481,7 @@ class MemoryService:
             client = await self._get_client()
 
             # Build add kwargs - only include non-None identifiers
-            add_kwargs: Dict[str, Any] = {
+            add_kwargs: dict[str, Any] = {
                 "messages": messages,
                 "metadata": metadata,
                 "run_id": conversation_id,
@@ -511,9 +501,7 @@ class MemoryService:
             # v2 API response format: {"results": [...]}
             if isinstance(result, dict) and "results" in result:
                 results_list = result["results"]
-                success_count = (
-                    len(results_list) if isinstance(results_list, list) else 0
-                )
+                success_count = len(results_list) if isinstance(results_list, list) else 0
 
                 # Calculate elapsed time
                 batch_elapsed = time.time() - batch_start
@@ -533,14 +521,13 @@ class MemoryService:
                     )
 
                 return success_count > 0
-            elif isinstance(result, list):
+            if isinstance(result, list):
                 return len(result) > 0
-            else:
-                batch_elapsed = time.time() - batch_start
-                self.logger.warning(
-                    f"Unexpected response format from mem0 batch add in {batch_elapsed:.2f}s: {type(result)}, value: {result}"
-                )
-                return False
+            batch_elapsed = time.time() - batch_start
+            self.logger.warning(
+                f"Unexpected response format from mem0 batch add in {batch_elapsed:.2f}s: {type(result)}, value: {result}"
+            )
+            return False
 
         except Exception as e:
             batch_elapsed = time.time() - batch_start
@@ -557,9 +544,9 @@ class MemoryService:
     async def search_memories(
         self,
         query: str,
-        user_id: Optional[str],
+        user_id: str | None,
         limit: int = 5,
-        threshold: Optional[float] = None,
+        threshold: float | None = None,
     ) -> MemorySearchResult:
         """
         Search for relevant memories using Mem0 v2 API with semantic search.
@@ -600,8 +587,8 @@ class MemoryService:
             )
 
             # v2 API response format: {"results": [...], "relations": [...]}
-            memories_list: List[Dict[str, Any]] = []
-            relations_list: List[Dict[str, Any]] = []
+            memories_list: list[dict[str, Any]] = []
+            relations_list: list[dict[str, Any]] = []
 
             if isinstance(response, dict):
                 # Extract memories
@@ -648,9 +635,7 @@ class MemoryService:
             # outcome to "failed". Demote transient HTTP errors to warning;
             # everything else stays as error so genuine bugs still surface.
             msg = str(e)
-            transient = any(
-                s in msg for s in ("429", "Too Many Requests", "503", "502", "504")
-            )
+            transient = any(s in msg for s in ("429", "Too Many Requests", "503", "502", "504"))
             if transient:
                 self.logger.warning(
                     f"Transient mem0 error searching memories for user {user_id}: {e}"
@@ -664,7 +649,7 @@ class MemoryService:
         query: str,
         agent_id: str,
         limit: int = 5,
-        threshold: Optional[float] = None,
+        threshold: float | None = None,
     ) -> MemorySearchResult:
         """
         Search for relevant agent memories using Mem0 v2 API with semantic search.
@@ -698,8 +683,8 @@ class MemoryService:
             )
 
             # v2 API response format: {"results": [...], "relations": [...]}
-            memories_list: List[Dict[str, Any]] = []
-            relations_list: List[Dict[str, Any]] = []
+            memories_list: list[dict[str, Any]] = []
+            relations_list: list[dict[str, Any]] = []
 
             if isinstance(response, dict):
                 memories_list = response.get("results", [])
@@ -732,7 +717,7 @@ class MemoryService:
 
     async def get_all_memories(
         self,
-        user_id: Optional[str],
+        user_id: str | None,
     ) -> MemorySearchResult:
         """
         Get all memories for a user using Mem0 v2 API.
@@ -759,8 +744,8 @@ class MemoryService:
             )
 
             # v2 API response format: {"results": [...], "relations": [...]}
-            memories_list: List[Dict[str, Any]] = []
-            relationships_list: List[Dict[str, Any]] = []
+            memories_list: list[dict[str, Any]] = []
+            relationships_list: list[dict[str, Any]] = []
 
             # Extract memories from results
             memories_list = response.get("results", [])
@@ -782,7 +767,7 @@ class MemoryService:
             return MemorySearchResult()
 
     @CacheInvalidator(key_patterns=["user:{user_id}:memories:*"])
-    async def delete_memory(self, memory_id: str, user_id: Optional[str]) -> bool:
+    async def delete_memory(self, memory_id: str, user_id: str | None) -> bool:
         """
         Delete a specific memory using Mem0 v2 API.
 
@@ -807,13 +792,11 @@ class MemoryService:
             return True
 
         except Exception as e:
-            self.logger.error(
-                f"Error deleting memory {memory_id} for user {user_id}: {e}"
-            )
+            self.logger.error(f"Error deleting memory {memory_id} for user {user_id}: {e}")
             return False
 
     @CacheInvalidator(key_patterns=["user:{user_id}:memories:*"])
-    async def delete_all_memories(self, user_id: Optional[str]) -> bool:
+    async def delete_all_memories(self, user_id: str | None) -> bool:
         """
         Delete all memories for a user using Mem0 v2 API.
 
@@ -840,7 +823,7 @@ class MemoryService:
             self.logger.error(f"Error deleting all memories for user {user_id}: {e}")
             return False
 
-    async def get_project_info(self) -> Dict[str, Any]:
+    async def get_project_info(self) -> dict[str, Any]:
         """
         Get project configuration to check if graph memory is enabled.
 
@@ -855,11 +838,10 @@ class MemoryService:
                 project_info = await client.project.get()
                 self.logger.info(f"Project info: {project_info}")
                 return {"success": True, "project_info": project_info}
-            else:
-                return {
-                    "success": False,
-                    "message": "Project API not available on this client",
-                }
+            return {
+                "success": False,
+                "message": "Project API not available on this client",
+            }
 
         except Exception as e:
             self.logger.error(f"Error getting project info: {e}")

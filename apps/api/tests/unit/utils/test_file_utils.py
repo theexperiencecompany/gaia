@@ -9,15 +9,12 @@ import pytest
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
 from app.utils.file_utils import DocumentProcessor, generate_file_summary
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _mock_llm(
-    invoke_return: Any = "Mock summary", batch_return: Any = None
-) -> AsyncMock:
+def _mock_llm(invoke_return: Any = "Mock summary", batch_return: Any = None) -> AsyncMock:
     """Return an AsyncMock LLM with configurable ainvoke/abatch responses."""
     llm = AsyncMock()
     llm.ainvoke = AsyncMock(return_value=invoke_return)
@@ -57,9 +54,7 @@ def processor() -> DocumentProcessor:
 class TestProcessFileRouting:
     """Verify that process_file routes to the correct sub-processor."""
 
-    async def test_image_routes_to_process_image(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_image_routes_to_process_image(self, processor: DocumentProcessor) -> None:
         processor.process_image = AsyncMock(return_value="image desc")  # type: ignore[method-assign]
         result = await processor.process_file(b"imgdata", "image/png", "photo.png")
         processor.process_image.assert_awaited_once_with(b"imgdata")
@@ -73,9 +68,7 @@ class TestProcessFileRouting:
         await processor.process_file(b"data", content_type, "file.img")
         processor.process_image.assert_awaited_once()
 
-    async def test_pdf_routes_to_process_doc(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_pdf_routes_to_process_doc(self, processor: DocumentProcessor) -> None:
         processor.process_doc = AsyncMock(return_value=[])  # type: ignore[method-assign]
         await processor.process_file(b"pdfdata", "application/pdf", "doc.pdf")
         processor.process_doc.assert_awaited_once_with(b"pdfdata")
@@ -84,15 +77,11 @@ class TestProcessFileRouting:
         self, processor: DocumentProcessor
     ) -> None:
         processor.process_doc = AsyncMock(return_value=[])  # type: ignore[method-assign]
-        ctype = (
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+        ctype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         await processor.process_file(b"docxdata", ctype, "doc.docx")
         processor.process_doc.assert_awaited_once_with(b"docxdata", suffix=".docx")
 
-    async def test_text_routes_to_process_text(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_text_routes_to_process_text(self, processor: DocumentProcessor) -> None:
         processor.process_text = AsyncMock(  # type: ignore[method-assign]
             return_value=DocumentSummaryModel(
                 data=DocumentPageModel(page_number=1, content="hello"),
@@ -115,19 +104,13 @@ class TestProcessFileRouting:
         await processor.process_file(b"data", content_type, "file.txt")
         processor.process_text.assert_awaited_once()
 
-    async def test_unknown_type_returns_fallback_string(
-        self, processor: DocumentProcessor
-    ) -> None:
-        result = await processor.process_file(
-            b"binary", "application/octet-stream", "data.bin"
-        )
+    async def test_unknown_type_returns_fallback_string(self, processor: DocumentProcessor) -> None:
+        result = await processor.process_file(b"binary", "application/octet-stream", "data.bin")
         assert isinstance(result, str)
         assert ".bin" in result
         assert "no content extraction" in result
 
-    async def test_exception_returns_error_string(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_exception_returns_error_string(self, processor: DocumentProcessor) -> None:
         processor.process_image = AsyncMock(side_effect=RuntimeError("boom"))  # type: ignore[method-assign]
         result = await processor.process_file(b"img", "image/png", "bad.png")
         assert isinstance(result, str)
@@ -142,23 +125,17 @@ class TestProcessFileRouting:
 
 @pytest.mark.unit
 class TestProcessImage:
-    async def test_success_returns_description(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_success_returns_description(self, processor: DocumentProcessor) -> None:
         processor.llm = _mock_llm(invoke_return="A scenic mountain view")
         result = await processor.process_image(b"\x89PNG\r\n")
         assert result == "A scenic mountain view"
 
-    async def test_non_string_response_converted(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_non_string_response_converted(self, processor: DocumentProcessor) -> None:
         processor.llm = _mock_llm(invoke_return=12345)
         result = await processor.process_image(b"img")
         assert result == "12345"
 
-    async def test_base64_encoding_in_prompt(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_base64_encoding_in_prompt(self, processor: DocumentProcessor) -> None:
         """Verify the image is base64-encoded in the LLM prompt."""
         raw = b"\x89PNG\r\n\x1a\n"
         expected_b64 = base64.b64encode(raw).decode("utf-8")
@@ -171,9 +148,7 @@ class TestProcessImage:
         image_block = [b for b in content_blocks if b["type"] == "image_url"][0]
         assert expected_b64 in image_block["image_url"]["url"]
 
-    async def test_exception_returns_fallback(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_exception_returns_fallback(self, processor: DocumentProcessor) -> None:
         processor.llm = _mock_llm()
         processor.llm.ainvoke.side_effect = RuntimeError("LLM down")
         result = await processor.process_image(b"data")
@@ -187,16 +162,12 @@ class TestProcessImage:
 
 @pytest.mark.unit
 class TestProcessDoc:
-    async def test_success_returns_list_of_summaries(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_success_returns_list_of_summaries(self, processor: DocumentProcessor) -> None:
         md_doc_1 = _make_md_document("Page 1 content")
         md_doc_2 = _make_md_document("Page 2 content")
 
         mock_parse_result = AsyncMock()
-        mock_parse_result.aget_markdown_documents = AsyncMock(
-            return_value=[md_doc_1, md_doc_2]
-        )
+        mock_parse_result.aget_markdown_documents = AsyncMock(return_value=[md_doc_1, md_doc_2])
         processor.parser = AsyncMock()
         processor.parser.aparse = AsyncMock(return_value=mock_parse_result)
         processor.llm = _mock_llm(batch_return=["Summary 1", "Summary 2"])
@@ -210,9 +181,7 @@ class TestProcessDoc:
         assert result[0].summary == "Summary 1"
         assert result[1].data.page_number == 2
 
-    async def test_aparse_returns_list_unwraps_first(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_aparse_returns_list_unwraps_first(self, processor: DocumentProcessor) -> None:
         """When aparse returns a list, the first element is used."""
         md_doc = _make_md_document("Content")
         inner_result = AsyncMock()
@@ -248,9 +217,7 @@ class TestProcessDoc:
 
             mock_tmp.assert_called_once_with(suffix=".docx", delete=False)
 
-    async def test_exception_returns_empty_list(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_exception_returns_empty_list(self, processor: DocumentProcessor) -> None:
         processor.parser = AsyncMock()
         processor.parser.aparse = AsyncMock(side_effect=RuntimeError("parse fail"))
 
@@ -279,9 +246,7 @@ class TestProcessDoc:
 
 @pytest.mark.unit
 class TestProcessText:
-    async def test_success_returns_document_summary(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_success_returns_document_summary(self, processor: DocumentProcessor) -> None:
         processor.llm = _mock_llm(invoke_return="Text summary")
 
         result = await processor.process_text(b"Hello, this is plain text.")
@@ -291,9 +256,7 @@ class TestProcessText:
         assert result.data.content == "Hello, this is plain text."
         assert result.summary == "Text summary"
 
-    async def test_utf8_decode_errors_replaced(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_utf8_decode_errors_replaced(self, processor: DocumentProcessor) -> None:
         """Invalid UTF-8 bytes are replaced, not raised."""
         processor.llm = _mock_llm(invoke_return="summary")
         raw = b"hello \xff\xfe world"
@@ -314,9 +277,7 @@ class TestProcessText:
         assert isinstance(result, DocumentSummaryModel)
         assert "could not be generated" in result.summary
 
-    async def test_model_validation_error_is_reraised(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_model_validation_error_is_reraised(self, processor: DocumentProcessor) -> None:
         """If DocumentSummaryModel construction fails, the error propagates."""
         processor.llm = _mock_llm(invoke_return="summary")
 
@@ -357,16 +318,12 @@ class TestGenerateTextSummary:
         result = await processor._generate_text_summary("Some text to summarize")
         assert result == "A concise summary"
 
-    async def test_non_string_response_converted(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_non_string_response_converted(self, processor: DocumentProcessor) -> None:
         processor.llm = _mock_llm(invoke_return=42)
         result = await processor._generate_text_summary("text")
         assert result == "42"
 
-    async def test_exception_returns_fallback(
-        self, processor: DocumentProcessor
-    ) -> None:
+    async def test_exception_returns_fallback(self, processor: DocumentProcessor) -> None:
         processor.llm = _mock_llm()
         processor.llm.ainvoke.side_effect = RuntimeError("LLM down")
         result = await processor._generate_text_summary("text")
@@ -400,9 +357,7 @@ class TestGenerateFileSummary:
         assert result == "summary result"
 
     @patch("app.utils.file_utils.DocumentProcessor")
-    async def test_creates_new_processor_each_call(
-        self, mock_proc_cls: MagicMock
-    ) -> None:
+    async def test_creates_new_processor_each_call(self, mock_proc_cls: MagicMock) -> None:
         mock_instance = AsyncMock()
         mock_instance.process_file = AsyncMock(return_value="")
         mock_proc_cls.return_value = mock_instance

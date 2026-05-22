@@ -1,14 +1,15 @@
-from typing import Annotated, Any, Dict, Optional
+from typing import Annotated, Any
 
-from shared.py.wide_events import log
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
+
 from app.decorators import with_doc, with_rate_limiting
 from app.templates.docstrings.document_tool_docs import (
     GENERATE_DOCUMENT,
 )
 from app.utils.document_utils import DocumentProcessor, PDFConfig
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
+from shared.py.wide_events import log
 
 
 @tool
@@ -29,19 +30,17 @@ async def generate_document(
         bool,
         "ALWAYS True for: code files (py,js,html,css,json,xml,sql,etc), text files, data files, config files. ONLY False for: pdf,docx,odt,epub - documents requiring special formatting",
     ],
-    title: Annotated[
-        Optional[str], "Document title - ONLY used when is_plain_text=False"
-    ] = None,
+    title: Annotated[str | None, "Document title - ONLY used when is_plain_text=False"] = None,
     metadata: Annotated[
-        Optional[Dict[str, Any]],
+        dict[str, Any] | None,
         "Additional metadata - ONLY used when is_plain_text=False",
     ] = None,
     font_size: Annotated[
-        Optional[int],
+        int | None,
         "Font size in points (e.g., 12, 14, 50) - ONLY used for PDF generation",
     ] = None,
     pdf_config: Annotated[
-        Optional[PDFConfig],
+        PDFConfig | None,
         """Simple PDF configuration options - ONLY used for PDF generation. Supports:
         - margins: str (e.g., '0.5in', '1cm') - page margins
         - font_family: str (e.g., 'Times New Roman', 'Arial') - main font
@@ -93,5 +92,5 @@ async def generate_document(
         return f"SUCCESS: Document '{result['filename']}' has been generated and uploaded. The file is now available to the user through the frontend interface."
 
     except Exception as e:
-        log.error(f"Error generating document: {str(e)}")
-        raise Exception(f"Generation failed: {str(e)}")
+        log.error(f"Error generating document: {e!s}")
+        raise Exception(f"Generation failed: {e!s}")

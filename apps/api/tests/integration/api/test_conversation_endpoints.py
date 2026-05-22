@@ -43,9 +43,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.get_conversations",
         new_callable=AsyncMock,
     )
-    async def test_get_conversations_500_on_service_error(
-        self, mock_get_convos, test_client
-    ):
+    async def test_get_conversations_500_on_service_error(self, mock_get_convos, test_client):
         """GET /api/v1/conversations should return 500 when service raises."""
         mock_get_convos.side_effect = Exception("DB error")
         response = await test_client.get("/api/v1/conversations")
@@ -83,9 +81,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.create_conversation_service",
         new_callable=AsyncMock,
     )
-    async def test_create_conversation_500_on_service_error(
-        self, mock_create, test_client
-    ):
+    async def test_create_conversation_500_on_service_error(self, mock_create, test_client):
         """POST /api/v1/conversations should return 500 when service raises."""
         mock_create.side_effect = Exception("DB error")
         response = await test_client.post(
@@ -102,9 +98,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.get_conversation",
         new_callable=AsyncMock,
     )
-    async def test_get_single_conversation_returns_200(
-        self, mock_get_convo, test_client
-    ):
+    async def test_get_single_conversation_returns_200(self, mock_get_convo, test_client):
         """GET /api/v1/conversations/{id} should return 200."""
         mock_get_convo.return_value = {
             "conversation_id": "conv-456",
@@ -121,9 +115,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.get_conversation",
         new_callable=AsyncMock,
     )
-    async def test_get_single_conversation_500_on_service_error(
-        self, mock_get_convo, test_client
-    ):
+    async def test_get_single_conversation_500_on_service_error(self, mock_get_convo, test_client):
         """GET /api/v1/conversations/{id} should return 500 when service raises."""
         mock_get_convo.side_effect = Exception("DB error")
         response = await test_client.get("/api/v1/conversations/conv-456")
@@ -153,9 +145,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.delete_conversation",
         new_callable=AsyncMock,
     )
-    async def test_delete_conversation_500_on_service_error(
-        self, mock_delete, test_client
-    ):
+    async def test_delete_conversation_500_on_service_error(self, mock_delete, test_client):
         """DELETE /api/v1/conversations/{id} should return 500 when service raises."""
         mock_delete.side_effect = Exception("DB error")
         response = await test_client.delete("/api/v1/conversations/conv-789")
@@ -208,9 +198,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.star_conversation",
         new_callable=AsyncMock,
     )
-    async def test_star_conversation_requires_auth(
-        self, mock_star, unauthenticated_client
-    ):
+    async def test_star_conversation_requires_auth(self, mock_star, unauthenticated_client):
         """PUT /api/v1/conversations/{id}/star without auth should return 401."""
         response = await unauthenticated_client.put(
             "/api/v1/conversations/conv-star/star",
@@ -257,9 +245,7 @@ class TestConversationEndpoints:
     )
     async def test_mark_as_read_requires_auth(self, mock_read, unauthenticated_client):
         """PATCH /api/v1/conversations/{id}/read without auth should return 401."""
-        response = await unauthenticated_client.patch(
-            "/api/v1/conversations/conv-read/read"
-        )
+        response = await unauthenticated_client.patch("/api/v1/conversations/conv-read/read")
         assert response.status_code == 401
 
     @patch(
@@ -280,9 +266,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.batch_sync_conversations",
         new_callable=AsyncMock,
     )
-    async def test_batch_sync_conversations_returns_200(
-        self, mock_batch_sync, test_client
-    ):
+    async def test_batch_sync_conversations_returns_200(self, mock_batch_sync, test_client):
         """POST /api/v1/conversations/batch-sync should return 200."""
         mock_batch_sync.return_value = {"conversations": []}
         response = await test_client.post(
@@ -338,13 +322,9 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.delete_all_conversations",
         new_callable=AsyncMock,
     )
-    async def test_delete_all_conversations_returns_200(
-        self, mock_delete_all, test_client
-    ):
+    async def test_delete_all_conversations_returns_200(self, mock_delete_all, test_client):
         """DELETE /api/v1/conversations should return 200."""
-        mock_delete_all.return_value = {
-            "message": "All conversations deleted successfully"
-        }
+        mock_delete_all.return_value = {"message": "All conversations deleted successfully"}
         response = await test_client.delete("/api/v1/conversations")
         assert response.status_code == 200
         data = response.json()
@@ -407,9 +387,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.update_messages",
         new_callable=AsyncMock,
     )
-    async def test_update_messages_requires_auth(
-        self, mock_update, unauthenticated_client
-    ):
+    async def test_update_messages_requires_auth(self, mock_update, unauthenticated_client):
         """PUT /api/v1/conversations/{id}/messages without auth should return 401."""
         response = await unauthenticated_client.put(
             "/api/v1/conversations/conv-msg/messages",
@@ -505,9 +483,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.get_starred_messages",
         new_callable=AsyncMock,
     )
-    async def test_get_starred_messages_requires_auth(
-        self, mock_starred, unauthenticated_client
-    ):
+    async def test_get_starred_messages_requires_auth(self, mock_starred, unauthenticated_client):
         """GET /api/v1/messages/pinned without auth should return 401."""
         response = await unauthenticated_client.get("/api/v1/messages/pinned")
         assert response.status_code == 401
@@ -516,9 +492,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.get_starred_messages",
         new_callable=AsyncMock,
     )
-    async def test_get_starred_messages_500_on_service_error(
-        self, mock_starred, test_client
-    ):
+    async def test_get_starred_messages_500_on_service_error(self, mock_starred, test_client):
         """GET /api/v1/messages/pinned should return 500 when service raises."""
         mock_starred.side_effect = Exception("DB error")
         response = await test_client.get("/api/v1/messages/pinned")
@@ -532,9 +506,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.update_conversation_description",
         new_callable=AsyncMock,
     )
-    async def test_update_conversation_description_returns_200(
-        self, mock_update_desc, test_client
-    ):
+    async def test_update_conversation_description_returns_200(self, mock_update_desc, test_client):
         """PUT /api/v1/conversations/{id}/description should return 200."""
         mock_update_desc.return_value = {
             "message": "Conversation description updated successfully",
@@ -588,9 +560,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.mark_conversation_as_unread",
         new_callable=AsyncMock,
     )
-    async def test_mark_conversation_as_unread_returns_200(
-        self, mock_unread, test_client
-    ):
+    async def test_mark_conversation_as_unread_returns_200(self, mock_unread, test_client):
         """PATCH /api/v1/conversations/{id}/unread should return 200."""
         mock_unread.return_value = {
             "message": "Conversation marked as unread",
@@ -610,18 +580,14 @@ class TestConversationEndpoints:
         self, mock_unread, unauthenticated_client
     ):
         """PATCH /api/v1/conversations/{id}/unread without auth should return 401."""
-        response = await unauthenticated_client.patch(
-            "/api/v1/conversations/conv-unread/unread"
-        )
+        response = await unauthenticated_client.patch("/api/v1/conversations/conv-unread/unread")
         assert response.status_code == 401
 
     @patch(
         "app.api.v1.endpoints.conversations.mark_conversation_as_unread",
         new_callable=AsyncMock,
     )
-    async def test_mark_conversation_as_unread_500_on_service_error(
-        self, mock_unread, test_client
-    ):
+    async def test_mark_conversation_as_unread_500_on_service_error(self, mock_unread, test_client):
         """PATCH /api/v1/conversations/{id}/unread should return 500 when service raises."""
         mock_unread.side_effect = Exception("DB error")
         response = await test_client.patch("/api/v1/conversations/conv-unread/unread")

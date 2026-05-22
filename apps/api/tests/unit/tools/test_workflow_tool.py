@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.workflow_tool."""
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -25,7 +25,7 @@ def _make_config(
     user_name: str = "Test User",
     user_time: str = "2026-03-20T10:00:00+00:00",
     user_timezone: str = "+05:30",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return a minimal RunnableConfig with configurable fields."""
     return {
         "configurable": {
@@ -39,7 +39,7 @@ def _make_config(
     }
 
 
-def _make_config_no_user() -> Dict[str, Any]:
+def _make_config_no_user() -> dict[str, Any]:
     """Config with no user_id."""
     return {"configurable": {}, "metadata": {}}
 
@@ -79,7 +79,7 @@ def _make_draft(
 
 def _make_workflow_mock(**overrides: Any) -> MagicMock:
     """Create a mock workflow object."""
-    defaults: Dict[str, Any] = {
+    defaults: dict[str, Any] = {
         "id": "wf-1",
         "title": "My Workflow",
         "description": "A workflow",
@@ -134,9 +134,7 @@ class TestCreateWorkflow:
         """Clarifying mode returns the question for the user."""
         from app.agents.tools.workflow_tool import create_workflow
 
-        parsed = _make_parsed_result(
-            mode="clarifying", message="What time should it run?"
-        )
+        parsed = _make_parsed_result(mode="clarifying", message="What time should it run?")
 
         with (
             patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
@@ -444,9 +442,7 @@ class TestExecuteWorkflow:
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             mock_writer_factory.return_value = _writer_mock()
-            mock_service.execute_workflow = AsyncMock(
-                side_effect=Exception("Workflow disabled")
-            )
+            mock_service.execute_workflow = AsyncMock(side_effect=Exception("Workflow disabled"))
 
             result = await execute_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
@@ -492,9 +488,7 @@ class TestSearchTriggers:
         from app.agents.tools.workflow_shared_tools import search_triggers
 
         with patch(f"{SHARED_MODULE}.TriggerSearchService") as mock_trigger_svc:
-            mock_trigger_svc.search = AsyncMock(
-                side_effect=Exception("ChromaDB unavailable")
-            )
+            mock_trigger_svc.search = AsyncMock(side_effect=Exception("ChromaDB unavailable"))
 
             result = await search_triggers.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
@@ -543,9 +537,7 @@ class TestListWorkflows:
             patch(f"{SHARED_MODULE}.WorkflowService") as mock_service,
         ):
             mock_writer_factory.return_value = _writer_mock()
-            mock_service.list_workflows = AsyncMock(
-                side_effect=Exception("Connection refused")
-            )
+            mock_service.list_workflows = AsyncMock(side_effect=Exception("Connection refused"))
 
             result = await list_workflows.coroutine(config=_make_config())  # type: ignore[attr-defined]
 

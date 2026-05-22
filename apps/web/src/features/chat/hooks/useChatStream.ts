@@ -700,6 +700,7 @@ export const useChatStream = () => {
       if (Object.keys(streamingData).length === 0) return;
       if (handleImageGeneration(streamingData)) return;
       await handleStreamingContent(streamingData);
+      return undefined;
     } catch (error) {
       console.error("[useChatStream] Error handling stream event:", {
         error,

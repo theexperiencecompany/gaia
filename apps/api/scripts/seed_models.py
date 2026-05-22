@@ -32,11 +32,11 @@ Usage flags:
 
 import argparse
 import asyncio
+from datetime import UTC, datetime
 import json
-import sys
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+import sys
+from typing import Any
 
 # Add the backend directory to Python path so we can import from app
 backend_dir = Path(__file__).parent.parent
@@ -56,7 +56,7 @@ CHAT_MODELS_CACHE_PATTERNS = [
 ]
 
 
-def get_models_configuration() -> List[Dict[str, Any]]:
+def get_models_configuration() -> list[dict[str, Any]]:
     """
     Define the desired models configuration.
     This is the single source of truth for what models should exist.
@@ -165,7 +165,7 @@ async def create_backup() -> str:
         raise
 
 
-def normalize_model_for_comparison(model: Dict[str, Any]) -> Dict[str, Any]:
+def normalize_model_for_comparison(model: dict[str, Any]) -> dict[str, Any]:
     """
     Normalize a model dictionary for comparison by removing
     timestamps and MongoDB-specific fields.
@@ -180,7 +180,7 @@ def normalize_model_for_comparison(model: Dict[str, Any]) -> Dict[str, Any]:
     return comparison_model
 
 
-def models_are_different(existing: Dict[str, Any], new: Dict[str, Any]) -> bool:
+def models_are_different(existing: dict[str, Any], new: dict[str, Any]) -> bool:
     """
     Compare two models to see if they're different (excluding timestamps).
     """
@@ -190,7 +190,7 @@ def models_are_different(existing: Dict[str, Any], new: Dict[str, Any]) -> bool:
     return existing_normalized != new_normalized
 
 
-def get_changed_fields(existing: Dict[str, Any], new: Dict[str, Any]) -> List[str]:
+def get_changed_fields(existing: dict[str, Any], new: dict[str, Any]) -> list[str]:
     """
     Get a list of fields that have changed between two models.
     """
@@ -210,9 +210,7 @@ def get_changed_fields(existing: Dict[str, Any], new: Dict[str, Any]) -> List[st
     return changed_fields
 
 
-async def sync_models(
-    dry_run: bool = False, force: bool = False, backup: bool = False
-) -> None:
+async def sync_models(dry_run: bool = False, force: bool = False, backup: bool = False) -> None:
     """
     Synchronize the models collection with the configuration.
 
@@ -261,9 +259,7 @@ async def sync_models(
     print(f"   📥 Models to add: {len(models_to_add)}")
     print(f"   🔄 Models to update: {len(models_to_update)}")
     print(f"   📤 Models to remove: {len(models_to_remove)}")
-    print(
-        f"   ✅ Models unchanged: {len(models_to_potentially_update) - len(models_to_update)}"
-    )
+    print(f"   ✅ Models unchanged: {len(models_to_potentially_update) - len(models_to_update)}")
 
     # Show detailed changes
     if models_to_add:
@@ -302,9 +298,7 @@ async def sync_models(
 
     # Confirmation prompt
     if not force:
-        total_changes = (
-            len(models_to_add) + len(models_to_update) + len(models_to_remove)
-        )
+        total_changes = len(models_to_add) + len(models_to_update) + len(models_to_remove)
         response = input(f"\n❓ Apply {total_changes} changes? (y/N): ")
         if response.lower() != "y":
             print("❌ Operation cancelled.")
@@ -323,8 +317,8 @@ async def sync_models(
             new_models = []
             for model_id in models_to_add:
                 model = next(m for m in desired_models if m["model_id"] == model_id)
-                model["created_at"] = datetime.now(timezone.utc)
-                model["updated_at"] = datetime.now(timezone.utc)
+                model["created_at"] = datetime.now(UTC)
+                model["updated_at"] = datetime.now(UTC)
                 new_models.append(model)
 
             result = await ai_models_collection.insert_many(new_models)
@@ -334,7 +328,7 @@ async def sync_models(
         for update_info in models_to_update:
             model_id = update_info["model_id"]
             new_data = update_info["new_data"].copy()
-            new_data["updated_at"] = datetime.now(timezone.utc)
+            new_data["updated_at"] = datetime.now(UTC)
 
             # Preserve created_at from existing model
             new_data["created_at"] = existing_models[model_id]["created_at"]
@@ -386,9 +380,7 @@ Examples:
         help="Show what changes would be made without applying them",
     )
 
-    parser.add_argument(
-        "--force", action="store_true", help="Skip confirmation prompts"
-    )
+    parser.add_argument("--force", action="store_true", help="Skip confirmation prompts")
 
     parser.add_argument(
         "--no-backup", action="store_true", help="Skip creating backup before changes"
@@ -402,9 +394,7 @@ async def main():
     args = parse_arguments()
 
     try:
-        await sync_models(
-            dry_run=args.dry_run, force=args.force, backup=not args.no_backup
-        )
+        await sync_models(dry_run=args.dry_run, force=args.force, backup=not args.no_backup)
     except KeyboardInterrupt:
         print("\n❌ Operation cancelled by user.")
         sys.exit(1)

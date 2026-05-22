@@ -1,13 +1,13 @@
 import asyncio
 from collections import defaultdict
-from collections.abc import KeysView, Mapping
-from typing import Dict, Iterator, List, Optional
+from collections.abc import Iterator, KeysView, Mapping
 
-from shared.py.wide_events import log
+from langchain_core.tools import BaseTool
+
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.services.integrations.integration_resolver import IntegrationResolver
-from langchain_core.tools import BaseTool
+from shared.py.wide_events import log
 
 
 class DynamicToolDict(Mapping[str, BaseTool]):
@@ -20,7 +20,7 @@ class DynamicToolDict(Mapping[str, BaseTool]):
 
     def __init__(self, registry: "ToolRegistry"):
         self._registry = registry
-        self._extra_tools: Dict[str, BaseTool] = {}
+        self._extra_tools: dict[str, BaseTool] = {}
 
     def __getitem__(self, key: str) -> BaseTool:
         # Check extra tools first (like handoff)
@@ -45,16 +45,13 @@ class DynamicToolDict(Mapping[str, BaseTool]):
 
     def __len__(self) -> int:
         return len(
-            set(self._extra_tools.keys())
-            | set(self._registry._get_tool_dict_internal().keys())
+            set(self._extra_tools.keys()) | set(self._registry._get_tool_dict_internal().keys())
         )
 
     def __contains__(self, key: object) -> bool:
-        return (
-            key in self._extra_tools or key in self._registry._get_tool_dict_internal()
-        )
+        return key in self._extra_tools or key in self._registry._get_tool_dict_internal()
 
-    def update(self, other: Dict[str, BaseTool]) -> None:
+    def update(self, other: dict[str, BaseTool]) -> None:
         """Add extra tools (like handoff) that aren't in the registry."""
         self._extra_tools.update(other)
 
@@ -81,7 +78,7 @@ class Tool:
     def __init__(
         self,
         tool: BaseTool,
-        name: Optional[str] = None,
+        name: str | None = None,
         is_core: bool = False,
     ):
         self.tool = tool
@@ -97,7 +94,7 @@ class ToolCategory:
         name: str,
         space: str = "general",
         require_integration: bool = False,
-        integration_name: Optional[str] = None,
+        integration_name: str | None = None,
         is_delegated: bool = False,
     ):
         self.name = name
@@ -105,24 +102,22 @@ class ToolCategory:
         self.require_integration = require_integration
         self.integration_name = integration_name
         self.is_delegated = is_delegated
-        self.tools: List[Tool] = []
+        self.tools: list[Tool] = []
 
-    def add_tool(
-        self, tool: BaseTool, is_core: bool = False, name: Optional[str] = None
-    ):
+    def add_tool(self, tool: BaseTool, is_core: bool = False, name: str | None = None):
         """Add a tool to this category."""
         self.tools.append(Tool(tool=tool, name=name, is_core=is_core))
 
-    def add_tools(self, tools: List[BaseTool], is_core: bool = False):
+    def add_tools(self, tools: list[BaseTool], is_core: bool = False):
         """Add multiple tools to this category."""
         for tool in tools:
             self.add_tool(tool, is_core=is_core)
 
-    def get_tool_objects(self) -> List[BaseTool]:
+    def get_tool_objects(self) -> list[BaseTool]:
         """Get the actual tool objects for binding."""
         return [tool.tool for tool in self.tools]
 
-    def get_core_tools(self) -> List[Tool]:
+    def get_core_tools(self) -> list[Tool]:
         """Get only core tools from this category."""
         return [tool for tool in self.tools if tool.is_core]
 
@@ -142,8 +137,8 @@ class ToolRegistry:
     """Modern tool registry with category-based organization."""
 
     def __init__(self) -> None:
-        self._categories: Dict[str, ToolCategory] = {}
-        self._user_mcp_categories: Dict[str, set[str]] = defaultdict(set)
+        self._categories: dict[str, ToolCategory] = {}
+        self._user_mcp_categories: dict[str, set[str]] = defaultdict(set)
 
     async def setup(self):
         self._initialize_categories()
@@ -151,11 +146,11 @@ class ToolRegistry:
     def _add_category(
         self,
         name: str,
-        tools: Optional[List[BaseTool]] = None,
-        core_tools: Optional[List[BaseTool]] = None,
+        tools: list[BaseTool] | None = None,
+        core_tools: list[BaseTool] | None = None,
         space: str = "general",
         require_integration: bool = False,
-        integration_name: Optional[str] = None,
+        integration_name: str | None = None,
         is_delegated: bool = False,
     ):
         """Helper to create and register a category."""
@@ -358,11 +353,11 @@ class ToolRegistry:
         tools_with_space = [(tool.tool, category.space) for tool in category.tools]
         await index_tools_to_store(tools_with_space)
 
-    def get_category(self, name: str) -> Optional[ToolCategory]:
+    def get_category(self, name: str) -> ToolCategory | None:
         """Get a specific category by name."""
         return self._categories.get(name)
 
-    def get_category_by_space(self, space: str) -> Optional[ToolCategory]:
+    def get_category_by_space(self, space: str) -> ToolCategory | None:
         """Get a category by its tool space value.
 
         Searches all categories and returns the first one where category.space matches.
@@ -374,8 +369,8 @@ class ToolRegistry:
         return None
 
     def get_all_category_objects(
-        self, ignore_categories: List[str] = []
-    ) -> Dict[str, ToolCategory]:
+        self, ignore_categories: list[str] = []
+    ) -> dict[str, ToolCategory]:
         """Get all categories as ToolCategory objects."""
         return {
             name: category
@@ -383,7 +378,7 @@ class ToolRegistry:
             if name not in ignore_categories
         }
 
-    async def load_user_mcp_tools(self, user_id: str) -> Dict[str, List[BaseTool]]:
+    async def load_user_mcp_tools(self, user_id: str) -> dict[str, list[BaseTool]]:
         """
         Load all connected MCP tools for a specific user.
 
@@ -401,7 +396,7 @@ class ToolRegistry:
         mcp_client = await get_mcp_client(user_id=user_id)
         all_tools = await mcp_client.get_all_connected_tools()
 
-        loaded: Dict[str, List[BaseTool]] = {}
+        loaded: dict[str, list[BaseTool]] = {}
 
         for integration_id, tools in all_tools.items():
             if not tools:
@@ -427,9 +422,7 @@ class ToolRegistry:
                 has_subagent = integration.subagent_config.has_subagent
             else:
                 server_url = await IntegrationResolver.get_server_url(integration_id)
-                space = derive_integration_namespace(
-                    integration_id, server_url, is_custom=True
-                )
+                space = derive_integration_namespace(integration_id, server_url, is_custom=True)
 
             self._add_category(
                 name=category_name,
@@ -440,9 +433,7 @@ class ToolRegistry:
             )
             await self._index_category_tools(category_name)
             loaded[integration_id] = tools
-            log.info(
-                f"Loaded {len(tools)} MCP tools from {integration_id} for user {user_id}"
-            )
+            log.info(f"Loaded {len(tools)} MCP tools from {integration_id} for user {user_id}")
 
         return loaded
 
@@ -454,21 +445,21 @@ class ToolRegistry:
                     return category.name
         return "unknown"
 
-    def get_all_tools_for_search(self, include_delegated: bool = True) -> List[Tool]:
+    def get_all_tools_for_search(self, include_delegated: bool = True) -> list[Tool]:
         """
         Get all tool objects for semantic search (includes delegated tools).
 
         Returns:
             List of Tool objects for semantic search.
         """
-        tools: List[Tool] = []
+        tools: list[Tool] = []
         for category in self._categories.values():
             if category.is_delegated and not include_delegated:
                 continue
             tools.extend(category.tools)
         return tools
 
-    def get_core_tools(self) -> List[Tool]:
+    def get_core_tools(self) -> list[Tool]:
         """
         Get all core tools across all categories.
 
@@ -480,7 +471,7 @@ class ToolRegistry:
             core_tools.extend(category.get_core_tools())
         return core_tools
 
-    def get_core_categories(self) -> List[ToolCategory]:
+    def get_core_categories(self) -> list[ToolCategory]:
         """
         Get all core categories (those that don't require integration).
 
@@ -492,12 +483,10 @@ class ToolRegistry:
             List of core ToolCategory objects.
         """
         return [
-            category
-            for category in self._categories.values()
-            if not category.require_integration
+            category for category in self._categories.values() if not category.require_integration
         ]
 
-    def _get_tool_dict_internal(self) -> Dict[str, BaseTool]:
+    def _get_tool_dict_internal(self) -> dict[str, BaseTool]:
         """Internal method to get current tool dict (used by DynamicToolDict)."""
         all_tools = self.get_all_tools_for_search()
         return {tool.name: tool.tool for tool in all_tools}
@@ -510,7 +499,7 @@ class ToolRegistry:
         """
         return DynamicToolDict(self)
 
-    def get_tool_names(self) -> List[str]:
+    def get_tool_names(self) -> list[str]:
         """Get list of all tool names including delegated ones."""
         tools = self.get_all_tools_for_search()
         return [tool.name for tool in tools]

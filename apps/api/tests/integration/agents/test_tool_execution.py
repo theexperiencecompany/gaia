@@ -10,10 +10,10 @@ DELETE app/override/langgraph_bigtool/utils.py → every test below fails.
 
 from uuid import uuid4
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
+import pytest
 
 from app.override.langgraph_bigtool.create_agent import create_agent
 from tests.helpers import (
@@ -21,7 +21,6 @@ from tests.helpers import (
     create_fake_llm,
     create_fake_llm_with_tool_calls,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -75,9 +74,7 @@ class TestToolExecution:
             "id": "call_add_001",
             "type": "tool_call",
         }
-        graph = _compile(
-            create_fake_llm_with_tool_calls([tool_call, "The answer is 10."])
-        )
+        graph = _compile(create_fake_llm_with_tool_calls([tool_call, "The answer is 10."]))
 
         result = await graph.ainvoke(
             {"messages": [HumanMessage(content="Add 3 and 7")]},
@@ -109,9 +106,7 @@ class TestToolExecution:
             "id": "call_cycle_001",
             "type": "tool_call",
         }
-        graph = _compile(
-            create_fake_llm_with_tool_calls([tool_call, "Done, the sum is 10."])
-        )
+        graph = _compile(create_fake_llm_with_tool_calls([tool_call, "Done, the sum is 10."]))
 
         result = await graph.ainvoke(
             {"messages": [HumanMessage(content="What is 5 + 5?")]},
@@ -121,23 +116,19 @@ class TestToolExecution:
         messages = result["messages"]
         types = [type(m).__name__ for m in messages]
 
-        assert any(
-            isinstance(m, AIMessage) and getattr(m, "tool_calls", None)
-            for m in messages
-        ), f"Missing AIMessage with tool_calls. Message types: {types}"
+        assert any(isinstance(m, AIMessage) and getattr(m, "tool_calls", None) for m in messages), (
+            f"Missing AIMessage with tool_calls. Message types: {types}"
+        )
 
         assert any(isinstance(m, ToolMessage) for m in messages), (
             f"Missing ToolMessage after tool call. Message types: {types}"
         )
 
         final_ai = [
-            m
-            for m in messages
-            if isinstance(m, AIMessage) and not getattr(m, "tool_calls", None)
+            m for m in messages if isinstance(m, AIMessage) and not getattr(m, "tool_calls", None)
         ]
         assert len(final_ai) >= 1, (
-            f"Missing final plain-text AIMessage after tool cycle. "
-            f"Message types: {types}"
+            f"Missing final plain-text AIMessage after tool cycle. Message types: {types}"
         )
 
     async def test_state_accumulates_across_turns(self):
@@ -156,14 +147,10 @@ class TestToolExecution:
         )
         config = _thread_config()
 
-        await graph.ainvoke(
-            {"messages": [HumanMessage(content="Turn one")]}, config=config
-        )
+        await graph.ainvoke({"messages": [HumanMessage(content="Turn one")]}, config=config)
         count_after_1 = len((await graph.aget_state(config)).values["messages"])
 
-        await graph.ainvoke(
-            {"messages": [HumanMessage(content="Turn two")]}, config=config
-        )
+        await graph.ainvoke({"messages": [HumanMessage(content="Turn two")]}, config=config)
         count_after_2 = len((await graph.aget_state(config)).values["messages"])
 
         assert count_after_2 > count_after_1, (
@@ -173,9 +160,7 @@ class TestToolExecution:
 
         final_state = await graph.aget_state(config)
         human_contents = [
-            m.content
-            for m in final_state.values["messages"]
-            if isinstance(m, HumanMessage)
+            m.content for m in final_state.values["messages"] if isinstance(m, HumanMessage)
         ]
         assert "Turn one" in human_contents, (
             f"Turn one HumanMessage must survive into final state. Got: {human_contents}"
@@ -204,9 +189,7 @@ class TestToolExecution:
         )
 
         ai_messages = [m for m in result["messages"] if isinstance(m, AIMessage)]
-        assert len(ai_messages) >= 1, (
-            "At least one AIMessage must be present in the final state."
-        )
+        assert len(ai_messages) >= 1, "At least one AIMessage must be present in the final state."
         assert not getattr(ai_messages[-1], "tool_calls", None), (
             "The final AIMessage must not have tool_calls for a plain text response."
         )

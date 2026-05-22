@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Annotated, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-import pytest
 from langchain_core.messages import AIMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
+import pytest
 from redis.asyncio import Redis
-from typing_extensions import Annotated
 
 from app.db.redis import redis_cache
 from tests.factories import make_config, make_user

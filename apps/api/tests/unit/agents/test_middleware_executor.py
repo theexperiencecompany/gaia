@@ -8,7 +8,6 @@ import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import (
     ModelRequest,
@@ -18,13 +17,13 @@ from langchain.agents.middleware.types import (
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
+import pytest
 
 from app.agents.middleware.executor import (
     MiddlewareExecutor,
     _has_override,
 )
 from app.override.langgraph_bigtool.utils import State
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -89,9 +88,7 @@ class _AsyncAfterModelMiddleware(AgentMiddleware):
 class _WrapModelMiddleware(AgentMiddleware):
     """Middleware that overrides awrap_model_call."""
 
-    async def awrap_model_call(
-        self, request: ModelRequest, handler: Any
-    ) -> ModelResponse:
+    async def awrap_model_call(self, request: ModelRequest, handler: Any) -> ModelResponse:
         # Pass through to next handler
         return await handler(request)
 
@@ -107,9 +104,7 @@ class _SyncWrapModelMiddleware(AgentMiddleware):
 class _WrapToolMiddleware(AgentMiddleware):
     """Middleware that overrides awrap_tool_call."""
 
-    async def awrap_tool_call(
-        self, request: ToolCallRequest, handler: Any
-    ) -> ToolMessage:
+    async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> ToolMessage:
         return await handler(request)
 
 
@@ -263,9 +258,7 @@ class TestExecuteBeforeModel:
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
         return_value=MagicMock(),
     )
-    async def test_none_returning_middleware_no_state_change(
-        self, mock_rt: MagicMock
-    ) -> None:
+    async def test_none_returning_middleware_no_state_change(self, mock_rt: MagicMock) -> None:
         mw = _ReturnsNoneBeforeModel()
         executor = MiddlewareExecutor([mw])
         state = _make_state()
@@ -287,9 +280,7 @@ class TestExecuteBeforeModel:
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
         return_value=MagicMock(),
     )
-    async def test_multiple_middleware_executed_in_order(
-        self, mock_rt: MagicMock
-    ) -> None:
+    async def test_multiple_middleware_executed_in_order(self, mock_rt: MagicMock) -> None:
         mw1 = _BeforeModelMiddleware()
         mw2 = _AsyncBeforeModelMiddleware()
         executor = MiddlewareExecutor([mw1, mw2])
@@ -459,9 +450,7 @@ class TestWrapModelInvocation:
 
         # Middleware that always fails
         class _FailingWrapModel(AgentMiddleware):
-            async def awrap_model_call(
-                self, request: ModelRequest, handler: Any
-            ) -> ModelResponse:
+            async def awrap_model_call(self, request: ModelRequest, handler: Any) -> ModelResponse:
                 raise RuntimeError("middleware failed")
 
         executor = MiddlewareExecutor([_FailingWrapModel()])
@@ -492,9 +481,7 @@ class TestWrapModelInvocation:
         mock_create_req.return_value = mock_request
 
         class _EmptyResultWrap(AgentMiddleware):
-            async def awrap_model_call(
-                self, request: ModelRequest, handler: Any
-            ) -> ModelResponse:
+            async def awrap_model_call(self, request: ModelRequest, handler: Any) -> ModelResponse:
                 return ModelResponse(result=[])
 
         executor = MiddlewareExecutor([_EmptyResultWrap()])
@@ -524,9 +511,7 @@ class TestWrapModelInvocation:
         mock_create_req.return_value = mock_request
 
         class _NonAIMessageWrap(AgentMiddleware):
-            async def awrap_model_call(
-                self, request: ModelRequest, handler: Any
-            ) -> ModelResponse:
+            async def awrap_model_call(self, request: ModelRequest, handler: Any) -> ModelResponse:
                 fake_msg = MagicMock()
                 fake_msg.content = "non-ai content"
                 return ModelResponse(result=[fake_msg])
@@ -558,9 +543,7 @@ class TestWrapModelInvocation:
         mock_create_req.return_value = mock_request
 
         class _CancellingWrap(AgentMiddleware):
-            async def awrap_model_call(
-                self, request: ModelRequest, handler: Any
-            ) -> ModelResponse:
+            async def awrap_model_call(self, request: ModelRequest, handler: Any) -> ModelResponse:
                 raise asyncio.CancelledError()
 
         executor = MiddlewareExecutor([_CancellingWrap()])
@@ -674,9 +657,7 @@ class TestWrapToolInvocation:
         mock_create_req.return_value = mock_request
 
         class _FailingWrapTool(AgentMiddleware):
-            async def awrap_tool_call(
-                self, request: ToolCallRequest, handler: Any
-            ) -> ToolMessage:
+            async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> ToolMessage:
                 raise RuntimeError("tool middleware failed")
 
         executor = MiddlewareExecutor([_FailingWrapTool()])
@@ -704,9 +685,7 @@ class TestWrapToolInvocation:
         mock_create_req.return_value = mock_request
 
         class _CancellingWrapTool(AgentMiddleware):
-            async def awrap_tool_call(
-                self, request: ToolCallRequest, handler: Any
-            ) -> ToolMessage:
+            async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> ToolMessage:
                 raise asyncio.CancelledError()
 
         executor = MiddlewareExecutor([_CancellingWrapTool()])

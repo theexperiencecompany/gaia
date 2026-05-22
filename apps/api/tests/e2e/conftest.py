@@ -28,10 +28,10 @@ from typing import Any, cast
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-import pytest
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
+import pytest
 
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
@@ -161,9 +161,7 @@ def make_mock_store() -> MagicMock:
     return MagicMock(spec=["asearch", "aput", "aget", "adelete"])
 
 
-def make_node_config(
-    user_id: str | None = None, thread_id: str | None = None
-) -> dict[str, Any]:
+def make_node_config(user_id: str | None = None, thread_id: str | None = None) -> dict[str, Any]:
     """Build a RunnableConfig dict suitable for GAIA node invocation."""
     return {
         "configurable": {

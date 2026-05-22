@@ -22,9 +22,7 @@ from .builtin_subagents import BUILTIN_SUBAGENTS
 
 def _from_oauth(integ: OAuthIntegration) -> Subagent:
     if integ.subagent_config is None:
-        raise ValueError(
-            f"_from_oauth called on integration without subagent_config: {integ.id}"
-        )
+        raise ValueError(f"_from_oauth called on integration without subagent_config: {integ.id}")
     return Subagent(
         id=integ.id,
         name=integ.name,

@@ -21,9 +21,8 @@ DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
 DELETE ``app/agents/core/nodes/filter_messages.py`` → these tests FAIL.
 """
 
-import pytest
-from tests.helpers import BindableToolsFakeModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+import pytest
 
 from app.agents.tools.todo_tools import (
     TODO_TOOL_NAMES,
@@ -31,6 +30,7 @@ from app.agents.tools.todo_tools import (
     create_todo_tools,
 )
 from tests.e2e.conftest import build_gaia_test_graph
+from tests.helpers import BindableToolsFakeModel
 
 
 @pytest.mark.e2e
@@ -141,12 +141,8 @@ class TestCreateTodoFlow:
 
         todos = result.get("todos", [])
         assert len(todos) == 2
-        assert todos[0]["status"] == "in_progress", (
-            "plan_tasks must set first task to in_progress"
-        )
-        assert todos[1]["status"] == "pending", (
-            "plan_tasks must set subsequent tasks to pending"
-        )
+        assert todos[0]["status"] == "in_progress", "plan_tasks must set first task to in_progress"
+        assert todos[1]["status"] == "pending", "plan_tasks must set subsequent tasks to pending"
 
     async def test_add_task_tool_appends_to_todos(
         self, thread_config, in_memory_store, memory_saver
@@ -179,9 +175,7 @@ class TestCreateTodoFlow:
                         {
                             "id": "call_add_001",
                             "name": "update_tasks",
-                            "args": {
-                                "updates": [{"content": "Bonus task discovered later"}]
-                            },
+                            "args": {"updates": [{"content": "Bonus task discovered later"}]},
                             "type": "tool_call",
                         }
                     ],
@@ -258,11 +252,7 @@ class TestCreateTodoFlow:
                         {
                             "id": "call_mark_001",
                             "name": "update_tasks",
-                            "args": {
-                                "updates": [
-                                    {"task_id": SENTINEL_ID, "status": "completed"}
-                                ]
-                            },
+                            "args": {"updates": [{"task_id": SENTINEL_ID, "status": "completed"}]},
                             "type": "tool_call",
                         }
                     ],
@@ -300,16 +290,13 @@ class TestCreateTodoFlow:
             config=thread_config,
         )
         todos_after_mark = result_turn2.get("todos", [])
-        assert len(todos_after_mark) >= 1, (
-            "Turn 2 must preserve at least one todo in state"
-        )
+        assert len(todos_after_mark) >= 1, "Turn 2 must preserve at least one todo in state"
         completed = [t for t in todos_after_mark if t["id"] == task_id]
         assert len(completed) == 1, (
             f"Todo with id {task_id!r} must still be present after update_tasks"
         )
         assert completed[0]["status"] == "completed", (
-            f"update_tasks must update status to 'completed', got "
-            f"'{completed[0]['status']}'"
+            f"update_tasks must update status to 'completed', got '{completed[0]['status']}'"
         )
 
     async def test_todo_tool_names_match_registry_constants(self):
@@ -368,9 +355,7 @@ class TestCreateTodoFlow:
                 **kwargs: Any,
             ) -> ChatResult:
                 captured_inputs.append(list(messages))
-                return super()._generate(
-                    messages, stop=stop, run_manager=run_manager, **kwargs
-                )
+                return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
 
             async def _agenerate(
                 self,
@@ -443,9 +428,7 @@ class TestCreateTodoFlow:
 
         # The first call to the model is the one where hooks ran.
         messages_seen_by_model = captured_inputs[0]
-        system_messages_seen = [
-            m for m in messages_seen_by_model if isinstance(m, SystemMessage)
-        ]
+        system_messages_seen = [m for m in messages_seen_by_model if isinstance(m, SystemMessage)]
         assert system_messages_seen, (
             "The model must receive at least one SystemMessage after hooks ran"
         )

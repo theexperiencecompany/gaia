@@ -1,7 +1,7 @@
 """Tests for app/core/lazy_loader.py — LazyLoader, ProviderRegistry, lazy_provider."""
 
-import uuid
 from unittest.mock import patch
+import uuid
 
 import pytest
 
@@ -34,9 +34,7 @@ class TestLazyLoaderInit:
         assert loader.provider_name == "my_func"
 
     def test_custom_provider_name(self):
-        loader = LazyLoader(
-            lambda: 1, provider_name="custom", strategy=MissingKeyStrategy.SILENT
-        )
+        loader = LazyLoader(lambda: 1, provider_name="custom", strategy=MissingKeyStrategy.SILENT)
         assert loader.provider_name == "custom"
 
     def test_is_available_all_keys_present(self):
@@ -258,9 +256,7 @@ class TestLazyLoaderAsyncGet:
         async def loader():
             return 1
 
-        ll = LazyLoader(
-            loader, required_keys=[None], strategy=MissingKeyStrategy.SILENT
-        )
+        ll = LazyLoader(loader, required_keys=[None], strategy=MissingKeyStrategy.SILENT)
         assert await ll.aget() is None
 
     async def test_aget_exception_error_strategy(self):
@@ -591,9 +587,7 @@ class TestInitializeAutoProviders:
         async def loader():
             return "val"
 
-        reg.register(
-            name, loader, strategy=MissingKeyStrategy.SILENT, auto_initialize=True
-        )
+        reg.register(name, loader, strategy=MissingKeyStrategy.SILENT, auto_initialize=True)
         await reg.initialize_auto_providers()
         assert reg.is_initialized(name)
 

@@ -11,13 +11,14 @@ Add/change config
 - To alter pool size, adjust `CheckpointerManager` init params.
 """
 
-from app.config.settings import settings
-from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from langgraph.checkpoint.postgres.aio import (
     AsyncPostgresSaver,
 )
 from langgraph.store.postgres import AsyncPostgresStore
 from psycopg_pool import AsyncConnectionPool
+
+from app.config.settings import settings
+from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 
 
 class CheckpointerManager:
@@ -84,9 +85,7 @@ class CheckpointerManager:
         Get the initialized checkpointer.
         """
         if not self.checkpointer:
-            raise RuntimeError(
-                "Checkpointer has not been initialized. Call setup() first."
-            )
+            raise RuntimeError("Checkpointer has not been initialized. Call setup() first.")
         return self.checkpointer
 
 

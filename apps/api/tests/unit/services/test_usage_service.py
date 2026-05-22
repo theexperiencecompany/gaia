@@ -1,7 +1,6 @@
 """Unit tests for UsageService."""
 
-from datetime import datetime, timedelta, timezone
-from typing import List
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,7 +17,7 @@ from app.services.usage_service import UsageService
 class _AsyncIterator:
     """Helper to create a proper async iterator from a list of items."""
 
-    def __init__(self, items: List):
+    def __init__(self, items: list):
         self._items = iter(items)
 
     def __aiter__(self):
@@ -44,7 +43,7 @@ def mock_usage_collection():
 
 @pytest.fixture
 def sample_snapshot():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return UserUsageSnapshot(
         user_id="user123",
         plan_type="pro",
@@ -80,7 +79,7 @@ def sample_snapshot():
 def sample_mongo_doc():
     from bson import ObjectId
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return {
         "_id": ObjectId(),
         "user_id": "user123",
@@ -141,9 +140,7 @@ class TestPrepareDocForModel:
 
 @pytest.mark.unit
 class TestSaveUsageSnapshot:
-    async def test_updates_existing_hourly_doc(
-        self, mock_usage_collection, sample_snapshot
-    ):
+    async def test_updates_existing_hourly_doc(self, mock_usage_collection, sample_snapshot):
         from bson import ObjectId
 
         existing_id = ObjectId()
@@ -157,9 +154,7 @@ class TestSaveUsageSnapshot:
         assert result == str(existing_id)
         mock_usage_collection.update_one.assert_awaited_once()
 
-    async def test_inserts_new_doc_when_no_existing(
-        self, mock_usage_collection, sample_snapshot
-    ):
+    async def test_inserts_new_doc_when_no_existing(self, mock_usage_collection, sample_snapshot):
         from bson import ObjectId
 
         inserted_id = ObjectId()
@@ -173,9 +168,7 @@ class TestSaveUsageSnapshot:
         assert result == str(inserted_id)
         mock_usage_collection.insert_one.assert_awaited_once()
 
-    async def test_filter_query_uses_hourly_bucket(
-        self, mock_usage_collection, sample_snapshot
-    ):
+    async def test_filter_query_uses_hourly_bucket(self, mock_usage_collection, sample_snapshot):
         mock_usage_collection.find_one = AsyncMock(return_value=None)
         mock_usage_collection.insert_one = AsyncMock(
             return_value=MagicMock(inserted_id=MagicMock())
@@ -196,9 +189,7 @@ class TestSaveUsageSnapshot:
 
 @pytest.mark.unit
 class TestGetLatestUsageSnapshot:
-    async def test_returns_snapshot_when_found(
-        self, mock_usage_collection, sample_mongo_doc
-    ):
+    async def test_returns_snapshot_when_found(self, mock_usage_collection, sample_mongo_doc):
         mock_usage_collection.find_one = AsyncMock(return_value=sample_mongo_doc)
 
         result = await UsageService.get_latest_usage_snapshot("user123")
@@ -235,7 +226,7 @@ class TestGetUsageHistory:
     async def test_returns_all_snapshots_no_filter(self, mock_usage_collection):
         from bson import ObjectId
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         docs = [
             {
                 "_id": ObjectId(),
@@ -270,7 +261,7 @@ class TestGetUsageHistory:
     async def test_filters_by_feature_key(self, mock_usage_collection):
         from bson import ObjectId
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         docs = [
             {
                 "_id": ObjectId(),
@@ -312,12 +303,10 @@ class TestGetUsageHistory:
         assert len(result[0].features) == 1
         assert result[0].features[0].feature_key == "messages"
 
-    async def test_excludes_snapshots_without_matching_feature(
-        self, mock_usage_collection
-    ):
+    async def test_excludes_snapshots_without_matching_feature(self, mock_usage_collection):
         from bson import ObjectId
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         docs = [
             {
                 "_id": ObjectId(),
@@ -344,9 +333,7 @@ class TestGetUsageHistory:
         mock_cursor.sort = MagicMock(return_value=_AsyncIterator(docs))
         mock_usage_collection.find = MagicMock(return_value=mock_cursor)
 
-        result = await UsageService.get_usage_history(
-            "user123", feature_key="nonexistent"
-        )
+        result = await UsageService.get_usage_history("user123", feature_key="nonexistent")
 
         assert len(result) == 0
 

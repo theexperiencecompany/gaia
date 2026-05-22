@@ -1,17 +1,17 @@
 """E2B code execution tool with chart detection and streaming support."""
 
-from typing import Annotated, Literal, Any
+from typing import Annotated, Any, Literal
 
+from e2b_code_interpreter import Sandbox
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
-from e2b_code_interpreter import Sandbox
 
-from shared.py.wide_events import log
 from app.config.settings import settings
-from app.templates.docstrings.code_exec_docs import CODE_EXECUTION_TOOL
 from app.decorators import with_doc, with_rate_limiting
+from app.templates.docstrings.code_exec_docs import CODE_EXECUTION_TOOL
 from app.utils.chart_utils import process_chart_results, validate_chart_data
+from shared.py.wide_events import log
 
 
 @tool
@@ -86,11 +86,7 @@ async def execute_code(
         code_data["code_data"]["output"] = {
             "stdout": "\n".join(execution.logs.stdout) if execution.logs.stdout else "",
             "stderr": "\n".join(execution.logs.stderr) if execution.logs.stderr else "",
-            "results": (
-                [str(result) for result in execution.results]
-                if execution.results
-                else []
-            ),
+            "results": ([str(result) for result in execution.results] if execution.results else []),
             "error": str(execution.error) if execution.error else None,
         }
 
@@ -105,12 +101,12 @@ async def execute_code(
             current_output = code_data["code_data"]["output"]
             if isinstance(current_output, dict) and "stderr" in current_output:
                 if current_output["stderr"]:
-                    current_output["stderr"] += (
-                        "\n\nChart Processing Warnings:\n" + "\n".join(chart_errors)
+                    current_output["stderr"] += "\n\nChart Processing Warnings:\n" + "\n".join(
+                        chart_errors
                     )
                 else:
-                    current_output["stderr"] = (
-                        "Chart Processing Warnings:\n" + "\n".join(chart_errors)
+                    current_output["stderr"] = "Chart Processing Warnings:\n" + "\n".join(
+                        chart_errors
                     )
 
         code_data["code_data"]["status"] = "completed"
@@ -137,18 +133,14 @@ async def execute_code(
             output_parts.append(f"Generated {len(charts)} chart(s)")
 
         if chart_errors:
-            output_parts.append(
-                f"Chart processing warnings: {len(chart_errors)} issue(s)"
-            )
+            output_parts.append(f"Chart processing warnings: {len(chart_errors)} issue(s)")
 
         return (
-            "\n\n".join(output_parts)
-            if output_parts
-            else "Code executed successfully (no output)"
+            "\n\n".join(output_parts) if output_parts else "Code executed successfully (no output)"
         )
 
     except Exception as e:
-        error_msg = f"Error executing code: {str(e)}"
+        error_msg = f"Error executing code: {e!s}"
         log.error(error_msg)
 
         # Send error state to frontend
@@ -173,7 +165,7 @@ async def execute_code(
             except Exception as streaming_error:
                 # Log streaming errors but don't mask the original error
                 log.error(
-                    f"Failed to send error state to frontend: {str(streaming_error)}",
+                    f"Failed to send error state to frontend: {streaming_error!s}",
                     exc_info=True,
                 )
 

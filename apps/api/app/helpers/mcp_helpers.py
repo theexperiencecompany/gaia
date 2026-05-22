@@ -10,9 +10,9 @@ Contains helper functions for MCP operations:
 from typing import TYPE_CHECKING
 
 from app.config.settings import settings
-from shared.py.wide_events import log
 from app.constants.keys import OAUTH_STATUS_KEY
 from app.db.redis import delete_cache
+from shared.py.wide_events import log
 
 if TYPE_CHECKING:
     pass

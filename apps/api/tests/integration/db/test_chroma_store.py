@@ -28,8 +28,8 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import chromadb
-import pytest
 from langgraph.store.base import GetOp, PutOp, SearchOp
+import pytest
 
 from app.db.chroma.chroma_store import ChromaStore
 from app.db.chroma.chroma_tools_store import (
@@ -224,9 +224,7 @@ class TestChromaStoreCRUD:
 
     async def test_get_missing_key_returns_none(self, chroma_store):
         """GetOp for a key that was never stored should return None."""
-        results = await chroma_store.abatch(
-            [GetOp(namespace=("ns",), key="does_not_exist")]
-        )
+        results = await chroma_store.abatch([GetOp(namespace=("ns",), key="does_not_exist")])
         assert results[0] is None
 
     async def test_put_none_deletes_item(self, populated_store):
@@ -416,9 +414,7 @@ class TestChromaStoreSearch:
         # Exactly 2 items should be returned — not 0, not 3.
         assert len(results[0]) == 2
 
-    async def test_partial_failure_in_gather_does_not_block_successful_puts(
-        self, chroma_store
-    ):
+    async def test_partial_failure_in_gather_does_not_block_successful_puts(self, chroma_store):
         """_apply_put_ops uses asyncio.gather(return_exceptions=True).
 
         If one upsert task raises, the others should still complete and their
@@ -509,9 +505,7 @@ class TestComputeToolDiff:
                 "tool": mock_tool,
             }
         }
-        existing = {
-            "general::stable_tool": {"hash": "stablehash", "namespace": "general"}
-        }
+        existing = {"general::stable_tool": {"hash": "stablehash", "namespace": "general"}}
 
         to_upsert, to_delete = _compute_tool_diff(current, existing)
 
@@ -528,9 +522,7 @@ class TestComputeToolDiff:
                 "tool": mock_tool,
             }
         }
-        existing = {
-            "general::changed_tool": {"hash": "oldhash", "namespace": "general"}
-        }
+        existing = {"general::changed_tool": {"hash": "oldhash", "namespace": "general"}}
 
         to_upsert, to_delete = _compute_tool_diff(current, existing)
 
@@ -697,13 +689,9 @@ class TestGetExistingToolsFromChroma:
         )
         return col
 
-    async def test_returns_all_tools_when_no_namespace_filter(
-        self, collection_with_tools
-    ):
+    async def test_returns_all_tools_when_no_namespace_filter(self, collection_with_tools):
         """Passing namespaces=None should return all tools."""
-        result = await _get_existing_tools_from_chroma(
-            collection_with_tools, namespaces=None
-        )
+        result = await _get_existing_tools_from_chroma(collection_with_tools, namespaces=None)
         assert "general::web_search" in result
         assert "gmail::send_email" in result
 
@@ -717,9 +705,7 @@ class TestGetExistingToolsFromChroma:
 
     async def test_empty_namespace_set_returns_empty(self, collection_with_tools):
         """An empty namespaces set should return an empty dict immediately."""
-        result = await _get_existing_tools_from_chroma(
-            collection_with_tools, namespaces=set()
-        )
+        result = await _get_existing_tools_from_chroma(collection_with_tools, namespaces=set())
         assert result == {}
 
     async def test_tool_hash_is_preserved(self, collection_with_tools):

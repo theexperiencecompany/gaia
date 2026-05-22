@@ -1,6 +1,3 @@
-from typing import List, Optional
-
-
 class FetchError(Exception):
     """Exception raised for errors during web fetching operations."""
 
@@ -44,9 +41,7 @@ class ConfigurationError(Exception):
 class TriggerRegistrationError(Exception):
     """Raised when trigger registration fails."""
 
-    def __init__(
-        self, message: str, trigger_name: str, partial_ids: Optional[List[str]] = None
-    ):
+    def __init__(self, message: str, trigger_name: str, partial_ids: list[str] | None = None):
         super().__init__(message)
         self.trigger_name = trigger_name
         self.partial_ids = partial_ids or []
