@@ -184,8 +184,8 @@ def split_train_val(
 ) -> tuple[TrainingData, TrainingData]:
     rng = np.random.default_rng(seed)
     # Stratified split: maintain pos/neg ratio in both sets.
-    pos_idx = np.where(data.y.numpy() > 0.5)[0]
-    neg_idx = np.where(data.y.numpy() <= 0.5)[0]
+    pos_idx = np.nonzero(data.y.numpy() > 0.5)[0]
+    neg_idx = np.nonzero(data.y.numpy() <= 0.5)[0]
     rng.shuffle(pos_idx)
     rng.shuffle(neg_idx)
     pos_split = int(len(pos_idx) * (1 - val_split))
@@ -285,6 +285,128 @@ def export_onnx(model: nn.Module, out_path: Path) -> None:
     )
 
 
+def _train_one_epoch(
+    model: nn.Module,
+    loader: DataLoader,
+    optim: torch.optim.Optimizer,
+    device: torch.device,
+    use_specaugment: bool,
+) -> float:
+    """Run a single training epoch and return the mean per-sample loss."""
+    model.train()
+    total_loss = 0.0
+    total_n = 0
+    for x, y, w in loader:
+        x = x.to(device)
+        y = y.to(device)
+        w = w.to(device)
+        if use_specaugment:
+            x = specaugment(x)
+        pred = model(x).squeeze(-1)
+        bce = F.binary_cross_entropy(pred, y, reduction="none")
+        loss = (bce * w).mean()
+        optim.zero_grad()
+        loss.backward()
+        optim.step()
+        total_loss += float(loss.item()) * x.shape[0]
+        total_n += x.shape[0]
+    return total_loss / max(1, total_n)
+
+
+def _check_gates(final: dict, gates: dict | None) -> None:
+    """Raise SystemExit if any production gate fails."""
+    if not gates:
+        return
+    for key, threshold in gates.items():
+        val = final.get(key)
+        if val is None:
+            continue
+        ok = val >= threshold if not key.startswith("max_") else val <= threshold
+        if not ok:
+            raise SystemExit(f"gate failed: {key}={val:.3f} (threshold {threshold})")
+
+
+def _write_meta(
+    out_onnx: Path,
+    final: dict,
+    history: list[dict],
+    config: dict,
+) -> None:
+    meta_path = out_onnx.with_suffix(".meta.json")
+    meta_path.write_text(
+        json.dumps(
+            {
+                "final": final,
+                "history": history[-10:],
+                "config": config,
+            },
+            indent=2,
+        )
+    )
+
+
+def _fit(
+    model: nn.Module,
+    loader: DataLoader,
+    train_data: TrainingData,
+    val_data: TrainingData,
+    device: torch.device,
+    epochs: int,
+    lr: float,
+    weight_decay: float,
+    use_specaugment: bool,
+) -> tuple[dict | None, list[dict]]:
+    """Train with early stopping; return the best state dict and epoch history."""
+    optim = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=epochs)
+
+    best_val_score = -math.inf  # higher is better
+    best_state: dict | None = None
+    history: list[dict] = []
+    patience = 0
+
+    for epoch in range(epochs):
+        mean_loss = _train_one_epoch(model, loader, optim, device, use_specaugment)
+        sched.step()
+
+        train_metrics = evaluate(model, train_data, device)
+        val_metrics = evaluate(model, val_data, device)
+
+        # Composite score: prioritise recall, penalise FP heavily
+        val_score = val_metrics["recall"] - 5.0 * val_metrics["fp_rate"]
+
+        history.append(
+            {
+                "epoch": epoch,
+                "loss": mean_loss,
+                "train": train_metrics,
+                "val": val_metrics,
+                "lr": optim.param_groups[0]["lr"],
+            }
+        )
+
+        print(
+            f"  epoch {epoch:3d}  loss={mean_loss:.4f} "
+            f"  val_acc={val_metrics['accuracy']:.3f} "
+            f"recall={val_metrics['recall']:.3f} "
+            f"fp_rate={val_metrics['fp_rate']:.3f} "
+            f"mean+={val_metrics['mean_pos_score']:.2f} "
+            f"mean-={val_metrics['mean_neg_score']:.2f}"
+        )
+
+        if val_score > best_val_score:
+            best_val_score = val_score
+            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+            patience = 0
+        else:
+            patience += 1
+            if patience >= 12:
+                print(f"  early stop @ epoch {epoch}")
+                break
+
+    return best_state, history
+
+
 def train_run(
     features_dir: Path,
     out_onnx: Path,
@@ -316,105 +438,43 @@ def train_run(
     model = make_model(arch).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"  arch={arch}  params={n_params:,}")
-    optim = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    sched = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=epochs)
 
     train_ds = TensorDataset(train_data.X, train_data.y, train_data.w)
-    loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
 
-    best_val_score = -math.inf  # higher is better
-    best_state: dict | None = None
-    history: list[dict] = []
-    patience = 0
-
-    for epoch in range(epochs):
-        model.train()
-        total_loss = 0.0
-        total_n = 0
-        for x, y, w in loader:
-            x = x.to(device)
-            y = y.to(device)
-            w = w.to(device)
-            if use_specaugment:
-                x = specaugment(x)
-            pred = model(x).squeeze(-1)
-            bce = F.binary_cross_entropy(pred, y, reduction="none")
-            loss = (bce * w).mean()
-            optim.zero_grad()
-            loss.backward()
-            optim.step()
-            total_loss += float(loss.item()) * x.shape[0]
-            total_n += x.shape[0]
-        sched.step()
-
-        train_metrics = evaluate(model, train_data, device)
-        val_metrics = evaluate(model, val_data, device)
-
-        # Composite score: prioritise recall, penalise FP heavily
-        val_score = val_metrics["recall"] - 5.0 * val_metrics["fp_rate"]
-
-        history.append(
-            {
-                "epoch": epoch,
-                "loss": total_loss / max(1, total_n),
-                "train": train_metrics,
-                "val": val_metrics,
-                "lr": optim.param_groups[0]["lr"],
-            }
-        )
-
-        print(
-            f"  epoch {epoch:3d}  loss={total_loss / max(1, total_n):.4f} "
-            f"  val_acc={val_metrics['accuracy']:.3f} "
-            f"recall={val_metrics['recall']:.3f} "
-            f"fp_rate={val_metrics['fp_rate']:.3f} "
-            f"mean+={val_metrics['mean_pos_score']:.2f} "
-            f"mean-={val_metrics['mean_neg_score']:.2f}"
-        )
-
-        if val_score > best_val_score:
-            best_val_score = val_score
-            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
-            patience = 0
-        else:
-            patience += 1
-            if patience >= 12:
-                print(f"  early stop @ epoch {epoch}")
-                break
+    best_state, history = _fit(
+        model,
+        loader,
+        train_data,
+        val_data,
+        device,
+        epochs,
+        lr,
+        weight_decay,
+        use_specaugment,
+    )
 
     if best_state is not None:
         model.load_state_dict(best_state)
     final = evaluate(model, val_data, device)
     print(f"\nfinal val metrics: {json.dumps(final, indent=2)}")
 
-    if gates:
-        for key, threshold in gates.items():
-            val = final.get(key)
-            if val is None:
-                continue
-            ok = val >= threshold if not key.startswith("max_") else val <= threshold
-            if not ok:
-                raise SystemExit(f"gate failed: {key}={val:.3f} (threshold {threshold})")
+    _check_gates(final, gates)
 
     export_onnx(model, out_onnx)
-    meta_path = out_onnx.with_suffix(".meta.json")
-    meta_path.write_text(
-        json.dumps(
-            {
-                "final": final,
-                "history": history[-10:],
-                "config": {
-                    "epochs": epochs,
-                    "batch_size": batch_size,
-                    "lr": lr,
-                    "weight_decay": weight_decay,
-                    "hard_negative_weight": hard_negative_weight,
-                    "use_specaugment": use_specaugment,
-                    "seed": seed,
-                },
-            },
-            indent=2,
-        )
+    _write_meta(
+        out_onnx,
+        final,
+        history,
+        {
+            "epochs": epochs,
+            "batch_size": batch_size,
+            "lr": lr,
+            "weight_decay": weight_decay,
+            "hard_negative_weight": hard_negative_weight,
+            "use_specaugment": use_specaugment,
+            "seed": seed,
+        },
     )
     print(f"exported {out_onnx} ({out_onnx.stat().st_size / 1024:.1f} KB)")
     return final

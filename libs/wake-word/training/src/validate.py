@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import random
 from pathlib import Path
 
 import numpy as np
@@ -72,8 +71,9 @@ def score_directory(
 ) -> list[tuple[str, float]]:
     files = sorted(directory.glob("*.wav"))
     if sample_n is not None and len(files) > sample_n:
-        rng = random.Random(0)
-        files = rng.sample(files, sample_n)
+        rng = np.random.default_rng(0)
+        idx = rng.choice(len(files), size=sample_n, replace=False)
+        files = [files[i] for i in idx]
     results: list[tuple[str, float]] = []
     for path in tqdm(files, desc=desc):
         try:
@@ -105,6 +105,70 @@ def summarize(name: str, scores: list[float], threshold: float = 0.5) -> dict:
     }
 
 
+def _score_buckets(
+    feat: Featurizer,
+    cls: ort.InferenceSession,
+    input_name: str,
+    data_dir: Path,
+    sample_n: int | None,
+) -> dict[str, list[float]]:
+    buckets: dict[str, list[float]] = {}
+    for kind in ("positive", "hard_negative", "random_negative", "real_negative"):
+        directory = data_dir / kind
+        if directory.exists():
+            r = score_directory(feat, cls, input_name, directory, sample_n, kind)
+            buckets[kind] = [s for _, s in r]
+    return buckets
+
+
+def _score_fixtures(
+    feat: Featurizer,
+    cls: ort.InferenceSession,
+    input_name: str,
+    fixtures_dir: Path,
+) -> list[float]:
+    scores: list[float] = []
+    if not fixtures_dir.exists():
+        return scores
+    for path in sorted(fixtures_dir.glob("*.wav")):
+        audio, sr = sf.read(path, dtype="float32")
+        if sr != SR:
+            import librosa
+
+            audio = librosa.resample(audio, orig_sr=sr, target_sr=SR)
+        s = score_clip(feat, cls, audio, input_name)
+        scores.append(s)
+        print(f"  fixture {path.name}: score={s:.3f}")
+    return scores
+
+
+def _check_gates(summary: dict) -> list[str]:
+    """Run production gates against the summary and return failure messages."""
+    fails: list[str] = []
+
+    def check(pred: bool, message: str) -> None:
+        status = "PASS" if pred else "FAIL"
+        print(f"  [{status}] {message}")
+        if not pred:
+            fails.append(message)
+
+    pos = summary.get("positive")
+    if pos:
+        check(pos["fire_rate"] >= 0.90, f"positive recall ≥0.90 (got {pos['fire_rate']:.3f})")
+        check(pos["mean"] >= 0.70, f"positive mean ≥0.70 (got {pos['mean']:.3f})")
+    hn = summary.get("hard_negative")
+    if hn:
+        check(hn["fire_rate"] <= 0.05, f"hard-negative FPR ≤0.05 (got {hn['fire_rate']:.3f})")
+        check(hn["mean"] <= 0.20, f"hard-negative mean ≤0.20 (got {hn['mean']:.3f})")
+    rn = summary.get("random_negative")
+    if rn:
+        check(rn["fire_rate"] <= 0.02, f"random-negative FPR ≤0.02 (got {rn['fire_rate']:.3f})")
+    real = summary.get("real_negative")
+    if real:
+        check(real["fire_rate"] <= 0.02, f"real-negative FPR ≤0.02 (got {real['fire_rate']:.3f})")
+    return fails
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=Path, default=Path("../models/hey_gaia.onnx"))
@@ -123,68 +187,17 @@ def main() -> None:
         args.models_dir / "embedding_model.onnx",
     )
 
-    buckets = {}
-    for kind in ("positive", "hard_negative", "random_negative", "real_negative"):
-        directory = args.data / kind
-        if directory.exists():
-            r = score_directory(feat, cls, input_name, directory, args.sample_n, kind)
-            buckets[kind] = [s for _, s in r]
-
-    # Real-speech test fixtures from openWakeWord
-    if args.fixtures.exists():
-        for path in sorted(args.fixtures.glob("*.wav")):
-            audio, sr = sf.read(path, dtype="float32")
-            if sr != SR:
-                import librosa
-
-                audio = librosa.resample(audio, orig_sr=sr, target_sr=SR)
-            s = score_clip(feat, cls, audio, input_name)
-            buckets.setdefault("fixtures", []).append(s)
-            print(f"  fixture {path.name}: score={s:.3f}")
+    buckets = _score_buckets(feat, cls, input_name, args.data, args.sample_n)
+    fixture_scores = _score_fixtures(feat, cls, input_name, args.fixtures)
+    if fixture_scores:
+        buckets["fixtures"] = fixture_scores
 
     summary = {k: summarize(k, scores, args.threshold) for k, scores in buckets.items()}
     print("\n" + json.dumps(summary, indent=2))
 
     # Production gate
     print("\n--- production gates ---")
-    fails: list[str] = []
-
-    def check(name: str, pred: bool, message: str) -> None:
-        status = "PASS" if pred else "FAIL"
-        print(f"  [{status}] {message}")
-        if not pred:
-            fails.append(message)
-
-    pos = summary.get("positive")
-    if pos:
-        check(
-            "pos_recall",
-            pos["fire_rate"] >= 0.90,
-            f"positive recall ≥0.90 (got {pos['fire_rate']:.3f})",
-        )
-        check("pos_mean", pos["mean"] >= 0.70, f"positive mean ≥0.70 (got {pos['mean']:.3f})")
-    hn = summary.get("hard_negative")
-    if hn:
-        check(
-            "hn_fpr",
-            hn["fire_rate"] <= 0.05,
-            f"hard-negative FPR ≤0.05 (got {hn['fire_rate']:.3f})",
-        )
-        check("hn_mean", hn["mean"] <= 0.20, f"hard-negative mean ≤0.20 (got {hn['mean']:.3f})")
-    rn = summary.get("random_negative")
-    if rn:
-        check(
-            "rn_fpr",
-            rn["fire_rate"] <= 0.02,
-            f"random-negative FPR ≤0.02 (got {rn['fire_rate']:.3f})",
-        )
-    real = summary.get("real_negative")
-    if real:
-        check(
-            "real_fpr",
-            real["fire_rate"] <= 0.02,
-            f"real-negative FPR ≤0.02 (got {real['fire_rate']:.3f})",
-        )
+    fails = _check_gates(summary)
 
     if fails:
         print(f"\n{len(fails)} gate(s) failed — model is NOT production ready.")

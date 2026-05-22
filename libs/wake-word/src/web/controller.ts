@@ -75,9 +75,10 @@ export class WakeWordController {
   async start(): Promise<void> {
     if (this.starting || this.detector) return;
     this.starting = true;
+    let detector: WakeWordDetector | null = null;
     try {
       const runtime = new WebRuntime(this.opts.runtime);
-      const detector = new WakeWordDetector(runtime, this.opts.detector);
+      detector = new WakeWordDetector(runtime, this.opts.detector);
       const detectorListener: DetectorListener = {
         onDetection: (e) => this.emit("detection", e),
         onStateChange: (s) => this.emit("state", s),
@@ -86,7 +87,6 @@ export class WakeWordController {
       };
       detector.setListener(detectorListener);
       await detector.load(this.opts.models);
-      this.detector = detector;
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: this.opts.audioConstraints ?? {
@@ -104,11 +104,19 @@ export class WakeWordController {
       const source = context.createMediaStreamSource(stream);
       const node = new AudioWorkletNode(context, "gaia-wake-word-capture");
       this.node = node;
+      const activeDetector = detector;
       node.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
         const frame = new Float32Array(event.data);
-        void detector.push(frame);
+        void activeDetector.push(frame);
       };
       source.connect(node);
+      // Only mark as started once every resource is wired up. If anything
+      // above threw, `this.detector` stays null so a later start() can retry.
+      this.detector = detector;
+    } catch (err) {
+      await detector?.release().catch(() => undefined);
+      await this.stop();
+      throw err;
     } finally {
       this.starting = false;
     }

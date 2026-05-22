@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useWakeWordBase } from "../internal/use-wake-word-base";
 import type { DetectionEvent, DetectorState } from "../types/index";
 import {
   WakeWordNativeController,
@@ -21,43 +21,8 @@ export function useWakeWordNative(
   options: WakeWordNativeOptions,
   enabled = true,
 ): UseWakeWordNativeResult {
-  const controllerRef = useRef<WakeWordNativeController | null>(null);
-  const [state, setState] = useState<DetectorState>("idle");
-  const [lastDetection, setLastDetection] = useState<DetectionEvent | null>(
-    null,
+  return useWakeWordBase<WakeWordNativeController>(
+    () => new WakeWordNativeController(options),
+    enabled,
   );
-  const [error, setError] = useState<Error | null>(null);
-
-  const start = useCallback(async () => {
-    if (controllerRef.current) return;
-    const controller = new WakeWordNativeController(options);
-    controllerRef.current = controller;
-    controller.on("detection", setLastDetection);
-    controller.on("state", setState);
-    controller.on("error", setError);
-    try {
-      await controller.start();
-    } catch (err) {
-      setError(err as Error);
-      controllerRef.current = null;
-    }
-  }, [options]);
-
-  const stop = useCallback(async () => {
-    const controller = controllerRef.current;
-    controllerRef.current = null;
-    await controller?.stop();
-    setState("idle");
-  }, []);
-
-  useEffect(() => {
-    if (!enabled) return;
-    void start();
-    return () => {
-      void stop();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled]);
-
-  return { state, lastDetection, error, start, stop };
 }

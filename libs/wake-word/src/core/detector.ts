@@ -35,6 +35,10 @@ export class WakeWordDetector {
   private readonly vad: VadGate | null;
   private readonly frameBuffer = new Float32Array(FRAME_SAMPLES);
   private frameFill = 0;
+  // Serialises overlapping `push()` calls. Callers (e.g. the AudioWorklet
+  // message handler) fire pushes without awaiting, so without this chain their
+  // awaits could interleave and corrupt the shared frame buffer / counters.
+  private chain: Promise<unknown> = Promise.resolve();
 
   private state: DetectorState = "idle";
   private listener: DetectorListener | null = null;
@@ -96,6 +100,14 @@ export class WakeWordDetector {
    * complete 80 ms frames consumed.
    */
   async push(samples: Float32Array): Promise<number> {
+    // Run pushes strictly one-at-a-time. Advance the chain regardless of
+    // success/failure so a single failed push doesn't poison later ones.
+    const result = this.chain.then(() => this.pushInternal(samples));
+    this.chain = result.catch(() => undefined);
+    return result;
+  }
+
+  private async pushInternal(samples: Float32Array): Promise<number> {
     if (this.state === "error" || this.state === "idle") return 0;
     let consumed = 0;
     let offset = 0;
@@ -109,7 +121,9 @@ export class WakeWordDetector {
       this.frameFill += take;
       offset += take;
       if (this.frameFill === FRAME_SAMPLES) {
-        await this.processFrame();
+        // Clone the frame before any awaits so the pipeline never holds a
+        // reference to the buffer we're about to overwrite for the next frame.
+        await this.processFrame(this.frameBuffer.slice());
         this.frameFill = 0;
         consumed += 1;
       }
@@ -117,7 +131,7 @@ export class WakeWordDetector {
     return consumed;
   }
 
-  private async processFrame(): Promise<void> {
+  private async processFrame(frame: Float32Array): Promise<void> {
     const frameIndex = this.framesProcessed;
     this.framesProcessed += 1;
     const now = this.now();
@@ -126,7 +140,7 @@ export class WakeWordDetector {
     let vadProb: number | undefined;
     let vadOpen = true;
     if (this.vad) {
-      const result = await this.vad.push(this.frameBuffer, 80);
+      const result = await this.vad.push(frame, 80);
       vadProb = result.speechProb;
       vadOpen = result.open;
     }
@@ -135,7 +149,7 @@ export class WakeWordDetector {
     // internal state stays warm — but we suppress firing.
     let score: number | null = null;
     try {
-      score = await this.pipeline.pushFrame(this.frameBuffer);
+      score = await this.pipeline.pushFrame(frame);
     } catch (err) {
       this.transition("error");
       this.listener?.onError?.(err as Error);

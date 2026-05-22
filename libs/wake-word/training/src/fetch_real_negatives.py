@@ -15,7 +15,6 @@ Each clip is sliced to ~2-4 seconds at 16 kHz mono PCM.
 from __future__ import annotations
 
 import argparse
-import random
 from pathlib import Path
 
 import numpy as np
@@ -55,7 +54,7 @@ def main() -> None:
     )
 
     saved = 0
-    rng = random.Random(args.seed)
+    rng = np.random.default_rng(args.seed)
     pbar = tqdm(total=args.n, desc="real_negative")
     for ex in ds:
         if saved >= args.n:
@@ -68,7 +67,7 @@ def main() -> None:
         target_samples = int(target_seconds * sr)
         if len(arr) < target_samples:
             continue
-        start = rng.randint(0, len(arr) - target_samples)
+        start = int(rng.integers(0, len(arr) - target_samples + 1))
         clip = arr[start : start + target_samples]
         # resample to 16k if needed
         if sr != 16000:

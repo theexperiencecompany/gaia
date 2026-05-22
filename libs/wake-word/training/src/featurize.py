@@ -137,41 +137,40 @@ def _read_wav(path: Path) -> np.ndarray:
     return audio.astype(np.float32)
 
 
-def featurize_directory(
-    featurizer: Featurizer | None,
-    directory: Path,
-    mode: str,
-    models_dir: Path | None = None,
-    workers: int = 1,
-) -> np.ndarray:
-    """Featurize a directory of WAVs, optionally in parallel.
-
-    ORT InferenceSession.run is NOT safe to call concurrently from multiple
-    threads — each worker gets its own thread-local Featurizer. Pass
-    `models_dir` + `workers>1` to enable parallel mode.
-    """
-    files = sorted(directory.glob("*.wav"))
-    if not files:
+def _stack_windows(windows: list[np.ndarray]) -> np.ndarray:
+    if not windows:
         return np.empty((0, CLASSIFIER_WINDOW, EMBED_DIM), dtype=np.float32)
+    return np.concatenate(windows, axis=0)
 
-    if models_dir is None or workers <= 1:
-        # Serial path
-        assert featurizer is not None
-        windows: list[np.ndarray] = []
-        for path in tqdm(files, desc=f"feat {directory.name}"):
-            try:
-                audio = _read_wav(path)
-                embeddings = featurizer.embeddings_for(audio)
-                ws = make_windows(embeddings, mode=mode)
-                if ws.size:
-                    windows.append(ws)
-            except Exception as exc:
-                print(f"  ! {path.name}: {exc}")
-        if not windows:
-            return np.empty((0, CLASSIFIER_WINDOW, EMBED_DIM), dtype=np.float32)
-        return np.concatenate(windows, axis=0)
 
-    # Parallel path: thread-local featurizer per worker.
+def _featurize_serial(
+    featurizer: Featurizer,
+    files: list[Path],
+    mode: str,
+    desc: str,
+) -> np.ndarray:
+    windows: list[np.ndarray] = []
+    for path in tqdm(files, desc=desc):
+        try:
+            audio = _read_wav(path)
+            embeddings = featurizer.embeddings_for(audio)
+            ws = make_windows(embeddings, mode=mode)
+            if ws.size:
+                windows.append(ws)
+        except Exception as exc:
+            print(f"  ! {path.name}: {exc}")
+    return _stack_windows(windows)
+
+
+def _featurize_parallel(
+    models_dir: Path,
+    files: list[Path],
+    mode: str,
+    workers: int,
+    desc: str,
+) -> np.ndarray:
+    # Thread-local featurizer per worker: ORT InferenceSession.run is NOT safe
+    # to call concurrently from multiple threads.
     local = threading.local()
 
     def get_featurizer() -> Featurizer:
@@ -194,14 +193,37 @@ def featurize_directory(
             print(f"  ! {path.name}: {exc}")
             return None
 
-    windows = []
+    windows: list[np.ndarray] = []
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for ws in tqdm(pool.map(work, files), total=len(files), desc=f"feat {directory.name}"):
+        for ws in tqdm(pool.map(work, files), total=len(files), desc=desc):
             if ws is not None:
                 windows.append(ws)
-    if not windows:
+    return _stack_windows(windows)
+
+
+def featurize_directory(
+    featurizer: Featurizer | None,
+    directory: Path,
+    mode: str,
+    models_dir: Path | None = None,
+    workers: int = 1,
+) -> np.ndarray:
+    """Featurize a directory of WAVs, optionally in parallel.
+
+    ORT InferenceSession.run is NOT safe to call concurrently from multiple
+    threads — each worker gets its own thread-local Featurizer. Pass
+    `models_dir` + `workers>1` to enable parallel mode.
+    """
+    files = sorted(directory.glob("*.wav"))
+    if not files:
         return np.empty((0, CLASSIFIER_WINDOW, EMBED_DIM), dtype=np.float32)
-    return np.concatenate(windows, axis=0)
+
+    desc = f"feat {directory.name}"
+    if models_dir is None or workers <= 1:
+        assert featurizer is not None
+        return _featurize_serial(featurizer, files, mode, desc)
+
+    return _featurize_parallel(models_dir, files, mode, workers, desc)
 
 
 def main() -> None:

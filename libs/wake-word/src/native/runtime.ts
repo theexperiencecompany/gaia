@@ -24,9 +24,15 @@ type OrtModule = typeof ortType;
 let ortPromise: Promise<OrtModule> | null = null;
 function getOrt(): Promise<OrtModule> {
   if (!ortPromise) {
-    ortPromise = import(
-      /* @vite-ignore */ "onnxruntime-react-native"
-    ) as Promise<OrtModule>;
+    ortPromise = (
+      import(
+        /* @vite-ignore */ "onnxruntime-react-native"
+      ) as Promise<OrtModule>
+    ).catch((err) => {
+      // Don't cache a rejected import — let the next call retry.
+      ortPromise = null;
+      throw err;
+    });
   }
   return ortPromise;
 }

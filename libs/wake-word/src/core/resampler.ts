@@ -36,7 +36,7 @@ export class LinearResampler {
     // remember fractional offset and last sample for next call
     const consumed = Math.floor(srcPos + outLen * this.ratio) + 1;
     this.positionInSrc = consumed - input.length;
-    this.leftover = input[input.length - 1] ?? this.leftover;
+    this.leftover = input.at(-1) ?? this.leftover;
     return out;
   }
 

@@ -207,13 +207,17 @@ describe("WakeWordDetector end-to-end (with VAD + debounce)", () => {
     const detections: DetectionEvent[] = [];
     detector.setListener({ onDetection: (e) => detections.push(e) });
     await detector.load(bundle);
-    // Feed the positive clip twice back-to-back.
+    // Feed the positive clip twice with a 1s gap between the two utterances.
     const clip = readWavMono16k(resolve(fixturesDir, "hey_mycroft_test.wav"));
+    const gapSamples = 16000; // 1s @ 16kHz
     const doubled = new Float32Array(
-      FRAME_SAMPLES * 28 + clip.length * 2 + 16000,
+      FRAME_SAMPLES * 28 + clip.length * 2 + gapSamples,
     );
-    doubled.set(clip, FRAME_SAMPLES * 28);
-    doubled.set(clip, FRAME_SAMPLES * 28 + clip.length + 16000); // 1s gap
+    const clipOffsets = [
+      FRAME_SAMPLES * 28,
+      FRAME_SAMPLES * 28 + clip.length + gapSamples,
+    ];
+    for (const offset of clipOffsets) doubled.set(clip, offset);
     await detector.push(doubled);
     await detector.release();
     expect(detections.length).toBe(1);

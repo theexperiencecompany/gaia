@@ -58,9 +58,9 @@ type EventMap = {
 function base64Pcm16ToFloat32(b64: string): Float32Array {
   // Buffer / Uint8Array path — works in RN.
   const binary =
-    typeof Buffer !== "undefined"
-      ? Buffer.from(b64, "base64")
-      : Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    typeof Buffer === "undefined"
+      ? Uint8Array.from(atob(b64), (c) => c.codePointAt(0) ?? 0)
+      : Buffer.from(b64, "base64");
   const dv = new DataView(binary.buffer, binary.byteOffset, binary.byteLength);
   const out = new Float32Array(binary.byteLength / 2);
   for (let i = 0; i < out.length; i++) {
@@ -71,7 +71,17 @@ function base64Pcm16ToFloat32(b64: string): Float32Array {
 
 export class WakeWordNativeController {
   private detector: WakeWordDetector | null = null;
-  private listeners = new Map<keyof EventMap, Set<(p: unknown) => void>>();
+  private readonly listeners = new Map<
+    keyof EventMap,
+    Set<(p: unknown) => void>
+  >();
+  /**
+   * The injected audio module is EventEmitter-style and can't be assumed to
+   * support removing a listener, so we attach the `"data"` handler exactly
+   * once per controller and route frames to whatever the current detector is.
+   * This avoids duplicate ingestion across stop()/start() cycles.
+   */
+  private audioListenerBound = false;
 
   constructor(private readonly opts: WakeWordNativeOptions) {}
 
@@ -109,10 +119,15 @@ export class WakeWordNativeController {
       bufferSize: 1280, // 80 ms @ 16 kHz, matches detector frame size
       wavFile: "",
     });
-    audio.on("data", (chunkB64) => {
-      const samples = base64Pcm16ToFloat32(chunkB64);
-      void detector.push(samples);
-    });
+    if (!this.audioListenerBound) {
+      audio.on("data", (chunkB64) => {
+        const active = this.detector;
+        if (!active) return;
+        const samples = base64Pcm16ToFloat32(chunkB64);
+        void active.push(samples);
+      });
+      this.audioListenerBound = true;
+    }
     audio.start();
   }
 

@@ -19,11 +19,32 @@ type OrtModule = typeof ortType;
 let ortPromise: Promise<OrtModule> | null = null;
 function getOrt(): Promise<OrtModule> {
   if (!ortPromise) {
-    ortPromise = import(
-      /* @vite-ignore */ "onnxruntime-web"
-    ) as Promise<OrtModule>;
+    ortPromise = (
+      import(/* @vite-ignore */ "onnxruntime-web") as Promise<OrtModule>
+    ).catch((err) => {
+      // Don't cache a rejected import — let the next call retry.
+      ortPromise = null;
+      throw err;
+    });
   }
   return ortPromise;
+}
+
+// `ort.env.wasm` is global, module-wide state shared by every InferenceSession
+// and must be set before the first session is created. Configure it exactly
+// once so multiple WebRuntime instances can't overwrite each other.
+let ortWasmConfigured = false;
+function configureOrtWasm(ort: OrtModule, opts: WebRuntimeOptions): void {
+  if (ortWasmConfigured) return;
+  ortWasmConfigured = true;
+  if (opts.wasmPaths) ort.env.wasm.wasmPaths = opts.wasmPaths;
+  if (typeof opts.numThreads === "number") {
+    ort.env.wasm.numThreads = opts.numThreads;
+  } else if (typeof navigator !== "undefined") {
+    const cores = navigator.hardwareConcurrency ?? 2;
+    ort.env.wasm.numThreads = Math.max(1, Math.min(4, Math.floor(cores / 2)));
+  }
+  if (opts.simd !== undefined) ort.env.wasm.simd = opts.simd;
 }
 
 export interface WebRuntimeOptions {
@@ -78,14 +99,7 @@ export class WebRuntime implements InferenceRuntime {
 
   async loadSession(source: ModelSource): Promise<InferenceSession> {
     const ort = await getOrt();
-    if (this.opts.wasmPaths) ort.env.wasm.wasmPaths = this.opts.wasmPaths;
-    if (typeof this.opts.numThreads === "number") {
-      ort.env.wasm.numThreads = this.opts.numThreads;
-    } else if (typeof navigator !== "undefined") {
-      const cores = navigator.hardwareConcurrency ?? 2;
-      ort.env.wasm.numThreads = Math.max(1, Math.min(4, Math.floor(cores / 2)));
-    }
-    if (this.opts.simd !== undefined) ort.env.wasm.simd = this.opts.simd;
+    configureOrtWasm(ort, this.opts);
 
     let bytes: Uint8Array;
     if (source.kind === "url") {

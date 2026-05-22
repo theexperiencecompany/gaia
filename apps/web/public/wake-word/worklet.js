@@ -25,7 +25,7 @@ class WakeWordCaptureProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs) {
-    const input = inputs[0] && inputs[0][0];
+    const input = inputs[0]?.[0];
     if (!input || input.length === 0) return true;
 
     // 1. Downsample to 16 kHz via linear interpolation.
@@ -39,11 +39,11 @@ class WakeWordCaptureProcessor extends AudioWorkletProcessor {
       const idx = Math.floor(pos);
       const frac = pos - idx;
       const a = idx < 0 ? lastSample : input[idx] || 0;
-      const b = input[idx + 1] !== undefined ? input[idx + 1] : a;
+      const b = input[idx + 1] ?? a;
       out[i] = a + (b - a) * frac;
     }
     this.prevLastSample = input[input.length - 1] || this.prevLastSample;
-    const consumed = (expectedOut * this.ratio) | 0;
+    const consumed = Math.trunc(expectedOut * this.ratio);
     this.resamplerPos = input.length - consumed + this.resamplerPos;
 
     // 2. Batch into 80 ms frames and post.

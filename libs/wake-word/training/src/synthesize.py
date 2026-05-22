@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import random
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -41,6 +41,10 @@ from tqdm import tqdm
 
 TARGET_SR = 16_000
 
+# Primary wake-word phrase — appears multiple times in POSITIVE_PHRASES so it is
+# sampled more often during synthesis.
+HEY_GAIA = "hey gaia"
+
 
 # ---------------------------- Phrases ---------------------------------------
 
@@ -49,9 +53,9 @@ POSITIVE_PHRASES = [
     # natural variants ("hi gaia", "hey gaya" = /heɪ ɡeɪə/). Entries that
     # phonemize to wrong sounds (e.g. "gye" → /dʒaɪ/) are excluded — they
     # would teach the model the wrong target.
-    "hey gaia",  # /heɪ ɡaɪə/ — primary
-    "hey gaia",  # weight: appear twice as often
-    "hey gaia",
+    HEY_GAIA,  # /heɪ ɡaɪə/ — primary
+    HEY_GAIA,  # weight: appear twice as often
+    HEY_GAIA,
     "hey guyah",  # /heɪ ɡaɪə/ — same sound, different orthography
     "hey, gaia",  # comma changes prosody slightly
     "hey gaia.",  # final punctuation prosody
@@ -179,19 +183,19 @@ class Augmentation:
     noise_w_scale: float
 
 
-def random_augmentation(rng: random.Random) -> Augmentation:
+def random_augmentation(rng: np.random.Generator) -> Augmentation:
     return Augmentation(
-        speed=rng.uniform(0.88, 1.12),
-        pitch_semitones=rng.uniform(-2.0, 2.0),
-        gain_db=rng.uniform(-6.0, 6.0),
-        noise_snr_db=rng.uniform(5.0, 25.0) if rng.random() < 0.7 else None,
-        use_rir=rng.random() < 0.5,
-        pre_silence_ms=rng.randint(0, 250),
-        post_silence_ms=rng.randint(0, 350),
+        speed=float(rng.uniform(0.88, 1.12)),
+        pitch_semitones=float(rng.uniform(-2.0, 2.0)),
+        gain_db=float(rng.uniform(-6.0, 6.0)),
+        noise_snr_db=float(rng.uniform(5.0, 25.0)) if rng.random() < 0.7 else None,
+        use_rir=bool(rng.random() < 0.5),
+        pre_silence_ms=int(rng.integers(0, 251)),
+        post_silence_ms=int(rng.integers(0, 351)),
         # Piper synth params: vary cadence/prosody at generation time too
-        length_scale=rng.uniform(0.85, 1.15),
-        noise_scale=rng.uniform(0.45, 0.85),
-        noise_w_scale=rng.uniform(0.6, 1.0),
+        length_scale=float(rng.uniform(0.85, 1.15)),
+        noise_scale=float(rng.uniform(0.45, 0.85)),
+        noise_w_scale=float(rng.uniform(0.6, 1.0)),
     )
 
 
@@ -213,21 +217,31 @@ def load_voices(voices_dir: Path) -> dict[str, PiperVoice]:
 
 
 def piper_synthesize(
-    voice: PiperVoice, text: str, aug: Augmentation, target_sr: int = TARGET_SR
+    voice: PiperVoice,
+    text: str,
+    aug: Augmentation,
+    voice_lock: threading.Lock,
+    target_sr: int = TARGET_SR,
 ) -> np.ndarray:
-    """Render `text` with `voice` and return mono float32 audio at `target_sr`."""
+    """Render `text` with `voice` and return mono float32 audio at `target_sr`.
+
+    PiperVoice instances are NOT thread-safe; `voice_lock` serializes concurrent
+    `.synthesize()` calls against the same voice across worker threads.
+    """
     cfg = SynthesisConfig(
         length_scale=aug.length_scale,
         noise_scale=aug.noise_scale,
         noise_w_scale=aug.noise_w_scale,
     )
     # `synthesize` returns an iterable of AudioChunk (raw int16 bytes + metadata).
+    # Inference runs lazily during iteration, so hold the lock for the full loop.
     chunks: list[np.ndarray] = []
     src_sr = voice.config.sample_rate
-    for chunk in voice.synthesize(text, syn_config=cfg):
-        # AudioChunk exposes `audio_int16_array` (numpy int16) in piper>=1.4
-        arr = np.asarray(chunk.audio_int16_array, dtype=np.int16)
-        chunks.append(arr.astype(np.float32) / 32768.0)
+    with voice_lock:
+        for chunk in voice.synthesize(text, syn_config=cfg):
+            # AudioChunk exposes `audio_int16_array` (numpy int16) in piper>=1.4
+            arr = np.asarray(chunk.audio_int16_array, dtype=np.int16)
+            chunks.append(arr.astype(np.float32) / 32768.0)
     if not chunks:
         return np.zeros(target_sr, dtype=np.float32)
     audio = np.concatenate(chunks)
@@ -258,7 +272,9 @@ def apply_gain(audio: np.ndarray, gain_db: float) -> np.ndarray:
     return np.clip(audio * factor, -1.0, 1.0).astype(np.float32)
 
 
-def apply_noise(audio: np.ndarray, noise: np.ndarray, snr_db: float) -> np.ndarray:
+def apply_noise(
+    audio: np.ndarray, noise: np.ndarray, snr_db: float, rng: np.random.Generator
+) -> np.ndarray:
     if noise is None or len(noise) == 0:
         return audio
     # tile / trim noise to match
@@ -266,7 +282,7 @@ def apply_noise(audio: np.ndarray, noise: np.ndarray, snr_db: float) -> np.ndarr
         reps = int(np.ceil(len(audio) / len(noise)))
         noise = np.tile(noise, reps)[: len(audio)]
     else:
-        start = np.random.randint(0, len(noise) - len(audio) + 1)
+        start = int(rng.integers(0, len(noise) - len(audio) + 1))
         noise = noise[start : start + len(audio)]
     signal_power = np.mean(audio**2) + 1e-10
     noise_power = np.mean(noise**2) + 1e-10
@@ -295,18 +311,20 @@ def pad_silence(audio: np.ndarray, pre_ms: int, post_ms: int, sr: int) -> np.nda
 def synth_one(
     out_path: Path,
     voice: PiperVoice,
+    voice_lock: threading.Lock,
     phrase: str,
     aug: Augmentation,
     noise: np.ndarray | None,
     rir: np.ndarray | None,
+    rng: np.random.Generator,
     min_total_ms: int = 2400,
 ) -> tuple[str, str]:
-    audio = piper_synthesize(voice, phrase, aug)
+    audio = piper_synthesize(voice, phrase, aug, voice_lock)
     audio = apply_speed(audio, aug.speed)
     audio = apply_pitch(audio, aug.pitch_semitones, TARGET_SR)
     audio = apply_gain(audio, aug.gain_db)
     if aug.noise_snr_db is not None and noise is not None:
-        audio = apply_noise(audio, noise, aug.noise_snr_db)
+        audio = apply_noise(audio, noise, aug.noise_snr_db, rng)
     if aug.use_rir and rir is not None:
         audio = apply_rir(audio, rir)
     audio = pad_silence(audio, aug.pre_silence_ms, aug.post_silence_ms, TARGET_SR)
@@ -358,16 +376,21 @@ def generate_batch(
         print(f"  skip {label}: n_samples=0")
         return
     out_dir.mkdir(parents=True, exist_ok=True)
-    rng = random.Random(seed)
+    rng = np.random.default_rng(seed)
+    # Independent per-task generators so worker threads stay deterministic.
+    task_seeds = np.random.SeedSequence(seed).spawn(n_samples)
     voice_names = list(voices.keys())
+    # PiperVoice instances are not thread-safe — one lock per voice serializes
+    # concurrent .synthesize() calls against the same instance.
+    voice_locks = {name: threading.Lock() for name in voice_names}
     manifest: list[dict] = []
     plan = []
     for i in range(n_samples):
-        voice_name = rng.choice(voice_names)
-        phrase = rng.choice(phrases)
+        voice_name = voice_names[int(rng.integers(0, len(voice_names)))]
+        phrase = phrases[int(rng.integers(0, len(phrases)))]
         aug = random_augmentation(rng)
-        noise = rng.choice(noise_pool) if noise_pool else None
-        rir = rng.choice(rir_pool) if rir_pool else None
+        noise = noise_pool[int(rng.integers(0, len(noise_pool)))] if noise_pool else None
+        rir = rir_pool[int(rng.integers(0, len(rir_pool)))] if rir_pool else None
         plan.append((i, voice_name, phrase, aug, noise, rir))
 
     # IO-bound + numpy-bound — threads are fine (Piper holds the GIL only inside
@@ -376,7 +399,18 @@ def generate_batch(
         futures = {}
         for i, voice_name, phrase, aug, noise, rir in plan:
             out_path = out_dir / f"{label}_{i:06d}.wav"
-            fut = pool.submit(synth_one, out_path, voices[voice_name], phrase, aug, noise, rir)
+            task_rng = np.random.default_rng(task_seeds[i])
+            fut = pool.submit(
+                synth_one,
+                out_path,
+                voices[voice_name],
+                voice_locks[voice_name],
+                phrase,
+                aug,
+                noise,
+                rir,
+                task_rng,
+            )
             futures[fut] = (i, voice_name, phrase, aug, out_path.name)
         for fut in tqdm(as_completed(futures), total=len(futures), desc=label):
             i, voice_name, phrase, aug, name = futures[fut]

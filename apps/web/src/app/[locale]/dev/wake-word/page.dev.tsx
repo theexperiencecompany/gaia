@@ -19,6 +19,8 @@ interface DetectionRecord {
   id: number;
   score: number;
   detectedAt: number;
+  /** Wall-clock time (epoch ms) the detection fired — for the log timestamp. */
+  firedAt: number;
   speechStartedAt: number | null;
   timeToWakeMs: number | null;
 }
@@ -72,7 +74,7 @@ export default function WakeWordDemoPage() {
     const detectedAt = performance.now();
     const speechStartedAt = speechStartedAtRef.current;
     const timeToWakeMs =
-      speechStartedAt !== null ? detectedAt - speechStartedAt : null;
+      speechStartedAt === null ? null : detectedAt - speechStartedAt;
     speechStartedAtRef.current = null;
     setHistory((h) =>
       [
@@ -80,6 +82,7 @@ export default function WakeWordDemoPage() {
           id,
           score: lastDetection.score,
           detectedAt,
+          firedAt: Date.now(),
           speechStartedAt,
           timeToWakeMs,
         },
@@ -88,17 +91,18 @@ export default function WakeWordDemoPage() {
     );
     // Speak the response — quick and disposable.
     try {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      if ("speechSynthesis" in globalThis) {
+        const synth = globalThis.speechSynthesis;
         const utter = new SpeechSynthesisUtterance("Hey, what's up?");
         utter.rate = 1.05;
         utter.pitch = 1.05;
-        const voices = window.speechSynthesis.getVoices();
+        const voices = synth.getVoices();
         const preferred = voices.find((v) =>
           /samantha|female|natural/i.test(v.name),
         );
         if (preferred) utter.voice = preferred;
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(utter);
+        synth.cancel();
+        synth.speak(utter);
       }
     } catch {
       // best effort
@@ -113,17 +117,17 @@ export default function WakeWordDemoPage() {
     setEnabled((v) => !v);
   }, [enabled]);
 
-  const justFired = useMemo(() => {
-    if (history.length === 0) return false;
-    return performance.now() - history[0]!.detectedAt < 1400;
-  }, [history]);
+  // Drive the "just fired" highlight off a ticking clock so the timer-driven
+  // re-renders actually recompute the elapsed-time check (a useMemo keyed only
+  // on `history` would leave it stuck true and keep the interval alive).
+  const [nowMs, setNowMs] = useState(() => performance.now());
+  const lastDetectedAt = history[0]?.detectedAt ?? null;
+  const justFired = lastDetectedAt !== null && nowMs - lastDetectedAt < 1400;
 
-  // Force re-render so the justFired highlight fades.
-  const [, forceTick] = useState(0);
   useEffect(() => {
     if (!justFired) return;
-    const t = setInterval(() => forceTick((n) => n + 1), 100);
-    return () => clearInterval(t);
+    const id = setInterval(() => setNowMs(performance.now()), 100);
+    return () => clearInterval(id);
   }, [justFired]);
 
   return (
@@ -160,6 +164,20 @@ export default function WakeWordDemoPage() {
 
 // ---------------- subcomponents ----------------
 
+type WakeWordState = ReturnType<typeof useHeyGaia>["state"];
+
+function controlLabel(enabled: boolean, state: WakeWordState): string {
+  if (!enabled) return "Start listening";
+  if (state === "listening") return "Stop listening";
+  if (state === "idle") return "Loading models…";
+  return `${state}…`;
+}
+
+function formatMs(value: number | null): string {
+  if (value === null) return "—";
+  return `${Math.round(value)} ms`;
+}
+
 function Header() {
   return (
     <div className="flex flex-col gap-2">
@@ -182,11 +200,11 @@ function Orb({
   state,
   score,
   justFired,
-}: {
-  state: ReturnType<typeof useHeyGaia>["state"];
+}: Readonly<{
+  state: WakeWordState;
   score: number;
   justFired: boolean;
-}) {
+}>) {
   const intensity =
     state === "listening" ? Math.min(1, score * 1.5 + 0.2) : 0.05;
   const scale = justFired ? 1.18 : 1 + intensity * 0.06;
@@ -282,19 +300,13 @@ function ControlBar({
   state,
   error,
   onToggle,
-}: {
+}: Readonly<{
   enabled: boolean;
-  state: ReturnType<typeof useHeyGaia>["state"];
+  state: WakeWordState;
   error: Error | null;
   onToggle: () => void;
-}) {
-  const label = !enabled
-    ? "Start listening"
-    : state === "listening"
-      ? "Stop listening"
-      : state === "idle"
-        ? "Loading models…"
-        : `${state}…`;
+}>) {
+  const label = controlLabel(enabled, state);
   return (
     <div className="flex flex-wrap items-center gap-4">
       <Button
@@ -351,13 +363,13 @@ function MetricsGrid({
   bootMs,
   lastScore,
   history,
-}: {
-  state: ReturnType<typeof useHeyGaia>["state"];
+}: Readonly<{
+  state: WakeWordState;
   enabled: boolean;
   bootMs: number | null;
   lastScore: number;
   history: DetectionRecord[];
-}) {
+}>) {
   const lastDetection = history[0];
   const lastTimeToWake = lastDetection?.timeToWakeMs ?? null;
   const avgTimeToWake = useMemo(() => {
@@ -372,25 +384,23 @@ function MetricsGrid({
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
       <MetricCard
         label="model boot"
-        value={bootMs !== null ? `${Math.round(bootMs)} ms` : "—"}
+        value={formatMs(bootMs)}
         hint="mic permission + ONNX load"
       />
       <MetricCard
         label="last score"
         value={enabled ? lastScore.toFixed(3) : "—"}
-        hint="probability ∈ [0, 1]"
+        hint="probability in [0, 1]"
         accent={state === "listening" && lastScore > 0.4}
       />
       <MetricCard
         label="last time-to-wake"
-        value={
-          lastTimeToWake !== null ? `${Math.round(lastTimeToWake)} ms` : "—"
-        }
-        hint="speech onset → detection"
+        value={formatMs(lastTimeToWake)}
+        hint="speech onset to detection"
       />
       <MetricCard
         label="avg time-to-wake"
-        value={avgTimeToWake !== null ? `${Math.round(avgTimeToWake)} ms` : "—"}
+        value={formatMs(avgTimeToWake)}
         hint={`over ${history.length} detection${history.length === 1 ? "" : "s"}`}
       />
     </div>
@@ -402,12 +412,12 @@ function MetricCard({
   value,
   hint,
   accent,
-}: {
+}: Readonly<{
   label: string;
   value: string;
   hint: string;
   accent?: boolean;
-}) {
+}>) {
   return (
     <div className="rounded-2xl bg-zinc-900 p-4">
       <div className="flex flex-col gap-1">
@@ -427,7 +437,7 @@ function MetricCard({
   );
 }
 
-function DetectionLog({ history }: { history: DetectionRecord[] }) {
+function DetectionLog({ history }: Readonly<{ history: DetectionRecord[] }>) {
   return (
     <div className="rounded-2xl bg-zinc-900 p-4">
       <div className="flex flex-col gap-3">
@@ -454,12 +464,12 @@ function DetectionLog({ history }: { history: DetectionRecord[] }) {
                   score {h.score.toFixed(3)}
                 </span>
                 <span className="text-zinc-400">
-                  {h.timeToWakeMs !== null
-                    ? `${Math.round(h.timeToWakeMs)} ms`
-                    : "no onset"}
+                  {h.timeToWakeMs === null
+                    ? "no onset"
+                    : `${Math.round(h.timeToWakeMs)} ms`}
                 </span>
                 <span className="ml-auto text-zinc-500">
-                  {new Date().toLocaleTimeString(undefined, {
+                  {new Date(h.firedAt).toLocaleTimeString(undefined, {
                     hour12: false,
                   })}
                 </span>
@@ -505,7 +515,7 @@ function SpecCard() {
   );
 }
 
-function SpecRow({ label, value }: { label: string; value: string }) {
+function SpecRow({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div className="flex items-baseline justify-between gap-3 rounded-lg bg-zinc-900/60 px-3 py-2">
       <span className="text-xs text-zinc-500">{label}</span>

@@ -8,7 +8,11 @@
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 
+// Absolute interpreter path — avoids resolving "bash" via $PATH (which could
+// point at an attacker-writable directory) and is present on macOS and CI Linux.
+const BASH_PATH = "/bin/bash";
+
 export default function setup(): void {
   const script = resolve(__dirname, "..", "scripts", "fetch-models.sh");
-  execFileSync("bash", [script], { stdio: "inherit" });
+  execFileSync(BASH_PATH, [script], { stdio: "inherit" });
 }
