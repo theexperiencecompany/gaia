@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bq7qiws9q</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-aryan-Projects-GAIA-gaia-onboarding-revamp/0958f514-4f49-4ab5-bba8-74305daf4acf/tasks/bq7qiws9q.output</output-file>
+<status>completed</status>
+<summary>Background command "Lint the web app" completed (exit code 0)</summary>
+</task-notification>
