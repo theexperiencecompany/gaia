@@ -64,8 +64,11 @@ git fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null || true
 # `...HEAD` diffs against the merge-base of the base ref and HEAD — the same set
 # of files GitHub shows as "Files changed" in the PR. --diff-filter=ACMR drops
 # deletions so we never hand a tool a path that no longer exists.
+# `|| true` on grep: a PR that changes zero matching files is a valid "skip"
+# case, not an error. Without it, grep's no-match exit 1 + `set -o pipefail`
+# would make this script exit 1 and fail the lane's `FILES=$(...)` step.
 git diff --name-only --diff-filter=ACMR "origin/${GITHUB_BASE_REF}...HEAD" \
-  | grep -E "$ext_regex" \
+  | { grep -E "$ext_regex" || true; } \
   | while IFS= read -r f; do
       [ -f "$f" ] && printf '%s\n' "$f"
     done
