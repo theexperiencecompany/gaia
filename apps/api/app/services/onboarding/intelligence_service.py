@@ -263,7 +263,6 @@ async def _social_then_holo(
     name: str,
     user_email: Optional[str],
     user_doc: dict,
-    profession: str,
     focus: str,
     triage: Optional[InboxTriage],
     writing_style: Optional[WritingStyleProfile],
@@ -279,7 +278,6 @@ async def _social_then_holo(
     await _run_holo_card(
         user_id,
         user_doc,
-        profession,
         focus,
         triage,
         writing_style,
@@ -443,7 +441,6 @@ async def process_onboarding_intelligence(user_id: str) -> None:
             name=name,
             user_email=user_email,
             user_doc=user_doc,
-            profession=profession,
             focus=focus,
             triage=triage,
             writing_style=writing_style,
@@ -969,7 +966,6 @@ async def _run_workflows(
 async def _run_holo_card(
     user_id: str,
     user_doc: dict,
-    profession: str,
     focus: str,
     triage: Optional[InboxTriage],
     writing_style: Optional[WritingStyleProfile],
@@ -1590,14 +1586,11 @@ async def _create_onboarding_workflows(
             error_type=type(e).__name__,
             fallback_used=True,
         )
-        return await _create_fallback_workflow(
-            user_id, profession, focus, user_timezone
-        )
+        return await _create_fallback_workflow(user_id, focus, user_timezone)
 
 
 async def _create_fallback_workflow(
     user_id: str,
-    profession: str,
     focus: str = "",
     user_timezone: str = "UTC",
 ) -> list[dict]:
