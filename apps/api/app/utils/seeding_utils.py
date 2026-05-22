@@ -3,7 +3,7 @@ from typing import Optional
 from uuid import uuid4
 
 from shared.py.wide_events import log
-from app.db.mongodb.collections import conversations_collection, goals_collection
+from app.db.mongodb.collections import conversations_collection
 from app.models.chat_models import (
     ConversationModel,
 )
@@ -11,143 +11,7 @@ from app.models.todo_models import Priority, SubTask, TodoModel
 from app.services.conversation_service import (
     create_conversation_service,
 )
-from app.services.todos.sync_service import create_goal_project_and_todo
 from app.services.todos.todo_service import TodoService
-
-
-async def seed_initial_goal(user_id: str) -> None:
-    """
-    Create a dummy goal with a full roadmap to showcase features.
-    """
-    log.set(operation="seed_initial_goal", user_id=user_id)
-    try:
-        roadmap_data = {
-            "nodes": [
-                {
-                    "id": "start",
-                    "type": "default",
-                    "data": {
-                        "label": "Welcome to Goals! 🎯",
-                        "description": "Goals help you break down big objectives into visual roadmaps. This sample shows you how!",
-                        "isComplete": True,
-                    },
-                    "position": {"x": 400, "y": 0},
-                },
-                {
-                    "id": "node1",
-                    "type": "default",
-                    "data": {
-                        "label": "Check Your Todos 📝",
-                        "description": "Look in your 'Goals' project! This goal automatically created a linked todo with subtasks for each node.",
-                        "isComplete": False,
-                    },
-                    "position": {"x": 100, "y": 150},
-                },
-                {
-                    "id": "node2",
-                    "type": "default",
-                    "data": {
-                        "label": "Try Two-Way Sync ⚡",
-                        "description": "Mark a subtask complete in your todo and watch this roadmap update automatically! Or mark this node complete and see the todo change.",
-                        "isComplete": False,
-                    },
-                    "position": {"x": 400, "y": 150},
-                },
-                {
-                    "id": "node3",
-                    "type": "default",
-                    "data": {
-                        "label": "Explore the Roadmap 🗺️",
-                        "description": "Drag nodes around, zoom in/out, and navigate this visual map of your goal's milestones.",
-                        "isComplete": False,
-                    },
-                    "position": {"x": 700, "y": 150},
-                },
-                {
-                    "id": "node4",
-                    "type": "default",
-                    "data": {
-                        "label": "AI Roadmap Generation ✨",
-                        "description": "Create a new goal and use AI to automatically generate a roadmap! Just enter your goal title.",
-                        "isComplete": False,
-                    },
-                    "position": {"x": 200, "y": 300},
-                },
-                {
-                    "id": "node5",
-                    "type": "default",
-                    "data": {
-                        "label": "Track Your Progress 📊",
-                        "description": "See completion percentages and track which milestones are done. Goals keep you focused on the big picture!",
-                        "isComplete": False,
-                    },
-                    "position": {"x": 600, "y": 300},
-                },
-                {
-                    "id": "end",
-                    "type": "default",
-                    "data": {
-                        "label": "Create Your First Real Goal! 🚀",
-                        "description": "Now that you know how goals work, create one that matters to you. Delete this sample goal when you're ready!",
-                        "isComplete": False,
-                    },
-                    "position": {"x": 400, "y": 450},
-                },
-            ],
-            "edges": [
-                {
-                    "id": "e-start-1",
-                    "source": "start",
-                    "target": "node1",
-                    "animated": True,
-                },
-                {
-                    "id": "e-start-2",
-                    "source": "start",
-                    "target": "node2",
-                    "animated": True,
-                },
-                {
-                    "id": "e-start-3",
-                    "source": "start",
-                    "target": "node3",
-                    "animated": True,
-                },
-                {"id": "e-1-4", "source": "node1", "target": "node4", "animated": True},
-                {"id": "e-2-5", "source": "node2", "target": "node5", "animated": True},
-                {"id": "e-3-5", "source": "node3", "target": "node5", "animated": True},
-                {"id": "e-4-end", "source": "node4", "target": "end", "animated": True},
-                {"id": "e-5-end", "source": "node5", "target": "end", "animated": True},
-            ],
-        }
-
-        goal_data = {
-            "title": "Explore Gaia's Goal Tracking",
-            "description": "A comprehensive guide to help you discover all the powerful features of goal tracking in Gaia. Complete the roadmap to learn everything!",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "user_id": user_id,
-            "roadmap": roadmap_data,
-        }
-
-        result = await goals_collection.insert_one(goal_data)
-
-        due_date = datetime.now(timezone.utc)
-
-        await create_goal_project_and_todo(
-            goal_id=str(result.inserted_id),
-            goal_title="This is a todo linked to your Goals roadmap!",
-            roadmap_data=roadmap_data,
-            user_id=user_id,
-            labels=["onboarding"],
-            priority=Priority.MEDIUM,
-            due_date=due_date,
-            due_date_timezone="UTC",
-        )
-
-        log.info(f"Seeded initial goal for user {user_id}")
-
-    except Exception as e:
-        log.error(f"Failed to seed initial goal for user {user_id}: {e}")
 
 
 async def seed_onboarding_todo(user_id: str) -> None:

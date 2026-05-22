@@ -19,24 +19,6 @@ from app.models.user_models import BioStatus
 HOUSES = ["frostpeak", "greenvale", "mistgrove", "bluehaven"]
 
 
-def _extract_text_from_llm_response(content: Any) -> str:
-    """Normalize LangChain content (str or list of content-block dicts) to a string."""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for block in content:
-            if isinstance(block, dict):
-                text = block.get("text") or block.get("content") or ""
-                if text:
-                    parts.append(str(text))
-            elif isinstance(block, str):
-                parts.append(block)
-        if parts:
-            return " ".join(parts)
-    return str(content)
-
-
 def assign_random_house() -> str:
     """
     Randomly select a house for the user.

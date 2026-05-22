@@ -1,6 +1,6 @@
 """Redis-backed TTL cache for onboarding inbox scans, keyed by (user_id, fmt)."""
 
-from app.db.redis import delete_cache, get_cache, set_cache
+from app.db.redis import get_cache, set_cache
 
 _TTL_SECONDS = 300
 
@@ -17,7 +17,3 @@ async def put(user_id: str, fmt: str, emails: list[dict]) -> None:
     if not emails:
         return
     await set_cache(_key(user_id, fmt), emails, ttl=_TTL_SECONDS)
-
-
-async def invalidate(user_id: str) -> None:
-    await delete_cache(f"onboarding:inbox_scan:{user_id}:*")

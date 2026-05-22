@@ -2,12 +2,11 @@
 
 import random
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.models.memory_models import MemoryEntry
 from app.utils.profile_card import (
     HOUSES,
     assign_random_house,
@@ -20,16 +19,6 @@ from app.utils.profile_card import (
 # ---------------------------------------------------------------------------
 # Helper factories
 # ---------------------------------------------------------------------------
-
-
-def _make_memory(content: str) -> MemoryEntry:
-    """Create a minimal MemoryEntry for testing."""
-    return MemoryEntry(content=content)
-
-
-def _make_memories(contents: List[str]) -> List[MemoryEntry]:
-    """Create a list of MemoryEntry objects from content strings."""
-    return [_make_memory(c) for c in contents]
 
 
 def _make_user(
