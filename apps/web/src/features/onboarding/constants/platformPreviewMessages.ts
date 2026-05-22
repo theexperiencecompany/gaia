@@ -10,21 +10,18 @@
  */
 
 import type {
-  ChatMessageItem,
-  ChatPlatform,
-} from "@/features/landing/components/iphone/ChatDemo";
+  PlatformPreviewPlatform,
+  PlatformScript,
+  ProfessionArchetype,
+  UserIdentity,
+} from "./platformPreviewMessages.types";
 
-export type PlatformPreviewPlatform = Extract<
-  ChatPlatform,
-  "telegram" | "whatsapp" | "slack" | "discord"
->;
-
-export type ProfessionArchetype =
-  | "builder"
-  | "operator"
-  | "founder"
-  | "scholar"
-  | "default";
+export type {
+  PlatformPreviewPlatform,
+  PlatformScript,
+  ProfessionArchetype,
+  UserIdentity,
+} from "./platformPreviewMessages.types";
 
 const PROFESSION_TO_ARCHETYPE: Record<string, ProfessionArchetype> = {
   engineer: "builder",
@@ -58,12 +55,6 @@ export function getArchetype(
 ): ProfessionArchetype {
   if (!profession) return "default";
   return PROFESSION_TO_ARCHETYPE[profession.toLowerCase()] ?? "default";
-}
-
-export interface PlatformScript {
-  title: string;
-  subtitle?: string;
-  messages: ChatMessageItem[];
 }
 
 type ArchetypeScripts = Record<PlatformPreviewPlatform, PlatformScript>;
@@ -697,11 +688,6 @@ const ARCHETYPE_SCRIPTS: Record<ProfessionArchetype, ArchetypeScripts> = {
   scholar: SCHOLAR,
   default: DEFAULT_SCRIPTS,
 };
-
-export interface UserIdentity {
-  name: string | undefined;
-  avatar: string | undefined;
-}
 
 export function getPlatformScript(
   profession: string | undefined,
