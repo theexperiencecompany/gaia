@@ -1292,9 +1292,7 @@ class MCPClient:
             user_integrations = await get_user_connected_integrations(self.user_id)
         except Exception as e:
             log.warning(
-                "Failed to load user integrations while matching server_url %s: %s",
-                server_url,
-                e,
+                f"Failed to load user integrations while matching server_url {server_url}: {e}",
             )
             return None
 

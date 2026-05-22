@@ -311,9 +311,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     raise
                 except Exception:
                     log.exception(
-                        "Subagent tool invocation failed for tool '{}' (tool_call_id={})",
-                        name,
-                        tc_id,
+                        f"Subagent tool invocation failed for tool '{name}' (tool_call_id={tc_id})",
                     )
                     return ToolMessage(
                         content="Tool error: internal failure while executing tool.",

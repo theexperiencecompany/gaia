@@ -148,10 +148,10 @@ def extract_type_from_field(field_info: dict) -> tuple[Any, Any, bool]:
         python_type = Literal[tuple(enum_values)]  # type: ignore[valid-type]
         return python_type, default_val, is_optional
 
+    json_type: str = "string"
     any_of = field_info.get("anyOf", [])
     if any_of:
         is_optional = True
-        json_type = "string"
         for option in any_of:
             if isinstance(option, dict) and option.get("type") != "null":
                 json_type = option.get("type", "string")
@@ -161,10 +161,12 @@ def extract_type_from_field(field_info: dict) -> tuple[Any, Any, bool]:
                     return python_type, default_val, is_optional
                 break
     else:
-        json_type = field_info.get("type", "string")
-        if isinstance(json_type, list):
-            is_optional = "null" in json_type
-            json_type = next((t for t in json_type if t != "null"), "string")
+        type_value = field_info.get("type", "string")
+        if isinstance(type_value, list):
+            is_optional = "null" in type_value
+            json_type = next((t for t in type_value if t != "null"), "string")
+        else:
+            json_type = type_value
 
     type_map: dict[str, type] = {
         "string": str,

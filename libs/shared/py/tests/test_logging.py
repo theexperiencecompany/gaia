@@ -6,9 +6,13 @@ import logging
 from pathlib import Path
 import sys
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+if TYPE_CHECKING:
+    from loguru import Message
 
 import shared.py.logging as logging_mod
 from shared.py.logging import (
@@ -77,7 +81,10 @@ class TestConfigureLoguru:
 
     def test_configures_extra_with_default_logger_name(self, mock_logger: MagicMock):
         configure_loguru()
-        mock_logger.configure.assert_called_once_with(extra={"logger_name": "APP"})
+        mock_logger.configure.assert_called_once_with(
+            extra={"logger_name": "APP", "worker": "main"},
+            patcher=logging_mod._worker_name_patcher,
+        )
 
     def test_registers_custom_levels(self, mock_logger: MagicMock):
         configure_loguru()
@@ -167,7 +174,7 @@ class TestConfigureFileLogging:
         filter_fn = perf_call.kwargs["filter"]
         # Filter should pass when 'performance' is in extra
         record_with = {"extra": {"performance": True}}
-        record_without = {"extra": {}}
+        record_without: dict[str, dict[str, bool]] = {"extra": {}}
         assert filter_fn(record_with) is True
         assert filter_fn(record_without) is False
 
@@ -296,7 +303,7 @@ class TestJsonStdoutSink:
 
     def test_writes_to_stdout(self):
         record = TestBuildJsonEntry._make_record()
-        message = SimpleNamespace(record=record)
+        message = cast("Message", SimpleNamespace(record=record))
 
         with patch.object(sys, "stdout") as mock_stdout:
             mock_stdout.write = MagicMock()
@@ -320,7 +327,7 @@ class TestJsonFileSinkFactory:
     def test_creates_file_and_writes(self, tmp_path: Path):
         sink = _json_file_sink_factory(tmp_path)
         record = TestBuildJsonEntry._make_record()
-        message = SimpleNamespace(record=record)
+        message = cast("Message", SimpleNamespace(record=record))
 
         sink(message)
 
@@ -333,7 +340,7 @@ class TestJsonFileSinkFactory:
     def test_appends_to_same_file(self, tmp_path: Path):
         sink = _json_file_sink_factory(tmp_path)
         record = TestBuildJsonEntry._make_record()
-        message = SimpleNamespace(record=record)
+        message = cast("Message", SimpleNamespace(record=record))
 
         sink(message)
         sink(message)

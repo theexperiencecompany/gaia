@@ -62,7 +62,7 @@ class ApiCallActionHandler(ActionHandler):
             notification_id=notification.id,
             user_id=user_id,
         )
-        log.info(api_config)
+        log.info("Resolved API call action config", api_config=api_config)
 
         if api_config is None:
             log.error(

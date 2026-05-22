@@ -122,14 +122,13 @@ def _build_parameters(
         for name, value in headers.items():
             params.append({"name": name, "type": "header", "value": str(value)})
     if query:
-        for name, value in query.items():
-            if value is None:
-                continue
-            if isinstance(value, (list, tuple)):
-                for item in value:
+        for name, query_value in query.items():
+            narrowed: object = query_value
+            if isinstance(narrowed, (list, tuple)):
+                for item in narrowed:
                     params.append({"name": name, "type": "query", "value": str(item)})
-            else:
-                params.append({"name": name, "type": "query", "value": str(value)})
+            elif narrowed is not None:
+                params.append({"name": name, "type": "query", "value": str(narrowed)})
     return params
 
 

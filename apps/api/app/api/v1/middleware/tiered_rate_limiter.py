@@ -305,7 +305,7 @@ def tiered_rate_limit(feature_key: str):
             return result
 
         # Store metadata for usage tracking
-        wrapper._rate_limit_metadata = {"feature_key": feature_key}
+        wrapper._rate_limit_metadata = {"feature_key": feature_key}  # type: ignore[attr-defined]
 
         return wrapper
 
