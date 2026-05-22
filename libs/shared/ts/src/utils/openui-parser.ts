@@ -120,7 +120,7 @@ export function splitByBreaksPreservingFences(content: string): string[] {
       .filter((p) => p.length > 0);
   }
 
-  const fenceRanges: Array<[number, number]> = [];
+  const fenceRanges: [number, number][] = [];
   let search = 0;
   while (search < content.length) {
     const openIdx = content.indexOf(OPENUI_OPEN, search);

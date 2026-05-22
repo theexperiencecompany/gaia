@@ -24,6 +24,7 @@ import {
 import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
 import type {
   ChatBubbleBotProps,
+  ChatBubbleUserProps,
   SetImageDataType,
 } from "@/types/features/chatBubbleTypes";
 import type { MessageType } from "@/types/features/convoTypes";
@@ -202,7 +203,8 @@ export default function ChatRenderer({
       {isWelcomeConversation && <WelcomeChat />}
       {messagesWithDeduplicatedToolCalls?.map(
         (message: MessageType, index: number) => {
-          let messageProps = null;
+          let messageProps: ChatBubbleBotProps | ChatBubbleUserProps | null =
+            null;
 
           if (message.type === "bot")
             messageProps = getMessageProps(message, "bot", messagePropsOptions);

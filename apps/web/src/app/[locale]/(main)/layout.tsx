@@ -10,7 +10,6 @@ import RightSidebar from "@/components/layout/sidebar/RightSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
-import { useUser } from "@/features/auth/hooks/useUser";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import ProvidersLayout from "@/layouts/ProvidersLayout";
@@ -55,7 +54,6 @@ const HeaderSidebarTrigger = () => {
 };
 
 export default function MainLayout({ children }: { children: ReactNode }) {
-  const user = useUser();
   const { isOpen, isMobileOpen, setOpen, setMobileOpen } = useUIStoreSidebar();
   const {
     content: rightSidebarContent,
