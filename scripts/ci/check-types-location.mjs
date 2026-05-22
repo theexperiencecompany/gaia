@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { explicitFileList } from "./lib/explicit-file-list.mjs";
 
 function isTypeFile(path) {
   if (path.endsWith(".d.ts")) return true;
@@ -50,18 +51,6 @@ function inScope(path) {
     path.startsWith("libs/") ||
     path.startsWith("packages/");
   return underTrackedRoot && (path.endsWith(".ts") || path.endsWith(".tsx"));
-}
-
-// Explicit file list (CI diff-scoping): newline-separated CHANGED_FILES env
-// var OR non-flag argv entries. When provided, only those in-scope files are
-// checked. Otherwise fall back to a full `git ls-files` repo scan.
-function explicitFileList() {
-  const fromEnv = (process.env.CHANGED_FILES ?? "")
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const fromArgv = process.argv.slice(2).filter((a) => !a.startsWith("-"));
-  return [...fromEnv, ...fromArgv];
 }
 
 function getFiles() {

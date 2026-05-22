@@ -35,12 +35,12 @@ set -euo pipefail
 FULL_SENTINEL="__FULL__"
 
 # Push / non-PR event: no base ref to diff against → signal full scan.
-if [ -z "${GITHUB_BASE_REF:-}" ]; then
+if [[ -z "${GITHUB_BASE_REF:-}" ]]; then
   printf '%s\n' "$FULL_SENTINEL"
   exit 0
 fi
 
-if [ "$#" -eq 0 ]; then
+if [[ "$#" -eq 0 ]]; then
   echo "changed-files.sh: at least one extension argument is required" >&2
   exit 2
 fi
@@ -48,7 +48,7 @@ fi
 # Build an alternation of the requested extensions: ts|tsx|js → \.(ts|tsx|js)$
 ext_alt=""
 for ext in "$@"; do
-  if [ -z "$ext_alt" ]; then
+  if [[ -z "$ext_alt" ]]; then
     ext_alt="$ext"
   else
     ext_alt="$ext_alt|$ext"
@@ -70,5 +70,5 @@ git fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null || true
 git diff --name-only --diff-filter=ACMR "origin/${GITHUB_BASE_REF}...HEAD" \
   | { grep -E "$ext_regex" || true; } \
   | while IFS= read -r f; do
-      [ -f "$f" ] && printf '%s\n' "$f"
+      [[ -f "$f" ]] && printf '%s\n' "$f"
     done
