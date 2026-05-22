@@ -1,0 +1,23 @@
+{
+  "tsConfig": "apps/web/tsconfig.json",
+  "fileExtensions": ["ts", "tsx", "js", "jsx"],
+  "detectiveOptions": {
+    "ts": { "skipTypeImports": true },
+    "tsx": { "skipTypeImports": true }
+  },
+  "excludeRegExp": [
+    "node_modules",
+    "\\.next",
+    "\\.nx",
+    "\\.turbo",
+    "dist",
+    "out",
+    "build",
+    "coverage",
+    "\\.test\\.",
+    "\\.spec\\.",
+    "__tests__",
+    "\\.d\\.ts$",
+    "\\.generated\\."
+  ]
+}

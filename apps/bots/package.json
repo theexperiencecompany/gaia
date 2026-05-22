@@ -4,14 +4,14 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@gaia/shared": "workspace:*",
     "@gaia/bot-discord": "workspace:*",
     "@gaia/bot-slack": "workspace:*",
     "@gaia/bot-telegram": "workspace:*",
-    "@gaia/bot-whatsapp": "workspace:*"
+    "@gaia/bot-whatsapp": "workspace:*",
+    "@gaia/shared": "workspace:*"
   },
   "devDependencies": {
-    "vite": "^7.1.12",
+    "vite": "^7.3.2",
     "vitest": "^4.0.15"
   }
 }

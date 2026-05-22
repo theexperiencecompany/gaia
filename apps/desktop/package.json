@@ -1,28 +1,22 @@
 {
   "name": "@gaia/desktop",
-  "version": "0.3.0",
   "description": "GAIA Desktop - Your Personal AI Assistant",
-  "main": "./out/main/index.mjs",
-  "author": {
-    "name": "The Experience Company",
-    "email": "support@heygaia.io"
-  },
-  "homepage": "https://heygaia.io",
-  "license": "UNLICENSED",
+  "version": "0.3.0",
   "private": true,
+  "main": "./out/main/index.mjs",
   "scripts": {
-    "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "start": "electron-vite preview",
-    "pack": "pnpm build && electron-builder --dir",
+    "clean": "rm -rf out dist release node_modules",
+    "dev": "electron-vite dev",
     "dist": "pnpm build && electron-builder --publish never",
+    "dist:linux": "pnpm build && electron-builder --linux --publish never",
     "dist:mac": "pnpm build && electron-builder --mac --publish never",
     "dist:win": "pnpm build && electron-builder --win --publish never",
-    "dist:linux": "pnpm build && electron-builder --linux --publish never",
-    "type-check": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "clean": "rm -rf out dist release node_modules"
+    "pack": "pnpm build && electron-builder --dir",
+    "start": "electron-vite preview",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "electron-updater": "^6.3.9",
@@ -30,14 +24,20 @@
     "wait-on": "^8.0.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.3.7",
+    "@biomejs/biome": "^2.3.7",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
-    "@types/node": "^22.10.2",
+    "@types/node": "^24.3.0",
     "electron": "^39.8.5",
     "electron-builder": "^25.1.8",
-    "electron-vite": "^3.0.0",
-    "typescript": "^5.7.2",
-    "vite": "^6.4.2"
-  }
+    "electron-vite": "^5.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.2"
+  },
+  "author": {
+    "name": "The Experience Company",
+    "email": "support@heygaia.io"
+  },
+  "homepage": "https://heygaia.io",
+  "license": "UNLICENSED"
 }
