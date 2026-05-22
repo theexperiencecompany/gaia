@@ -1,0 +1,60 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "5b2e72fafa51",
+  "session_id": "35995b25-7178-4b06-850a-962c94113ee5",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-22T15:13:59.594228Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "apps/api/app/services/onboarding/intelligence_job.py",
+    "apps/api/app/services/onboarding/intelligence_service.py",
+    "apps/api/app/services/onboarding/onboarding_service.py",
+    "apps/api/app/workers/tasks/onboarding_tasks.py",
+    "apps/web/src/features/auth/constants.ts",
+    "apps/web/src/features/auth/hooks/useFetchUser.ts",
+    "apps/web/src/features/auth/hooks/useOnboardingGuard.ts",
+    "apps/web/src/features/onboarding/components/OnboardingCTAButton.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "ccef4faf5642",
+  "token_usage": {
+    "input_tokens": 33345,
+    "cache_creation_tokens": 707528,
+    "cache_read_tokens": 11047053,
+    "output_tokens": 122064,
+    "api_call_count": 60
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-22T15:13:59.56946Z",
+    "agent_lines": 104,
+    "agent_removed": 37,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 104,
+    "total_lines_changed": 141,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

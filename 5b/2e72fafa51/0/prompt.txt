@@ -1,0 +1,9 @@
+/review-changes
+
+---
+
+i want you to explore each of these issues. tell me are they actual issues with actual consequences or just bullshjit. and tell me each fix. and explain in aneasy manner
+
+---
+
+spawn an agent to review the changes. have we broken anything
