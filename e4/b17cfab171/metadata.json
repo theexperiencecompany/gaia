@@ -3,7 +3,7 @@
   "checkpoint_id": "e4b17cfab171",
   "strategy": "manual-commit",
   "branch": "onboarding-revamp",
-  "checkpoints_count": 9,
+  "checkpoints_count": 10,
   "files_touched": [
     "apps/web/src/config/openui/components/DocumentEditor.tsx",
     "apps/web/src/features/bots/components/BotsPage.tsx",
@@ -36,13 +36,19 @@
       "transcript": "/e4/b17cfab171/3/full.jsonl",
       "content_hash": "/e4/b17cfab171/3/content_hash.txt",
       "prompt": "/e4/b17cfab171/3/prompt.txt"
+    },
+    {
+      "metadata": "/e4/b17cfab171/4/metadata.json",
+      "transcript": "/e4/b17cfab171/4/full.jsonl",
+      "content_hash": "/e4/b17cfab171/4/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
-    "input_tokens": 7090,
-    "cache_creation_tokens": 666214,
-    "cache_read_tokens": 13555280,
-    "output_tokens": 132136,
-    "api_call_count": 123
+    "input_tokens": 7122,
+    "cache_creation_tokens": 718644,
+    "cache_read_tokens": 14249633,
+    "output_tokens": 138009,
+    "api_call_count": 139
   }
 }
