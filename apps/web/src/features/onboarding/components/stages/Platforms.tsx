@@ -61,7 +61,6 @@ export function Platforms({ state, dispatch }: PlatformsProps) {
         onConnect={connect}
         onSkip={skip}
         onHoverPlatform={setHoveredPlatform}
-        connectedPlatform={state.connectedPlatform}
         hideSkip
       />
     </m.div>

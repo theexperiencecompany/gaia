@@ -7,6 +7,7 @@
 
 "use client";
 
+import { CircleArrowUp02Icon } from "@icons";
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
@@ -42,8 +43,9 @@ export function Workflows({ state }: WorkflowsProps) {
           <OnboardingWorkflowCards workflows={workflows} />
         </div>
         {!workflowsConfirmed && (
-          <p className="mt-2 ml-10.75 text-xs text-zinc-600">
-            Here's what I set up to get you started:
+          <p className="mt-2 ml-10.75 flex items-center gap-1 text-xs text-zinc-300">
+            Here's what I set up to get you started
+            <CircleArrowUp02Icon width={14} height={14} />
           </p>
         )}
       </ChatBubbleBot>

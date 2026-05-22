@@ -1,106 +1,30 @@
 /**
- * Shared platform-connect logic. Hits the platform-link endpoint, opens an
- * OAuth popup, watches for a postMessage from it (or for the popup to close),
- * and dispatches `platformConnected` when the flow finishes. Returns a stable
- * `connect` callback plus a `skip` shortcut so both the active platforms
- * stage and the post-ack accordion can share one wiring.
+ * Shared platform-connect logic for onboarding. Each platform button just
+ * opens that platform's public bot link in a new tab (Telegram/WhatsApp deep
+ * link, Slack/Discord install page) and dispatches `platformConnected` so the
+ * stage advances. Both the active platforms stage and the post-ack accordion
+ * share this wiring via the returned `connect`/`skip` callbacks.
  */
 
 "use client";
 
-import { type Dispatch, useCallback, useEffect, useRef } from "react";
-import { apiService } from "@/lib/api/service";
-import { toast } from "@/lib/toast";
+import { type Dispatch, useCallback } from "react";
+import { BOT_LINKS, type BotPlatform } from "@/features/bots/constants";
 import type { Action } from "../state/types";
 
 interface UseConnectPlatformReturn {
-  connect: (platform: string) => Promise<void>;
+  connect: (platform: string) => void;
   skip: () => void;
 }
 
 export function useConnectPlatform(
   dispatch: Dispatch<Action>,
 ): UseConnectPlatformReturn {
-  const popupCleanupRef = useRef<(() => void) | null>(null);
-
   const connect = useCallback(
-    async (platform: string) => {
-      popupCleanupRef.current?.();
-      popupCleanupRef.current = null;
-
-      const finish = () => {
-        dispatch({ type: "platformConnected", platform });
-      };
-
-      try {
-        const response = await apiService.get<{
-          auth_url: string | null;
-          auth_type: string;
-          instructions: string | null;
-          action_link: string | null;
-        }>(`/platform-links/${platform.toLowerCase()}/connect`, {
-          silent: true,
-        });
-
-        if (response.auth_url) {
-          const width = 600;
-          const height = 700;
-          const left = window.screenX + (window.innerWidth - width) / 2;
-          const top = window.screenY + (window.innerHeight - height) / 2;
-
-          const popup = window.open(
-            response.auth_url,
-            `Connect ${platform}`,
-            `width=${width},height=${height},left=${left},top=${top}`,
-          );
-
-          if (!popup) {
-            finish();
-            return;
-          }
-
-          let cancelled = false;
-          let rafId = 0;
-          const onMessage = (event: MessageEvent) => {
-            if (event.source === popup) {
-              cleanup();
-              finish();
-            }
-          };
-          const cleanup = () => {
-            cancelled = true;
-            if (rafId) cancelAnimationFrame(rafId);
-            window.removeEventListener("message", onMessage);
-            popupCleanupRef.current = null;
-          };
-          const tick = () => {
-            if (cancelled) return;
-            if (popup.closed) {
-              cleanup();
-              finish();
-              return;
-            }
-            rafId = requestAnimationFrame(tick);
-          };
-          window.addEventListener("message", onMessage);
-          rafId = requestAnimationFrame(tick);
-          popupCleanupRef.current = cleanup;
-        } else if (response.action_link) {
-          window.open(response.action_link, "_blank");
-          finish();
-        } else if (response.instructions) {
-          toast.info(response.instructions);
-          finish();
-        } else {
-          finish();
-        }
-      } catch {
-        // Connect failed (e.g. the platform's OAuth isn't configured — the
-        // endpoint returns 501). Surface a gentle message and leave the
-        // platform unconnected rather than falsely marking it connected.
-        const label = platform.charAt(0).toUpperCase() + platform.slice(1);
-        toast.error(`${label} isn't available to connect right now.`);
-      }
+    (platform: string) => {
+      const url = BOT_LINKS[platform as BotPlatform];
+      if (url) window.open(url, "_blank");
+      dispatch({ type: "platformConnected", platform });
     },
     [dispatch],
   );
@@ -108,13 +32,6 @@ export function useConnectPlatform(
   const skip = useCallback(() => {
     dispatch({ type: "skipPlatforms" });
   }, [dispatch]);
-
-  useEffect(() => {
-    return () => {
-      popupCleanupRef.current?.();
-      popupCleanupRef.current = null;
-    };
-  }, []);
 
   return { connect, skip };
 }

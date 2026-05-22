@@ -9,6 +9,7 @@
 "use client";
 
 import {
+  AiBrain01Icon,
   Brain01Icon,
   CheckListIcon,
   CheckmarkCircle02Icon,
@@ -56,7 +57,7 @@ const GMAIL_STEPS: ProcessingStep[] = [
     progressFrom: ["inbox_scanning"],
   },
   {
-    icon: Brain01Icon,
+    icon: AiBrain01Icon,
     stage: "writing_style_ready",
     activeText: STEP_LEARNING_STYLE,
     progressFrom: ["writing_style_progress"],

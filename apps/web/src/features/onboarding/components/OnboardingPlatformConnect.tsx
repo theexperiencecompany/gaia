@@ -1,7 +1,8 @@
 /**
- * Telegram / WhatsApp / Discord platform-link picker rendered by the
- * `platforms` stage. Once `connectedPlatform` is set, swaps to a
- * confirmation row instead of the buttons.
+ * Telegram / WhatsApp / Slack / Discord platform-link picker. Each button
+ * opens that platform's bot link in a new tab. Rendered both by the active
+ * `platforms` stage and by the completed-stages accordion, so the buttons stay
+ * available for connecting additional platforms after the first.
  *
  * Each button emits `onHoverPlatform` so the parent can drive a
  * preview surface above (`OnboardingPlatformPreview`).
@@ -10,7 +11,6 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { CheckmarkCircle02Icon } from "@icons";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import type { FC } from "react";
@@ -44,7 +44,6 @@ interface OnboardingPlatformConnectProps {
   onConnect: (platform: string) => void;
   onSkip: () => void;
   onHoverPlatform: (platform: PlatformPreviewPlatform | null) => void;
-  connectedPlatform: string | null;
   hideSkip?: boolean;
   /** Drop the `ml-10.75` indent — used when rendered inside an accordion
    *  (where the parent already handles padding). */
@@ -55,30 +54,9 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
   onConnect,
   onSkip,
   onHoverPlatform,
-  connectedPlatform,
   hideSkip = false,
   embedded = false,
 }) => {
-  if (connectedPlatform) {
-    return (
-      <m.div
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className={
-          embedded
-            ? "flex items-center gap-2"
-            : "flex items-center gap-2 ml-10.75"
-        }
-      >
-        <CheckmarkCircle02Icon className="size-4 text-emerald-500" />
-        <span className="text-sm text-zinc-400">
-          Connected. Your briefing will arrive on {connectedPlatform}.
-        </span>
-      </m.div>
-    );
-  }
-
   return (
     <div
       className={

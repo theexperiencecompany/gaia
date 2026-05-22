@@ -138,6 +138,17 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
     },
   });
 
+  // tiptap only applies `content` at editor creation, so a card that mounts
+  // mid-stream freezes on the partial body. Re-apply when the streamed body
+  // grows; tracking the last applied value keeps user edits intact once
+  // streaming has settled (the `body` prop only changes while streaming).
+  const lastBodyRef = React.useRef(body);
+  React.useEffect(() => {
+    if (!editor || body === lastBodyRef.current) return;
+    lastBodyRef.current = body;
+    editor.commands.setContent(body, false);
+  }, [editor, body]);
+
   const flashCopied = () => {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);

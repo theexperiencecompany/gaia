@@ -140,7 +140,6 @@ export function CompletedStagesTimeline({
             onConnect={connect}
             onSkip={skip}
             onHoverPlatform={() => {}}
-            connectedPlatform={state.connectedPlatform}
             hideSkip
             embedded
           />

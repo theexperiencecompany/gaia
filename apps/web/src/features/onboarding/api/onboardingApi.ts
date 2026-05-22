@@ -35,13 +35,6 @@ export interface CompleteOnboardingResponse {
   user?: UserInfo;
 }
 
-export interface PlatformConnectInfo {
-  auth_url: string | null;
-  auth_type: string;
-  instructions: string | null;
-  action_link: string | null;
-}
-
 /**
  * POST /onboarding — kicks off the personalization pipeline server-side.
  * Returns the updated user on success. A 409 means the server already
@@ -83,19 +76,6 @@ export function getClarifyQuestions(args: {
   return apiService.post<ClarifyQuestionsResponse>(
     "/onboarding/clarify-questions",
     args,
-    { silent: true },
-  );
-}
-
-/**
- * GET /platform-links/{platform}/connect — returns either an OAuth URL to
- * pop open or an external action link (e.g. Telegram bot deep-link).
- */
-export function getPlatformConnect(
-  platform: string,
-): Promise<PlatformConnectInfo> {
-  return apiService.get<PlatformConnectInfo>(
-    `/platform-links/${platform.toLowerCase()}/connect`,
     { silent: true },
   );
 }

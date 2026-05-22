@@ -376,7 +376,6 @@ function PlatformConnectDemo() {
           onConnect={(p) => setConnected(p)}
           onSkip={() => setConnected(null)}
           onHoverPlatform={setHoveredPlatform}
-          connectedPlatform={connected}
         />
       </div>
     </DemoSection>
