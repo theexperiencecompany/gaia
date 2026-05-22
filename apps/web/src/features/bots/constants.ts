@@ -2,8 +2,6 @@ import { siteConfig } from "@/lib/seo";
 
 export type BotPlatform = "discord" | "telegram" | "slack" | "whatsapp";
 
-/** Public bot link per platform — the primary "open the bot" URL. Single
- *  source of truth shared by the bots page and the onboarding connect flow. */
 export const BOT_LINKS: Record<BotPlatform, string> = {
   discord: `${siteConfig.url}/discord-bot`,
   telegram: "https://t.me/heygaia_bot",

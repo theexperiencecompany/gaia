@@ -130,12 +130,7 @@ def get_allowed_origins() -> list[str]:
 
 
 def get_allowed_origin_regex() -> str | None:
-    """Regex of additional allowed origins.
-
-    In development we allow any portless tunnel (``https://<slug>.localhost:<port>``)
-    so dev URLs like ``https://voice-demo.localhost:1355`` reach the API without
-    hardcoding each subdomain.
-    """
+    """Regex of additional allowed origins (dev-only *.localhost tunnels)."""
     if settings.ENV == "production":
         return None
     return r"^https://[a-z0-9-]+\.localhost(?::\d+)?$"

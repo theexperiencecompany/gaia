@@ -39,7 +39,6 @@ function OnboardingUserBubble({ text }: { text: string }) {
 interface OnboardingMessagesProps {
   messages: Message[];
   messagesEndRef?: React.RefObject<HTMLDivElement | null>;
-  /** Rendered inside the last bot bubble — typically the processing checklist. */
   processingChecklist?: ReactNode;
 }
 

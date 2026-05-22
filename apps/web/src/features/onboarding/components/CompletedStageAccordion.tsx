@@ -15,13 +15,9 @@ import { type ReactNode, useState } from "react";
 import { EASE_OUT_QUART } from "../constants/motion";
 
 interface CompletedStageAccordionProps {
-  /** Stable key for the AccordionItem — must be unique within the timeline. */
   itemKey: string;
-  /** ARIA label / collapsed title text. */
   title: string;
-  /** Expandable contents — rendered inside `px-3 pt-2 pb-3`. */
   children: ReactNode;
-  /** Optional motion delay so stacked accordions cascade in. */
   delay?: number;
 }
 

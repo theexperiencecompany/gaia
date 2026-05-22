@@ -37,15 +37,9 @@ const SLOW_NOTICE_MS = 30_000;
 
 interface ProcessingStep {
   icon: FC<IconProps>;
-  /** The completion stage that flips this step from active → done. */
   stage: OnboardingStage;
   activeText: string;
-  /**
-   * Stages whose `status_text` updates belong to *this* step. Listed in
-   * priority order — the first slot with a value is shown as the live
-   * sub-message under the step, so a never-cleared earlier stage cannot
-   * outrank a fresher later stage in the same group.
-   */
+  // Stages contributing this step's live sub-message, in priority order.
   progressFrom: readonly OnboardingStage[];
 }
 
@@ -82,9 +76,7 @@ const GMAIL_STEPS: ProcessingStep[] = [
   },
 ];
 
-// Ordered to match the actual backend emission order in the no-Gmail path:
-// focus-based todos fire first (fast LLM call), then workflows, then the
-// holo card (phrase + bio + RAG + persist, slowest).
+// Order must match backend emit order for the no-Gmail path: todos, workflows, holo.
 const NO_GMAIL_STEPS: ProcessingStep[] = [
   {
     icon: CheckListIcon,
@@ -108,20 +100,12 @@ const NO_GMAIL_STEPS: ProcessingStep[] = [
 
 interface OnboardingProcessingProps {
   hasGmail: boolean;
-  /** Stages that have received a completion event from the backend */
   completedStages?: Set<OnboardingStage>;
-  /**
-   * Backend-emitted `status_text` keyed by the stage that emitted it.
-   * Each step displays only the values for its own `progressFrom` stages,
-   * so a late progress event from one stage cannot leak into another's
-   * label.
-   */
   progressByStage?: Partial<Record<OnboardingStage, string>>;
 }
 
-// Stages whose `inbox_scanning` step is genuinely complete. Writing-style
-// uses an independent 50-sent-email fetch so it firing tells us nothing
-// about the 500-email inbox scan — exclude it.
+// Stages that prove the inbox scan finished. writing_style_ready excluded:
+// it uses a separate 50-email fetch, not the full inbox scan.
 const STAGES_AFTER_INBOX_SCAN: OnboardingStage[] = [
   "triage_ready",
   "social_profiles_ready",
@@ -150,18 +134,11 @@ function OnboardingProcessingImpl({
   const steps = hasGmail ? GMAIL_STEPS : NO_GMAIL_STEPS;
   const [showSlowNotice, setShowSlowNotice] = useState(false);
 
-  // Show "taking longer" notice after 30s
   useEffect(() => {
     const timer = setTimeout(() => setShowSlowNotice(true), SLOW_NOTICE_MS);
     return () => clearTimeout(timer);
   }, []);
 
-  // Per-step completion: each step is marked done only when ITS own stage
-  // has fired. `inbox_scanning` is a repeating stage that never emits its
-  // own completion — it is considered done only when a stage that genuinely
-  // depends on the inbox fetch has fired (NOT writing_style_ready, which
-  // uses a separate 50-sent-email fetch and finishes long before the 500-
-  // email inbox scan).
   const isStepDone = (i: number): boolean => {
     const step = steps[i];
     if (step.stage === "inbox_scanning") {
@@ -189,9 +166,6 @@ function OnboardingProcessingImpl({
           const Icon = step.icon;
           const isDone = isStepDone(i);
           const isActive = i === activeStepIndex && !isDone;
-          // Each step reads only the status_text emitted by stages in its
-          // own `progressFrom` group. A late event from another stage can
-          // no longer bleed into the wrong step's label.
           const liveMessage = isActive
             ? pickProgressForStep(step, progressByStage)
             : undefined;

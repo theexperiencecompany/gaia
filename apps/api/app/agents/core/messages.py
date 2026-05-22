@@ -104,12 +104,8 @@ async def construct_langchain_messages(
         else ""
     )
 
-    # Inject onboarding system prompt for first-conversation experience.
-    # Tagged as memory_message so manage_system_prompts_node preserves it
-    # alongside the main comms agent prompt (which is the sole non-memory prompt).
-    # We pass the latest user message so the helper can also catch the
-    # onboarding run-now demo (which creates a fresh untagged conversation
-    # and is identified by its "Execute this todo for me:" message prefix).
+    # Tagged memory_message so manage_system_prompts_node preserves it alongside
+    # the main comms agent prompt.
     if user_id and conversation_id:
         onboarding_prompt = await get_onboarding_system_prompt_if_applicable(
             user_id, conversation_id, latest_user_message=user_content

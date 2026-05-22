@@ -67,9 +67,6 @@ export function Platforms({ state, dispatch }: PlatformsProps) {
   );
 }
 
-/** Bottom-of-shell composer for the `platforms` stage: a quiet "I'll do it
- *  later" skip button, mirroring the position of "Understood" in workflows.
- *  Hidden once a platform is connected (the stage auto-advances). */
 export function PlatformsComposer({ state, dispatch }: PlatformsProps) {
   const { skip } = useConnectPlatform(dispatch);
   if (state.connectedPlatform) return null;

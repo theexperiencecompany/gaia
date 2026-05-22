@@ -333,11 +333,6 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
           </Drawer.Content>
         </Drawer.Portal>
       </Drawer.Root>
-      {/* <AiSearchModal
-        open={isAiModalOpen}
-        onOpenChange={setIsAiModalOpen}
-        onSelect={handleAiSelect}
-      /> */}
     </>
   );
 }

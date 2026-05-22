@@ -26,9 +26,6 @@ export function useClarifyQuestions(
   useEffect(() => {
     if (state.clarifyQuestions != null) return;
     if (inFlightRef.current) return;
-    // Submitted users already past clarify shouldn't refetch — protects
-    // against the edge case where persisted state has `clarifySubmitted=true`
-    // but `clarifyQuestions=null` (e.g. corrupted session, schema migration).
     if (state.clarifySubmitted) return;
 
     const name = state.responses[FIELD_NAMES.NAME]?.trim();
@@ -43,11 +40,7 @@ export function useClarifyQuestions(
         if (!res?.questions?.length) return;
         dispatch({ type: "clarifyLoaded", questions: res.questions });
       })
-      .catch(() => {
-        // Silent — the user can still progress if the request fails; the
-        // composer guards on `clarifyQuestions != null` and the backend
-        // gives a fallback set, so retrying once is enough.
-      })
+      .catch(() => {})
       .finally(() => {
         inFlightRef.current = false;
       });

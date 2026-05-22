@@ -437,11 +437,6 @@ function PressEnterHint() {
   );
 }
 
-/**
- * Focus the relevant input on the next animation frame after a question
- * change. rAF avoids the 500ms setTimeout the old code used to wait for
- * HeroUI's internal mount; one frame is enough now that HeroUI is sync.
- */
 function useAutofocus(
   inputRef: React.RefObject<HTMLInputElement | null>,
   target: "default" | "autocomplete",

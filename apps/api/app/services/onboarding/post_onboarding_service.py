@@ -63,11 +63,8 @@ async def save_personalization_data(
 
 
 async def seed_initial_user_data(user_id: str) -> None:
-    """
-    Seed initial data for a new user. The personalized welcome conversation
-    is seeded by the intelligence pipeline (`_seed_conversation`) — do not
-    seed a static one here.
-    """
+    """Seed the onboarding todo. The welcome conversation is seeded by the
+    intelligence pipeline, not here."""
     try:
         log.info(f"Starting data seeding for user {user_id}")
         await seed_onboarding_todo(user_id)

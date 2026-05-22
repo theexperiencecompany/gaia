@@ -413,10 +413,7 @@ export const useChatStream = () => {
       useChatStore.getState().addOrUpdateMessage(botIMessage);
     }
     useChatStore.getState().clearOptimisticMessage();
-    // Only rewrite the URL when the user is already on a /c path. Callers like
-    // the onboarding run-now demo stream into a throwaway conversation while
-    // sitting on /onboarding — hijacking that URL would strand them in the chat
-    // page on reload.
+    // Only rewrite the URL on /c paths; rewriting /onboarding strands users.
     if (/^\/c(\/|$)/.test(window.location.pathname)) {
       window.history.replaceState({}, "", `/c/${conversation_id}`);
     }

@@ -140,11 +140,7 @@ class OnboardingData(BaseModel):
 
 
 class ClarifyAnswer(BaseModel):
-    """
-    One answered no-Gmail clarify question. Sent up with the onboarding
-    submission payload and persisted on `onboarding.clarify_answers` so the
-    todo generator can inject it as additional signal.
-    """
+    """One answered no-Gmail clarify question, persisted on onboarding.clarify_answers."""
 
     id: str = Field(..., description="Question id — one of scope, blocker, constraint")
     kind: str = Field(..., description="scope / blocker / constraint")

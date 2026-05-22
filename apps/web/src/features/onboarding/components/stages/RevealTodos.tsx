@@ -37,8 +37,6 @@ import { OnboardingChatStream } from "./Chat";
 interface RevealTodosProps {
   state: OnboardingState;
   dispatch: Dispatch<Action>;
-  /** Run-now demo chat — separate throwaway conversation, NOT the welcome
-   *  conversation. See `useChatStage`. */
   chat: UseOnboardingChatReturn;
 }
 
@@ -54,10 +52,6 @@ export interface SelectedTodoIndicatorProps {
   sourceEmail: { sender: string; subject: string } | null;
 }
 
-/** Static "selected todo" indicator rendered above the run-now demo stream.
- *  Replaces the previous chat-bubble-shaped TodoRunNowCard so the auto-sent
- *  user message never reads as a real conversation turn. Exported for the
- *  onboarding demo sandbox. */
 export function SelectedTodoIndicator({
   title,
   sourceEmail,
@@ -90,9 +84,6 @@ export function SelectedTodoIndicator({
   );
 }
 
-/** Composer for the `revealTodos` stage. Renders a "Continue" CTA in the
- *  pinned footer once the run-now demo finishes — replaces the old inline
- *  button that used to sit beneath the todo result. */
 export function RevealTodosComposer({
   dispatch,
   chat,

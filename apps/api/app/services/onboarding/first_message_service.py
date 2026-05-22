@@ -31,12 +31,7 @@ async def generate_first_message(
     executed_todos: Optional[list[dict]] = None,
     clarify_answers: Optional[list[dict]] = None,
 ) -> str:
-    """
-    Generate GAIA's first message to a new user.
-    Single LLM call with all Phase 1+2 context. Branches on `has_gmail`: the
-    no-Gmail prompt has no inbox section and forbids any email references,
-    anchoring the message on the user's focus + clarify answers instead.
-    """
+    """Generate GAIA's first message to a new user."""
     t0 = time.monotonic()
     try:
         executed_ids = {t["id"] for t in (executed_todos or []) if t.get("id")}
@@ -138,7 +133,6 @@ async def generate_first_message(
             duration_s=round(time.monotonic() - t0, 2),
             exc_info=True,
         )
-        # Fallback message
         return (
             f"Hey {name}, ok, you're all set up.<NEW_MESSAGE_BREAK>"
             "Lined up a few action items and set up some automations from what I found."

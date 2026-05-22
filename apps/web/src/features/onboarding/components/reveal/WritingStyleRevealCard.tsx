@@ -45,7 +45,6 @@ export function WritingStyleRevealCard({
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [touched, setTouched] = useState(false);
 
-  // Auto-regenerate example on mount if missing (e.g. old DB records lacking example field)
   useEffect(() => {
     if (!hasExampleContent(currentExample) && !isRegenerating && summaryValue) {
       setIsRegenerating(true);
@@ -57,9 +56,7 @@ export function WritingStyleRevealCard({
         .then((res) => {
           if (res.example) setCurrentExample(res.example);
         })
-        .catch(() => {
-          // silent — non-blocking
-        })
+        .catch(() => {})
         .finally(() => {
           setIsRegenerating(false);
         });
@@ -91,7 +88,6 @@ export function WritingStyleRevealCard({
         setCurrentExample(res.example);
       }
     } catch {
-      // silent — non-blocking
     } finally {
       setIsSaving(false);
       setIsRegenerating(false);
@@ -115,7 +111,6 @@ export function WritingStyleRevealCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 280, damping: 22 }}
     >
-      {/* Editable summary */}
       <div className="rounded-xl bg-zinc-900 p-3">
         <div className="flex items-start justify-between gap-2 mb-1">
           <div className="flex items-center gap-1.5">
@@ -179,7 +174,6 @@ export function WritingStyleRevealCard({
         )}
       </div>
 
-      {/* Example email */}
       <div className="rounded-xl bg-zinc-900 p-3">
         <div className="flex items-center gap-1.5 mb-2">
           <AiMail02Icon className="size-3.5 shrink-0 text-zinc-500" />

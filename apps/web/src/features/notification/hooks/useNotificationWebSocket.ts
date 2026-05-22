@@ -34,8 +34,7 @@ export function useNotificationWebSocket() {
   const { addNotification, updateNotification } = useNotificationStore();
   const router = useRouter();
   const pathname = usePathname();
-  // Read pathname through a ref so handleMessage stays referentially stable
-  // and doesn't churn the websocket listener registration on every route change.
+  // Ref keeps handleMessage stable so the ws listener isn't re-registered.
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
 
@@ -49,9 +48,6 @@ export function useNotificationWebSocket() {
 
             const isTestNotification =
               message.notification.metadata?.test === true;
-            // Suppress toast spam while the user is mid-onboarding — the
-            // onboarding flow surfaces its own progress UI, so a parallel
-            // "I set up N workflows" toast collides with the welcome chat.
             const isOnboarding =
               pathnameRef.current?.includes("/onboarding") ?? false;
 

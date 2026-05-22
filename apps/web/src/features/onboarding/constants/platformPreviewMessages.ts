@@ -89,10 +89,6 @@ export const PLATFORM_ICONS: Record<PlatformPreviewPlatform, string> = {
   discord: "/images/icons/macos/discord.webp",
 };
 
-/**
- * Sentinel values for user-attributed messages in Slack/Discord scripts.
- * `hydrateScript()` swaps these for the live user's name + avatar at render.
- */
 const USER_PLACEHOLDER_NAME = "__user__";
 const USER_PLACEHOLDER_AVATAR = "__user_avatar__";
 const USER_COLOR = "#FFB37A";

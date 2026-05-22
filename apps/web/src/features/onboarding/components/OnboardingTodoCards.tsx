@@ -25,11 +25,7 @@ interface OnboardingTodoCardsProps {
   isExecuting: boolean;
   executingTodoId: string | null;
   completedTodoIds?: Set<string>;
-  /** Suppress the hover "Run now" button — used when displaying the cards as a
-   *  historical record (e.g. inside the completed-stages timeline accordion). */
   readOnly?: boolean;
-  /** Drop the `ml-10.75` indent — used when the list is rendered inside an
-   *  accordion (where the parent already handles padding). */
   embedded?: boolean;
 }
 

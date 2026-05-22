@@ -47,14 +47,6 @@ function appendClarifyTranscript(
   }
 }
 
-/**
- * Derive the chat-style transcript shown above the input from `responses`
- * + `questionIndex`. Pure function, no side effects.
- *
- * The bot's first follow-up message uses the user's first name as a greeting
- * — that's the only dynamic part. Everything else is a fixed string keyed off
- * the field name.
- */
 export function getMessages(state: OnboardingState): Message[] {
   const messages: Message[] = [];
   const { responses, questionIndex } = state;
@@ -85,7 +77,6 @@ export function getMessages(state: OnboardingState): Message[] {
     }
   }
 
-  // Past last question — show focus prompt or processing message
   if (questionIndex >= questions.length) {
     const gmail = responses[FIELD_NAMES.GMAIL];
     const focus = responses[FIELD_NAMES.FOCUS];
@@ -97,9 +88,6 @@ export function getMessages(state: OnboardingState): Message[] {
         content: FOCUS_QUESTION,
       });
     } else if (focus != null) {
-      // No-Gmail path: render the synthetic focus prompt before the user's
-      // answer so the transcript reads bot ask → user reply → processing,
-      // matching every other Q&A pair above.
       const isNoGmail = gmail === "skipped";
       if (isNoGmail) {
         messages.push({
@@ -119,7 +107,6 @@ export function getMessages(state: OnboardingState): Message[] {
         appendClarifyTranscript(messages, state);
       }
 
-      // Processing bubble only after clarify is done (or on the Gmail path).
       const showProcessing =
         !isNoGmail || !state.clarifyQuestions || state.clarifySubmitted;
       if (showProcessing) {

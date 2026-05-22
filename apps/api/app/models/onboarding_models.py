@@ -2,11 +2,6 @@ from pydantic import BaseModel, Field
 
 
 class WritingStyleExampleBlocks(BaseModel):
-    """
-    Example email broken into discrete blocks. The LLM fills each field
-    independently; consumers (frontend, mail composer) decide how to render.
-    """
-
     greeting: str = Field(
         default="",
         description=(
@@ -32,15 +27,13 @@ class WritingStyleExampleBlocks(BaseModel):
 
 
 class WritingStyleProfile(BaseModel):
-    summary: str  # natural language description of their writing style
-    example: WritingStyleExampleBlocks  # AI-composed example email, structured
-    user_edited_summary: str | None = (
-        None  # user-edited summary saved during onboarding
-    )
+    summary: str
+    example: WritingStyleExampleBlocks
+    user_edited_summary: str | None = None
 
 
 class SocialProfile(BaseModel):
-    platform: str  # e.g. "twitter", "linkedin", "github"
+    platform: str
     url: str
 
 
@@ -59,12 +52,7 @@ class InboxTriage(BaseModel):
     patterns: list[str]
 
 
-# ── Structured LLM output models ─────────────────────────────────────────────
-
-
 class InboxTriageOutput(BaseModel):
-    """Structured output for inbox triage LLM call."""
-
     summary: str = Field(
         min_length=1,
         description="2-3 sentence overview of the inbox written conversationally to the user",
@@ -76,8 +64,6 @@ class InboxTriageOutput(BaseModel):
 
 
 class WritingStyleOutput(BaseModel):
-    """Structured output for writing style analysis LLM call."""
-
     summary: str = Field(
         description=(
             "2-3 sentence writing style description capturing concrete observable patterns: "
@@ -93,8 +79,6 @@ class WritingStyleOutput(BaseModel):
 
 
 class HoloCardLLMOutput(BaseModel):
-    """Structured output for the holo card LLM call — phrase + bio in one shot."""
-
     personality_phrase: str = Field(
         description=(
             "Unique 2-3 word personality phrase capturing the user's essence. "
@@ -115,8 +99,6 @@ class HoloCardLLMOutput(BaseModel):
 
 
 class WritingStyleExampleOutput(BaseModel):
-    """Structured output for regenerating a single example from an edited summary."""
-
     example: WritingStyleExampleBlocks = Field(
         description=(
             "Example email matching the provided style summary, broken into structured blocks."
@@ -125,8 +107,6 @@ class WritingStyleExampleOutput(BaseModel):
 
 
 class SocialProfileFilterOutput(BaseModel):
-    """Structured output for the social profile ownership LLM filter."""
-
     owned_profiles: list[dict] = Field(
         description="List of {platform, handle} dicts for profiles that belong to the user. Empty list if none."
     )

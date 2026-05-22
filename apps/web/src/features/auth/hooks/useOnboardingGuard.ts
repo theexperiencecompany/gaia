@@ -19,8 +19,7 @@ export const useOnboardingGuard = () => {
         !!phase && ONBOARDING_PROCESSING_PHASES.has(phase);
 
       if (pathname === "/onboarding") {
-        // If onboarding is completed AND processing is done, redirect to main app
-        // Don't redirect while the intelligence pipeline is still running
+        // Don't redirect while the intelligence pipeline is still running.
         if (isOnboardingCompleted && !isStillProcessing) {
           router.push("/c");
         }

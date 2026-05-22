@@ -57,11 +57,7 @@ export default function ChatRenderer({
     );
   }, [conversations, convoIdParam]);
 
-  // Source of truth: the conversation's own `is_onboarding_conversation`
-  // tag, set by the backend when the welcome conversation is seeded. Reading
-  // it off the conversation (loaded fresh on each navigation) avoids the
-  // stale-userStore race where a same-session post-onboarding redirect lands
-  // before `/user/me` rehydrates.
+  // Read off the conversation, not userStore, to avoid a stale-rehydrate race.
   const isWelcomeConversation =
     conversation?.is_onboarding_conversation === true;
 

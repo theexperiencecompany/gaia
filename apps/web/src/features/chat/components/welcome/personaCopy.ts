@@ -11,10 +11,7 @@
 const GREETING = "Hey, welcome! I'm your GAIA (general-purpose ai assistant).";
 
 interface PersonaEntry {
-  /** Verb-led middle bubble — what GAIA can do for this persona. */
   middle: string;
-  /** Tool/integration close — names the integrations the persona should
-   *  connect to switch the actions on. */
   close: string;
 }
 
@@ -121,9 +118,6 @@ function build({ middle, close }: PersonaEntry): string {
   return `${GREETING}<NEW_MESSAGE_BREAK>${middle}<NEW_MESSAGE_BREAK>${close}`;
 }
 
-/** Resolve the welcome bubble copy for a profession value. Direct lookup
- *  against the canonical `professionOptions` list — `retired`, `other`,
- *  `null`, `undefined`, and anything unknown all hit the fallback. */
 export function getWelcomeCopyForProfession(
   profession: string | null | undefined,
 ): string {

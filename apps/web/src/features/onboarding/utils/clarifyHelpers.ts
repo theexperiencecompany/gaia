@@ -7,16 +7,10 @@
 import type { OnboardingState } from "../state/types";
 import type { ClarifyAnswer, ClarifyQuestion } from "../types";
 
-/** Sentinel radio values for the "Other" and "Skip" rows. */
 export const OPTION_VALUE_PREFIX = "opt:";
 export const OTHER_VALUE = "__other__";
 export const SKIP_VALUE = "__skip__";
 
-/**
- * Shared `classNames` payload for every Radio row in the clarify composer.
- * Centralised so the four rows (3 options + Other + Skip) stay visually
- * identical — the Skip row only overrides the label colour.
- */
 export const CLARIFY_RADIO_BASE_CLASS =
   "m-0 max-w-none rounded-xl border-0 bg-zinc-800/60 p-2 data-[selected=true]:bg-zinc-800";
 
@@ -38,11 +32,8 @@ export function radioValueFor(
   return null;
 }
 
-/**
- * Whether a single question is satisfied (option picked, custom committed,
- * or explicitly skipped). Also treats an in-flight non-empty draft as
- * answered so the user can submit without an extra blur step.
- */
+// A non-empty in-flight draft counts as answered so the user can submit
+// without an extra blur step.
 export function isQuestionAnswered(
   answer: ClarifyAnswer | undefined,
   draft: string | undefined,
@@ -54,11 +45,6 @@ export function isQuestionAnswered(
   return false;
 }
 
-/**
- * Number of clarify questions the user has answered. Used by the composer
- * header counter and the demo page status row — extracting it kills the
- * duplicate `Object.keys(...).filter(...)` inline computation.
- */
 export function countAnsweredClarify(state: OnboardingState): number {
   const questions = state.clarifyQuestions ?? [];
   let count = 0;

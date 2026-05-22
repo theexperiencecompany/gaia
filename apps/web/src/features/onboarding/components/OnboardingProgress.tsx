@@ -30,9 +30,6 @@ function OnboardingProgressImpl({
   isRestarting = false,
 }: OnboardingProgressProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
-  // Stable per-step keys derived from index (positions are intrinsically
-  // stable here — totalSteps is a constant). Prefixed so clashes with other
-  // route-level keys are impossible.
   const stepKey = (i: number) => `onboarding-progress-step-${i}`;
   return (
     <nav

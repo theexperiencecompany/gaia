@@ -37,24 +37,10 @@ interface ChatProps {
 }
 
 export interface OnboardingChatStages {
-  /** Live welcome conversation — seeded by the backend, lands the user in
-   *  `/c/{first_message_conversation_id}` after onboarding. Never receives
-   *  the run-now demo. */
   welcome: UseOnboardingChatReturn;
-  /** Throwaway conversation that runs the in-place run-now todo demo. Kept
-   *  separate from `welcome` so the executed turn doesn't appear in the
-   *  post-onboarding chat. */
   todoDemo: UseOnboardingChatReturn;
 }
 
-/**
- * Page-level hook that wires up two independent chat streams: the welcome
- * conversation (for the final `chat` stage) and a throwaway conversation
- * for the run-now todo demo. Splitting them stops the run-now turn from
- * bleeding into the welcome conversation when the user clicks
- * "Continue to GAIA". Also clears `todoExecutionMessage` once the demo
- * conversation has consumed it so a remount can't re-queue.
- */
 export function useChatStage(
   state: OnboardingState,
   dispatch: Dispatch<Action>,
@@ -76,11 +62,6 @@ export function useChatStage(
 
 const RUN_NOW_PREFIX = "Execute this todo for me: ";
 
-/** Shared stream renderer — used by both the in-place todo demo inside
- *  `revealTodos` and by the final `chat` stage. When `hideRunNowUserMessage`
- *  is true, the auto-sent "Execute this todo for me: ..." user turn is
- *  filtered out entirely (the demo container shows a static "selected todo"
- *  indicator instead). */
 export function OnboardingChatStream({
   chat,
   hideRunNowUserMessage = false,
@@ -171,11 +152,6 @@ export function Chat({ state }: Omit<ChatProps, "dispatch" | "chat">) {
   );
 }
 
-/** Composer for the `chat` stage. Always renders the "Continue to GAIA" CTA —
- *  the onboarding chat stage ends with a closed-loop message (no question), so
- *  the user's only forward move is into the full chat experience. The CTA
- *  lands the user inside the seeded welcome conversation when available so
- *  the post-onboarding welcome UI shows up immediately. */
 export function ChatComposer({ state }: Omit<ChatProps, "dispatch" | "chat">) {
   const welcomeConvoId = state.server?.first_message_conversation_id;
   const href = welcomeConvoId ? `/c/${welcomeConvoId}` : "/c";

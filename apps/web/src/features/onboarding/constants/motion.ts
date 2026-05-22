@@ -10,28 +10,24 @@ export const EASE_OUT_QUART: [number, number, number, number] = [
   0.19, 1, 0.22, 1,
 ];
 
-/** Standard 0.4s fade-up — used for entrance of most onboarding elements. */
 export const MOTION_FADE_UP = {
   initial: { opacity: 0, y: 12 },
   animate: { opacity: 1, y: 0 },
   transition: { duration: 0.4, ease: EASE_OUT_QUART } satisfies Transition,
 } as const;
 
-/** Same as MOTION_FADE_UP but slightly longer travel — for top-level stage roots. */
 export const MOTION_FADE_UP_LARGE = {
   initial: { opacity: 0, y: 15 },
   animate: { opacity: 1, y: 0 },
   transition: { duration: 0.4, ease: EASE_OUT_QUART } satisfies Transition,
 } as const;
 
-/** Subtle entrance — for things that animate in below an already-visible parent. */
 export const MOTION_FADE_UP_SUBTLE = {
   initial: { opacity: 0, y: 8 },
   animate: { opacity: 1, y: 0 },
   transition: { duration: 0.4, ease: EASE_OUT_QUART } satisfies Transition,
 } as const;
 
-/** Centered CTA composer entrance — short delay so it lands after content. */
 export const MOTION_COMPOSER_CTA = {
   initial: { opacity: 0, y: 8 },
   animate: { opacity: 1, y: 0 },
@@ -42,7 +38,6 @@ export const MOTION_COMPOSER_CTA = {
   } satisfies Transition,
 } as const;
 
-/** Streaming chat message entrance. */
 export const MOTION_STREAM_MESSAGE = {
   initial: { opacity: 0, y: 10 },
   animate: { opacity: 1, y: 0 },

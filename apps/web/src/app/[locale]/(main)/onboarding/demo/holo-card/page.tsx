@@ -11,8 +11,6 @@ if (process.env.NODE_ENV === "production") {
   notFound();
 }
 
-// One card per house wallpaper — each themed with a fitting overlay tint and
-// phrase. The select swaps which variant the gift reveals.
 const HOLO_CARD_VARIANTS: HoloCardDisplayData[] = [
   {
     house: "frostpeak",

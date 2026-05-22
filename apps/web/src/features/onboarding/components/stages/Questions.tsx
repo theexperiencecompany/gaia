@@ -18,18 +18,11 @@ interface QuestionsProps {
   dispatch: Dispatch<Action>;
 }
 
-/**
- * Dispatches `answer` for the active question on submit; for Gmail also
- * exposes a "skipped" path. Profession uses Autocomplete and dispatches
- * `answer` immediately on selection.
- */
 export function QuestionsComposer({ state, dispatch }: QuestionsProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const user = useUser();
   const currentQuestion = questions[state.questionIndex];
 
-  // Seed the name input with the signed-in user's name once on mount. The
-  // user owns the field after that — no further updates from this effect.
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only seed
   useEffect(() => {
     if (

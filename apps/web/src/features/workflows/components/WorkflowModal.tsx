@@ -111,8 +111,6 @@ export default function WorkflowModal({
   // Fetch trigger schemas for slug normalization
   const { data: triggerSchemas } = useTriggerSchemas();
 
-  // Integration connection state — used to render a "Connect <integration>"
-  // CTA when this workflow's integration trigger isn't connected yet.
   const { integrations, connectIntegration } = useIntegrations();
   const [isConnecting, setIsConnecting] = useState(false);
   const missingIntegration = (() => {

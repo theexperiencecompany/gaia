@@ -61,10 +61,6 @@ export function OnboardingPlatformPreview({
     [profession, activePlatform, userName, userAvatar],
   );
 
-  // First-mount only: avatars inside ChatDemo are raw <img> tags and pop in
-  // as they decode. Hold the demo behind a Skeleton for one paint so the
-  // first frame doesn't flash. Subsequent platform rotations reuse the
-  // browser-cached avatars, so the gate stays open.
   const [hasLoaded, setHasLoaded] = useState(false);
   useEffect(() => {
     const id = window.setTimeout(() => setHasLoaded(true), 350);

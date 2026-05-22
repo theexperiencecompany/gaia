@@ -441,11 +441,7 @@ def format_reply_context(
     return f"{context}\n\n{existing_content}" if existing_content else context
 
 
-# Run-now demo messages always start with this exact prefix (set in the
-# frontend `handleExecute` in RevealTodos.tsx). When we see it inside an
-# untagged conversation belonging to a user still in onboarding, that is the
-# run-now demo and it needs the onboarding system prompt even though no
-# conversation-level tag is present.
+# Must match the prefix the frontend's RevealTodos run-now demo sends.
 _RUN_NOW_DEMO_PREFIX = "Execute this todo for me:"
 
 
@@ -454,17 +450,6 @@ async def get_onboarding_system_prompt_if_applicable(
     conversation_id: str,
     latest_user_message: Optional[str] = None,
 ) -> Optional[str]:
-    """
-    Returns the onboarding first conversation system prompt when applicable.
-
-    Applies in two cases:
-    1. The conversation is tagged `is_onboarding_conversation` (seeded welcome
-       conversation) and the user has not completed onboarding.
-    2. The latest user message is a run-now demo trigger ("Execute this todo
-       for me: ...") and the user is still in onboarding. The frontend spins
-       up a fresh conversation per demo run and cannot pre-tag it, so we
-       detect the demo by its message prefix instead.
-    """
     try:
         conv = await conversations_collection.find_one(
             {"conversation_id": conversation_id},
@@ -480,9 +465,6 @@ async def get_onboarding_system_prompt_if_applicable(
             return None
 
         if is_tagged_onboarding:
-            # The welcome conversation starts empty (no pre-seeded AI turn),
-            # so 7 messages = ~3 user turns + ~3 AI replies + one final turn
-            # — enough for the agent to flip the user to COMPLETED.
             message_count = len(conv.get("messages", [])) if conv else 0
             if message_count >= 7:
                 await users_collection.update_one(

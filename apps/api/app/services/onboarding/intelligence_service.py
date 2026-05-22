@@ -75,28 +75,18 @@ from app.utils.profile_card import (
 from app.utils.seeding_utils import seed_onboarding_conversation
 
 
-# ── Stage enum + emit helper ──────────────────────────────────────────────────
-
-
 class OnboardingStage(str, Enum):
-    """Stages emitted over WebSocket during onboarding intelligence.
+    """Stages emitted over WebSocket during onboarding intelligence."""
 
-    The contract per step: at most one *_creating / *_progress / *_analyzing
-    stage carries repeated `status_text` updates while work is in flight,
-    followed by exactly one *_ready stage with the result payload. The
-    frontend scopes each step's live label to its own progress stage so
-    late events from one stage cannot leak into another.
-    """
-
-    INBOX_SCANNING = "inbox_scanning"  # repeats; carries {status_text}
-    WRITING_STYLE_PROGRESS = "writing_style_progress"  # repeats; carries {status_text}
+    INBOX_SCANNING = "inbox_scanning"
+    WRITING_STYLE_PROGRESS = "writing_style_progress"
     WRITING_STYLE_READY = "writing_style_ready"
     SOCIAL_PROFILES_READY = "social_profiles_ready"
-    TRIAGE_ANALYZING = "triage_analyzing"  # repeats; carries {status_text}
+    TRIAGE_ANALYZING = "triage_analyzing"
     TRIAGE_READY = "triage_ready"
-    TODOS_CREATING = "todos_creating"  # about to create todos
+    TODOS_CREATING = "todos_creating"
     TODOS_READY = "todos_ready"
-    WORKFLOWS_CREATING = "workflows_creating"  # about to create workflows
+    WORKFLOWS_CREATING = "workflows_creating"
     WORKFLOWS_READY = "workflows_ready"
     HOLO_READY = "holo_ready"
     COMPLETE = "complete"
@@ -107,7 +97,6 @@ async def _emit_stage(
     stage: OnboardingStage,
     payload: Optional[dict] = None,
 ) -> None:
-    """Emit an onboarding_stage event to the user's WebSocket channel."""
     try:
         await websocket_manager.broadcast_to_user(
             user_id=user_id,
@@ -125,14 +114,10 @@ async def _emit_stage(
         log.warning(f"[intelligence] Failed to emit stage {stage.value}: {e}")
 
 
-# ── Safe-run helper ──────────────────────────────────────────────────────────
-
-
 T = TypeVar("T")
 
 
 async def _safe_run(name: str, coro: Awaitable[T], default: T) -> T:
-    """Run a coroutine, swallow any exception, log with traceback, return default."""
     try:
         return await coro
     except Exception as e:
@@ -149,15 +134,12 @@ _TRIAGE_EARLY_THRESHOLD = 100
 
 @dataclass
 class InboxScanContext:
-    """Shared state between the inbox fetch task and consumers (triage)
-    that want to start as soon as enough emails are buffered."""
+    """Shared state between the inbox fetch task and triage (which starts
+    as soon as enough emails are buffered)."""
 
     emails: list[dict] = field(default_factory=list)
     first_batch_ready: asyncio.Event = field(default_factory=asyncio.Event)
     done: asyncio.Event = field(default_factory=asyncio.Event)
-
-
-# ── Pydantic spec models for LLM structured outputs ──────────────────────────
 
 
 class _TodoSpec(BaseModel):
@@ -217,13 +199,9 @@ class _WorkflowList(BaseModel):
     )
 
 
-# ── Main orchestrator ────────────────────────────────────────────────────────
-
-
 async def process_onboarding_intelligence(user_id: str) -> None:
     """Main onboarding intelligence DAG. Called as an ARQ background task
-    after POST /onboarding.
-    """
+    after POST /onboarding."""
     log.set(user={"id": user_id})
     pipeline_start = time.monotonic()
     log.info(
@@ -232,13 +210,8 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         phase="start",
     )
 
-    # Emit an immediate status before the Mongo + Composio checks so the user
-    # sees activity right away. Without this, the first status_text only lands
-    # after the Composio Gmail check returns (often a few seconds).
-    #
-    # We don't know has_gmail yet, and the two branches render different first
-    # steps (Gmail → inbox_scanning, no-Gmail → todos_creating). Emit to both
-    # so whichever branch the frontend renders picks up its own status.
+    # Emit an immediate status to both first-step stages before the Composio
+    # check returns so the user sees activity right away regardless of branch.
     await asyncio.gather(
         _emit_stage(
             user_id,
@@ -269,7 +242,6 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     focus: str = onboarding.get("focus", "") or ""
     clarify_answers: list[dict] = onboarding.get("clarify_answers") or []
 
-    # Gmail availability
     t_gmail_check = time.monotonic()
     composio_service = get_composio_service()
     connection_status = await composio_service.check_connection_status(
@@ -298,13 +270,8 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         inbox_ctx = InboxScanContext()
 
         async def _scan_then_enqueue_mem0(ctx: InboxScanContext) -> None:
-            # Run the visible inbox scan, then immediately queue the durable
-            # Mem0 ingestion. Queuing here (rather than after COMPLETE) means:
-            #   1. Heavy Composio contention is over — the visible scan is done.
-            #   2. Mem0 starts ~10s earlier, running in parallel with triage /
-            #      workflows / first_message (which hit LLMs, not Composio).
-            #   3. Survives downstream pipeline failures — Mem0 is queued
-            #      before triage even begins.
+            # Queue durable Mem0 ingestion right after the visible scan so it
+            # runs in parallel with triage/workflows and survives later failures.
             await _run_inbox_scanning(user_id, ctx)
             try:
                 pool = await RedisPoolManager.get_pool()
@@ -395,23 +362,13 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         duration_s=round(time.monotonic() - t_msg, 2),
     )
 
-    # Persist first_message BEFORE the holo gather. _run_holo_card emits
-    # `holo_ready` from inside the gather, and the frontend reacts by fetching
-    # `/onboarding/personalization`. If the write happened only after the
-    # gather (when conversation_id is known), the holo card section would
-    # render with first_message=null. Conversation id is patched in once
-    # _seed_conversation returns.
+    # Persist first_message before the holo gather: holo_ready triggers a
+    # frontend fetch of /onboarding/personalization, which must not see null.
     await users_collection.update_one(
         {"_id": ObjectId(user_id)},
         {"$set": {"onboarding.first_message": first_message}},
     )
 
-    # Run holo card prep (social profiles → phrase/bio) in parallel with the
-    # conversation seed + profile persist. holo_ready MUST fire before
-    # COMPLETE so the frontend's giftbox is ready by the time the chat stage
-    # mounts. Holo is the slowest leg (LLM call), so parallelising keeps
-    # total wall time bounded by the holo call rather than serialising it
-    # after COMPLETE as a fire-and-forget background task.
     async def _social_then_holo() -> None:
         social_profiles: list[SocialProfile] = []
         if has_gmail:
@@ -442,15 +399,8 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         duration_s=round(time.monotonic() - t_final, 2),
     )
 
-    # Authoritative end-of-pipeline phase transition. `save_personalization_data`
-    # already flips the phase to PERSONALIZATION_COMPLETE on the holo-card happy
-    # path (so `has_personalization` is true by the time HOLO_READY fires), but
-    # that write lives inside _run_holo_card's swallowed try/except. If the holo
-    # leg fails, neither that write nor the task wrapper's failure-path write
-    # runs, leaving the user pinned at PERSONALIZATION_PENDING — which the
-    # cleanup reconciler then re-runs on a 30-minute cron, purging the user's
-    # onboarding todos each pass. Writing the phase here, unconditionally and
-    # after all work has gathered, guarantees the user always advances.
+    # Unconditional end-of-pipeline phase transition: guarantees the user
+    # advances even if the holo leg (which also writes this) failed.
     completion_update: dict[str, object] = {
         "onboarding.phase": OnboardingPhase.PERSONALIZATION_COMPLETE,
         "updated_at": datetime.now(timezone.utc),
@@ -466,18 +416,12 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         _background_tasks.add(provision_future)
         provision_future.add_done_callback(_background_tasks.discard)
 
-    # COMPLETE is now genuinely terminal — holo_ready has already fired from
-    # inside _run_holo_card above. Frontend can close the WS on COMPLETE
-    # without dropping any subsequent event.
     await _emit_stage(
         user_id,
         OnboardingStage.COMPLETE,
         {"conversation_id": conversation_id},
     )
 
-    # Canonical pipeline-end summary. One log line a human (or query) can
-    # use to answer "what did this user's onboarding look like?" without
-    # having to scroll through every intermediate step.
     log.info(
         "[intelligence] pipeline done",
         user_id=user_id,
@@ -493,13 +437,9 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     )
 
 
-# ── Root wrappers ────────────────────────────────────────────────────────────
-
-
 async def _run_inbox_scanning(user_id: str, ctx: InboxScanContext) -> None:
-    """Stream the inbox into ctx.emails (metadata format).
-    Sets ctx.first_batch_ready once ~100 emails buffered so triage can start
-    early; sets ctx.done when fetch completes."""
+    """Stream the inbox into ctx.emails. Sets first_batch_ready once ~100
+    emails buffered so triage can start early; sets done when fetch completes."""
     t0 = time.monotonic()
 
     cached = await inbox_scan_cache.get(user_id, "metadata")
@@ -581,7 +521,6 @@ async def _run_inbox_scanning(user_id: str, ctx: InboxScanContext) -> None:
 
 
 async def _run_provision_gmail(user_id: str) -> None:
-    """Fire Gmail system workflow provisioning as a root. No deps."""
     t0 = time.monotonic()
     try:
         await provision_system_workflows(user_id, "gmail", "Gmail", notify=False)
@@ -609,12 +548,7 @@ async def _run_writing_style(
     has_gmail: bool,
     profession: str,
 ) -> Optional[WritingStyleProfile]:
-    """Learn writing style from the user's last 50 sent emails.
-
-    Only runs for users with Gmail connected — the frontend stage queue
-    excludes the writing-style step entirely for the no-gmail path, so this
-    function emits no stage events when there is no Gmail.
-    """
+    """Learn writing style from the user's last 50 sent emails. Gmail-only."""
     if not has_gmail:
         log.info(
             "[intelligence] writing_style skipped",
@@ -671,9 +605,6 @@ async def _run_writing_style(
         },
     )
     return result
-
-
-# ── Derived node wrappers ────────────────────────────────────────────────────
 
 
 async def _run_triage(
@@ -772,9 +703,8 @@ async def _run_social_profiles_background(
     user_name: str,
     user_email: Optional[str],
 ) -> list[SocialProfile]:
-    """Off-critical-path: fetch full email bodies, run social-profile regex,
-    persist, and emit SOCIAL_PROFILES_READY. Returns the deduped profiles so
-    chained consumers (e.g. holo card) can use them."""
+    """Fetch full email bodies, extract social profiles, persist, and emit
+    SOCIAL_PROFILES_READY. Returns the deduped profiles."""
     t0 = time.monotonic()
     profiles: list[SocialProfile] = []
     try:
@@ -888,9 +818,6 @@ async def _run_todos(
         count=len(todos),
         duration_s=round(time.monotonic() - t0, 2),
     )
-    # Always emit so the frontend has a definitive completion signal, even for
-    # the zero-todos edge case (Gmail connected but triage found nothing
-    # important AND no focus set).
     n = len(todos)
     await _emit_stage(
         user_id,
@@ -1020,9 +947,6 @@ async def _run_holo_card(
             context_parts.append(f"Social profiles: {platforms}")
         if focus:
             context_parts.append(f"Current focus: {focus}")
-        # On the no-Gmail path this is often the richest user signal — surface
-        # it to the bio/phrase LLM so the card reflects the user's real area,
-        # not just a paraphrase of their one-line focus.
         for answer in clarify_answers or []:
             value = (answer.get("value") or "").strip()
             if not value:
@@ -1079,9 +1003,6 @@ async def _run_holo_card(
         )
 
     await _emit_stage(user_id, OnboardingStage.HOLO_READY, {})
-
-
-# ── Terminal helpers ─────────────────────────────────────────────────────────
 
 
 async def _seed_conversation(user_id: str) -> Optional[str]:
@@ -1190,9 +1111,6 @@ async def _persist_profiles(
     )
 
 
-# ── Todo creation helpers ────────────────────────────────────────────────────
-
-
 async def _create_focus_todos(
     user_id: str,
     name: str,
@@ -1200,14 +1118,7 @@ async def _create_focus_todos(
     focus: str,
     clarify_answers: list[dict] | None = None,
 ) -> list[dict]:
-    """
-    Create 3 GAIA-actionable todos based on the user's stated focus via LLM.
-
-    On the no-Gmail path the user has also answered 3 scope/blocker/constraint
-    follow-up questions — when present, those answers are injected into the
-    prompt as extra signal so the todos can target the specific area the user
-    cares about, work around the named blocker, and respect their time budget.
-    """
+    """Create GAIA-actionable todos from the user's stated focus via LLM."""
     t0 = time.monotonic()
     prompt = FOCUS_TODOS_PROMPT.format(
         name=name,
@@ -1288,7 +1199,6 @@ async def _create_todos_from_triage(
     profession: str = "",
     focus: str = "",
 ) -> list[dict]:
-    """Create GAIA-actionable todos from important emails using structured LLM output."""
     real_emails = triage.important_emails[:8]
     emails_context = "\n".join(
         f"- From: {e.sender} | Subject: {e.subject} | Why important: {e.why_important}"
@@ -1382,19 +1292,10 @@ async def _create_todos_from_triage(
         return []
 
 
-# ── Workflow creation helpers ────────────────────────────────────────────────
-
-
 def _build_trigger_config_from_suggestion(
     suggestion: Optional[dict],
 ) -> TriggerConfig:
-    """Map a SuggestedTrigger-like dict from generate_workflow_prompt into a
-    real TriggerConfig.
-
-    For integration triggers, auto-fills `trigger_data` from the schema's
-    field defaults. If a required field has no default, falls back to a daily
-    schedule (the saga in WorkflowService would otherwise reject it).
-    """
+    """Map a SuggestedTrigger-like dict into a real TriggerConfig."""
     if not suggestion:
         return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
 
@@ -1412,10 +1313,8 @@ def _build_trigger_config_from_suggestion(
         if not schema:
             return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
 
-        # Onboarding only auto-creates integration triggers that need no
-        # provider-specific config. Triggers with config fields (e.g. calendar
-        # ids) need a typed `trigger_data` we can't build generically — fall
-        # back to a schedule for those.
+        # Triggers with config fields need typed trigger_data we can't build
+        # generically — fall back to a schedule for those.
         if schema.config_schema:
             return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
 
@@ -1428,7 +1327,6 @@ def _build_trigger_config_from_suggestion(
 
 
 def _find_workflow_trigger_schema(slug: str):
-    """Look up a WorkflowTriggerSchema by its frontend slug."""
     for integration in OAUTH_INTEGRATIONS:
         for tc in integration.associated_triggers or []:
             if tc.workflow_trigger_schema and tc.workflow_trigger_schema.slug == slug:
@@ -1437,7 +1335,6 @@ def _find_workflow_trigger_schema(slug: str):
 
 
 def _serialize_trigger_for_payload(trigger_config: TriggerConfig) -> dict:
-    """Shape used in the workflows_ready WS payload."""
     payload: dict = {"type": str(trigger_config.type)}
     if trigger_config.cron_expression:
         payload["cron_expression"] = trigger_config.cron_expression
@@ -1458,13 +1355,7 @@ async def _create_onboarding_workflows(
     writing_style: Optional[WritingStyleProfile] = None,
     clarify_answers: list[dict] | None = None,
 ) -> list[dict]:
-    """Create 4 LLM-generated workflows tailored to the user's context.
-
-    Gmail system workflow provisioning runs as a separate root task in the
-    orchestrator — not here. On the no-Gmail path, `clarify_answers` carry
-    the scope/blocker/constraint the user just shared so the workflows can
-    attack their named area instead of staying at the focus's surface level.
-    """
+    """Create 4 LLM-generated workflows tailored to the user's context."""
     inbox_patterns = (
         "; ".join(triage.patterns[:3])
         if triage and triage.patterns
@@ -1597,8 +1488,6 @@ async def _create_onboarding_workflows(
                 )
                 return None
 
-        # Run all specs concurrently — each is an independent LLM + DB call.
-        # Order in `created` matches spec order so the UI list is stable.
         results = await asyncio.gather(
             *[_build_one(idx, spec) for idx, spec in enumerate(parsed.workflows)]
         )
@@ -1636,7 +1525,6 @@ async def _create_fallback_workflow(
     focus: str = "",
     user_timezone: str = "UTC",
 ) -> list[dict]:
-    """Fallback: create one generic daily briefing workflow when LLM fails."""
     title = "Daily Briefing"
     description = (
         f"Every morning, summarize unread emails by priority, today's meetings, and open todos. "

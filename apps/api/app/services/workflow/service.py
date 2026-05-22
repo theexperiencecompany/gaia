@@ -128,24 +128,9 @@ class WorkflowService:
     ) -> tuple[List[str], bool]:
         """Register Composio triggers for integration-based workflows.
 
-        Delegates to TriggerService which handles provider-specific logic.
-
-        Returns a (trigger_ids, integration_connected) tuple. The connected flag
-        is the sole signal callers should use to decide whether to activate the
-        workflow. An empty trigger_ids list does NOT mean "not connected" —
-        account-level handlers (e.g. Gmail) legitimately return [] on success
-        because there is nothing per-workflow to register.
-
-        Behavior:
-        - Non-integration triggers: returns ([], True). Caller activates.
-        - Integration not connected: returns ([], False). Caller leaves the
-          workflow in pending_connection state; user activates later from UI.
-        - Integration connected: returns (handler_ids, True). Caller activates
-          (handler_ids may be empty for account-level integrations).
-
-        Raises:
-            TriggerRegistrationError: If trigger registration fails for a
-                reason other than a missing connection.
+        Returns (trigger_ids, integration_connected). Callers decide activation
+        from the connected flag, NOT from trigger_ids: account-level handlers
+        (e.g. Gmail) legitimately return [] on success.
         """
         # Only handle integration type triggers
         if trigger_config.type != TriggerType.INTEGRATION:
@@ -162,9 +147,6 @@ class WorkflowService:
                 trigger_name="unknown",
             )
 
-        # If the integration backing this trigger isn't connected, skip
-        # registration cleanly. The workflow stays inactive until the user
-        # connects the integration and activates it manually.
         # Imported lazily to avoid a circular import via system_workflows.
         from app.services.oauth.oauth_service import check_integration_status
 
@@ -178,8 +160,6 @@ class WorkflowService:
                 )
                 return [], False
 
-        # Use raise_on_failure=True so handler errors propagate. An empty
-        # trigger_ids return here is a legitimate success (e.g. Gmail).
         trigger_ids = await TriggerService.register_triggers(
             user_id=user_id,
             workflow_id=workflow_id,
@@ -313,11 +293,6 @@ class WorkflowService:
 
             # Step 2: Register integration triggers (this can raise TriggerRegistrationError)
             # The handlers will rollback their own partial triggers on failure.
-            # Returns ([], False) without raising when the backing integration
-            # isn't connected — in that case we leave the workflow inactive so
-            # the user can connect later and activate from the UI. An empty
-            # trigger_ids list with connected=True is a legitimate success
-            # (e.g. Gmail is account-level and has no per-workflow IDs).
             (
                 trigger_ids,
                 integration_connected,
@@ -327,9 +302,6 @@ class WorkflowService:
                 trigger_config=trigger_config,
             )
 
-            # Skip activation only when the integration backing this trigger
-            # isn't connected. Workflow stays in pending state with
-            # activated=False so the user can connect and activate later.
             integration_skipped = (
                 trigger_config.type == TriggerType.INTEGRATION
                 and not integration_connected
@@ -603,10 +575,6 @@ class WorkflowService:
                     old_trigger_ids = old_config.composio_trigger_ids or []
 
                     # Register new triggers FIRST (old still active if this fails).
-                    # The connected flag is unused here — an already-activated
-                    # workflow that's being updated implies the integration was
-                    # connected; if it became disconnected we'd want the
-                    # registration to fail loudly via TriggerRegistrationError.
                     (
                         registered_trigger_ids,
                         _,
@@ -817,10 +785,8 @@ class WorkflowService:
             trigger_config = workflow.trigger_config
             trigger_type = trigger_config.type
 
-            # Pre-check: if this is an integration trigger and the backing
-            # integration isn't connected, refuse activation with a clear
-            # error. _register_integration_triggers would silently no-op in
-            # that case, leaving the user confused about why nothing changed.
+            # Refuse activation up front: registration would otherwise silently
+            # no-op for a disconnected integration, confusing the user.
             if trigger_type == TriggerType.INTEGRATION and trigger_config.trigger_name:
                 from app.services.oauth.oauth_service import (
                     check_integration_status,
@@ -837,9 +803,6 @@ class WorkflowService:
                         trigger_name=trigger_config.trigger_name,
                     )
 
-            # Use the shared method for integration trigger registration.
-            # The connected flag is unused here — the pre-check above already
-            # rejected the activate call if the integration wasn't connected.
             trigger_ids, _ = await WorkflowService._register_integration_triggers(
                 workflow_id=workflow_id,
                 user_id=user_id,

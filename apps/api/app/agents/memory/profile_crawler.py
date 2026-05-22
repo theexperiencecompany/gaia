@@ -38,7 +38,6 @@ async def crawl_profile_url(
             log.info(f"Crawling {platform} profile: {url}")
 
             async with AsyncWebCrawler(verbose=False) as crawler:
-                # Add timeout to prevent hanging
                 result = await asyncio.wait_for(crawler.arun(url=url), timeout=15.0)
 
                 if not result:
@@ -68,11 +67,9 @@ async def crawl_profile_url(
             error_type = type(e).__name__
             error_msg = str(e) if str(e) else "No error message"
 
-            # Get more detailed error info
             if not error_msg or error_msg == "No error message":
                 error_msg = f"{error_type}: {repr(e)}"
 
-            # Log full traceback for debugging
             log.error(
                 f"Failed to crawl {url} after {elapsed:.2f}s: {error_type}: {error_msg}"
             )

@@ -30,8 +30,7 @@ from pymongo import ReturnDocument
 
 
 def _serialize_user(user_doc: Dict[str, Any]) -> Dict[str, Any]:
-    """Mongo ObjectId is not JSON-serializable. Materialize both `_id` and
-    `user_id` as strings so callers can return the doc straight to FastAPI."""
+    """Stringify `_id` / `user_id` so the doc is JSON-serializable."""
     user_doc["_id"] = str(user_doc["_id"])
     user_doc["user_id"] = user_doc["_id"]
     return user_doc
@@ -42,25 +41,8 @@ async def complete_onboarding(
     onboarding_data: OnboardingRequest,
     background_tasks: BackgroundTasks,
 ) -> Dict[str, Any]:
-    """
-    Complete a user's onboarding submission.
-
-    Idempotent under concurrent retries. The write is gated by an atomic
-    `onboarding: {$exists: false}` filter — only the request that creates
-    the subdoc enqueues the intelligence pipeline + schedules seeding.
-    Replays (OAuth bounce remount, back-nav from /c/{id}, manual refresh,
-    React StrictMode double-fire) lose the race, fetch the existing doc,
-    and return it as a 2xx with no side effects. The only legitimate path
-    to a fresh run is `POST /onboarding/reset`, which `$unset`s the entire
-    `onboarding` subdoc and reopens the gate.
-
-    If enqueue fails after the gate is claimed, the subdoc is rolled back
-    via `$unset` so the user can retry rather than being stuck with a
-    `completed=true` flag and no worker job. Returns 503 in that case.
-
-    Returns the updated (or existing, on replay) user document with stringy
-    `_id` / `user_id`.
-    """
+    """Complete a user's onboarding submission. Idempotent under concurrent
+    retries via an atomic `onboarding: {$exists: false}` gate."""
     log.set(auth={"user_id": user_id})
 
     try:
@@ -88,10 +70,6 @@ async def complete_onboarding(
         if onboarding_data.focus and onboarding_data.focus.strip():
             update_fields["onboarding.focus"] = onboarding_data.focus.strip()
 
-        # No-Gmail clarify answers (scope/blocker/constraint). Stored as a
-        # plain list so the todo generator can read them back as dicts; we
-        # don't keep skipped questions (value=None) because they carry no
-        # signal and would just bloat the prompt context.
         if onboarding_data.clarify_answers:
             kept = [
                 {
@@ -106,19 +84,8 @@ async def complete_onboarding(
             if kept:
                 update_fields["onboarding.clarify_answers"] = kept
 
-        # Atomic gate: matches only when no `onboarding` subdoc exists yet.
-        # Two states satisfy this:
-        #   - Fresh user (oauth_service.store_user_info never writes onboarding.*)
-        #   - Reset user (/onboarding/reset does $unset on the whole subdoc)
-        # Anything else — pipeline running, reveals in progress, fully done —
-        # has the subdoc and falls through to the replay branch. This is
-        # narrower than gating on `onboarding.completed` and keeps the gate
-        # decoupled from the meaning of `completed` (which other consumers
-        # like oauth_service and cleanup_tasks rely on).
-        #
-        # MongoDB guarantees single-document update atomicity, so under
-        # concurrent POSTs exactly one caller's filter matches and creates
-        # the subdoc; the rest get None.
+        # Atomic gate: only the request that creates the `onboarding` subdoc
+        # wins; concurrent POSTs and replays get None and fall through.
         updated_user = await users_collection.find_one_and_update(
             {"_id": user_object_id, "onboarding": {"$exists": False}},
             {"$set": update_fields},
@@ -126,9 +93,6 @@ async def complete_onboarding(
         )
 
         if updated_user is None:
-            # Either the user doesn't exist, or the onboarding subdoc is
-            # already present (someone else won the race, or this is a
-            # remount-induced replay). Distinguish with one read.
             existing = await users_collection.find_one({"_id": user_object_id})
             if not existing:
                 raise HTTPException(status_code=404, detail="User not found")
@@ -139,11 +103,8 @@ async def complete_onboarding(
             )
             return _serialize_user(existing)
 
-        # We won the gate. Try to enqueue the pipeline before scheduling any
-        # other side effects. If enqueue fails (Redis down, etc.) we roll
-        # back the subdoc so the user can retry — without rollback they'd
-        # be stuck forever with `completed=true` but no worker job to drive
-        # the reveals.
+        # Enqueue the pipeline before any other side effects; roll back the
+        # subdoc on failure so the user isn't stuck with no worker job.
         try:
             await enqueue_intelligence_job(user_id)
         except Exception as e:
@@ -166,9 +127,6 @@ async def complete_onboarding(
                 detail="Could not start onboarding. Please retry.",
             )
 
-        # Enqueue succeeded — schedule the seeding background task. Done
-        # after enqueue so a seeding failure can't poison the gate; seeding
-        # failures are logged but non-fatal.
         background_tasks.add_task(seed_initial_user_data, user_id)
 
         log.info(f"Onboarding completed successfully for user {user_id}")
@@ -287,17 +245,8 @@ async def update_onboarding_preferences(
 
 
 async def reset_onboarding(user_id: str) -> Dict[str, int]:
-    """
-    Fully reset a user's onboarding so they can run the flow from scratch.
-
-    Clears `users.onboarding`, deletes onboarding-tagged todos, deletes
-    workflows that were generated during onboarding, deletes the first
-    conversation that was seeded for the user, disconnects every integration
-    the user connected, wipes Mem0 memories, and deletes the LangGraph
-    checkpointer thread for the seeded conversation.
-
-    Returns counts of what was deleted for observability.
-    """
+    """Fully reset a user's onboarding so they can run the flow from scratch.
+    Returns counts of what was deleted."""
     log.set(auth={"user_id": user_id}, onboarding={"operation": "reset"})
 
     user_object_id = ObjectId(user_id)
@@ -309,8 +258,8 @@ async def reset_onboarding(user_id: str) -> Dict[str, int]:
     if not user_doc:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Abort any in-flight intelligence pipeline first so it can't emit
-    # stage events for the user after the doc is wiped.
+    # Abort any in-flight pipeline first so it can't emit stage events
+    # after the doc is wiped.
     try:
         await abort_active_intelligence_job(user_id)
     except Exception as e:
@@ -323,9 +272,8 @@ async def reset_onboarding(user_id: str) -> Dict[str, int]:
     workflows_deleted = 0
     for wf_id in workflow_ids:
         try:
-            # WorkflowService.delete_workflow cancels scheduled executions
-            # and unregisters Composio triggers — direct collection delete
-            # would leave orphaned schedules and triggers.
+            # Use the service (not a direct delete) so scheduled executions
+            # and Composio triggers are cleaned up too.
             deleted = await WorkflowService.delete_workflow(str(wf_id), user_id)
             if deleted:
                 workflows_deleted += 1
@@ -385,7 +333,6 @@ async def reset_onboarding(user_id: str) -> Dict[str, int]:
 
 
 async def _disconnect_user_integrations(user_id: str) -> int:
-    """Disconnect every integration the user connected. Returns count."""
     try:
         cursor = user_integrations_collection.find(
             {"user_id": user_id}, {"integration_id": 1}
@@ -408,7 +355,6 @@ async def _disconnect_user_integrations(user_id: str) -> int:
 
 
 async def _clear_user_memories(user_id: str) -> int:
-    """Purge Mem0 memories accumulated during onboarding. Returns 1 on success."""
     try:
         return 1 if await memory_service.delete_all_memories(user_id=user_id) else 0
     except Exception as e:

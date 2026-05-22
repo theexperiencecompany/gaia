@@ -44,9 +44,7 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
 
   return (
     <HeroUIProvider>
-      {/* Toaster lives OUTSIDE LazyMotion: sileo uses motion.* internally and
-          would trip strict mode. Tree-shaking isn't impacted because sileo is
-          its own bundle. */}
+      {/* Keep Toaster outside LazyMotion: sileo uses motion.* internally. */}
       <Toaster position="top-right" />
       <LazyMotionProvider>
         <QueryProvider>

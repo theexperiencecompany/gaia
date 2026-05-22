@@ -44,9 +44,6 @@ const INTRO_FADE_IN = {
 
 const INTRO_SEEN_PREFIX = "gaia.onboarding.introSeen";
 
-// Keyed per-user so a new account still gets the intro, while the same
-// user reloading (or coming back from an external OAuth redirect that lands
-// them in a fresh browsing context, e.g. Arc's Little Arc) skips it.
 function introSeenKey(userId: string): string | null {
   return userId ? `${INTRO_SEEN_PREFIX}.${userId}` : null;
 }
@@ -85,10 +82,7 @@ export default function Onboarding() {
     skipAutoRedirect: true,
   });
   const userId = useUserStore((s) => s.userId);
-  // Zustand `persist` hydrates from localStorage asynchronously, so on first
-  // render `userId` is "" and the seen-marker (keyed by userId) cannot be
-  // resolved. Start with `null` (unknown) and resolve once the userId lands
-  // — otherwise the intro replays on every reload and after OAuth redirects.
+  // `null` until userId hydrates from persisted storage, so the intro doesn't replay on every reload.
   const [introDone, setIntroDone] = useState<boolean | null>(() =>
     userId ? hasSeenIntro(userId) : null,
   );
@@ -163,9 +157,6 @@ export default function Onboarding() {
     <m.div {...INTRO_FADE_IN}>{composer}</m.div>
   ) : null;
 
-  // While `introDone` is null we don't yet know whether to play the intro
-  // (userId hasn't hydrated). Render nothing rather than briefly mounting
-  // the intro and then unmounting it once we discover it's already seen.
   const introResolved = introDone !== null;
 
   return (

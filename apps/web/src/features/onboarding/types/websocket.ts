@@ -37,7 +37,6 @@ export interface PersonalizationData {
       timezone?: string;
     };
   }>;
-  // Stage data for reveal card reconstruction on page reload
   writing_style?: {
     style_summary: string;
     example?: WritingStyleExampleBlocks | null;
@@ -63,8 +62,6 @@ export interface PersonalizationData {
   first_message_conversation_id?: string;
   first_message?: string | null;
 }
-
-// ── Per-reveal-card payload types (consumed by reveal components) ──────────
 
 export interface WritingStyleExampleBlocks {
   greeting: string;
@@ -121,8 +118,6 @@ export interface WorkflowResults {
   }>;
 }
 
-// ── DAG stage events (new event model) ─────────────────────────────────────
-
 export type OnboardingStage =
   | "inbox_scanning"
   | "writing_style_progress"
@@ -168,8 +163,6 @@ export type OnboardingStageEvent = {
 export type StageBuffer = {
   [K in OnboardingStage]?: StagePayloads[K];
 };
-
-// ── Phase update event (used by root layout for global phase tracking) ────
 
 export interface OnboardingPhaseUpdateMessage {
   type: "onboarding_phase_update";

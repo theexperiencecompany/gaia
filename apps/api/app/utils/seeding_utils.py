@@ -234,16 +234,10 @@ async def seed_onboarding_todo(user_id: str) -> None:
 
 
 async def seed_onboarding_conversation(user_id: str) -> Optional[str]:
-    """
-    Create the empty post-onboarding welcome conversation, tagged
-    `is_onboarding_conversation=True` so the agent picks up the onboarding
-    system prompt and the frontend can route to the `WelcomeChat` surface.
+    """Create the empty welcome conversation tagged is_onboarding_conversation=True.
 
-    The LLM wrap-up text lives on `users.onboarding.first_message` (rendered
-    above the holo card during the onboarding reveal) and is intentionally
-    NOT mirrored into this conversation: the chat view replaces it with the
-    persona-tailored `WelcomeChat`, so duplicating the message here would
-    only create a hidden ghost row that the frontend has to suppress.
+    Left empty on purpose: the frontend renders WelcomeChat instead, so mirroring
+    the wrap-up message here would create a ghost row.
     """
     log.set(operation="seed_onboarding_conversation", user_id=user_id)
     try:

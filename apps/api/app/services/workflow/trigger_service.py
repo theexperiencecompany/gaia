@@ -157,13 +157,9 @@ class TriggerService:
             workflow_id: The workflow ID
             trigger_name: The trigger name (e.g., 'calendar_event_created')
             trigger_config: The TriggerConfig object with properly typed trigger_data
-            raise_on_failure: If True, raise TriggerRegistrationError when the
-                handler itself is missing or registration raises an unexpected
-                exception. An empty list returned by the handler is a legitimate
-                success (e.g. Gmail is account-level and has no per-workflow IDs;
-                a multi-resource handler with no resources to register also
-                returns []). Handlers raise TriggerRegistrationError themselves
-                on real registration failures.
+            raise_on_failure: If True, raise when the handler is missing or
+                raises. An empty list is a legitimate success (e.g. account-level
+                Gmail has no per-workflow IDs), NOT a failure.
 
         Returns:
             List of registered Composio trigger IDs (may be empty on success)

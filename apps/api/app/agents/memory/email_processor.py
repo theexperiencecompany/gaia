@@ -512,7 +512,7 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
             return {"profiles_stored": 0}
 
         # Step 2: Extract usernames and crawl profiles in parallel
-        crawl_semaphore = asyncio.Semaphore(20)  # Limit concurrent crawls
+        crawl_semaphore = asyncio.Semaphore(20)
         platform_tasks = []
         discovered_profile_tasks = []  # Track discovery tasks
         crawled_urls: set[str] = (

@@ -45,8 +45,6 @@ interface OnboardingPlatformConnectProps {
   onSkip: () => void;
   onHoverPlatform: (platform: PlatformPreviewPlatform | null) => void;
   hideSkip?: boolean;
-  /** Drop the `ml-10.75` indent — used when rendered inside an accordion
-   *  (where the parent already handles padding). */
   embedded?: boolean;
 }
 

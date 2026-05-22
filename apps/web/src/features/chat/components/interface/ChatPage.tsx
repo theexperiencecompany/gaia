@@ -107,10 +107,6 @@ const ChatPage = React.memo(function MainChat() {
     convoIdParam,
   } = useChatLayout();
 
-  // The post-onboarding welcome conversation is empty by design (the backend
-  // no longer seeds the LLM wrap-up as a real message). Route it through the
-  // messages layout anyway so ChatRenderer can render the persona-tailored
-  // WelcomeChat instead of the generic "How can I help?" starter.
   const useMessagesLayout = hasMessages || isWelcomeConversation;
 
   // Set active conversation ID and mark as read when opening

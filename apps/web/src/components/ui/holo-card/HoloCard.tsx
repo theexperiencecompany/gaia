@@ -161,12 +161,7 @@ export const HoloCard = ({
         transform: "rotateY(180deg)",
       };
 
-  // Stamp die-cut clip-path. The source path is landscape 1877.8125×1409.0625;
-  // we rotate it 90° CW and stretch into the card's portrait W×H inside the
-  // <clipPath> transform so the same path data works at any card size. The
-  // clipPath ID is unique per HoloCard instance so multiple cards on the same
-  // page don't collide. Clip-path is applied in local coords before the
-  // element's CSS transform, so the silhouette tilts and flips with the card.
+  // clipPath ID must be unique per instance so multiple cards on a page don't collide.
   const clipId = useId();
   const clipUrl = `url(#${clipId})`;
   const clipTransform = `scale(${width / STAMP_NATURAL_HEIGHT} ${height / STAMP_NATURAL_WIDTH}) translate(${STAMP_NATURAL_HEIGHT} 0) rotate(90)`;
@@ -175,13 +170,7 @@ export const HoloCard = ({
     WebkitClipPath: clipUrl,
   };
 
-  // Inner stamp border: a 4px solid-white rectangle ring inset 22px from the
-  // card edge. Uses CSS `border` (not mask-composite) so it renders the same
-  // way in `html-to-image` clones — earlier experiments with mask-composite
-  // gave a beautiful glass ring on screen but downloaded as a fully-filled
-  // white rectangle because the masking step was dropped during cloning.
-  // Rendered inside the clipped face so the Tilt transform carries it with
-  // the card.
+  // Use CSS `border` not mask-composite: html-to-image drops the mask and downloads it as a filled rectangle.
   const stampBorderStyle = {
     position: "absolute" as const,
     inset: 22,

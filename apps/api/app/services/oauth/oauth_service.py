@@ -303,7 +303,6 @@ async def handle_oauth_connection(
     if integration_config.id == GMAIL_INTEGRATION_ID:
         log.info(f"Starting Gmail email processing for user {user_id}")
 
-        # Fetch once; both branches below read the same snapshot.
         user_doc = None
         try:
             user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
@@ -350,11 +349,8 @@ async def handle_oauth_connection(
                     exc_info=True,
                 )
 
-        # Queue Gmail->Mem0 ingestion via ARQ — but only if the user has
-        # already completed onboarding. During first-time onboarding, the
-        # onboarding pipeline (process_onboarding_intelligence) enqueues this
-        # job itself once inbox scanning finishes, so it doesn't compete with
-        # the visible scan for Composio Gmail capacity.
+        # During onboarding the pipeline enqueues this job itself; queuing here
+        # too would contend for Composio Gmail capacity with the visible scan.
         if onboarding_completed:
             try:
                 pool = await RedisPoolManager.get_pool()

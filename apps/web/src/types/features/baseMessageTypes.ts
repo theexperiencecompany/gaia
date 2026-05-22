@@ -66,7 +66,6 @@ export interface BotMessageData extends BaseMessageData {
   onRetry?: () => void;
   isRetrying?: boolean;
 
-  // Animation
   animateParts?: boolean;
 }
 

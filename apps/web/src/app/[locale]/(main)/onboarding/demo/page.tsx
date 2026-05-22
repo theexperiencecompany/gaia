@@ -60,8 +60,6 @@ if (process.env.NODE_ENV === "production") {
   notFound();
 }
 
-// ── Dummy data ────────────────────────────────────────────────────────────────
-
 const DUMMY_WRITING_STYLE = {
   style_summary:
     "Opens with 'Hey' or 'Hi [name]', rarely uses formal salutations. Keeps sentences short and punchy, rarely more than 2 clauses. Signs off with 'Cheers' or just their name. Uses lowercase occasionally in casual threads and drops trailing periods on short replies.",
@@ -124,9 +122,6 @@ const DUMMY_WORKFLOWS = [
   },
 ];
 
-// Mock chat object used by demos that take `chat: UseOnboardingChatReturn`.
-// Components that consume this only read flags / message lists — they don't
-// invoke send/setInput inside the demo.
 const DUMMY_CHAT: UseOnboardingChatReturn = {
   streamMessages: [],
   chatInputValue: "",
@@ -136,7 +131,6 @@ const DUMMY_CHAT: UseOnboardingChatReturn = {
   sendChatMessage: async () => {},
 };
 
-// PersonalizationData-shaped writing style for the timeline mock.
 const DUMMY_PERSONALIZATION: PersonalizationData = {
   phase: "personalization_complete",
   bio_status: "completed",
@@ -160,8 +154,6 @@ const DUMMY_PERSONALIZATION: PersonalizationData = {
   })),
 };
 
-// ── Processing simulation ─────────────────────────────────────────────────────
-
 const GMAIL_STAGES: OnboardingStage[] = [
   "inbox_scanning",
   "writing_style_ready",
@@ -170,10 +162,6 @@ const GMAIL_STAGES: OnboardingStage[] = [
   "workflows_ready",
 ];
 
-// Live progress text emitted by each *_creating/*_progress stage. The
-// completion stage that flips its step ✓ also clears the matching slot —
-// mirroring the reducer's PROGRESS_CLEARED_BY logic so the demo behaves
-// identically to production.
 const PROGRESS_BY_COMPLETION: Partial<
   Record<OnboardingStage, { stage: OnboardingStage; text: string }>
 > = {
@@ -260,8 +248,6 @@ function ProcessingDemo() {
   );
 }
 
-// ── Todo cards simulation ─────────────────────────────────────────────────────
-
 function TodoCardsDemo() {
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
@@ -286,8 +272,6 @@ function TodoCardsDemo() {
     </DemoSection>
   );
 }
-
-// ── Platform connect simulation ───────────────────────────────────────────────
 
 function PlatformConnectDemo() {
   const [connected, setConnected] = useState<string | null>(null);
@@ -382,8 +366,6 @@ function PlatformConnectDemo() {
   );
 }
 
-// ── Message-break stagger demo ────────────────────────────────────────────────
-
 const MESSAGE_BREAK_SAMPLES = [
   "Hey! I'm GAIA.<NEW_MESSAGE_BREAK>What should I call you?",
   "Nice to meet you, Aryan!<NEW_MESSAGE_BREAK>What do you do?<NEW_MESSAGE_BREAK>I'll use this to tailor your setup.",
@@ -434,13 +416,7 @@ function MessageBreakStaggerDemo() {
   );
 }
 
-// ── Clarify composer ──────────────────────────────────────────────────────────
-
 function ClarifyDemo() {
-  // Local reducer so the demo runs against the real state machine. In
-  // production the questions arrive from the /onboarding/clarify-questions
-  // endpoint; the demo seeds the mock set on mount so the composer renders
-  // immediately without a network call.
   const [state, dispatch] = useReducer(reducer, initialState, (s) => ({
     ...s,
     clarifyQuestions: CLARIFY_MOCK_QUESTIONS,
@@ -455,8 +431,6 @@ function ClarifyDemo() {
   return (
     <DemoSection label="ClarifyComposer (no-Gmail follow-up)">
       <div className="flex flex-col gap-3">
-        {/* Demo wrapper mirrors the real composer slot width (max-w-xl) so the
-            layout matches what the user sees in the live flow. */}
         <div className="mx-auto w-full max-w-xl">
           <ClarifyComposer state={state} dispatch={dispatch} />
         </div>
@@ -479,11 +453,7 @@ function ClarifyDemo() {
   );
 }
 
-// ── Progress bar (fixed) ──────────────────────────────────────────────────────
-
-// `OnboardingProgress` uses `position: fixed top-0`. Wrapping it in a parent
-// with a `transform` establishes a new containing block so the fixed bar is
-// scoped to the demo card instead of pinned to the viewport.
+// Wrapping the fixed-position bar in a `transform` parent scopes it to the demo card instead of the viewport.
 function ProgressDemo() {
   const [step, setStep] = useState(2);
   const total = 7;
@@ -522,8 +492,6 @@ function ProgressDemo() {
   );
 }
 
-// ── Intro overlay ─────────────────────────────────────────────────────────────
-
 function IntroDemo() {
   const [playing, setPlaying] = useState(false);
   return (
@@ -543,8 +511,6 @@ function IntroDemo() {
     </DemoSection>
   );
 }
-
-// ── Composer primitives ───────────────────────────────────────────────────────
 
 function CTAComposerDemo() {
   return (
@@ -568,8 +534,6 @@ function CTAComposerDemo() {
     </DemoSection>
   );
 }
-
-// ── OnboardingInput (3 modes) ─────────────────────────────────────────────────
 
 function OnboardingInputDemo() {
   const qaRef = useRef<HTMLInputElement>(null);
@@ -643,8 +607,6 @@ function OnboardingInputDemo() {
   );
 }
 
-// ── Messages region ───────────────────────────────────────────────────────────
-
 const SAMPLE_MESSAGES = [
   {
     id: "m1",
@@ -700,8 +662,6 @@ function OnboardingMessagesDemo() {
   );
 }
 
-// ── CompletedStagesTimeline ──────────────────────────────────────────────────
-
 function CompletedStagesTimelineDemo() {
   const [acked, setAcked] = useState({
     writing: true,
@@ -748,8 +708,6 @@ function CompletedStagesTimelineDemo() {
     </DemoSection>
   );
 }
-
-// ── Stage panels (RevealWritingStyle / Workflows / Platforms) ─────────────────
 
 function RevealWritingStyleStageDemo() {
   const [acked, setAcked] = useState(false);
@@ -809,8 +767,6 @@ function PlatformsStageDemo() {
   );
 }
 
-// ── Layout helpers ────────────────────────────────────────────────────────────
-
 function DemoSection({
   label,
   children,
@@ -829,8 +785,6 @@ function DemoSection({
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
-
 export default function OnboardingDemoPage() {
   return (
     <div className="h-full overflow-y-auto bg-primary-bg px-6 py-16">
@@ -847,34 +801,26 @@ export default function OnboardingDemoPage() {
           </p>
         </div>
 
-        {/* Chrome: top bar + fullscreen intro */}
         <ProgressDemo />
         <IntroDemo />
 
-        {/* Composer primitives */}
         <CTAComposerDemo />
         <OnboardingInputDemo />
 
-        {/* Transcript */}
         <OnboardingMessagesDemo />
 
-        {/* Message-break stagger */}
         <MessageBreakStaggerDemo />
 
-        {/* Processing widget */}
         <ProcessingDemo />
 
-        {/* Clarify composer (3 follow-up questions, no-Gmail path) */}
         <ClarifyDemo />
 
-        {/* RevealIntroBubble — shared "bot bubble + reveal" wrapper */}
         <DemoSection label="RevealIntroBubble">
           <RevealIntroBubble text={REVEAL_WRITING_STYLE_INTRO} />
           <RevealIntroBubble text={REVEAL_TODOS_INTRO_GMAIL} />
           <RevealIntroBubble text={REVEAL_TODOS_INTRO_NO_GMAIL} />
         </DemoSection>
 
-        {/* Writing style */}
         <DemoSection label="WritingStyleRevealCard">
           <WritingStyleRevealCard
             style_summary={DUMMY_WRITING_STYLE.style_summary}
@@ -883,10 +829,8 @@ export default function OnboardingDemoPage() {
           />
         </DemoSection>
 
-        {/* Full RevealWritingStyle stage (pre + post ack) */}
         <RevealWritingStyleStageDemo />
 
-        {/* Collapsed reveal summaries (used during the live processing stream) */}
         <DemoSection label="TodosRevealCard (collapsed summary)">
           <TodosRevealCard
             todos={DUMMY_TODOS.map((t) => ({
@@ -900,31 +844,24 @@ export default function OnboardingDemoPage() {
           <WorkflowsRevealCard workflows={DUMMY_WORKFLOWS} />
         </DemoSection>
 
-        {/* Todos */}
         <TodoCardsDemo />
 
-        {/* Workflows */}
         <DemoSection label="OnboardingWorkflowCards">
           <OnboardingWorkflowCards workflows={DUMMY_WORKFLOWS} />
         </DemoSection>
 
-        {/* Full Workflows stage */}
         <WorkflowsStageDemo />
 
-        {/* Platform connect */}
         <PlatformConnectDemo />
 
-        {/* Full Platforms stage */}
         <PlatformsStageDemo />
 
-        {/* Welcome chat (post-onboarding /c first visit) */}
         <DemoSection label="WelcomeChat (post-onboarding /c)">
           <div className="rounded-2xl border border-zinc-800 bg-primary-bg p-4">
             <WelcomeChat surface="onboarding" />
           </div>
         </DemoSection>
 
-        {/* SelectedTodoIndicator — chip + alignment */}
         <DemoSection label="SelectedTodoIndicator">
           <div className="space-y-3">
             <SelectedTodoIndicator
@@ -938,7 +875,6 @@ export default function OnboardingDemoPage() {
           </div>
         </DemoSection>
 
-        {/* Run-now demo panel — RevealTodos `todoExecutionStarted` state */}
         <DemoSection label="Run-now demo panel (RevealTodos stream mode)">
           <div className="ml-10.75 space-y-4 rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl">
             <SelectedTodoIndicator
@@ -956,8 +892,6 @@ export default function OnboardingDemoPage() {
           </div>
         </DemoSection>
 
-        {/* CompletedStageAccordion — including a long title to verify the
-            truncation + arrow-position fix. */}
         <DemoSection label="CompletedStageAccordion">
           <div className="space-y-3">
             <CompletedStageAccordion
@@ -983,7 +917,6 @@ export default function OnboardingDemoPage() {
           </div>
         </DemoSection>
 
-        {/* CompletedStagesTimeline — full stack of accordions driven by mock state */}
         <CompletedStagesTimelineDemo />
       </div>
     </div>

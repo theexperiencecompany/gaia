@@ -10,12 +10,6 @@ export const CLARIFY_OTHER_LABEL = "Other";
 export const CLARIFY_SKIP_LABEL = "Skip this question";
 export const CLARIFY_SKIP_REPLY = "Skipped";
 
-/**
- * Placeholder questions used while the backend `/onboarding/clarify-questions`
- * endpoint is being built. The real set will be LLM-generated from name +
- * profession + focus and follow the same scope → blocker → constraint
- * template.
- */
 export const CLARIFY_MOCK_QUESTIONS: ClarifyQuestion[] = [
   {
     id: "scope",

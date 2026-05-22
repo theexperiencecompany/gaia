@@ -9,10 +9,5 @@ export const STAMP_PATH_D =
 export const STAMP_NATURAL_WIDTH = 1877.8125;
 export const STAMP_NATURAL_HEIGHT = 1409.0625;
 
-// Source SVG is authored as a perforated frame (two subpaths: outer
-// perforated boundary + slightly inset inner duplicate). Under SVG's nonzero
-// fill rule that combination forms a ring with a hollow centre — useless as a
-// clip-path because the centre is "outside" the clip region. Keep only the
-// first subpath (the outer perforated boundary) and re-close it so the clip
-// region is the solid stamp silhouette.
+// Keep only the outer subpath and re-close it so the clip region is a solid silhouette, not a hollow ring.
 export const STAMP_OUTER_PATH_D = `${STAMP_PATH_D.split(/[zZ]/)[0]} z`;

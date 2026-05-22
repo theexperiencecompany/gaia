@@ -21,9 +21,7 @@ from app.models.onboarding_models import (
 )
 from app.services.mail.mail_service import search_messages
 
-# Minimum usable sent-email count for style learning. Below this we
-# short-circuit with skip_reason="insufficient_sent" so callers can decide
-# whether to render a fallback card or skip the reveal entirely.
+# Minimum usable sent-email count below which style learning is skipped.
 _MIN_SENT_EMAILS = 5
 _MAX_SAMPLES = 30
 
@@ -33,21 +31,7 @@ async def learn_writing_style(
     profession: str = "",
     on_status: Optional[Callable[[str], Awaitable[None]]] = None,
 ) -> Optional[WritingStyleProfile]:
-    """
-    Fetch the user's 50 most recent sent emails and analyze writing style.
-    No truncation — full email bodies are passed to the LLM so greetings,
-    sign-offs, and sentence patterns are all visible.
-
-    Args:
-        user_id: The user's ID
-        profession: The user's profession (used to generate a relevant example)
-        on_status: Optional async callback fired with human-readable status
-            strings ("Reading your sent folder", etc.) so callers can stream
-            progress to the UI.
-
-    Returns:
-        WritingStyleProfile or None if insufficient sent emails
-    """
+    """Fetch the user's recent sent emails and analyze writing style."""
     t0 = time.monotonic()
     try:
         if on_status is not None:
@@ -77,7 +61,6 @@ async def learn_writing_style(
             )
             return None
 
-        # Collect full bodies — skip auto-replies and near-empty emails
         samples: list[str] = []
         skipped_short = 0
         skipped_autoreply = 0
@@ -165,12 +148,7 @@ async def regenerate_example_for_style(
     summary: str,
     profession: str = "",
 ) -> Optional[WritingStyleExampleBlocks]:
-    """
-    Generate a new example email from an edited writing style summary.
-    Called after the user edits their style description on the reveal card.
-
-    Returns the structured blocks, or None on failure.
-    """
+    """Generate a new example email from an edited writing style summary."""
     try:
         llm = await providers.aget("gemini_llm")
         if llm is None:
@@ -195,10 +173,7 @@ async def regenerate_example_for_style(
 
 
 async def save_user_edited_summary(user_id: str, edited_summary: str) -> None:
-    """
-    Persist a user-edited writing style summary to MongoDB.
-    This becomes the canonical style used when composing emails on behalf of the user.
-    """
+    """Persist a user-edited writing style summary as the canonical style."""
     await users_collection.update_one(
         {"_id": ObjectId(user_id)},
         {"$set": {"onboarding.writing_style.user_edited_summary": edited_summary}},

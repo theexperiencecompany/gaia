@@ -278,7 +278,6 @@ async def process_email(
             input_text=request.prompt, user_id=str(user_id)
         )
 
-        # Fetch learned writing style from onboarding data
         writing_style_data = current_user.get("onboarding", {}).get("writing_style")
         learned_style_block = format_writing_style_for_prompt(writing_style_data)
 

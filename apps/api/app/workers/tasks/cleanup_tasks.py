@@ -12,36 +12,10 @@ from app.services.onboarding.intelligence_job import (
 
 
 async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
-    """
-    Find users stuck in the onboarding intelligence pipeline and re-queue them.
+    """Re-queue users stuck at personalization_pending past max_age_minutes.
 
-    A user is "stuck" iff:
-      - `onboarding.phase == personalization_pending`
-        (the worker normally advances this to `personalization_complete` on
-        success AND on any caught exception inside the task wrapper, so a
-        phase that stays at `personalization_pending` past the cutoff means
-        the worker process itself died — OOM, signal kill, ARQ job_timeout
-        hit. `bio_status` is unreliable here because the pipeline can crash
-        after `bio_status` is set to `completed` (inside the holo card stage)
-        but before the pipeline emits its final COMPLETE event.)
-      - `updated_at` is older than `max_age_minutes` (or missing).
-
-    Before re-enqueueing, we check whether the user's existing ARQ job is
-    still live (queued / deferred / in_progress). A healthy long-running
-    pipeline can outlive the cutoff for big inboxes or slow LLM calls — we
-    must not abort it just because the wall clock crossed the threshold.
-    Only jobs that are missing, failed, or in a non-running terminal state
-    get re-queued.
-
-    Args:
-        ctx: ARQ context.
-        max_age_minutes: How long a user can sit at `personalization_pending`
-            with no updates before we consider them stuck. Should be >=
-            ARQ's `job_timeout` so we don't preempt the worker's own
-            timeout handling.
-
-    Returns:
-        Human-readable summary of cleanup actions.
+    Skips users whose ARQ job is still live so a slow-but-healthy pipeline is
+    never aborted. Keep max_age_minutes >= ARQ job_timeout.
     """
     async with wide_task(
         "cleanup_stuck_personalization", max_age_minutes=max_age_minutes

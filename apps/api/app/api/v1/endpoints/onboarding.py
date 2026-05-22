@@ -43,13 +43,7 @@ router = APIRouter()
 
 
 def _normalize_example_blocks(raw: object) -> dict | None:
-    """
-    Normalize a writing-style example value from Mongo into structured blocks.
-
-    New records store `example` as a dict ({greeting, body, signoff, name});
-    legacy records stored it as a single string. Convert legacy strings into
-    a single-paragraph block so the frontend always receives the same shape.
-    """
+    """Normalize a writing-style example (dict or legacy string) into blocks."""
     if isinstance(raw, dict):
         return {
             "greeting": str(raw.get("greeting", "")),
@@ -111,16 +105,7 @@ async def get_clarify_questions(
     payload: ClarifyQuestionsRequest,
     user: dict = Depends(get_current_user),
 ):
-    """
-    LLM-generated 3-question follow-up for the no-Gmail path. Returned as
-    `{ questions: [{ id, kind, question, options }] }` — the frontend renders
-    these in the clarify composer. Answers come back later on `POST
-    /onboarding` as `clarify_answers`.
-
-    No persistence here — the questions are stateless. We regenerate every
-    time the user hits the endpoint so a restart picks up a fresh set keyed
-    to the latest focus answer.
-    """
+    """Generate the LLM 3-question follow-up for the no-Gmail path."""
     log.set(
         user={"id": user["user_id"]},
         onboarding={"operation": "clarify_questions"},
@@ -367,10 +352,8 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
                 display_bio = "Setting up your profile..."
 
         raw_writing_style = onboarding.get("writing_style")
-        # A writing_style document only counts if it has a usable summary —
-        # an empty `summary` (and no user edit) means the analysis bailed out
-        # (no Gmail, insufficient sent emails, LLM failure). Return null in
-        # that case so the frontend skips the reveal cleanly.
+        # Only surface writing_style if it has a usable summary; otherwise
+        # return null so the frontend skips the reveal.
         writing_style_payload: dict | None = None
         if raw_writing_style:
             resolved_summary = (
@@ -449,9 +432,6 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
         )
 
 
-# ── Writing style edit ────────────────────────────────────────────────────────
-
-
 class WritingStyleEditRequest(BaseModel):
     edited_summary: str
 
@@ -482,10 +462,7 @@ async def regenerate_writing_style_example(
     request: WritingStyleRegenerateRequest,
     user: dict = Depends(get_current_user),
 ) -> dict:
-    """
-    Generate a new example email from an edited writing style summary.
-    Called after the user saves their edited summary on the reveal card.
-    """
+    """Generate a new example email from an edited writing style summary."""
     user_id: str = user["user_id"]
     log.set(user={"id": user_id}, onboarding={"operation": "regenerate_style_example"})
     try:
@@ -505,9 +482,6 @@ async def regenerate_writing_style_example(
         raise HTTPException(
             status_code=500, detail="Failed to regenerate writing style example"
         )
-
-
-# ── Social profiles confirm ───────────────────────────────────────────────────
 
 
 class SocialProfileItem(BaseModel):

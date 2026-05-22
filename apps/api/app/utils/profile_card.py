@@ -20,12 +20,7 @@ HOUSES = ["frostpeak", "greenvale", "mistgrove", "bluehaven"]
 
 
 def _extract_text_from_llm_response(content: Any) -> str:
-    """Extract plain text from an LLM response content field.
-
-    LangChain models can return ``content`` as a plain string OR as a list of
-    content-block dicts (e.g. ``[{"type": "text", "text": "..."}]``).  This
-    helper normalizes both shapes into a single string.
-    """
+    """Normalize LangChain content (str or list of content-block dicts) to a string."""
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -134,7 +129,6 @@ async def get_user_metadata(
 
     Args:
         user_id: User ID
-        user: Pre-fetched user document (avoids redundant DB call)
 
     Returns:
         Dict with account_number and member_since
@@ -150,8 +144,7 @@ async def get_user_metadata(
 
         created_at = user.get("created_at")
 
-        # Derive a stable account number from user_id ObjectId creation timestamp
-        # ObjectId encodes creation time — use epoch seconds as a unique, stable number
+        # Stable account number derived from the ObjectId creation timestamp.
         oid = ObjectId(user_id)
         account_number = int(oid.generation_time.timestamp()) % 1_000_000
 
@@ -173,7 +166,6 @@ async def get_user_metadata(
 
 
 def _phrase_fallback(profession: str) -> str:
-    """Fallback personality phrase when the LLM call fails."""
     profession_map = {
         "developer": "Curious Developer",
         "designer": "Creative Designer",
@@ -193,13 +185,7 @@ async def generate_holo_card_content(
     context_summary: str,
     user: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, str, BioStatus]:
-    """
-    Generate the holo card's personality phrase and bio in a single structured
-    LLM call. Replaces the previous two sequential calls.
-
-    Returns:
-        Tuple of (personality_phrase, user_bio, bio_status).
-    """
+    """Generate the holo card's personality phrase and bio in one structured LLM call."""
     log.set(operation="generate_holo_card_content", user_id=user_id)
 
     if user is None:
@@ -209,7 +195,6 @@ async def generate_holo_card_content(
         (user or {}).get("onboarding", {}).get("preferences", {}).get("profession", "")
     )
 
-    # No usable context — skip the LLM and use deterministic fallbacks.
     if not context_summary.strip():
         default_bio = get_random_bio_for_profession(name, profession or "other")
         return _phrase_fallback(profession), default_bio, BioStatus.NO_GMAIL
@@ -220,10 +205,6 @@ async def generate_holo_card_content(
             profession=profession or "",
             context_summary=context_summary[:10000],
         )
-        # Gemini bound at moderate-high temperature: high enough that the
-        # phrase stays creative/unexpected, low enough that the bio stays
-        # coherent. Structured output via with_structured_output keeps both
-        # fields returned atomically — no two-call latency penalty.
         llm = init_llm(preferred_provider="gemini").bind(temperature=1.0)
         structured_llm = llm.with_structured_output(HoloCardLLMOutput)
         result: HoloCardLLMOutput = await structured_llm.ainvoke(

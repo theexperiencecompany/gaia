@@ -41,16 +41,8 @@ async def _clear_active_job_id(user_id: str) -> None:
 
 
 async def clear_active_intelligence_job(user_id: str, job_id: str) -> None:
-    """Clear the stored active job id, but only if it still points at `job_id`.
-
-    Called when a pipeline run reaches a terminal state so the field never
-    lingers pointing at a finished job (which would muddy the cleanup
-    reconciler's `is_intelligence_job_live` check). The compare-and-clear
-    guards against a race: if the user reset onboarding mid-run — which aborts
-    and enqueues a fresh job, storing its id — a blind unset would orphan that
-    new job from the abort/liveness machinery, so we only clear when the stored
-    id is still ours.
-    """
+    """Clear the stored active job id, but only if it still points at `job_id`
+    (compare-and-clear so a concurrent reset's newer job id is not orphaned)."""
     await users_collection.update_one(
         {"_id": ObjectId(user_id), "onboarding.intelligence_job_id": job_id},
         {"$unset": {"onboarding.intelligence_job_id": ""}},
@@ -65,11 +57,7 @@ async def _set_active_job_id(user_id: str, job_id: str) -> None:
 
 
 async def is_intelligence_job_live(user_id: str) -> bool:
-    """Return True iff the user has an ARQ job that is currently queued,
-    deferred, or in_progress. Used by the cleanup reconciler to avoid
-    aborting healthy long-running pipelines: a job that's actively
-    progressing should be left alone regardless of how long it has run.
-    """
+    """Return True iff the user has an ARQ job queued, deferred, or in_progress."""
     job_id = await _get_active_job_id(user_id)
     if not job_id:
         return False
@@ -89,11 +77,8 @@ async def is_intelligence_job_live(user_id: str) -> bool:
 
 
 async def abort_active_intelligence_job(user_id: str) -> bool:
-    """Abort the user's in-flight intelligence job, if one exists.
-
-    Returns True iff a job was aborted. Always clears the stored job id so
-    the field never points at a stale or already-finished job.
-    """
+    """Abort the user's in-flight intelligence job, if one exists. Returns True
+    iff a job was aborted. Always clears the stored job id."""
     job_id = await _get_active_job_id(user_id)
     if not job_id:
         return False
@@ -103,8 +88,6 @@ async def abort_active_intelligence_job(user_id: str) -> bool:
     status = await job.status()
     aborted = False
     if status in (JobStatus.queued, JobStatus.deferred, JobStatus.in_progress):
-        # Don't wait for the worker to acknowledge — flag the abort and move
-        # on. The worker honors the flag mid-run; we just need it stopped.
         await pool.zadd(abort_jobs_ss, {job_id: timestamp_ms()})
         aborted = True
         log.info(
@@ -134,10 +117,8 @@ async def _purge_stale_onboarding_todos(user_id: str) -> int:
 
 
 async def enqueue_intelligence_job(user_id: str) -> Optional[str]:
-    """Enqueue the intelligence pipeline for the user, aborting any in-flight job first.
-
-    Returns the new job id, or None if enqueue failed.
-    """
+    """Enqueue the intelligence pipeline, aborting any in-flight job first.
+    Returns the new job id, or None if enqueue failed."""
     await abort_active_intelligence_job(user_id)
     purged = await _purge_stale_onboarding_todos(user_id)
     if purged:

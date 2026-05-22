@@ -19,9 +19,7 @@ interface PersistedShape {
   clarifyCustomDrafts: Record<string, string>;
   clarifyOtherSelected: Record<string, boolean>;
   clarifySubmitted: boolean;
-  // Run-now demo state. todoExecutionMessage is intentionally omitted — it's a
-  // one-shot signal that the auto-send effect consumes and clears the moment
-  // it fires. Persisting it would cause a re-send on reload.
+  // todoExecutionMessage is deliberately omitted — persisting it re-sends on reload.
   todoExecutionStarted: boolean;
   todoExecutionConvoId: string | null;
   todoExecutionTodo: {

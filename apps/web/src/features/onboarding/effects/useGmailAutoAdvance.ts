@@ -12,12 +12,6 @@ interface IntegrationStatusEntry {
   connected: boolean;
 }
 
-/**
- * If the user reaches the Gmail question with Gmail already connected
- * (e.g. they connected previously and reloaded), auto-answer "connected"
- * so they don't have to click Connect again. Reads integration status from
- * the integrations feature.
- */
 export function useGmailAutoAdvance(
   state: OnboardingState,
   dispatch: Dispatch<Action>,

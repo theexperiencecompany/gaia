@@ -44,9 +44,6 @@ export function CompletedStagesTimeline({
   const showWorkflows = state.workflowsConfirmed && workflows.length > 0;
   const showPlatforms = state.platformsConfirmed;
 
-  // OnboardingTodoCards types `source_email` as an object (not nullable). The
-  // backend payload returns nullable, so normalise here before handing the list
-  // off so we don't widen the card component's contract.
   const cardTodos = useMemo(
     () =>
       todos.map((t) => ({

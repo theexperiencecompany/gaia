@@ -295,9 +295,7 @@ export const workflowApi = {
     );
   },
 
-  // Get available trigger schemas. Non-critical display metadata — the UI
-  // falls back to the raw slug when this is missing, so a fetch failure must
-  // not surface a toast (e.g. transient backend blips during onboarding).
+  // silent: non-critical metadata; UI falls back to the slug, never toast.
   getTriggerSchemas: async (): Promise<TriggerSchema[]> => {
     return apiService.get<TriggerSchema[]>("/triggers/schema", {
       silent: true,

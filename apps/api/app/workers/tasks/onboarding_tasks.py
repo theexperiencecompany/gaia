@@ -26,7 +26,6 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
                 f"Onboarding intelligence failed for user {user_id}: {e}",
                 exc_info=True,
             )
-            # Update phase so the user is not stuck at PERSONALIZATION_PENDING
             try:
                 await users_collection.update_one(
                     {"_id": ObjectId(user_id)},
@@ -47,11 +46,6 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
                 )
             return f"Onboarding intelligence failed for user {user_id}: {e}"
         finally:
-            # This run has reached a terminal state, so the stored active job
-            # id is now stale. Clear it (compare-and-clear on job_id so a
-            # concurrent reset/re-enqueue that already swapped in a newer job
-            # id is left intact) to keep the cleanup reconciler's liveness
-            # check honest.
             if job_id:
                 try:
                     await clear_active_intelligence_job(user_id, job_id)

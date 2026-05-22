@@ -16,15 +16,6 @@ export interface UseOnboardingChatReturn {
   sendChatMessage: (content: string) => Promise<void>;
 }
 
-/**
- * Bridges the chat stage to the global chat stream + store for the welcome
- * conversation. Subscribes to `messagesByConversation[conversationId]`,
- * exposes input/sending state, and auto-sends `pendingTodoMessage` exactly
- * once per (conversation, message) pair when both are present so a user
- * clicking "Run now" on a todo lands the message into the live chat.
- * Tracks completion of that auto-send via `isTodoExecutionDone` so the page
- * can surface a "Continue to GAIA" CTA.
- */
 export function useOnboardingChat(
   conversationId: string | null,
   pendingTodoMessage?: string | null,
@@ -38,7 +29,6 @@ export function useOnboardingChat(
   const sentTodoMessagesRef = useRef<Set<string>>(new Set());
   const todoExecutionInProgressRef = useRef(false);
 
-  // Subscribe to full IMessage[] from the store for this conversation
   const streamMessages = useChatStore(
     useShallow((state) =>
       conversationId
@@ -47,8 +37,6 @@ export function useOnboardingChat(
     ),
   );
 
-  // Set active conversation so useChatStream posts to the right place.
-  // Re-runs if conversationId changes (e.g. after restart).
   useEffect(() => {
     if (!conversationId) return;
     if (activeConversationIdRef.current === conversationId) return;
@@ -56,7 +44,6 @@ export function useOnboardingChat(
     activeConversationIdRef.current = conversationId;
   }, [conversationId]);
 
-  // Detect todo execution completion: isChatSending went true → false while todo was in progress
   useEffect(() => {
     if (!todoExecutionInProgressRef.current) return;
     if (!isChatSending) {
@@ -115,7 +102,6 @@ export function useOnboardingChat(
           true,
         );
       } catch {
-        // useChatStream handles error toasts internally
       } finally {
         setIsChatSending(false);
       }
@@ -123,9 +109,6 @@ export function useOnboardingChat(
     [conversationId, isChatSending, fetchChatStream],
   );
 
-  // Auto-send pending todo message as soon as the conversation is ready.
-  // Keyed by message content + conversation so a remount within the same
-  // conversation can't double-send, but a new conversation re-arms.
   useEffect(() => {
     if (!pendingTodoMessage || !conversationId) return;
     const key = `${conversationId}::${pendingTodoMessage}`;

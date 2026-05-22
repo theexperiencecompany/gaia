@@ -35,8 +35,6 @@ interface OnboardingWorkflow {
 
 interface OnboardingWorkflowCardsProps {
   workflows: OnboardingWorkflow[];
-  /** Drop the `ml-10.75` indent — used when the grid is rendered inside an
-   *  accordion (where the parent already handles padding). */
   embedded?: boolean;
 }
 

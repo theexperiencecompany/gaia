@@ -9,14 +9,8 @@ import type { OnboardingStage } from "../types/websocket";
 import { initialState } from "./initial";
 import type { Action, OnboardingState } from "./types";
 
-/**
- * When a `*_ready` / completion stage fires, the matching in-flight progress
- * slots are no longer relevant — drop them so the UI can't display stale text
- * after the step has completed.
- *
- * `inbox_scanning` is a multi-emit stage with no dedicated completion event;
- * any "after-inbox" stage signals it's done.
- */
+// Progress slots cleared when a stage completes. inbox_scanning has no
+// dedicated completion event, so any "after-inbox" stage clears it.
 const PROGRESS_CLEARED_BY: Partial<
   Record<OnboardingStage, readonly OnboardingStage[]>
 > = {
@@ -163,7 +157,6 @@ export function reducer(
       return initialState;
 
     case "clarifyLoaded": {
-      // First question becomes the active tab if nothing was selected yet.
       const activeTab =
         state.clarifyActiveTab ?? action.questions[0]?.id ?? null;
       return {

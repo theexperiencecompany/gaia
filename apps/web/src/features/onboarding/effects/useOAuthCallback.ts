@@ -8,12 +8,6 @@ import { toast } from "@/lib/toast";
 import { FIELD_NAMES } from "../constants";
 import type { Action } from "../state/types";
 
-/**
- * Handles redirects back from the Gmail OAuth popup. Reads
- * `?oauth_success` / `?oauth_error` from the URL, dispatches the Gmail
- * answer on success, surfaces a toast on error, then strips the params from
- * the URL so a refresh can't re-trigger the side effect.
- */
 export function useOAuthCallback(dispatch: Dispatch<Action>): void {
   const searchParams = useSearchParams();
   const handledRef = useRef<string | null>(null);

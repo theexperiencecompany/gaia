@@ -43,10 +43,7 @@ export function OnboardingCTAButton({
     </>
   );
 
-  // `href` navigates via the router rather than wrapping the button in a
-  // <Link>: RaisedButton always renders a native <button>, and nesting a
-  // <button> inside an <a> is invalid HTML. A caller's onClick can still
-  // cancel navigation with event.preventDefault().
+  // href routes via router, not <Link>: RaisedButton is a <button>, invalid inside <a>.
   const handleClick: MouseEventHandler<HTMLButtonElement> = (event) => {
     onClick?.(event);
     if (href && !event.defaultPrevented) {

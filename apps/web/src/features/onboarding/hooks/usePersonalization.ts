@@ -9,14 +9,6 @@ interface UsePersonalizationReturn {
   refetch: () => Promise<void>;
 }
 
-/**
- * Fetches and manages personalization data for the holo card modal.
- *
- * Data source: REST endpoint `/onboarding/personalization`. Fetched on mount
- * and re-fetched on demand via `refetch()`. There is no WebSocket push for
- * this data — the onboarding DAG pipeline writes to MongoDB and the client
- * re-reads on demand.
- */
 export const usePersonalization = (
   enabled: boolean = true,
 ): UsePersonalizationReturn => {

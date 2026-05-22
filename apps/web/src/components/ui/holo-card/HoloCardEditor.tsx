@@ -111,11 +111,7 @@ export const HoloCardEditor = ({
   const handleDownload = useCallback(async () => {
     if (cardRef.current === null) return;
     try {
-      // Force every <img> inside the offscreen card to finish decoding before
-      // we snapshot. Next/Image renders into native <img> elements but the
-      // offscreen container can have images still in lazy / decoding state,
-      // and html-to-image clones them as-is — empty placeholders end up in
-      // the PNG. Waiting on `decode()` makes the clone deterministic.
+      // Wait for images to decode before snapshotting, else html-to-image clones empty placeholders into the PNG.
       const imgs = Array.from(cardRef.current.querySelectorAll("img"));
       await Promise.all(
         imgs.map((img) => {

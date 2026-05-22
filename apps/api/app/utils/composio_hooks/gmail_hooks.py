@@ -96,13 +96,8 @@ def gmail_fetch_emails_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
     - format: default to "full"
     - Add Gmail search syntax tips to description
 
-    We intentionally do NOT default label_ids to ["INBOX"] here. Gmail ANDs
-    label_ids with the search query, so a stale ["INBOX"] default silently
-    breaks any caller scoping to a different folder (e.g. query="in:sent"
-    returned 0 results because messages can't be in INBOX and SENT
-    simultaneously). Callers — agent or service — must scope folders
-    explicitly via the query syntax (in:inbox / in:sent / etc.) or by
-    passing label_ids themselves.
+    Do NOT default label_ids to ["INBOX"]: Gmail ANDs it with the query, so a
+    stale default silently zeroes out folder-scoped searches (e.g. in:sent).
     """
     input_params = schema.input_parameters
     if not isinstance(input_params, dict):

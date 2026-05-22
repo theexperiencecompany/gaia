@@ -44,18 +44,6 @@ interface UseOnboardingArgs {
   skipAutoRedirect?: boolean;
 }
 
-/**
- * Returns `{ state, stage, dispatch, restart }`. If the authed user already
- * completed the onboarding submission server-side (per `user.onboarding`)
- * but hasn't reached chat yet, this hook resumes them past the Q&A so a
- * post-clear reload doesn't drop them back on Q1. Pass `skipAutoRedirect`
- * to keep them on this page when chat is reached (used by the page itself
- * which renders the chat stage inline).
- *
- * `restart` clears persisted state, dispatches `restartStart`, drops the
- * old conversation from chat store + IndexedDB, then calls the server
- * `/reset` endpoint. The reducer is locked via `isRestarting` until done.
- */
 export function useOnboarding({
   skipAutoRedirect = false,
 }: UseOnboardingArgs = {}): UseOnboardingReturn {
@@ -65,14 +53,10 @@ export function useOnboarding({
   const [state, dispatch] = useReducer(reducer, initialState);
   const stage = getStage(state);
 
-  // Persist + hydrate from localStorage
   useOnboardingPersistence(state, dispatch);
 
-  // Resume mid-pipeline if backend says onboarding was already submitted but
-  // hasn't reached chat. Without this, a user reloading after the
-  // localStorage was cleared would land back on Q1. The `questionIndex`
-  // guard naturally short-circuits subsequent runs once we've hydrated past
-  // the Q&A — no ref needed.
+  // Resume past the Q&A if the backend already accepted a submission, so a
+  // post-clear reload doesn't drop the user back on Q1.
   useEffect(() => {
     if (state.questionIndex >= questions.length) return;
     if (state.isRestarting) return;
@@ -85,13 +69,10 @@ export function useOnboarding({
     });
   }, [user.onboarding, state.questionIndex, state.isRestarting]);
 
-  // Auto-advance Gmail if integration shows connected on reload
   useGmailAutoAdvance(state, dispatch);
 
-  // Handle ?oauth_success / ?oauth_error from URL
   useOAuthCallback(dispatch);
 
-  // Submit POST /onboarding when responses complete and pipeline hasn't started
   const handleSubmissionSuccess = useCallback(
     (info: UserInfo) => {
       setUser(userInfoToStoreUser(info));
@@ -100,21 +81,14 @@ export function useOnboarding({
   );
   useOnboardingSubmission(state, handleSubmissionSuccess);
 
-  // No-Gmail clarify follow-up: fetch the 3 LLM-generated questions once
-  // the user has answered the focus prompt. Gated internally on the no-Gmail
-  // path, so this is a no-op for Gmail users.
   useClarifyQuestions(state, dispatch);
 
-  // WS + initial snapshot fetch
   useBackendSync(state, stage, dispatch);
 
-  // POST /onboarding/phase once when entering chat stage
   usePhaseSync(stage);
 
-  // Analytics
   useOnboardingAnalytics(state);
 
-  // Auto-redirect into the live chat once the conversation is ready
   const redirectedRef = useRef(false);
   useEffect(() => {
     if (skipAutoRedirect) return;
@@ -131,7 +105,6 @@ export function useOnboarding({
     router,
   ]);
 
-  // Restart: optimistic local reset + backend /reset in background
   const restart = useCallback(async () => {
     if (state.isRestarting) return;
 

@@ -19,11 +19,7 @@ import type {
 
 const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_BASE_DELAY_MS = 1000;
-// If the WS connects but stays silent past this window, kick off a REST
-// poll so the user isn't stuck behind a silent socket.
 const WS_SILENCE_FALLBACK_MS = 5000;
-// Once polling, refetch the snapshot at this cadence. Cleared the moment
-// any WS event lands.
 const POLL_INTERVAL_MS = 3000;
 
 function getWsUrl(): string {
@@ -35,28 +31,15 @@ function getWsUrl(): string {
   );
 }
 
-/**
- * Discriminated-union envelope: narrowing on `stage` automatically narrows
- * `payload`, so handlers can be typed without per-case `as` casts.
- */
 type StageEnvelope = {
   [K in OnboardingStage]: { stage: K; payload: StagePayloads[K] };
 }[OnboardingStage];
 
-/**
- * Activates once the user is past Q&A/focus. Fetches `/personalization`
- * once, then routes WS `onboarding_stage` events into reducer dispatches.
- * If the socket connects but stays silent for `WS_SILENCE_FALLBACK_MS`,
- * starts polling `/personalization` every `POLL_INTERVAL_MS` until the WS
- * sends an event or a snapshot with a conversation id arrives. Reconnects
- * with exponential backoff up to MAX_RECONNECT_ATTEMPTS.
- */
 export function useBackendSync(
   state: OnboardingState,
   stage: Stage,
   dispatch: Dispatch<Action>,
 ): void {
-  // Active once we've moved past the Q&A composer stages.
   const active =
     stage !== "questions" && stage !== "focus" && !state.isRestarting;
 
@@ -112,11 +95,8 @@ export function useBackendSync(
       workflows_creating: (p) =>
         dispatchProgress("workflows_creating", p.status_text),
       writing_style_ready: (p) => {
-        // For Gmail users where learning failed (LLM error, near-zero sent
-        // emails) the backend still emits with style_summary=null so the
-        // cursor can advance. Combined with `completedStages.has(
-        // "writing_style_ready")`, derive.ts treats this as "skip the
-        // reveal" instead of leaving the user stuck.
+        // Backend may emit style_summary=null on learning failure to advance
+        // the cursor; derive.ts treats null as "skip the reveal".
         const summary = p.style_summary?.trim();
         dispatchRef.current({
           type: "serverPatch",
@@ -169,14 +149,9 @@ export function useBackendSync(
               stage: "holo_ready",
             });
           })
-          .catch(() => {
-            // swallow — WS reconnect or poll will retry
-          });
+          .catch(() => {});
       },
       complete: (p) => {
-        // Backend emits `complete` only after holo_ready has fired (holo
-        // card now runs inside the main pipeline gather), so closing the WS
-        // here is safe — no terminal events trail this one.
         dispatchRef.current({
           type: "serverPatch",
           patch: {
@@ -184,25 +159,15 @@ export function useBackendSync(
             phase: "personalization_complete",
           },
         });
-        // Prefetch the welcome conversation into IndexedDB while the user is
-        // still on the holo reveal stage. Without this the post-onboarding
-        // `/c/{id}` mount briefly renders the generic "How can I help?"
-        // starter before the local conversation list catches up and flips
-        // the layout to WelcomeChat. Fire and forget — failures fall back
-        // to the on-mount sync in ChatPage.
+        // Prefetch the welcome conversation into IndexedDB so the post-
+        // onboarding /c/{id} mount doesn't flash the generic starter.
         if (p.conversation_id) {
-          void syncSingleConversation(p.conversation_id).catch(() => {
-            // swallow — ChatPage's mount-time sync still runs
-          });
+          void syncSingleConversation(p.conversation_id).catch(() => {});
         }
         closeWs();
       },
     };
 
-    /**
-     * Calls the right handler for an envelope. Generic so TS narrows
-     * `StagePayloads[K]` against `K` — no per-case `as` casts needed.
-     */
     const dispatchEnvelope = <K extends OnboardingStage>(
       stage: K,
       payload: StagePayloads[K],
@@ -214,8 +179,6 @@ export function useBackendSync(
       if (aborted) return;
       if (isRestartingRef.current) return;
 
-      // holo_ready dispatches stageComplete itself once the REST follow-up
-      // resolves; everything else marks complete synchronously here.
       if (envelope.stage !== "holo_ready") {
         dispatchRef.current({
           type: "stageComplete",
@@ -262,22 +225,15 @@ export function useBackendSync(
         .then((data) => {
           if (aborted || isRestartingRef.current) return;
           dispatchRef.current({ type: "serverSnapshot", data });
-          // The snapshot fills server-side data but `completedStages` is a
-          // session-local Set that only the WS handler populates. Backfill
-          // it from the snapshot so the processing checklist marks rows done
-          // even when the matching event was lost during a WS disconnect.
           synthesizeCompletedStages(data);
           if (data.first_message_conversation_id) stopPoll();
         })
-        .catch(() => {
-          // keep polling — WS may still recover
-        });
+        .catch(() => {});
     };
 
     const synthesizeCompletedStages = (data: PersonalizationData): void => {
-      // Only fire when the snapshot carries actual data — `null` and `[]`
-      // come back on a fresh post-reset snapshot and must not be mistaken
-      // for "the pipeline already finished this step".
+      // Only fire when the snapshot carries real data; null/[] come back on
+      // a fresh post-reset snapshot and must not mark a stage done.
       const fire = (stage: OnboardingStage) =>
         dispatchRef.current({ type: "stageComplete", stage });
       if (data.writing_style?.style_summary) fire("writing_style_ready");
@@ -314,9 +270,8 @@ export function useBackendSync(
           const isReconnect = reconnectAttempts > 0;
           reconnectAttempts = 0;
           if (isReconnect) {
-            // Any stage event emitted during the disconnect window is gone
-            // — close the gap with a fresh REST snapshot so the cursor can
-            // catch up to whatever the pipeline reached while we were down.
+            // Close the gap with a fresh snapshot — events during the
+            // disconnect window are lost.
             pollOnce();
           }
           if (
@@ -368,12 +323,8 @@ export function useBackendSync(
           }
         };
 
-        socket.onerror = () => {
-          // onclose handles reconnect
-        };
-      } catch {
-        // constructor failed
-      }
+        socket.onerror = () => {};
+      } catch {}
     };
 
     getPersonalization()

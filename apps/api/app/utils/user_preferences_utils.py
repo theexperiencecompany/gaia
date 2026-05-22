@@ -92,26 +92,10 @@ def build_user_context_parts(preferences: Dict[str, Any]) -> list[str]:
 def format_writing_style_for_prompt(
     writing_style: Optional[Dict[str, Any]],
 ) -> str:
-    """
-    Format the user's learned writing style into a prompt block for email composition.
-
-    The writing style data comes from ``user.onboarding.writing_style`` in MongoDB
-    and contains ``summary`` (str), ``example`` (str), and optionally
-    ``user_edited_summary`` (str) which takes precedence over ``summary``.
-
-    Args:
-        writing_style: Dictionary with ``summary``, ``example``, and optionally
-                       ``user_edited_summary`` keys, or None if no writing style
-                       was learned during onboarding.
-
-    Returns:
-        A formatted instruction block to inject into the email composer prompt,
-        or an empty string if no writing style data is available.
-    """
+    """Format the user's learned writing style into an email-composer prompt block."""
     if not writing_style:
         return ""
 
-    # Prefer the user-edited summary if present
     summary = writing_style.get("user_edited_summary") or writing_style.get(
         "summary", ""
     )
@@ -133,12 +117,7 @@ def format_writing_style_for_prompt(
 
 
 def _example_blocks_to_text(raw: Any) -> str:
-    """Render structured example blocks (or a legacy string) as a single text block.
-
-    Used only when feeding the example to an LLM prompt. New records store
-    `example` as a dict ({greeting, body[], signoff, name}); legacy records
-    stored it as a string.
-    """
+    """Render example blocks dict ({greeting, body[], signoff, name}) or legacy string as text."""
     if isinstance(raw, str):
         return raw
     if not isinstance(raw, dict):
@@ -172,8 +151,6 @@ def format_user_preferences_for_agent(
 
     Args:
         preferences: Dictionary of user preferences from onboarding
-        writing_style: Optional dictionary with learned writing style data
-                       (``summary`` and ``sample_snippets``) from onboarding
 
     Returns:
         Formatted string of user preferences or None if no valid preferences
@@ -184,7 +161,6 @@ def format_user_preferences_for_agent(
     try:
         parts = build_user_context_parts(preferences) if preferences else []
 
-        # Append writing style block for email drafting context
         style_block = format_writing_style_for_prompt(writing_style)
         if style_block:
             parts.append(f"\n{style_block}")

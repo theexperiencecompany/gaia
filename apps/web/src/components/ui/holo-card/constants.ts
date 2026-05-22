@@ -1,8 +1,6 @@
 // Image paths used across HoloCard components
 export const CARD_IMAGES = {
-  // Plain GAIA icon (white-on-transparent PNG, no embedded wordmark).
-  // The wordmark is rendered as live HTML text in LogoHeader so we avoid the
-  // html-to-image bug that paints WebPs' alpha-0 RGB pixels as opaque.
+  // PNG not WebP: html-to-image paints WebP alpha-0 RGB pixels as opaque.
   LOGO_WHITE: "/brand/gaia_logo.png",
   EXPERIENCE_LOGO: "/brand/experience_logo_white.png",
 } as const;

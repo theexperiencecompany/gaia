@@ -1,6 +1,5 @@
 import type { ProfessionOption, Question } from "../types";
 
-/** Standard dimensions for the holo card across onboarding UI */
 export const HOLO_CARD_HEIGHT = 470;
 export const HOLO_CARD_WIDTH = 330;
 

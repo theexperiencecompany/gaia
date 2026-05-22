@@ -28,23 +28,12 @@ interface HoloCardRevealProps {
 
 type RevealState = "idle" | "vibrating" | "bursting" | "revealed";
 
-// Container is sized to the holo card so the giftbox and the revealed card
-// share an anchor — no layout jump when the state flips.
 const GIFTBOX_SRC = "/images/onboarding/giftbox.png";
 
 export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
   const [revealState, setRevealState] = useState<RevealState>("idle");
   const cardWrapRef = useRef<HTMLDivElement>(null);
 
-  // Choreography on reveal:
-  //   t=0    card mounts, springs in from scale 0.7 (overlapping the
-  //          giftbox burst so there is no visual gap)
-  //   t=0    scroll kicks off immediately so the card grows into view —
-  //          starting the scroll here means it settles before the spring
-  //          finishes, removing the "jump" the user felt
-  //   t=420  fire confetti from the card's actual on-screen centre
-  // Confetti waits until the scroll has settled so the particles spawn
-  // at the card's final position, not its stale pre-scroll origin.
   useEffect(() => {
     if (revealState !== "revealed") return;
     cardWrapRef.current?.scrollIntoView({

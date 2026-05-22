@@ -16,13 +16,11 @@ _TRACKING_INDICATORS = ("utm_source=", "utm_medium=", "utm_campaign=")
 
 
 def _is_tracking_url(url: str) -> bool:
-    """Return True if the URL contains marketing tracking parameters."""
     lower = url.lower()
     return any(ind in lower for ind in _TRACKING_INDICATORS)
 
 
-# Platform domains mapped to canonical platform names.
-# Each tuple is (domain_substring, platform_name).
+# (domain_substring, canonical_platform_name)
 _PLATFORM_DOMAINS: list[tuple[str, str]] = [
     ("twitter.com/", "twitter"),
     ("x.com/", "twitter"),
@@ -59,7 +57,6 @@ _GENERIC_PATH_SEGMENTS: list[str] = [
 
 
 def _canonicalize_social_url(url: str) -> str:
-    """Strip query params, fragment, and trailing slash. Lowercase host."""
     try:
         parsed = urllib.parse.urlparse(url)
         clean = parsed._replace(query="", fragment="", netloc=parsed.netloc.lower())
@@ -69,7 +66,6 @@ def _canonicalize_social_url(url: str) -> str:
 
 
 def _extract_urls_from_text(text: str) -> list[str]:
-    """Extract http/https URLs from a text string using simple scanning."""
     urls: list[str] = []
     for prefix in ("https://", "http://"):
         start = 0
@@ -77,7 +73,6 @@ def _extract_urls_from_text(text: str) -> list[str]:
             idx = text.find(prefix, start)
             if idx == -1:
                 break
-            # Walk forward to find the end of the URL
             end = idx
             for ch in text[idx:]:
                 if ch in (" ", "\n", "\r", "\t", '"', "'", "<", ">", ")", "]", "}"):
@@ -91,7 +86,6 @@ def _extract_urls_from_text(text: str) -> list[str]:
 
 
 def _classify_url(url: str) -> str | None:
-    """Return the platform name if the URL matches a known social profile domain."""
     lower = url.lower()
     for domain, platform in _PLATFORM_DOMAINS:
         if domain in lower:
@@ -100,44 +94,35 @@ def _classify_url(url: str) -> str | None:
 
 
 def _is_generic_url(url: str) -> bool:
-    """Return True if the URL looks like a generic/non-profile page."""
     lower = url.lower()
     for segment in _GENERIC_PATH_SEGMENTS:
         if segment in lower:
             return True
-    # Reject root-only URLs like "https://twitter.com/" with no username path
-    # Find the domain end and check if there's a meaningful path
     for prefix in ("https://", "http://"):
         if lower.startswith(prefix):
             path_part = lower[len(prefix) :]
-            # Remove www. prefix
             if path_part.startswith("www."):
                 path_part = path_part[4:]
             slash_idx = path_part.find("/")
             if slash_idx == -1:
-                return True  # No path at all
+                return True
             after_slash = path_part[slash_idx + 1 :].strip("/")
             if not after_slash:
-                return True  # Root path only
+                return True
             break
     return False
 
 
 def _extract_handle_from_url(url: str, platform: str) -> str | None:
-    """Extract the username/handle from a social profile URL."""
     try:
         parsed = urllib.parse.urlparse(url.lower())
         path = parsed.path.strip("/")
-        # Remove leading @ if present
         if path.startswith("@"):
             path = path[1:]
-        # Take the first path segment as the handle
         segments = path.split("/")
         handle = segments[0] if segments else ""
-        # Skip empty, generic, or suspiciously long handles
         if not handle or len(handle) > 60:
             return None
-        # Skip known non-profile path prefixes
         for segment in _GENERIC_PATH_SEGMENTS:
             if handle in segment.strip("/"):
                 return None
@@ -151,27 +136,11 @@ async def extract_social_profiles_from_emails(
     user_name: str | None,
     user_email: str | None,
 ) -> list[SocialProfile]:
-    """
-    Extract social profiles from emails: broad URL harvest + LLM ownership filter.
-
-    Harvests all social URLs from email bodies, snippets, senders, and subjects,
-    then uses an LLM to determine which profiles actually belong to the user
-    (vs. appearing in newsletter footers, marketing emails, or colleagues' signatures).
-
-    Args:
-        emails: List of email dicts with body/snippet, sender, subject, labelIds fields.
-        user_name: The user's name for LLM context (can be None).
-        user_email: The user's email address for LLM context (can be None).
-
-    Returns:
-        Deduplicated list of SocialProfile objects owned by the user.
-    """
-    # ── 2a: Broad URL harvest from ALL emails ─────────────────────────────────
-    # key: (platform, handle) → candidate metadata
+    """Extract social profiles from emails: broad URL harvest + LLM ownership
+    filter to keep only profiles owned by the user."""
     candidates: dict[tuple[str, str], dict] = {}
 
     for email in emails:
-        # Prefer full body, fall back to snippet or messageText
         body = (
             email.get("body", "")
             or email.get("snippet", "")
@@ -229,7 +198,6 @@ async def extract_social_profiles_from_emails(
         log.info("[social_profiles_smart] No social URL candidates found in emails")
         return []
 
-    # ── 2b: Sort and cap candidates per platform ──────────────────────────────
     by_platform: dict[str, list[dict]] = {}
     for entry in candidates.values():
         p = entry["platform"]
@@ -239,7 +207,6 @@ async def extract_social_profiles_from_emails(
 
     capped: list[dict] = []
     for platform_entries in by_platform.values():
-        # Sort: sent emails first, then by frequency descending
         sorted_entries = sorted(
             platform_entries,
             key=lambda e: (e["is_sent"], e["frequency"]),
@@ -252,7 +219,6 @@ async def extract_social_profiles_from_emails(
         f"across {len(by_platform)} platforms from {len(emails)} emails"
     )
 
-    # Log candidates so we can debug LLM filtering decisions
     for entry in capped:
         sent_label = "SENT" if entry["is_sent"] else "recv"
         log.info(
@@ -260,8 +226,6 @@ async def extract_social_profiles_from_emails(
             f"freq={entry['frequency']} {sent_label}"
         )
 
-    # ── 2c: LLM ownership filter ──────────────────────────────────────────────
-    # Build candidates string for the prompt
     candidates_lines: list[str] = []
     for entry in capped:
         sent_label = "yes" if entry["is_sent"] else "no"
@@ -281,7 +245,6 @@ async def extract_social_profiles_from_emails(
 
     candidates_text = "\n".join(candidates_lines).strip()
 
-    # Fallback: if LLM fails, return candidates from sent emails only
     sent_fallback = [
         SocialProfile(platform=e["platform"], url=e["canonical_url"])
         for e in capped
@@ -306,7 +269,6 @@ async def extract_social_profiles_from_emails(
             [HumanMessage(content=prompt)]
         )
 
-        # Build a lookup from (platform, handle) → canonical_url
         url_lookup: dict[tuple[str, str], str] = {
             (e["platform"], e["handle"]): e["canonical_url"] for e in capped
         }
@@ -342,7 +304,6 @@ async def extract_social_profiles_from_emails(
 
 
 def dedup_profiles_by_platform(profiles: list[SocialProfile]) -> list[SocialProfile]:
-    """Deduplicate profiles keeping the first occurrence of each platform."""
     seen: set[str] = set()
     result: list[SocialProfile] = []
     for p in profiles:
@@ -353,13 +314,7 @@ def dedup_profiles_by_platform(profiles: list[SocialProfile]) -> list[SocialProf
 
 
 async def save_confirmed_profiles(user_id: str, profiles: list[dict]) -> None:
-    """
-    Persist user-confirmed social profiles to MongoDB, overwriting extracted ones.
-
-    Args:
-        user_id: The user's ID.
-        profiles: List of dicts with 'platform' and 'url' keys.
-    """
+    """Persist user-confirmed social profiles, overwriting extracted ones."""
     await users_collection.update_one(
         {"_id": ObjectId(user_id)},
         {"$set": {"onboarding.social_profiles": profiles}},

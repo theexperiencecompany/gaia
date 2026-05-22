@@ -17,7 +17,6 @@ interface FocusProps {
   dispatch: Dispatch<Action>;
 }
 
-/** Plain text composer; submitting dispatches `answer` for the focus field. */
 export function FocusComposer({ state, dispatch }: FocusProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 

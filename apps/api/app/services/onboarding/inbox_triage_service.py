@@ -30,7 +30,6 @@ _MEANINGFUL_LABELS = {
 
 
 def _is_noise_email(email: dict) -> bool:
-    """Return True if the email is automated noise unlikely to need user action."""
     sender = email.get("sender", "").lower()
     snippet = email.get("snippet", "").lower()[:200]
     return any(sender.startswith(prefix) for prefix in _NOISE_SENDERS) or (
@@ -53,18 +52,7 @@ async def triage_inbox(
     profession: str = "",
     focus: str = "",
 ) -> Optional[InboxTriage]:
-    """
-    Triage a list of emails to surface what's important.
-
-    Args:
-        user_id: The user's ID
-        emails: List of email dicts with sender, subject, snippet, is_unread, labelIds
-        profession: User's profession for context-aware triaging
-        focus: User's current focus for context-aware triaging
-
-    Returns:
-        InboxTriage or None if triage fails
-    """
+    """Triage a list of emails to surface what's important."""
     if not emails:
         return InboxTriage(
             total_scanned=0,

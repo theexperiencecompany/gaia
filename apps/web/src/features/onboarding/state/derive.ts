@@ -23,10 +23,6 @@ export function hasGmail(s: OnboardingState): boolean {
   return s.responses[FIELD_NAMES.GMAIL] === "connected";
 }
 
-/**
- * The user skipped Gmail and hasn't yet answered the synthetic focus
- * question — the no-Gmail branch needs this hint before it can run.
- */
 export function needsFocus(s: OnboardingState): boolean {
   return (
     s.responses[FIELD_NAMES.GMAIL] === "skipped" &&
@@ -34,19 +30,12 @@ export function needsFocus(s: OnboardingState): boolean {
   );
 }
 
-/**
- * No-Gmail clarify follow-up. After the focus answer we ask the user 3
- * scope/blocker/constraint questions so the todo generator has enough
- * signal to produce concrete actions. Gmail users skip this — their inbox
- * is the signal source.
- */
 export function needsClarify(s: OnboardingState): boolean {
   if (s.responses[FIELD_NAMES.GMAIL] !== "skipped") return false;
   if (s.responses[FIELD_NAMES.FOCUS] == null) return false;
   return !s.clarifySubmitted;
 }
 
-/** All required answers (incl. focus + clarify on the no-Gmail path) are captured. */
 export function isResponsesComplete(s: OnboardingState): boolean {
   return (
     s.questionIndex >= questions.length && !needsFocus(s) && !needsClarify(s)
@@ -68,13 +57,7 @@ const NO_GMAIL_QUEUE: readonly Stage[] = [
   "chat",
 ];
 
-/**
- * True iff the backend has emitted the payload the stage needs to render.
- * Stages with no data dependency (`platforms`) are always ready.
- */
 function isStageReady(s: OnboardingState, stage: Stage): boolean {
-  // `platforms` has no data dependency — always reachable once the cursor
-  // gets there, even before the initial REST snapshot lands.
   if (stage === "platforms") return true;
   const b = s.server;
   if (!b) return false;
@@ -92,22 +75,13 @@ function isStageReady(s: OnboardingState, stage: Stage): boolean {
   }
 }
 
-/**
- * True iff the cursor should move past this stage. Either the user has
- * acted on it, or the backend has told us there's nothing here to show
- * (the matching `*_ready` event landed without any payload data).
- *
- * `revealWriting` also waits for `revealTodos` to be ready before being
- * marked done — that preserves the "Looking for things I can help with…"
- * holding block on the writing-style card after the user clicks "Looks
- * good" but before the todos data has arrived.
- */
+// revealWriting waits for revealTodos to be ready before it's marked done,
+// preserving the holding block on the writing-style card after the user acks.
 function isStageDone(s: OnboardingState, stage: Stage): boolean {
   const b = s.server;
   switch (stage) {
     case "revealWriting": {
       if (s.ackedWritingStyle && isStageReady(s, "revealTodos")) return true;
-      // Backend confirmed there's no style to show (LLM failure).
       if (
         s.completedStages.has("writing_style_ready") &&
         !b?.writing_style?.style_summary
@@ -118,7 +92,6 @@ function isStageDone(s: OnboardingState, stage: Stage): boolean {
     }
     case "revealTodos": {
       if (s.ackedTodos) return true;
-      // Backend confirmed there are no todos to show.
       if (
         s.completedStages.has("todos_ready") &&
         !b?.onboarding_todos?.length
@@ -129,7 +102,6 @@ function isStageDone(s: OnboardingState, stage: Stage): boolean {
     }
     case "workflows": {
       if (s.workflowsConfirmed) return true;
-      // Backend confirmed there are no workflows to show.
       if (
         s.completedStages.has("workflows_ready") &&
         !b?.suggested_workflows?.length
@@ -147,12 +119,6 @@ function isStageDone(s: OnboardingState, stage: Stage): boolean {
   }
 }
 
-/**
- * Resolves the stage the page should render right now. Walks the user's
- * linear queue (gmail vs no-gmail), returning the first stage that isn't
- * done. If that stage's data isn't ready, returns `processing` so the
- * spinner / progress checklist takes over until the event arrives.
- */
 export function getStage(s: OnboardingState): Stage {
   if (s.questionIndex < questions.length) return "questions";
   if (needsFocus(s)) return "focus";
@@ -169,11 +135,6 @@ export function getStage(s: OnboardingState): Stage {
   return "chat";
 }
 
-/**
- * Live progress message for the deepest still-running pipeline stage, or
- * `null` if none have emitted yet. Used by the writing-style reveal's
- * holding block while we wait for todos.
- */
 const POST_WRITING_PROGRESS_STAGES: readonly OnboardingStage[] = [
   "workflows_creating",
   "todos_creating",
@@ -188,7 +149,6 @@ export function getCurrentProgress(s: OnboardingState): string | null {
   return null;
 }
 
-/** Step index per stage for the top progress bar; total is PROGRESS_TOTAL_STEPS. */
 const STAGE_PROGRESS: Record<Stage, number> = {
   questions: 0,
   focus: 3,
@@ -203,7 +163,6 @@ const STAGE_PROGRESS: Record<Stage, number> = {
 
 export const PROGRESS_TOTAL_STEPS = 9;
 
-/** Step index (0-based) for the top progress bar. Snaps to 0 during restart. */
 export function getProgress(s: OnboardingState, stage: Stage): number {
   if (s.isRestarting) return 0;
   if (stage === "questions") return s.questionIndex;

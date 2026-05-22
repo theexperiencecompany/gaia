@@ -35,39 +35,27 @@ export interface CompleteOnboardingResponse {
   user?: UserInfo;
 }
 
-/**
- * POST /onboarding — kicks off the personalization pipeline server-side.
- * Returns the updated user on success. A 409 means the server already
- * accepted a prior submission and is treated as success by callers.
- */
+// A 409 means a prior submission was already accepted — callers treat it as success.
 export function completeOnboarding(
   args: CompleteOnboardingArgs,
 ): Promise<CompleteOnboardingResponse> {
   return authApi.completeOnboarding(args);
 }
 
-/** GET /onboarding/personalization — full snapshot. Silent (no toast). */
 export function getPersonalization(): Promise<PersonalizationData> {
   return apiService.get<PersonalizationData>("/onboarding/personalization", {
     silent: true,
   });
 }
 
-/** POST /onboarding/phase — bookkeeping; failures are non-fatal. */
 export function postPhase(phase: string): Promise<unknown> {
   return apiService.post("/onboarding/phase", { phase });
 }
 
-/** POST /onboarding/reset — wipes server-side onboarding artifacts. Silent. */
 export function resetOnboarding(): Promise<unknown> {
   return apiService.post("/onboarding/reset", {}, { silent: true });
 }
 
-/**
- * POST /onboarding/clarify-questions — LLM-generated 3-question follow-up
- * for the no-Gmail path. Silent (failures fall back to a hardcoded set on
- * the server so the user always gets something to answer).
- */
 export function getClarifyQuestions(args: {
   name: string;
   profession: string;

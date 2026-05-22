@@ -28,8 +28,6 @@ _KINDS: tuple[ClarifyQuestionKind, ...] = ("scope", "blocker", "constraint")
 
 
 class _ClarifyQuestion(BaseModel):
-    """Structured-output shape returned by the LLM for a single question."""
-
     kind: ClarifyQuestionKind = Field(
         description="One of scope, blocker, or constraint — see prompt for definitions"
     )
@@ -46,10 +44,6 @@ class _ClarifyQuestionList(BaseModel):
 
 
 def _fallback_questions() -> list[dict[str, Any]]:
-    """
-    Last-resort hardcoded set used when the LLM call fails. Generic enough to
-    still capture useful signal but not as tailored as the live-generated set.
-    """
     return [
         {
             "id": "scope",
@@ -89,17 +83,7 @@ async def generate_clarify_questions(
     profession: str,
     focus: str,
 ) -> list[dict[str, Any]]:
-    """
-    Produce the 3-question follow-up set for the no-Gmail path. Returns plain
-    dicts so the FastAPI response serializer can hand them to the frontend
-    without translation.
-
-    The LLM is asked for 3 questions in fixed `scope → blocker → constraint`
-    order. We re-stamp the `id` server-side from the canonical kind so the
-    frontend never has to trust LLM-generated identifiers, and we coerce
-    options to exactly 3 entries to defend against the model returning more
-    or fewer than asked.
-    """
+    """Produce the 3-question follow-up set for the no-Gmail path."""
     t0 = time.monotonic()
     prompt = CLARIFY_QUESTIONS_PROMPT.format(
         name=name,
@@ -121,11 +105,6 @@ async def generate_clarify_questions(
             [HumanMessage(content=prompt)]
         )
 
-        # Re-stamp ids from the canonical kind order so the frontend can use
-        # them as React keys without worrying about LLM drift. If the model
-        # returned the kinds out of order we still surface them in scope →
-        # blocker → constraint order so the user experience matches the
-        # prompt template.
         by_kind = {q.kind: q for q in parsed.questions}
         questions: list[dict[str, Any]] = []
         for kind in _KINDS:
@@ -134,7 +113,6 @@ async def generate_clarify_questions(
                 continue
             options = [opt.strip() for opt in q.options if opt and opt.strip()][:3]
             if len(options) < 2:
-                # Fewer than 2 useful options is unusable — fall through.
                 continue
             questions.append(
                 {
@@ -169,16 +147,7 @@ async def generate_clarify_questions(
 
 
 def format_clarify_context(clarify_answers: list[dict[str, Any]] | None) -> str:
-    """
-    Render persisted clarify answers as a prompt fragment that can be injected
-    into the focus-todos generator. Returns an empty string if there are no
-    usable answers — the prompt template handles the empty case gracefully.
-
-    Each answer dict is expected to have:
-      - `kind`: scope / blocker / constraint
-      - `question`: original question text
-      - `value`: the user's answer (None if skipped)
-    """
+    """Render persisted clarify answers as a prompt fragment."""
     if not clarify_answers:
         return ""
 

@@ -80,7 +80,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
     if (isMobile && isMobileOpen) setMobileOpen(false);
   }, [isMobile, isMobileOpen, setMobileOpen]);
 
-  // Set default open state based on screen size
   useEffect(() => {
     if (isMobile) setDefaultOpen(false);
     else setDefaultOpen(true);

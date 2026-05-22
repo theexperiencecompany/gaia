@@ -12,11 +12,6 @@ import {
 import { FIELD_NAMES, questions } from "../constants";
 import type { OnboardingState } from "../state/types";
 
-/**
- * Fires onboarding analytics: ONBOARDING_STARTED once on mount (with a
- * `has_saved_state` flag), one step event per question answered, and a
- * complete event the first time the welcome conversation id appears.
- */
 export function useOnboardingAnalytics(state: OnboardingState): void {
   const startedRef = useRef(false);
   const prevQuestionIndexRef = useRef<number | null>(null);
@@ -29,7 +24,6 @@ export function useOnboardingAnalytics(state: OnboardingState): void {
       has_saved_state:
         state.questionIndex > 0 || Object.keys(state.responses).length > 0,
     });
-    // intentionally no deps — fire once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

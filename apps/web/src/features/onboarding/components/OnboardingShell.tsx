@@ -14,7 +14,6 @@ import { getProgress, PROGRESS_TOTAL_STEPS } from "../state/derive";
 import type { OnboardingState, Stage } from "../state/types";
 import { OnboardingProgress } from "./OnboardingProgress";
 
-// Heavy-blur-at-top config — mirror of the default heavy-at-bottom stack.
 const TOP_BLUR_CONFIG: BlurLayer[] = [
   { blur: 0.5, maskStops: [62.5, 75, 87.5, 100], zIndex: 1 },
   { blur: 1, maskStops: [50, 62.5, 75, 87.5], zIndex: 2 },
@@ -34,14 +33,8 @@ interface OnboardingShellProps {
   composer?: ReactNode;
 }
 
-/**
- * Single string fingerprint of "what's on screen". Used as a useEffect dep so
- * scroll-to-bottom fires once per content change instead of needing 7 deps.
- */
 function getContentFingerprint(state: OnboardingState, stage: Stage): string {
   const b = state.server;
-  // Concat every active progress slot — any change to any stage's status_text
-  // should re-trigger the scroll-to-bottom effect.
   const progress = Object.values(state.progressByStage).join("");
   return [
     stage,
