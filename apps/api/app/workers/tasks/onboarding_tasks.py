@@ -7,6 +7,7 @@ from shared.py.wide_events import log, wide_task
 
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import OnboardingPhase
+from app.services.onboarding.intelligence_job import clear_active_intelligence_job
 
 
 async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
@@ -17,6 +18,7 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
             process_onboarding_intelligence,
         )
 
+        job_id = ctx.get("job_id")
         try:
             await process_onboarding_intelligence(user_id)
         except Exception as e:
@@ -44,6 +46,20 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
                     exc_info=True,
                 )
             return f"Onboarding intelligence failed for user {user_id}: {e}"
+        finally:
+            # This run has reached a terminal state, so the stored active job
+            # id is now stale. Clear it (compare-and-clear on job_id so a
+            # concurrent reset/re-enqueue that already swapped in a newer job
+            # id is left intact) to keep the cleanup reconciler's liveness
+            # check honest.
+            if job_id:
+                try:
+                    await clear_active_intelligence_job(user_id, job_id)
+                except Exception as clear_err:
+                    log.warning(
+                        "Failed to clear intelligence job id "
+                        f"for user {user_id}: {clear_err}"
+                    )
 
         message = f"Onboarding intelligence completed for user {user_id}"
         log.info(message)

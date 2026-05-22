@@ -20,6 +20,7 @@ Holo card runs fully independently.
 import asyncio
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Awaitable, Optional, TypeVar
 
@@ -45,6 +46,7 @@ from app.models.onboarding_models import (
     WritingStyleProfile,
 )
 from app.models.todo_models import Priority, TodoModel
+from app.models.user_models import OnboardingPhase
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.models.workflow_models import CreateWorkflowRequest, TriggerConfig, TriggerType
 from app.services.composio.composio_service import get_composio_service
@@ -440,15 +442,25 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         duration_s=round(time.monotonic() - t_final, 2),
     )
 
+    # Authoritative end-of-pipeline phase transition. `save_personalization_data`
+    # already flips the phase to PERSONALIZATION_COMPLETE on the holo-card happy
+    # path (so `has_personalization` is true by the time HOLO_READY fires), but
+    # that write lives inside _run_holo_card's swallowed try/except. If the holo
+    # leg fails, neither that write nor the task wrapper's failure-path write
+    # runs, leaving the user pinned at PERSONALIZATION_PENDING — which the
+    # cleanup reconciler then re-runs on a 30-minute cron, purging the user's
+    # onboarding todos each pass. Writing the phase here, unconditionally and
+    # after all work has gathered, guarantees the user always advances.
+    completion_update: dict[str, object] = {
+        "onboarding.phase": OnboardingPhase.PERSONALIZATION_COMPLETE,
+        "updated_at": datetime.now(timezone.utc),
+    }
     if conversation_id:
-        await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {
-                "$set": {
-                    "onboarding.first_message_conversation_id": conversation_id,
-                }
-            },
-        )
+        completion_update["onboarding.first_message_conversation_id"] = conversation_id
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": completion_update},
+    )
 
     if provision_future is not None and not provision_future.done():
         _background_tasks.add(provision_future)

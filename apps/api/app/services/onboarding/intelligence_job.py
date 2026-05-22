@@ -40,6 +40,23 @@ async def _clear_active_job_id(user_id: str) -> None:
     )
 
 
+async def clear_active_intelligence_job(user_id: str, job_id: str) -> None:
+    """Clear the stored active job id, but only if it still points at `job_id`.
+
+    Called when a pipeline run reaches a terminal state so the field never
+    lingers pointing at a finished job (which would muddy the cleanup
+    reconciler's `is_intelligence_job_live` check). The compare-and-clear
+    guards against a race: if the user reset onboarding mid-run — which aborts
+    and enqueues a fresh job, storing its id — a blind unset would orphan that
+    new job from the abort/liveness machinery, so we only clear when the stored
+    id is still ours.
+    """
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id), "onboarding.intelligence_job_id": job_id},
+        {"$unset": {"onboarding.intelligence_job_id": ""}},
+    )
+
+
 async def _set_active_job_id(user_id: str, job_id: str) -> None:
     await users_collection.update_one(
         {"_id": ObjectId(user_id)},

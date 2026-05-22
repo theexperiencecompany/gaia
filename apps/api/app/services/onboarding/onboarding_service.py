@@ -212,6 +212,8 @@ async def get_user_onboarding_status(user_id: str) -> Dict[str, Any]:
             ),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         log.error(
             f"Error getting onboarding status for user {user_id}: {str(e)}",

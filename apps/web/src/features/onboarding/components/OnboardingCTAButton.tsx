@@ -1,14 +1,16 @@
 /**
  * Shared raised CTA button for onboarding stage composers (e.g. "Looks good",
  * "Understood"). Defaults the trailing icon to `CircleArrowRight02Icon` and
- * forwards everything else to `RaisedButton`.
+ * forwards everything else to `RaisedButton`. When `href` is set the button
+ * navigates via the router instead of nesting inside a <Link> — RaisedButton
+ * renders a native <button>, and a <button> inside an <a> is invalid HTML.
  */
 
 "use client";
 
 import { CircleArrowRight02Icon } from "@icons";
-import Link from "next/link";
-import type { ComponentProps, ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import type { ComponentProps, MouseEventHandler, ReactNode } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { cn } from "@/lib/utils";
 
@@ -27,8 +29,11 @@ export function OnboardingCTAButton({
   href,
   color = "#00bbff",
   className,
+  onClick,
+  type,
   ...props
 }: OnboardingCTAButtonProps) {
+  const router = useRouter();
   const mergedClassName = cn("text-black!", className);
   const content = (
     <>
@@ -38,23 +43,25 @@ export function OnboardingCTAButton({
     </>
   );
 
-  if (href) {
-    return (
-      <Link href={href} className="inline-flex">
-        <RaisedButton
-          color={color}
-          className={mergedClassName}
-          {...props}
-          type="button"
-        >
-          {content}
-        </RaisedButton>
-      </Link>
-    );
-  }
+  // `href` navigates via the router rather than wrapping the button in a
+  // <Link>: RaisedButton always renders a native <button>, and nesting a
+  // <button> inside an <a> is invalid HTML. A caller's onClick can still
+  // cancel navigation with event.preventDefault().
+  const handleClick: MouseEventHandler<HTMLButtonElement> = (event) => {
+    onClick?.(event);
+    if (href && !event.defaultPrevented) {
+      router.push(href);
+    }
+  };
 
   return (
-    <RaisedButton color={color} className={mergedClassName} {...props}>
+    <RaisedButton
+      color={color}
+      className={mergedClassName}
+      type={href ? "button" : type}
+      onClick={handleClick}
+      {...props}
+    >
       {content}
     </RaisedButton>
   );

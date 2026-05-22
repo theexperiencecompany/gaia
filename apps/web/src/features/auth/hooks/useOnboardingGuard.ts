@@ -1,15 +1,9 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { ONBOARDING_PROCESSING_PHASES } from "@/features/auth/constants";
 import { usePathname } from "@/i18n/navigation";
 
 import { useUser } from "./useUser";
-
-/** Phases where the user should stay on /onboarding */
-const PROCESSING_PHASES = new Set([
-  "personalization_pending",
-  "personalization_complete",
-  "getting_started",
-]);
 
 export const useOnboardingGuard = () => {
   const user = useUser();
@@ -21,7 +15,8 @@ export const useOnboardingGuard = () => {
     if (user.email && user.onboarding !== undefined) {
       const isOnboardingCompleted = user.onboarding?.completed;
       const phase = user.onboarding?.phase;
-      const isStillProcessing = phase && PROCESSING_PHASES.has(phase);
+      const isStillProcessing =
+        !!phase && ONBOARDING_PROCESSING_PHASES.has(phase);
 
       if (pathname === "/onboarding") {
         // If onboarding is completed AND processing is done, redirect to main app
