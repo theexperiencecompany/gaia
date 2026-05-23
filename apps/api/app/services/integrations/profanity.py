@@ -5,6 +5,11 @@ Replaces ``alt-profanity-check``, which pulled in scikit-learn + scipy + pandas
 a short string. For validating integration names/descriptions a curated word
 list with leetspeak normalization is more than sufficient and adds zero
 dependencies.
+
+TODO: Replace this wordlist heuristic with an LLM call for more robust,
+context-aware moderation (catches obfuscation, slurs, and intent the static
+list misses). Keep it on the publish path only (not hot-path), and guard for
+latency/cost + a cheap fallback to this wordlist if the LLM is unavailable.
 """
 
 from __future__ import annotations
