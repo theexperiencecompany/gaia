@@ -249,7 +249,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "100 * (sum(rate(http_requests_total{job=\"gaia-api\", status=~\"5..\", handler!~\"/metrics|/health.*|/favicon.ico\"}[5m])) / clamp_min(sum(rate(http_requests_total{job=\"gaia-api\", handler!~\"/metrics|/health.*|/favicon.ico\"}[5m])), 0.0001))",
+          "expr": "100 * ((sum(rate(http_requests_total{job=\"gaia-api\", status=~\"5..\", handler!~\"/metrics|/health.*|/favicon.ico\"}[5m])) or vector(0)) / clamp_min(sum(rate(http_requests_total{job=\"gaia-api\", handler!~\"/metrics|/health.*|/favicon.ico\"}[5m])), 0.0001))",
           "refId": "A"
         }
       ],
