@@ -1,12 +1,31 @@
 import asyncio
 from collections import defaultdict, deque
 from collections.abc import Sequence
+import os
 from urllib.parse import urlsplit, urlunsplit
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
 
 from app.constants.search import CRAWL4AI_WAIT_UNTIL
 from shared.py.wide_events import log
+
+# Process-wide cap on concurrent headless-browser instances.
+#
+# crawl4ai launches a Chromium per ``AsyncWebCrawler`` context; with the worker
+# running up to ``max_jobs`` crawl jobs (and each profile crawl opening its own
+# crawler per URL), unbounded concurrency means dozens of Chromium processes at
+# 150-400MB each — the dominant worker memory spike. This single gate bounds the
+# number of live browsers across the whole process regardless of caller count.
+_MAX_CONCURRENT_BROWSERS = int(os.getenv("CRAWL4AI_MAX_BROWSERS", "2"))
+_browser_semaphore: asyncio.Semaphore | None = None
+
+
+def get_browser_semaphore() -> asyncio.Semaphore:
+    """Lazily create the shared browser semaphore bound to the running loop."""
+    global _browser_semaphore
+    if _browser_semaphore is None:
+        _browser_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_BROWSERS)
+    return _browser_semaphore
 
 
 def _normalize_url(url: str) -> str:
@@ -113,7 +132,7 @@ async def _recover_with_single_url_crawls(
     errors: dict[str, str] = {}
 
     try:
-        async with AsyncWebCrawler(config=browser_config) as crawler:
+        async with get_browser_semaphore(), AsyncWebCrawler(config=browser_config) as crawler:
             for url in urls:
                 try:
                     single_results = await asyncio.wait_for(
@@ -174,7 +193,7 @@ async def batch_fetch_with_crawl4ai(
     browser_config = BrowserConfig(headless=True, browser_mode="dedicated", verbose=False)
 
     try:
-        async with AsyncWebCrawler(config=browser_config) as crawler:
+        async with get_browser_semaphore(), AsyncWebCrawler(config=browser_config) as crawler:
             results = await asyncio.wait_for(
                 crawler.arun_many(urls=list(urls), config=run_config),
                 timeout=total_timeout_seconds,

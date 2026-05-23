@@ -1,6 +1,6 @@
 """Validation for integration publishing."""
 
-from profanity_check import predict
+from app.services.integrations.profanity import contains_profanity
 
 
 class PublishIntegrationValidator:
@@ -37,9 +37,9 @@ class PublishIntegrationValidator:
         elif len(name) > cls.MAX_NAME_LENGTH:
             errors.append(f"Name must be at most {cls.MAX_NAME_LENGTH} characters")
 
-        # Check for profanity using ML model
-        # predict() returns an array of 0s and 1s (1 = profane)
-        if predict([name])[0] == 1 or (description and predict([description])[0] == 1):
+        # Lightweight, dependency-free profanity check (replaces the old
+        # scikit-learn model that dragged in scipy/pandas/numpy).
+        if contains_profanity(name) or contains_profanity(description):
             errors.append("Content contains profanity")
 
         # Description length

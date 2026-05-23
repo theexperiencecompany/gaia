@@ -1,8 +1,13 @@
 """Centralized memory client management."""
 
-from mem0 import AsyncMemoryClient
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from app.config.settings import settings
+
+if TYPE_CHECKING:
+    from mem0 import AsyncMemoryClient
 
 
 class MemoryClientManager:
@@ -14,6 +19,9 @@ class MemoryClientManager:
 
     async def get_client(self) -> AsyncMemoryClient:
         """Get the properly configured memory client instance with graph memory enabled."""
+        # Lazy import: mem0 pulls litellm (~200MB). Load only when memory is first used.
+        from mem0 import AsyncMemoryClient
+
         if self._client is None:
             client = AsyncMemoryClient(
                 api_key=settings.MEM0_API_KEY,

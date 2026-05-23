@@ -11,6 +11,7 @@ Tools are registered on-demand when subagent is first created.
 """
 
 import asyncio
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -37,9 +38,18 @@ from .base_subagent import SubAgentFactory
 # viable option.
 #
 # Keyed by ``(integration_id, user_id)``. Invalidated on process restart,
-# explicit calls to ``invalidate_user_subagent_cache()``, or MCP config
-# change (callers must invalidate explicitly).
-_USER_SUBAGENT_CACHE: dict[tuple[str, str], CompiledStateGraph] = {}
+# explicit calls to ``invalidate_user_subagent_cache()``, MCP config change
+# (callers must invalidate explicitly), or LRU eviction once the cache exceeds
+# ``_MAX_USER_SUBAGENTS`` entries.
+#
+# **Bound (LRU):** an unbounded dict here grows with every distinct
+# (integration, user) pair for the life of the process — each value is a
+# compiled graph holding tool schemas + an in-memory checkpointer, so on a busy
+# multi-tenant box it can climb into the GBs. We cap it and evict least-recently
+# -used entries. Trade-offs (see eviction site below): evicting a graph drops
+# its in-memory subagent checkpointer state and forces a rebuild on next use.
+_MAX_USER_SUBAGENTS = 256
+_USER_SUBAGENT_CACHE: OrderedDict[tuple[str, str], CompiledStateGraph] = OrderedDict()
 _USER_SUBAGENT_LOCK = asyncio.Lock()
 
 
@@ -159,6 +169,9 @@ async def create_subagent_for_user(integration_id: str, user_id: str) -> Compile
     cache_key = (integration_id, user_id)
     cached = _USER_SUBAGENT_CACHE.get(cache_key)
     if cached is not None:
+        # Mark most-recently-used (safe: no await between get and move_to_end,
+        # so the event loop cannot evict this key in between).
+        _USER_SUBAGENT_CACHE.move_to_end(cache_key)
         log.set(
             subagent_graph_cache={
                 "integration_id": integration_id,
@@ -172,6 +185,7 @@ async def create_subagent_for_user(integration_id: str, user_id: str) -> Compile
         # Double-check: another task may have populated while we waited.
         cached = _USER_SUBAGENT_CACHE.get(cache_key)
         if cached is not None:
+            _USER_SUBAGENT_CACHE.move_to_end(cache_key)
             log.set(
                 subagent_graph_cache={
                     "integration_id": integration_id,
@@ -184,6 +198,21 @@ async def create_subagent_for_user(integration_id: str, user_id: str) -> Compile
         graph = await _build_user_subagent(integration_id, user_id)
         if graph is not None:
             _USER_SUBAGENT_CACHE[cache_key] = graph
+            _USER_SUBAGENT_CACHE.move_to_end(cache_key)
+            # LRU eviction. NOTE the trade-offs of dropping an entry:
+            #   1. The evicted graph's in-memory checkpointer state is lost — a
+            #      resumed subagent conversation restarts without prior context.
+            #      (Subagent turns are typically single-shot, so impact is low;
+            #      durable memory should use the Postgres checkpointer instead.)
+            #   2. Next use of that (integration, user) pays a rebuild cost
+            #      (tool retrieval + LLM bind), i.e. a cold start for that pair.
+            #   3. An in-flight execution keeps its own reference, so eviction
+            #      never frees a graph that is currently running.
+            while len(_USER_SUBAGENT_CACHE) > _MAX_USER_SUBAGENTS:
+                evicted_key, _ = _USER_SUBAGENT_CACHE.popitem(last=False)
+                log.info(
+                    f"Evicted LRU subagent graph {evicted_key} (cache at {_MAX_USER_SUBAGENTS} cap)"
+                )
         log.set(
             subagent_graph_cache={
                 "integration_id": integration_id,
