@@ -833,6 +833,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     if (code === 415) {
       return `I can't read this kind of ${kind} yet. Try a common format like JPG, PNG, PDF, or an OGG voice note.`;
     }
+    if (code === 429) {
+      return "You've reached your file upload limit for now. Please try again later, or upgrade your plan for higher limits.";
+    }
     return "Something went wrong while processing your attachment. Please try again in a moment.";
   }
 
