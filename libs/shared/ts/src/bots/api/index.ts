@@ -853,7 +853,14 @@ export class GaiaClient {
       }
 
       const { data } = await this.client.post("/api/v1/upload", form, {
-        headers: this.userHeaders(ctx),
+        headers: {
+          ...this.userHeaders(ctx),
+          // The axios instance defaults Content-Type to application/json, which
+          // makes axios JSON-encode FormData instead of sending multipart (the
+          // backend then sees no `file` field and returns 422). Force multipart
+          // here — axios fills in the boundary from the FormData.
+          "Content-Type": "multipart/form-data",
+        },
         // Allow uploads up to the backend's 10 MB cap plus multipart overhead.
         maxBodyLength: 12 * 1024 * 1024,
         maxContentLength: 12 * 1024 * 1024,
@@ -892,7 +899,12 @@ export class GaiaClient {
       form.append("file", file);
 
       const { data } = await this.client.post("/api/v1/bot/transcribe", form, {
-        headers: this.userHeaders(ctx),
+        headers: {
+          ...this.userHeaders(ctx),
+          // Force multipart so axios doesn't JSON-encode the FormData (the
+          // instance default Content-Type is application/json). See uploadFile.
+          "Content-Type": "multipart/form-data",
+        },
         maxBodyLength: 30 * 1024 * 1024,
         maxContentLength: 30 * 1024 * 1024,
       });
