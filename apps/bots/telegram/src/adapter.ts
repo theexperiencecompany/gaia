@@ -24,7 +24,6 @@
 import {
   BaseBotAdapter,
   type BotCommand,
-  convertToTelegramMarkdown,
   createBotLogger,
   handleStreamingChat,
   hashLogIdentifier,
@@ -32,6 +31,7 @@ import {
   parseTextArgs,
   type RichMessage,
   type RichMessageTarget,
+  renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
@@ -337,9 +337,8 @@ export class TelegramAdapter extends BaseBotAdapter {
           channelId: chatId.toString(),
         },
         async (text: string) => {
-          const converted = convertToTelegramMarkdown(text);
           try {
-            await ctx.api.editMessageText(chatId, currentMessageId, converted, {
+            await ctx.api.editMessageText(chatId, currentMessageId, text, {
               parse_mode: "Markdown",
             });
           } catch (e) {
@@ -367,10 +366,9 @@ export class TelegramAdapter extends BaseBotAdapter {
           }
         },
         async (text: string) => {
-          const converted = convertToTelegramMarkdown(text);
           let newMessage: Message.TextMessage;
           try {
-            newMessage = await ctx.reply(converted, {
+            newMessage = await ctx.reply(text, {
               parse_mode: "Markdown",
             });
           } catch {
@@ -379,12 +377,11 @@ export class TelegramAdapter extends BaseBotAdapter {
           }
           currentMessageId = newMessage.message_id;
           return async (updatedText: string) => {
-            const convertedUpdate = convertToTelegramMarkdown(updatedText);
             try {
               await ctx.api.editMessageText(
                 chatId,
                 newMessage.message_id,
-                convertedUpdate,
+                updatedText,
                 { parse_mode: "Markdown" },
               );
             } catch (e) {
@@ -505,26 +502,26 @@ export class TelegramAdapter extends BaseBotAdapter {
 
       send: async (text: string): Promise<SentMessage> => {
         if (!chatId) throw new Error("No chat ID");
-        const converted = convertToTelegramMarkdown(text);
+        const converted = renderForPlatform(text, "telegram");
         let msg: { message_id: number };
         try {
           msg = await api.sendMessage(chatId, converted, {
             parse_mode: "Markdown",
           });
         } catch {
-          msg = await api.sendMessage(chatId, text);
+          msg = await api.sendMessage(chatId, converted);
         }
         return {
           id: msg.message_id.toString(),
           edit: async (t: string) => {
-            const c = convertToTelegramMarkdown(t);
+            const c = renderForPlatform(t, "telegram");
             try {
               await api.editMessageText(chatId, msg.message_id, c, {
                 parse_mode: "Markdown",
               });
             } catch {
               try {
-                await api.editMessageText(chatId, msg.message_id, t);
+                await api.editMessageText(chatId, msg.message_id, c);
               } catch (e) {
                 this.adapterLogger.error(
                   "edit_message_text_failed",
@@ -541,14 +538,14 @@ export class TelegramAdapter extends BaseBotAdapter {
         if (!chatId) throw new Error("No chat ID");
         // In groups, DM the user for privacy; in private chats, send normally
         const targetChat = isGroup ? Number(userId) : chatId;
-        const converted = convertToTelegramMarkdown(text);
+        const converted = renderForPlatform(text, "telegram");
         let msg: { message_id: number };
         try {
           msg = await api.sendMessage(targetChat, converted, {
             parse_mode: "Markdown",
           });
         } catch {
-          msg = await api.sendMessage(targetChat, text);
+          msg = await api.sendMessage(targetChat, converted);
         }
         if (isGroup) {
           await api.sendMessage(chatId, "I sent you a DM with the details.");
@@ -556,14 +553,14 @@ export class TelegramAdapter extends BaseBotAdapter {
         return {
           id: msg.message_id.toString(),
           edit: async (t: string) => {
-            const c = convertToTelegramMarkdown(t);
+            const c = renderForPlatform(t, "telegram");
             try {
               await api.editMessageText(targetChat, msg.message_id, c, {
                 parse_mode: "Markdown",
               });
             } catch {
               try {
-                await api.editMessageText(targetChat, msg.message_id, t);
+                await api.editMessageText(targetChat, msg.message_id, c);
               } catch (e) {
                 this.adapterLogger.error(
                   "edit_message_text_failed",

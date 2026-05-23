@@ -1,5 +1,6 @@
 import type { Conversation, Todo, Workflow } from "@gaia/shared";
 import {
+  convertToDiscordMarkdown,
   convertToSlackMrkdwn,
   convertToTelegramMarkdown,
   convertToWhatsAppMarkdown,
@@ -12,6 +13,8 @@ import {
   formatWorkflow,
   formatWorkflowList,
   GaiaApiError,
+  PLATFORM_MARKDOWN,
+  renderForPlatform,
 } from "@gaia/shared";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
@@ -330,6 +333,71 @@ describe("convertToWhatsAppMarkdown", () => {
 
   it("converts field values with **Name:** pattern to *Name:*", () => {
     expect(convertToWhatsAppMarkdown("**Name:** Aryan")).toBe("*Name:* Aryan");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// convertToDiscordMarkdown
+// ---------------------------------------------------------------------------
+describe("convertToDiscordMarkdown", () => {
+  it("converts [label](url) masked links to label (url)", () => {
+    expect(convertToDiscordMarkdown("[Click here](https://example.com)")).toBe(
+      "Click here (https://example.com)",
+    );
+  });
+
+  it("leaves native CommonMark (bold, headings) untouched", () => {
+    const input = "# Heading\n**bold** and _italic_";
+    expect(convertToDiscordMarkdown(input)).toBe(input);
+  });
+
+  it("preserves code blocks unchanged", () => {
+    const input = "```\n[not a link](x)\n```";
+    expect(convertToDiscordMarkdown(input)).toBe(input);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PLATFORM_MARKDOWN map + renderForPlatform — the centralization chokepoint
+// ---------------------------------------------------------------------------
+describe("PLATFORM_MARKDOWN", () => {
+  it("maps each platform to its dedicated converter", () => {
+    expect(PLATFORM_MARKDOWN.discord).toBe(convertToDiscordMarkdown);
+    expect(PLATFORM_MARKDOWN.slack).toBe(convertToSlackMrkdwn);
+    expect(PLATFORM_MARKDOWN.telegram).toBe(convertToTelegramMarkdown);
+    expect(PLATFORM_MARKDOWN.whatsapp).toBe(convertToWhatsAppMarkdown);
+  });
+});
+
+describe("renderForPlatform", () => {
+  it("routes through the discord converter (masked link → bare)", () => {
+    expect(renderForPlatform("[GAIA](https://heygaia.io)", "discord")).toBe(
+      "GAIA (https://heygaia.io)",
+    );
+  });
+
+  it("routes through the slack converter (**bold** → *bold*, link → <url|label>)", () => {
+    expect(renderForPlatform("**hi** [GAIA](https://x.com)", "slack")).toBe(
+      "*hi* <https://x.com|GAIA>",
+    );
+  });
+
+  it("routes through the telegram converter (**bold** → *bold*)", () => {
+    expect(renderForPlatform("**hi**", "telegram")).toBe("*hi*");
+  });
+
+  it("routes through the whatsapp converter (link → label (url))", () => {
+    expect(renderForPlatform("[GAIA](https://x.com)", "whatsapp")).toBe(
+      "GAIA (https://x.com)",
+    );
+  });
+
+  it("produces output identical to the platform's converter", () => {
+    const text = "**Heading**\n[link](https://x.com)";
+    expect(renderForPlatform(text, "slack")).toBe(convertToSlackMrkdwn(text));
+    expect(renderForPlatform(text, "whatsapp")).toBe(
+      convertToWhatsAppMarkdown(text),
+    );
   });
 });
 

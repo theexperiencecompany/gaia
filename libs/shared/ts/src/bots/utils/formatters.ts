@@ -10,7 +10,12 @@
  * falls back to axios-style errors, then generic Error messages.
  */
 import { GaiaApiError } from "../api";
-import type { BotConversation, BotTodo, BotWorkflow } from "../types";
+import type {
+  BotConversation,
+  BotTodo,
+  BotWorkflow,
+  PlatformName,
+} from "../types";
 
 /**
  * Formats a workflow for display in a bot message.
@@ -196,6 +201,51 @@ export function convertToWhatsAppMarkdown(text: string): string {
         .replaceAll(/^(\s*)[*\-+]\s+/gm, "$1• ") // - / * / + bullet → •
         .replaceAll(/^>\s*/gm, ""), // > quote → strip prefix
   );
+}
+
+/**
+ * Discord renders CommonMark natively (bold, italic, headings, lists, code,
+ * quotes), so the only transform it needs is masked links: Discord shows
+ * `[label](url)` literally in regular message content — masked links render
+ * only inside embeds — whereas bare URLs auto-link. Convert masked links to
+ * `label (url)` so they stay clickable, and leave everything else untouched.
+ */
+export function convertToDiscordMarkdown(text: string): string {
+  return applyOutsideCodeBlocks(
+    text,
+    (segment) => segment.replaceAll(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)"), // [label](url) → label (url)
+  );
+}
+
+/**
+ * Single source of truth mapping each platform to its Markdown converter.
+ *
+ * This is the centralization point: shared code (streaming, adapters) renders
+ * outbound text through ``PLATFORM_MARKDOWN[platform]`` instead of each adapter
+ * calling its ``convertTo<Platform>Markdown`` function inline. Adding a platform
+ * means adding one entry here, not sprinkling conversion calls across adapters.
+ */
+export const PLATFORM_MARKDOWN: Record<PlatformName, (text: string) => string> =
+  {
+    discord: convertToDiscordMarkdown,
+    slack: convertToSlackMrkdwn,
+    telegram: convertToTelegramMarkdown,
+    whatsapp: convertToWhatsAppMarkdown,
+  };
+
+/**
+ * Renders outbound text into the target platform's Markdown dialect.
+ *
+ * The single chokepoint used by adapter non-streaming sends (RichMessageTarget
+ * ``send``/``sendEphemeral``/``edit``, context-menu and command replies). Keeps
+ * conversion out of the adapters: they call this one shared helper instead of
+ * their platform-specific ``convertTo<Platform>Markdown``.
+ */
+export function renderForPlatform(
+  text: string,
+  platform: PlatformName,
+): string {
+  return PLATFORM_MARKDOWN[platform](text);
 }
 
 /**

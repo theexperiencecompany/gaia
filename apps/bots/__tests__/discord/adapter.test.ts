@@ -177,8 +177,9 @@ vi.mock("@gaia/shared", () => {
       discord: { editIntervalMs: 1200, streaming: false, platform: "discord" },
     },
     richMessageToMarkdown: vi.fn().mockReturnValue("mocked markdown"),
-    convertToSlackMrkdwn: vi.fn((t: string) => t),
-    convertToTelegramMarkdown: vi.fn((t: string) => t),
+    // renderForPlatform is mocked as identity — conversion is exercised in the
+    // shared formatters tests, not at the adapter level (which mocks @gaia/shared).
+    renderForPlatform: vi.fn((t: string) => t),
     parseTextArgs: vi.fn((text: string) => ({
       subcommand: text.split(" ")[0],
     })),

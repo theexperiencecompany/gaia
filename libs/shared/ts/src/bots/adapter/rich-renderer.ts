@@ -33,7 +33,12 @@ function bold(text: string, platform: PlatformName): string {
  * @returns The formatted hyperlink.
  */
 function link(label: string, url: string, platform: PlatformName): string {
-  return platform === "slack" ? `<${url}|${label}>` : `[${label}](${url})`;
+  // Slack: <url|label>. WhatsApp has no masked-link syntax — it auto-links
+  // bare URLs, so render "label (url)" (matching convertToWhatsAppMarkdown).
+  // Telegram/Discord render CommonMark "[label](url)".
+  if (platform === "slack") return `<${url}|${label}>`;
+  if (platform === "whatsapp") return `${label} (${url})`;
+  return `[${label}](${url})`;
 }
 
 /**

@@ -117,6 +117,11 @@ export function makeGaiaSharedMock(
     ),
     handleStreamingChat: vi.fn().mockResolvedValue(undefined),
     STREAMING_DEFAULTS: streamingDefaults,
+    // renderForPlatform is the shared non-streaming chokepoint. In adapter tests
+    // @gaia/shared is mocked, so conversion does not actually happen here — the
+    // identity mock returns RAW text and the real conversion is covered by the
+    // shared formatters tests.
+    renderForPlatform: vi.fn((text: string) => text),
     richMessageToMarkdown: vi.fn().mockReturnValue(defaultRichMarkdown),
     parseTextArgs: vi.fn((text: string) => ({
       subcommand: text.split(" ")[0] || undefined,

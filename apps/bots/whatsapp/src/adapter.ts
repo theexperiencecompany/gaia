@@ -19,7 +19,6 @@ import {
   BaseBotAdapter,
   type BotCommand,
   type BotFileData,
-  convertToWhatsAppMarkdown,
   createBotLogger,
   handleStreamingChat,
   hashLogIdentifier,
@@ -27,6 +26,7 @@ import {
   parseTextArgs,
   type RichMessage,
   type RichMessageTarget,
+  renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
@@ -500,8 +500,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
               }
             : {}),
         },
-        // editMessage: no placeholder to edit — send as new message on first call
-        async (updatedText: string) => {
+        // editMessage: no placeholder to edit — send as new message on first call.
+        // ``formatted`` already ran through PLATFORM_MARKDOWN in handleStreamingChat.
+        async (formatted: string) => {
           if (finalMessageSent) {
             // WhatsApp has no edit API — edit() sends a new message.
             // Guard against sending multiple new messages if streaming is
@@ -509,7 +510,6 @@ export class WhatsAppAdapter extends BaseBotAdapter {
             return;
           }
           finalMessageSent = true;
-          const formatted = convertToWhatsAppMarkdown(updatedText);
           if (lastEditFn) {
             await lastEditFn(formatted);
           } else {
@@ -519,10 +519,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         },
         // sendNewMessage: send a new message and return its edit function
         async (newText: string) => {
-          const sent = await this.sendWhatsAppText(
-            waId,
-            convertToWhatsAppMarkdown(newText),
-          );
+          const sent = await this.sendWhatsAppText(waId, newText);
           lastEditFn = sent.edit;
           return sent.edit;
         },
@@ -878,18 +875,21 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       channelId: waId,
 
       send: async (text: string): Promise<SentMessage> => {
-        return this.sendWhatsAppText(waId, text);
+        return this.sendWhatsAppText(waId, renderForPlatform(text, "whatsapp"));
       },
 
       sendEphemeral: async (text: string): Promise<SentMessage> => {
         // WhatsApp has no ephemeral concept — send normally
-        return this.sendWhatsAppText(waId, text);
+        return this.sendWhatsAppText(waId, renderForPlatform(text, "whatsapp"));
       },
 
       sendRich: async (richMsg: RichMessage): Promise<SentMessage> => {
+        // richMessageToMarkdown is already platform-aware — for "whatsapp" it
+        // emits WhatsApp-native ``*bold*`` and ``label (url)`` links, so the
+        // previous extra convertToWhatsAppMarkdown pass was redundant. Render
+        // once here.
         const markdown = richMessageToMarkdown(richMsg, "whatsapp");
-        const text = convertToWhatsAppMarkdown(markdown);
-        return this.sendWhatsAppText(waId, text);
+        return this.sendWhatsAppText(waId, markdown);
       },
 
       startTyping: async () => {

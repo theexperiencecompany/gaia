@@ -133,7 +133,9 @@ vi.mock("@gaia/shared", () => {
         platform: "telegram",
       },
     },
-    convertToTelegramMarkdown: vi.fn((t: string) => t),
+    // renderForPlatform is mocked as identity — the real Telegram conversion is
+    // covered by the shared formatters tests, not at the adapter level.
+    renderForPlatform: vi.fn((t: string) => t),
     richMessageToMarkdown: vi
       .fn()
       .mockReturnValue("**GAIA Settings**\nYour settings"),
@@ -148,8 +150,8 @@ vi.mock("@gaia/shared", () => {
 // ---------------------------------------------------------------------------
 
 import {
-  convertToTelegramMarkdown,
   handleStreamingChat,
+  renderForPlatform,
   richMessageToMarkdown,
 } from "@gaia/shared";
 import { TelegramAdapter } from "../../telegram/src/adapter";
@@ -394,7 +396,12 @@ describe("TelegramAdapter - createCtxTarget.send", () => {
 
     const sent = await target.send("Hello from GAIA");
 
-    expect(convertToTelegramMarkdown).toHaveBeenCalledWith("Hello from GAIA");
+    // Non-streaming sends go through the shared renderForPlatform chokepoint
+    // (mocked as identity here), not an inline convertToTelegramMarkdown call.
+    expect(renderForPlatform).toHaveBeenCalledWith(
+      "Hello from GAIA",
+      "telegram",
+    );
     expect(sendMessageFn).toHaveBeenCalledWith(111, "Hello from GAIA", {
       parse_mode: "Markdown",
     });
@@ -643,12 +650,14 @@ describe("TelegramAdapter - markdown fallback retry (editMessage callback)", () 
     // Simulate streaming update with bad markdown
     await capturedEditCallback!("text with *bad markup @here");
 
-    // First attempt: with parse_mode: "Markdown"
+    // First attempt: with parse_mode: "Markdown". Conversion now happens inside
+    // handleStreamingChat (mocked here), so the adapter callback forwards the
+    // text it receives verbatim.
     expect(editMessageTextFn).toHaveBeenNthCalledWith(
       1,
       100,
       42,
-      "text with *bad markup @here", // convertToTelegramMarkdown is mocked as identity
+      "text with *bad markup @here",
       { parse_mode: "Markdown" },
     );
 

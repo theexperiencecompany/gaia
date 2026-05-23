@@ -84,6 +84,15 @@ describe("richMessageToMarkdown", () => {
     expect(result).toContain("[Dashboard](https://app.gaia.com)");
   });
 
+  it("formats links as label (url) for WhatsApp (no masked-link syntax)", () => {
+    const msg = makeMsg({
+      links: [{ label: "Dashboard", url: "https://app.gaia.com" }],
+    });
+    const result = richMessageToMarkdown(msg, "whatsapp");
+    expect(result).toContain("Dashboard (https://app.gaia.com)");
+    expect(result).not.toContain("[Dashboard](https://app.gaia.com)");
+  });
+
   // -- Footer --------------------------------------------------------------
   it("italicizes footer", () => {
     const result = richMessageToMarkdown(

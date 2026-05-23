@@ -48,9 +48,6 @@ vi.mock("@gaia/shared", async () => {
     streamingDefaults: {
       slack: { editIntervalMs: 1500, streaming: true, platform: "slack" },
     },
-    converters: {
-      convertToSlackMrkdwn: vi.fn((text: string) => text),
-    },
     defaultRichMarkdown: "## Rich Title\nBody text",
   });
 });
@@ -59,7 +56,7 @@ vi.mock("@gaia/shared", async () => {
 // Import adapter after mocks are in place
 // ---------------------------------------------------------------------------
 
-import { convertToSlackMrkdwn, handleStreamingChat } from "@gaia/shared";
+import { handleStreamingChat } from "@gaia/shared";
 import { SlackAdapter } from "../../slack/src/adapter";
 
 // ---------------------------------------------------------------------------
@@ -135,9 +132,11 @@ describe("SlackAdapter - createCommandTarget.send", () => {
 
     const sent = await target.send("Hello world");
 
+    // renderForPlatform is mocked as identity, so the adapter forwards raw text.
+    // The real Slack conversion is covered by the shared formatters tests.
     expect(client.chat.postMessage).toHaveBeenCalledWith({
       channel: "C456",
-      text: convertToSlackMrkdwn("Hello world"),
+      text: "Hello world",
     });
     expect(sent.id).toBe("ts-abc");
 
@@ -146,7 +145,7 @@ describe("SlackAdapter - createCommandTarget.send", () => {
     expect(client.chat.update).toHaveBeenCalledWith({
       channel: "C456",
       ts: "ts-abc",
-      text: convertToSlackMrkdwn("Updated text"),
+      text: "Updated text",
     });
   });
 
@@ -195,8 +194,9 @@ describe("SlackAdapter - createCommandTarget.sendEphemeral", () => {
 
     const sent = await target.sendEphemeral("Only you can see this");
 
+    // renderForPlatform mocked as identity → adapter forwards raw text.
     expect(respond).toHaveBeenCalledWith({
-      text: convertToSlackMrkdwn("Only you can see this"),
+      text: "Only you can see this",
       response_type: "ephemeral",
     });
     expect(sent.id).toBe("ephemeral");
@@ -390,7 +390,7 @@ describe("SlackAdapter - handleSlackStreaming", () => {
 // ---------------------------------------------------------------------------
 
 describe("SlackAdapter - handleSlackStreaming streaming callbacks", () => {
-  it("the editMessage callback calls client.chat.update with converted text", async () => {
+  it("the editMessage callback calls client.chat.update with the text it receives", async () => {
     vi.clearAllMocks();
     const adapter = new SlackAdapter();
     const client = makeSlackClient("ts-edit");
@@ -417,12 +417,14 @@ describe("SlackAdapter - handleSlackStreaming streaming callbacks", () => {
 
     expect(capturedEditMessage).toBeDefined();
 
+    // Conversion now happens inside handleStreamingChat (mocked here), so the
+    // adapter callback forwards whatever text it is given straight to chat.update.
     await capturedEditMessage!("Streamed response text");
 
     expect(client.chat.update).toHaveBeenCalledWith({
       channel: "C789",
       ts: "ts-edit",
-      text: convertToSlackMrkdwn("Streamed response text"),
+      text: "Streamed response text",
     });
   });
 });

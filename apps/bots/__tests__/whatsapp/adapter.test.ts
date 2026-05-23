@@ -16,7 +16,7 @@
  * 6.  createWaTarget — platform/userId/channelId identity
  * 7.  createWaTarget.send — delegates to sendWhatsAppText
  * 8.  createWaTarget.sendEphemeral — identical to send (no ephemeral concept)
- * 9.  createWaTarget.sendRich — calls richMessageToMarkdown then convertToWhatsAppMarkdown then sendText
+ * 9.  createWaTarget.sendRich — renders via richMessageToMarkdown (platform-aware) and sends directly
  * 10. createWaTarget.startTyping — returns a callable no-op
  * 11. handleIncomingMessage — /gaia <text> routes to handleStreamingMessage
  * 12. handleIncomingMessage — /gaia (no text) sends usage hint, no streaming
@@ -39,7 +39,7 @@
  * 29. handleIncomingMessage — welcome sent per user (different users each get one)
  * 30. handleUnsupportedMedia — replies with helpful message for image
  * 31. handleUnsupportedMedia — replies with type-specific label for audio/voice/video/document
- * 32. createWaTarget.sendRich — applies convertToWhatsAppMarkdown to rendered markdown
+ * 32. createWaTarget.sendRich — sends platform-aware rendered markdown without an extra convert pass
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -109,9 +109,6 @@ vi.mock("@gaia/shared", async () => {
         platform: "whatsapp",
       },
     },
-    converters: {
-      convertToWhatsAppMarkdown: vi.fn((text: string) => text),
-    },
     defaultRichMarkdown: "*GAIA Help*\nUse /gaia to chat",
   });
 });
@@ -120,11 +117,7 @@ vi.mock("@gaia/shared", async () => {
 // Now import the real adapter (which will use the mocks above).
 // ---------------------------------------------------------------------------
 
-import {
-  convertToWhatsAppMarkdown,
-  handleStreamingChat,
-  richMessageToMarkdown,
-} from "@gaia/shared";
+import { handleStreamingChat, richMessageToMarkdown } from "@gaia/shared";
 import { WhatsAppAdapter } from "../../whatsapp/src/adapter";
 
 // ---------------------------------------------------------------------------
@@ -319,23 +312,20 @@ describe("WhatsAppAdapter - createWaTarget", () => {
     expect(sent.id).toBe("wa-msg-123");
   });
 
-  it("target.sendRich calls richMessageToMarkdown then convertToWhatsAppMarkdown then sends the result", async () => {
+  it("target.sendRich renders via richMessageToMarkdown (already platform-aware) and sends it directly", async () => {
     const target = priv.createWaTarget("15551234567");
     const richMsg = { title: "GAIA Help", sections: [] };
 
+    // richMessageToMarkdown is platform-aware: for "whatsapp" it already emits
+    // WhatsApp-native markdown, so the adapter no longer double-converts with
+    // convertToWhatsAppMarkdown — it sends the rendered output as-is.
     vi.mocked(richMessageToMarkdown).mockReturnValueOnce(
-      "*GAIA Help*\n**Name:** Aryan",
-    );
-    vi.mocked(convertToWhatsAppMarkdown).mockReturnValueOnce(
       "*GAIA Help*\n*Name:* Aryan",
     );
 
     await target.sendRich(richMsg);
 
     expect(richMessageToMarkdown).toHaveBeenCalledWith(richMsg, "whatsapp");
-    expect(convertToWhatsAppMarkdown).toHaveBeenCalledWith(
-      "*GAIA Help*\n**Name:** Aryan",
-    );
     expect(mockSendText).toHaveBeenCalledWith(
       expect.objectContaining({ body: "*GAIA Help*\n*Name:* Aryan" }),
     );

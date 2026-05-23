@@ -26,6 +26,7 @@ import {
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
+  renderForPlatform,
   type SentMessage,
   STREAMING_DEFAULTS,
 } from "@gaia/shared";
@@ -357,15 +358,15 @@ export class DiscordAdapter extends BaseBotAdapter {
     await handleStreamingChat(
       this.gaia,
       { message, platform: "discord", platformUserId: userId, channelId },
-      async (text: string) => {
+      async (content: string) => {
         if (isFirstMessage) {
-          await interaction.editReply({ content: text });
+          await interaction.editReply({ content });
         } else if (lastFollowUp) {
-          await lastFollowUp.edit({ content: text });
+          await lastFollowUp.edit({ content });
         }
       },
-      async (text: string) => {
-        lastFollowUp = await interaction.followUp({ content: text });
+      async (content: string) => {
+        lastFollowUp = await interaction.followUp({ content });
         isFirstMessage = false;
         return async (updatedText: string) => {
           if (lastFollowUp) {
@@ -446,14 +447,20 @@ export class DiscordAdapter extends BaseBotAdapter {
           channelId,
         },
         async (text: string) => {
-          await interaction.editReply({ content: `**Summary**\n${text}` });
+          await interaction.editReply({
+            content: `**Summary**\n${text}`,
+          });
           replied = true;
         },
         async (text: string) => {
           replied = true;
-          await interaction.editReply({ content: `**Summary**\n${text}` });
+          await interaction.editReply({
+            content: `**Summary**\n${text}`,
+          });
           return async (updated: string) => {
-            await interaction.editReply({ content: `**Summary**\n${updated}` });
+            await interaction.editReply({
+              content: `**Summary**\n${updated}`,
+            });
           };
         },
         async (authUrl: string) => {
@@ -494,12 +501,16 @@ export class DiscordAdapter extends BaseBotAdapter {
           channelId,
         },
         async (text: string) => {
-          await interaction.editReply({ content: `**Todo Added**\n${text}` });
+          await interaction.editReply({
+            content: `**Todo Added**\n${text}`,
+          });
           replied = true;
         },
         async (text: string) => {
           replied = true;
-          await interaction.editReply({ content: `**Todo Added**\n${text}` });
+          await interaction.editReply({
+            content: `**Todo Added**\n${text}`,
+          });
           return async (updated: string) => {
             await interaction.editReply({
               content: `**Todo Added**\n${updated}`,
@@ -591,17 +602,17 @@ export class DiscordAdapter extends BaseBotAdapter {
           platformUserId: userId,
           channelId: message.channelId,
         },
-        async (text: string) => {
+        async (content: string) => {
           clearTyping();
           if (!currentMsg) {
-            currentMsg = await send(text);
+            currentMsg = await send(content);
           } else {
-            await currentMsg.edit(text);
+            await currentMsg.edit(content);
           }
         },
-        async (text: string) => {
+        async (content: string) => {
           clearTyping();
-          currentMsg = await send(text);
+          currentMsg = await send(content);
           return async (updatedText: string) => {
             await currentMsg?.edit(updatedText);
           };
@@ -760,12 +771,12 @@ export class DiscordAdapter extends BaseBotAdapter {
 
       let currentMsg: Message | null = null;
 
-      const sendOrEdit = async (text: string) => {
+      const sendOrEdit = async (content: string) => {
         clearTyping();
         if (!currentMsg) {
-          currentMsg = await send(text);
+          currentMsg = await send(content);
         } else {
-          await currentMsg.edit(text);
+          await currentMsg.edit(content);
         }
       };
 
@@ -778,9 +789,9 @@ export class DiscordAdapter extends BaseBotAdapter {
           channelId: message.channelId,
         },
         sendOrEdit,
-        async (text: string) => {
+        async (content: string) => {
           clearTyping();
-          currentMsg = await send(text);
+          currentMsg = await send(content);
           return async (updatedText: string) => {
             await currentMsg?.edit(updatedText);
           };
@@ -861,22 +872,30 @@ export class DiscordAdapter extends BaseBotAdapter {
 
       send: async (text: string): Promise<SentMessage> => {
         await deferIfNeeded(false);
-        await interaction.editReply({ content: text });
+        await interaction.editReply({
+          content: renderForPlatform(text, "discord"),
+        });
         return {
           id: interaction.id,
           edit: async (t: string) => {
-            await interaction.editReply({ content: t });
+            await interaction.editReply({
+              content: renderForPlatform(t, "discord"),
+            });
           },
         };
       },
 
       sendEphemeral: async (text: string): Promise<SentMessage> => {
         await deferIfNeeded(true);
-        await interaction.editReply({ content: text });
+        await interaction.editReply({
+          content: renderForPlatform(text, "discord"),
+        });
         return {
           id: interaction.id,
           edit: async (t: string) => {
-            await interaction.editReply({ content: t });
+            await interaction.editReply({
+              content: renderForPlatform(t, "discord"),
+            });
           },
         };
       },
@@ -888,7 +907,10 @@ export class DiscordAdapter extends BaseBotAdapter {
         return {
           id: interaction.id,
           edit: async (t: string) => {
-            await interaction.editReply({ content: t, embeds: [] });
+            await interaction.editReply({
+              content: renderForPlatform(t, "discord"),
+              embeds: [],
+            });
           },
         };
       },
