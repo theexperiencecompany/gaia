@@ -13,7 +13,7 @@ const phase1Content = (
   </p>
 );
 
-export default function EMSlackDemo() {
+function EMSlackDemo() {
   return (
     <SlackDemoBase
       channel="engineering"

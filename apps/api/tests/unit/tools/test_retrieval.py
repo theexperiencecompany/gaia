@@ -225,7 +225,7 @@ class TestProcessPublicIntegrationResult:
             {"integration_id": "abc123", "name": "My App", "relevance_score": 0.9},
             {"integration_id": "def456", "name": None, "relevance_score": 0.5},
         ]
-        result = _process_public_integration_result(items, 0)
+        result = _process_public_integration_result(items)
         assert len(result) == 2
         assert result[0]["id"] == "subagent:abc123 (My App)"
         assert result[0]["score"] == pytest.approx(0.9)
@@ -235,7 +235,7 @@ class TestProcessPublicIntegrationResult:
         from app.agents.tools.core.retrieval import _process_public_integration_result
 
         items = [{"name": "No ID"}]
-        result = _process_public_integration_result(items, 0)
+        result = _process_public_integration_result(items)
         assert len(result) == 0
 
 
@@ -262,7 +262,7 @@ class TestProcessChromaSearchResult:
         registry.get_category_of_tool.return_value = None
 
         result = _process_chroma_search_result(
-            [item], 0, {"GMAIL_SEND"}, registry, include_subagents=True
+            [item], {"GMAIL_SEND"}, registry, include_subagents=True
         )
         assert len(result) == 1
         assert result[0]["id"] == "GMAIL_SEND"
@@ -275,7 +275,7 @@ class TestProcessChromaSearchResult:
         registry.get_category_of_tool.return_value = None
 
         result = _process_chroma_search_result(
-            [item], 0, {"GMAIL_SEND"}, registry, include_subagents=True
+            [item], {"GMAIL_SEND"}, registry, include_subagents=True
         )
         assert len(result) == 0
 
@@ -285,7 +285,7 @@ class TestProcessChromaSearchResult:
         item = self._make_item("gmail", namespace=("subagents",), value={"name": "Gmail"})
         registry = MagicMock()
 
-        result = _process_chroma_search_result([item], 0, set(), registry, include_subagents=True)
+        result = _process_chroma_search_result([item], set(), registry, include_subagents=True)
         assert len(result) == 1
         assert result[0]["id"] == "subagent:gmail (Gmail)"
 
@@ -295,7 +295,7 @@ class TestProcessChromaSearchResult:
         item = self._make_item("gmail", namespace=("subagents",))
         registry = MagicMock()
 
-        result = _process_chroma_search_result([item], 0, set(), registry, include_subagents=False)
+        result = _process_chroma_search_result([item], set(), registry, include_subagents=False)
         assert len(result) == 0
 
     def test_subagent_prefix_key(self):
@@ -304,7 +304,7 @@ class TestProcessChromaSearchResult:
         item = self._make_item("subagent:gmail", namespace=("general",))
         registry = MagicMock()
 
-        result = _process_chroma_search_result([item], 0, set(), registry, include_subagents=True)
+        result = _process_chroma_search_result([item], set(), registry, include_subagents=True)
         assert len(result) == 1
         assert result[0]["id"] == "subagent:gmail"
 
@@ -314,7 +314,7 @@ class TestProcessChromaSearchResult:
         item = self._make_item("subagent:gmail", namespace=("general",))
         registry = MagicMock()
 
-        result = _process_chroma_search_result([item], 0, set(), registry, include_subagents=False)
+        result = _process_chroma_search_result([item], set(), registry, include_subagents=False)
         assert len(result) == 0
 
     def test_general_namespace_filters_non_webpage_tools_for_subagent(self):
@@ -327,7 +327,6 @@ class TestProcessChromaSearchResult:
 
         result = _process_chroma_search_result(
             [item],
-            0,
             {"create_todo"},
             registry,
             include_subagents=False,
@@ -348,7 +347,6 @@ class TestProcessChromaSearchResult:
 
         result = _process_chroma_search_result(
             [item],
-            0,
             {webpage_tool},
             registry,
             include_subagents=False,
@@ -367,7 +365,7 @@ class TestProcessChromaSearchResult:
         registry.get_category.return_value = category
 
         result = _process_chroma_search_result(
-            [item], 0, {"GMAIL_SEND"}, registry, include_subagents=True
+            [item], {"GMAIL_SEND"}, registry, include_subagents=True
         )
         assert len(result) == 0
 
@@ -377,7 +375,7 @@ class TestProcessChromaSearchResult:
         item = self._make_item("subagent:slack", namespace=("subagents",), value={"name": "Slack"})
         registry = MagicMock()
 
-        result = _process_chroma_search_result([item], 0, set(), registry, include_subagents=True)
+        result = _process_chroma_search_result([item], set(), registry, include_subagents=True)
         assert result[0]["id"] == "subagent:slack (Slack)"
 
 

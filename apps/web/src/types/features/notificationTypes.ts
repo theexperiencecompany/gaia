@@ -236,59 +236,6 @@ export interface NotificationContent {
   rich_content?: RichContent;
 }
 
-export interface ChannelConfiguration {
-  // Email channel
-  email?: {
-    template?: string;
-    from_address?: string;
-    reply_to?: string;
-    subject_prefix?: string;
-    include_attachments?: boolean;
-  };
-
-  // Push notification channel
-  push?: {
-    title_template?: string;
-    body_template?: string;
-    icon?: string;
-    badge?: number;
-    sound?: string;
-    click_action?: string;
-  };
-
-  // In-app notification channel
-  in_app?: {
-    position?: "top-right" | "top-left" | "bottom-right" | "bottom-left";
-    duration_ms?: number;
-    auto_dismiss?: boolean;
-    show_actions?: boolean;
-  };
-
-  // SMS channel
-  sms?: {
-    template?: string;
-    sender_id?: string;
-    max_length?: number;
-  };
-
-  // Webhook channel
-  webhook?: {
-    url: string;
-    method?: "POST" | "PUT";
-    headers?: Record<string, string>;
-    payload_template?: string;
-    retry_count?: number;
-  };
-}
-
-export interface ChannelConfig {
-  channel_type: string;
-  enabled?: boolean;
-  priority?: number;
-  template?: string;
-  config?: ChannelConfiguration;
-}
-
 export interface NotificationMetadata {
   // Source tracking
   source?: "system" | "user" | "integration" | "workflow";
@@ -331,19 +278,6 @@ export interface NotificationMetadata {
 
   // Allow for additional custom fields
   [key: string]: string | number | boolean | string[] | object | undefined;
-}
-
-export interface NotificationRequest {
-  id: string;
-  user_id: string;
-  source: string;
-  type: NotificationType;
-  priority?: number;
-  channels: ChannelConfig[];
-  content: NotificationContent;
-  metadata?: NotificationMetadata;
-  scheduled_for?: string;
-  created_at: string;
 }
 
 export interface ChannelDeliveryStatus {
@@ -453,59 +387,7 @@ export enum BulkActions {
   DELETE = "delete",
 }
 
-export interface SnoozeSettings {
-  // Default snooze durations (in minutes)
-  default_duration?: number;
-  quick_options?: number[]; // e.g., [15, 30, 60, 120, 480] for 15min, 30min, 1hr, 2hr, 8hr
-
-  // Maximum snooze limits
-  max_duration?: number;
-  max_snoozes_per_notification?: number;
-
-  // Smart snooze features
-  smart_snooze?: {
-    enabled: boolean;
-    work_hours_only?: boolean;
-    avoid_weekends?: boolean;
-    time_zone?: string;
-  };
-
-  // Recurring snooze patterns
-  recurring_patterns?: Array<{
-    name: string;
-    duration: number;
-    repeat_count?: number;
-    conditions?: Array<{
-      field: string;
-      operator: string;
-      value: string | number | boolean;
-    }>;
-  }>;
-
-  // Per-category settings
-  category_overrides?: Record<
-    string,
-    {
-      default_duration: number;
-      max_duration: number;
-      quick_options: number[];
-    }
-  >;
-}
-
-export interface NotificationPreferences {
-  user_id: string;
-  channel_preferences?: Record<string, Record<string, boolean | number>>;
-  snooze_settings?: SnoozeSettings;
-  quiet_hours?: Record<string, string>;
-  max_notifications_per_hour?: number;
-  updated_at: string;
-}
-
 // API Request/Response types
-export interface CreateNotificationRequest {
-  notification_request: NotificationRequest;
-}
 
 export interface BulkActionRequest {
   notification_ids: string[];

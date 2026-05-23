@@ -13,7 +13,7 @@ export interface ResolvableCreator {
   avatar?: string | null;
 }
 
-export function isSystemCreator(
+function isSystemCreator(
   creator: ResolvableCreator | null | undefined,
 ): boolean {
   return creator?.id === SYSTEM_CREATOR_ID;

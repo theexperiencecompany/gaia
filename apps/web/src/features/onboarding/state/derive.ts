@@ -23,14 +23,14 @@ export function hasGmail(s: OnboardingState): boolean {
   return s.responses[FIELD_NAMES.GMAIL] === "connected";
 }
 
-export function needsFocus(s: OnboardingState): boolean {
+function needsFocus(s: OnboardingState): boolean {
   return (
     s.responses[FIELD_NAMES.GMAIL] === "skipped" &&
     s.responses[FIELD_NAMES.FOCUS] == null
   );
 }
 
-export function needsClarify(s: OnboardingState): boolean {
+function needsClarify(s: OnboardingState): boolean {
   if (s.responses[FIELD_NAMES.GMAIL] !== "skipped") return false;
   if (s.responses[FIELD_NAMES.FOCUS] == null) return false;
   return !s.clarifySubmitted;

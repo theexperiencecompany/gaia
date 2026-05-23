@@ -289,7 +289,7 @@ async def entrypoint(ctx: JobContext):
 
     ctx.add_shutdown_callback(log_usage)
 
-    async def _extract_and_set_participant_credentials(md: str | None, origin: str, who: str):
+    async def _extract_and_set_participant_credentials(md: str | None):
         """Extract and set agent token and conversation ID from participant metadata."""
         token, conv_id = _extract_meta_data(md)
         if token:
@@ -303,29 +303,21 @@ async def entrypoint(ctx: JobContext):
     def _on_participant_connected(p: rtc.RemoteParticipant):
         """Handle new participant connection and process their metadata."""
         task = asyncio.create_task(
-            _extract_and_set_participant_credentials(
-                getattr(p, "metadata", None), "participant_connected", p.identity
-            )
+            _extract_and_set_participant_credentials(getattr(p, "metadata", None))
         )
         background_tasks.add(task)
         task.add_done_callback(background_tasks.discard)
 
     @ctx.room.on("participant_metadata_changed")
     def _on_participant_metadata_changed(p: rtc.Participant, old_md: str, new_md: str):
-        task = asyncio.create_task(
-            _extract_and_set_participant_credentials(
-                new_md, "participant_metadata_changed", p.identity
-            )
-        )
+        task = asyncio.create_task(_extract_and_set_participant_credentials(new_md))
         background_tasks.add(task)
         task.add_done_callback(background_tasks.discard)
 
     await ctx.connect()
     for p in ctx.room.remote_participants.values():
         logger.info("participant already present, processing metadata")
-        await _extract_and_set_participant_credentials(
-            getattr(p, "metadata", None), "existing_participant", p.identity
-        )
+        await _extract_and_set_participant_credentials(getattr(p, "metadata", None))
 
     await session.start(
         agent=Agent(instructions="Avoid markdowns"),

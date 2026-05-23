@@ -22,12 +22,6 @@ export const MOTION_FADE_UP_LARGE = {
   transition: { duration: 0.4, ease: EASE_OUT_QUART } satisfies Transition,
 } as const;
 
-export const MOTION_FADE_UP_SUBTLE = {
-  initial: { opacity: 0, y: 8 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.4, ease: EASE_OUT_QUART } satisfies Transition,
-} as const;
-
 export const MOTION_COMPOSER_CTA = {
   initial: { opacity: 0, y: 8 },
   animate: { opacity: 1, y: 0 },

@@ -10,8 +10,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChatMessageItem } from "./ChatDemo";
 
-export const TYPING_DELAY_MS = 450;
-export const TYPING_DURATION_MS = 850;
+const TYPING_DELAY_MS = 450;
+const TYPING_DURATION_MS = 850;
 
 export function useStaggeredMessages(
   messages: ChatMessageItem[],

@@ -6,7 +6,6 @@ import {
   CursorMagicSelection03Icon,
   DateTimeIcon,
   Mail01Icon,
-  PlayIcon,
   UserCircle02Icon,
 } from "@icons";
 import Image from "next/image";
@@ -16,7 +15,6 @@ import {
   resolveCreatorName,
 } from "@/features/workflows/utils/creator";
 import { cn } from "@/lib/utils";
-import { formatRunCount } from "@/utils/formatters";
 
 import type { Workflow } from "../../api/workflowApi";
 
@@ -73,7 +71,7 @@ interface TriggerIconProps {
   size?: number;
 }
 
-export function TriggerIcon({
+function TriggerIcon({
   triggerType,
   integrationId,
   size = 20,
@@ -153,34 +151,6 @@ export function TriggerDisplay({
       </span>
     </div>
   );
-}
-
-// Reusable Run Count Component
-interface RunCountDisplayProps {
-  totalExecutions: number;
-  className?: string;
-}
-
-export function RunCountDisplay({
-  totalExecutions,
-  className = "",
-}: RunCountDisplayProps) {
-  const runCount = formatRunCount(totalExecutions);
-
-  if (runCount !== "Never run")
-    return (
-      <div
-        className={cn(
-          "flex items-center gap-1 text-xs text-zinc-500",
-          className,
-        )}
-      >
-        <PlayIcon size={16} className="w-4 text-zinc-500" />
-        <span className="text-nowrap">{formatRunCount(totalExecutions)}</span>
-      </div>
-    );
-
-  return null;
 }
 
 // Reusable Activation Status Chip

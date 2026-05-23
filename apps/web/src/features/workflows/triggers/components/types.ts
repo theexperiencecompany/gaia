@@ -7,11 +7,6 @@ export interface OptionItem {
   label: string;
 }
 
-export interface GroupedOption {
-  group: string;
-  options: OptionItem[];
-}
-
 export interface TriggerConnectionPromptProps {
   integrationName: string;
   _integrationId: string;

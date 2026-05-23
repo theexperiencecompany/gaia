@@ -61,7 +61,6 @@ src/
     git.ts                  - Git operations (clone, branch)
     healthcheck.ts          - Service health polling
     interactive.ts          - Interactive prompts
-    path-setup.ts           - Project path resolution
     prerequisites.ts        - Check Docker/Git availability
     service-starter.ts      - Start/stop service orchestration
     version.ts              - CLI version constant

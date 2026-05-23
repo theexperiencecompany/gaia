@@ -37,7 +37,7 @@ export interface MenuSectionConfig {
 }
 
 // Page navigation items
-export const PAGE_ITEMS: MenuItemConfig[] = [
+const PAGE_ITEMS: MenuItemConfig[] = [
   {
     id: "notifications",
     label: "Notifications",
@@ -84,7 +84,7 @@ export const PAGE_ITEMS: MenuItemConfig[] = [
 ];
 
 // Quick actions
-export const ACTION_ITEMS: MenuItemConfig[] = [
+const ACTION_ITEMS: MenuItemConfig[] = [
   {
     id: "new_chat",
     label: "Create a New Chat",
@@ -101,7 +101,7 @@ export const ACTION_ITEMS: MenuItemConfig[] = [
 ];
 
 // User settings and community
-export const USER_ITEMS: MenuItemConfig[] = [
+const USER_ITEMS: MenuItemConfig[] = [
   {
     id: "memories",
     label: "Memories",
