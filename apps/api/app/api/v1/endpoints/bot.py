@@ -48,6 +48,32 @@ async def require_bot_api_key(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Invalid or missing bot API key")
 
 
+def _bot_rate_limit_notice(chunk: dict) -> str | None:
+    """Render a web-only rate-limit card as a plain-text notice for bots.
+
+    Rate limits are streamed as a ``tool_data`` card for the web UI to render.
+    Bots drop ``tool_data``, so without this they'd silently swallow the limit.
+    Returns the user-facing notice, or ``None`` if ``chunk`` isn't such a card.
+
+    The upgrade link is emitted as CommonMark ``[label](url)``; each bot adapter
+    localises it to its platform's link syntax (WhatsApp ``label (url)``, Slack
+    ``<url|label>``, Telegram keeps ``[label](url)``).
+    """
+    tool_data = chunk.get("tool_data")
+    if not isinstance(tool_data, dict) or tool_data.get("tool_name") != "rate_limit_data":
+        return None
+
+    card = tool_data.get("data") or {}
+    feature = str(card.get("feature") or "this feature").replace("_", " ")
+    notice = f"⏳ You've reached your {feature} limit. Please try again later."
+
+    # Nudge an upgrade only for non-Pro users (Pro is the top tier).
+    if card.get("current_plan") != "pro":
+        pricing_url = f"{settings.FRONTEND_URL}/pricing"
+        notice += f" [Upgrade to Pro]({pricing_url}) for higher limits."
+    return notice
+
+
 @router.post(
     "/create-link-token",
     response_model=CreateLinkTokenResponse,
@@ -240,6 +266,15 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                     # Forward keepalives so bot clients reset inactivity timers
                     if data.get("keepalive"):
                         yield f"data: {json.dumps({'keepalive': True})}\n\n"
+                        continue
+
+                    # Surface rate-limit cards (web-only UI) to bots as a short
+                    # text notice, before the web-only fields are dropped below.
+                    # Non-terminal: the agent's partial reply still streams.
+                    rate_limit_notice = _bot_rate_limit_notice(data)
+                    if rate_limit_notice is not None:
+                        payload = json.dumps({"text": f"\n\n{rate_limit_notice}"})
+                        yield f"data: {payload}\n\n"
                         continue
 
                     # Skip web-only fields

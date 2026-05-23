@@ -143,6 +143,11 @@ def with_rate_limiting(
                                             "feature": actual_feature_key,
                                             "plan_required": detail_dict.get("plan_required"),
                                             "reset_time": reset_time,
+                                            "current_plan": (
+                                                user_plan.value
+                                                if hasattr(user_plan, "value")
+                                                else str(user_plan)
+                                            ),
                                         },
                                         "timestamp": datetime.now(UTC).isoformat(),
                                     }
