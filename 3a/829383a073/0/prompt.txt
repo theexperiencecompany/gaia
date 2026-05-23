@@ -1,0 +1,5 @@
+# Keep in sync with [tool.interrogate].exclude in pyproject.toml and the# xenon -e / bandit path selection in code-quality.yml. Each pattern matches a# whole path segment (anchored to start-of-string or a slash) so substrings# like "latest_tests" or "scripts_helper.py" are not falsely excluded.printf '%s\n' "$FILES" \  | { grep -vE '(^|/)(tests|scripts|migrations|alembic)/|(^|/)(conftest|setup)\.py$' || true; } so this needs to be kept in sync manualyl or??
+
+---
+
+sure yes please. also tell me why even is this needed i don't really understand it properly

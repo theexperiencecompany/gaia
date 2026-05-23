@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "3a829383a073",
+  "strategy": "manual-commit",
+  "branch": "ci/quality-affected-scoping",
+  "checkpoints_count": 0,
+  "files_touched": [
+    ".github/workflows/code-quality.yml",
+    "scripts/ci/changed-py-source.sh"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3a/829383a073/0/metadata.json",
+      "transcript": "/3a/829383a073/0/full.jsonl",
+      "content_hash": "/3a/829383a073/0/content_hash.txt",
+      "prompt": "/3a/829383a073/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 15846,
+    "cache_creation_tokens": 359538,
+    "cache_read_tokens": 12849509,
+    "output_tokens": 172995,
+    "api_call_count": 93
+  }
+}
