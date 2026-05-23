@@ -13,6 +13,7 @@ Self-host GAIA with the CLI. The CLI handles setup, environment scaffolding, and
 - **Web**: Next.js
 - **Backend**: FastAPI
 - **Databases/Infra**: PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ (via Docker)
+- **Workspace storage**: JuiceFS (per-user file uploads, agent artifacts, skills)
 
 ## Prerequisites
 
@@ -20,6 +21,10 @@ Self-host GAIA with the CLI. The CLI handles setup, environment scaffolding, and
 - Docker Engine 20.10+ and Compose v2+
 - 2+ CPU cores, 4GB+ RAM, 10GB+ disk (8GB+ RAM recommended)
 - API keys as needed (see [Environment Variables](/configuration/environment-variables))
+
+<Note>
+Run the backend in a container on every platform. Its workspace storage (file uploads, artifacts, skills) uses JuiceFS, which mounts through Linux FUSE — a native backend on macOS or Windows can't provide it. Docker Desktop covers this on all platforms. See [Docker Setup](/self-hosting/docker-setup#persistent-workspace-storage-juicefs-and-fuse) for the FUSE requirements and configuration.
+</Note>
 
 ## Quick Start
 

@@ -130,7 +130,7 @@ The API can run two ways in dev. They are **not** equivalent — the difference 
 | Mode | How | Port | JuiceFS mount | Hot reload |
 |---|---|---|---|---|
 | **Native** (default) | `mise dev` / `nx dev api` | host:8000 | not available | `uvicorn --reload` |
-| **Dockered** | `mise dev:jfs` / `docker compose --profile backend up -d` | host:8000 → container:80 | mounted at `/mnt/jfs` | `WATCHFILES_FORCE_POLLING` |
+| **Dockered** | `mise dev:vm` / `docker compose --profile backend up -d` | host:8000 → container:80 | mounted at `/mnt/jfs` | `WATCHFILES_FORCE_POLLING` |
 
 ### Why this split exists
 
@@ -155,16 +155,16 @@ All of these call `_require_mount()` in `app/services/storage/juicefs.py`:
 - The artifact watcher in `app/services/sandbox/artifact_watcher.py` — needs to tail `/mnt/jfs/.accesslog`
 - Any service path under `app/services/storage/sessions/` that touches the FS
 
-If you hit `JuiceFSUnavailable` while running natively, **that is expected** — the fix is to switch to `mise dev:jfs`, not to "fix" the error. Do not silence the exception, do not add a no-op fallback, do not stub `_is_mounted` to return `True`. The mount being missing is a load-bearing signal that JuiceFS-dependent features need the dockered API.
+If you hit `JuiceFSUnavailable` while running natively, **that is expected** — the fix is to switch to `mise dev:vm`, not to "fix" the error. Do not silence the exception, do not add a no-op fallback, do not stub `_is_mounted` to return `True`. The mount being missing is a load-bearing signal that JuiceFS-dependent features need the dockered API.
 
 ### When to use which
 
 - **Default to native (`mise dev`).** Faster start, port 8000 free, `uv` commands work directly, hot reload is instant.
-- **Switch to `mise dev:jfs`** when your task touches `app/services/storage/`, `app/services/sandbox/`, file upload endpoints, artifact streaming, workspace v2 in general, or you start seeing `JuiceFSUnavailable` in logs.
+- **Switch to `mise dev:vm`** when your task touches `app/services/storage/`, `app/services/sandbox/`, file upload endpoints, artifact streaming, workspace v2 in general, or you start seeing `JuiceFSUnavailable` in logs.
 
 ### Coding-agent note
 
-If you are an agent fixing a bug here and you see `JuiceFSUnavailable`: do **not** wrap it in `try/except: pass`, do **not** stub the storage helpers, and do **not** create a fake `/mnt/jfs` directory. The user's `mise dev` is intentionally configured to surface this. Either tell the user to switch to `mise dev:jfs` for tasks that actually exercise JuiceFS, or confirm with them that the failing code path isn't relevant to the current task before changing anything.
+If you are an agent fixing a bug here and you see `JuiceFSUnavailable`: do **not** wrap it in `try/except: pass`, do **not** stub the storage helpers, and do **not** create a fake `/mnt/jfs` directory. The user's `mise dev` is intentionally configured to surface this. Either tell the user to switch to `mise dev:vm` for tasks that actually exercise JuiceFS, or confirm with them that the failing code path isn't relevant to the current task before changing anything.
 
 ## Environment
 
