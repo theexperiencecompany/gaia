@@ -128,14 +128,25 @@ class TestBuildSessionKey:
 
 @pytest.mark.unit
 class TestGetOrCreateSession:
+    @staticmethod
+    def _existing_session(conversation_id: str, session_key: str = "discord:user123:dm"):
+        """find_one_and_update returns the pre-existing session unchanged on a match."""
+        return {"session_key": session_key, "conversation_id": conversation_id}
+
+    @staticmethod
+    def _inserted_session(update_filter, update, *, return_document=None, upsert=None):
+        """Simulate an upsert insert: return the doc carrying the $setOnInsert id."""
+        set_on_insert = update["$setOnInsert"]
+        return {
+            "session_key": set_on_insert["session_key"],
+            "conversation_id": set_on_insert["conversation_id"],
+        }
+
     async def test_returns_existing_session(
         self, mock_bot_sessions, mock_conversations, sample_user
     ):
-        mock_bot_sessions.find_one = AsyncMock(
-            return_value={
-                "session_key": "discord:user123:dm",
-                "conversation_id": "conv-existing",
-            }
+        mock_bot_sessions.find_one_and_update = AsyncMock(
+            return_value=self._existing_session("conv-existing")
         )
         mock_conversations.find_one = AsyncMock(return_value={"_id": "some-id"})
 
@@ -150,37 +161,77 @@ class TestGetOrCreateSession:
         mock_create_conversation,
         sample_user,
     ):
-        mock_bot_sessions.find_one = AsyncMock(return_value=None)
-        mock_bot_sessions.update_one = AsyncMock()
+        # find_one_and_update inserts a fresh session (returns the $setOnInsert id).
+        mock_bot_sessions.find_one_and_update = AsyncMock(side_effect=self._inserted_session)
+        # No conversation document exists yet for the freshly-minted id.
+        mock_conversations.find_one = AsyncMock(return_value=None)
 
         result = await BotService.get_or_create_session("discord", "user123", None, sample_user)
 
         assert result is not None
         mock_create_conversation.assert_awaited_once()
-        mock_bot_sessions.update_one.assert_awaited_once()
+        mock_bot_sessions.find_one_and_update.assert_awaited_once()
 
-    async def test_creates_new_when_conv_deleted(
+    async def test_sets_source_on_created_conversation(
         self,
         mock_bot_sessions,
         mock_conversations,
         mock_create_conversation,
         sample_user,
     ):
-        """If session exists but conversation doesn't, create new session."""
-        mock_bot_sessions.find_one = AsyncMock(
-            return_value={
-                "session_key": "discord:user123:dm",
-                "conversation_id": "conv-deleted",
-            }
+        """The created bot conversation must carry the platform as its source so the
+        web list query's $nin filter excludes it."""
+        mock_bot_sessions.find_one_and_update = AsyncMock(side_effect=self._inserted_session)
+        mock_conversations.find_one = AsyncMock(return_value=None)
+
+        await BotService.get_or_create_session("whatsapp", "user123", None, sample_user)
+
+        conversation_model = mock_create_conversation.call_args[0][0]
+        assert conversation_model.source is not None
+        assert conversation_model.source.value == "whatsapp"
+
+    async def test_recreates_with_same_id_when_conv_deleted(
+        self,
+        mock_bot_sessions,
+        mock_conversations,
+        mock_create_conversation,
+        sample_user,
+    ):
+        """If the session exists but its conversation was deleted (web UI / race),
+        the conversation is recreated with the SAME id — never a new one — so the
+        thread is not orphaned or forked."""
+        mock_bot_sessions.find_one_and_update = AsyncMock(
+            return_value=self._existing_session("conv-deleted")
         )
         mock_conversations.find_one = AsyncMock(return_value=None)
-        mock_bot_sessions.update_one = AsyncMock()
 
         result = await BotService.get_or_create_session("discord", "user123", None, sample_user)
 
-        assert result is not None
-        assert result != "conv-deleted"
+        # Same id is reused — no minting + repointing.
+        assert result == "conv-deleted"
         mock_create_conversation.assert_awaited_once()
+        recreated_model = mock_create_conversation.call_args[0][0]
+        assert recreated_model.conversation_id == "conv-deleted"
+
+    async def test_does_not_repoint_session_when_conv_deleted(
+        self,
+        mock_bot_sessions,
+        mock_conversations,
+        mock_create_conversation,
+        sample_user,
+    ):
+        """Recreation must not mint a new conversation_id that differs from the one
+        already stored on the session."""
+        mock_bot_sessions.find_one_and_update = AsyncMock(
+            return_value=self._existing_session("conv-deleted")
+        )
+        mock_conversations.find_one = AsyncMock(return_value=None)
+
+        result = await BotService.get_or_create_session("discord", "user123", None, sample_user)
+
+        # The id sent to find_one_and_update's $setOnInsert is a *candidate* only; on
+        # an existing session it is discarded, so the returned id must be the stored one.
+        assert result == "conv-deleted"
 
     async def test_normalizes_user_dict_with_underscore_id(
         self,
@@ -190,8 +241,8 @@ class TestGetOrCreateSession:
     ):
         """User dict with _id but no user_id should be normalized."""
         user = {"_id": "507f1f77bcf86cd799439011", "email": "test@example.com"}
-        mock_bot_sessions.find_one = AsyncMock(return_value=None)
-        mock_bot_sessions.update_one = AsyncMock()
+        mock_bot_sessions.find_one_and_update = AsyncMock(side_effect=self._inserted_session)
+        mock_conversations.find_one = AsyncMock(return_value=None)
 
         result = await BotService.get_or_create_session("discord", "user123", None, user)
 
@@ -205,8 +256,8 @@ class TestGetOrCreateSession:
         mock_create_conversation,
         sample_user,
     ):
-        mock_bot_sessions.find_one = AsyncMock(return_value=None)
-        mock_bot_sessions.update_one = AsyncMock()
+        mock_bot_sessions.find_one_and_update = AsyncMock(side_effect=self._inserted_session)
+        mock_conversations.find_one = AsyncMock(return_value=None)
 
         await BotService.get_or_create_session("telegram", "user123", None, sample_user)
 
@@ -230,8 +281,10 @@ class TestResetSession:
         sample_user,
     ):
         mock_bot_sessions.delete_one = AsyncMock()
-        mock_bot_sessions.find_one = AsyncMock(return_value=None)
-        mock_bot_sessions.update_one = AsyncMock()
+        mock_bot_sessions.find_one_and_update = AsyncMock(
+            side_effect=TestGetOrCreateSession._inserted_session
+        )
+        mock_conversations.find_one = AsyncMock(return_value=None)
 
         result = await BotService.reset_session("discord", "user123", None, sample_user)
 
@@ -246,8 +299,10 @@ class TestResetSession:
         sample_user,
     ):
         mock_bot_sessions.delete_one = AsyncMock()
-        mock_bot_sessions.find_one = AsyncMock(return_value=None)
-        mock_bot_sessions.update_one = AsyncMock()
+        mock_bot_sessions.find_one_and_update = AsyncMock(
+            side_effect=TestGetOrCreateSession._inserted_session
+        )
+        mock_conversations.find_one = AsyncMock(return_value=None)
 
         await BotService.reset_session("slack", "user123", "channel789", sample_user)
 

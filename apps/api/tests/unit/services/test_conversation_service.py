@@ -118,6 +118,44 @@ class TestCreateConversationService:
         assert call_args["system_purpose"] == SystemPurpose.EMAIL_PROCESSING
         assert call_args["is_unread"] is True
 
+    async def test_persists_source_when_set(self, mock_collection, test_user):
+        """A bot conversation's source must be written to the document (as a string)
+        so the web list query's $nin filter can exclude it."""
+        from app.models.chat_models import ConversationSource
+
+        mock_result = MagicMock()
+        mock_result.acknowledged = True
+        mock_collection.insert_one = AsyncMock(return_value=mock_result)
+
+        conversation = ConversationModel(
+            conversation_id="conv_bot",
+            description="WhatsApp Chat",
+            source=ConversationSource.WHATSAPP,
+        )
+
+        await create_conversation_service(conversation, test_user)
+
+        call_args = mock_collection.insert_one.call_args[0][0]
+        # Stored as the plain string literal, matching the $nin source values.
+        assert call_args["source"] == "whatsapp"
+
+    async def test_source_defaults_to_none_for_web(self, mock_collection, test_user):
+        """Web/mobile conversations leave source null, which the $nin filter still
+        includes — that behavior must be preserved."""
+        mock_result = MagicMock()
+        mock_result.acknowledged = True
+        mock_collection.insert_one = AsyncMock(return_value=mock_result)
+
+        conversation = ConversationModel(
+            conversation_id="conv_web",
+            description="New Chat",
+        )
+
+        await create_conversation_service(conversation, test_user)
+
+        call_args = mock_collection.insert_one.call_args[0][0]
+        assert call_args["source"] is None
+
 
 @pytest.mark.unit
 class TestGetConversation:
@@ -433,8 +471,19 @@ class TestListConversations:
         # 25 non-starred docs with limit 10 → 3 pages
         assert result["total_pages"] == 3
 
+    @staticmethod
+    def _matches_nin(doc: dict, nin_filter: dict) -> bool:
+        """Replicate MongoDB $nin semantics for the `source` field.
+
+        A document matches when its `source` value is NOT in the excluded list. A
+        missing field is treated by Mongo as "not in the list" → it matches.
+        """
+        source = doc.get("source")
+        return source not in nin_filter["source"]["$nin"]
+
     async def test_list_conversations_excludes_bot_sources(self, mock_collection):
-        """Conversations from bot sources must be excluded via $nin filter."""
+        """Conversations from bot sources must be excluded via the $nin filter,
+        while null-source (web/mobile) conversations are still included."""
         user = {"user_id": "user_abc"}
 
         mock_collection.find.return_value = self._make_cursor([])
@@ -443,12 +492,34 @@ class TestListConversations:
         await get_conversations(user, page=1, limit=10)
 
         bot_sources = ["telegram", "discord", "slack", "whatsapp"]
+
+        # Every find() call (starred + non-starred) must carry the $nin source filter.
+        source_filters = []
         for call in mock_collection.find.call_args_list:
             query_filter = call[0][0]
             source_filter = query_filter.get("source", {})
             excluded = source_filter.get("$nin", [])
             assert set(bot_sources).issubset(set(excluded)), (
                 "Bot sources must be excluded from conversation listings"
+            )
+            source_filters.append({"source": {"$nin": excluded}})
+
+        assert source_filters, "get_conversations must issue at least one find() call"
+
+        # Prove the filter actually keeps web/null conversations and drops bot ones.
+        bot_conv = {"conversation_id": "c_bot", "source": "whatsapp"}
+        web_conv = {"conversation_id": "c_web", "source": "web"}
+        legacy_conv = {"conversation_id": "c_legacy"}  # no source field at all
+
+        nin_filter = source_filters[0]
+        assert not self._matches_nin(bot_conv, nin_filter), "bot conv must be excluded"
+        assert self._matches_nin(web_conv, nin_filter), "web conv must be included"
+        assert self._matches_nin(legacy_conv, nin_filter), "null-source conv must be included"
+
+        # All bot sources, when set, are excluded.
+        for source in bot_sources:
+            assert not self._matches_nin({"conversation_id": "c", "source": source}, nin_filter), (
+                f"source '{source}' must be excluded"
             )
 
 

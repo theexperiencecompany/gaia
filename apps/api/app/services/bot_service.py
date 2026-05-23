@@ -7,10 +7,11 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import HTTPException
+from pymongo import ReturnDocument
 
 from app.db.mongodb.collections import bot_sessions_collection, conversations_collection
 from app.db.redis import redis_cache
-from app.models.chat_models import ConversationModel
+from app.models.chat_models import ConversationModel, ConversationSource
 from app.services.conversation_service import create_conversation_service
 from shared.py.wide_events import log
 
@@ -97,59 +98,70 @@ class BotService:
             user = {**user, "user_id": str(user["_id"])}
 
         session_key = BotService.build_session_key(platform, platform_user_id, channel_id)
+        now = datetime.now(UTC).isoformat()
 
-        existing = await bot_sessions_collection.find_one({"session_key": session_key})
-        if existing:
-            conv_id = existing["conversation_id"]
-            conv = await conversations_collection.find_one(
-                {
-                    "conversation_id": conv_id,
-                    "user_id": user.get("user_id"),
-                },
-                {"_id": 1},
-            )
-            if conv:
-                log.set(
-                    bot={
-                        "platform": platform,
-                        "session_key": session_key,
-                        "conversation_id": conv_id,
-                        "session_status": "existing",
-                    }
-                )
-                return conv_id
-
-        conversation_id = str(uuid4())
-        conversation = ConversationModel(
-            conversation_id=conversation_id,
-            description=f"{platform.capitalize()} Chat",
-        )
-        await create_conversation_service(conversation, user)
-
-        await bot_sessions_collection.update_one(
+        # Atomically claim (or reuse) the session for this session_key. The
+        # conversation_id is set exactly once, on insert, via $setOnInsert so two
+        # racing first-messages can never mint two conversations: only the inserter
+        # wins the id and every other caller reads it back. The unique index on
+        # session_key (see app/db/mongodb/indexes.py) guarantees this atomicity.
+        candidate_conversation_id = str(uuid4())
+        session = await bot_sessions_collection.find_one_and_update(
             {"session_key": session_key},
             {
                 "$set": {
-                    "session_key": session_key,
-                    "conversation_id": conversation_id,
                     "platform": platform,
                     "platform_user_id": platform_user_id,
                     "channel_id": channel_id,
-                    "updated_at": datetime.now(UTC).isoformat(),
+                    "updated_at": now,
                 },
                 "$setOnInsert": {
-                    "created_at": datetime.now(UTC).isoformat(),
+                    "session_key": session_key,
+                    "conversation_id": candidate_conversation_id,
+                    "created_at": now,
                 },
             },
             upsert=True,
+            return_document=ReturnDocument.AFTER,
         )
+
+        conversation_id = session["conversation_id"]
+        is_new_session = conversation_id == candidate_conversation_id
+
+        # Ensure the conversation document exists for this session. On a fresh
+        # session it never does; on an existing session it normally does, but it
+        # may have been deleted from the web UI (or lost to a race). Either way we
+        # (re)create it with the SAME conversation_id stored on the session rather
+        # than minting a new one and repointing, so the chat thread is never
+        # orphaned or forked.
+        existing_conv = await conversations_collection.find_one(
+            {"conversation_id": conversation_id, "user_id": user.get("user_id")},
+            {"_id": 1},
+        )
+        if existing_conv:
+            log.set(
+                bot={
+                    "platform": platform,
+                    "session_key": session_key,
+                    "conversation_id": conversation_id,
+                    "session_status": "existing",
+                }
+            )
+            return conversation_id
+
+        conversation = ConversationModel(
+            conversation_id=conversation_id,
+            description=f"{platform.capitalize()} Chat",
+            source=ConversationSource(platform),
+        )
+        await create_conversation_service(conversation, user)
 
         log.set(
             bot={
                 "platform": platform,
                 "session_key": session_key,
                 "conversation_id": conversation_id,
-                "session_status": "new",
+                "session_status": "new" if is_new_session else "recreated",
             }
         )
         return conversation_id
