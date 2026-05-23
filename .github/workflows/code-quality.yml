@@ -340,7 +340,7 @@ jobs:
       - name: Docstring coverage on public API surface
         run: |
           echo "::group::interrogate"
-          FILES=$(scripts/ci/changed-files.sh py)
+          FILES=$(scripts/ci/changed-py-source.sh)
           if [ "$FILES" = "__FULL__" ]; then
             uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py
           elif [ -z "$FILES" ]; then
@@ -367,7 +367,7 @@ jobs:
       - name: Complexity scan (max-absolute F, max-modules E, max-average B)
         run: |
           echo "::group::xenon"
-          FILES=$(scripts/ci/changed-files.sh py)
+          FILES=$(scripts/ci/changed-py-source.sh)
           if [ "$FILES" = "__FULL__" ]; then
             uvx xenon \
               --max-absolute F \
@@ -405,7 +405,7 @@ jobs:
       - name: Bandit security scan (zero-warning policy)
         run: |
           echo "::group::bandit (low severity, low confidence — no exclusions)"
-          FILES=$(scripts/ci/changed-files.sh py)
+          FILES=$(scripts/ci/changed-py-source.sh)
           if [ "$FILES" = "__FULL__" ]; then
             uvx bandit -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low
           elif [ -z "$FILES" ]; then
