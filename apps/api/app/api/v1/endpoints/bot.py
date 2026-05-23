@@ -270,10 +270,12 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 
                     # Surface rate-limit cards (web-only UI) to bots as a short
                     # text notice, before the web-only fields are dropped below.
-                    # Non-terminal: the agent's partial reply still streams.
+                    # Non-terminal: the agent's partial reply still streams, so
+                    # pad with blank lines on both sides to keep the notice on its
+                    # own paragraph rather than running into adjacent agent text.
                     rate_limit_notice = _bot_rate_limit_notice(data)
                     if rate_limit_notice is not None:
-                        payload = json.dumps({"text": f"\n\n{rate_limit_notice}"})
+                        payload = json.dumps({"text": f"\n\n{rate_limit_notice}\n\n"})
                         yield f"data: {payload}\n\n"
                         continue
 
