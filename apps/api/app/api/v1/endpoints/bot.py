@@ -165,6 +165,7 @@ async def get_link_token_info(token: str) -> dict:
     description="Stream a chat response as Server-Sent Events.",
 )
 async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingResponse:
+    """Stream a bot chat reply as SSE, resolving the linked user and replaying history."""
     await require_bot_api_key(request)
     log.set(operation="bot_chat_stream", platform=body.platform)
     await BotService.enforce_rate_limit(body.platform, body.platform_user_id)
@@ -179,6 +180,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     if not user:
 
         async def auth_required():
+            """Emit a single `not_authenticated` SSE event for unlinked users."""
             yield f"data: {json.dumps({'error': 'not_authenticated'})}\n\n"
 
         return StreamingResponse(auth_required(), media_type="text/event-stream")
@@ -230,6 +232,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     )
 
     def task_done_callback(t: asyncio.Task):
+        """Drop the finished background task from the registry and log failures."""
         _background_tasks.discard(t)
         if t.exception():
             log.error(f"Background stream task failed: {t.exception()}")
@@ -316,6 +319,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     description="Start a new conversation, archiving the current one.",
 )
 async def reset_session(request: Request, body: ResetSessionRequest) -> dict:
+    """Archive the current conversation and start a fresh bot session."""
     await require_bot_api_key(request)
     log.set(operation="reset_session", platform=body.platform)
 
@@ -351,6 +355,7 @@ async def check_auth_status(
     platform: str,
     platform_user_id: str,
 ) -> BotAuthStatusResponse:
+    """Report whether a platform user is linked to a GAIA account."""
     await require_bot_api_key(request)
     log.set(operation="check_auth_status", platform=platform)
     if not Platform.is_valid(platform):
@@ -376,6 +381,7 @@ async def get_settings(
     platform: str,
     platform_user_id: str,
 ) -> BotSettingsResponse:
+    """Return the platform user's settings, connected integrations, and model."""
     await require_bot_api_key(request)
     log.set(operation="get_bot_settings", platform=platform)
     if not Platform.is_valid(platform):

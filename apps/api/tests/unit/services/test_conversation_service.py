@@ -37,6 +37,8 @@ def test_user():
 
 @pytest.mark.unit
 class TestCreateConversationService:
+    """Tests for create_conversation_service persistence, auth guard, error handling and source field."""
+
     async def test_creates_conversation_with_correct_data(self, mock_collection, test_user):
         mock_result = MagicMock()
         mock_result.acknowledged = True
@@ -159,6 +161,8 @@ class TestCreateConversationService:
 
 @pytest.mark.unit
 class TestGetConversation:
+    """Tests for get_conversation retrieval, 404 handling and user_id ownership scoping."""
+
     async def test_returns_conversation(self, mock_collection, test_user):
         mock_doc = {
             "_id": ObjectId(),
@@ -211,6 +215,8 @@ class TestGetConversation:
 
 @pytest.mark.unit
 class TestStarConversation:
+    """Tests for star_conversation toggling the starred flag and 404 on no match."""
+
     async def test_stars_conversation(self, mock_collection, test_user):
         mock_result = MagicMock()
         mock_result.modified_count = 1
@@ -233,6 +239,8 @@ class TestStarConversation:
 
 @pytest.mark.unit
 class TestDeleteConversation:
+    """Tests for delete_conversation and delete_all_conversations, including 404 when nothing is deleted."""
+
     async def test_deletes_single_conversation(self, mock_collection, test_user):
         mock_result = MagicMock()
         mock_result.deleted_count = 1
@@ -273,6 +281,8 @@ class TestDeleteConversation:
 
 @pytest.mark.unit
 class TestUpdateDescription:
+    """Tests for update_conversation_description updating the title and 404 on no match."""
+
     async def test_updates_description(self, mock_collection, test_user):
         mock_result = MagicMock()
         mock_result.modified_count = 1
@@ -296,6 +306,8 @@ class TestUpdateDescription:
 
 @pytest.mark.unit
 class TestMarkAsReadUnread:
+    """Tests for mark_conversation_as_read/unread toggling is_unread, auth guard and 404 handling."""
+
     async def test_mark_as_read(self, mock_collection, test_user):
         mock_collection.update_one = AsyncMock()
 
@@ -339,6 +351,8 @@ class TestMarkAsReadUnread:
 
 @pytest.mark.unit
 class TestHelperFunctions:
+    """Tests for the _convert_datetime_to_iso and _convert_ids serialization helpers."""
+
     def test_convert_datetime_to_iso(self):
         dt = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         obj = {"createdAt": dt, "name": "test"}
@@ -530,6 +544,8 @@ class TestListConversations:
 
 @pytest.mark.unit
 class TestUpdateMessages:
+    """Tests for update_messages appending messages, 404 handling and stripping None fields."""
+
     async def test_updates_messages_successfully(self, mock_collection, test_user):
         from app.models.chat_models import MessageModel, UpdateMessagesRequest
         from app.services.conversation_service import update_messages
@@ -600,6 +616,8 @@ class TestUpdateMessages:
 
 @pytest.mark.unit
 class TestPinMessage:
+    """Tests for pin_message pinning/unpinning and 404s for missing conversation, message or update."""
+
     async def test_pins_message_successfully(self, mock_collection, test_user):
         from app.services.conversation_service import pin_message
 
@@ -691,6 +709,8 @@ class TestPinMessage:
 
 @pytest.mark.unit
 class TestGetStarredMessages:
+    """Tests for get_starred_messages aggregating pinned messages and the empty-result case."""
+
     async def test_returns_pinned_messages(self, mock_collection, test_user):
         from app.services.conversation_service import get_starred_messages
 
@@ -733,6 +753,8 @@ class TestGetStarredMessages:
 
 @pytest.mark.unit
 class TestCreateSystemConversation:
+    """Tests for create_system_conversation persisting system-generated docs and 500 error handling."""
+
     async def test_creates_system_conversation(self, mock_collection):
         from app.services.conversation_service import create_system_conversation
 
@@ -779,6 +801,8 @@ class TestCreateSystemConversation:
 
 @pytest.mark.unit
 class TestGetOrCreateSystemConversation:
+    """Tests for get_or_create_system_conversation reuse, creation and description defaults/overrides."""
+
     async def test_returns_existing_conversation(self, mock_collection):
         from app.services.conversation_service import get_or_create_system_conversation
 
@@ -845,6 +869,8 @@ class TestGetOrCreateSystemConversation:
 
 @pytest.mark.unit
 class TestBatchSyncConversations:
+    """Tests for batch_sync_conversations auth guard, timestamp parsing and datetime serialization."""
+
     async def test_returns_empty_when_no_user_id(self, mock_collection):
         from app.models.chat_models import BatchSyncRequest
         from app.services.conversation_service import batch_sync_conversations

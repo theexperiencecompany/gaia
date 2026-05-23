@@ -170,6 +170,7 @@ async def call_agent(
         error_message = f"Error when calling agent: {exc!s}"
 
         async def error_generator():
+            """Yield the agent error as one SSE frame followed by [DONE]."""
             error_dict = {"error": error_message}
             yield f"data: {json.dumps(error_dict)}\n\n"
             yield "data: [DONE]\n\n"

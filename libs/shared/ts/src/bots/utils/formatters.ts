@@ -158,7 +158,7 @@ export function convertToSlackMrkdwn(text: string): string {
       segment
         .replace(/\*\*\*(.+?)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
         .replace(/\*\*(.+?)\*\*/g, "*$1*") // **bold** → *bold*
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "<$2|$1>") // [label](url) → <url|label>
+        .replace(/\[([^\]]{1,500})\]\(([^)]{1,2048})\)/g, "<$2|$1>") // [label](url) → <url|label>
         .replace(/^#{1,6}\s+(.+)$/gm, "*$1*") // # Heading → *Heading*
         .replace(/^>\s*/gm, "") // > quote → strip prefix
         .replace(/^[-_]{3,}$/gm, ""), // --- / ___ → remove
@@ -197,7 +197,7 @@ export function convertToWhatsAppMarkdown(text: string): string {
         // opener of a SEPARATE bold span.
         .replaceAll(/\*\*\*([^*\n]+)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
         .replaceAll(/\*\*([^*\n]+)\*\*/g, "*$1*") // **bold** → *bold*
-        .replaceAll(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)") // [label](url) → label (url)
+        .replaceAll(/\[([^\]]{1,500})\]\(([^)]{1,2048})\)/g, "$1 ($2)") // [label](url) → label (url)
         .replaceAll(/^(\s*)[*\-+]\s+/gm, "$1• ") // - / * / + bullet → •
         .replaceAll(/^>\s*/gm, ""), // > quote → strip prefix
   );
@@ -213,7 +213,8 @@ export function convertToWhatsAppMarkdown(text: string): string {
 export function convertToDiscordMarkdown(text: string): string {
   return applyOutsideCodeBlocks(
     text,
-    (segment) => segment.replaceAll(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)"), // [label](url) → label (url)
+    (segment) =>
+      segment.replaceAll(/\[([^\]]{1,500})\]\(([^)]{1,2048})\)/g, "$1 ($2)"), // [label](url) → label (url)
   );
 }
 

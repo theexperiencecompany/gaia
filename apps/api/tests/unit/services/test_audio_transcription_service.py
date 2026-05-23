@@ -19,6 +19,8 @@ from app.services.audio_transcription_service import (
 
 @pytest.mark.unit
 class TestValidateAudioPayload:
+    """Tests for validate_audio_payload MIME normalisation, size and format checks."""
+
     def test_normalises_mime_type(self):
         result = validate_audio_payload(content_type="audio/ogg", size=1024)
         assert result == "audio/ogg"
@@ -65,6 +67,8 @@ class TestValidateAudioPayload:
 
 @pytest.mark.unit
 class TestTranscribeAudio:
+    """Tests for transcribe_audio's Whisper call and transcript handling."""
+
     @patch("app.services.audio_transcription_service.AsyncOpenAI")
     async def test_returns_trimmed_transcript(self, mock_client_cls: MagicMock):
         # AsyncOpenAI() returns a client whose .audio.transcriptions.create is async

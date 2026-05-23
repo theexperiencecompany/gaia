@@ -239,7 +239,10 @@ jobs:
           echo "::group::nx type-check"
           if [ -n "${GITHUB_BASE_REF:-}" ]; then
             git fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null || true
-            pnpm exec nx affected -t type-check --base=origin/$GITHUB_BASE_REF
+            # Exclude Python projects (api, wake-word): their type-check target
+            # runs mypy via uv, which isn't installed in this Node-only job, and
+            # Python typing is already enforced by the dedicated python-mypy lane.
+            pnpm exec nx affected -t type-check --base=origin/$GITHUB_BASE_REF --exclude=api,wake-word
           else
             pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp
           fi

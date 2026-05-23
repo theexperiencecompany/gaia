@@ -31,6 +31,7 @@ class BotChatRequest(BaseModel):
     @field_validator("platform")
     @classmethod
     def validate_platform(cls, v: str) -> str:
+        """Reject values that are not registered platform names."""
         if not Platform.is_valid(v):
             raise ValueError(f"Invalid platform '{v}'")
         return v
@@ -55,6 +56,7 @@ class CreateLinkTokenRequest(BaseModel):
     @field_validator("platform")
     @classmethod
     def validate_platform(cls, v: str) -> str:
+        """Reject values that are not registered platform names."""
         if not Platform.is_valid(v):
             raise ValueError(f"Invalid platform '{v}'")
         return v
@@ -103,6 +105,7 @@ class ResetSessionRequest(BaseModel):
     @field_validator("platform")
     @classmethod
     def validate_platform(cls, v: str) -> str:
+        """Reject values that are not registered platform names."""
         if not Platform.is_valid(v):
             raise ValueError(f"Invalid platform '{v}'")
         return v

@@ -14,18 +14,21 @@ from app.services.bot_service import BOT_RATE_LIMIT, BOT_RATE_WINDOW, BotService
 
 @pytest.fixture
 def mock_bot_sessions():
+    """Patch the bot_sessions_collection so session lookups/upserts are mocked."""
     with patch("app.services.bot_service.bot_sessions_collection") as mock_col:
         yield mock_col
 
 
 @pytest.fixture
 def mock_conversations():
+    """Patch the conversations_collection so conversation reads are mocked."""
     with patch("app.services.bot_service.conversations_collection") as mock_col:
         yield mock_col
 
 
 @pytest.fixture
 def mock_redis():
+    """Patch redis_cache with an async-mock Redis client for rate-limit tests."""
     with patch("app.services.bot_service.redis_cache") as mock_rc:
         mock_rc.redis = AsyncMock()
         yield mock_rc
@@ -33,6 +36,7 @@ def mock_redis():
 
 @pytest.fixture
 def mock_create_conversation():
+    """Patch create_conversation_service with an async mock for session creation."""
     with patch(
         "app.services.bot_service.create_conversation_service", new_callable=AsyncMock
     ) as mock_fn:
@@ -41,6 +45,7 @@ def mock_create_conversation():
 
 @pytest.fixture
 def sample_user():
+    """Return a sample user dict with id, email and name for session tests."""
     return {
         "_id": "507f1f77bcf86cd799439011",
         "user_id": "507f1f77bcf86cd799439011",
@@ -56,6 +61,8 @@ def sample_user():
 
 @pytest.mark.unit
 class TestEnforceRateLimit:
+    """Tests for enforce_rate_limit Redis counting, the 429 cap, and fail-open behavior."""
+
     async def test_first_request_sets_expiry(self, mock_redis):
         mock_redis.redis.incr = AsyncMock(return_value=1)
         mock_redis.redis.expire = AsyncMock()
@@ -108,6 +115,8 @@ class TestEnforceRateLimit:
 
 @pytest.mark.unit
 class TestBuildSessionKey:
+    """Tests for build_session_key formatting, including the DM fallback for missing channels."""
+
     def test_with_channel_id(self):
         key = BotService.build_session_key("discord", "user123", "channel456")
         assert key == "discord:user123:channel456"
@@ -128,6 +137,8 @@ class TestBuildSessionKey:
 
 @pytest.mark.unit
 class TestGetOrCreateSession:
+    """Tests for get_or_create_session reuse, creation, source tagging and deleted-conversation recovery."""
+
     @staticmethod
     def _existing_session(conversation_id: str, session_key: str = "discord:user123:dm"):
         """find_one_and_update returns the pre-existing session unchanged on a match."""
@@ -273,6 +284,8 @@ class TestGetOrCreateSession:
 
 @pytest.mark.unit
 class TestResetSession:
+    """Tests for reset_session deleting the old session and minting a fresh one."""
+
     async def test_deletes_existing_and_creates_new(
         self,
         mock_bot_sessions,
@@ -318,6 +331,8 @@ class TestResetSession:
 
 @pytest.mark.unit
 class TestLoadConversationHistory:
+    """Tests for load_conversation_history mapping stored messages to roles and applying the limit."""
+
     async def test_returns_empty_when_no_conv(self, mock_conversations):
         mock_conversations.find_one = AsyncMock(return_value=None)
 
