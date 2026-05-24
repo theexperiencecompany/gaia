@@ -82,7 +82,7 @@ class _CatalogToolMeta:
     when that provider's subagent is first created.
     """
 
-    __slots__ = ("name", "description")
+    __slots__ = ("description", "name")
 
     def __init__(self, name: str, description: str):
         self.name = name
