@@ -197,6 +197,31 @@ class ComposioService:
         )
         return result
 
+    async def get_raw_tools_metadata(
+        self,
+        tool_kit: str | None = None,
+        specific_tools: list[str] | None = None,
+    ) -> list:
+        """Fetch raw Composio tool definitions WITHOUT wrapping them.
+
+        ``get_tools``/``get_tools_by_name`` run the LangchainProvider, which
+        builds a Pydantic args-model + closure per tool (~100KB each). Wrapping
+        the whole ~1.6k-tool catalog this way is the dominant source of resident
+        memory. For warmup we only need metadata (name + description) to index
+        the catalog into ChromaDB (retrieval) and Mongo (the /tools listing).
+        The raw endpoint returns ``composio.types.Tool`` objects (slug,
+        description, input_parameters) with no wrapping. Executable
+        StructuredTools are materialized lazily, per provider, when a subagent is
+        first created (see ``ToolRegistry.register_provider_tools``).
+        """
+
+        def _fetch():
+            if specific_tools:
+                return self.composio.tools.get_raw_composio_tools(tools=specific_tools)
+            return self.composio.tools.get_raw_composio_tools(toolkits=[tool_kit], limit=1000)
+
+        return await asyncio.to_thread(_fetch)
+
     def get_tool(
         self,
         tool_name: str,

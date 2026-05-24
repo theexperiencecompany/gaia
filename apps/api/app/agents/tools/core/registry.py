@@ -72,6 +72,23 @@ class DynamicToolDict(Mapping[str, BaseTool]):
         return all_tools.items()
 
 
+class _CatalogToolMeta:
+    """Lightweight provider-tool metadata (name + description) used to index the
+    Composio catalog at warmup *without* materializing a StructuredTool.
+
+    Duck-types the ``.name``/``.description`` access that ``index_tools_to_store``
+    needs, so it flows through the existing ChromaDB indexing path. The executable
+    StructuredTool is built lazily, per provider, in ``register_provider_tools``
+    when that provider's subagent is first created.
+    """
+
+    __slots__ = ("name", "description")
+
+    def __init__(self, name: str, description: str):
+        self.name = name
+        self.description = description
+
+
 class Tool:
     """Simplified tool object that holds individual tool metadata."""
 
@@ -332,6 +349,92 @@ class ToolRegistry:
 
         # Load all providers in parallel
         await asyncio.gather(*[load_provider(i) for i in integrations_to_load])
+
+    async def populate_provider_catalog(self) -> int:
+        """Index provider-tool METADATA for retrieval and the /tools catalog
+        *without* materializing executable StructuredTools.
+
+        This replaces the old eager ``load_all_provider_tools()`` warmup path,
+        which wrapped every one of the ~1.6k catalog tools into a StructuredTool
+        (a Pydantic args-model + closure per tool, ~100KB each) and kept them
+        resident for the whole process lifetime — the single largest contributor
+        to backend RSS. Here we only:
+
+          1. fetch raw tool metadata (name + description) per toolkit,
+          2. index name+description into ChromaDB so retrieval works, and
+          3. store name+description in Mongo so the /tools listing is complete.
+
+        Executable tools are built lazily, per provider, when that provider's
+        subagent is first created (``register_provider_tools``), so a process
+        only ever holds the working set of tools it actually uses.
+        """
+        from app.config.oauth_config import OAUTH_INTEGRATIONS
+        from app.db.chroma.chroma_tools_store import index_tools_to_store
+        from app.services.composio.composio_service import get_composio_service
+        from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+
+        composio_service = get_composio_service()
+        mcp_store = get_mcp_tools_store()
+
+        integrations = [
+            integration
+            for integration in OAUTH_INTEGRATIONS
+            if (
+                integration.managed_by == "composio"
+                and integration.composio_config
+                and integration.subagent_config
+                and integration.subagent_config.has_subagent
+            )
+        ]
+
+        mongo_batch: list[tuple[str, list[dict]]] = []
+        total = 0
+
+        async def load_metadata(integration) -> None:
+            nonlocal total
+            toolkit = integration.composio_config.toolkit
+            space = integration.subagent_config.tool_space
+            specific = integration.subagent_config.specific_tools
+            try:
+                raw_tools = await composio_service.get_raw_tools_metadata(
+                    tool_kit=toolkit, specific_tools=specific
+                )
+            except Exception as e:
+                log.error(f"Failed to load catalog metadata for {toolkit}: {e}")
+                return
+
+            metas = [
+                _CatalogToolMeta(name=t.slug, description=getattr(t, "description", "") or "")
+                for t in raw_tools
+            ]
+            if not metas:
+                return
+
+            # Reuse the existing indexing path; it only reads .name/.description
+            # and is idempotent via the ChromaDB diff + Redis hash cache, so the
+            # later per-provider register_provider_tools re-index is a no-op.
+            await index_tools_to_store([(m, space) for m in metas])
+            mongo_batch.append(
+                (
+                    toolkit.lower(),
+                    [{"name": m.name, "description": m.description} for m in metas],
+                )
+            )
+            total += len(metas)
+
+        await asyncio.gather(*[load_metadata(i) for i in integrations])
+
+        if mongo_batch:
+            try:
+                await mcp_store.store_tools_batch(mongo_batch)
+            except Exception as e:
+                log.warning(f"Failed to store provider catalog metadata to Mongo: {e}")
+
+        log.info(
+            f"Provider catalog metadata indexed: {total} tools "
+            f"across {len(integrations)} toolkits (no StructuredTools materialized)"
+        )
+        return total
 
     async def _index_category_tools(self, category_name: str):
         """Index tools from a category into ChromaDB store.

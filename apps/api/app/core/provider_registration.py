@@ -271,7 +271,12 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         )
     )
     startup_services.append((warmup_tools_cache, "tools_cache_warmup"))
-    startup_services.append((warmup_subagent_graphs, "subagent_graph_warmup"))
+    # Pre-building every subagent graph materializes all provider StructuredTools
+    # (the big RSS cost). Off by default — subagent graphs build lazily on first
+    # handoff. Opt in via WARMUP_SUBAGENT_GRAPHS to trade memory for first-use
+    # latency on a process.
+    if settings.WARMUP_SUBAGENT_GRAPHS:
+        startup_services.append((warmup_subagent_graphs, "subagent_graph_warmup"))
 
     # FastAPI with hot reloading disabled: start serving quickly,
     # warm up in background.

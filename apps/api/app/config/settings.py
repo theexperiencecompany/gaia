@@ -91,6 +91,14 @@ class CommonSettings(BaseAppSettings):
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
 
+    # Pre-build every provider subagent graph at startup. When True this walks
+    # all subagents and materializes their Composio tools (a Pydantic
+    # StructuredTool per tool, ~100KB each) plus a compiled graph holding them —
+    # the single largest contributor to backend RSS. Default False: subagent
+    # graphs (and their tools) build lazily on first handoff, so a process only
+    # ever holds the working set of providers it actually uses.
+    WARMUP_SUBAGENT_GRAPHS: bool = False
+
     # ----------------------------------------------
     # Observability
     # ----------------------------------------------
