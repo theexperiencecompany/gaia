@@ -16,28 +16,36 @@ Both are stored in separate mem0 namespaces and don't interfere.
 import asyncio
 from typing import cast
 
+from langchain_core.language_models import LanguageModelLike
+from langchain_core.tools import BaseTool
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph.state import CompiledStateGraph
+
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.agents.core.nodes import (
     manage_system_prompts_node,
     memory_node,
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.llm.retry_policies import SUBAGENT_RETRY_POLICY
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
+from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.core.tool_runtime_config import (
     build_child_tool_runtime_config,
     build_create_agent_tool_kwargs,
     build_provider_parent_tool_runtime_config,
 )
+from app.agents.tools.finish_task_tool import finish_task
 from app.agents.tools.memory_tools import search_memory
+from app.agents.tools.research_tool import deep_research
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.vfs_tools import vfs_cmd, vfs_read
-from shared.py.wide_events import log
+from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
+from app.constants.general import FINISH_TASK_NAME
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
-from langchain_core.language_models import LanguageModelLike
-from langchain_core.tools import BaseTool
-from langgraph.checkpoint.memory import InMemorySaver
+from shared.py.wide_events import log
 
 
 class SubAgentFactory:
@@ -52,7 +60,8 @@ class SubAgentFactory:
         use_direct_tools: bool = False,
         disable_retrieve_tools: bool = False,
         auto_bind_tools: list[str] | None = None,
-    ):
+        include_finish_task: bool = True,
+    ) -> CompiledStateGraph:
         """
         Creates a specialized sub-agent graph for a specific provider with tool registry.
 
@@ -62,26 +71,28 @@ class SubAgentFactory:
             tool_space: Tool space to use for retrieval (e.g., "gmail_delegated", "general")
             use_direct_tools: If True, bind all tools directly without retrieve_tools
             disable_retrieve_tools: If True, disable retrieve_tools mechanism entirely
-            auto_bind_tools: Tools to auto-bind at startup (only when use_direct_tools=False
-                and disable_retrieve_tools=False). These tools are immediately available
-                without calling retrieve_tools, reducing latency for frequently-used tools.
+            auto_bind_tools: Tools to auto-bind at startup. Always included
+                in `initial` regardless of `use_direct_tools` or
+                `disable_retrieve_tools`. Reduces latency for
+                frequently-used tools.
+            include_finish_task: When True (default), the subagent gets the
+                `finish_task` tool which it calls to signal completion.
+                When False, finish_task is omitted and the subagent
+                terminates naturally with an AIMessage; the streaming
+                layer captures that text as the final answer. Use False
+                for answer-only subagents like documentation/knowledge
+                fetchers where finish_task adds latency without value.
 
         Returns:
             Compiled LangGraph agent with tool registry, retrieval, and checkpointer
         """
-        from app.agents.tools.core.registry import get_tool_registry
-        from app.agents.tools.research_tool import deep_research
-        from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
-
         log.set(subagent={"name": name, "provider": provider})
         log.info(
             f"Creating {provider} sub-agent graph using tool space '{tool_space}' with "
             + ("direct tools binding" if use_direct_tools else "retrieve tools")
         )
 
-        store, tool_registry = await asyncio.gather(
-            get_tools_store(), get_tool_registry()
-        )
+        store, tool_registry = await asyncio.gather(get_tools_store(), get_tool_registry())
 
         # Build scoped tool_dict containing only tools for this subagent's tool_space
         # This ensures subagents can only access their own integration's tools
@@ -107,6 +118,10 @@ class SubAgentFactory:
         scoped_tool_dict[web_search_tool.name] = web_search_tool
         scoped_tool_dict[fetch_webpages.name] = fetch_webpages
         scoped_tool_dict[deep_research.name] = deep_research
+
+        if include_finish_task:
+            scoped_tool_dict[FINISH_TASK_NAME] = finish_task
+            initial_tool_ids.append(FINISH_TASK_NAME)
 
         # Get full tool dict so spawned sub-subagents (via spawn_subagent) inherit
         # all parent tools, not just the provider's scoped tools.
@@ -149,21 +164,16 @@ class SubAgentFactory:
                 todo_hook,
             ],
             "end_graph_hooks": [memory_node],
+            "agent_retry_policy": SUBAGENT_RETRY_POLICY,
         }
 
         valid_auto_bind = (
-            [
-                tool_name
-                for tool_name in auto_bind_tools
-                if tool_name in scoped_tool_dict
-            ]
+            [tool_name for tool_name in auto_bind_tools if tool_name in scoped_tool_dict]
             if auto_bind_tools
             else None
         )
-        if valid_auto_bind and not disable_retrieve_tools:
-            log.info(
-                f"Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}"
-            )
+        if valid_auto_bind:
+            log.info(f"Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}")
 
         parent_tool_runtime = build_provider_parent_tool_runtime_config(
             provider_tool_names=initial_tool_ids,
@@ -171,6 +181,7 @@ class SubAgentFactory:
             auto_bind_tool_names=valid_auto_bind,
             use_direct_tools=use_direct_tools,
             disable_retrieve_tools=disable_retrieve_tools,
+            include_finish_task=include_finish_task,
         )
         common_kwargs.update(
             build_create_agent_tool_kwargs(
@@ -209,9 +220,7 @@ class SubAgentFactory:
             )
             checkpointer = InMemorySaver()
 
-        subagent_graph = builder.compile(
-            store=store, name=name, checkpointer=checkpointer
-        )
+        subagent_graph = builder.compile(store=store, name=name, checkpointer=checkpointer)
 
         log.info(f"Successfully created {provider} sub-agent graph with checkpointer")
         return subagent_graph

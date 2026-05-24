@@ -26,19 +26,40 @@ Usage:
     logger.info("Hello world")
 """
 
-import json as _json
-import os
-import sys
-import logging
 from collections.abc import Callable
+import json as _json
+import logging
+import os
 from pathlib import Path
+import sys
+from typing import TYPE_CHECKING, TextIO, TypedDict
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from loguru import Message, Record
+
+
+class _LogFormats(TypedDict):
+    console: str
+    file: str
+    json: str
+
+
+class _LogConfig(TypedDict):
+    level: str
+    format_mode: str
+    diagnose: bool
+    backtrace: bool
+    colorize: bool
+    log_dir: str
+    format: _LogFormats
+
 
 _LOGURU_CONFIGURED = False
 _FILE_LOGGING_CONFIGURED = False
 
-LOG_CONFIG = {
+LOG_CONFIG: _LogConfig = {
     "level": os.getenv("LOG_LEVEL", "INFO"),
     # Set LOG_FORMAT=json in production Docker to emit newline-delimited JSON to
     # stdout. Promtail picks this up and ships it to Loki with zero parsing issues.
@@ -53,6 +74,7 @@ LOG_CONFIG = {
             "<green>{time:MM-DD HH:mm:ss}</green> | "
             "<level>{level: <4}</level> | "
             "<blue>{extra[logger_name]: <7}</blue> | "
+            "<dim>{extra[worker]: <5}</dim> | "
             "<level>{message}</level> "
             "<dim><cyan>({file.name}:{line})</cyan></dim>"
         ),
@@ -60,6 +82,7 @@ LOG_CONFIG = {
             "{time:YYYY-MM-DD HH:mm:ss} | "
             "{level: <4} | "
             "{extra[logger_name]: <7} | "
+            "{extra[worker]: <5} | "
             "{message} | "
             "{file.name}:{function}:{line}"
         ),
@@ -68,7 +91,7 @@ LOG_CONFIG = {
 }
 
 
-def _build_json_entry(record: dict) -> str:
+def _build_json_entry(record: "Record") -> str:
     """Serialize a loguru record to a flat NDJSON line.
 
     Produces one JSON object per line. Fields from `.bind()` calls are merged
@@ -91,6 +114,7 @@ def _build_json_entry(record: dict) -> str:
         "message": record["message"],
         "module": record["module"],
         "line": record["line"],
+        "worker": record["extra"].get("worker", "main"),
     }
 
     for key, value in record["extra"].items():
@@ -107,47 +131,69 @@ def _build_json_entry(record: dict) -> str:
     return _json.dumps(entry, default=str) + "\n"
 
 
-def _json_stdout_sink(message: object) -> None:
+def _json_stdout_sink(message: "Message") -> None:
     """Callable sink that writes flat JSON to stdout.
 
     Using a callable sink (not format=callable) bypasses loguru's str.format_map()
     post-processing, which would otherwise choke on the curly braces in JSON output.
     """
-    record = message.record  # type: ignore[union-attr]
+    record = message.record
     sys.stdout.write(_build_json_entry(record))
     sys.stdout.flush()
 
 
-def _json_file_sink_factory(log_dir: Path) -> "Callable[..., None]":
+def _json_file_sink_factory(log_dir: Path) -> "Callable[[Message], None]":
     """Create a callable sink that writes flat NDJSON to daily rotating files.
 
     Produces the same flat JSON format as _json_stdout_sink so that Promtail
     and Grafana dashboards work identically for local dev and Docker.
     """
-    _handles: dict[str, object] = {}
+    _handles: dict[str, TextIO] = {}
 
-    def _sink(message: object) -> None:
-        record = message.record  # type: ignore[union-attr]
+    def _sink(message: "Message") -> None:
+        record = message.record
         date_str = record["time"].strftime("%Y-%m-%d")
         resolved = log_dir / f"structured-{date_str}.json"
         key = str(resolved)
 
         fh = _handles.get(key)
-        if fh is None or fh.closed:  # type: ignore[union-attr]
+        if fh is None or fh.closed:
             # Close stale handles from previous days before opening a new one
             for old_key in list(_handles):
                 if old_key != key:
+                    old_fh = _handles.pop(old_key)
                     try:
-                        _handles.pop(old_key).close()  # type: ignore[union-attr]
-                    except Exception:
-                        pass
+                        old_fh.close()
+                    except OSError as exc:
+                        # We are inside loguru's own sink, so we cannot log via
+                        # loguru here. Surface the failure on stderr instead of
+                        # dropping it — a leaked handle is worth knowing about.
+                        sys.stderr.write(
+                            f"[gaia-logging] failed to close stale log handle {old_key}: {exc}\n"
+                        )
             fh = open(resolved, "a", encoding="utf-8")  # noqa: SIM115
             _handles[key] = fh
 
-        fh.write(_build_json_entry(record))  # type: ignore[union-attr]
-        fh.flush()  # type: ignore[union-attr]
+        fh.write(_build_json_entry(record))
+        fh.flush()
 
     return _sink
+
+
+def _worker_name_patcher(record: "Record") -> None:
+    """Derive a short worker label from the OS process name.
+
+    uvicorn --workers spawns processes named SpawnProcess-1, SpawnProcess-2, etc.
+    This collapses them to w1, w2 so log lines are easy to diff between workers.
+    Single-process / dev mode shows 'main'.
+    """
+    name: str = record["process"].name
+    if name.startswith("SpawnProcess-"):
+        record["extra"]["worker"] = "w" + name.rsplit("-", maxsplit=1)[-1]
+    elif name == "MainProcess":
+        record["extra"]["worker"] = "main"
+    else:
+        record["extra"]["worker"] = name[:5]
 
 
 def configure_loguru():
@@ -170,10 +216,12 @@ def configure_loguru():
 
     logger.remove()
 
-    # Set a global default for logger_name so format strings like
-    # {extra[logger_name]} never raise KeyError on records that didn't
-    # go through InterceptHandler or logger.bind(logger_name=...).
-    logger.configure(extra={"logger_name": "APP"})
+    # Set global defaults for extra fields used in format strings so they
+    # never raise KeyError on records that bypass InterceptHandler or bind().
+    logger.configure(
+        extra={"logger_name": "APP", "worker": "main"},
+        patcher=_worker_name_patcher,
+    )
 
     if LOG_CONFIG["format_mode"] == "json":
         # Production: one JSON object per line → stdout → Promtail → Loki.
@@ -219,14 +267,14 @@ def configure_loguru():
             ]
 
             should_intercept = any(
-                record.name.startswith(namespace)
-                or record.name == namespace.rstrip(".")
+                record.name.startswith(namespace) or record.name == namespace.rstrip(".")
                 for namespace in app_namespaces
             )
 
             if not should_intercept:
                 return
 
+            level: str | int
             try:
                 level = logger.level(record.levelname).name
             except ValueError:
@@ -251,9 +299,9 @@ def configure_loguru():
             else:
                 context_name = logger_name_map.get(record.name, record.name.upper()[:7])
 
-            logger.bind(logger_name=context_name).opt(
-                depth=depth, exception=record.exc_info
-            ).log(level, record.getMessage())
+            logger.bind(logger_name=context_name).opt(depth=depth, exception=record.exc_info).log(
+                level, record.getMessage()
+            )
 
     intercept_loggers = [
         "uvicorn",

@@ -102,7 +102,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
   const { autoSend } = useWorkflowSelectionStore();
 
   const sendMessage = useSendMessage();
-  const { isLoading, setIsLoading } = useLoading();
+  const { isLoading } = useLoading();
   const { integrations, isLoading: integrationsLoading } = useIntegrations();
   const currentMode = useMemo(
     () => Array.from(selectedMode)[0],
@@ -348,6 +348,12 @@ const Composer: React.FC<MainSearchbarProps> = ({
       setUploadedFiles(files);
       return;
     }
+
+    trackEvent(ANALYTICS_EVENTS.CHAT_FILE_UPLOADED, {
+      file_count: files.length,
+      file_types: files.map((f) => f.type),
+      conversation_id: conversationId,
+    });
     // These are the final uploaded files, replace temp files with final versions
     setUploadedFiles(
       files.map((file) => {
@@ -376,34 +382,34 @@ const Composer: React.FC<MainSearchbarProps> = ({
     setUploadedFileData(fileDataArray);
   };
 
-  // Handle paste event for images
-  const handlePaste = useCallback(
-    (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type.indexOf("image") !== -1) {
-          const file = items[i].getAsFile();
-          if (file) {
-            e.preventDefault();
-            // Open the file upload modal with the pasted image
-            setFileUploadModal(true);
-            setPendingDroppedFiles([file]); // Store the pasted file
-            break;
-          }
+  // Store paste handler in a ref to avoid re-subscribing the event listener
+  // whenever dependencies change (advanced-event-handler-refs pattern).
+  const handlePasteRef = useRef((_e: ClipboardEvent) => {});
+  handlePasteRef.current = (e: ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          // Open the file upload modal with the pasted image
+          setFileUploadModal(true);
+          setPendingDroppedFiles([file]); // Store the pasted file
+          break;
         }
       }
-    },
-    [setFileUploadModal, setPendingDroppedFiles],
-  );
+    }
+  };
 
-  // Add paste event listener for images
+  // Add paste event listener for images (stable subscription)
   useEffect(() => {
-    document.addEventListener("paste", handlePaste);
+    const listener = (e: ClipboardEvent) => handlePasteRef.current(e);
+    document.addEventListener("paste", listener);
     return () => {
-      document.removeEventListener("paste", handlePaste);
+      document.removeEventListener("paste", listener);
     };
-  }, [handlePaste]);
+  }, []);
 
   // Function to append text to the input
   const appendToInput = useCallback(

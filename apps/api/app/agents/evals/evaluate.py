@@ -17,11 +17,11 @@ Usage:
 
 import argparse
 import asyncio
-import json
 from collections.abc import Coroutine
 from datetime import datetime
+import json
 from pathlib import Path
-from typing import Any, Optional, TypeVar
+from typing import Any, TypeVar
 
 import nest_asyncio
 
@@ -31,17 +31,6 @@ from app.patches.opik_patch import apply_opik_patch
 
 apply_opik_patch()
 
-import opik  # noqa: E402
-from app.agents.core.subagents.subagent_helpers import (  # noqa: E402
-    build_subagent_system_prompt,
-)
-from app.agents.llm.client import init_llm  # noqa: E402
-from shared.py.wide_events import log  # noqa: E402
-from app.config.oauth_config import get_integration_by_id  # noqa: E402
-from app.config.settings import settings  # noqa: E402
-from app.core.lazy_loader import providers  # noqa: E402
-from app.helpers.agent_helpers import build_agent_config  # noqa: E402
-from app.services.model_service import get_model_by_id  # noqa: E402
 from langchain_core.messages import (  # noqa: E402
     AIMessage,
     BaseMessage,
@@ -50,8 +39,20 @@ from langchain_core.messages import (  # noqa: E402
     ToolMessage,
 )
 from langgraph.graph.state import CompiledStateGraph  # noqa: E402
+import opik  # noqa: E402
 from opik.evaluation import evaluate  # noqa: E402
 from opik.evaluation.metrics import base_metric, score_result  # noqa: E402
+
+from app.agents.core.subagents.registry import get_subagent_by_id  # noqa: E402
+from app.agents.core.subagents.subagent_helpers import (  # noqa: E402
+    build_subagent_system_prompt,
+)
+from app.agents.llm.client import init_llm  # noqa: E402
+from app.config.settings import settings  # noqa: E402
+from app.core.lazy_loader import providers  # noqa: E402
+from app.helpers.agent_helpers import build_agent_config  # noqa: E402
+from app.services.model_service import get_model_by_id  # noqa: E402
+from shared.py.wide_events import log  # noqa: E402
 
 from .config import (  # noqa: E402
     SubagentEvalConfig,
@@ -174,9 +175,9 @@ class SubagentEvaluator:
         self.opik_client: opik.Opik
         self.subagent_graph: CompiledStateGraph
         self.judge_llm: Any
-        self.system_prompt: Optional[str] = None
+        self.system_prompt: str | None = None
         self.judge_prompt: opik.Prompt
-        self.subagent_prompt: Optional[opik.Prompt] = None
+        self.subagent_prompt: opik.Prompt | None = None
 
     async def initialize(self) -> None:
         """Initialize Opik, LLM judge, and subagent."""
@@ -214,11 +215,26 @@ class SubagentEvaluator:
             raise ValueError(f"Failed to load subagent: {self.config.agent_name}")
         self.subagent_graph = subagent
 
-        # Use system prompt from config (already synced to Opik) or fallback to integration
+        # Use system prompt from config (already synced to Opik) or fallback to subagent
         if not self.system_prompt:
-            integration = get_integration_by_id(self.config.integration_id)
-            if integration and integration.subagent_config:
-                self.system_prompt = integration.subagent_config.system_prompt
+            subagent = get_subagent_by_id(self.config.integration_id)
+            if subagent and subagent.config.system_prompt:
+                self.system_prompt = subagent.config.system_prompt
+                # Sync the registry-sourced prompt to Opik so prompt provenance
+                # (commit hash) flows through to run_evaluation().
+                self.subagent_prompt = opik.Prompt(
+                    name=self.config.prompt_name,
+                    prompt=self.system_prompt,
+                    metadata={
+                        "type": "subagent_system_prompt",
+                        "subagent": self.config.id,
+                        "source": "registry",
+                    },
+                )
+                log.info(
+                    f"Subagent prompt '{self.config.prompt_name}' (registry fallback) "
+                    f"synced to Opik: {self.subagent_prompt.commit}"
+                )
 
         self.judge_llm = init_llm()
         log.info(f"Evaluator initialized for {self.config.name}")
@@ -284,9 +300,9 @@ class SubagentEvaluator:
         errors: list[str] = []
 
         try:
-            result = await self.subagent_graph.ainvoke(
+            result = await self.subagent_graph.ainvoke(  # type: ignore[call-overload]
                 {"messages": messages},
-                config=runnable_config,  # type: ignore[arg-type]
+                config=runnable_config,
             )
 
             for msg in result.get("messages", []):
@@ -295,9 +311,7 @@ class SubagentEvaluator:
                         {
                             "type": "ai",
                             "content": str(msg.content)[:300] if msg.content else "",
-                            "tool_calls": [
-                                tc.get("name") for tc in (msg.tool_calls or [])
-                            ],
+                            "tool_calls": [tc.get("name") for tc in (msg.tool_calls or [])],
                         }
                     )
                     for tc in msg.tool_calls or []:
@@ -305,15 +319,11 @@ class SubagentEvaluator:
 
                 elif isinstance(msg, ToolMessage):
                     content = str(msg.content)[:200] if msg.content else ""
-                    trajectory.append(
-                        {"type": "tool_result", "name": msg.name, "content": content}
-                    )
+                    trajectory.append({"type": "tool_result", "name": msg.name, "content": content})
                     if "error" in content.lower():
                         errors.append(content)
 
-            final_messages = [
-                m for m in result.get("messages", []) if isinstance(m, AIMessage)
-            ]
+            final_messages = [m for m in result.get("messages", []) if isinstance(m, AIMessage)]
             output = str(final_messages[-1].content) if final_messages else ""
 
         except Exception as e:
@@ -333,9 +343,7 @@ class SubagentEvaluator:
             expected = dataset_item["expected_output"]["answer"]
             context = dataset_item.get("metadata", {}).get("context", "")
 
-            output, trajectory, tool_calls, errors = run_async(
-                evaluator._run_subagent(query)
-            )
+            output, trajectory, tool_calls, errors = run_async(evaluator._run_subagent(query))
 
             return {
                 "input": query,
@@ -354,9 +362,7 @@ class SubagentEvaluator:
         log.info(f"Starting evaluation for {self.config.name}...")
 
         dataset = self.opik_client.get_dataset(name=self.config.dataset_name)
-        experiment_name = (
-            f"{self.config.id}_eval_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        )
+        experiment_name = f"{self.config.id}_eval_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
         llm_judge_metric = LLMJudgeMetric(
             judge_llm=self.judge_llm,
@@ -373,9 +379,7 @@ class SubagentEvaluator:
             scoring_metrics=[llm_judge_metric],
             experiment_config={
                 "subagent": self.config.name,
-                "prompt_version": self.subagent_prompt.commit
-                if self.subagent_prompt
-                else "N/A",
+                "prompt_version": self.subagent_prompt.commit if self.subagent_prompt else "N/A",
                 "judge_prompt_version": self.judge_prompt.commit,
             },
             prompt=self.subagent_prompt,
@@ -428,9 +432,13 @@ async def evaluate_subagent(
     return await evaluator.run_evaluation()
 
 
-async def main():
-    """CLI entry point."""
-    parser = argparse.ArgumentParser(description="Evaluate subagents with Opik")
+async def main() -> None:
+    """CLI entry point for both subagent and generic evaluations."""
+    parser = argparse.ArgumentParser(
+        description="Evaluate subagents or generic assistant capabilities with Opik"
+    )
+
+    # Subagent evaluation args
     parser.add_argument("--subagent", "-s", type=str, help="Subagent ID to evaluate")
     parser.add_argument(
         "--create-dataset", "-c", action="store_true", help="Create/sync Opik dataset"
@@ -442,16 +450,129 @@ async def main():
         help="Use local dataset file instead of Opik",
     )
     parser.add_argument("--list", action="store_true", help="List available subagents")
+
+    # Generic evaluation args
+    parser.add_argument(
+        "--generic",
+        "-g",
+        type=str,
+        help="Generic eval type ID to run (or 'all' for all types)",
+    )
+    parser.add_argument(
+        "--list-generic",
+        action="store_true",
+        help="List available generic eval types",
+    )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["prompt", "full"],
+        default="prompt",
+        help="Evaluation mode: 'prompt' (LLM only) or 'full' (real graph)",
+    )
+    parser.add_argument(
+        "--compare-baseline",
+        action="store_true",
+        help="Compare results against stored baseline scores",
+    )
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="Save current results as new baseline",
+    )
+    parser.add_argument(
+        "--ab-test",
+        nargs=2,
+        metavar=("PROMPT_A_FILE", "PROMPT_B_FILE"),
+        help="Run A/B test with two system prompt files",
+    )
+    parser.add_argument(
+        "--rescore",
+        type=str,
+        help="Re-score an existing experiment by name",
+    )
+    parser.add_argument(
+        "--add-metrics",
+        type=str,
+        help="Comma-separated metric names to add when re-scoring",
+    )
+
     args = parser.parse_args()
 
+    # --- List commands ---
     if args.list:
         print("\nAvailable subagents:")
         for sid in list_available_subagents():
             print(f"  - {sid}")
         return
 
+    if args.list_generic:
+        from .generic_config import GENERIC_EVAL_CONFIGS
+
+        print("\nAvailable generic eval types:")
+        for cfg in GENERIC_EVAL_CONFIGS:
+            jury_tag = " [jury]" if cfg.use_jury else ""
+            mode_tag = " [mode A+B]" if cfg.supports_mode_a else " [mode B]"
+            print(f"  - {cfg.id:<30} {cfg.name}{jury_tag}{mode_tag}")
+        return
+
+    # --- Re-score existing experiment ---
+    if args.rescore:
+        if not args.add_metrics:
+            parser.error("--add-metrics is required with --rescore")
+        from .generic_evaluate import rescore_experiment
+
+        metric_names = [m.strip() for m in args.add_metrics.split(",")]
+        rescore_experiment(args.rescore, metric_names)
+        print(f"Re-scored experiment: {args.rescore}")
+        return
+
+    # --- Prompt A/B test ---
+    if args.ab_test:
+        if not args.generic:
+            parser.error("--generic is required with --ab-test")
+        if args.generic == "all":
+            parser.error("--ab-test requires a single --generic eval type, not 'all'")
+        from .generic_evaluate import run_prompt_ab_test
+
+        prompt_a_path, prompt_b_path = args.ab_test
+        prompt_a = await asyncio.to_thread(Path(prompt_a_path).read_text, encoding="utf-8")
+        prompt_b = await asyncio.to_thread(Path(prompt_b_path).read_text, encoding="utf-8")
+
+        comparison = await run_prompt_ab_test(args.generic, prompt_a, prompt_b)
+        print(f"\nA/B Test Results: {args.generic}")
+        print(f"Experiment A: {comparison['experiment_a']}")
+        print(f"Experiment B: {comparison['experiment_b']}")
+        print("\nMetric Comparison:")
+        for metric, vals in comparison["comparison"].items():
+            print(
+                f"  {metric}: A={vals['prompt_a']:.3f}  B={vals['prompt_b']:.3f}  "
+                f"delta={vals['delta']:+.3f}  winner={vals['winner']}"
+            )
+        return
+
+    # --- Generic evaluation ---
+    if args.generic:
+        from .generic_evaluate import evaluate_all_generic, evaluate_generic
+
+        if args.generic == "all":
+            await evaluate_all_generic(
+                mode=args.mode,
+                do_compare_baseline=args.compare_baseline,
+                do_update_baseline=args.update_baseline,
+            )
+        else:
+            await evaluate_generic(
+                eval_type=args.generic,
+                mode=args.mode,
+                do_compare_baseline=args.compare_baseline,
+                do_update_baseline=args.update_baseline,
+            )
+        return
+
+    # --- Subagent evaluation (original behavior) ---
     if not args.subagent:
-        parser.error("--subagent is required (use --list to see available)")
+        parser.error("--subagent or --generic is required (use --list or --list-generic)")
 
     config = get_config(args.subagent)
     if not config:
@@ -464,7 +585,7 @@ async def main():
 
     if args.create_dataset:
         await evaluator.create_dataset()
-        print(f"✓ Dataset '{config.dataset_name}' synced to Opik")
+        print(f"Dataset '{config.dataset_name}' synced to Opik")
 
     results = await evaluator.run_evaluation()
     evaluator.print_results(results)

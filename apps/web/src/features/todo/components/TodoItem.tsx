@@ -24,6 +24,7 @@ import {
   type TodoUpdate,
 } from "@/types/features/todoTypes";
 import { formatDate } from "@/utils/date/dateUtils";
+import { TodoTitle } from "./TodoTitle";
 
 interface TodoItemProps {
   todo: Todo;
@@ -36,7 +37,7 @@ interface TodoItemProps {
   onPrefetchWorkflow?: (todoId: string) => void;
 }
 
-export const priorityColors = {
+const priorityColors = {
   [Priority.HIGH]: "danger",
   [Priority.MEDIUM]: "warning",
   [Priority.LOW]: "primary",
@@ -81,6 +82,8 @@ export default memo(function TodoItem({
     onUpdate(todo.id, { completed: newCompletedState });
   };
 
+  const todoProject = projects?.find((p) => p.id === todo.project_id);
+
   const isOverdue = useMemo(
     () =>
       !!todo.due_date &&
@@ -105,6 +108,7 @@ export default memo(function TodoItem({
       className={`pointer-events-auto w-full cursor-pointer rounded-xl p-2 pl-3 mb-0 transition-all group ${
         isSelected ? "bg-zinc-800/50" : "hover:bg-zinc-800/50"
       } ${todo.completed ? "opacity-30" : ""}`}
+      style={{ contentVisibility: "auto", containIntrinsicSize: "0 80px" }}
       onClick={() => onClick?.(todo)}
       onMouseEnter={() => onPrefetchWorkflow?.(todo.id)}
     >
@@ -125,11 +129,17 @@ export default memo(function TodoItem({
         <div className="min-w-0 flex-1">
           <div>
             <h4
+              style={{
+                display: "-webkit-box",
+                WebkitBoxOrient: "vertical",
+                WebkitLineClamp: 2,
+                overflow: "hidden",
+              }}
               className={`text-base font-normal ${
                 todo.completed ? "text-zinc-500 line-through" : ""
               }`}
             >
-              {todo.title}
+              <TodoTitle title={todo.title} />
             </h4>
             {todo.description && (
               <p className="mt-1 text-xs text-zinc-500 line-clamp-1">
@@ -215,21 +225,18 @@ export default memo(function TodoItem({
                 </Chip>
               )}
 
-              {projects?.find((project) => project?.id === todo.project_id) && (
+              {todoProject && (
                 <Chip
                   size="sm"
                   variant="flat"
                   className=" text-zinc-400 px-1"
                   radius="sm"
-                  style={{
-                    color: projects?.find((p) => p.id === todo.project_id)
-                      ?.color,
-                  }}
+                  style={{ color: todoProject.color }}
                   startContent={
                     <Folder02Icon width={15} height={15} className="mx-1" />
                   }
                 >
-                  {projects?.find((p) => p.id === todo.project_id)?.name}
+                  {todoProject.name}
                 </Chip>
               )}
 

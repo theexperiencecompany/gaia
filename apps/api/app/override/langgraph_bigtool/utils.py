@@ -12,7 +12,7 @@ from langchain_core.tools import BaseTool
 from langgraph_bigtool.graph import State as _BigtoolState
 
 
-def _replace_todos(left: list, right: list) -> list:
+def _replace_todos(_left: list, right: list) -> list:
     """Last-write-wins reducer for the todos channel."""
     return right
 
@@ -21,6 +21,8 @@ class State(_BigtoolState):
     """Extended state with todos channel for agent task management."""
 
     todos: Annotated[list, _replace_todos]
+    intent: str | None
+    integration_usernames: dict[str, str]
 
 
 class RetrieveToolsResult(TypedDict):
@@ -84,9 +86,7 @@ def format_selected_tools(
                 if isinstance(tool_registry[result], BaseTool):
                     tool_names.append(tool_registry[result].name)
                 else:
-                    tool_names.append(
-                        getattr(tool_registry[result], "__name__", result)
-                    )
+                    tool_names.append(getattr(tool_registry[result], "__name__", result))
             else:
                 # Handle tools not in registry (e.g., subagent: prefixed)
                 tool_names.append(result)

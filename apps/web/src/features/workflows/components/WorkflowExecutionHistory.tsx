@@ -85,7 +85,11 @@ function ExecutionStatusBadge({
           color="primary"
           radius="sm"
           variant="flat"
-          startContent={<Loading03Icon className="h-3 w-3 animate-spin" />}
+          startContent={
+            <div className="animate-spin">
+              <Loading03Icon className="h-3 w-3" />
+            </div>
+          }
         >
           Running
         </Chip>

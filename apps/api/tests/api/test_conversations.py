@@ -18,7 +18,6 @@ from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 
-
 CONV_SERVICE = "app.api.v1.endpoints.conversations"
 
 

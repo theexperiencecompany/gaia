@@ -2,9 +2,9 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from bson import ObjectId
 from fastapi import HTTPException
+import pytest
 
 from app.models.user_models import BioStatus
 from app.services.oauth.oauth_service import (
@@ -14,7 +14,6 @@ from app.services.oauth.oauth_service import (
     handle_oauth_connection,
     store_user_info,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -29,9 +28,7 @@ def mock_users_collection():
 
 @pytest.fixture
 def mock_user_integrations_collection():
-    with patch(
-        "app.services.oauth.oauth_service.user_integrations_collection"
-    ) as mock_col:
+    with patch("app.services.oauth.oauth_service.user_integrations_collection") as mock_col:
         mock_cursor = AsyncMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
         mock_col.find = MagicMock(return_value=mock_cursor)
@@ -57,9 +54,7 @@ def mock_composio_service():
 
 @pytest.fixture
 def mock_delete_cache():
-    with patch(
-        "app.services.oauth.oauth_service.delete_cache", new_callable=AsyncMock
-    ) as mock_dc:
+    with patch("app.services.oauth.oauth_service.delete_cache", new_callable=AsyncMock) as mock_dc:
         yield mock_dc
 
 
@@ -92,6 +87,12 @@ def mock_redis_pool_manager():
 def mock_track_signup():
     with patch("app.services.oauth.oauth_service.track_signup") as mock_ts:
         yield mock_ts
+
+
+@pytest.fixture
+def mock_track_login():
+    with patch("app.services.oauth.oauth_service.track_login") as mock_tl:
+        yield mock_tl
 
 
 @pytest.fixture
@@ -139,9 +140,7 @@ def bypass_cacheable():
     ensures every cached call goes straight through to the wrapped function.
     """
     with (
-        patch(
-            "app.db.redis.redis_cache.get", new_callable=AsyncMock, return_value=None
-        ),
+        patch("app.db.redis.redis_cache.get", new_callable=AsyncMock, return_value=None),
         patch("app.db.redis.redis_cache.set", new_callable=AsyncMock),
     ):
         yield
@@ -182,7 +181,9 @@ class TestStoreUserInfo:
             await store_user_info("Test", None, "https://pic.example.com/pic.jpg")
         assert exc_info.value.status_code == 400
 
-    async def test_updates_existing_user_with_picture(self, mock_users_collection):
+    async def test_updates_existing_user_with_picture(
+        self, mock_users_collection, mock_track_login
+    ):
         oid = ObjectId()
         existing_user = {
             "_id": oid,
@@ -197,7 +198,7 @@ class TestStoreUserInfo:
             "Alice Updated", "alice@test.com", "https://new-pic.example.com/new.jpg"
         )
 
-        assert result == oid
+        assert result == (oid, False)
         mock_users_collection.update_one.assert_awaited_once()
         call_args = mock_users_collection.update_one.call_args
         update_data = call_args[0][1]["$set"]
@@ -206,7 +207,7 @@ class TestStoreUserInfo:
         assert "updated_at" in update_data
 
     async def test_updates_existing_user_without_picture_keeps_existing(
-        self, mock_users_collection
+        self, mock_users_collection, mock_track_login
     ):
         oid = ObjectId()
         existing_user = {
@@ -220,14 +221,14 @@ class TestStoreUserInfo:
 
         result = await store_user_info("Alice Updated", "alice@test.com", None)
 
-        assert result == oid
+        assert result == (oid, False)
         call_args = mock_users_collection.update_one.call_args
         update_data = call_args[0][1]["$set"]
         # Should NOT set picture when no new URL provided and user has existing pic
         assert "picture" not in update_data
 
     async def test_updates_existing_user_without_picture_sets_empty_when_no_existing(
-        self, mock_users_collection
+        self, mock_users_collection, mock_track_login
     ):
         oid = ObjectId()
         existing_user = {
@@ -241,7 +242,7 @@ class TestStoreUserInfo:
 
         result = await store_user_info("Alice Updated", "alice@test.com", None)
 
-        assert result == oid
+        assert result == (oid, False)
         call_args = mock_users_collection.update_one.call_args
         update_data = call_args[0][1]["$set"]
         assert update_data["picture"] == ""
@@ -259,11 +260,9 @@ class TestStoreUserInfo:
         mock_result.inserted_id = inserted_id
         mock_users_collection.insert_one = AsyncMock(return_value=mock_result)
 
-        result = await store_user_info(
-            "Bob", "bob@test.com", "https://pic.example.com/bob.jpg"
-        )
+        result = await store_user_info("Bob", "bob@test.com", "https://pic.example.com/bob.jpg")
 
-        assert result == inserted_id
+        assert result == (inserted_id, True)
         call_args = mock_users_collection.insert_one.call_args
         user_data = call_args[0][0]
         assert user_data["name"] == "Bob"
@@ -287,7 +286,7 @@ class TestStoreUserInfo:
 
         result = await store_user_info("Bob", "bob@test.com", None)
 
-        assert result == inserted_id
+        assert result == (inserted_id, True)
         call_args = mock_users_collection.insert_one.call_args
         user_data = call_args[0][0]
         assert user_data["picture"] == ""
@@ -360,7 +359,7 @@ class TestStoreUserInfo:
 
         # Should not raise
         result = await store_user_info("Bob", "bob@test.com", None)
-        assert result == mock_result.inserted_id
+        assert result == (mock_result.inserted_id, True)
 
     async def test_new_user_welcome_email_failure_does_not_raise(
         self,
@@ -376,7 +375,7 @@ class TestStoreUserInfo:
         mock_send_welcome_email.side_effect = Exception("SMTP error")
 
         result = await store_user_info("Bob", "bob@test.com", None)
-        assert result == mock_result.inserted_id
+        assert result == (mock_result.inserted_id, True)
 
     async def test_new_user_resend_failure_does_not_raise(
         self,
@@ -392,7 +391,7 @@ class TestStoreUserInfo:
         mock_add_contact_to_resend.side_effect = Exception("Resend API error")
 
         result = await store_user_info("Bob", "bob@test.com", None)
-        assert result == mock_result.inserted_id
+        assert result == (mock_result.inserted_id, True)
 
 
 # ---------------------------------------------------------------------------
@@ -516,9 +515,7 @@ class TestGetAllIntegrationsStatus:
         mock_token_repository,
     ):
         """Composio integrations not in MongoDB should query Composio service."""
-        mock_composio_service.check_connection_status = AsyncMock(
-            return_value={"twitter": True}
-        )
+        mock_composio_service.check_connection_status = AsyncMock(return_value={"twitter": True})
 
         integration = MagicMock()
         integration.id = "twitter"
@@ -639,9 +636,7 @@ class TestGetAllIntegrationsStatus:
         mock_token_repository,
     ):
         """Self-managed with no token at all should return False."""
-        mock_token_repository.get_token = AsyncMock(
-            side_effect=Exception("Token not found")
-        )
+        mock_token_repository.get_token = AsyncMock(side_effect=Exception("Token not found"))
 
         integration = MagicMock()
         integration.id = "googlecalendar"
@@ -702,9 +697,7 @@ class TestGetAllIntegrationsStatus:
         mock_user_integrations_collection.find = MagicMock(return_value=mock_cursor)
 
         # Composio returns twitter as connected
-        mock_composio_service.check_connection_status = AsyncMock(
-            return_value={"slack": False}
-        )
+        mock_composio_service.check_connection_status = AsyncMock(return_value={"slack": False})
 
         notion = MagicMock()
         notion.id = "notion"
@@ -798,9 +791,7 @@ class TestCheckMultipleIntegrationsStatus:
             new_callable=AsyncMock,
             return_value={"gmail": True, "notion": False, "slack": True},
         ):
-            result = await check_multiple_integrations_status(
-                ["gmail", "notion"], "user123"
-            )
+            result = await check_multiple_integrations_status(["gmail", "notion"], "user123")
 
         assert result == {"gmail": True, "notion": False}
 
@@ -810,9 +801,7 @@ class TestCheckMultipleIntegrationsStatus:
             new_callable=AsyncMock,
             return_value={"gmail": True},
         ):
-            result = await check_multiple_integrations_status(
-                ["gmail", "unknown"], "user123"
-            )
+            result = await check_multiple_integrations_status(["gmail", "unknown"], "user123")
 
         assert result == {"gmail": True, "unknown": False}
 
@@ -822,9 +811,7 @@ class TestCheckMultipleIntegrationsStatus:
             new_callable=AsyncMock,
             side_effect=Exception("Service error"),
         ):
-            result = await check_multiple_integrations_status(
-                ["gmail", "notion"], "user123"
-            )
+            result = await check_multiple_integrations_status(["gmail", "notion"], "user123")
 
         assert result == {"gmail": False, "notion": False}
 
@@ -883,9 +870,7 @@ class TestHandleOAuthConnection:
         )
         background_tasks = MagicMock()
 
-        with patch(
-            "app.services.oauth.oauth_service.get_composio_service"
-        ) as mock_get_cs:
+        with patch("app.services.oauth.oauth_service.get_composio_service") as mock_get_cs:
             mock_cs = MagicMock()
             mock_get_cs.return_value = mock_cs
 
@@ -1259,9 +1244,7 @@ class TestHandleOAuthConnection:
         )
         background_tasks = MagicMock()
 
-        with patch(
-            "app.services.oauth.oauth_service.provision_system_workflows"
-        ) as mock_psw:
+        with patch("app.services.oauth.oauth_service.provision_system_workflows") as mock_psw:
             await handle_oauth_connection(
                 user_id="user123",
                 integration_config=config,
@@ -1337,9 +1320,7 @@ class TestHandleOAuthConnection:
         background_tasks = MagicMock()
 
         with patch("app.services.oauth.oauth_service.websocket_manager") as mock_ws:
-            mock_ws.broadcast_to_user = AsyncMock(
-                side_effect=Exception("WS connection lost")
-            )
+            mock_ws.broadcast_to_user = AsyncMock(side_effect=Exception("WS connection lost"))
 
             # Should not raise
             await handle_oauth_connection(

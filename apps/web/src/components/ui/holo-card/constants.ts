@@ -1,7 +1,8 @@
 // Image paths used across HoloCard components
 export const CARD_IMAGES = {
-  LOGO_WHITE: "/images/logos/text_w_logo_white.webp",
-  EXPERIENCE_LOGO: "/images/logos/experience_logo.svg",
+  // PNG not WebP: html-to-image paints WebP alpha-0 RGB pixels as opaque.
+  LOGO_WHITE: "/brand/gaia_logo.png",
+  EXPERIENCE_LOGO: "/brand/experience_logo_white.png",
 } as const;
 
 // Logo dimensions
@@ -14,10 +15,6 @@ export const LOGO_SIZES = {
     width: 80,
     height: 24,
   },
-  EXPERIENCE: {
-    width: 30,
-    height: 30,
-  },
 } as const;
 
 // Position calculation constants
@@ -29,11 +26,10 @@ export const POSITION_CALC = {
 export const CARD_CLASSES = {
   OVERLAY: "pointer-events-none absolute inset-0 z-3",
   CONTENT_WRAPPER:
-    "pointer-events-none absolute z-2 flex h-full w-full flex-col items-start justify-end p-3 text-white transition",
+    "pointer-events-none absolute z-2 flex h-full w-full flex-col items-start justify-end p-9 text-white transition",
   CONTENT_WRAPPER_BACK:
-    "pointer-events-none absolute z-2 flex h-full w-full flex-col items-start justify-between p-3 text-white",
-  LOGO_BADGE:
-    "rounded-full bg-white/30 p-1 px-2 font-serif text-xl font-light text-white/70 backdrop-blur-md",
+    "pointer-events-none absolute z-2 flex h-full w-full flex-col items-start justify-between gap-4 p-9 text-white",
+  LOGO_BADGE: "font-serif text-xl font-light text-white",
   HOUSE_BADGE:
     "rounded-full bg-white/20 p-1 px-4 font-serif text-xl font-light text-white/70 backdrop-blur-md",
   HOUSE_BADGE_BACK:
@@ -41,8 +37,7 @@ export const CARD_CLASSES = {
   INFO_BOX:
     "relative flex w-full flex-col gap-1 overflow-hidden rounded-2xl bg-black/20 p-3 backdrop-blur-md",
   INFO_BOX_BACK:
-    "relative overflow-hidden rounded-2xl bg-black/20 p-4 backdrop-blur-md",
+    "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-black/20 p-4 backdrop-blur-md",
   FOOTER_BOX:
-    "flex w-full items-center justify-between rounded-xl bg-black/20 p-3 backdrop-blur-md",
-  EXPERIENCE_LOGO: "scale-125 opacity-10",
+    "flex w-full shrink-0 items-center justify-between rounded-xl bg-black/20 p-3 backdrop-blur-md",
 } as const;

@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Cancel01Icon } from "@icons";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import { useRouter } from "next/navigation";
 import type { SelectedWorkflowData } from "@/features/chat/hooks/useWorkflowSelection";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";

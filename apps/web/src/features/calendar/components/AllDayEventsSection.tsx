@@ -189,7 +189,7 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
       {/* Time Label Column */}
       <div
         className="sticky left-0 z-[11] w-20 flex-shrink-0 cursor-pointer border-r border-zinc-800 bg-primary-bg transition-colors hover:bg-zinc-800/50"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => setIsExpanded((prev) => !prev)}
       >
         <div className="flex h-full items-center justify-end gap-1 py-3 pr-3">
           <span className="text-xs font-medium text-zinc-400 select-none">

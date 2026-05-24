@@ -1,4 +1,5 @@
-import { m, useInView } from "motion/react";
+import { useInView } from "motion/react";
+import * as m from "motion/react-m";
 import { useEffect, useRef, useState } from "react";
 import DemoToolCalls from "../DemoToolCalls";
 import MiniWaveSpinner from "../MiniWaveSpinner";
@@ -6,10 +7,6 @@ import { SimpleChatBubbleBot } from "../SimpleChatBubbles";
 import type { ChatMessage } from "./types";
 
 const ease = [0.22, 1, 0.36, 1] as const;
-
-const CHAT_CONTAINER_STYLE = {
-  "--color-primary-bg": "#18181b",
-} as React.CSSProperties;
 
 function LandingUserBubble({ content }: { content: string }) {
   return (
@@ -86,7 +83,7 @@ export default function ChatDemo({
     <div
       ref={ref}
       className="flex flex-col overflow-hidden rounded-3xl bg-zinc-900 p-5 text-left"
-      style={{ ...CHAT_CONTAINER_STYLE, minHeight }}
+      style={{ minHeight }}
     >
       <div
         ref={scrollRef}

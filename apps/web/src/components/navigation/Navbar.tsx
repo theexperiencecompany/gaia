@@ -1,10 +1,10 @@
 "use client";
 
 import { Login02Icon, MessageMultiple02Icon } from "@icons";
-import AnimatedNumber from "animated-number-react";
+import NumberFlow from "@number-flow/react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import MobileMenu from "@/components/navigation/MobileMenu";
 import { ChevronDown, Github, StarFilledIcon } from "@/components/shared/icons";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,22 @@ import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { LogoWithContextMenu } from "../shared/LogoWithContextMenu";
 import { RaisedButton } from "../ui/raised-button";
-import { NavbarMenu } from "./NavbarMenu";
+
+// Lazy-load below-the-fold / interaction-triggered components to shrink the
+// initial bundle without altering visuals.
+const MobileMenu = dynamic(() => import("@/components/navigation/MobileMenu"), {
+  ssr: false,
+});
+const NavbarMenu = dynamic(
+  () => import("./NavbarMenu").then((m) => ({ default: m.NavbarMenu })),
+  { ssr: false },
+);
+const NAVBAR_ITEMS = [
+  { type: "dropdown", label: "Product", menu: "product" },
+  { type: "link", label: "Pricing", href: "/pricing" },
+  { type: "link", label: "About", href: "/about" },
+  { type: "dropdown", label: "Resources", menu: "resources" },
+] as const;
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -25,6 +40,22 @@ export default function Navbar() {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [isScrolled, setIsScrolled] = useState(false);
   const { data: repoData } = useGitHubStars("theexperiencecompany/gaia");
+
+  // GitHub stars: while loading, rapidly cycle random three-digit values so
+  // the digits flicker like a slot-machine readout. Initial 100 is stable
+  // across SSR/CSR; randomization only runs client-side in the effect.
+  const [stars, setStars] = useState(100);
+  const isStarsLoading = !repoData?.stargazers_count;
+  useEffect(() => {
+    if (repoData?.stargazers_count) {
+      setStars(Math.round(repoData.stargazers_count));
+      return;
+    }
+    const id = setInterval(() => {
+      setStars(Math.floor(100 + Math.random() * 900));
+    }, 80);
+    return () => clearInterval(id);
+  }, [repoData?.stargazers_count]);
 
   const user = useUser();
 
@@ -35,20 +66,9 @@ export default function Navbar() {
       setIsScrolled(window.scrollY > scrollThreshold);
     };
 
-    window.addEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
-
-  // Define navbar items - can be single links or dropdown menus
-  const navbarItems = [
-    { type: "dropdown", label: "Product", menu: "product" },
-    { type: "link", label: "Pricing", href: "/pricing" },
-    { type: "link", label: "Manifesto", href: "/manifesto" },
-    { type: "dropdown", label: "Resources", menu: "resources" },
-    // { type: "link", label: "Download", href: "/download" },
-    // { type: "dropdown", label: "Company", menu: "company" },
-    // { type: "dropdown", label: "Socials", menu: "socials" },
-  ] as const;
 
   // Function to control backdrop blur
   const toggleBackdrop = (show: boolean) => {
@@ -123,7 +143,7 @@ export default function Navbar() {
             <MobileMenu />
           ) : (
             <div className="flex items-center gap-1 rounded-lg px-1 py-1">
-              {navbarItems.map((item) =>
+              {NAVBAR_ITEMS.map((item) =>
                 item.type === "link" ? (
                   <Link
                     key={item.href}
@@ -206,14 +226,22 @@ export default function Navbar() {
                   </div>
                   <div className="flex items-center gap-1 text-sm">
                     <StarFilledIcon className="relative top-px size-4 text-white group-hover:text-yellow-300" />
-                    <span className="font-medium text-white">
-                      <AnimatedNumber
-                        value={repoData?.stargazers_count.toFixed(0)}
-                        className="font-medium text-white"
-                        duration={1000}
-                        formatValue={(n: number) => Math.round(n).toString()}
-                      />
-                    </span>
+                    <NumberFlow
+                      value={stars}
+                      className="font-medium text-white tabular-nums"
+                      transformTiming={{
+                        duration: isStarsLoading ? 120 : 900,
+                        easing: isStarsLoading
+                          ? "linear"
+                          : "cubic-bezier(.2,.8,.2,1)",
+                      }}
+                      spinTiming={{
+                        duration: isStarsLoading ? 120 : 900,
+                        easing: isStarsLoading
+                          ? "linear"
+                          : "cubic-bezier(.2,.8,.2,1)",
+                      }}
+                    />
                   </div>
                 </Button>
               </a>

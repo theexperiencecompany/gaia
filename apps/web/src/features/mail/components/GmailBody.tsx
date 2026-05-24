@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Spinner from "@/components/ui/spinner";
 import type { EmailData, EmailPart } from "@/types/features/mailTypes";
 
-export const decodeBase64 = (str: string): string => {
+const decodeBase64 = (str: string): string => {
   try {
     const decoded = atob(str.replace(/-/g, "+").replace(/_/g, "/"));
     return decodeURIComponent(escape(decoded)); // Ensures proper UTF-8 decoding

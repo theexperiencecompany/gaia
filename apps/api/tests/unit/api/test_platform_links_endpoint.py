@@ -2,8 +2,8 @@
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 BASE = "/api/v1/platform-links"
 
@@ -68,9 +68,7 @@ class TestLinkPlatform:
     @pytest.mark.asyncio
     async def test_missing_platform_user_id(self, client: AsyncClient) -> None:
         mock_redis = AsyncMock()
-        mock_redis.hgetall = AsyncMock(
-            return_value={"platform": "discord", "platform_user_id": ""}
-        )
+        mock_redis.hgetall = AsyncMock(return_value={"platform": "discord", "platform_user_id": ""})
         mock_redis.delete = AsyncMock()
 
         with patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache:
@@ -172,9 +170,7 @@ class TestDisconnectPlatform:
         assert resp.status_code == 400
 
     @pytest.mark.asyncio
-    async def test_successful_disconnect_clears_cache(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_successful_disconnect_clears_cache(self, client: AsyncClient) -> None:
         existing = {"discord": {"platformUserId": "DISC999", "username": "u"}}
         mock_redis = AsyncMock()
         mock_redis.delete = AsyncMock()
@@ -323,14 +319,19 @@ class TestInitiatePlatformConnect:
         assert "gaia_bot" in resp.json()["instructions"]
 
     @pytest.mark.asyncio
-    async def test_unsupported_platform_no_oauth(self, client: AsyncClient) -> None:
-        """Platform valid but has no OAuth configured -> 501."""
+    async def test_whatsapp_manual(self, client: AsyncClient) -> None:
+        """WhatsApp uses manual flow (no OAuth) -> 200 with instructions."""
         with patch("app.api.v1.endpoints.platform_links.settings") as mock_settings:
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
+            mock_settings.WHATSAPP_PHONE_NUMBER = "15551234567"
             resp = await client.get(f"{BASE}/whatsapp/connect")
 
-        assert resp.status_code == 501
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["auth_type"] == "manual"
+        assert "WhatsApp" in body["instructions"]
+        assert body["action_link"] == "https://wa.me/15551234567"
 
     @pytest.mark.asyncio
     async def test_unauthenticated(self, unauthed_client: AsyncClient) -> None:

@@ -19,7 +19,3 @@ export const useLoginModalStore = create<LoginModalStore>()(
     { name: "loginModal-store" },
   ),
 );
-
-// Selectors
-export const useLoginModalOpen = () =>
-  useLoginModalStore((state) => state.open);

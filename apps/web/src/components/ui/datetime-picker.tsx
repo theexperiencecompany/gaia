@@ -87,13 +87,13 @@ export function DateTimePicker({
   ...props
 }: DateTimePickerProps & CalendarProps) {
   const [open, setOpen] = useState(false);
-  const initDate = useMemo(() => value || new Date(), [value]);
+  const initDate = value || new Date();
 
   const [month, setMonth] = useState<Date>(initDate);
   const [date, setDate] = useState<Date>(initDate);
 
-  const minDate = useMemo(() => min, [min]);
-  const maxDate = useMemo(() => max, [max]);
+  const minDate = min;
+  const maxDate = max;
 
   const onDayChanged = useCallback(
     (d: Date) => {

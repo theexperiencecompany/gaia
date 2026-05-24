@@ -10,6 +10,35 @@ import {
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+// Mermaid SDK init lives here (instead of CodeBlock) so the SDK is only
+// pulled into the bundle when this component is actually rendered. Combined
+// with FlowchartPreview being imported via `dynamic({ ssr: false })`, this
+// keeps mermaid (~1.3 MB) out of the SSR/Cloudflare-Worker bundle entirely.
+interface MermaidInstance {
+  initialize: (config: object) => void;
+  contentLoaded: () => void;
+}
+let mermaidInstance: MermaidInstance | null = null;
+let mermaidInitPromise: Promise<MermaidInstance> | null = null;
+function getMermaidInstance(): Promise<MermaidInstance> {
+  if (mermaidInstance) return Promise.resolve(mermaidInstance);
+  if (mermaidInitPromise) return mermaidInitPromise;
+  mermaidInitPromise = import("mermaid").then((mod) => {
+    mod.default.initialize({
+      startOnLoad: true,
+      theme: "dark",
+      flowchart: { useMaxWidth: true, htmlLabels: true, curve: "linear" },
+      gantt: { useMaxWidth: false },
+      journey: { useMaxWidth: false },
+      timeline: { useMaxWidth: false },
+      elk: { mergeEdges: false },
+    });
+    mermaidInstance = mod.default;
+    return mermaidInstance;
+  });
+  return mermaidInitPromise;
+}
+
 interface FlowchartPreviewProps {
   children: React.ReactNode;
 }
@@ -19,37 +48,53 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
   const [scale, setScale] = useState(1.5);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [startPosition, setStartPosition] = useState({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
+  const startPositionRef = useRef({ x: 0, y: 0 });
+
+  // Load mermaid SDK once on mount and re-render the diagram when content
+  // changes. This used to live in CodeBlock.tsx, which forced the mermaid
+  // module into every server render.
+  useEffect(() => {
+    let cancelled = false;
+    getMermaidInstance().then((m) => {
+      if (cancelled) return;
+      m.contentLoaded();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [children]);
 
   const handleZoomIn = () => setScale((prev) => Math.min(prev + 0.1, 10));
   const handleZoomOut = () => setScale((prev) => Math.max(prev - 0.1, 0.5));
   const resetZoom = () => setScale(1.5);
   const resetPan = () => setPosition({ x: 0, y: 0 });
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      setIsDragging(true);
-      setStartPosition({
-        x: e.clientX - position.x,
-        y: e.clientY - position.y,
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    isDraggingRef.current = true;
+    setIsDragging(true);
+    setPosition((prev) => {
+      startPositionRef.current = {
+        x: e.clientX - prev.x,
+        y: e.clientY - prev.y,
+      };
+      return prev;
+    });
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (isDraggingRef.current) {
+      setPosition({
+        x: e.clientX - startPositionRef.current.x,
+        y: e.clientY - startPositionRef.current.y,
       });
-    },
-    [position],
-  );
+    }
+  }, []);
 
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      if (isDragging) {
-        setPosition({
-          x: e.clientX - startPosition.x,
-          y: e.clientY - startPosition.y,
-        });
-      }
-    },
-    [isDragging, startPosition],
-  );
-
-  const handleMouseUp = () => setIsDragging(false);
+  const handleMouseUp = useCallback(() => {
+    isDraggingRef.current = false;
+    setIsDragging(false);
+  }, []);
 
   const handleDownload = () => {
     if (!mermaidRef.current) return;
@@ -86,6 +131,7 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
         element.removeEventListener("wheel", handleWheel);
       };
     }
+    return undefined;
   }, [handleWheel]);
 
   return (

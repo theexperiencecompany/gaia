@@ -3,11 +3,11 @@ from typing import Annotated
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
+from app.agents.templates.flowchart_template import FLOWCHART_PROMPT_TEMPLATE
+from app.decorators import with_doc, with_rate_limiting
 from app.templates.docstrings.flowchart_tool_docs import (
     CREATE_FLOWCHART,
 )
-from app.decorators import with_doc, with_rate_limiting
-from app.agents.templates.flowchart_template import FLOWCHART_PROMPT_TEMPLATE
 
 
 @tool
@@ -25,8 +25,6 @@ async def create_flowchart(
 
     return {
         "prompt": str(
-            FLOWCHART_PROMPT_TEMPLATE.invoke(
-                {"description": description, "direction": direction}
-            )
+            FLOWCHART_PROMPT_TEMPLATE.invoke({"description": description, "direction": direction})
         )
     }

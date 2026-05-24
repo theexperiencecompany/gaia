@@ -1,22 +1,21 @@
 """Simple email processing with Gemini for background tasks."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+from langchain_core.output_parsers import PydanticOutputParser
 
 from app.agents.llm.client import init_llm
 from app.agents.prompts.mail_prompts import EMAIL_COMPREHENSIVE_ANALYSIS
-from shared.py.wide_events import log
 from app.db.mongodb.collections import mail_collection
 from app.models.mail_models import EmailComprehensiveAnalysis
-from langchain_core.output_parsers import PydanticOutputParser
+from shared.py.wide_events import log
 
-email_comprehensive_parser = PydanticOutputParser(
-    pydantic_object=EmailComprehensiveAnalysis
-)
+email_comprehensive_parser = PydanticOutputParser(pydantic_object=EmailComprehensiveAnalysis)
 
 
 async def get_email_importance_summaries(
     user_id: str, limit: int = 50, important_only: bool = False
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get email importance summaries for a user.
 
@@ -31,7 +30,7 @@ async def get_email_importance_summaries(
     log.set(mail_user_id=user_id, mail_limit=limit, mail_important_only=important_only)
     try:
         # Build query filter
-        query_filter: Dict[str, Any] = {"user_id": user_id}
+        query_filter: dict[str, Any] = {"user_id": user_id}
         if important_only:
             query_filter["is_important"] = True
 
@@ -59,7 +58,7 @@ async def get_email_importance_summaries(
 
 async def get_single_email_importance_summary(
     user_id: str, message_id: str
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """
     Get importance summary for a specific email.
 
@@ -73,9 +72,7 @@ async def get_single_email_importance_summary(
     log.set(mail_user_id=user_id, mail_message_id=message_id)
     try:
         # Find the email in database
-        email = await mail_collection.find_one(
-            {"user_id": user_id, "message_id": message_id}
-        )
+        email = await mail_collection.find_one({"user_id": user_id, "message_id": message_id})
 
         if not email:
             return None
@@ -88,15 +85,13 @@ async def get_single_email_importance_summary(
 
         return {"status": "success", "email": email}
     except Exception as e:
-        log.error(
-            f"Error retrieving email summary for user {user_id}, message {message_id}: {e}"
-        )
+        log.error(f"Error retrieving email summary for user {user_id}, message {message_id}: {e}")
         raise
 
 
 async def process_email_comprehensive_analysis(
     subject: str, sender: str, date: str, content: str
-) -> Optional[EmailComprehensiveAnalysis]:
+) -> EmailComprehensiveAnalysis | None:
     """
     Process email to determine importance, generate summary, and create semantic labels in one go.
     This is more efficient than separate API calls for importance and semantic analysis.
@@ -142,9 +137,7 @@ async def process_email_comprehensive_analysis(
         except Exception as parse_error:
             log.error(f"Failed to parse AI response with parser: {parse_error}")
 
-            raise ValueError(
-                "Failed to parse AI response. Please check the response format."
-            )
+            raise ValueError("Failed to parse AI response. Please check the response format.")
 
     except Exception as e:
         log.error(f"Error processing email comprehensive analysis with Gemini: {e}")
@@ -152,8 +145,8 @@ async def process_email_comprehensive_analysis(
 
 
 async def get_bulk_email_importance_summaries(
-    user_id: str, message_ids: List[str]
-) -> Dict[str, Any]:
+    user_id: str, message_ids: list[str]
+) -> dict[str, Any]:
     """
     Get importance summaries for multiple emails in bulk.
 

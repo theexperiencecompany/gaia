@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.2.1...cli-v0.3.0) (2026-04-05)
+
+
+### Features
+
+* **analytics:** add PostHog analytics to bots ([#599](https://github.com/theexperiencecompany/gaia/issues/599)) ([af894bf](https://github.com/theexperiencecompany/gaia/commit/af894bfe8a1bdeacbb99c6ccea487d3b8ac14554))
+* **analytics:** add PostHog analytics to bots and CLI ([8d799ef](https://github.com/theexperiencecompany/gaia/commit/8d799ef56f0f789f9ceb660ae0f6ab2eb01bb518))
+* **ci:** Dagger integration test overhaul — real-service tests + CI hardening ([#591](https://github.com/theexperiencecompany/gaia/issues/591)) ([7736c39](https://github.com/theexperiencecompany/gaia/commit/7736c3957b73b51e9e47291836c61a6f03e750bd))
+
+
+### Performance Improvements
+
+* remove barrel exports for faster HMR and build times ([#569](https://github.com/theexperiencecompany/gaia/issues/569)) ([70388ff](https://github.com/theexperiencecompany/gaia/commit/70388ffb681f6910e11dfae8d005825ceee4285e))
+
 ## [0.2.1](https://github.com/theexperiencecompany/gaia/compare/cli-v0.2.0...cli-v0.2.1) (2026-02-27)
 
 

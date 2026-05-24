@@ -208,10 +208,8 @@ export interface StreamToolOutput {
   subagent_id?: string;
 }
 
-export interface TodoProgressSnapshot {
-  source?: string;
-  todos?: Array<{ id: string; content: string; status: string }>;
-}
+import type { TodoProgressSnapshot } from "./types";
+export type { TodoProgressSnapshot };
 
 type JsonObject = Record<string, unknown>;
 
@@ -258,6 +256,7 @@ export type ChatStreamEvent =
   | { type: "follow_up_actions"; actions: string[] }
   | { type: "subagent_start"; payload: SubagentStartPayload }
   | { type: "subagent_end"; payload: SubagentEndPayload }
+  | { type: "token_usage" }
   | { type: "unknown"; payload: JsonObject };
 
 const isObject = (value: unknown): value is JsonObject =>

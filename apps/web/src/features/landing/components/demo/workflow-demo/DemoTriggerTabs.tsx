@@ -1,7 +1,8 @@
 "use client";
 
 import { Tab, Tabs } from "@heroui/tabs";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import { useEffect, useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 

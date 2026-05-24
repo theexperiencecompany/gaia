@@ -1,9 +1,9 @@
-import React from "react";
-import {
-  type MCPAppData,
-  type RateLimitData,
-  type ToolDataMap,
-  type ToolName,
+import type React from "react";
+import type {
+  MCPAppData,
+  RateLimitData,
+  ToolDataMap,
+  ToolName,
 } from "@/config/registries/toolRegistry";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
 import CalendarListFetchCard from "@/features/calendar/components/CalendarListFetchCard";

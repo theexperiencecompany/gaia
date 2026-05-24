@@ -5,18 +5,6 @@ import type { Goal as ApiGoal } from "@/types/api/goalsApiTypes";
 // Re-export API types for consistency
 export type Goal = ApiGoal;
 
-// Extend the API Goal type for chat-specific use cases
-export interface GoalNode {
-  id: string;
-  data: {
-    title?: string;
-    label?: string;
-    isComplete?: boolean;
-    type?: string;
-    subtask_id?: string;
-  };
-}
-
 export interface GoalStats {
   total_goals: number;
   goals_with_roadmaps: number;

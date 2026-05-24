@@ -1,0 +1,63 @@
+---
+title: "Bots Releases"
+description: "Release history for GAIA's Discord, Slack, Telegram, and WhatsApp bots."
+icon: "robot"
+---
+
+<Update label="Apr 5, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [Bots v1.3.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.3.0)
+
+### Features
+- **WhatsApp Bot**: GAIA is now available on WhatsApp in addition to [Discord](/bots/discord), [Slack](/bots/slack), and [Telegram](/bots/telegram).
+
+</Update>
+
+<Update label="Feb 27, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [Bots v1.2.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.2.0)
+
+### Improvements
+- **Docker Image Optimization**: Slimmed down bot container images with pruned dependencies and improved layer caching
+- **Dockerfile Permissions Fix**: Corrected file ownership and permissions for better runtime access
+
+</Update>
+
+<Update label="Feb 23, 2026" description="API, Web, Bots, CLI">
+
+## [Bots v1.1.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.1.0)
+
+### Features
+- **Discord Bot**: Full-featured Discord bot with slash commands, DM support, context menu commands, rotating presence status, and a welcome message for new DM conversations
+- **Slack Bot**: Slack integration with threaded conversations, streaming responses, and workspace-level authentication
+- **Telegram Bot**: Telegram bot with serialized message updates, Markdown parsing, and streaming message break handling
+- **Streaming Responses**: Real-time streamed replies across all three platforms with dynamic message editing and new-message-break logic for long responses
+- **Platform Linking**: Secure account linking from any bot to a GAIA account using one-time link tokens and SSO
+- **Help and Settings Commands**: `/help` and `/settings` slash commands displaying available actions and current configuration per platform
+- **Stop and Unlink Commands**: `/stop` to end the current conversation and `/unlink` to disconnect a bot account from GAIA
+- **New Command**: `/new` command to start a fresh conversation without carrying prior context
+- **Centralized Bot Configuration**: Unified configuration with Infisical secret injection across all three bots
+- **Nx and CI Integration**: All bots integrated into the Nx workspace, CI pipeline, and release system with per-bot Docker builds
+- **E2E Test Package**: Dedicated end-to-end test package for cross-bot integration testing
+
+### Bug Fixes
+- **Public Context Restriction**: Bots now restrict context to public information only, stripping mentions and enforcing rate limit feedback
+- **Security and Deployment Audit**: Comprehensive fixes for deployment scripts, authentication flows, and functional regressions across all three bots
+- **Discord Timeout Fix**: Resolved timeout issues in Discord bot responses by deferring long-running interactions
+- **Streaming Thinking Removal**: Removed visible "thinking..." indicator from Discord streaming responses
+- **Docker Image Tags**: Fixed missing image tags and corrected Docker build commands for all three bot images
+
+</Update>
+
+<Update label="Feb 20, 2026" description="Bots, CLI">
+
+## [Bots v1.0.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.0.0...bots-v1.1.0)
+
+### Foundation
+- **Shared Adapter Pattern**: `BaseBotAdapter` in `@gaia/shared` establishing the unified command dispatch system, GAIA API client, and platform-agnostic `RichMessageTarget` interface used by all three bots
+- **Bot API Key Authentication**: Dedicated middleware for authenticating bot-to-API requests independently from user session auth
+- **Nx Monorepo Integration**: All three bot packages integrated into the Nx workspace with build, lint, type-check, and release targets
+- **Docker Support**: Dockerfiles for each bot for containerized deployment alongside the rest of the GAIA stack
+- **E2E Test Package**: Dedicated `bots-e2e` test package with Vitest infrastructure for cross-bot integration testing
+
+</Update>

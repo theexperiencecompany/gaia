@@ -1,3 +1,10 @@
+/**
+ * Legacy full-screen holo card reveal modal. Fetches personalization on
+ * open, shows a tap-to-reveal shimmer card, then renders the editable
+ * `HoloCardEditor` and share buttons. The new flow embeds reveal inline
+ * via `HoloCardReveal`; this modal is retained for the older entry point.
+ */
+
 "use client";
 
 import { Button } from "@heroui/button";
@@ -10,12 +17,15 @@ import { TwitterShareButton } from "react-share";
 import { TwitterIcon } from "@/components/shared/icons";
 import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
 import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
+import { RaisedButton } from "@/components/ui/raised-button";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { SimpleChatBubbleBot } from "@/features/landing/components/demo/SimpleChatBubbles";
 import {
-  type House,
-  usePersonalization,
-} from "@/features/onboarding/hooks/usePersonalization";
+  HOLO_CARD_HEIGHT,
+  HOLO_CARD_WIDTH,
+} from "@/features/onboarding/constants";
+import { usePersonalization } from "@/features/onboarding/hooks/usePersonalization";
+import type { House } from "@/features/onboarding/types/websocket";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { toast } from "@/lib/toast";
 
@@ -110,7 +120,13 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
       personalizationData?.user_bio ||
       "A passionate individual exploring new possibilities and making an impact.",
     account_number: `#${personalizationData?.account_number || "00000"}`,
-    member_since: personalizationData?.member_since || "Nov 21, 2024",
+    member_since:
+      personalizationData?.member_since ||
+      new Date().toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
     overlay_color: personalizationData?.overlay_color || "rgba(0,0,0,0)",
     overlay_opacity: personalizationData?.overlay_opacity ?? 40,
     holo_card_id: personalizationData?.holo_card_id,
@@ -176,14 +192,10 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
               }
             </SimpleChatBubbleBot>
             <div className="mt-8 ml-12 space-x-2">
-              <Button
-                color="primary"
-                className="font-medium"
-                endContent={<Rocket01Icon width={18} height={18} />}
-                onPress={onClose}
-              >
+              <RaisedButton className="font-medium" onClick={onClose}>
                 Let's Go!
-              </Button>
+                <Rocket01Icon width={18} height={18} />
+              </RaisedButton>
 
               <TwitterShareButton url={shareUrl} title={shareTitle}>
                 <Button
@@ -210,8 +222,8 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                   <div
                     className="relative overflow-hidden rounded-2xl shadow-2xl bg-linear-to-br from-zinc-800 to-zinc-600"
                     style={{
-                      height: "470px",
-                      width: "330px",
+                      height: `${HOLO_CARD_HEIGHT}px`,
+                      width: `${HOLO_CARD_WIDTH}px`,
                     }}
                   >
                     {/* Shimmer effect */}
@@ -263,11 +275,13 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
             ) : (
               // Revealed Card State
               <div className="relative flex flex-col items-center gap-4 animate-scale-in">
-                <div className="text-sm text-zinc-400">Click to flip card</div>
+                <div className="text-sm text-zinc-400">
+                  Click to flip your personalised profile card
+                </div>
                 <HoloCardEditor
                   initialData={holoCardData}
-                  height={470}
-                  width={330}
+                  height={HOLO_CARD_HEIGHT}
+                  width={HOLO_CARD_WIDTH}
                 />
               </div>
             )}

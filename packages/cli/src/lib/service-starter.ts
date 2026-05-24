@@ -8,7 +8,6 @@ const delay = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
 
 export const DEV_LOG_FILE = "dev-start.log";
-export const WEB_LOG_FILE = "web-start.log";
 export const DEV_PID_FILE = ".gaia-dev.pid";
 
 export interface StopServicesOptions {
@@ -26,6 +25,53 @@ function getEnvFileArgs(dockerDir: string): string[] {
 export interface StartServicesOptions {
   build?: boolean;
   pull?: boolean;
+}
+
+/** Default ceiling for `gaia start`, in minutes. */
+const DEFAULT_START_TIMEOUT_MIN = 60;
+
+/**
+ * Resolve the `docker compose up` timeout in milliseconds.
+ *
+ * docker-compose.selfhost.yml has services with only `build:` defined
+ * (gaia-backend, arq_worker, seed-models). On the first start docker compose
+ * has to build them implicitly even without --build, and on a
+ * resource-constrained VM (e.g. a 4 GB self-hosted box) the full Web
+ * production build alone can sit at 30+ minutes.
+ *
+ * The default ceiling is long enough for that slow path but short enough to
+ * flag a genuinely stuck build. Override with GAIA_START_TIMEOUT_MIN when you
+ * need more (or set it to 0 to disable the timeout entirely).
+ */
+function resolveStartTimeoutMs(): number | undefined {
+  // Number("") and Number("  ") are 0, which would silently disable the
+  // timeout. Treat a blank value as unset and fall back to the default.
+  const raw = process.env.GAIA_START_TIMEOUT_MIN?.trim();
+  const overrideMin = raw ? Number(raw) : Number.NaN;
+  const timeoutMin =
+    Number.isFinite(overrideMin) && overrideMin >= 0
+      ? overrideMin
+      : DEFAULT_START_TIMEOUT_MIN;
+  return timeoutMin === 0 ? undefined : timeoutMin * 60 * 1000;
+}
+
+/** Build the `docker compose ... up` argument list for self-host mode. */
+function buildSelfhostUpArgs(
+  envArgs: string[],
+  options?: StartServicesOptions,
+): string[] {
+  const upArgs = [
+    "compose",
+    "-f",
+    "docker-compose.selfhost.yml",
+    ...envArgs,
+    "up",
+    "-d",
+    "--remove-orphans",
+  ];
+  if (options?.build) upArgs.push("--build");
+  if (options?.pull) upArgs.push("--pull", "always");
+  return upArgs;
 }
 
 export function readStoredDevPid(repoPath: string): number | null {
@@ -57,54 +103,35 @@ export async function startServices(
   onLog?: (chunk: string) => void,
   options?: StartServicesOptions,
 ): Promise<void> {
-  if (setupMode === "selfhost") {
-    const isBuild = options?.build ?? false;
-    const isPull = options?.pull ?? false;
-
-    if (isBuild) {
-      onStatus?.("Building and starting all services in Docker...");
-    } else {
-      onStatus?.("Starting all services in Docker (selfhost mode)...");
-    }
-
-    const dockerComposePath = path.join(repoPath, "infra/docker");
-    const envArgs = getEnvFileArgs(dockerComposePath);
-    const dockerEnv =
-      portOverrides && Object.keys(portOverrides).length > 0
-        ? portOverridesToDockerEnv(portOverrides)
-        : undefined;
-
-    const upArgs = [
-      "compose",
-      "-f",
-      "docker-compose.selfhost.yml",
-      ...envArgs,
-      "up",
-      "-d",
-      "--remove-orphans",
-    ];
-
-    if (isBuild) upArgs.push("--build");
-    if (isPull) upArgs.push("--pull", "always");
-
-    const timeoutMs = isBuild ? 15 * 60 * 1000 : 5 * 60 * 1000;
-
-    await runCommand(
-      "docker",
-      upArgs,
-      dockerComposePath,
-      undefined,
-      onLog,
-      dockerEnv,
-      timeoutMs,
-    );
-    onStatus?.("All services started in Docker!");
-  } else {
+  if (setupMode !== "selfhost") {
     onStatus?.("Developer mode must run in foreground.");
     throw new Error(
       "Developer mode runs in foreground. Use 'gaia dev' or 'gaia dev full' instead of 'gaia start'.",
     );
   }
+
+  onStatus?.(
+    options?.build
+      ? "Building and starting all services in Docker..."
+      : "Starting all services in Docker (selfhost mode)...",
+  );
+
+  const dockerComposePath = path.join(repoPath, "infra/docker");
+  const dockerEnv =
+    portOverrides && Object.keys(portOverrides).length > 0
+      ? portOverridesToDockerEnv(portOverrides)
+      : undefined;
+
+  await runCommand(
+    "docker",
+    buildSelfhostUpArgs(getEnvFileArgs(dockerComposePath), options),
+    dockerComposePath,
+    undefined,
+    onLog,
+    dockerEnv,
+    resolveStartTimeoutMs(),
+  );
+  onStatus?.("All services started in Docker!");
 }
 
 export async function stopServices(
@@ -252,55 +279,6 @@ export async function detectSetupMode(
   if (content.includes("mongodb://localhost:")) return "developer";
 
   return "developer";
-}
-
-export async function checkUrl(url: string, retries = 30): Promise<boolean> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(5000),
-      });
-      if (res.ok) return true;
-    } catch {
-      // ignore
-    }
-    await delay(1000);
-  }
-  return false;
-}
-
-export async function areServicesRunning(repoPath: string): Promise<boolean> {
-  const dockerComposePath = path.join(repoPath, "infra/docker");
-  try {
-    const mode = await detectSetupMode(repoPath);
-    const args = ["compose"];
-    if (mode === "selfhost") {
-      args.push("-f", "docker-compose.selfhost.yml");
-    }
-    if (fs.existsSync(path.join(dockerComposePath, ".env"))) {
-      args.push("--env-file", ".env");
-    }
-    args.push("ps", "--format", "json", "--status", "running");
-
-    const { execa: run } = await import("execa");
-    const { stdout } = await run("docker", args, {
-      cwd: dockerComposePath,
-    });
-    const lines = stdout.trim().split("\n").filter(Boolean);
-    // Only count lines that are valid JSON (ignore warnings/notices)
-    let count = 0;
-    for (const line of lines) {
-      try {
-        JSON.parse(line);
-        count++;
-      } catch {
-        // Skip non-JSON lines (Docker warnings, deprecation notices)
-      }
-    }
-    return count >= 3;
-  } catch {
-    return false;
-  }
 }
 
 export async function runCommand(

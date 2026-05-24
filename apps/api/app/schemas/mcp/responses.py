@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -18,14 +18,14 @@ class MCPProxyResourcesListResponse(BaseModel):
     """Response for a proxied resources/list."""
 
     resources: list[dict[str, Any]]
-    next_cursor: Optional[str] = None
+    next_cursor: str | None = None
 
 
 class MCPProxyResourceTemplatesListResponse(BaseModel):
     """Response for a proxied resources/templates/list."""
 
     resource_templates: list[dict[str, Any]]
-    next_cursor: Optional[str] = None
+    next_cursor: str | None = None
 
 
 class MCPProxyResourceReadResponse(BaseModel):
@@ -38,4 +38,4 @@ class MCPProxyPromptsListResponse(BaseModel):
     """Response for a proxied prompts/list."""
 
     prompts: list[dict[str, Any]]
-    next_cursor: Optional[str] = None
+    next_cursor: str | None = None

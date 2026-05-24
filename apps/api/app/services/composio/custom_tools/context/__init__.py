@@ -4,7 +4,6 @@ Re-exports from app.utils.context_utils for backward compatibility.
 """
 
 from app.utils.context_utils import (
-    MAX_WORKERS,
     PROVIDER_TIMEOUT_SECONDS,
     execute_tool,
     fetch_all_providers,
@@ -12,7 +11,6 @@ from app.utils.context_utils import (
 )
 
 __all__ = [
-    "MAX_WORKERS",
     "PROVIDER_TIMEOUT_SECONDS",
     "execute_tool",
     "fetch_all_providers",

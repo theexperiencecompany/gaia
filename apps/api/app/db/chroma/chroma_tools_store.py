@@ -4,13 +4,14 @@ import hashlib
 import inspect
 from typing import Any
 
+from langgraph.store.base import PutOp
+
+from app.agents.core.subagents.registry import all_subagents
 from app.agents.tools.core.registry import get_tool_registry
-from app.config.oauth_config import get_subagent_integrations
-from shared.py.wide_events import log
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.chromadb import ChromaClient
 from app.db.redis import delete_cache, get_cache, set_cache
-from langgraph.store.base import PutOp
+from shared.py.wide_events import log
 
 from .chroma_store import ChromaStore
 
@@ -73,15 +74,11 @@ async def _get_subagent_tools() -> dict[str, dict]:
         Dictionary mapping subagent tool names to their hash and namespace info
     """
     subagent_tools = {}
-    subagent_integrations = get_subagent_integrations()
 
-    for integration in subagent_integrations:
-        cfg = integration.subagent_config
-        if not cfg:
-            continue
-
-        provider_name = integration.name
-        short_name = integration.short_name or integration.id
+    for subagent in all_subagents():
+        cfg = subagent.config
+        provider_name = subagent.name
+        short_name = subagent.short_name or subagent.id
 
         # Create comprehensive description matching handoff_tools pattern
         description = (
@@ -94,7 +91,7 @@ async def _get_subagent_tools() -> dict[str, dict]:
         # Compute hash based on description only
         subagent_hash = hashlib.sha256(description.encode()).hexdigest()
 
-        subagent_tools[f"subagents::subagent:{integration.id}"] = {
+        subagent_tools[f"subagents::subagent:{subagent.id}"] = {
             "hash": subagent_hash,
             "namespace": "subagents",
             "description": description,
@@ -136,14 +133,8 @@ async def _get_existing_tools_from_chroma(
             get_kwargs["where"] = where_filter
 
         existing_data = await collection.get(**get_kwargs)
-        if (
-            existing_data
-            and existing_data.get("ids")
-            and existing_data.get("metadatas")
-        ):
-            for doc_id, metadata in zip(
-                existing_data["ids"], existing_data["metadatas"] or []
-            ):
+        if existing_data and existing_data.get("ids") and existing_data.get("metadatas"):
+            for doc_id, metadata in zip(existing_data["ids"], existing_data["metadatas"] or []):
                 if metadata and "::" in doc_id:
                     parts = doc_id.split("::")
                     namespace = parts[0] if len(parts) > 1 else "default"
@@ -209,9 +200,7 @@ def _build_put_operations(
     # Add upsert operations
     for composite_key, tool_data in tools_to_upsert:
         # Extract actual tool name from composite key (namespace::tool_name)
-        tool_name = (
-            composite_key.split("::", 1)[-1] if "::" in composite_key else composite_key
-        )
+        tool_name = composite_key.split("::", 1)[-1] if "::" in composite_key else composite_key
 
         # Handle regular tools vs subagent tools
         if "tool" in tool_data:
@@ -220,7 +209,6 @@ def _build_put_operations(
         else:
             # Subagent tool
             description = tool_data["description"]
-
         put_ops.append(
             PutOp(
                 namespace=(tool_data["namespace"],),
@@ -235,9 +223,7 @@ def _build_put_operations(
 
     # Add delete operations
     for composite_key, namespace in tools_to_delete:
-        tool_name = (
-            composite_key.split("::", 1)[-1] if "::" in composite_key else composite_key
-        )
+        tool_name = composite_key.split("::", 1)[-1] if "::" in composite_key else composite_key
         put_ops.append(
             PutOp(
                 namespace=(namespace,),
@@ -266,8 +252,7 @@ async def _execute_batch_operations(store, put_ops: list[PutOp], batch_size: int
         batch = put_ops[i : i + batch_size]
         await store.abatch(batch)
         log.info(
-            f"Processed batch {i // batch_size + 1}/"
-            f"{(total_ops + batch_size - 1) // batch_size}"
+            f"Processed batch {i // batch_size + 1}/{(total_ops + batch_size - 1) // batch_size}"
         )
 
     log.info(f"Successfully updated {total_ops} tools in ChromaDB")
@@ -423,15 +408,11 @@ async def initialize_chroma_tools_store():
 
     current_tools = await _get_current_tools_with_hashes(tool_registry)
 
-    managed_namespaces = {
-        tool_data["namespace"] for tool_data in current_tools.values()
-    }
+    managed_namespaces = {tool_data["namespace"] for tool_data in current_tools.values()}
     log.set(db={"operation": "init_tools_store", "collection": "langgraph_tools_store"})
     log.info(f"Managing namespaces at init: {managed_namespaces}")
 
-    existing_tools = await _get_existing_tools_from_chroma(
-        collection, managed_namespaces
-    )
+    existing_tools = await _get_existing_tools_from_chroma(collection, managed_namespaces)
 
     tools_to_upsert, tools_to_delete = _compute_tool_diff(current_tools, existing_tools)
 

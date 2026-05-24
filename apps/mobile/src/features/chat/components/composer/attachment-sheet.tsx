@@ -137,11 +137,14 @@ export const AttachmentSheet = forwardRef<
       <BottomSheet.Portal>
         <BottomSheet.Overlay />
         <BottomSheet.Content
-          snapPoints={["28%"]}
+          snapPoints={["35%"]}
           enableDynamicSizing={false}
           enablePanDownToClose
           backgroundStyle={{ backgroundColor: "#1c1c1e" }}
-          handleIndicatorStyle={{ backgroundColor: "#3f3f46", width: 40 }}
+          handleIndicatorStyle={{
+            backgroundColor: "rgba(255,255,255,0.25)",
+            width: 36,
+          }}
         >
           <View
             style={{

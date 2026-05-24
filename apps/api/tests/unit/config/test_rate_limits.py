@@ -13,7 +13,7 @@ Tests cover:
 - get_feature_info: known and unknown features
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -31,7 +31,6 @@ from app.config.rate_limits import (
     get_time_window_key,
 )
 from app.models.payment_models import PlanType
-
 
 # ---------------------------------------------------------------------------
 # Tests: RateLimitPeriod
@@ -186,18 +185,10 @@ class TestFeatureLimits:
 
     def test_all_features_have_valid_structure(self) -> None:
         for key, limits in FEATURE_LIMITS.items():
-            assert isinstance(limits, TieredRateLimits), (
-                f"{key} is not TieredRateLimits"
-            )
-            assert isinstance(limits.free, RateLimitConfig), (
-                f"{key}.free is not RateLimitConfig"
-            )
-            assert isinstance(limits.pro, RateLimitConfig), (
-                f"{key}.pro is not RateLimitConfig"
-            )
-            assert isinstance(limits.info, FeatureInfo), (
-                f"{key}.info is not FeatureInfo"
-            )
+            assert isinstance(limits, TieredRateLimits), f"{key} is not TieredRateLimits"
+            assert isinstance(limits.free, RateLimitConfig), f"{key}.free is not RateLimitConfig"
+            assert isinstance(limits.pro, RateLimitConfig), f"{key}.pro is not RateLimitConfig"
+            assert isinstance(limits.info, FeatureInfo), f"{key}.info is not FeatureInfo"
 
     def test_pro_limits_gte_free_limits(self) -> None:
         """Pro plan should always have limits >= free plan."""
@@ -329,8 +320,8 @@ class TestGetResetTime:
     """Tests for get_reset_time — daily and monthly reset boundary calculation."""
 
     def test_daily_reset_is_next_midnight_utc(self) -> None:
-        fake_now = datetime(2026, 3, 15, 14, 30, 0, tzinfo=timezone.utc)
-        expected = datetime(2026, 3, 16, 0, 0, 0, 0, tzinfo=timezone.utc)
+        fake_now = datetime(2026, 3, 15, 14, 30, 0, tzinfo=UTC)
+        expected = datetime(2026, 3, 16, 0, 0, 0, 0, tzinfo=UTC)
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
@@ -341,8 +332,8 @@ class TestGetResetTime:
         assert result == expected
 
     def test_monthly_reset_is_first_of_next_month(self) -> None:
-        fake_now = datetime(2026, 3, 15, 10, 0, 0, tzinfo=timezone.utc)
-        expected = datetime(2026, 4, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
+        fake_now = datetime(2026, 3, 15, 10, 0, 0, tzinfo=UTC)
+        expected = datetime(2026, 4, 1, 0, 0, 0, 0, tzinfo=UTC)
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
@@ -353,8 +344,8 @@ class TestGetResetTime:
         assert result == expected
 
     def test_monthly_reset_december_rolls_to_january(self) -> None:
-        fake_now = datetime(2026, 12, 25, 18, 0, 0, tzinfo=timezone.utc)
-        expected = datetime(2027, 1, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
+        fake_now = datetime(2026, 12, 25, 18, 0, 0, tzinfo=UTC)
+        expected = datetime(2027, 1, 1, 0, 0, 0, 0, tzinfo=UTC)
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
@@ -366,8 +357,8 @@ class TestGetResetTime:
 
     def test_daily_reset_at_midnight_returns_next_day(self) -> None:
         """If called exactly at midnight, the reset should still be the next midnight."""
-        fake_now = datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc)
-        expected = datetime(2026, 6, 2, 0, 0, 0, 0, tzinfo=timezone.utc)
+        fake_now = datetime(2026, 6, 1, 0, 0, 0, tzinfo=UTC)
+        expected = datetime(2026, 6, 2, 0, 0, 0, 0, tzinfo=UTC)
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
@@ -378,8 +369,8 @@ class TestGetResetTime:
         assert result == expected
 
     def test_monthly_reset_on_first_returns_next_month(self) -> None:
-        fake_now = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-        expected = datetime(2026, 2, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
+        fake_now = datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
+        expected = datetime(2026, 2, 1, 0, 0, 0, 0, tzinfo=UTC)
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
@@ -390,8 +381,8 @@ class TestGetResetTime:
         assert result == expected
 
     def test_daily_reset_last_day_of_month(self) -> None:
-        fake_now = datetime(2026, 2, 28, 23, 59, 59, tzinfo=timezone.utc)
-        expected = datetime(2026, 3, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
+        fake_now = datetime(2026, 2, 28, 23, 59, 59, tzinfo=UTC)
+        expected = datetime(2026, 3, 1, 0, 0, 0, 0, tzinfo=UTC)
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
@@ -405,7 +396,7 @@ class TestGetResetTime:
         """Reset time should always be in the future."""
         for period in RateLimitPeriod:
             result = get_reset_time(period)
-            assert result > datetime.now(timezone.utc)
+            assert result > datetime.now(UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -417,7 +408,7 @@ class TestGetTimeWindowKey:
     """Tests for get_time_window_key — Redis key formatting."""
 
     def test_daily_key_format(self) -> None:
-        fake_now = datetime(2026, 3, 15, 14, 30, 0, tzinfo=timezone.utc)
+        fake_now = datetime(2026, 3, 15, 14, 30, 0, tzinfo=UTC)
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
@@ -427,7 +418,7 @@ class TestGetTimeWindowKey:
         assert result == "20260315"
 
     def test_monthly_key_format(self) -> None:
-        fake_now = datetime(2026, 3, 15, 14, 30, 0, tzinfo=timezone.utc)
+        fake_now = datetime(2026, 3, 15, 14, 30, 0, tzinfo=UTC)
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
@@ -437,7 +428,7 @@ class TestGetTimeWindowKey:
         assert result == "202603"
 
     def test_daily_key_single_digit_month_and_day(self) -> None:
-        fake_now = datetime(2026, 1, 5, 0, 0, 0, tzinfo=timezone.utc)
+        fake_now = datetime(2026, 1, 5, 0, 0, 0, tzinfo=UTC)
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
@@ -447,7 +438,7 @@ class TestGetTimeWindowKey:
         assert result == "20260105"
 
     def test_monthly_key_december(self) -> None:
-        fake_now = datetime(2026, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        fake_now = datetime(2026, 12, 31, 23, 59, 59, tzinfo=UTC)
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
@@ -457,8 +448,8 @@ class TestGetTimeWindowKey:
         assert result == "202612"
 
     def test_daily_key_changes_at_midnight(self) -> None:
-        before_midnight = datetime(2026, 6, 15, 23, 59, 59, tzinfo=timezone.utc)
-        after_midnight = datetime(2026, 6, 16, 0, 0, 0, tzinfo=timezone.utc)
+        before_midnight = datetime(2026, 6, 15, 23, 59, 59, tzinfo=UTC)
+        after_midnight = datetime(2026, 6, 16, 0, 0, 0, tzinfo=UTC)
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = before_midnight
@@ -472,8 +463,8 @@ class TestGetTimeWindowKey:
         assert key_before != key_after
 
     def test_monthly_key_changes_at_month_boundary(self) -> None:
-        end_of_march = datetime(2026, 3, 31, 23, 59, 59, tzinfo=timezone.utc)
-        start_of_april = datetime(2026, 4, 1, 0, 0, 0, tzinfo=timezone.utc)
+        end_of_march = datetime(2026, 3, 31, 23, 59, 59, tzinfo=UTC)
+        start_of_april = datetime(2026, 4, 1, 0, 0, 0, tzinfo=UTC)
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = end_of_march

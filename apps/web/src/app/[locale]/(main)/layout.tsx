@@ -1,6 +1,7 @@
 "use client";
 
 import { useDrag } from "@use-gesture/react";
+import nextDynamic from "next/dynamic";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import HeaderManager from "@/components/layout/headers/HeaderManager";
 import StatusBanner from "@/components/layout/StatusBanner";
@@ -9,29 +10,40 @@ import RightSidebar from "@/components/layout/sidebar/RightSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
-import { useUser } from "@/features/auth/hooks/useUser";
-import ContextGatheringLoader from "@/features/onboarding/components/ContextGatheringLoader";
-import HoloCardModal from "@/features/onboarding/components/HoloCardModal";
-import { isOnboardingPhaseUpdateMessage } from "@/features/onboarding/types/websocket";
-import { GlobalPricingModal } from "@/features/pricing/components/GlobalPricingModal";
-import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
-import { usePathname } from "@/i18n/navigation";
 import ProvidersLayout from "@/layouts/ProvidersLayout";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
-import { apiService } from "@/lib/api/service";
-import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStoreSync } from "@/stores/chatStore";
 import { useHoloCardModalStore } from "@/stores/holoCardModalStore";
-import {
-  OnboardingPhase,
-  useOnboardingPhaseStore,
-} from "@/stores/onboardingStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { useUIStoreSidebar } from "@/stores/uiStore";
 
 export const dynamic = "force-dynamic";
+
+const HoloCardModal = nextDynamic(
+  () => import("@/features/onboarding/components/HoloCardModal"),
+  { ssr: false },
+);
+const GlobalPricingModal = nextDynamic(
+  () =>
+    import("@/features/pricing/components/GlobalPricingModal").then((m) => ({
+      default: m.GlobalPricingModal,
+    })),
+  { ssr: false },
+);
+const CommandMenu = nextDynamic(
+  () => import("@/features/search/components/CommandMenu"),
+  { ssr: false },
+);
+
+const WhatsNewModal = nextDynamic(
+  () =>
+    import("@/features/whats-new/components/WhatsNewModal").then((m) => ({
+      default: m.WhatsNewModal,
+    })),
+  { ssr: false },
+);
 
 const HeaderSidebarTrigger = () => {
   return (
@@ -42,8 +54,6 @@ const HeaderSidebarTrigger = () => {
 };
 
 export default function MainLayout({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
-  const user = useUser();
   const { isOpen, isMobileOpen, setOpen, setMobileOpen } = useUIStoreSidebar();
   const {
     content: rightSidebarContent,
@@ -54,73 +64,12 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   const [defaultOpen, setDefaultOpen] = useState(true);
   const dragRef = useRef<HTMLDivElement>(null);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
-  const {
-    open: isHoloCardModalOpen,
-    openModal: openHoloCardModal,
-    closeModal: closeHoloCardModal,
-  } = useHoloCardModalStore();
-  const { phase: onboardingPhase, setPhase } = useOnboardingPhaseStore();
+  const { open: isHoloCardModalOpen, closeModal: closeHoloCardModal } =
+    useHoloCardModalStore();
 
   // Check if user needs onboarding
   useOnboardingGuard();
   useBackgroundSync();
-
-  // Determine visibility of onboarding UI elements:
-  const hasCompletedInitialOnboarding = user.onboarding?.completed === true;
-
-  // Initialize onboarding phase from backend on mount
-  useEffect(() => {
-    const initializePhase = async () => {
-      if (!hasCompletedInitialOnboarding) return;
-
-      try {
-        const data = await apiService.get<{ phase?: string }>(
-          "/onboarding/personalization",
-          { silent: true },
-        );
-
-        if (data.phase) {
-          console.log("[MainLayout] Initialized phase from API:", data.phase);
-          setPhase(data.phase as OnboardingPhase);
-        }
-      } catch (error) {
-        console.error("[MainLayout] Failed to fetch initial phase:", error);
-      }
-    };
-
-    initializePhase();
-  }, [hasCompletedInitialOnboarding, setPhase]);
-
-  // Listen for WebSocket phase updates
-  useEffect(() => {
-    const handlePhaseUpdate = (message: unknown) => {
-      if (isOnboardingPhaseUpdateMessage(message) && message.data?.phase) {
-        setPhase(message.data.phase);
-      }
-    };
-
-    console.log(
-      "[MainLayout] Registering WebSocket listener for phase updates",
-    );
-    wsManager.on("onboarding_phase_update", handlePhaseUpdate);
-
-    return () => {
-      wsManager.off("onboarding_phase_update", handlePhaseUpdate);
-    };
-  }, [setPhase]);
-
-  // Visibility logic based on phase from store
-  const shouldShowPersonalizationCard =
-    hasCompletedInitialOnboarding &&
-    onboardingPhase &&
-    (onboardingPhase === OnboardingPhase.PERSONALIZATION_PENDING ||
-      onboardingPhase === OnboardingPhase.PERSONALIZATION_COMPLETE);
-
-  const shouldShowGettingStartedCard =
-    hasCompletedInitialOnboarding &&
-    onboardingPhase &&
-    (onboardingPhase === OnboardingPhase.GETTING_STARTED ||
-      onboardingPhase === OnboardingPhase.COMPLETED);
 
   useChatStoreSync();
 
@@ -129,7 +78,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
     if (isMobile && isMobileOpen) setMobileOpen(false);
   }, [isMobile, isMobileOpen, setMobileOpen]);
 
-  // Set default open state based on screen size
   useEffect(() => {
     if (isMobile) setDefaultOpen(false);
     else setDefaultOpen(true);
@@ -216,6 +164,9 @@ export default function MainLayout({ children }: { children: ReactNode }) {
           {/* Global Pricing Modal */}
           <GlobalPricingModal />
 
+          {/* What's New Modal */}
+          <WhatsNewModal />
+
           {/* Global Command Menu */}
           <CommandMenu
             open={commandMenuOpen}
@@ -227,18 +178,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
             isOpen={isHoloCardModalOpen}
             onClose={closeHoloCardModal}
           />
-
-          {/* Onboarding assistance cards - shown after completing initial onboarding */}
-          {(shouldShowPersonalizationCard || shouldShowGettingStartedCard) && (
-            <div
-              className={`fixed z-40 w-70 space-y-3 overflow-hidden ${pathname === "/integrations" ? "right-4 bottom-16" : "right-4 bottom-4"} `}
-            >
-              {shouldShowPersonalizationCard && (
-                <ContextGatheringLoader onComplete={openHoloCardModal} />
-              )}
-              {/* {shouldShowGettingStartedCard && <OnboardingStepsCard />} */}
-            </div>
-          )}
         </SidebarProvider>
       </TooltipProvider>
     </ProvidersLayout>

@@ -39,20 +39,26 @@ export async function runInitFlow(
   store.setStep("Prerequisites");
   store.setStatus("Checking system requirements...");
 
-  if (!(await runBasePrerequisiteChecks(store))) return;
+  if (!(await runBasePrerequisiteChecks(store))) {
+    return;
+  }
 
   // Check Ports
   // Note: 8083 (Mongo Express) is only used in dev mode, but we check it here
   // since mode selection happens later in the flow.
   const portOverrides = await runPortChecks(store);
-  if (portOverrides === null) return;
+  if (portOverrides === null) {
+    return;
+  }
 
   // 2. Setup Mode
   const setupMode = await selectSetupMode(store);
 
   if (setupMode === "developer") {
     const developerPrereqs = await runDeveloperPrerequisiteChecks(store);
-    if (!developerPrereqs) return;
+    if (!developerPrereqs) {
+      return;
+    }
   }
 
   let repoPath = "";

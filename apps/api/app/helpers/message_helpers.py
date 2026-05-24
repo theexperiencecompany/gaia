@@ -1,54 +1,98 @@
 import asyncio
-from datetime import datetime, timezone
-from typing import List, Literal, Optional
+from datetime import UTC, datetime
+from typing import Literal
 from zoneinfo import ZoneInfo
 
-from langchain_core.messages import SystemMessage
+from bson import ObjectId
+from langchain_core.messages import HumanMessage, SystemMessage
 
+from app.agents.prompts.onboarding_prompts import (
+    ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT,
+)
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     SIGNAL_MATCHING_INSTRUCTIONS,
     WORKFLOW_EXECUTION_PROMPT,
 )
 from app.agents.templates.agent_template import (
-    COMMS_PROMPT_TEMPLATE,
     EXECUTOR_PROMPT_TEMPLATE,
+    get_comms_static_prompt,
 )
+from app.db.mongodb.collections import conversations_collection, users_collection
+from app.db.redis import get_cache, set_cache
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
-from app.db.redis import get_cache, set_cache
+from app.models.user_models import OnboardingPhase
 from app.services.gaia_knowledge_service import gaia_knowledge_service
-from app.services.tracked_todo_service import tracked_todo_service
 from app.services.memory_service import memory_service
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow import WorkflowService
-from shared.py.wide_events import log
 from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
 )
+from shared.py.wide_events import log
+
+# Sentinel marker on dynamic-context SystemMessages so
+# manage_system_prompts_node can keep only the latest one.
+DYNAMIC_CONTEXT_MARKER = "dynamic_context"
 
 
 def create_system_message(
-    user_id: Optional[str] = None,
-    user_name: Optional[str] = None,
+    user_id: str | None = None,
+    user_name: str | None = None,
     agent_type: Literal["comms", "executor"] = "comms",
+    source: str | None = None,
 ) -> SystemMessage:
-    """Create main system message with user name only.
+    """Return the STATIC main system prompt for the given agent.
 
-    Args:
-        user_id: User's ID
-        user_name: User's full name
-        agent_type: Type of agent - "comms", "executor", or "main" (legacy)
+    The content is byte-identical across every user on the same channel so
+    the provider's implicit prompt cache can match across users — the first
+    web user of the day warms the cache, every subsequent web user hits it
+    on turn 1. For comms, the per-channel variants embed the output-format
+    addendum (OpenUI on web/mobile/desktop; text-only restrictions on
+    messaging platforms). The executor prompt is single-variant.
+
+    All user, time, and memory context is delivered in the dynamic-context
+    message produced by ``build_dynamic_context_message`` and does NOT live
+    in this static prefix.
     """
-    template = {
-        "comms": COMMS_PROMPT_TEMPLATE,
-        "executor": EXECUTOR_PROMPT_TEMPLATE,
-    }.get(agent_type, COMMS_PROMPT_TEMPLATE)
+    del user_id, user_name  # intentionally unused — static prefix only
+    if agent_type == "executor":
+        return SystemMessage(content=EXECUTOR_PROMPT_TEMPLATE)
+    return SystemMessage(content=get_comms_static_prompt(source))
 
-    return SystemMessage(content=template.format(user_name=user_name or "there"))
+
+def build_current_time_message(
+    user_timezone: str | None = None,
+) -> HumanMessage:
+    """Return a tiny HumanMessage carrying the current UTC + local time.
+
+    We keep the clock OUT of ``system_instruction`` and put it in
+    ``contents`` instead. Reason: Gemini's implicit cache matches the
+    longest common prefix. Any byte in ``system_instruction`` that ticks
+    every minute would push the cache boundary back to just before that
+    byte, so a call at 00:59 and a call at 01:01 would share less prefix
+    than they need to. Since ``contents`` already differ per turn anyway
+    (the user's actual message differs), attaching the clock to contents
+    costs us nothing on the cache budget but keeps ``system_instruction``
+    fully stable.
+    """
+    utc_now = datetime.now(UTC).strftime("%A, %B %d, %Y, %H:%M UTC")
+    parts = [f"[Current UTC Time: {utc_now}]"]
+    if user_timezone:
+        try:
+            local_now = datetime.now(ZoneInfo(user_timezone)).strftime("%A, %B %d, %Y, %H:%M")
+            parts.append(f"[User Local Time ({user_timezone}): {local_now}]")
+        except Exception as e:
+            log.warning(f"Error formatting user local time: {e}")
+    return HumanMessage(
+        content="\n".join(parts),
+        additional_kwargs={"time_context": True},
+    )
 
 
 async def _get_user_memories_section(query: str, user_id: str) -> str:
@@ -63,9 +107,7 @@ async def _get_user_memories_section(query: str, user_id: str) -> str:
         Formatted memories section or empty string
     """
     try:
-        results = await memory_service.search_memories(
-            query=query, user_id=user_id, limit=5
-        )
+        results = await memory_service.search_memories(query=query, user_id=user_id, limit=5)
         if results and (memories := getattr(results, "memories", None)):
             log.info(f"Added {len(memories)} memories to context")
             return "\n\nBased on our previous conversations:\n" + "\n".join(
@@ -100,9 +142,7 @@ async def _get_gaia_knowledge_section(query: str) -> str:
     return ""
 
 
-async def _get_tracked_todos_section(
-    user_id: str, active_todo_id: Optional[str] = None
-) -> str:
+async def _get_tracked_todos_section(user_id: str, active_todo_id: str | None = None) -> str:
     """Fetch active tracked-todo summary with 60s Redis cache.
 
     When active_todo_id is set, bypasses cache so the pinned-todo marker
@@ -139,7 +179,7 @@ BACKGROUND_EXECUTION_BANNER = (
     "🤖 BACKGROUND EXECUTION (no human is reading this turn)\n"
     "   - You were woken by a scheduled trigger. There is no user to ask.\n"
     "   - Do NOT ask clarifying questions, present plans for approval, or seek confirmation.\n"
-    "   - Do NOT produce conversational acknowledgements (\"Sure, I'll…\", \"Let me know if…\").\n"
+    '   - Do NOT produce conversational acknowledgements ("Sure, I\'ll…", "Let me know if…").\n'
     "   - Just execute. If you need a decision you cannot make, write the question into "
     "the active todo's canvas (Context section) and stop.\n"
     "   - Your output is consumed by the system, not a human. Be terse and action-only."
@@ -163,9 +203,7 @@ def _format_active_todo_banner(todo: dict) -> str:
     )
 
 
-async def _build_active_todo_banner(
-    user_id: str, active_todo_id: Optional[str]
-) -> str:
+async def _build_active_todo_banner(user_id: str, active_todo_id: str | None) -> str:
     if not active_todo_id:
         return ""
     try:
@@ -173,9 +211,7 @@ async def _build_active_todo_banner(
 
         from app.db.mongodb.collections import todos_collection
 
-        doc = await todos_collection.find_one(
-            {"_id": ObjectId(active_todo_id), "user_id": user_id}
-        )
+        doc = await todos_collection.find_one({"_id": ObjectId(active_todo_id), "user_id": user_id})
         if not doc:
             return ""
         return _format_active_todo_banner(doc)
@@ -184,109 +220,166 @@ async def _build_active_todo_banner(
         return ""
 
 
-async def get_memory_message(
-    user_id: str,
-    query: str,
-    user_name: Optional[str] = None,
-    user_timezone: Optional[str] = None,
-    user_preferences: Optional[dict] = None,
-    active_todo_id: Optional[str] = None,
+def _mark_dynamic_context(msg: SystemMessage) -> SystemMessage:
+    """Mark a SystemMessage as dynamic context.
+
+    Uses additional_kwargs so LangGraph / pydantic serialization preserves it
+    across checkpointer round-trips. `manage_system_prompts_node` keeps only
+    the latest message carrying this marker.
+    """
+    msg.additional_kwargs[DYNAMIC_CONTEXT_MARKER] = True
+    # Back-compat: existing filter logic looks at `memory_message` too.
+    msg.additional_kwargs.setdefault("memory_message", True)
+    return msg
+
+
+async def build_dynamic_context_message(
+    user_id: str | None,
+    query: str | None,
+    user_name: str | None = None,
+    user_timezone: str | None = None,
+    user_preferences: dict | None = None,
+    writing_style: dict | None = None,
+    source: str | None = None,
+    include_openui: bool = False,
+    memories_text: str | None = None,
+    skills_text: str | None = None,
+    active_todo_id: str | None = None,
     execution_mode: Literal["interactive", "background"] = "interactive",
 ) -> SystemMessage:
-    """Create memory system message with user context (preferences, timezone, times) and optional memories.
+    """Build the single dynamic-context system message.
 
-    This message ALWAYS returns (even if no memories exist) to provide:
-    - User preferences (profession, response style, custom instructions)
-    - User's name
-    - Current UTC time
-    - User's local timezone and time
-    - Conversation memories (if available)
+    This message is placed AFTER the static main prompt. It carries the
+    per-user, per-turn content: user name, timezone, preferences, memories,
+    GAIA knowledge, installable skills, the tracked-todos summary, and — on
+    bound / headless runs — the run-binding banners. OpenUI / platform
+    restrictions and the clock are NOT here any more:
+
+    - Output-format addendums (OpenUI or text-only) are part of the static
+      per-channel prompt so they cache across every user on that channel.
+    - Current time lives in a HumanMessage so minute ticks never invalidate
+      the ``system_instruction`` prefix.
+
+    Within this message, content is ordered so the byte-identical-across-
+    turns sections come first (user name → timezone → preferences), then
+    the per-turn fetches (memories, GAIA knowledge, skills). The provider
+    caches bytes 0..N where byte N is the first to differ between turns —
+    so stable content up front maximises the cache hit length.
 
     Args:
-        user_id: User's ID for memory search
-        query: Search query for retrieving relevant memories
-        user_name: User's full name (already available from user dict)
-        user_timezone: User's timezone (already available from user dict)
-        user_preferences: User's onboarding preferences (already available from user dict)
+        user_id: For memory/knowledge retrieval. If None, skips ChromaDB calls.
+        query: Search query for memory/knowledge retrieval.
+        user_name: User's display name.
+        user_timezone: IANA timezone string (used to format the address in the
+            static body; the actual clock is emitted in a HumanMessage).
+        user_preferences: Onboarding preferences.
+        source: Conversation source (web, whatsapp, telegram, ...). Preserved
+            on the wide event for observability; doesn't change what's here.
+        include_openui: Preserved for signature compatibility. OpenUI now
+            lives in the static per-channel prompt, not this message.
+        memories_text: Pre-fetched memories section. If provided, skips the
+            ChromaDB lookup.
+        skills_text: Pre-fetched skills section. Same rationale as memories.
+        active_todo_id: When this run is bound to a tracked todo, appends the
+            active-todo banner (canvas write-target directive) LAST, so the
+            cached stable prefix is untouched and the directive gets recency.
+        execution_mode: When "background" (headless scheduled run), appends the
+            background-execution banner so the agent stays terse and action-only.
 
     Returns:
-        SystemMessage with user context and memories
+        A SystemMessage marked with ``dynamic_context=True`` in
+        ``additional_kwargs``.
     """
-
+    del include_openui  # accepted for back-compat; OpenUI is in static prompt now
     try:
-        context_parts = []
+        user_stable_parts: list[str] = []
+        variable_parts: list[str] = []
 
-        # Background-execution banner first — must be the most prominent
-        # directive so the agent doesn't ask questions or present plans
-        # when no human is watching.
-        if execution_mode == "background":
-            context_parts.append(BACKGROUND_EXECUTION_BANNER)
-
-        # Active-todo banner — pins the canvas as the default write target
-        # for this run. Resolved from MongoDB so we have title + vfs_path.
-        active_todo_banner = await _build_active_todo_banner(user_id, active_todo_id)
-        if active_todo_banner:
-            context_parts.append(active_todo_banner)
-
-        # Add user name context
+        # --- Stable across turns for this user -----------------------------
         if user_name:
-            context_parts.append(f"User Name: {user_name}")
-
-        # Add user preferences if available
-        if user_preferences:
-            if formatted_prefs := format_user_preferences_for_agent(user_preferences):
-                context_parts.append(f"\nUser Preferences:\n{formatted_prefs}")
-
-        # Add time information
-        utc_time = datetime.now(timezone.utc)
-        formatted_utc_time = utc_time.strftime("%A, %B %d, %Y, %H:%M:%S UTC")
-        context_parts.append(f"\nCurrent UTC Time: {formatted_utc_time}")
-
-        # Add user's local timezone and time if available
+            user_stable_parts.append(f"User Name: {user_name}")
         if user_timezone:
-            try:
-                user_tz = ZoneInfo(user_timezone)
-                local_time = datetime.now(user_tz)
-                formatted_local_time = local_time.strftime("%A, %B %d, %Y, %H:%M:%S")
-                context_parts.append(f"User Timezone: {user_timezone}")
-                context_parts.append(f"User Local Time: {formatted_local_time}")
-            except Exception as e:
-                log.warning(f"Error formatting user local time: {e}")
+            user_stable_parts.append(f"User Timezone: {user_timezone}")
+        if user_preferences or writing_style:
+            if formatted := format_user_preferences_for_agent(
+                user_preferences or {}, writing_style=writing_style
+            ):
+                user_stable_parts.append(f"User Preferences:\n{formatted}")
 
-        # Search for conversation memories, GAIA knowledge, and active tasks in parallel
-        (
-            memories_section,
-            gaia_knowledge_section,
-            tracked_todos_section,
-        ) = await asyncio.gather(
-            _get_user_memories_section(query, user_id),
-            _get_gaia_knowledge_section(query),
-            _get_tracked_todos_section(user_id, active_todo_id),
+        # --- Fetches (may change turn-to-turn) -----------------------------
+        if memories_text is not None:
+            memories_section = memories_text
+            gaia_knowledge_section = ""
+            if user_id and query:
+                gaia_knowledge_section = await _get_gaia_knowledge_section(query)
+        elif user_id and query:
+            memories_section, gaia_knowledge_section = await asyncio.gather(
+                _get_user_memories_section(query, user_id),
+                _get_gaia_knowledge_section(query),
+            )
+        else:
+            memories_section = ""
+            gaia_knowledge_section = ""
+
+        if memories_section:
+            variable_parts.append(memories_section.lstrip("\n"))
+        if gaia_knowledge_section:
+            variable_parts.append(gaia_knowledge_section.lstrip("\n"))
+        if skills_text:
+            variable_parts.append(skills_text)
+
+        # Tracked-todos summary + run-binding banners — appended LAST so the
+        # cached stable prefix above is never disturbed, and so these directives
+        # land with recency right before the user's turn. The active-todo banner
+        # and background banner only appear on bound / headless runs.
+        active_todo_banner = ""
+        if user_id:
+            tracked_todos_section, active_todo_banner = await asyncio.gather(
+                _get_tracked_todos_section(user_id, active_todo_id),
+                _build_active_todo_banner(user_id, active_todo_id),
+            )
+            if tracked_todos_section:
+                variable_parts.append(tracked_todos_section.lstrip("\n"))
+        if execution_mode == "background":
+            variable_parts.append(BACKGROUND_EXECUTION_BANNER)
+        if active_todo_banner:
+            variable_parts.append(active_todo_banner)
+
+        content_sections = [
+            "\n".join(user_stable_parts),
+            "\n\n".join(variable_parts),
+        ]
+        content = "\n\n".join(s for s in content_sections if s)
+
+        log.set(
+            dynamic_context={
+                "source": source or "web",
+                "has_memories": bool(memories_section),
+                "has_gaia_knowledge": bool(gaia_knowledge_section),
+                "has_skills": bool(skills_text),
+                "used_pinned_memories": memories_text is not None,
+                "has_active_todo": bool(active_todo_id),
+                "execution_mode": execution_mode,
+                "char_count": len(content),
+                "user_stable_chars": sum(len(p) for p in user_stable_parts),
+                "variable_chars": sum(len(p) for p in variable_parts),
+            }
         )
 
-        # Combine all sections
-        tasks_block = f"\n\n{tracked_todos_section}" if tracked_todos_section else ""
-        content = (
-            "\n".join(context_parts)
-            + memories_section
-            + gaia_knowledge_section
-            + tasks_block
-        )
-        return SystemMessage(content=content, memory_message=True)
+        return _mark_dynamic_context(SystemMessage(content=content))
 
     except Exception as e:
-        log.error(f"Error creating memory message: {e}")
-        # Return minimal context on error
-        utc_time_str = datetime.now(timezone.utc).strftime(
-            "%A, %B %d, %Y, %H:%M:%S UTC"
-        )
-        return SystemMessage(
-            content=f"Current UTC Time: {utc_time_str}", memory_message=True
-        )
+        log.error(f"Error creating dynamic context message: {e}")
+        # Return a byte-stable empty message so a persistent failure here
+        # doesn't change the prompt prefix every minute and silently
+        # invalidate the implicit prompt cache. The clock lives in a
+        # HumanMessage built by build_current_time_message, so omitting
+        # time here is safe.
+        return _mark_dynamic_context(SystemMessage(content=""))
 
 
 def format_tool_selection_message(
-    selected_tool: str, existing_content: str, tool_category: Optional[str] = None
+    selected_tool: str, existing_content: str, tool_category: str | None = None
 ) -> str:
     """Format tool selection message, handling both standalone and combined requests.
 
@@ -322,8 +415,8 @@ Execute immediately without asking for clarification."""
 
 async def format_workflow_execution_message(
     selected_workflow: SelectedWorkflowData,
-    user_id: Optional[str] = None,
-    trigger_context: Optional[dict] = None,
+    user_id: str | None = None,
+    trigger_context: dict | None = None,
     existing_content: str = "",
 ) -> str:
     """Format workflow execution message, handling both manual and automated triggers."""
@@ -378,8 +471,7 @@ async def format_workflow_execution_message(
         return EMAIL_TRIGGERED_WORKFLOW_PROMPT.format(
             email_sender=email_data.get("sender", "Unknown"),
             email_subject=email_data.get("subject", "No Subject"),
-            email_content_preview=msg_text[:200]
-            + ("..." if len(msg_text) > 200 else ""),
+            email_content_preview=msg_text[:200] + ("..." if len(msg_text) > 200 else ""),
             trigger_timestamp=trigger_context.get("triggered_at", "Unknown"),
             **common_args,
         )
@@ -414,9 +506,7 @@ Time: {time}"""
     return f"{context}\n\n{existing_content}" if existing_content else context
 
 
-def format_reply_context(
-    reply_to_message: ReplyToMessageData, existing_content: str = ""
-) -> str:
+def format_reply_context(reply_to_message: ReplyToMessageData, existing_content: str = "") -> str:
     """Format reply-to-message context for AI conversation.
 
     This adds context about which message the user is replying to,
@@ -429,25 +519,83 @@ def format_reply_context(
     return f"{context}\n\n{existing_content}" if existing_content else context
 
 
-def format_files_list(
-    files_data: Optional[List[FileData]], file_ids: Optional[List[str]] = None
-) -> str:
+# Must match the prefix the frontend's RevealTodos run-now demo sends.
+_RUN_NOW_DEMO_PREFIX = "Execute this todo for me:"
+
+
+async def get_onboarding_system_prompt_if_applicable(
+    user_id: str,
+    conversation_id: str,
+    latest_user_message: str | None = None,
+) -> str | None:
+    try:
+        conv = await conversations_collection.find_one(
+            {"conversation_id": conversation_id},
+            {"is_onboarding_conversation": 1, "messages": 1},
+        )
+        is_tagged_onboarding = bool(conv and conv.get("is_onboarding_conversation"))
+        is_run_now_demo = bool(
+            latest_user_message and latest_user_message.lstrip().startswith(_RUN_NOW_DEMO_PREFIX)
+        )
+
+        if not is_tagged_onboarding and not is_run_now_demo:
+            return None
+
+        if is_tagged_onboarding:
+            message_count = len(conv.get("messages", [])) if conv else 0
+            if message_count >= 7:
+                await users_collection.update_one(
+                    {"_id": ObjectId(user_id)},
+                    {"$set": {"onboarding.phase": OnboardingPhase.COMPLETED}},
+                )
+                log.info(
+                    f"[onboarding_prompt] Auto-completed onboarding for {user_id} after {message_count} messages"
+                )
+                return None
+
+        user_doc = await users_collection.find_one(
+            {"_id": ObjectId(user_id)},
+            {"onboarding.phase": 1, "name": 1, "onboarding.preferences": 1},
+        )
+        if not user_doc:
+            return None
+
+        phase = user_doc.get("onboarding", {}).get("phase", "initial")
+        if phase == OnboardingPhase.COMPLETED:
+            return None
+
+        name = user_doc.get("name", "there")
+        onboarding = user_doc.get("onboarding", {})
+        profession = onboarding.get("preferences", {}).get("profession", "")
+        triage_summary = onboarding.get("triage_summary", "")
+
+        onboarding_context = (
+            f"Profession: {profession}" if profession else "Profession: not specified"
+        )
+        if triage_summary:
+            onboarding_context += f"\nInbox summary: {triage_summary}"
+
+        return ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
+            name=name,
+            onboarding_context=onboarding_context,
+        )
+
+    except Exception as e:
+        log.warning(f"[onboarding_prompt] Failed to check onboarding conversation: {e}")
+        return None
+
+
+def format_files_list(files_data: list[FileData] | None, file_ids: list[str] | None = None) -> str:
     """Format file information for agent context with usage instructions."""
     if not files_data or (file_ids is not None and not file_ids):
         return "No files uploaded."
 
     # Filter to specific files if IDs provided, otherwise use all
-    files = (
-        files_data
-        if file_ids is None
-        else [f for f in files_data if f.fileId in file_ids]
-    )
+    files = files_data if file_ids is None else [f for f in files_data if f.fileId in file_ids]
     if not files:
         return "No files uploaded."
 
-    file_list = "\n".join(
-        f"- Name: {file.filename} Id: {file.fileId}" for file in files
-    )
+    file_list = "\n".join(f"- Name: {file.filename} Id: {file.fileId}" for file in files)
 
     return f"""
 Uploaded Files:

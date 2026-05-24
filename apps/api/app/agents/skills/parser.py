@@ -6,14 +6,14 @@ Agent Skills spec (agentskills.io/specification).
 """
 
 import re
-from typing import List, Tuple
 
 import yaml  # type: ignore[import-untyped]
+
 from app.agents.skills.models import SkillMetadata
 from app.utils.markdown_utils import split_yaml_frontmatter
 
 
-def parse_skill_md(content: str) -> Tuple[SkillMetadata, str]:
+def parse_skill_md(content: str) -> tuple[SkillMetadata, str]:
     """Parse a SKILL.md file into metadata and body content.
 
     Args:
@@ -30,9 +30,7 @@ def parse_skill_md(content: str) -> Tuple[SkillMetadata, str]:
 
     split = split_yaml_frontmatter(content)
     if not split:
-        raise ValueError(
-            "SKILL.md must start with YAML frontmatter delimited by --- lines"
-        )
+        raise ValueError("SKILL.md must start with YAML frontmatter delimited by --- lines")
 
     frontmatter_raw, body_raw = split
     body = body_raw.strip()
@@ -59,9 +57,7 @@ def parse_skill_md(content: str) -> Tuple[SkillMetadata, str]:
 
     # Ensure metadata field is dict[str, str]
     if "metadata" in frontmatter and isinstance(frontmatter["metadata"], dict):
-        frontmatter["metadata"] = {
-            str(k): str(v) for k, v in frontmatter["metadata"].items()
-        }
+        frontmatter["metadata"] = {str(k): str(v) for k, v in frontmatter["metadata"].items()}
 
     metadata = SkillMetadata(**frontmatter)
 
@@ -91,7 +87,7 @@ def strip_frontmatter(content: str) -> str:
     return body_raw.strip()
 
 
-def validate_skill_content(content: str) -> List[str]:
+def validate_skill_content(content: str) -> list[str]:
     """Validate a SKILL.md file and return a list of errors.
 
     Args:
@@ -100,7 +96,7 @@ def validate_skill_content(content: str) -> List[str]:
     Returns:
         List of validation error messages (empty if valid)
     """
-    errors: List[str] = []
+    errors: list[str] = []
 
     if not content or not content.strip():
         errors.append("SKILL.md content is empty")

@@ -1,6 +1,5 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import List
 
 from pydantic import BaseModel, Field
 
@@ -25,7 +24,7 @@ class FeatureUsage(BaseModel):
     used: int = 0
     limit: int = 0
     reset_time: datetime
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class CreditUsage(BaseModel):
@@ -34,13 +33,13 @@ class CreditUsage(BaseModel):
     credits_used: float = 0.0  # Total credits used (in USD)
     period: UsagePeriod = UsagePeriod.MONTH
     reset_time: datetime
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class UserUsageSnapshot(BaseModel):
     user_id: str
     plan_type: str
-    features: List[FeatureUsage] = []
-    credits: List[CreditUsage] = []  # Field for tracking credits
-    snapshot_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    features: list[FeatureUsage] = []
+    credits: list[CreditUsage] = []  # Field for tracking credits
+    snapshot_date: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.skill_tools."""
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,11 +13,11 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.skill_tools"
 
 
-def _cfg(user_id: str = FAKE_USER_ID) -> Dict[str, Any]:
+def _cfg(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
     return {"metadata": {"user_id": user_id}}
 
 
-def _cfg_no_user() -> Dict[str, Any]:
+def _cfg_no_user() -> dict[str, Any]:
     return {"metadata": {}}
 
 
@@ -102,9 +102,7 @@ class TestInstallSkillFromGithub:
 
     @patch(f"{MODULE}.install_from_github", new_callable=AsyncMock)
     async def test_multiple_files(self, mock_install: AsyncMock) -> None:
-        mock_install.return_value = _installed_skill(
-            files=["SKILL.md", "script.py", "data.json"]
-        )
+        mock_install.return_value = _installed_skill(files=["SKILL.md", "script.py", "data.json"])
 
         from app.agents.tools.skill_tools import install_skill_from_github
 
@@ -277,9 +275,7 @@ class TestListInstalledSkills:
         result = await list_installed_skills.coroutine(config=_cfg())  # type: ignore[attr-defined]
         assert "disabled" in result
 
-    @patch(
-        f"{MODULE}.list_skills", new_callable=AsyncMock, side_effect=RuntimeError("err")
-    )
+    @patch(f"{MODULE}.list_skills", new_callable=AsyncMock, side_effect=RuntimeError("err"))
     async def test_error(self, mock_list: AsyncMock) -> None:
         from app.agents.tools.skill_tools import list_installed_skills
 
@@ -327,9 +323,7 @@ class TestManageSkill:
 
     @patch(f"{MODULE}.uninstall_skill_full", new_callable=AsyncMock, return_value=True)
     @patch(f"{MODULE}.get_skill_by_name", new_callable=AsyncMock)
-    async def test_uninstall(
-        self, mock_get: AsyncMock, mock_uninstall: AsyncMock
-    ) -> None:
+    async def test_uninstall(self, mock_get: AsyncMock, mock_uninstall: AsyncMock) -> None:
         mock_get.return_value = _skill_record()
 
         from app.agents.tools.skill_tools import manage_skill
@@ -341,9 +335,7 @@ class TestManageSkill:
 
     @patch(f"{MODULE}.uninstall_skill_full", new_callable=AsyncMock, return_value=False)
     @patch(f"{MODULE}.get_skill_by_name", new_callable=AsyncMock)
-    async def test_uninstall_failed(
-        self, mock_get: AsyncMock, mock_uninstall: AsyncMock
-    ) -> None:
+    async def test_uninstall_failed(self, mock_get: AsyncMock, mock_uninstall: AsyncMock) -> None:
         mock_get.return_value = _skill_record()
 
         from app.agents.tools.skill_tools import manage_skill
@@ -396,9 +388,7 @@ class TestManageSkill:
 
     @patch(f"{MODULE}.enable_skill", new_callable=AsyncMock, return_value=False)
     @patch(f"{MODULE}.get_skill_by_name", new_callable=AsyncMock)
-    async def test_already_enabled(
-        self, mock_get: AsyncMock, mock_enable: AsyncMock
-    ) -> None:
+    async def test_already_enabled(self, mock_get: AsyncMock, mock_enable: AsyncMock) -> None:
         mock_get.return_value = _skill_record()
 
         from app.agents.tools.skill_tools import manage_skill

@@ -1,10 +1,9 @@
 """Unit tests for app.agents.memory.email_processor."""
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Any, Dict, List
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-
 
 from app.agents.memory.email_processor import (
     _discover_and_store_linked_profiles,
@@ -26,12 +25,8 @@ _PATCH_SEARCH = "app.agents.memory.email_processor.search_messages"
 _PATCH_EMIT = "app.agents.memory.email_processor.emit_progress"
 _PATCH_PROCESS = "app.agents.memory.email_processor.process_email_content"
 _PATCH_STORE_EMAILS = "app.agents.memory.email_processor.store_emails_to_mem0"
-_PATCH_MARK_COMPLETE = (
-    "app.agents.memory.email_processor.mark_email_processing_complete"
-)
-_PATCH_POST_ONBOARD = (
-    "app.agents.memory.email_processor.process_post_onboarding_personalization"
-)
+_PATCH_MARK_COMPLETE = "app.agents.memory.email_processor.mark_email_processing_complete"
+_PATCH_POST_ONBOARD = "app.agents.memory.email_processor.process_post_onboarding_personalization"
 _PATCH_EXTRACT_PROFILES = (
     "app.agents.memory.email_processor._extract_profiles_from_parallel_searches"
 )
@@ -40,11 +35,10 @@ _PATCH_EXTRACT_USER = "app.agents.memory.email_processor.extract_username_with_l
 _PATCH_VALIDATE = "app.agents.memory.email_processor.validate_username"
 _PATCH_BUILD_URL = "app.agents.memory.email_processor.build_profile_url"
 _PATCH_CRAWL = "app.agents.memory.email_processor.crawl_profile_url"
+_PATCH_CRAWL_BATCH = "app.agents.memory.email_processor.crawl_profile_urls_batch"
 _PATCH_STORE_PROFILE = "app.agents.memory.email_processor.store_single_profile"
 _PATCH_MEMORY_SERVICE = "app.agents.memory.email_processor.memory_service"
-_PATCH_SEARCH_PARALLEL = (
-    "app.agents.memory.email_processor._search_platform_emails_parallel"
-)
+_PATCH_SEARCH_PARALLEL = "app.agents.memory.email_processor._search_platform_emails_parallel"
 
 
 # ---------------------------------------------------------------------------
@@ -71,9 +65,7 @@ class TestSearchPlatformEmails:
         assert result == []
 
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
-    async def test_returns_empty_on_missing_messages_key(
-        self, mock_search: AsyncMock
-    ) -> None:
+    async def test_returns_empty_on_missing_messages_key(self, mock_search: AsyncMock) -> None:
         mock_search.return_value = {}
         result = await _search_platform_emails(USER_ID, "twitter", "from:twitter.com")
         assert result == []
@@ -107,9 +99,7 @@ class TestSearchPlatformEmailsParallel:
         },
     )
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
-    async def test_parallel_search_aggregates_results(
-        self, mock_search: AsyncMock
-    ) -> None:
+    async def test_parallel_search_aggregates_results(self, mock_search: AsyncMock) -> None:
         mock_search.side_effect = [
             {"messages": [{"id": "g1"}]},
             {"messages": [{"id": "t1"}, {"id": "t2"}]},
@@ -125,9 +115,7 @@ class TestSearchPlatformEmailsParallel:
         {"github": {"sender_domains": ["github.com"]}},
     )
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
-    async def test_parallel_search_handles_exception(
-        self, mock_search: AsyncMock
-    ) -> None:
+    async def test_parallel_search_handles_exception(self, mock_search: AsyncMock) -> None:
         mock_search.side_effect = RuntimeError("fail")
         result = await _search_platform_emails_parallel(USER_ID)
         # Exception results in empty list for that platform
@@ -161,12 +149,9 @@ class TestProcessSinglePlatform:
         mock_store: AsyncMock,
     ) -> None:
         mock_crawl.return_value = {"content": "Profile content", "error": None}
-        emails: List[Dict[str, Any]] = [{"id": "1"}]
-        semaphore = asyncio.Semaphore(5)
+        emails: list[dict[str, Any]] = [{"id": "1"}]
 
-        result = await _process_single_platform(
-            USER_ID, "github", emails, semaphore, "Test User"
-        )
+        result = await _process_single_platform(USER_ID, "github", emails, "Test User")
 
         assert result["success"] is True
         assert result["platform"] == "github"
@@ -191,10 +176,7 @@ class TestProcessSinglePlatform:
     async def test_invalid_username(
         self, mock_extract: AsyncMock, mock_validate: MagicMock
     ) -> None:
-        semaphore = asyncio.Semaphore(5)
-        result = await _process_single_platform(
-            USER_ID, "github", [{"id": "1"}], semaphore
-        )
+        result = await _process_single_platform(USER_ID, "github", [{"id": "1"}])
         assert "error" in result
         assert "Invalid username" in result["error"]
 
@@ -207,10 +189,7 @@ class TestProcessSinglePlatform:
         mock_validate: MagicMock,
         mock_build: MagicMock,
     ) -> None:
-        semaphore = asyncio.Semaphore(5)
-        result = await _process_single_platform(
-            USER_ID, "github", [{"id": "1"}], semaphore
-        )
+        result = await _process_single_platform(USER_ID, "github", [{"id": "1"}])
         assert "error" in result
         assert "Could not build URL" in result["error"]
 
@@ -223,10 +202,9 @@ class TestProcessSinglePlatform:
         mock_validate: MagicMock,
         mock_build: MagicMock,
     ) -> None:
-        semaphore = asyncio.Semaphore(5)
         crawled_urls: set[str] = {"https://github.com/testuser"}
         result = await _process_single_platform(
-            USER_ID, "github", [{"id": "1"}], semaphore, crawled_urls=crawled_urls
+            USER_ID, "github", [{"id": "1"}], crawled_urls=crawled_urls
         )
         assert result["error"] == "duplicate"
 
@@ -242,10 +220,7 @@ class TestProcessSinglePlatform:
         mock_crawl: AsyncMock,
     ) -> None:
         mock_crawl.return_value = {"content": None, "error": "timeout"}
-        semaphore = asyncio.Semaphore(5)
-        result = await _process_single_platform(
-            USER_ID, "github", [{"id": "1"}], semaphore
-        )
+        result = await _process_single_platform(USER_ID, "github", [{"id": "1"}])
         assert "error" in result
         assert result["error"] == "timeout"
 
@@ -255,10 +230,7 @@ class TestProcessSinglePlatform:
         side_effect=RuntimeError("LLM down"),
     )
     async def test_exception_returns_error(self, mock_extract: AsyncMock) -> None:
-        semaphore = asyncio.Semaphore(5)
-        result = await _process_single_platform(
-            USER_ID, "github", [{"id": "1"}], semaphore
-        )
+        result = await _process_single_platform(USER_ID, "github", [{"id": "1"}])
         assert "error" in result
         assert "LLM down" in result["error"]
 
@@ -273,12 +245,11 @@ class TestProcessSinglePlatform:
     ) -> None:
         """URL should be added to crawled_urls before crawling."""
         crawled_urls: set[str] = set()
-        semaphore = asyncio.Semaphore(5)
 
         with patch(_PATCH_CRAWL, new_callable=AsyncMock) as mock_crawl:
             mock_crawl.return_value = {"content": None, "error": "fail"}
             await _process_single_platform(
-                USER_ID, "github", [{"id": "1"}], semaphore, crawled_urls=crawled_urls
+                USER_ID, "github", [{"id": "1"}], crawled_urls=crawled_urls
             )
 
         assert "https://github.com/testuser" in crawled_urls
@@ -293,9 +264,7 @@ class TestProcessGmailToMemory:
     """Tests for the main orchestrator function."""
 
     @patch(_PATCH_USERS)
-    async def test_already_processed_user_returns_early(
-        self, mock_users: MagicMock
-    ) -> None:
+    async def test_already_processed_user_returns_early(self, mock_users: MagicMock) -> None:
         mock_users.find_one = AsyncMock(
             return_value={
                 "_id": USER_ID,
@@ -429,7 +398,7 @@ class TestProcessGmailToMemory:
         mock_search: AsyncMock,
         mock_users: MagicMock,
     ) -> None:
-        ts = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        ts = datetime(2025, 1, 1, tzinfo=UTC)
         mock_users.find_one = AsyncMock(
             return_value={
                 "_id": USER_ID,
@@ -592,27 +561,31 @@ class TestDiscoverAndStoreLinkedProfiles:
         },
     )
     @patch(_PATCH_MEMORY_SERVICE)
-    @patch(_PATCH_CRAWL, new_callable=AsyncMock)
+    @patch(_PATCH_CRAWL_BATCH, new_callable=AsyncMock)
     @patch(_PATCH_BUILD_URL)
     @patch(_PATCH_VALIDATE)
     async def test_discovers_linked_profile(
         self,
         mock_validate: MagicMock,
         mock_build: MagicMock,
-        mock_crawl: AsyncMock,
+        mock_crawl_batch: AsyncMock,
         mock_memory: MagicMock,
     ) -> None:
         mock_validate.return_value = True
         mock_build.return_value = "https://github.com/johndoe"
-        mock_crawl.return_value = {"content": "profile data", "error": None}
+        mock_crawl_batch.return_value = [
+            {
+                "url": "https://github.com/johndoe",
+                "platform": "github",
+                "content": "profile data",
+                "error": None,
+            }
+        ]
         mock_memory.store_memory_batch = AsyncMock(return_value=True)
 
         content = "Check out my github: https://github.com/johndoe"
-        semaphore = asyncio.Semaphore(5)
 
-        count = await _discover_and_store_linked_profiles(
-            USER_ID, content, "twitter", semaphore
-        )
+        count = await _discover_and_store_linked_profiles(USER_ID, content, "twitter")
         assert count >= 1
 
     @patch(
@@ -627,10 +600,7 @@ class TestDiscoverAndStoreLinkedProfiles:
     )
     async def test_no_links_found(self) -> None:
         content = "No social links here."
-        semaphore = asyncio.Semaphore(5)
-        count = await _discover_and_store_linked_profiles(
-            USER_ID, content, "twitter", semaphore
-        )
+        count = await _discover_and_store_linked_profiles(USER_ID, content, "twitter")
         assert count == 0
 
     @patch(
@@ -656,11 +626,10 @@ class TestDiscoverAndStoreLinkedProfiles:
         mock_build: MagicMock,
     ) -> None:
         content = "https://github.com/johndoe"
-        semaphore = asyncio.Semaphore(5)
         crawled_urls: set[str] = {"https://github.com/johndoe"}
 
         count = await _discover_and_store_linked_profiles(
-            USER_ID, content, "twitter", semaphore, crawled_urls=crawled_urls
+            USER_ID, content, "twitter", crawled_urls=crawled_urls
         )
         assert count == 0
 
@@ -677,10 +646,7 @@ class TestDiscoverAndStoreLinkedProfiles:
     async def test_skips_same_platform(self) -> None:
         """Profiles from the same platform as source should be skipped."""
         content = "https://x.com/otheruser"
-        semaphore = asyncio.Semaphore(5)
-        count = await _discover_and_store_linked_profiles(
-            USER_ID, content, "twitter", semaphore
-        )
+        count = await _discover_and_store_linked_profiles(USER_ID, content, "twitter")
         assert count == 0
 
     @patch(
@@ -699,24 +665,28 @@ class TestDiscoverAndStoreLinkedProfiles:
         },
     )
     @patch(_PATCH_MEMORY_SERVICE)
-    @patch(_PATCH_CRAWL, new_callable=AsyncMock)
+    @patch(_PATCH_CRAWL_BATCH, new_callable=AsyncMock)
     @patch(_PATCH_BUILD_URL, return_value="https://github.com/johndoe")
     @patch(_PATCH_VALIDATE, return_value=True)
     async def test_crawl_failure_yields_zero(
         self,
         mock_validate: MagicMock,
         mock_build: MagicMock,
-        mock_crawl: AsyncMock,
+        mock_crawl_batch: AsyncMock,
         mock_memory: MagicMock,
     ) -> None:
-        mock_crawl.return_value = {"content": None, "error": "timeout"}
+        mock_crawl_batch.return_value = [
+            {
+                "url": "https://github.com/johndoe",
+                "platform": "github",
+                "content": None,
+                "error": "timeout",
+            }
+        ]
         mock_memory.store_memory_batch = AsyncMock(return_value=True)
 
         content = "https://github.com/johndoe"
-        semaphore = asyncio.Semaphore(5)
-        count = await _discover_and_store_linked_profiles(
-            USER_ID, content, "twitter", semaphore
-        )
+        count = await _discover_and_store_linked_profiles(USER_ID, content, "twitter")
         assert count == 0
 
     @patch(
@@ -735,22 +705,26 @@ class TestDiscoverAndStoreLinkedProfiles:
         },
     )
     @patch(_PATCH_MEMORY_SERVICE)
-    @patch(_PATCH_CRAWL, new_callable=AsyncMock)
+    @patch(_PATCH_CRAWL_BATCH, new_callable=AsyncMock)
     @patch(_PATCH_BUILD_URL, return_value="https://github.com/johndoe")
     @patch(_PATCH_VALIDATE, return_value=True)
     async def test_store_batch_failure_returns_zero(
         self,
         mock_validate: MagicMock,
         mock_build: MagicMock,
-        mock_crawl: AsyncMock,
+        mock_crawl_batch: AsyncMock,
         mock_memory: MagicMock,
     ) -> None:
-        mock_crawl.return_value = {"content": "data", "error": None}
+        mock_crawl_batch.return_value = [
+            {
+                "url": "https://github.com/johndoe",
+                "platform": "github",
+                "content": "data",
+                "error": None,
+            }
+        ]
         mock_memory.store_memory_batch = AsyncMock(return_value=False)
 
         content = "https://github.com/johndoe"
-        semaphore = asyncio.Semaphore(5)
-        count = await _discover_and_store_linked_profiles(
-            USER_ID, content, "twitter", semaphore
-        )
+        count = await _discover_and_store_linked_profiles(USER_ID, content, "twitter")
         assert count == 0

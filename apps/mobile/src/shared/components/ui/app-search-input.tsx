@@ -5,10 +5,10 @@ import { AppIcon, Cancel01Icon, Search01Icon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 type TextFieldRootProps = React.ComponentProps<typeof TextField>;
-type TextFieldInputProps = React.ComponentProps<typeof TextField.Input>;
+type InputProps = React.ComponentProps<typeof TextField.Input>;
 
 export interface AppSearchInputProps
-  extends Omit<TextFieldInputProps, "children" | "className"> {
+  extends Omit<InputProps, "children" | "className"> {
   className?: string;
   inputClassName?: string;
   label?: ReactNode;
@@ -55,18 +55,13 @@ export function AppSearchInput({
       onClear();
       return;
     }
-
     onChangeText?.("");
   };
 
   const resolvedEndContent =
     endContent ??
     (showClearButton && hasValue && !isDisabled ? (
-      <PressableFeedback
-        onPress={handleClear}
-        feedbackPosition="behind"
-        className="rounded-full"
-      >
+      <PressableFeedback onPress={handleClear} className="rounded-full">
         <View className="h-6 w-6 items-center justify-center rounded-full">
           <AppIcon icon={Cancel01Icon} size={16} color="#6b6b6e" />
         </View>
@@ -79,32 +74,35 @@ export function AppSearchInput({
       isDisabled={isDisabled}
       isInvalid={isInvalid}
     >
-      {label ? <TextField.Label>{label}</TextField.Label> : null}
+      {label ? <View>{typeof label === "string" ? null : label}</View> : null}
 
-      <TextField.Input
-        {...inputProps}
-        value={value}
-        placeholder={placeholder}
-        onChangeText={onChangeText}
-        className={cn("min-h-12 rounded-2xl", inputClassName)}
-      >
+      <View className="flex-row items-center">
         {resolvedStartContent ? (
-          <TextField.InputStartContent>
-            {resolvedStartContent}
-          </TextField.InputStartContent>
+          <View className="absolute left-3 z-10">{resolvedStartContent}</View>
         ) : null}
-
+        <TextField.Input
+          {...inputProps}
+          value={value}
+          placeholder={placeholder}
+          onChangeText={onChangeText}
+          placeholderTextColor="#71717a"
+          style={{ backgroundColor: "rgba(39,39,42,0.30)" }}
+          className={cn(
+            "min-h-12 flex-1 rounded-2xl border-0 text-white",
+            resolvedStartContent ? "pl-9" : "",
+            resolvedEndContent ? "pr-9" : "",
+            inputClassName,
+          )}
+        />
         {resolvedEndContent ? (
-          <TextField.InputEndContent>
-            {resolvedEndContent}
-          </TextField.InputEndContent>
+          <View className="absolute right-3 z-10">{resolvedEndContent}</View>
         ) : null}
-      </TextField.Input>
+      </View>
 
       {errorMessage ? (
-        <TextField.ErrorMessage>{errorMessage}</TextField.ErrorMessage>
+        <View>{typeof errorMessage === "string" ? null : errorMessage}</View>
       ) : description ? (
-        <TextField.Description>{description}</TextField.Description>
+        <View>{typeof description === "string" ? null : description}</View>
       ) : null}
     </TextField>
   );

@@ -1,6 +1,6 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { Card, Chip, Spinner } from "heroui-native";
+import { Spinner } from "heroui-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -25,6 +25,10 @@ import {
   Tick02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  ToolCardHeader,
+  ToolCardShell,
+} from "@/features/chat/tool-data/primitives";
 import { THEME } from "../code-block/syntax-theme";
 
 // -- Constants ----------------------------------------------------------------
@@ -33,7 +37,7 @@ const COLORS = {
   codeBg: THEME.background,
   codeHeaderBg: THEME.headerBg,
   codeHeaderBorder: THEME.headerBorder,
-  outputBg: "#1a1a2e",
+  outputBg: "#18181b",
   errorBg: "#2d1b1b",
   errorBorder: "#7f1d1d",
   errorText: "#f87171",
@@ -48,7 +52,7 @@ const COLORS = {
 } as const;
 
 const FONT = {
-  mono: "RobotoMono_400Regular",
+  mono: "AnonymousPro_400Regular",
 } as const;
 
 const MAX_VISIBLE_LINES = 10;
@@ -73,31 +77,37 @@ interface CodeExecutionCardProps {
 function StatusBadge({ status }: { status: CodeExecutionData["status"] }) {
   if (status === "running") {
     return (
-      <Chip variant="soft" color="accent" size="sm">
-        <Spinner size="sm" color="accent" className="mr-1" />
-        <Chip.Label>Running</Chip.Label>
-      </Chip>
+      <View className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-700/50">
+        <Spinner size="sm" color="accent" />
+        <Text className="text-xs font-semibold uppercase text-zinc-200">
+          Running
+        </Text>
+      </View>
     );
   }
 
   if (status === "success") {
     return (
-      <Chip variant="soft" color="success" size="sm">
+      <View className="flex-row items-center gap-1 px-2.5 py-1 rounded-full bg-green-500/15">
         <AppIcon
           icon={CheckmarkCircle01Icon}
-          size={10}
+          size={11}
           color={COLORS.successColor}
         />
-        <Chip.Label>Success</Chip.Label>
-      </Chip>
+        <Text className="text-xs font-semibold uppercase text-green-400">
+          Success
+        </Text>
+      </View>
     );
   }
 
   return (
-    <Chip variant="soft" color="danger" size="sm">
-      <AppIcon icon={Cancel01Icon} size={10} color={COLORS.errorColor} />
-      <Chip.Label>Error</Chip.Label>
-    </Chip>
+    <View className="flex-row items-center gap-1 px-2.5 py-1 rounded-full bg-red-500/15">
+      <AppIcon icon={Cancel01Icon} size={11} color={COLORS.errorColor} />
+      <Text className="text-xs font-semibold uppercase text-red-400">
+        Error
+      </Text>
+    </View>
   );
 }
 
@@ -211,7 +221,7 @@ function CodeSnippet({ code, language }: { code: string; language?: string }) {
     <View
       style={{
         backgroundColor: COLORS.codeBg,
-        borderRadius: 8,
+        borderRadius: 16,
         overflow: "hidden",
       }}
     >
@@ -328,31 +338,16 @@ export function CodeExecutionCard({ toolData }: CodeExecutionCardProps) {
   }, []);
 
   return (
-    <Card variant="secondary" className="mx-4 my-1 rounded-2xl bg-[#171920]">
-      {/* Header */}
-      <Card.Header className="flex-row items-center justify-between px-4 pt-3 pb-2 border-b border-white/8">
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <View
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              backgroundColor: "rgba(96,165,250,0.12)",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <AppIcon icon={CodeIcon} size={14} color={COLORS.runningColor} />
-          </View>
-          <Card.Title className="text-sm font-semibold">
-            Code Execution
-          </Card.Title>
-        </View>
-        <StatusBadge status={status} />
-      </Card.Header>
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={CodeIcon}
+        iconColor={COLORS.runningColor}
+        title="Code Execution"
+        subtitle={language}
+        trailing={<StatusBadge status={status} />}
+      />
 
-      {/* Body */}
-      <Card.Body className="px-4 py-3 gap-3">
+      <View style={{ gap: 12 }}>
         {/* Code snippet section */}
         {hasCode && (
           <View style={{ gap: 6 }}>
@@ -410,7 +405,7 @@ export function CodeExecutionCard({ toolData }: CodeExecutionCardProps) {
               <View
                 style={{
                   backgroundColor: COLORS.outputBg,
-                  borderRadius: 8,
+                  borderRadius: 16,
                   padding: 10,
                 }}
               >
@@ -443,11 +438,9 @@ export function CodeExecutionCard({ toolData }: CodeExecutionCardProps) {
             </Text>
             <View
               style={{
-                backgroundColor: COLORS.errorBg,
-                borderRadius: 8,
+                backgroundColor: "rgba(239,68,68,0.1)",
+                borderRadius: 16,
                 padding: 10,
-                borderWidth: 1,
-                borderColor: COLORS.errorBorder,
               }}
             >
               <RNText
@@ -491,7 +484,7 @@ export function CodeExecutionCard({ toolData }: CodeExecutionCardProps) {
             {hasOutput && <CopyButton text={output as string} />}
           </View>
         )}
-      </Card.Body>
-    </Card>
+      </View>
+    </ToolCardShell>
   );
 }

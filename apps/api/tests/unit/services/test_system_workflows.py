@@ -7,11 +7,10 @@ Covers:
   trigger registration failure, old trigger unregister failure (non-fatal)
 """
 
-from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from pymongo.errors import DuplicateKeyError
+import pytest
 
 MODULE = "app.services.system_workflows.provisioner"
 
@@ -30,7 +29,7 @@ def _make_workflow_request(
     return req
 
 
-def _make_factory(request: Optional[MagicMock] = None) -> MagicMock:
+def _make_factory(request: MagicMock | None = None) -> MagicMock:
     if request is None:
         request = _make_workflow_request()
     factory = MagicMock(return_value=request)
@@ -115,9 +114,7 @@ class TestProvisionSystemWorkflows:
         mock_notify: AsyncMock,
     ) -> None:
         mock_collection.find_one = AsyncMock(return_value=None)
-        mock_workflow_svc.create_workflow = AsyncMock(
-            side_effect=DuplicateKeyError("dup")
-        )
+        mock_workflow_svc.create_workflow = AsyncMock(side_effect=DuplicateKeyError("dup"))
         factory = _make_factory()
 
         with patch.dict(
@@ -144,9 +141,7 @@ class TestProvisionSystemWorkflows:
         mock_notify: AsyncMock,
     ) -> None:
         mock_collection.find_one = AsyncMock(return_value=None)
-        mock_workflow_svc.create_workflow = AsyncMock(
-            side_effect=RuntimeError("unexpected")
-        )
+        mock_workflow_svc.create_workflow = AsyncMock(side_effect=RuntimeError("unexpected"))
         factory = _make_factory()
 
         with patch.dict(
@@ -202,13 +197,9 @@ class TestNotifyWorkflowsProvisioned:
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.NotificationService")
-    async def test_notification_failure_does_not_raise(
-        self, mock_notif_cls: MagicMock
-    ) -> None:
+    async def test_notification_failure_does_not_raise(self, mock_notif_cls: MagicMock) -> None:
         mock_svc = AsyncMock()
-        mock_svc.create_notification = AsyncMock(
-            side_effect=RuntimeError("notify fail")
-        )
+        mock_svc.create_notification = AsyncMock(side_effect=RuntimeError("notify fail"))
         mock_notif_cls.return_value = mock_svc
 
         from app.services.system_workflows.provisioner import (
@@ -216,9 +207,7 @@ class TestNotifyWorkflowsProvisioned:
         )
 
         # Should not raise
-        await _notify_workflows_provisioned(
-            "user-1", "Gmail", [_make_workflow_request()]
-        )
+        await _notify_workflows_provisioned("user-1", "Gmail", [_make_workflow_request()])
 
 
 class TestResetSystemWorkflowToDefault:
@@ -282,13 +271,6 @@ class TestResetSystemWorkflowToDefault:
 
         # Mock trigger config object
         trigger_config = MagicMock()
-        trigger_config.type = MagicMock()
-        trigger_config.type.value = "integration"
-        trigger_config.type.__eq__ = lambda self, other: (
-            str(self.value) == str(other.value)
-            if hasattr(other, "value")
-            else str(self.value) == str(other)
-        )
         trigger_config.trigger_name = "gmail_new_email"
         trigger_config.model_dump.return_value = {
             "type": "integration",
@@ -296,7 +278,6 @@ class TestResetSystemWorkflowToDefault:
         }
         mock_ensure.return_value = trigger_config
 
-        # Need to handle TriggerType comparison
         from app.models.workflow_models import TriggerType
 
         trigger_config.type = TriggerType.INTEGRATION
@@ -308,9 +289,7 @@ class TestResetSystemWorkflowToDefault:
         req.steps = []
         factory = MagicMock(return_value=req)
 
-        with patch.dict(
-            f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"gmail_digest": factory}
-        ):
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"gmail_digest": factory}):
             from app.services.system_workflows.provisioner import (
                 reset_system_workflow_to_default,
             )
@@ -358,9 +337,7 @@ class TestResetSystemWorkflowToDefault:
         req = _make_workflow_request()
         factory = MagicMock(return_value=req)
 
-        with patch.dict(
-            f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"gmail_digest": factory}
-        ):
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"gmail_digest": factory}):
             from app.services.system_workflows.provisioner import (
                 reset_system_workflow_to_default,
             )
@@ -406,9 +383,7 @@ class TestResetSystemWorkflowToDefault:
         req = _make_workflow_request()
         factory = MagicMock(return_value=req)
 
-        with patch.dict(
-            f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"gmail_digest": factory}
-        ):
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"gmail_digest": factory}):
             from app.services.system_workflows.provisioner import (
                 reset_system_workflow_to_default,
             )
@@ -458,9 +433,7 @@ class TestResetSystemWorkflowToDefault:
         req.steps = []
         factory = MagicMock(return_value=req)
 
-        with patch.dict(
-            f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"gmail_digest": factory}
-        ):
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"gmail_digest": factory}):
             from app.services.system_workflows.provisioner import (
                 reset_system_workflow_to_default,
             )

@@ -56,12 +56,10 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
       eventsByDay[eventDate].push(event);
     });
     // Sort events within each day
+    const getSortDate = (ev: GoogleCalendarEvent) =>
+      new Date(ev.start.dateTime || ev.start.date || "").getTime();
     Object.values(eventsByDay).forEach((arr) =>
-      arr.sort((a, b) => {
-        const getSortDate = (ev: GoogleCalendarEvent) =>
-          new Date(ev.start.dateTime || ev.start.date || "").getTime();
-        return getSortDate(a) - getSortDate(b);
-      }),
+      arr.sort((a, b) => getSortDate(a) - getSortDate(b)),
     );
     return eventsByDay;
   }, [events]);

@@ -1,5 +1,5 @@
 import { Chip } from "@heroui/chip";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import GetStartedButton from "../../shared/GetStartedButton";
 

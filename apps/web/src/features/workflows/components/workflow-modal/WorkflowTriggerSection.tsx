@@ -2,10 +2,9 @@ import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Tab, Tabs } from "@heroui/tabs";
 import { Tooltip } from "@heroui/tooltip";
 import { InformationCircleIcon } from "@icons";
-import {
-  getBrowserTimezone,
-  type WorkflowFormData,
-} from "../../schemas/workflowFormSchema";
+import type { ReactElement } from "react";
+import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+import { getBrowserTimezone } from "../../utils/browserTimezone";
 import { ScheduleBuilder } from "../ScheduleBuilder";
 import { TriggerConfigForm } from "../TriggerConfigForm";
 
@@ -18,6 +17,7 @@ interface WorkflowTriggerSectionProps {
     trigger: WorkflowFormData["selectedTrigger"],
   ) => void;
   onTriggerConfigChange: (config: WorkflowFormData["trigger_config"]) => void;
+  isPreview?: boolean;
 }
 
 export default function WorkflowTriggerSection({
@@ -27,6 +27,7 @@ export default function WorkflowTriggerSection({
   onActiveTabChange,
   onSelectedTriggerChange,
   onTriggerConfigChange,
+  isPreview = false,
 }: WorkflowTriggerSectionProps) {
   const handleTabChange = (tabKey: "manual" | "schedule" | "trigger") => {
     onActiveTabChange(tabKey);
@@ -148,7 +149,7 @@ export default function WorkflowTriggerSection({
         </div>
         <div className="w-full">
           <Tabs
-            color="primary"
+            color="default"
             classNames={{
               tabList: "flex flex-row",
               base: "flex items-start",
@@ -161,19 +162,29 @@ export default function WorkflowTriggerSection({
               handleTabChange(key as "manual" | "schedule" | "trigger");
             }}
           >
-            <Tab key="schedule" title="Schedule">
-              <ScrollShadow className="max-h-40 min-h-10">
-                {renderScheduleTab()}
-              </ScrollShadow>
-            </Tab>
-            <Tab key="trigger" title="Trigger">
-              <ScrollShadow className="max-h-40 min-h-10">
-                {renderTriggerTab()}
-              </ScrollShadow>
-            </Tab>
-            <Tab key="manual" title="Manual">
-              {renderManualTab()}
-            </Tab>
+            {
+              [
+                !isPreview || activeTab === "schedule" ? (
+                  <Tab key="schedule" title="Schedule">
+                    <ScrollShadow className="max-h-40 min-h-10">
+                      {renderScheduleTab()}
+                    </ScrollShadow>
+                  </Tab>
+                ) : null,
+                !isPreview || activeTab === "trigger" ? (
+                  <Tab key="trigger" title="Trigger">
+                    <ScrollShadow className="max-h-40 min-h-10">
+                      {renderTriggerTab()}
+                    </ScrollShadow>
+                  </Tab>
+                ) : null,
+                !isPreview || activeTab === "manual" ? (
+                  <Tab key="manual" title="Manual">
+                    {renderManualTab()}
+                  </Tab>
+                ) : null,
+              ].filter(Boolean) as ReactElement[]
+            }
           </Tabs>
         </div>
       </div>

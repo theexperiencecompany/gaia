@@ -1,11 +1,12 @@
-from typing import Dict, List, Optional, Union
+from typing import Union
+
 from pydantic import BaseModel
 
 
 class WeatherLocation(BaseModel):
-    city: Optional[str] = None
-    country: Optional[str] = None
-    region: Optional[str] = None
+    city: str | None = None
+    country: str | None = None
+    region: str | None = None
 
 
 class WeatherMain(BaseModel):
@@ -27,7 +28,7 @@ class WeatherClouds(BaseModel):
 
 
 class WeatherSys(BaseModel):
-    country: Optional[str] = None
+    country: str | None = None
     sunrise: int
     sunset: int
 
@@ -55,18 +56,18 @@ class ForecastDay(BaseModel):
 
 
 class WeatherData(BaseModel):
-    id: Optional[int] = None
-    name: Optional[str] = None
-    cod: Optional[Union[int, str]] = None
-    coord: Optional[Dict[str, float]] = None
-    weather: Optional[List[WeatherCondition]] = None
-    base: Optional[str] = None
-    main: Optional[WeatherMain] = None
-    visibility: Optional[int] = None
-    wind: Optional[WeatherWind] = None
-    clouds: Optional[WeatherClouds] = None
-    dt: Optional[int] = None
-    sys: Optional[WeatherSys] = None
-    timezone: Optional[int] = None
-    location: Optional[WeatherLocation] = None
-    forecast: Optional[List[ForecastDay]] = None  # 5-day forecast data
+    id: int | None = None
+    name: str | None = None
+    cod: Union[int, str] | None = None
+    coord: dict[str, float] | None = None
+    weather: list[WeatherCondition] | None = None
+    base: str | None = None
+    main: WeatherMain | None = None
+    visibility: int | None = None
+    wind: WeatherWind | None = None
+    clouds: WeatherClouds | None = None
+    dt: int | None = None
+    sys: WeatherSys | None = None
+    timezone: int | None = None
+    location: WeatherLocation | None = None
+    forecast: list[ForecastDay] | None = None  # 5-day forecast data

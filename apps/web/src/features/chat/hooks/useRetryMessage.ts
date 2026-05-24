@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
 import { useSendMessage } from "@/hooks/useSendMessage";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useChatStore } from "@/stores/chatStore";
 
 /**
@@ -58,6 +59,12 @@ export const useRetryMessage = () => {
 
       setIsRetrying(true);
 
+      trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_RETRIED, {
+        message_id: messageId,
+        conversation_id: conversationId,
+        retry_source: targetMessage.role === "user" ? "user" : "bot",
+      });
+
       // Set loading state with user's message context (same as Composer)
       // This enables similarity-based loading text
       setContextualLoading(true, userMessage.content);
@@ -67,6 +74,7 @@ export const useRetryMessage = () => {
         // (optimistic UI, IndexedDB persistence, streaming, etc.)
         // Loading state is managed by useChatStream (sets isLoading to false when done)
         await sendMessage(userMessage.content, {
+          conversationId,
           files: userMessage.fileData ?? undefined,
           selectedTool: userMessage.toolName,
           selectedToolCategory: userMessage.toolCategory,

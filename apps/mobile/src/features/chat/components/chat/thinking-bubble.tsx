@@ -2,9 +2,14 @@ import {
   getRandomThinkingMessage,
   getRelevantThinkingMessage,
 } from "@gaia/shared/utils";
-import { PressableFeedback, Surface } from "heroui-native";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, LayoutAnimation, View } from "react-native";
+import { PressableFeedback } from "heroui-native";
+import { useCallback, useEffect, useState } from "react";
+import { View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { AppIcon, ArrowDown02Icon, Brain02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
@@ -17,30 +22,23 @@ interface ThinkingBubbleProps {
 }
 
 function PulsingBrain({ size }: { size: number }) {
-  const opacity = useRef(new Animated.Value(0.5)).current;
+  const opacity = useSharedValue(0.6);
 
   useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 600,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: 0.5,
-          duration: 600,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    animation.start();
-    return () => animation.stop();
+    opacity.value = withTiming(1, { duration: 350 });
+    const interval = setInterval(() => {
+      opacity.value = withTiming(opacity.value > 0.8 ? 0.6 : 1, {
+        duration: 350,
+      });
+    }, 350);
+    return () => clearInterval(interval);
   }, [opacity]);
 
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
   return (
-    <Animated.View style={{ opacity }}>
-      <AppIcon icon={Brain02Icon} size={size} color="#a78bfa" />
+    <Animated.View style={animatedStyle}>
+      <AppIcon icon={Brain02Icon} size={size} color="#a1a1aa" />
     </Animated.View>
   );
 }
@@ -79,7 +77,7 @@ function ThinkingIndicator({ userMessage }: { userMessage?: string }) {
       <Text
         style={{
           fontSize: fontSize.sm,
-          color: "#a78bfa",
+          color: "#a1a1aa",
           fontWeight: "500",
         }}
       >
@@ -96,26 +94,22 @@ export function ThinkingBubble({
   durationSeconds,
 }: ThinkingBubbleProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const chevronRotation = useRef(new Animated.Value(0)).current;
+  const chevronRotation = useSharedValue(0);
   const { spacing, fontSize, moderateScale } = useResponsive();
 
   const toggleExpanded = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setIsExpanded((prev) => {
-      const next = !prev;
-      Animated.timing(chevronRotation, {
-        toValue: next ? 1 : 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-      return next;
-    });
-  }, [chevronRotation]);
+    const next = !isExpanded;
+    setIsExpanded(next);
+    chevronRotation.value = withTiming(next ? 1 : 0, { duration: 250 });
+  }, [chevronRotation, isExpanded]);
 
-  const chevronRotate = chevronRotation.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "180deg"],
-  });
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        rotate: `${chevronRotation.value * 180}deg`,
+      },
+    ],
+  }));
 
   if (!thinkingContent && !isStreaming) return null;
 
@@ -146,24 +140,26 @@ export function ThinkingBubble({
           flexDirection: "row",
           alignItems: "center",
           gap: spacing.sm,
+          paddingVertical: spacing.xs + 2,
+          paddingHorizontal: spacing.xs,
         }}
       >
         <AppIcon
           icon={Brain02Icon}
           size={moderateScale(16, 0.5)}
-          color={isStreaming ? "#a78bfa" : "#a1a1aa"}
+          color="#a1a1aa"
         />
         <Text
           style={{
             fontSize: fontSize.sm,
-            color: isStreaming ? "#a78bfa" : "#a1a1aa",
+            color: "#a1a1aa",
             fontWeight: "500",
             flex: 1,
           }}
         >
           {isExpanded ? "Hide thinking" : collapsedLabel}
         </Text>
-        <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
+        <Animated.View style={chevronStyle}>
           <AppIcon
             icon={ArrowDown02Icon}
             size={moderateScale(14, 0.5)}
@@ -173,26 +169,24 @@ export function ThinkingBubble({
       </PressableFeedback>
 
       {isExpanded ? (
-        <Surface
+        <View
           style={{
-            backgroundColor: "rgba(39, 39, 42, 0.8)",
-            borderWidth: 1,
-            borderColor: "rgba(63, 63, 70, 0.6)",
-            borderRadius: moderateScale(12, 0.5),
+            backgroundColor: "#27272a",
+            borderRadius: moderateScale(10, 0.5),
             paddingHorizontal: spacing.md,
             paddingVertical: spacing.sm + 2,
           }}
         >
           <Text
             style={{
-              fontSize: fontSize.sm,
-              color: "#d4d4d8",
+              fontSize: fontSize.xs,
+              color: "#a1a1aa",
               lineHeight: 20,
             }}
           >
             {thinkingContent}
           </Text>
-        </Surface>
+        </View>
       ) : null}
     </View>
   );

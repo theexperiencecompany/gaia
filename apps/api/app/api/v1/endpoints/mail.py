@@ -1,7 +1,8 @@
 import json
-from typing import Any, List, Optional
+from typing import Any
 
-from shared.py.wide_events import log
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+
 from app.agents.prompts.mail_prompts import EMAIL_COMPOSER
 from app.api.v1.dependencies.google_scope_dependencies import require_integration
 from app.decorators import tiered_rate_limit
@@ -17,11 +18,7 @@ from app.models.mail_models import (
 )
 from app.services.mail.email_importance_service import (
     get_bulk_email_importance_summaries as get_bulk_importance_summaries_service,
-)
-from app.services.mail.email_importance_service import (
     get_email_importance_summaries as get_importance_summaries_service,
-)
-from app.services.mail.email_importance_service import (
     get_single_email_importance_summary as get_single_importance_summary_service,
 )
 from app.services.mail.mail_service import (
@@ -33,7 +30,9 @@ from app.services.mail.mail_service import (
     delete_label,
     fetch_thread,
     get_draft,
+    get_email_by_id as get_email_by_id_service,
     list_drafts,
+    list_labels as list_labels_service,
     mark_messages_as_read,
     mark_messages_as_unread,
     move_to_inbox,
@@ -48,15 +47,10 @@ from app.services.mail.mail_service import (
     update_draft,
     update_label,
 )
-from app.services.mail.mail_service import (
-    get_email_by_id as get_email_by_id_service,
-)
-from app.services.mail.mail_service import (
-    list_labels as list_labels_service,
-)
 from app.utils.chat_utils import do_prompt_no_stream
 from app.utils.embedding_utils import search_notes_by_similarity
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from app.utils.user_preferences_utils import format_writing_style_for_prompt
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -83,10 +77,7 @@ async def list_labels(
                 "labels": result.get("labels", []),
                 "count": result.get("count", 0),
             }
-        else:
-            raise HTTPException(
-                status_code=500, detail=result.get("error", "Failed to list labels")
-            )
+        raise HTTPException(status_code=500, detail=result.get("error", "Failed to list labels"))
 
     except HTTPException:
         raise
@@ -97,7 +88,7 @@ async def list_labels(
 @router.get("/gmail/messages")
 async def list_messages(
     max_results: int = 20,
-    pageToken: Optional[str] = None,
+    pageToken: str | None = None,
     current_user: dict = Depends(require_integration("gmail")),
 ):
     try:
@@ -143,9 +134,7 @@ async def get_email_by_id(
             raise HTTPException(status_code=400, detail="User ID not found")
 
         # Use the get_email_by_id service function
-        result = await get_email_by_id_service(
-            user_id=str(user_id), message_id=message_id
-        )
+        result = await get_email_by_id_service(user_id=str(user_id), message_id=message_id)
 
         if result.get("success"):
             log.set(
@@ -157,12 +146,10 @@ async def get_email_by_id(
                 "message": result.get("message"),
                 "status": "Message retrieved successfully",
             }
-        else:
-            error_msg = result.get("error", "Failed to retrieve message")
-            if "not found" in error_msg.lower():
-                raise HTTPException(status_code=404, detail=error_msg)
-            else:
-                raise HTTPException(status_code=500, detail=error_msg)
+        error_msg = result.get("error", "Failed to retrieve message")
+        if "not found" in error_msg.lower():
+            raise HTTPException(status_code=404, detail=error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
 
     except HTTPException:
         raise
@@ -172,18 +159,18 @@ async def get_email_by_id(
 
 @router.get("/gmail/search", summary="Advanced search for Gmail messages")
 async def search_emails(
-    query: Optional[str] = None,
-    sender: Optional[str] = None,
-    recipient: Optional[str] = None,
-    subject: Optional[str] = None,
-    has_attachment: Optional[bool] = None,
-    attachment_type: Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    label: Optional[str] = None,
-    is_read: Optional[bool] = None,
+    query: str | None = None,
+    sender: str | None = None,
+    recipient: str | None = None,
+    subject: str | None = None,
+    has_attachment: bool | None = None,
+    attachment_type: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    label: str | None = None,
+    is_read: bool | None = None,
     max_results: int = 20,
-    page_token: Optional[str] = None,
+    page_token: str | None = None,
     current_user: dict = Depends(require_integration("gmail")),
 ):
     """
@@ -226,9 +213,7 @@ async def search_emails(
         if subject:
             query_parts.append(f"subject:{subject}")
         if has_attachment is not None:
-            query_parts.append(
-                "has:attachment" if has_attachment else "-has:attachment"
-            )
+            query_parts.append("has:attachment" if has_attachment else "-has:attachment")
         if attachment_type:
             query_parts.append(f"filename:{attachment_type}")
         if date_from:
@@ -273,9 +258,10 @@ async def process_email(
         if user_id is None:
             raise HTTPException(status_code=401, detail="User ID is required")
 
-        notes = await search_notes_by_similarity(
-            input_text=request.prompt, user_id=str(user_id)
-        )
+        notes = await search_notes_by_similarity(input_text=request.prompt, user_id=str(user_id))
+
+        writing_style_data = current_user.get("onboarding", {}).get("writing_style")
+        learned_style_block = format_writing_style_for_prompt(writing_style_data)
 
         prompt = EMAIL_COMPOSER.format(
             sender_name=current_user.get("name") or "none",
@@ -286,6 +272,7 @@ async def process_email(
             clarity_option=request.clarityOption or "None",
             notes="- ".join(notes) if notes else "No relevant notes found.",
             prompt=request.prompt,
+            learned_writing_style=learned_style_block,
         )
 
         result = await do_prompt_no_stream(
@@ -299,9 +286,7 @@ async def process_email(
 
                 return {"subject": subject, "body": body}
             except Exception as e:
-                raise HTTPException(
-                    status_code=500, detail=f"Failed to parse response {e}"
-                )
+                raise HTTPException(status_code=500, detail=f"Failed to parse response {e}")
         else:
             raise HTTPException(status_code=500, detail="Invalid response format")
 
@@ -315,11 +300,10 @@ async def send_email_route(
     to: str = Form(...),
     subject: str = Form(...),
     body: str = Form(...),
-    thread_id: Optional[str] = Form(None),
-    is_html: Optional[bool] = Form(False),
-    cc: Optional[str] = Form(None),
-    bcc: Optional[str] = Form(None),
-    attachments: Optional[List[UploadFile]] = File(None),
+    thread_id: str | None = Form(None),
+    cc: str | None = Form(None),
+    bcc: str | None = Form(None),
+    attachments: list[UploadFile] | None = File(None),
     current_user: dict = Depends(require_integration("gmail")),
 ):
     """
@@ -349,7 +333,6 @@ async def send_email_route(
             extra_recipients=to_list[1:],
             subject=subject,
             body=body,
-            is_html=is_html or False,
             cc_list=cc_list,
             bcc_list=bcc_list,
             attachments=attachments,
@@ -369,7 +352,7 @@ async def send_email_route(
             "attachments_count": len(attachments) if attachments else 0,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {e!s}")
 
 
 @router.post("/gmail/send-json", summary="Send an email using JSON payload")
@@ -399,7 +382,6 @@ async def send_email_json(
             extra_recipients=request.to[1:],
             subject=request.subject,
             body=request.body,
-            is_html=False,
             cc_list=request.cc,
             bcc_list=request.bcc,
             attachments=None,
@@ -415,7 +397,7 @@ async def send_email_json(
             "status": "Email sent successfully",
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {e!s}")
 
 
 @router.post("/gmail/summarize", summary="Summarize an email using LLM")
@@ -446,9 +428,7 @@ async def summarize_email(
             detail="Email summarization not yet implemented with Composio tools",
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to summarize email: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to summarize email: {e!s}")
 
 
 @router.post("/gmail/mark-as-read", summary="Mark emails as read")
@@ -486,9 +466,7 @@ async def mark_as_read(
             "status": "Messages marked as read",
         }
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to mark messages as read: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to mark messages as read: {e!s}")
 
 
 @router.post("/gmail/mark-as-unread", summary="Mark emails as unread")
@@ -526,9 +504,7 @@ async def mark_as_unread(
             "status": "Messages marked as unread",
         }
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to mark messages as unread: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to mark messages as unread: {e!s}")
 
 
 @router.post("/gmail/star", summary="Star emails")
@@ -566,9 +542,7 @@ async def star_emails(
             "status": "Messages starred",
         }
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to star messages: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to star messages: {e!s}")
 
 
 @router.post("/gmail/unstar", summary="Unstar emails")
@@ -606,9 +580,7 @@ async def unstar_emails(
             "status": "Messages unstarred",
         }
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to unstar messages: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to unstar messages: {e!s}")
 
 
 @router.post("/gmail/trash", summary="Move emails to trash")
@@ -646,9 +618,7 @@ async def trash_emails(
             "status": "Messages moved to trash",
         }
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to move messages to trash: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to move messages to trash: {e!s}")
 
 
 @router.post("/gmail/untrash", summary="Restore emails from trash")
@@ -686,9 +656,7 @@ async def untrash_emails(
             "status": "Messages restored from trash",
         }
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to restore messages from trash: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to restore messages from trash: {e!s}")
 
 
 @router.post("/gmail/archive", summary="Archive emails")
@@ -726,9 +694,7 @@ async def archive_emails(
             "status": "Messages archived",
         }
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to archive messages: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to archive messages: {e!s}")
 
 
 @router.post("/gmail/move-to-inbox", summary="Move emails to inbox")
@@ -767,15 +733,11 @@ async def move_emails_to_inbox(
             "status": "Messages moved to inbox",
         }
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to move messages to inbox: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to move messages to inbox: {e!s}")
 
 
 @router.get("/gmail/thread/{thread_id}", summary="Get complete email thread")
-async def get_thread(
-    thread_id: str, current_user: dict = Depends(require_integration("gmail"))
-):
+async def get_thread(thread_id: str, current_user: dict = Depends(require_integration("gmail"))):
     """
     Fetch a complete email thread with all messages.
 
@@ -803,9 +765,7 @@ async def get_thread(
             "thread": thread,
         }
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to fetch email thread: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to fetch email thread: {e!s}")
 
 
 @router.post("/gmail/labels", summary="Create a new Gmail label")
@@ -911,8 +871,7 @@ async def delete_label_route(
         if success:
             log.set(operation="delete_label", label=label_id, outcome="success")
             return {"status": "success", "message": "Label deleted successfully"}
-        else:
-            return {"status": "error", "message": "Failed to delete label"}
+        return {"status": "error", "message": "Failed to delete label"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1013,7 +972,6 @@ async def create_draft_route(
     - **body**: Email body
     - **cc**: Optional list of CC recipients
     - **bcc**: Optional list of BCC recipients
-    - **is_html**: Whether the body is HTML content
 
     Returns the created draft data.
     """
@@ -1029,7 +987,6 @@ async def create_draft_route(
             to_list=request.to,
             subject=request.subject,
             body=request.body,
-            is_html=request.is_html if request.is_html is not None else False,
             cc_list=request.cc,
             bcc_list=request.bcc,
         )
@@ -1051,7 +1008,7 @@ async def create_draft_route(
 @router.get("/gmail/drafts", summary="List all draft emails")
 async def list_drafts_route(
     max_results: int = 20,
-    page_token: Optional[str] = None,
+    page_token: str | None = None,
     current_user: dict = Depends(require_integration("gmail")),
 ):
     """
@@ -1076,9 +1033,7 @@ async def list_drafts_route(
 
         log.set(
             operation="list_drafts",
-            result_count=len(drafts.get("drafts", []))
-            if isinstance(drafts, dict)
-            else 0,
+            result_count=len(drafts.get("drafts", [])) if isinstance(drafts, dict) else 0,
             outcome="success",
         )
         return drafts
@@ -1131,7 +1086,6 @@ async def update_draft_route(
     - **body**: Email body
     - **cc**: Optional list of CC recipients
     - **bcc**: Optional list of BCC recipients
-    - **is_html**: Whether the body is HTML content
 
     Returns the updated draft data.
     """
@@ -1148,7 +1102,6 @@ async def update_draft_route(
             to_list=request.to,
             subject=request.subject,
             body=request.body,
-            is_html=request.is_html if request.is_html is not None else False,
             cc_list=request.cc,
             bcc_list=request.bcc,
         )
@@ -1190,8 +1143,7 @@ async def delete_draft_route(
         if success:
             log.set(operation="delete_draft", email_id=draft_id, outcome="success")
             return {"status": "success", "message": "Draft deleted successfully"}
-        else:
-            return {"status": "error", "message": "Failed to delete draft"}
+        return {"status": "error", "message": "Failed to delete draft"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1229,11 +1181,10 @@ async def send_draft_route(
                 "status": "Draft sent successfully",
                 "successful": True,
             }
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail=sent_message.get("error", "Failed to send draft"),
-            )
+        raise HTTPException(
+            status_code=500,
+            detail=sent_message.get("error", "Failed to send draft"),
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1266,9 +1217,7 @@ async def get_email_importance_summaries(
         )
         return result
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error retrieving email summaries: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error retrieving email summaries: {e!s}")
 
 
 @router.get(
@@ -1305,14 +1254,10 @@ async def get_single_email_importance_summary(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error retrieving email summary: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error retrieving email summary: {e!s}")
 
 
-@router.post(
-    "/gmail/importance-summaries/bulk", summary="Get bulk email importance summaries"
-)
+@router.post("/gmail/importance-summaries/bulk", summary="Get bulk email importance summaries")
 async def get_bulk_email_importance_summaries(
     request: EmailActionRequest,
     current_user: dict = Depends(require_integration("gmail")),
@@ -1330,9 +1275,7 @@ async def get_bulk_email_importance_summaries(
             raise HTTPException(status_code=401, detail="User ID not found")
 
         # Use service function to get bulk email summaries
-        result = await get_bulk_importance_summaries_service(
-            user_id, request.message_ids
-        )
+        result = await get_bulk_importance_summaries_service(user_id, request.message_ids)
         log.set(
             operation="get_bulk_importance_summaries",
             result_count=len(request.message_ids),
@@ -1340,6 +1283,4 @@ async def get_bulk_email_importance_summaries(
         )
         return result
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error retrieving bulk email summaries: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error retrieving bulk email summaries: {e!s}")

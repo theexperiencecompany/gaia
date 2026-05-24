@@ -9,13 +9,10 @@ Usage:
     await init_eval_providers(subagent_ids=["github", "gmail"])
 """
 
-from typing import Optional
-
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.agents.llm.client import register_llm_providers
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.store import init_embeddings
-from shared.py.wide_events import log
 from app.config.posthog import init_posthog
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import initialize_chroma_tools_store
@@ -23,9 +20,10 @@ from app.db.chroma.chroma_triggers_store import initialize_chroma_triggers_store
 from app.db.chroma.chromadb import init_chroma
 from app.db.postgresql import init_postgresql_engine
 from app.services.composio.composio_service import init_composio_service
+from shared.py.wide_events import log
 
 
-async def init_eval_providers(subagent_ids: Optional[list[str]] = None) -> None:
+async def init_eval_providers(subagent_ids: list[str] | None = None) -> None:
     """
     Initialize providers required for subagent evaluation.
 

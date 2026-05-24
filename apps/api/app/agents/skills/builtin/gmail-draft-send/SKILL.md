@@ -26,14 +26,11 @@ Create a new email draft.
 - `cc`: CC recipients
 - `bcc`: BCC recipients
 - `thread_id`: Reply within existing thread
-- `is_html`: Set `true` only when the user explicitly wants HTML email formatting
 
 **Body formatting:**
-- Always draft beautiful, readable emails.
-- Default to plain text email body unless the user explicitly asks for HTML.
-- For plain text (`is_html=false`), use clear multi-line formatting with short paragraphs and blank lines between sections so the draft is easy to scan.
-- If using HTML, provide a safe HTML fragment (no `<html>`/`<head>`/`<body>`). Stick to: `p`, `br`, `strong`, `em`, `ul/ol/li`, `a`.
-- Do not rely on automatic Markdown conversion.
+- Write the body as Markdown. The backend converts it to HTML before Gmail sends, so `**bold**`, `### headings`, `- lists`, and `[links](url)` all render correctly in the recipient's inbox.
+- Draft beautiful, readable emails: short paragraphs, blank lines between sections, meaningful subject lines.
+- Do not emit raw HTML (`<p>`, `<div>`, etc.) — write Markdown and let the pipeline handle it.
 
 **Signature:**
 - Use the user's proper name from context (`User Name:`) in the sign-off.
@@ -103,6 +100,12 @@ If user wants changes:
 3. **Show full draft** - Subject, body, recipients all visible
 4. **Handle errors gracefully** - If send fails, explain and offer retry
 5. **Check before replying** - Search for context when replying to threads
+
+## Writing Style
+- If the user context includes a **Learned Writing Style** section, use it as the primary guide for tone, voice, and phrasing when composing the email body.
+- Match the style profile description (formality, length, greeting/sign-off patterns).
+- Use the reference snippets as examples of how the user naturally writes.
+- The user-selected writing style (e.g. "Formal", "Casual") from the UI takes precedence if it conflicts with the learned style.
 
 ## Tips
 - Use clear, concise subject lines

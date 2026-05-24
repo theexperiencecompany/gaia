@@ -3,7 +3,7 @@ User preferences utilities for formatting and processing user data.
 Provides functions to format user preferences for agent system prompts.
 """
 
-from typing import Optional, Dict, Any
+from typing import Any
 
 from shared.py.wide_events import log
 
@@ -45,7 +45,7 @@ def format_profession_for_display(profession: str) -> str:
     return profession.strip().title()
 
 
-def build_user_context_parts(preferences: Dict[str, Any]) -> list[str]:
+def build_user_context_parts(preferences: dict[str, Any]) -> list[str]:
     """
     Build user context parts from preferences for agent system prompt.
 
@@ -72,9 +72,7 @@ def build_user_context_parts(preferences: Dict[str, Any]) -> list[str]:
 
         # Add communication style context
         if preferences.get("response_style"):
-            style_instruction = format_response_style_instruction(
-                preferences["response_style"]
-            )
+            style_instruction = format_response_style_instruction(preferences["response_style"])
             parts.append(f"Communication Style: {style_instruction}")
 
         # Add custom instructions
@@ -84,12 +82,66 @@ def build_user_context_parts(preferences: Dict[str, Any]) -> list[str]:
                 parts.append(f"Special Instructions: {instructions}")
 
     except Exception as e:
-        log.warning(f"Error building user context parts: {str(e)}")
+        log.warning(f"Error building user context parts: {e!s}")
 
     return parts
 
 
-def format_user_preferences_for_agent(preferences: Dict[str, Any]) -> Optional[str]:
+def format_writing_style_for_prompt(
+    writing_style: dict[str, Any] | None,
+) -> str:
+    """Format the user's learned writing style into an email-composer prompt block."""
+    if not writing_style:
+        return ""
+
+    summary = writing_style.get("user_edited_summary") or writing_style.get("summary", "")
+    raw_example = writing_style.get("example")
+    example_text = _example_blocks_to_text(raw_example)
+
+    if not summary:
+        return ""
+
+    lines = [
+        "Learned Writing Style (match this tone and voice when composing the email):",
+        f"  Style: {summary}",
+    ]
+
+    if example_text:
+        lines.append(f'  Example email in their voice:\n    "{example_text}"')
+
+    return "\n".join(lines)
+
+
+def _example_blocks_to_text(raw: Any) -> str:
+    """Render example blocks dict ({greeting, body[], signoff, name}) or legacy string as text."""
+    if isinstance(raw, str):
+        return raw
+    if not isinstance(raw, dict):
+        return ""
+    sections: list[str] = []
+    greeting = str(raw.get("greeting", "")).strip()
+    if greeting:
+        sections.append(greeting)
+    for paragraph in raw.get("body", []):
+        text = str(paragraph).strip()
+        if text:
+            sections.append(text)
+    signoff_lines: list[str] = []
+    signoff = str(raw.get("signoff", "")).strip()
+    if signoff:
+        signoff_lines.append(signoff)
+    name = str(raw.get("name", "")).strip()
+    if name:
+        signoff_lines.append(name)
+    if signoff_lines:
+        sections.append("\n".join(signoff_lines))
+    return "\n\n".join(sections)
+
+
+def format_user_preferences_for_agent(
+    preferences: dict[str, Any],
+    writing_style: dict[str, Any] | None = None,
+) -> str | None:
     """
     Format user preferences into a string suitable for agent system prompt.
 
@@ -99,11 +151,15 @@ def format_user_preferences_for_agent(preferences: Dict[str, Any]) -> Optional[s
     Returns:
         Formatted string of user preferences or None if no valid preferences
     """
-    if not preferences:
+    if not preferences and not writing_style:
         return None
 
     try:
-        parts = build_user_context_parts(preferences)
+        parts = build_user_context_parts(preferences) if preferences else []
+
+        style_block = format_writing_style_for_prompt(writing_style)
+        if style_block:
+            parts.append(f"\n{style_block}")
 
         if parts:
             return "\n".join(parts)
@@ -111,11 +167,11 @@ def format_user_preferences_for_agent(preferences: Dict[str, Any]) -> Optional[s
         return None
 
     except Exception as e:
-        log.error(f"Error formatting user preferences for agent: {str(e)}")
+        log.error(f"Error formatting user preferences for agent: {e!s}")
         return None
 
 
-def validate_user_preferences(preferences: Dict[str, Any]) -> Dict[str, Any]:
+def validate_user_preferences(preferences: dict[str, Any]) -> dict[str, Any]:
     """
     Validate and sanitize user preferences.
 
@@ -147,12 +203,12 @@ def validate_user_preferences(preferences: Dict[str, Any]) -> Dict[str, Any]:
                 validated["custom_instructions"] = instructions
 
     except Exception as e:
-        log.warning(f"Error validating user preferences: {str(e)}")
+        log.warning(f"Error validating user preferences: {e!s}")
 
     return validated
 
 
-def get_user_preference_summary(preferences: Dict[str, Any]) -> str:
+def get_user_preference_summary(preferences: dict[str, Any]) -> str:
     """
     Get a brief summary of user preferences for logging/debugging.
 

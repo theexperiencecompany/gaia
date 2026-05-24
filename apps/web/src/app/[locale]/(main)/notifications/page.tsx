@@ -45,9 +45,8 @@ export default function NotificationsPage() {
   const handleMarkAsRead = async (notificationId: string) => {
     try {
       await NotificationsAPI.markAsRead(notificationId);
-      // Refresh both lists after marking as read
-      await refetchUnread();
-      await refetchAll();
+      // Refresh both lists in parallel after marking as read
+      await Promise.all([refetchUnread(), refetchAll()]);
     } catch (error) {
       console.error("Error marking notification as read:", error);
     }
@@ -56,11 +55,13 @@ export default function NotificationsPage() {
   const handleBulkMarkAsRead = useCallback(
     async (notificationIds: string[]) => {
       try {
-        if (notificationIds.length === 0)
-          return toast.error("No events to mark as read");
+        if (notificationIds.length === 0) {
+          toast.error("No events to mark as read");
+          return;
+        }
         await NotificationsAPI.bulkMarkAsRead(notificationIds);
-        await refetchUnread();
-        await refetchAll();
+        // Refresh both lists in parallel
+        await Promise.all([refetchUnread(), refetchAll()]);
       } catch (error) {
         console.error("Error marking notification as read:", error);
       }
@@ -70,8 +71,7 @@ export default function NotificationsPage() {
 
   // Simple refresh function
   const refreshNotifications = useCallback(async () => {
-    await refetchAll();
-    await refetchUnread();
+    await Promise.all([refetchAll(), refetchUnread()]);
   }, [refetchAll, refetchUnread]);
 
   // Handle modal opening from notification actions

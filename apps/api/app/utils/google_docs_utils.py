@@ -1,6 +1,6 @@
 """Utility functions for Google Docs operations."""
 
-from typing import Any, Dict, List
+from typing import Any
 
 # Mapping of Google Docs heading styles to levels
 HEADING_STYLE_MAP = {
@@ -14,8 +14,8 @@ HEADING_STYLE_MAP = {
 
 
 def extract_headings_from_document(
-    doc_content: Dict[str, Any], include_levels: List[int]
-) -> List[Dict[str, Any]]:
+    doc_content: dict[str, Any], include_levels: list[int]
+) -> list[dict[str, Any]]:
     """Extract headings from document body content."""
     headings = []
 
@@ -63,7 +63,7 @@ def extract_headings_from_document(
     return headings
 
 
-def generate_toc_text(headings: List[Dict[str, Any]], title: str) -> str:
+def generate_toc_text(headings: list[dict[str, Any]], title: str) -> str:
     """Generate formatted TOC text from headings."""
     if not headings:
         return f"{title}\n\n(No headings found in document)\n\n"

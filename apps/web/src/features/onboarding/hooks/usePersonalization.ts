@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  isPersonalizationCompleteMessage,
-  type PersonalizationData,
-} from "@/features/onboarding/types/websocket";
+import type { PersonalizationData } from "@/features/onboarding/types/websocket";
 import { apiService } from "@/lib/api/service";
-import { toast } from "@/lib/toast";
-import { wsManager } from "@/lib/websocket/WebSocketManager";
-
-export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";
 
 interface UsePersonalizationReturn {
   personalizationData: PersonalizationData | null;
@@ -16,17 +9,6 @@ interface UsePersonalizationReturn {
   refetch: () => Promise<void>;
 }
 
-/**
- * Hook to fetch and manage personalization data
- *
- * Data sources:
- * - Initial load: Fetches from API on mount
- * - Updates: WebSocket event when personalization completes
- * - Manual refresh: Call refetch() function
- *
- * Relies on WebSocket for real-time updates
- * and component remount for page navigation/reload.
- */
 export const usePersonalization = (
   enabled: boolean = true,
 ): UsePersonalizationReturn => {
@@ -35,7 +17,6 @@ export const usePersonalization = (
   const [isLoading, setIsLoading] = useState(true);
   const [hasPersonalization, setHasPersonalization] = useState(false);
 
-  // Fetch personalization data from API
   const fetchPersonalization = useCallback(async () => {
     if (!enabled) {
       setIsLoading(false);
@@ -48,9 +29,6 @@ export const usePersonalization = (
         { silent: true },
       );
 
-      console.log("[usePersonalization] Fetched data:", data);
-
-      // Check if personalization is complete based on phase
       const isComplete =
         data.phase &&
         ["personalization_complete", "getting_started", "completed"].includes(
@@ -67,44 +45,9 @@ export const usePersonalization = (
     }
   }, [enabled]);
 
-  // Fetch on mount
   useEffect(() => {
     fetchPersonalization();
   }, [fetchPersonalization]);
-
-  // Listen for WebSocket updates
-  useEffect(() => {
-    if (!enabled) return;
-
-    const handlePersonalizationComplete = (message: unknown) => {
-      if (!isPersonalizationCompleteMessage(message)) return;
-
-      console.log("[usePersonalization] WebSocket event received");
-
-      const data: PersonalizationData = {
-        ...message.data,
-        has_personalization: true,
-      };
-
-      setPersonalizationData(data);
-      setHasPersonalization(true);
-      setIsLoading(false);
-
-      toast.success("Your personalized card is ready! 🎉");
-    };
-
-    wsManager.on(
-      "onboarding_personalization_complete",
-      handlePersonalizationComplete,
-    );
-
-    return () => {
-      wsManager.off(
-        "onboarding_personalization_complete",
-        handlePersonalizationComplete,
-      );
-    };
-  }, [enabled]);
 
   return {
     personalizationData,

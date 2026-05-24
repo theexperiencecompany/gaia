@@ -1,12 +1,13 @@
-import sys
-from datetime import timezone
+from datetime import UTC
 from functools import lru_cache
+import sys
 
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 import pymongo
+from pymongo.server_api import ServerApi
+
 from app.config.settings import settings
 from shared.py.wide_events import log
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from pymongo.server_api import ServerApi
 
 
 class MongoDB:
@@ -31,7 +32,7 @@ class MongoDB:
 
         try:
             self.client = AsyncIOMotorClient(
-                uri, server_api=ServerApi("1"), tz_aware=True, tzinfo=timezone.utc
+                uri, server_api=ServerApi("1"), tz_aware=True, tzinfo=UTC
             )
             self.database = self.client.get_database(db_name)
             log.set(db={"connection_status": "connected", "backend": "mongodb"})

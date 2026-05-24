@@ -25,17 +25,19 @@ Gotchas:
 """
 
 import asyncio
-import warnings
 from collections.abc import Awaitable, Callable
 from typing import Literal
+import warnings
+
+from pydantic import PydanticDeprecatedSince20
 
 from app.agents.core.graph_builder.build_graph import build_graphs
 from app.agents.core.graph_builder.checkpointer_manager import init_checkpointer_manager
+from app.agents.core.subagents.registry import all_subagents
 from app.agents.llm.client import register_llm_providers
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.store import init_embeddings
 from app.config.cloudinary import init_cloudinary
-from shared.py.wide_events import log
 from app.config.opik import init_opik
 from app.config.posthog import init_posthog
 from app.config.settings import settings
@@ -68,13 +70,50 @@ from app.services.mcp.mcp_client_pool import init_mcp_client_pool
 from app.services.startup_validation import validate_startup_requirements
 from app.services.tools.tools_warmup import warmup_tools_cache
 from app.services.vfs import get_vfs, init_vfs
-from pydantic import PydanticDeprecatedSince20
+from shared.py.wide_events import log
 
 
 def setup_warnings() -> None:
     """Set up common warning filters."""
     warnings.filterwarnings(
         "ignore", category=PydanticDeprecatedSince20, module="langchain_core.tools.base"
+    )
+
+
+async def warmup_subagent_graphs() -> None:
+    """Pre-warm compiled subagent graphs at startup.
+
+    The first handoff() in each worker process otherwise pays a cold-start
+    cost to build the subagent graph. Walking every subagent registered on
+    the provider registry here pushes that cost to startup where it's
+    amortised across all future requests.
+    """
+    subagents = list(all_subagents())
+    if not subagents:
+        log.info("No subagents to pre-warm")
+        return
+
+    agent_names = [sa.config.agent_name for sa in subagents if sa.config and sa.config.agent_name]
+
+    async def _warm(name: str) -> bool:
+        try:
+            await providers.aget(name)
+            return True
+        except Exception as e:
+            log.warning(f"Subagent graph pre-warm failed for {name}: {e}")
+            return False
+
+    results = await asyncio.gather(*(_warm(n) for n in agent_names))
+    succeeded = sum(1 for ok in results if ok)
+    failed = len(agent_names) - succeeded
+    log.info(f"Subagent graphs pre-warmed: {succeeded}/{len(agent_names)} succeeded")
+    log.set(
+        subagent_warmup={
+            "total": len(agent_names),
+            "succeeded": succeeded,
+            "failed": failed,
+            "names": agent_names,
+        }
     )
 
 
@@ -139,9 +178,7 @@ def _spawn_background_services(
                 log.error(f"Background init failed ({service_names[i]}): {result}")
 
         if failed:
-            log.warning(
-                f"Background init completed with {failed}/{len(services)} failures"
-            )
+            log.warning(f"Background init completed with {failed}/{len(services)} failures")
         else:
             log.info(f"Background init completed: {len(services)} services")
 
@@ -223,9 +260,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     if context == "main_app":
         eager_services.append((init_websocket_consumer, "websocket_consumer"))
 
-    startup_services: list[tuple[Callable[[], Awaitable[object]], str]] = list(
-        eager_services
-    )
+    startup_services: list[tuple[Callable[[], Awaitable[object]], str]] = list(eager_services)
     startup_services.append(
         (
             lambda: providers.initialize_auto_providers(
@@ -236,13 +271,13 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         )
     )
     startup_services.append((warmup_tools_cache, "tools_cache_warmup"))
+    startup_services.append((warmup_subagent_graphs, "subagent_graph_warmup"))
 
     # FastAPI with hot reloading disabled: start serving quickly,
     # warm up in background.
     if context == "main_app" and not settings.ENABLE_LAZY_LOADING:
         log.info(
-            "Hot reloading disabled: scheduling warmup tasks in background "
-            "(non-blocking startup)"
+            "Hot reloading disabled: scheduling warmup tasks in background (non-blocking startup)"
         )
 
         _spawn_background_services(
@@ -289,7 +324,7 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
     # Cancel any background warmup tasks first.
     if _background_tasks:
         log.info(f"Cancelling {len(_background_tasks)} background tasks")
-        for task in list(_background_tasks):
+        for task in _background_tasks:
             if not task.done():
                 task.cancel()
         await asyncio.gather(*_background_tasks, return_exceptions=True)
@@ -330,9 +365,7 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
         # Log failures without stopping other cleanup operations
         for i, result in enumerate(shutdown_results):
             if isinstance(result, Exception):
-                log.error(
-                    f"Error during {context} {shutdown_service_names[i]} shutdown: {result}"
-                )
+                log.error(f"Error during {context} {shutdown_service_names[i]} shutdown: {result}")
 
         log.info(f"{context} services shutdown completed")
 

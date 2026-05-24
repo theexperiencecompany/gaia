@@ -11,13 +11,13 @@ This handler is used by system workflows that should poll Gmail on a schedule
 rather than fire on every single incoming email.
 """
 
-from typing import Any, Dict, List, Set
+from typing import Any
 
-from shared.py.wide_events import log
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.wide_events import log
 
 
 class GmailPollTriggerHandler(TriggerHandler):
@@ -31,18 +31,18 @@ class GmailPollTriggerHandler(TriggerHandler):
     """
 
     SUPPORTED_TRIGGERS = ["gmail_poll_inbox"]
-    SUPPORTED_EVENTS: Set[str] = set()
+    SUPPORTED_EVENTS: set[str] = set()
 
     TRIGGER_TO_COMPOSIO = {
         "gmail_poll_inbox": "GMAIL_NEW_GMAIL_MESSAGE",
     }
 
     @property
-    def trigger_names(self) -> List[str]:
+    def trigger_names(self) -> list[str]:
         return self.SUPPORTED_TRIGGERS
 
     @property
-    def event_types(self) -> Set[str]:
+    def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
     async def register(
@@ -51,7 +51,7 @@ class GmailPollTriggerHandler(TriggerHandler):
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-    ) -> List[str]:
+    ) -> list[str]:
         """Register a polling Gmail trigger with the configured interval.
 
         Returns a list containing the Composio trigger ID so workflows can be
@@ -86,8 +86,8 @@ class GmailPollTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: Dict[str, Any]
-    ) -> List[Workflow]:
+        self, event_type: str, trigger_id: str, data: dict[str, Any]
+    ) -> list[Workflow]:
         """Find workflows matching this polling trigger event.
 
         Matches by composio trigger_id, same pattern as CalendarTriggerHandler.
@@ -106,9 +106,7 @@ class GmailPollTriggerHandler(TriggerHandler):
             )
 
         except Exception as e:
-            log.error(
-                f"Error finding workflows for gmail_poll trigger {trigger_id}: {e}"
-            )
+            log.error(f"Error finding workflows for gmail_poll trigger {trigger_id}: {e}")
             return []
 
 

@@ -21,6 +21,17 @@ import {
 
 export const runtime = "edge";
 
+interface OgIntegration {
+  name?: string;
+  description?: string;
+  category?: string;
+  creator?: { name?: string; picture?: string };
+  cloneCount?: number;
+  toolCount?: number;
+  integrationId?: string;
+  iconUrl?: string;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -36,7 +47,7 @@ export async function GET(request: Request) {
     const siteBaseUrl = getBaseUrl(request.url);
     const wallpaperUrl = `${siteBaseUrl}${wallpapers.integration.png}`;
 
-    let integration = null;
+    let integration: OgIntegration | null = null;
     try {
       const response = await fetch(
         `${apiBaseUrl}/integrations/public/${identifier}`,
@@ -51,7 +62,7 @@ export async function GET(request: Request) {
       console.error("[OG Image] Fetch failed:", e);
     }
 
-    const name = integration?.name || id;
+    const name = integration?.name || identifier;
     const description = integration?.description || "MCP Integration for GAIA";
     const category = integration?.category || "integration";
     const creatorName = integration?.creator?.name || "Community";
@@ -65,7 +76,7 @@ export async function GET(request: Request) {
     const toolCount = integration?.toolCount || 0;
 
     // Integration ID is used to look up known icons
-    const integrationId = integration?.integrationId || id;
+    const integrationId = integration?.integrationId || identifier;
 
     // First, try to get a known icon from the config (same as PublicIntegrationCard)
     const knownIconPath = getOgIconPath(integrationId);
@@ -76,19 +87,22 @@ export async function GET(request: Request) {
       ? getIconPaths(iconConfig.icon)
       : null;
 
-    // If no known icon, try to fetch external icon as base64
-    // This allows ICO, SVG, and other formats to be rendered
-    let externalIconBase64: string | null = null;
-    if (!knownIconPath && !iconPathData && integration?.iconUrl) {
-      externalIconBase64 = await fetchImageAsBase64(integration.iconUrl);
-    }
-
     const categoryLabel =
       category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
     const truncatedDesc = truncateText(description, 200);
 
     const allText = `${name}${truncatedDesc}${categoryLabel}by ${creatorName}${cloneCount} clones${toolCount} toolsGAIA`;
-    const loadedFonts = await loadFonts(name, allText);
+
+    // Start icon fetch and font loading in parallel - they are independent
+    const iconFetchPromise =
+      !knownIconPath && !iconPathData && integration?.iconUrl
+        ? fetchImageAsBase64(integration.iconUrl)
+        : Promise.resolve(null);
+
+    const [externalIconBase64, loadedFonts] = await Promise.all([
+      iconFetchPromise,
+      loadFonts(name, allText),
+    ]);
 
     return new ImageResponse(
       <div

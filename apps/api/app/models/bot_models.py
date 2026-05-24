@@ -3,8 +3,6 @@
 Pydantic models for bot chat, sessions, and related operations.
 """
 
-from typing import Optional
-
 from pydantic import BaseModel, Field, field_validator
 
 from app.services.platform_link_service import Platform
@@ -13,16 +11,10 @@ from app.services.platform_link_service import Platform
 class BotChatRequest(BaseModel):
     """Request model for bot chat messages."""
 
-    message: str = Field(
-        ..., description="User's message text", min_length=1, max_length=32768
-    )
+    message: str = Field(..., description="User's message text", min_length=1, max_length=32768)
     platform: str = Field(..., description="Platform name (discord, slack, etc.)")
-    platform_user_id: str = Field(
-        ..., description="User's ID on the platform", min_length=1
-    )
-    channel_id: Optional[str] = Field(
-        None, description="Channel/group ID (None for DM)"
-    )
+    platform_user_id: str = Field(..., description="User's ID on the platform", min_length=1)
+    channel_id: str | None = Field(None, description="Channel/group ID (None for DM)")
 
     @field_validator("platform")
     @classmethod
@@ -44,13 +36,9 @@ class CreateLinkTokenRequest(BaseModel):
     """Request model for creating a secure platform link token."""
 
     platform: str = Field(..., description="Platform name (discord, telegram, etc.)")
-    platform_user_id: str = Field(
-        ..., description="User's ID on the platform", min_length=1
-    )
-    username: Optional[str] = Field(None, description="Username on the platform")
-    display_name: Optional[str] = Field(
-        None, description="Display name on the platform"
-    )
+    platform_user_id: str = Field(..., description="User's ID on the platform", min_length=1)
+    username: str | None = Field(None, description="Username on the platform")
+    display_name: str | None = Field(None, description="Display name on the platform")
 
     @field_validator("platform")
     @classmethod
@@ -84,10 +72,10 @@ class BotConversationResponse(BaseModel):
 
     conversation_id: str = Field(..., description="Conversation ID")
     user_id: str = Field(..., description="User ID")
-    description: Optional[str] = Field(None, description="Conversation description")
+    description: str | None = Field(None, description="Conversation description")
     messages: list = Field(default_factory=list, description="List of messages")
-    created_at: Optional[str] = Field(None, description="Creation timestamp")
-    updated_at: Optional[str] = Field(None, description="Last update timestamp")
+    created_at: str | None = Field(None, description="Creation timestamp")
+    updated_at: str | None = Field(None, description="Last update timestamp")
 
     class Config:
         extra = "allow"  # Allow additional fields from MongoDB
@@ -97,12 +85,8 @@ class ResetSessionRequest(BaseModel):
     """Request model for resetting a bot session (starting a new conversation)."""
 
     platform: str = Field(..., description="Platform name (discord, slack, etc.)")
-    platform_user_id: str = Field(
-        ..., description="User's ID on the platform", min_length=1
-    )
-    channel_id: Optional[str] = Field(
-        None, description="Channel/group ID (None for DM)"
-    )
+    platform_user_id: str = Field(..., description="User's ID on the platform", min_length=1)
+    channel_id: str | None = Field(None, description="Channel/group ID (None for DM)")
 
     @field_validator("platform")
     @classmethod
@@ -116,7 +100,7 @@ class IntegrationInfo(BaseModel):
     """Integration information for bot settings."""
 
     name: str = Field(..., description="Integration name")
-    logo_url: Optional[str] = Field(None, description="Integration logo URL")
+    logo_url: str | None = Field(None, description="Integration logo URL")
     status: str = Field(..., description="Integration status: 'created' or 'connected'")
 
 
@@ -130,13 +114,11 @@ class BotSettingsResponse(BaseModel):
     """
 
     authenticated: bool = Field(..., description="Whether user is linked")
-    user_name: Optional[str] = Field(
-        None, description="User's display name (null if not set)"
-    )
-    account_created_at: Optional[str] = Field(
+    user_name: str | None = Field(None, description="User's display name (null if not set)")
+    account_created_at: str | None = Field(
         None, description="Account creation date ISO string (null if not available)"
     )
-    profile_image_url: Optional[str] = Field(
+    profile_image_url: str | None = Field(
         None, description="User's profile image URL (null if not set)"
     )
     connected_integrations: list[IntegrationInfo] = Field(

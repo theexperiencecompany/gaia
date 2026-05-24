@@ -11,7 +11,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AppIcon,
-  ArrowLeft01Icon,
   CustomerSupportIcon,
   DocumentAttachmentIcon,
   GlobeIcon,
@@ -19,6 +18,7 @@ import {
 import { Text } from "@/components/ui/text";
 import { apiService } from "@/lib/api";
 import { useResponsive } from "@/lib/responsive";
+import { BackButton } from "@/shared/components/ui/back-button";
 
 type SupportCategory = "bug_report" | "feature_request" | "general";
 
@@ -45,7 +45,7 @@ const C = {
   sectionBg: "#171920",
   divider: "rgba(255,255,255,0.06)",
   text: "#ffffff",
-  textMuted: "#8e8e93",
+  textMuted: "#71717a",
   primary: "#00bbff",
   primaryBg: "rgba(0,187,255,0.15)",
   primaryBorder: "rgba(0,187,255,0.35)",
@@ -133,21 +133,7 @@ export function SupportScreen({ onBack }: SupportScreenProps) {
             gap: spacing.md,
           }}
         >
-          <Pressable
-            onPress={onBack}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(255,255,255,0.05)",
-            }}
-          >
-            <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-          </Pressable>
+          <BackButton onPress={onBack} hideWhenCannotGoBack={false} />
           <Text style={{ fontSize: fontSize.base, fontWeight: "600" }}>
             Contact Support
           </Text>
@@ -244,21 +230,7 @@ export function SupportScreen({ onBack }: SupportScreenProps) {
           gap: spacing.md,
         }}
       >
-        <Pressable
-          onPress={onBack}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 999,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(255,255,255,0.05)",
-          }}
-        >
-          <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-        </Pressable>
+        <BackButton onPress={onBack} hideWhenCannotGoBack={false} />
         <Text style={{ fontSize: fontSize.base, fontWeight: "600" }}>
           Contact Support
         </Text>

@@ -1,5 +1,6 @@
 import { Wrench01Icon } from "@icons";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import { ChevronDown } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { tx } from "./demoConstants";
@@ -49,7 +50,9 @@ export default function DemoToolCalls({
             </div>
           ))}
         </div>
-        <span className="text-xs font-medium">Used {tools.length} tools</span>
+        <span className="text-xs font-medium">
+          Used {tools.length} {tools.length === 1 ? "tool" : "tools"}
+        </span>
         <ChevronDown
           className={`${expanded ? "rotate-180" : ""} transition-transform duration-200`}
           width={14}

@@ -1,6 +1,5 @@
 import {
   AiBrain01Icon,
-  BookOpen01Icon,
   ChartLineData02Icon,
   CreditCardIcon,
   DiscordIcon,
@@ -8,7 +7,6 @@ import {
   MessageMultiple02Icon,
   NotificationIcon,
   SparklesIcon,
-  TwitterIcon,
   UserCircleIcon,
   WhatsappIcon,
 } from "@icons";
@@ -77,12 +75,6 @@ export const settingsPageItems: SettingsMenuItem[] = [
 
 export const socialMediaItems: SettingsMenuItem[] = [
   {
-    key: "twitter",
-    label: "Follow Us",
-    icon: TwitterIcon,
-    external: true,
-  },
-  {
     key: "discord",
     label: "Join Discord",
     icon: DiscordIcon,
@@ -92,15 +84,6 @@ export const socialMediaItems: SettingsMenuItem[] = [
     key: "whatsapp",
     label: "Join WhatsApp",
     icon: WhatsappIcon,
-    external: true,
-  },
-];
-
-export const resourceItems: SettingsMenuItem[] = [
-  {
-    key: "documentation",
-    label: "Documentation",
-    icon: BookOpen01Icon,
     external: true,
   },
 ];

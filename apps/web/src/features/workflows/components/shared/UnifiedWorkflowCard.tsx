@@ -204,7 +204,7 @@ export default function UnifiedWorkflowCard({
   };
 
   const handleNavigate = () => {
-    const targetSlug = slug || communityWorkflow?.id || workflow?.id;
+    const targetSlug = slug || communityWorkflow?.slug || workflow?.slug;
     if (targetSlug) {
       trackEvent(ANALYTICS_EVENTS.WORKFLOW_CARD_NAVIGATE, {
         slug: targetSlug,
@@ -413,7 +413,7 @@ interface WorkflowActionButtonProps {
   size?: "sm" | "md";
 }
 
-export function WorkflowActionButton({
+function WorkflowActionButton({
   label,
   isLoading,
   onPress,

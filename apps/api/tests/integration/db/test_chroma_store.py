@@ -1,9 +1,17 @@
-"""Integration tests for ChromaStore using an ephemeral in-memory ChromaDB client.
+"""Integration tests for ChromaStore.
 
-These tests exercise the ChromaStore wrapper (app.db.chroma.chroma_store) and
-the tool-indexing helpers (app.db.chroma.chroma_tools_store) without hitting a
-real ChromaDB server.  chromadb.EphemeralClient() provides full in-process
-coverage at zero infrastructure cost.
+Tests exercise ChromaStore (app.db.chroma.chroma_store) and the tool-indexing
+helpers (app.db.chroma.chroma_tools_store).
+
+Client strategy
+---------------
+USE_REAL_SERVICES=1 (Dagger CI): uses the real AsyncHttpClient connected to
+the chroma service container.  This tests the full HTTP protocol path.
+
+Otherwise (local run): falls back to _AsyncEphemeralWrapper, an in-process
+synchronous EphemeralClient wrapped in an async shim.  chromadb 1.x has no
+AsyncEphemeralClient, so the shim provides the same async interface at zero
+infrastructure cost.
 
 Key production modules under test
 ----------------------------------
@@ -14,11 +22,14 @@ Key production modules under test
 - app.db.chroma.chroma_tools_store.delete_tools_by_namespace
 """
 
+from __future__ import annotations
+
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import chromadb
-import pytest
 from langgraph.store.base import GetOp, PutOp, SearchOp
+import pytest
 
 from app.db.chroma.chroma_store import ChromaStore
 from app.db.chroma.chroma_tools_store import (
@@ -28,9 +39,13 @@ from app.db.chroma.chroma_tools_store import (
     delete_tools_by_namespace,
 )
 
+_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
+_CHROMA_HOST = os.environ.get("CHROMADB_HOST", "localhost")
+_CHROMA_PORT = int(os.environ.get("CHROMADB_PORT", "8000"))
+
 
 # ---------------------------------------------------------------------------
-# Async wrapper for synchronous EphemeralClient
+# Async wrapper for synchronous EphemeralClient (local fallback)
 # chromadb.AsyncEphemeralClient does not exist in chromadb 1.x – this wrapper
 # exposes the same async interface that ChromaStore expects by delegating to the
 # synchronous EphemeralClient under the hood.
@@ -118,14 +133,28 @@ class _AsyncEphemeralWrapper:
 
 
 @pytest.fixture
-def ephemeral_client():
-    """Return a fresh async-wrapped ephemeral ChromaDB client per test."""
-    client = _AsyncEphemeralWrapper()
-    yield client
-    # Clean up – list and delete every collection created during the test
-    collections = client._sync.list_collections()
-    for col in collections:
-        client._sync.delete_collection(col.name)
+async def ephemeral_client():
+    """Return a ChromaDB client per test.
+
+    Uses real AsyncHttpClient against the chroma service when USE_REAL_SERVICES=1,
+    otherwise falls back to the in-process _AsyncEphemeralWrapper.
+    Each test starts with a clean slate (all collections deleted before and after).
+    """
+    if _USE_REAL_SERVICES:
+        client = await chromadb.AsyncHttpClient(host=_CHROMA_HOST, port=_CHROMA_PORT)
+        # Wipe any collections left by a previous test
+        for col in await client.list_collections():
+            await client.delete_collection(col.name)
+        yield client
+        for col in await client.list_collections():
+            await client.delete_collection(col.name)
+    else:
+        client = _AsyncEphemeralWrapper()
+        yield client
+        # Clean up – list and delete every collection created during the test
+        collections = client._sync.list_collections()
+        for col in collections:
+            client._sync.delete_collection(col.name)
 
 
 @pytest.fixture
@@ -195,9 +224,7 @@ class TestChromaStoreCRUD:
 
     async def test_get_missing_key_returns_none(self, chroma_store):
         """GetOp for a key that was never stored should return None."""
-        results = await chroma_store.abatch(
-            [GetOp(namespace=("ns",), key="does_not_exist")]
-        )
+        results = await chroma_store.abatch([GetOp(namespace=("ns",), key="does_not_exist")])
         assert results[0] is None
 
     async def test_put_none_deletes_item(self, populated_store):
@@ -387,9 +414,7 @@ class TestChromaStoreSearch:
         # Exactly 2 items should be returned — not 0, not 3.
         assert len(results[0]) == 2
 
-    async def test_partial_failure_in_gather_does_not_block_successful_puts(
-        self, chroma_store
-    ):
+    async def test_partial_failure_in_gather_does_not_block_successful_puts(self, chroma_store):
         """_apply_put_ops uses asyncio.gather(return_exceptions=True).
 
         If one upsert task raises, the others should still complete and their
@@ -480,9 +505,7 @@ class TestComputeToolDiff:
                 "tool": mock_tool,
             }
         }
-        existing = {
-            "general::stable_tool": {"hash": "stablehash", "namespace": "general"}
-        }
+        existing = {"general::stable_tool": {"hash": "stablehash", "namespace": "general"}}
 
         to_upsert, to_delete = _compute_tool_diff(current, existing)
 
@@ -499,9 +522,7 @@ class TestComputeToolDiff:
                 "tool": mock_tool,
             }
         }
-        existing = {
-            "general::changed_tool": {"hash": "oldhash", "namespace": "general"}
-        }
+        existing = {"general::changed_tool": {"hash": "oldhash", "namespace": "general"}}
 
         to_upsert, to_delete = _compute_tool_diff(current, existing)
 
@@ -668,13 +689,9 @@ class TestGetExistingToolsFromChroma:
         )
         return col
 
-    async def test_returns_all_tools_when_no_namespace_filter(
-        self, collection_with_tools
-    ):
+    async def test_returns_all_tools_when_no_namespace_filter(self, collection_with_tools):
         """Passing namespaces=None should return all tools."""
-        result = await _get_existing_tools_from_chroma(
-            collection_with_tools, namespaces=None
-        )
+        result = await _get_existing_tools_from_chroma(collection_with_tools, namespaces=None)
         assert "general::web_search" in result
         assert "gmail::send_email" in result
 
@@ -688,9 +705,7 @@ class TestGetExistingToolsFromChroma:
 
     async def test_empty_namespace_set_returns_empty(self, collection_with_tools):
         """An empty namespaces set should return an empty dict immediately."""
-        result = await _get_existing_tools_from_chroma(
-            collection_with_tools, namespaces=set()
-        )
+        result = await _get_existing_tools_from_chroma(collection_with_tools, namespaces=set())
         assert result == {}
 
     async def test_tool_hash_is_preserved(self, collection_with_tools):

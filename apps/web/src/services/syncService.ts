@@ -61,7 +61,7 @@ const mergeMessageLists = (
   }
 
   // Convert back to array and sort by creation time
-  return Array.from(messageMap.values()).sort(
+  return Array.from(messageMap.values()).toSorted(
     (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
   );
 };
@@ -267,6 +267,8 @@ export const batchSyncConversations = async (): Promise<void> => {
           description: conversation.description,
           starred: conversation.starred ?? false,
           isSystemGenerated: conversation.is_system_generated ?? false,
+          isOnboardingConversation:
+            conversation.is_onboarding_conversation ?? false,
           systemPurpose: conversation.system_purpose ?? null,
           isUnread: conversation.is_unread ?? false,
           createdAt: new Date(conversation.createdAt),
@@ -354,6 +356,8 @@ export const syncSingleConversation = async (
       description: conversation.description,
       starred: conversation.starred ?? false,
       isSystemGenerated: conversation.is_system_generated ?? false,
+      isOnboardingConversation:
+        conversation.is_onboarding_conversation ?? false,
       systemPurpose: conversation.system_purpose ?? null,
       isUnread: conversation.is_unread ?? false,
       createdAt: new Date(conversation.createdAt),

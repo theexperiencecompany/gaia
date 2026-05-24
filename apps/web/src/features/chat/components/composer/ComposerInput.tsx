@@ -110,7 +110,7 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
               const uniqueCategories = Array.from(
                 new Set(allMatches.map((match) => match.tool.category)),
               ).filter((cat) => validIntegrationIds.has(cat.toLowerCase()));
-              const categories = ["all", ...uniqueCategories.sort()];
+              const categories = ["all", ...uniqueCategories.toSorted()];
 
               setSlashCommandState({
                 isActive: true,
@@ -150,7 +150,7 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
             const uniqueCategories = Array.from(
               new Set(detection.matches.map((match) => match.tool.category)),
             ).filter((cat) => validIntegrationIds.has(cat.toLowerCase()));
-            const categories = ["all", ...uniqueCategories.sort()];
+            const categories = ["all", ...uniqueCategories.toSorted()];
 
             setSlashCommandState({
               isActive: true,
@@ -436,6 +436,7 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
         document.addEventListener("click", handleClickOutside);
         return () => document.removeEventListener("click", handleClickOutside);
       }
+      return undefined;
     }, [slashCommandState.isActive, inputRef]);
 
     return (

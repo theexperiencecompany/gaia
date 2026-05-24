@@ -228,7 +228,9 @@ export default function WorkflowSection({
           </h3>
           {isGenerating && (
             <span className="flex items-center gap-1 text-xs text-primary ml-auto">
-              <SparklesIcon className="h-3 w-3 animate-pulse" />
+              <div className="animate-pulse">
+                <SparklesIcon className="h-3 w-3" />
+              </div>
               Generating...
             </span>
           )}

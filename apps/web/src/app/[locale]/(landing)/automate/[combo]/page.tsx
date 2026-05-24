@@ -29,7 +29,8 @@ interface PageProps {
 }
 
 export async function generateStaticParams() {
-  return getAllComboSlugs().map((slug) => ({ combo: slug }));
+  const slugs = await getAllComboSlugs();
+  return slugs.map((slug) => ({ combo: slug }));
 }
 
 export const dynamicParams = false;
@@ -65,14 +66,15 @@ export async function generateMetadata({
 export default async function AutomateComboPage({ params }: PageProps) {
   const { locale, combo } = await params;
   setRequestLocale(locale);
-  const t = await getTranslations();
-  const data = await getTranslatedCombo(combo);
+  const [t, data, allCombos] = await Promise.all([
+    getTranslations(),
+    getTranslatedCombo(combo),
+    getTranslatedCombos(),
+  ]);
 
   if (!data) {
     notFound();
   }
-
-  const allCombos = await getTranslatedCombos();
   const relatedCombos = allCombos
     .filter(
       (c) =>

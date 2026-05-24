@@ -1,5 +1,5 @@
 import { streamController } from "@/features/chat/utils/streamController";
-import { trackConversationCreated } from "@/lib/analytics";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamState } from "@/lib/streamState";
 import { useChatStore } from "@/stores/chatStore";
@@ -47,7 +47,10 @@ export const createConversationInitHandlers = (
         await db.putConversation(newConversation);
 
         // Track new conversation creation
-        trackConversationCreated({ conversationId, source: "chat" });
+        trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_CREATED, {
+          conversationId,
+          source: "chat",
+        });
       } catch (error) {
         console.error("Failed to save conversation to IndexedDB:", error);
       }
@@ -162,7 +165,11 @@ export const createConversationInitHandlers = (
       useChatStore.getState().addOrUpdateMessage(botIMessage);
     }
     useChatStore.getState().clearOptimisticMessage();
-    window.history.replaceState({}, "", `/c/${conversation_id}`);
+    // Don't rewrite the URL when the user isn't on a /c route (e.g. the
+    // onboarding flow) — only sync it when already viewing a conversation.
+    if (/^\/c(\/|$)/.test(window.location.pathname)) {
+      window.history.replaceState({}, "", `/c/${conversation_id}`);
+    }
     useChatStore.getState().setActiveConversationId(conversation_id);
     useChatStore.getState().setStreamingConversationId(conversation_id);
 

@@ -1,6 +1,9 @@
 "use client";
 
+import { CircleArrowUpRight02Icon } from "@icons";
+import Link from "next/link";
 import { ZapIcon } from "@/components/shared/icons";
+import { RaisedButton } from "@/components/ui/raised-button";
 import WorkflowDemoAnimation from "../demo/workflow-demo/WorkflowDemoAnimation";
 import ShowcaseSectionLayout from "./ShowcaseSectionLayout";
 import ShowcaseSidebarContent from "./ShowcaseSidebarContent";
@@ -30,11 +33,21 @@ export default function WorkflowShowcaseSection() {
       subheader="Your daily busywork, handled without lifting a finger"
       DemoComponent={<WorkflowDemoAnimation />}
       SidebarContent={
-        <ShowcaseSidebarContent
-          sidebarIcon={<ZapIcon width={30} height={30} />}
-          sidebarTitle="Workflows"
-          contentSections={CONTENT_SECTIONS}
-        />
+        <>
+          <ShowcaseSidebarContent
+            sidebarIcon={<ZapIcon width={30} height={30} />}
+            sidebarTitle="Workflows"
+            contentSections={CONTENT_SECTIONS}
+          />
+          <div className="flex justify-end">
+            <Link href="/use-cases">
+              <RaisedButton className="rounded-xl text-black!" color="#00bbff">
+                View Community Workflows
+                <CircleArrowUpRight02Icon width={18} height={18} />
+              </RaisedButton>
+            </Link>
+          </div>
+        </>
       }
     />
   );

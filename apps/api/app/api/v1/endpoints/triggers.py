@@ -5,21 +5,22 @@ Provides endpoints for fetching available trigger schemas
 that can be used in workflow configuration.
 """
 
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
-from shared.py.wide_events import log
+from fastapi import APIRouter, Depends, HTTPException, Request
+
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.services.triggers import get_handler_by_name
 from app.services.workflow.trigger_service import TriggerService
-from fastapi import APIRouter, Depends, HTTPException, Request
+from shared.py.wide_events import log
 
 router = APIRouter(prefix="/triggers")
 
 
-@router.get("/schema", response_model=List[Dict[str, Any]])
+@router.get("/schema", response_model=list[dict[str, Any]])
 async def get_trigger_schemas(
     _: dict = Depends(get_current_user),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Get all available workflow trigger schemas.
 
@@ -41,7 +42,7 @@ async def get_trigger_options(
     field_name: str = "",
     parent_values: str = "",
     current_user: dict = Depends(get_current_user),
-) -> Dict[str, List[Union[Dict[str, str], Dict[str, Any]]]]:
+) -> dict[str, list[Union[dict[str, str], dict[str, Any]]]]:
     """
     Get dynamic options for a trigger configuration field.
     Passes any additional query parameters to the handler.
@@ -67,9 +68,7 @@ async def get_trigger_options(
 
     # Parse parent values
     parent_ids = (
-        [v.strip() for v in parent_values.split(",") if v.strip()]
-        if parent_values
-        else None
+        [v.strip() for v in parent_values.split(",") if v.strip()] if parent_values else None
     )
 
     # Extract additional query parameters (e.g., page, search)
@@ -81,9 +80,7 @@ async def get_trigger_options(
         "parent_values",
     }
     kwargs = {
-        key: value
-        for key, value in request.query_params.items()
-        if key not in standard_params
+        key: value for key, value in request.query_params.items() if key not in standard_params
     }
 
     # Fetch options from handler, passing all kwargs

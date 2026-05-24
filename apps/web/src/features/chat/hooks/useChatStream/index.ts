@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useLoading } from "@/features/chat/hooks/useLoading";
@@ -44,6 +44,12 @@ export const useChatStream = () => {
       description: null as string | null,
     },
   });
+
+  // Keep the ref's view of conversation history current so queued / subsequent
+  // sends include the latest messages (fixes streaming race + missing UI msgs).
+  useEffect(() => {
+    refs.current.convoMessages = convoMessages;
+  }, [convoMessages]);
 
   const ctx: StreamContext = {
     refs,
@@ -115,6 +121,8 @@ export const useChatStream = () => {
       content: string;
       role: "user" | "assistant";
     } | null = null,
+    conversationId: string | null = null,
+    isOnboardingDemo: boolean = false,
   ) => {
     if (streamInProgressRef.current) {
       console.warn(
@@ -130,6 +138,8 @@ export const useChatStream = () => {
         selectedCalendarEvent,
         optimisticUserId,
         replyToMessage,
+        conversationId,
+        isOnboardingDemo,
       ];
       return;
     }
@@ -140,13 +150,14 @@ export const useChatStream = () => {
 
     streamInProgressRef.current = true;
 
-    const conversationId =
-      useChatStore.getState().activeConversationId ||
+    const effectiveConversationId =
+      conversationId ??
+      useChatStore.getState().activeConversationId ??
       refs.current.newConversation.id;
-    streamState.startStream(conversationId);
+    streamState.startStream(effectiveConversationId);
 
     trackEvent(ANALYTICS_EVENTS.CHAT_STARTED, {
-      conversation_id: conversationId,
+      conversation_id: effectiveConversationId,
       is_new_conversation: !useChatStore.getState().activeConversationId,
     });
 
@@ -234,7 +245,7 @@ export const useChatStream = () => {
       await chatApi.fetchChatStream(
         inputText,
         [...refs.current.convoMessages, ...currentMessages],
-        undefined,
+        conversationId ?? undefined,
         handleStreamEvent,
         handleStreamClose,
         handleStreamError,
@@ -245,6 +256,7 @@ export const useChatStream = () => {
         selectedWorkflow,
         selectedCalendarEvent,
         replyToMessage,
+        isOnboardingDemo,
       );
     } catch (error) {
       console.error("[useChatStream] Error initiating chat stream:", error);

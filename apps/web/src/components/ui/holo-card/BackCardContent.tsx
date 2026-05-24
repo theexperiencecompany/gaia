@@ -18,7 +18,7 @@ export const BackCardContent: React.FC<BackCardContentProps> = ({
   isStatic = false,
 }) => {
   return (
-    <div className="flex w-full flex-col gap-4">
+    <div className="flex min-h-0 w-full flex-1 flex-col gap-4">
       <div className={CARD_CLASSES.INFO_BOX_BACK}>
         <div
           className={
@@ -38,7 +38,9 @@ export const BackCardContent: React.FC<BackCardContentProps> = ({
         >
           {personalityPhrase}
         </div>
-        <p className="text-sm text-white/80">{userBio}</p>
+        <p className="scrollbar-faint pointer-events-auto min-h-0 flex-1 overflow-y-auto overscroll-contain text-sm text-white/80">
+          {userBio}
+        </p>
       </div>
     </div>
   );

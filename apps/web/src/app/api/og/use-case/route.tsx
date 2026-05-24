@@ -23,6 +23,15 @@ import {
 
 export const runtime = "edge";
 
+interface OgWorkflow {
+  id?: string;
+  title?: string;
+  description?: string;
+  steps?: { category: string }[];
+  total_executions?: number;
+  creator?: { id?: string; name?: string; avatar?: string };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -35,30 +44,25 @@ export async function GET(request: NextRequest) {
     const apiBaseUrl = getApiBaseUrl();
     const siteBaseUrl = getBaseUrl(request.url);
 
-    let workflow = null;
+    let workflow: OgWorkflow | null = null;
     try {
-      // First try explore endpoint (has creator info)
-      const exploreResponse = await fetch(`${apiBaseUrl}/workflows/explore`, {
-        cache: "no-store",
-      });
+      const [exploreResponse, communityResponse] = await Promise.all([
+        fetch(`${apiBaseUrl}/workflows/explore`, { cache: "no-store" }),
+        fetch(`${apiBaseUrl}/workflows/community?limit=100`, {
+          cache: "no-store",
+        }),
+      ]);
+
       if (exploreResponse.ok) {
         const data = await exploreResponse.json();
         workflow = data.workflows?.find((w: { id: string }) => w.id === slug);
       }
 
-      // If not in explore, try community endpoint (has creator info)
-      if (!workflow) {
-        const communityResponse = await fetch(
-          `${apiBaseUrl}/workflows/community?limit=100`,
-          { cache: "no-store" },
-        );
-        if (communityResponse.ok) {
-          const data = await communityResponse.json();
-          workflow = data.workflows?.find((w: { id: string }) => w.id === slug);
-        }
+      if (!workflow && communityResponse.ok) {
+        const data = await communityResponse.json();
+        workflow = data.workflows?.find((w: { id: string }) => w.id === slug);
       }
 
-      // If still not found, try public endpoint (may not have full creator info)
       if (!workflow) {
         const publicResponse = await fetch(
           `${apiBaseUrl}/workflows/public/${slug}`,

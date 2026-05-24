@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -13,24 +13,24 @@ interface TableOfContentsProps {
 export default function TableOfContents({ headings }: TableOfContentsProps) {
   const [activeId, setActiveId] = useState<string>("");
 
-  useEffect(() => {
-    const onScroll = () => {
-      const scrollY = window.scrollY + 140;
+  const onScroll = useEffectEvent(() => {
+    const scrollY = window.scrollY + 140;
 
-      let currentId = "";
-      for (const { id } of headings) {
-        const el = document.getElementById(id);
-        if (el && el.offsetTop <= scrollY) {
-          currentId = id;
-        }
+    let currentId = "";
+    for (const { id } of headings) {
+      const el = document.getElementById(id);
+      if (el && el.offsetTop <= scrollY) {
+        currentId = id;
       }
-      setActiveId(currentId);
-    };
+    }
+    setActiveId(currentId);
+  });
 
+  useEffect(() => {
     window.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
     return () => window.removeEventListener("scroll", onScroll);
-  }, [headings]);
+  }, []);
 
   if (headings.length === 0) return null;
 

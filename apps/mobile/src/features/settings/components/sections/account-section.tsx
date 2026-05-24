@@ -71,8 +71,8 @@ export function AccountSection() {
       showsVerticalScrollIndicator={false}
       contentContainerStyle={{ padding: spacing.md, gap: spacing.lg }}
     >
-      <Card variant="secondary" className="rounded-3xl bg-surface">
-        <Card.Body className="items-center gap-3 px-5 py-6">
+      <Card variant="secondary" className="rounded-2xl bg-surface">
+        <Card.Body className="items-center gap-3 px-4 py-4">
           <Avatar alt={user?.name ?? "User"} size="lg" color="accent">
             {user?.picture ? (
               <Avatar.Image source={{ uri: user.picture }} />
@@ -80,14 +80,14 @@ export function AccountSection() {
               <Avatar.Fallback>{getInitials(user?.name)}</Avatar.Fallback>
             )}
           </Avatar>
-          <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>
+          <Text style={{ fontSize: fontSize.sm, color: "#71717a" }}>
             {user?.email ?? ""}
           </Text>
         </Card.Body>
       </Card>
 
-      <Card variant="secondary" className="rounded-3xl bg-surface">
-        <Card.Body className="gap-4 px-5 py-5">
+      <Card variant="secondary" className="rounded-2xl bg-surface">
+        <Card.Body className="gap-4 px-4 py-4">
           <TextField>
             <TextField.Label>Display Name</TextField.Label>
             <TextField.Input

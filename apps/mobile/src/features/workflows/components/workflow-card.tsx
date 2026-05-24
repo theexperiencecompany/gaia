@@ -1,27 +1,17 @@
+import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Modal, Pressable, View } from "react-native";
-import {
-  AppIcon,
-  Cancel01Icon,
-  CheckmarkCircle02Icon,
-  Clock04Icon,
-  Delete02Icon,
-  GlobeIcon,
-  PencilEdit02Icon,
-  PlayIcon,
-  Settings02Icon,
-  ToggleOffIcon,
-  ToggleOnIcon,
-} from "@/components/icons";
+import { useEffect, useState } from "react";
+import { Pressable, View } from "react-native";
+import { AppIcon, Clock04Icon, PlayIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 import { useResponsive } from "@/lib/responsive";
-import { workflowApi } from "../api/workflow-api";
+import { AppStatusChip } from "@/shared/components/ui/app-status-chip";
+import { WORKFLOW_COLORS } from "../constants/colors";
+import { ACTIVATION_STATUS, EXECUTION_STATUS } from "../constants/status";
+import { useWorkflowPolling } from "../hooks/use-workflow-polling";
 import type { Workflow } from "../types/workflow-types";
 import { formatRunCount, getTriggerLabel } from "../utils/format-utils";
-
-type ExecutionStatusDot = "success" | "failed" | "running" | "idle";
+import { WorkflowStepIcons } from "./workflow-step-icons";
 
 interface WorkflowCardProps {
   workflow: Workflow;
@@ -29,27 +19,31 @@ interface WorkflowCardProps {
   onUpdated?: () => void;
 }
 
-export function WorkflowCard({
-  workflow,
-  onPress,
-  onUpdated,
-}: WorkflowCardProps) {
+/**
+ * Compact workflow row.
+ *
+ * Linear-style: tools + status pill in the header row, title + (optional)
+ * description below, and one tight meta line that combines trigger summary
+ * and run count side-by-side. Card-level overflow lives in detail — the row
+ * itself stays clean (no cog icon, no inline action menu).
+ */
+export function WorkflowCard({ workflow, onPress }: WorkflowCardProps) {
   const router = useRouter();
   const { spacing, fontSize, moderateScale } = useResponsive();
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [runningStatus, setRunningStatus] =
-    useState<ExecutionStatusDot>("idle");
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [optimistic, setOptimistic] = useState<Workflow>(workflow);
+  const polling = useWorkflowPolling();
 
+  // Sync prop into local state when the parent re-fetches the row. We only
+  // hard-replace when the id changes; otherwise the optimistic snapshot is
+  // the source of truth until the next mutation completes.
   useEffect(() => {
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-      }
-    };
-  }, []);
+    if (workflow.id !== optimistic.id) {
+      setOptimistic(workflow);
+    }
+  }, [workflow, optimistic.id]);
 
   const handlePress = () => {
+    void Haptics.selectionAsync();
     if (onPress) {
       onPress(workflow);
     } else {
@@ -57,182 +51,79 @@ export function WorkflowCard({
     }
   };
 
-  const stopPolling = useCallback(() => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-  }, []);
-
-  const startPolling = useCallback(
-    (workflowId: string) => {
-      stopPolling();
-      pollingRef.current = setInterval(() => {
-        workflowApi
-          .getWorkflowStatus(workflowId)
-          .then((statusResponse) => {
-            const { status } = statusResponse;
-            if (status === "success" || status === "completed") {
-              setRunningStatus("success");
-              stopPolling();
-            } else if (status === "failed" || status === "error") {
-              setRunningStatus("failed");
-              stopPolling();
-            }
-          })
-          .catch(() => {
-            setRunningStatus("failed");
-            stopPolling();
-          });
-      }, 2000);
-    },
-    [stopPolling],
-  );
-
-  const handleRun = useCallback(() => {
-    setMenuVisible(false);
-    setRunningStatus("running");
-    workflowApi
-      .executeWorkflow(workflow.id)
-      .then(() => {
-        startPolling(workflow.id);
-      })
-      .catch(() => {
-        setRunningStatus("failed");
-      });
-  }, [workflow.id, startPolling]);
-
-  const handleToggleActivation = useCallback(() => {
-    setMenuVisible(false);
-    const action = workflow.activated
-      ? workflowApi.deactivateWorkflow(workflow.id)
-      : workflowApi.activateWorkflow(workflow.id);
-    action
-      .then(() => {
-        onUpdated?.();
-      })
-      .catch(() => {
-        Alert.alert(
-          "Error",
-          `Failed to ${workflow.activated ? "deactivate" : "activate"} workflow`,
-        );
-      });
-  }, [workflow.id, workflow.activated, onUpdated]);
-
-  const handlePublish = useCallback(() => {
-    setMenuVisible(false);
-    const action = workflow.is_public
-      ? workflowApi.unpublishWorkflow(workflow.id)
-      : workflowApi.publishWorkflow(workflow.id);
-    action
-      .then(() => {
-        onUpdated?.();
-      })
-      .catch(() => {
-        Alert.alert(
-          "Error",
-          `Failed to ${workflow.is_public ? "unpublish" : "publish"} workflow`,
-        );
-      });
-  }, [workflow.id, workflow.is_public, onUpdated]);
-
-  const handleDelete = useCallback(() => {
-    setMenuVisible(false);
-    Alert.alert(
-      "Delete Workflow",
-      `Are you sure you want to delete "${workflow.title}"?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            workflowApi
-              .deleteWorkflow(workflow.id)
-              .then(() => {
-                onUpdated?.();
-              })
-              .catch(() => {
-                Alert.alert("Error", "Failed to delete workflow");
-              });
-          },
-        },
-      ],
-    );
-  }, [workflow.id, workflow.title, onUpdated]);
-
   const triggerLabel = getTriggerLabel(
-    workflow.trigger_config?.type ?? "manual",
+    optimistic.trigger_config?.type ?? "manual",
   );
-  const runCountText = formatRunCount(workflow.total_executions ?? 0);
+  const runCountText = formatRunCount(optimistic.total_executions ?? 0);
+  const activation =
+    ACTIVATION_STATUS[optimistic.activated ? "activated" : "deactivated"];
+
+  const showTrigger = triggerLabel !== "Manual";
+  const showRunCount = runCountText !== "Never run";
+  const hasMeta = showTrigger || showRunCount;
 
   return (
-    <>
-      <Pressable
-        onPress={handlePress}
-        style={({ pressed }) => ({
-          borderRadius: moderateScale(24, 0.5),
-          backgroundColor: pressed ? "rgba(63,63,70,0.5)" : "rgba(39,39,42,1)",
-          padding: spacing.md,
-          gap: spacing.sm,
-        })}
+    <Pressable
+      onPress={handlePress}
+      style={({ pressed }) => ({
+        borderRadius: moderateScale(16, 0.5),
+        backgroundColor: pressed
+          ? WORKFLOW_COLORS.cardBgActive
+          : WORKFLOW_COLORS.cardBg,
+        padding: spacing.md,
+        gap: spacing.sm,
+      })}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
       >
-        {/* Top row: step category icons + status chips + menu */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <WorkflowStepIcons steps={workflow.steps} />
+        <WorkflowStepIcons steps={optimistic.steps} />
 
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <ExecutionStatusIndicator status={runningStatus} />
-            <ActivationChip activated={workflow.activated} />
-
-            <Pressable
-              onPress={() => setMenuVisible(true)}
-              hitSlop={8}
-              style={{
-                padding: 4,
-                borderRadius: 8,
-                backgroundColor: "rgba(255,255,255,0.06)",
-              }}
-            >
-              <AppIcon icon={Settings02Icon} size={14} color="#71717a" />
-            </Pressable>
-          </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          {polling.status !== "idle" ? (
+            <AppStatusChip
+              status={EXECUTION_STATUS[polling.status].chipStatus}
+              label={EXECUTION_STATUS[polling.status].label}
+            />
+          ) : null}
+          <AppStatusChip
+            status={activation.chipStatus}
+            label={activation.label}
+          />
         </View>
+      </View>
 
-        {/* Title */}
-        <View>
+      <View>
+        <Text
+          style={{
+            fontSize: fontSize.base,
+            fontWeight: "500",
+            color: WORKFLOW_COLORS.textPrimary,
+          }}
+          numberOfLines={2}
+        >
+          {optimistic.title}
+        </Text>
+        {optimistic.description ? (
           <Text
             style={{
-              fontSize: fontSize.base,
-              fontWeight: "500",
-              color: "#fff",
+              fontSize: fontSize.xs,
+              color: WORKFLOW_COLORS.textZinc500,
+              marginTop: 4,
+              lineHeight: 16,
             }}
             numberOfLines={2}
           >
-            {workflow.title}
+            {optimistic.description}
           </Text>
-          {workflow.description ? (
-            <Text
-              style={{
-                fontSize: fontSize.xs,
-                color: "#71717a",
-                marginTop: 4,
-                lineHeight: 16,
-              }}
-              numberOfLines={2}
-            >
-              {workflow.description}
-            </Text>
-          ) : null}
-        </View>
+        ) : null}
+      </View>
 
-        {/* Bottom row: trigger + run count */}
+      {hasMeta || optimistic.is_system_workflow ? (
         <View
           style={{
             flexDirection: "row",
@@ -241,315 +132,83 @@ export function WorkflowCard({
             marginTop: 2,
           }}
         >
-          <View style={{ gap: 4 }}>
-            {triggerLabel !== "Manual" && (
+          <View
+            style={{
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            {showTrigger ? (
               <View
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 4,
+                  flexShrink: 1,
                 }}
               >
-                <AppIcon icon={Clock04Icon} size={14} color="#71717a" />
-                <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
+                <AppIcon
+                  icon={Clock04Icon}
+                  size={12}
+                  color={WORKFLOW_COLORS.textZinc500}
+                />
+                <Text
+                  style={{
+                    fontSize: fontSize.xs,
+                    color: WORKFLOW_COLORS.textZinc500,
+                  }}
+                  numberOfLines={1}
+                >
                   {triggerLabel}
                 </Text>
               </View>
-            )}
+            ) : null}
 
-            {runCountText !== "Never run" && (
+            {showTrigger && showRunCount ? (
+              <View
+                style={{
+                  width: 2,
+                  height: 2,
+                  borderRadius: 1,
+                  backgroundColor: WORKFLOW_COLORS.textZinc600,
+                }}
+              />
+            ) : null}
+
+            {showRunCount ? (
               <View
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 4,
+                  flexShrink: 0,
                 }}
               >
-                <AppIcon icon={PlayIcon} size={14} color="#71717a" />
-                <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
+                <AppIcon
+                  icon={PlayIcon}
+                  size={12}
+                  color={WORKFLOW_COLORS.textZinc500}
+                />
+                <Text
+                  style={{
+                    fontSize: fontSize.xs,
+                    color: WORKFLOW_COLORS.textZinc500,
+                  }}
+                  numberOfLines={1}
+                >
                   {runCountText}
                 </Text>
               </View>
-            )}
+            ) : null}
           </View>
 
-          {workflow.is_system_workflow && (
-            <View
-              style={{
-                borderRadius: 6,
-                paddingHorizontal: 8,
-                paddingVertical: 2,
-                backgroundColor: "rgba(0,187,255,0.12)",
-              }}
-            >
-              <Text style={{ fontSize: fontSize.xs - 1, color: "#00bbff" }}>
-                System
-              </Text>
-            </View>
-          )}
+          {optimistic.is_system_workflow ? (
+            <AppStatusChip tone="accent" label="System" />
+          ) : null}
         </View>
-      </Pressable>
-
-      {/* Actions context menu */}
-      <Modal
-        visible={menuVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMenuVisible(false)}
-      >
-        <Pressable
-          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)" }}
-          onPress={() => setMenuVisible(false)}
-        >
-          <View
-            style={{
-              position: "absolute",
-              top: "28%",
-              alignSelf: "center",
-              backgroundColor: "#1c1c1e",
-              borderRadius: moderateScale(16, 0.5),
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.1)",
-              minWidth: moderateScale(230, 0.5),
-              overflow: "hidden",
-            }}
-          >
-            {/* Menu header */}
-            <View
-              style={{
-                paddingHorizontal: spacing.md,
-                paddingVertical: spacing.sm,
-                borderBottomWidth: 1,
-                borderBottomColor: "rgba(255,255,255,0.08)",
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: fontSize.sm,
-                  fontWeight: "600",
-                  color: "#ffffff",
-                }}
-                numberOfLines={1}
-              >
-                {workflow.title}
-              </Text>
-            </View>
-
-            <ActionMenuItem
-              icon={PlayIcon}
-              label="Run Now"
-              color="#00bbff"
-              onPress={handleRun}
-            />
-            <ActionMenuDivider />
-            <ActionMenuItem
-              icon={PencilEdit02Icon}
-              label="Edit"
-              color="#ffffff"
-              onPress={() => {
-                setMenuVisible(false);
-                router.push(`/(app)/workflows/${workflow.id}`);
-              }}
-            />
-            <ActionMenuDivider />
-            <ActionMenuItem
-              icon={workflow.activated ? ToggleOffIcon : ToggleOnIcon}
-              label={workflow.activated ? "Deactivate" : "Activate"}
-              color={workflow.activated ? "#f59e0b" : "#22c55e"}
-              onPress={handleToggleActivation}
-            />
-            <ActionMenuDivider />
-            <ActionMenuItem
-              icon={GlobeIcon}
-              label={workflow.is_public ? "Unpublish" : "Publish"}
-              color="#a78bfa"
-              onPress={handlePublish}
-            />
-            <ActionMenuDivider />
-            <ActionMenuItem
-              icon={Delete02Icon}
-              label="Delete"
-              color="#ef4444"
-              onPress={handleDelete}
-            />
-          </View>
-        </Pressable>
-      </Modal>
-    </>
-  );
-}
-
-function ActionMenuItem({
-  icon,
-  label,
-  color,
-  onPress,
-}: {
-  icon: typeof PlayIcon;
-  label: string;
-  color: string;
-  onPress: () => void;
-}) {
-  const { spacing, fontSize } = useResponsive();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flexDirection: "row",
-        alignItems: "center",
-        gap: spacing.sm,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        backgroundColor: pressed ? "rgba(255,255,255,0.04)" : "transparent",
-      })}
-    >
-      <AppIcon icon={icon} size={16} color={color} />
-      <Text style={{ fontSize: fontSize.sm, color }}>{label}</Text>
+      ) : null}
     </Pressable>
-  );
-}
-
-function ActionMenuDivider() {
-  return (
-    <View style={{ height: 1, backgroundColor: "rgba(255,255,255,0.06)" }} />
-  );
-}
-
-function ExecutionStatusIndicator({ status }: { status: ExecutionStatusDot }) {
-  if (status === "idle") return null;
-
-  const dotColors: Record<Exclude<ExecutionStatusDot, "idle">, string> = {
-    success: "#22c55e",
-    failed: "#ef4444",
-    running: "#f59e0b",
-  };
-
-  const dotColor = dotColors[status];
-
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-      <View
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: 4,
-          backgroundColor: dotColor,
-        }}
-      />
-      {status === "running" && (
-        <Text style={{ fontSize: 10, color: dotColor }}>Running</Text>
-      )}
-    </View>
-  );
-}
-
-function ActivationChip({ activated }: { activated: boolean }) {
-  const { fontSize } = useResponsive();
-
-  return (
-    <View
-      style={{
-        borderRadius: 6,
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        backgroundColor: activated
-          ? "rgba(34,197,94,0.12)"
-          : "rgba(239,68,68,0.12)",
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 4,
-      }}
-    >
-      <AppIcon
-        icon={activated ? CheckmarkCircle02Icon : Cancel01Icon}
-        size={12}
-        color={activated ? "#22c55e" : "#ef4444"}
-      />
-      <Text
-        style={{
-          fontSize: fontSize.xs - 1,
-          color: activated ? "#22c55e" : "#ef4444",
-        }}
-      >
-        {activated ? "Activated" : "Deactivated"}
-      </Text>
-    </View>
-  );
-}
-
-function WorkflowStepIcons({ steps }: { steps: Array<{ category: string }> }) {
-  const categories = [...new Set(steps.map((s) => s.category))];
-  const display = categories.slice(0, 3);
-
-  if (display.length === 0) {
-    return <View style={{ height: 32 }} />;
-  }
-
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center", height: 32 }}>
-      {display.map((category, index) => {
-        const iconElement = getToolCategoryIcon(category, {
-          size: 16,
-          showBackground: false,
-        });
-        return (
-          <View
-            key={category}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              backgroundColor: "rgba(113,113,122,0.15)",
-              alignItems: "center",
-              justifyContent: "center",
-              marginLeft: index > 0 ? -6 : 0,
-              transform: [
-                {
-                  rotate:
-                    display.length > 1
-                      ? index % 2 === 0
-                        ? "8deg"
-                        : "-8deg"
-                      : "0deg",
-                },
-              ],
-              zIndex: index,
-            }}
-          >
-            {iconElement ?? (
-              <Text
-                style={{
-                  fontSize: 10,
-                  color: "#a1a1aa",
-                  fontWeight: "600",
-                  textTransform: "uppercase",
-                }}
-                numberOfLines={1}
-              >
-                {category.slice(0, 2)}
-              </Text>
-            )}
-          </View>
-        );
-      })}
-      {categories.length > 3 && (
-        <View
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            backgroundColor: "rgba(113,113,122,0.15)",
-            alignItems: "center",
-            justifyContent: "center",
-            marginLeft: -6,
-          }}
-        >
-          <Text style={{ fontSize: 10, color: "#a1a1aa" }}>
-            +{categories.length - 3}
-          </Text>
-        </View>
-      )}
-    </View>
   );
 }

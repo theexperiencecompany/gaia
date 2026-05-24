@@ -13,11 +13,15 @@ This module consolidates middleware creation to:
 from collections.abc import Mapping
 from typing import Any
 
+from langchain_core.language_models import BaseChatModel, LanguageModelLike
+from langchain_core.tools import BaseTool
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.vfs_compaction import VFSCompactionMiddleware
 from app.agents.middleware.vfs_summarization import VFSArchivingSummarizationMiddleware
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
-from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.summarization import (
     COMPACTION_THRESHOLD,
@@ -26,9 +30,7 @@ from app.constants.summarization import (
     SUMMARIZATION_MODEL,
     SUMMARIZATION_TRIGGER_FRACTION,
 )
-from langchain_core.language_models import BaseChatModel, LanguageModelLike
-from langchain_core.tools import BaseTool
-from langchain_google_genai import ChatGoogleGenerativeAI
+from shared.py.wide_events import log
 
 VFS_TOOL_NAMES = {"vfs_read", "vfs_write", "vfs_cmd"}
 SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
@@ -63,6 +65,8 @@ def get_summarization_llm() -> BaseChatModel | None:
 
 def create_middleware_stack(
     *,
+    agent_name: str = "agent",
+    enable_accounting: bool = True,
     enable_summarization: bool = True,
     enable_compaction: bool = True,
     enable_subagent: bool = False,
@@ -110,6 +114,21 @@ def create_middleware_stack(
     """
     middleware: list[Any] = []
 
+    # LLM accounting middleware — emits `llm_call` wide events + recursion
+    # high-water-mark signals. Inserted FIRST so it observes every model call
+    # on the way in (before_model) and on the way out (after_model).
+    # ``caching_debug`` flips on a second diagnostic instance that runs LAST,
+    # so we can compare state.messages before vs. after other middleware.
+    if enable_accounting:
+        middleware.append(LLMAccountingMiddleware(agent_name=agent_name))
+        log.debug(f"LLMAccountingMiddleware enabled for {agent_name}")
+        log.set(
+            middleware_stack={
+                "agent_name": agent_name,
+                "accounting_enabled": True,
+            }
+        )
+
     # SubagentMiddleware - spawn_subagent tool for parallel/focused work
     if enable_subagent:
         subagent = SubagentMiddleware(
@@ -152,15 +171,6 @@ def create_middleware_stack(
     return middleware
 
 
-def create_default_middleware() -> list:
-    """
-    Create the default middleware stack with standard settings.
-
-    This is the most common configuration used by executor, comms, and subagents.
-    """
-    return create_middleware_stack()
-
-
 def create_executor_middleware(
     *,
     subagent_llm: LanguageModelLike | None = None,
@@ -190,6 +200,7 @@ def create_executor_middleware(
         List of middleware for executor agent
     """
     return create_middleware_stack(
+        agent_name="executor_agent",
         enable_subagent=True,
         subagent_llm=subagent_llm,
         subagent_tools=subagent_tools,
@@ -211,6 +222,7 @@ def create_comms_middleware() -> list[Any]:
         List of middleware for comms agent
     """
     return create_middleware_stack(
+        agent_name="comms_agent",
         enable_subagent=False,
         compaction_excluded_tools=VFS_TOOL_NAMES,
     )
@@ -249,6 +261,7 @@ def create_subagent_middleware(
         List of middleware for provider subagents
     """
     return create_middleware_stack(
+        agent_name="provider_subagent",
         enable_subagent=True,
         enable_summarization=False,
         enable_compaction=True,

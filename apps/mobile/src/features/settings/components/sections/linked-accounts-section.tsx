@@ -18,24 +18,10 @@ const PLATFORMS: Platform[] = [
   {
     id: "telegram",
     name: "Telegram",
-    description: "Receive notifications via Telegram bot",
+    description: "Receive notifications and messages via Telegram bot",
     icon: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Telegram_2019_Logo.svg/120px-Telegram_2019_Logo.svg.png",
     authType: "bot_link",
     botUrl: "https://t.me/gaia_assistant_bot",
-  },
-  {
-    id: "discord",
-    name: "Discord",
-    description: "Receive notifications via Discord bot",
-    icon: "https://assets-global.slack.com/marketing-api/assets/img/icons/icon_app_home.png",
-    authType: "oauth",
-  },
-  {
-    id: "slack",
-    name: "Slack",
-    description: "Receive notifications via Slack",
-    icon: "https://a.slack-edge.com/80588/marketing/img/meta/slack_hash_128.png",
-    authType: "oauth",
   },
 ];
 
@@ -78,7 +64,7 @@ export function LinkedAccountsSection() {
           <Card
             key={platform.id}
             variant="secondary"
-            className="rounded-3xl bg-surface"
+            className="rounded-2xl bg-surface"
           >
             <Card.Body className="flex-row items-center gap-4 px-4 py-4">
               <Image
@@ -119,6 +105,25 @@ export function LinkedAccountsSection() {
           </Card>
         );
       })}
+
+      <View
+        style={{
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: 4,
+          alignItems: "center",
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 12,
+            color: "#52525b",
+            textAlign: "center",
+          }}
+        >
+          Discord, Slack, and WhatsApp coming soon
+        </Text>
+      </View>
     </ScrollView>
   );
 }

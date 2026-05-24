@@ -3,9 +3,10 @@ GitHub trigger handler.
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
-from shared.py.wide_events import log
+from composio.types import ToolExecutionResponse
+
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import (
     GitHubCommitEventPayload,
@@ -25,7 +26,7 @@ from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
-from composio.types import ToolExecutionResponse
+from shared.py.wide_events import log
 
 
 class GitHubTriggerHandler(TriggerHandler):
@@ -53,11 +54,11 @@ class GitHubTriggerHandler(TriggerHandler):
     }
 
     @property
-    def trigger_names(self) -> List[str]:
+    def trigger_names(self) -> list[str]:
         return self.SUPPORTED_TRIGGERS
 
     @property
-    def event_types(self) -> Set[str]:
+    def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
     async def get_config_options(
@@ -66,9 +67,9 @@ class GitHubTriggerHandler(TriggerHandler):
         field_name: str,
         user_id: str,
         integration_id: str,
-        parent_ids: Optional[List[str]] = None,
+        parent_ids: list[str] | None = None,
         **kwargs: Any,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get dynamic options for GitHub trigger config fields."""
         composio_service = get_composio_service()
 
@@ -112,9 +113,7 @@ class GitHubTriggerHandler(TriggerHandler):
         # Filter by search query if provided
         if search_query:
             search_lower = search_query.lower()
-            repos = [
-                r for r in repos if r.full_name and search_lower in r.full_name.lower()
-            ]
+            repos = [r for r in repos if r.full_name and search_lower in r.full_name.lower()]
 
         # Convert to options format
         options = []
@@ -131,7 +130,7 @@ class GitHubTriggerHandler(TriggerHandler):
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-    ) -> List[str]:
+    ) -> list[str]:
         """Register GitHub triggers with parallel execution and rollback.
 
         If any trigger registration fails, all successfully created triggers
@@ -184,7 +183,7 @@ class GitHubTriggerHandler(TriggerHandler):
             return []
 
         # Build configs by parsing owner/repo from full names
-        configs: List[Dict[str, Any]] = []
+        configs: list[dict[str, Any]] = []
         for repo_full_name in trigger_data.repos:
             if "/" in repo_full_name:
                 parts = repo_full_name.split("/")
@@ -203,8 +202,8 @@ class GitHubTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: Dict[str, Any]
-    ) -> List[Workflow]:
+        self, event_type: str, trigger_id: str, data: dict[str, Any]
+    ) -> list[Workflow]:
         """Find workflows matching a GitHub trigger event."""
         log.set(trigger={"provider": "github", "event": event_type})
         try:
@@ -229,7 +228,7 @@ class GitHubTriggerHandler(TriggerHandler):
             }
 
             cursor = workflows_collection.find(query)
-            workflows: List[Workflow] = []
+            workflows: list[Workflow] = []
 
             async for workflow_doc in cursor:
                 try:

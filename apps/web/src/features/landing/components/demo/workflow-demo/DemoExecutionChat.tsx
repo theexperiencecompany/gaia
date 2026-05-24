@@ -1,6 +1,7 @@
 "use client";
 
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
@@ -79,6 +80,7 @@ export default function DemoExecutionChat({
       });
       return () => staggerTimers.forEach(clearTimeout);
     }
+    return undefined;
   }, [phase]);
 
   // Typing effect for response
@@ -96,6 +98,7 @@ export default function DemoExecutionChat({
       }, 18);
       return () => clearInterval(tick);
     }
+    return undefined;
   }, [phase]);
 
   // Reset between cycles

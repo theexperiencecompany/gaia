@@ -101,7 +101,7 @@ export const normalizeTimezone = (timezone: string): string => {
  * Builds a TimezoneInfo object for the given IANA timezone identifier using
  * only the native Intl API.
  */
-export const getTimezoneInfo = (timezone: string): TimezoneInfo => {
+const getTimezoneInfo = (timezone: string): TimezoneInfo => {
   try {
     const offset = getOffsetString(timezone);
     const abbreviation = getAbbreviation(timezone);
@@ -142,7 +142,7 @@ export const getCurrentBrowserTimezone = (): TimezoneInfo => {
 /**
  * Returns a sorted list of commonly-used timezone entries.
  */
-export const getPopularTimezones = (): TimezoneInfo[] => {
+const getPopularTimezones = (): TimezoneInfo[] => {
   const popularTimezones = [
     "UTC",
     "America/New_York",
@@ -189,7 +189,7 @@ export const getPopularTimezones = (): TimezoneInfo[] => {
  * obtained via Intl.supportedValuesOf("timeZone") (Node 18+ / modern browsers).
  * No timezone data bundle is needed.
  */
-export const getAllTimezones = (): TimezoneInfo[] => {
+const getAllTimezones = (): TimezoneInfo[] => {
   return Intl.supportedValuesOf("timeZone")
     .map(getTimezoneInfo)
     .sort((a, b) => {
@@ -207,36 +207,4 @@ export const getAllTimezones = (): TimezoneInfo[] => {
  */
 export const getTimezoneList = (includeAll = false): TimezoneInfo[] => {
   return includeAll ? getAllTimezones() : getPopularTimezones();
-};
-
-/**
- * Formats a timezone for display in settings UI, e.g. "Kolkata (UTC+05:30)".
- * Falls back to the browser timezone when the argument is null or undefined.
- */
-export const formatTimezoneDisplay = (
-  timezone: string | null | undefined,
-): string => {
-  if (!timezone) {
-    const browserTz = getCurrentBrowserTimezone();
-    return `${browserTz.label} (UTC${browserTz.offset})`;
-  }
-
-  const tzInfo = getTimezoneInfo(timezone);
-  return `${tzInfo.label} (UTC${tzInfo.offset})`;
-};
-
-/**
- * Returns simple current-time information for the browser's local timezone.
- */
-export const getCurrentTimezoneInfo = (): {
-  timezone: string;
-  timeString: string;
-  offset: string;
-} => {
-  const browserTz = getCurrentBrowserTimezone();
-  return {
-    timezone: browserTz.label,
-    timeString: browserTz.currentTime,
-    offset: browserTz.offset,
-  };
 };

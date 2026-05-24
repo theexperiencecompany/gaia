@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.3.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.2.0...bots-v1.3.0) (2026-04-05)
+
+
+### Features
+
+* add tsup configuration for Discord, Slack, and Telegram bots ([3a5d164](https://github.com/theexperiencecompany/gaia/commit/3a5d1641742584b807b8d10b53c632d89f7b64e8))
+* add tsup configuration for Discord, Slack, and Telegram bots ([#541](https://github.com/theexperiencecompany/gaia/issues/541)) ([67d2cc2](https://github.com/theexperiencecompany/gaia/commit/67d2cc2daffe8900fb0cac6e5707adf7ccda795e))
+* **analytics:** add PostHog analytics to bots ([#599](https://github.com/theexperiencecompany/gaia/issues/599)) ([af894bf](https://github.com/theexperiencecompany/gaia/commit/af894bfe8a1bdeacbb99c6ccea487d3b8ac14554))
+* **analytics:** add PostHog analytics to bots and CLI ([8d799ef](https://github.com/theexperiencecompany/gaia/commit/8d799ef56f0f789f9ceb660ae0f6ab2eb01bb518))
+* **ci:** Dagger integration test overhaul — real-service tests + CI hardening ([#591](https://github.com/theexperiencecompany/gaia/issues/591)) ([7736c39](https://github.com/theexperiencecompany/gaia/commit/7736c3957b73b51e9e47291836c61a6f03e750bd))
+* **whatsapp:** integrate WhatsApp via Kapso ([#581](https://github.com/theexperiencecompany/gaia/issues/581)) ([c870d16](https://github.com/theexperiencecompany/gaia/commit/c870d16ef63cc103c6ce465cf029f17b449c91a3))
+
+
+### Bug Fixes
+
+* Build and publish bot Docker images to GHCR ([#531](https://github.com/theexperiencecompany/gaia/issues/531)) ([bcb350f](https://github.com/theexperiencecompany/gaia/commit/bcb350f2c10a8f908ccb3bafea66537851ba2745))
+
+
+### Performance Improvements
+
+* remove barrel exports for faster HMR and build times ([#569](https://github.com/theexperiencecompany/gaia/issues/569)) ([70388ff](https://github.com/theexperiencecompany/gaia/commit/70388ffb681f6910e11dfae8d005825ceee4285e))
+
 ## [1.2.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.1.0...bots-v1.2.0) (2026-02-27)
 
 

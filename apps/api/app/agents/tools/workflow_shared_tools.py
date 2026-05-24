@@ -2,18 +2,19 @@
 
 from typing import Annotated
 
+from langchain_core.runnables.config import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
+
+from app.decorators import with_rate_limiting
+from app.services.workflow import WorkflowService
+from app.services.workflow.trigger_search import TriggerSearchService
 from app.utils.workflow_utils import (
     error_response,
     get_user_id,
     success_response,
 )
 from shared.py.wide_events import log
-from app.decorators import with_rate_limiting
-from app.services.workflow import WorkflowService
-from app.services.workflow.trigger_search import TriggerSearchService
-from langchain_core.runnables.config import RunnableConfig
-from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 
 
 @tool
@@ -89,9 +90,7 @@ async def list_workflows(config: RunnableConfig) -> dict:
             }
         )
 
-        return success_response(
-            {"workflows": workflow_summaries, "total": len(workflows)}
-        )
+        return success_response({"workflows": workflow_summaries, "total": len(workflows)})
 
     except Exception as e:
         log.error(f"Error listing workflows: {e}")

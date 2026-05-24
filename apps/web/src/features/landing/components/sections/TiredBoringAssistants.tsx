@@ -1,11 +1,11 @@
 "use client";
 
 import { Tooltip } from "@heroui/tooltip";
-import { ArrowRight02Icon } from "@icons";
+import { CircleArrowRight02Icon } from "@icons";
 import Image from "next/image";
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
+import { Link } from "@/i18n/navigation";
 import LargeHeader from "../shared/LargeHeader";
 
 const TOOL_ICONS = [
@@ -310,19 +310,16 @@ export default function Tired() {
   // Use refs so observers don't re-create on state changes
   const hasAnimatedRef = useRef(false);
   const isLeavingRef = useRef(false);
+  hasAnimatedRef.current = hasAnimated;
+  isLeavingRef.current = isLeaving;
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 640);
     check();
-    window.addEventListener("resize", check);
+    window.addEventListener("resize", check, { passive: true });
     return () => window.removeEventListener("resize", check);
   }, []);
-
-  useEffect(() => {
-    hasAnimatedRef.current = hasAnimated;
-    isLeavingRef.current = isLeaving;
-  }, [hasAnimated, isLeaving]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -366,7 +363,7 @@ export default function Tired() {
   }, []);
 
   return (
-    <section className="relative flex flex-col items-center justify-center px-4 sm:px-6 py-20 sm:py-32">
+    <section className="relative flex flex-col items-center justify-center px-4 sm:px-6 py-12 sm:py-20">
       <style>{`
         @keyframes tool-float {
           0%, 100% { transform: translateY(0px); }
@@ -430,7 +427,7 @@ export default function Tired() {
       {/* Icon constellation */}
       <div
         ref={containerRef}
-        className="relative mt-12 aspect-square w-full max-w-2xl sm:mt-20 overflow-hidden sm:overflow-visible"
+        className="relative mt-8 aspect-square w-full max-w-2xl sm:mt-12 overflow-hidden sm:overflow-visible"
         style={{
           background:
             "radial-gradient(circle at center, rgba(0, 187, 255, 0.05) 0%, transparent 60%)",
@@ -536,10 +533,10 @@ export default function Tired() {
       </div>
 
       {/* CTA */}
-      <Link href="/integrations" className="mt-8 sm:mt-12">
+      <Link href="/integrations" className="mt-6 sm:mt-8">
         <RaisedButton color="#00bbff" className="text-black!">
           See All Integrations
-          <ArrowRight02Icon width={20} height={20} />
+          <CircleArrowRight02Icon width={20} height={20} />
         </RaisedButton>
       </Link>
     </section>

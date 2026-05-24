@@ -8,19 +8,20 @@ third-party service integrations.
 Note: User authentication via WorkOS is handled separately by the WorkOSAuthMiddleware.
 """
 
+from datetime import UTC, datetime, timedelta
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-import httpx
-from shared.py.wide_events import log
-from app.config.settings import settings
-from app.db.postgresql import get_db_session
-from app.models.db_oauth import OAuthToken
 from authlib.integrations.starlette_client import OAuth
 from authlib.oauth2.rfc6749 import OAuth2Token
 from fastapi import HTTPException
+import httpx
 from sqlalchemy import select, update
+
+from app.config.settings import settings
+from app.db.postgresql import get_db_session
+from app.models.db_oauth import OAuthToken
+from shared.py.wide_events import log
 
 
 class TokenRepository:
@@ -77,10 +78,10 @@ class TokenRepository:
             return datetime.now() + timedelta(seconds=expires_in)
         except (ValueError, TypeError):
             log.warning(f"Invalid expires_in: {expires_in}, using default")
-            return datetime.now(timezone.utc) + timedelta(seconds=3600)
+            return datetime.now(UTC) + timedelta(seconds=3600)
 
     async def store_token(
-        self, user_id: str, provider: str, token_data: Dict[str, Any]
+        self, user_id: str, provider: str, token_data: dict[str, Any]
     ) -> OAuth2Token:
         """
         Store a new integration OAuth token in the database.
@@ -109,11 +110,7 @@ class TokenRepository:
             refresh_token_value = token_data.get("refresh_token")
 
             # If no new refresh token is provided and there's an existing one, keep it
-            if (
-                not refresh_token_value
-                and existing_token
-                and existing_token.refresh_token
-            ):
+            if not refresh_token_value and existing_token and existing_token.refresh_token:
                 refresh_token_value = existing_token.refresh_token
                 # Update token_data to include the preserved refresh token
                 token_data["refresh_token"] = refresh_token_value
@@ -222,23 +219,7 @@ class TokenRepository:
 
             return oauth_token
 
-    async def update_token(
-        self, user_id: str, provider: str, token: Dict[str, Any]
-    ) -> OAuth2Token:
-        """
-        Update an existing token with new data (typically after refresh).
-
-        Args:
-            user_id: The ID of the user
-            provider: The OAuth provider
-            token: The new token data
-
-        Returns:
-            OAuth2Token: The updated token object
-        """
-        return await self.store_token(user_id, provider, token)
-
-    async def _refresh_google_token(self, refresh_token: str) -> Optional[OAuth2Token]:
+    async def _refresh_google_token(self, refresh_token: str) -> OAuth2Token | None:
         """
         Refresh a Google OAuth token using the refresh token.
 
@@ -284,12 +265,12 @@ class TokenRepository:
             # Create OAuth2Token from response
             return OAuth2Token(token_data)
         except Exception as e:
-            log.error(f"Error refreshing Google token: {str(e)}")
+            log.error(f"Error refreshing Google token: {e!s}")
             return None
 
     async def _refresh_provider_token(
         self, provider: str, refresh_token: str
-    ) -> Optional[OAuth2Token]:
+    ) -> OAuth2Token | None:
         """
         Dispatch token refresh to the appropriate provider-specific method.
 
@@ -303,11 +284,10 @@ class TokenRepository:
         if provider == "google":
             return await self._refresh_google_token(refresh_token)
         # Add more providers as needed
-        else:
-            log.error(f"Provider {provider} not supported for token refresh")
-            return None
+        log.error(f"Provider {provider} not supported for token refresh")
+        return None
 
-    async def refresh_token(self, user_id: str, provider: str) -> Optional[OAuth2Token]:
+    async def refresh_token(self, user_id: str, provider: str) -> OAuth2Token | None:
         """
         Refresh an expired integration token.
 
@@ -327,9 +307,7 @@ class TokenRepository:
             token_record = result.scalar_one_or_none()
 
             if not token_record:
-                log.warning(
-                    f"Cannot refresh token: No {provider} token found for user {user_id}"
-                )
+                log.warning(f"Cannot refresh token: No {provider} token found for user {user_id}")
                 return None
 
             # Check if refresh token is available
@@ -361,9 +339,7 @@ class TokenRepository:
 
                 # Preserve the refresh token
                 # If the new token has a refresh token, use it; otherwise keep the existing one
-                token_dict["refresh_token"] = token.get(
-                    "refresh_token", token_record.refresh_token
-                )
+                token_dict["refresh_token"] = token.get("refresh_token", token_record.refresh_token)
 
                 # Store the refreshed token using our existing store_token method
                 # This will return the properly formatted OAuth2Token object directly
@@ -374,7 +350,7 @@ class TokenRepository:
 
                 return refreshed_token
             except Exception as e:
-                log.error(f"Error refreshing {provider} token: {str(e)}")
+                log.error(f"Error refreshing {provider} token: {e!s}")
                 return None
 
     async def revoke_token(self, user_id: str, provider: str) -> bool:
@@ -398,9 +374,7 @@ class TokenRepository:
             token_record = result.scalar_one_or_none()
 
             if not token_record:
-                log.warning(
-                    f"Cannot revoke token: No {provider} token found for user {user_id}"
-                )
+                log.warning(f"Cannot revoke token: No {provider} token found for user {user_id}")
                 return False
 
             try:
@@ -410,140 +384,13 @@ class TokenRepository:
                 log.info(f"Successfully revoked {provider} token for user {user_id}")
                 return True
             except Exception as e:
-                log.error(f"Error revoking token: {str(e)}")
+                log.error(f"Error revoking token: {e!s}")
                 await session.rollback()
                 return False
-
-    async def revoke_all_tokens(self, user_id: str) -> bool:
-        """
-        Revoke all integration tokens for a user.
-
-        Args:
-            user_id: The ID of the user
-
-        Returns:
-            True if successful, False otherwise
-        """
-        async with get_db_session() as session:
-            # Find all tokens for this user
-            stmt = select(OAuthToken).where(OAuthToken.user_id == user_id)
-            result = await session.execute(stmt)
-            tokens = result.scalars().all()
-
-            if not tokens:
-                log.warning(f"No tokens found for user {user_id}")
-                return True  # Consider it success if there's nothing to delete
-
-            try:
-                # Delete all token records for this user
-                for token in tokens:
-                    await session.delete(token)
-
-                await session.commit()
-                log.info(f"Successfully revoked all tokens for user {user_id}")
-                return True
-            except Exception as e:
-                log.error(f"Error revoking all tokens: {str(e)}")
-                await session.rollback()
-                return False
-
-    async def get_authorized_scopes(self, user_id: str, provider: str) -> List[str]:
-        """
-        Get all authorized scopes for a user and provider.
-
-        Args:
-            user_id: The ID of the user
-            provider: The OAuth provider (google, slack, etc.)
-
-        Returns:
-            List of authorized scope strings
-        """
-
-        async with get_db_session() as session:
-            # Query the specific provider token
-            stmt = select(OAuthToken).where(
-                OAuthToken.user_id == user_id, OAuthToken.provider == provider
-            )
-            result = await session.execute(stmt)
-            token_record = result.scalar_one_or_none()
-
-            if not token_record:
-                log.warning(f"No {provider} token found for user {user_id}")
-                return []
-
-            # Get scopes from the token record
-            if not token_record.scopes:
-                # Try to get scopes from token data
-                try:
-                    token_data = json.loads(token_record.token_data)
-                    scope = token_data.get("scope", "")
-                    if scope:
-                        return scope.split()
-                except Exception as e:
-                    log.error(f"Error parsing token data: {str(e)}")
-                return []
-
-            # Return scopes from the token record
-            return token_record.scopes.split()
-
-    async def list_user_tokens(self, user_id: str) -> Dict[str, Any]:
-        """
-        List all available tokens and their providers for a user.
-
-        Args:
-            user_id: The ID of the user
-
-        Returns:
-            Dictionary with information about the user's tokens
-        """
-        result = {
-            "user_id": user_id,
-            "available_providers": [],
-            "token_count": 0,  # nosec B105 - integer count, not a password
-            "tokens": [],
-        }
-
-        async with get_db_session() as session:
-            # Find all tokens for this user
-            stmt = select(OAuthToken).where(OAuthToken.user_id == user_id)
-            query_result = await session.execute(stmt)
-            tokens = query_result.scalars().all()
-
-            # Populate token information
-            providers = []
-            token_details = []
-
-            for token in tokens:
-                providers.append(token.provider)
-
-                # Get token expiration info
-                expires_at_str = None
-                if token.expires_at:
-                    expires_at_str = token.expires_at.isoformat()
-
-                # Add token details
-                token_details.append(
-                    {
-                        "id": token.id,
-                        "provider": token.provider,
-                        "has_refresh_token": bool(token.refresh_token),
-                        "expires_at": expires_at_str,
-                        "scopes": token.scopes.split() if token.scopes else [],
-                        "updated_at": token.updated_at.isoformat()
-                        if token.updated_at
-                        else None,
-                    }
-                )
-
-            result["available_providers"] = providers
-            result["token_count"] = len(tokens)
-            result["tokens"] = token_details
-
-        return result
 
     async def get_token_by_auth_token(
         self, access_token: str, renew_if_expired: bool = False
-    ) -> Optional[OAuth2Token]:
+    ) -> OAuth2Token | None:
         """
         Retrieve a token using the access token.
 

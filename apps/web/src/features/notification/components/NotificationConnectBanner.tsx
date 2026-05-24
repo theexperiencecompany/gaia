@@ -14,6 +14,7 @@ import {
 const PLATFORM_ICONS: Record<string, string> = {
   telegram: "/images/icons/macos/telegram.webp",
   discord: "/images/icons/macos/discord.webp",
+  whatsapp: "/images/icons/macos/whatsapp.webp",
 };
 
 interface NotificationConnectBannerProps {
@@ -54,10 +55,6 @@ export function NotificationConnectBanner({
 
   if (unconnectedPlatforms.length === 0) return null;
 
-  const platformList = unconnectedPlatforms
-    .map((p) => NOTIFICATION_PLATFORM_LABELS[p])
-    .join(" and ");
-
   if (variant === "compact") {
     return (
       <div className="w-full px-3">
@@ -76,7 +73,7 @@ export function NotificationConnectBanner({
               ))}
             </div>
             <span className="text-zinc-400">
-              Connect {platformList} for notifications!
+              Get notified in the apps you already use
             </span>
           </div>
           <Button
@@ -99,7 +96,7 @@ export function NotificationConnectBanner({
         Stay notified on your devices
       </p>
       <p className="mt-1 text-xs text-zinc-400">
-        Connect {platformList} to receive GAIA notifications outside the web
+        Connect your platform bots to receive GAIA notifications outside the web
         app.
       </p>
       <Button

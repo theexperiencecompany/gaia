@@ -2,13 +2,11 @@
 Optimized bulk operations for todos.
 """
 
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 
 from bson import ObjectId
 from fastapi import HTTPException, status
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import todos_collection
 from app.db.redis import delete_cache
 from app.db.utils import serialize_document
@@ -16,9 +14,10 @@ from app.models.todo_models import TodoResponse
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.vfs.mongo_vfs import MongoVFS
 from app.utils.canvas_vector_utils import delete_canvas_embedding
+from shared.py.wide_events import log
 
 
-async def bulk_complete_todos(todo_ids: List[str], user_id: str) -> List[TodoResponse]:
+async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> list[TodoResponse]:
     """
     Mark multiple todos as completed using bulk operation.
 
@@ -78,7 +77,7 @@ async def bulk_complete_todos(todo_ids: List[str], user_id: str) -> List[TodoRes
                 {
                     "$set": {
                         "completed": True,
-                        "updated_at": datetime.now(timezone.utc),
+                        "updated_at": datetime.now(UTC),
                     }
                 },
             )
@@ -109,16 +108,14 @@ async def bulk_complete_todos(todo_ids: List[str], user_id: str) -> List[TodoRes
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error bulk completing todos: {str(e)}")
+        log.error(f"Error bulk completing todos: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to bulk complete todos: {str(e)}",
+            detail=f"Failed to bulk complete todos: {e!s}",
         )
 
 
-async def bulk_move_todos(
-    todo_ids: List[str], project_id: str, user_id: str
-) -> List[TodoResponse]:
+async def bulk_move_todos(todo_ids: list[str], project_id: str, user_id: str) -> list[TodoResponse]:
     """
     Move multiple todos to a different project using bulk operation.
 
@@ -169,7 +166,7 @@ async def bulk_move_todos(
             {
                 "$set": {
                     "project_id": project_id,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
         )
@@ -200,14 +197,14 @@ async def bulk_move_todos(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error bulk moving todos: {str(e)}")
+        log.error(f"Error bulk moving todos: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to bulk move todos: {str(e)}",
+            detail=f"Failed to bulk move todos: {e!s}",
         )
 
 
-async def bulk_delete_todos(todo_ids: List[str], user_id: str) -> None:
+async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> None:
     """
     Delete multiple todos using bulk operation.
 
@@ -259,9 +256,7 @@ async def bulk_delete_todos(todo_ids: List[str], user_id: str) -> None:
                 vfs = MongoVFS()
                 await vfs.delete(path=doc["vfs_path"], user_id=user_id, recursive=True)
             except Exception as e:
-                log.warning(
-                    "tracked_todo.bulk_delete_vfs_failed", todo_id=tid, error=str(e)
-                )
+                log.warning("tracked_todo.bulk_delete_vfs_failed", todo_id=tid, error=str(e))
 
         # Perform bulk delete
         result = await todos_collection.delete_many(
@@ -285,8 +280,8 @@ async def bulk_delete_todos(todo_ids: List[str], user_id: str) -> None:
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error bulk deleting todos: {str(e)}")
+        log.error(f"Error bulk deleting todos: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to bulk delete todos: {str(e)}",
+            detail=f"Failed to bulk delete todos: {e!s}",
         )

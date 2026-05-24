@@ -1,4 +1,4 @@
-import { getUserTimezone } from "@gaia/shared/api";
+import { getUserTimezone } from "@gaia/shared/api/timezone";
 import {
   clearAuthData,
   getAuthToken,
@@ -24,6 +24,23 @@ interface RequestConfig {
   url: string;
   data?: unknown;
   options?: ApiOptions;
+}
+
+/**
+ * Error thrown for non-2xx responses. Carries the HTTP status so callers
+ * can branch on specific cases (e.g. 404 → fall back to defaults) without
+ * fragile message-string parsing.
+ */
+export class ApiError extends Error {
+  status: number;
+  body: string;
+
+  constructor(status: number, body: string, message?: string) {
+    super(message ?? `API request failed: ${status}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
 }
 
 async function request<T = unknown>(config: RequestConfig): Promise<T> {
@@ -65,8 +82,8 @@ async function request<T = unknown>(config: RequestConfig): Promise<T> {
     }
 
     const errorText = await response.text();
-    console.error(`[API] Error ${response.status}: ${errorText}`);
-    throw new Error(`API request failed: ${response.status}`);
+    console.warn(`[API] ${method} ${url} → ${response.status}: ${errorText}`);
+    throw new ApiError(response.status, errorText);
   }
 
   const contentType = response.headers.get("content-type");

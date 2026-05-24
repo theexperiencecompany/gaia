@@ -1,0 +1,134 @@
+{
+  "name": "Tool Routing",
+  "description": "Tests correct tool and capability selection including calendar vs todo vs reminder disambiguation, search vs knowledge decisions, multi-tool sequencing, no-tool conversational queries, and handling ambiguous or chained tool requests.",
+  "version": "1.0.0",
+  "eval_type": "tool_routing",
+  "items": [
+    {
+      "input": "what time is my dentist appointment",
+      "expected_output": "Should route to calendar/events search to find the dentist appointment. Should not create a new event or set a reminder.",
+      "context": "Simple calendar read query. Tests correct tool selection for information retrieval.",
+      "tags": ["calendar", "read", "simple"],
+      "metadata": { "difficulty": "easy", "category": "single-tool" }
+    },
+    {
+      "input": "add buy groceries to my todo list",
+      "expected_output": "Should route to the todo/task creation tool. Should not create a calendar event or set a timed reminder.",
+      "context": "Explicit todo creation. Tests routing to task management over calendar.",
+      "tags": ["todo", "create", "explicit"],
+      "metadata": { "difficulty": "easy", "category": "single-tool" }
+    },
+    {
+      "input": "how do I make sourdough bread",
+      "expected_output": "Should answer from general knowledge without invoking any tools. This is a knowledge question, not a task. Should not search the user's files, calendar, or emails.",
+      "context": "General knowledge question requiring no tool use. Tests restraint from unnecessary tool invocation.",
+      "tags": ["no-tool", "knowledge", "conversation"],
+      "metadata": { "difficulty": "easy", "category": "no-tool" }
+    },
+    {
+      "input": "whats the capital of france",
+      "expected_output": "Should answer directly from knowledge (Paris). Should not invoke a web search tool for a basic factual question. No tools needed.",
+      "context": "Trivial factual question. Tests that the assistant doesn't over-tool simple queries.",
+      "tags": ["no-tool", "knowledge", "factual"],
+      "metadata": { "difficulty": "easy", "category": "no-tool" }
+    },
+    {
+      "input": "set a reminder to call the plumber at 3pm",
+      "expected_output": "Should route to the reminder tool, not the calendar. A reminder is a notification at a specific time, not a calendar event. Should set it for 3pm today (or ask which day if ambiguous).",
+      "context": "Explicit reminder request. Tests distinguishing reminders from calendar events.",
+      "tags": ["reminder", "time-based", "disambiguation"],
+      "metadata": { "difficulty": "easy", "category": "disambiguation" }
+    },
+    {
+      "input": "remind me about the team lunch tomorrow",
+      "expected_output": "Should set a reminder for tomorrow, not create a new calendar event. If a team lunch event already exists on the calendar, may reference it. Should ask what time to be reminded if no time is specified.",
+      "context": "Reminder request that might relate to an existing calendar event. Tests reminder vs calendar creation.",
+      "tags": ["reminder", "calendar-adjacent", "disambiguation"],
+      "metadata": { "difficulty": "medium", "category": "disambiguation" }
+    },
+    {
+      "input": "whats the latest on the AI regulation bill",
+      "expected_output": "Should route to a web search tool since this requires current information beyond the training cutoff. Should not fabricate recent news or rely on potentially outdated knowledge.",
+      "context": "Current events question requiring real-time information. Tests correct routing to search for time-sensitive queries.",
+      "tags": ["search", "current-events", "web"],
+      "metadata": { "difficulty": "medium", "category": "search-vs-knowledge" }
+    },
+    {
+      "input": "check my email and add any action items to my todo list",
+      "expected_output": "Should execute two tools in sequence: first read/search email for action items, then create todo items from the results. Must chain the output of the email tool into the todo creation tool. Should not attempt both simultaneously without the email data.",
+      "context": "Chained tool operation where the second tool depends on the first tool's output. Tests sequential multi-tool coordination.",
+      "tags": ["chained", "email", "todo", "multi-tool"],
+      "metadata": { "difficulty": "medium", "category": "chained-tools" }
+    },
+    {
+      "input": "schedule a meeting with alex for next tuesday and send him an invite",
+      "expected_output": "Should use the calendar tool to create the event and notify Alex. Either approach is valid: (A) a single calendar tool call that creates the event with Alex as an attendee and sends the invite natively, or (B) create the event first then send a separate email/invite. Should ask for the meeting time and any missing details before creating. The key requirement is that Alex receives an invite.",
+      "context": "Multi-tool request where the invite can be handled either via calendar-native attendee addition or a follow-up email step. Tests multi-tool coordination while accepting both valid flows.",
+      "tags": ["calendar", "email", "multi-tool", "invite"],
+      "metadata": { "difficulty": "medium", "category": "multi-tool" }
+    },
+    {
+      "input": "add dentist at 2pm on thursday to my calendar. actually no make it a reminder instead",
+      "expected_output": "Should respect the correction and route to the reminder tool instead of the calendar tool. Should not create both a calendar event and a reminder. The self-correction must be honored.",
+      "context": "User corrects their tool preference mid-message. Tests handling of self-corrections in routing.",
+      "tags": ["correction", "calendar", "reminder", "disambiguation"],
+      "metadata": { "difficulty": "medium", "category": "correction" }
+    },
+    {
+      "input": "put together a summary of my week - meetings i had, emails i sent, tasks i completed",
+      "expected_output": "Should invoke three different tools: calendar (past meetings), email (sent items), and todo/tasks (completed items). Should aggregate the results into a coherent summary. All three data sources must be queried.",
+      "context": "Multi-tool aggregation from three independent sources. Tests parallel multi-tool invocation and synthesis.",
+      "tags": ["multi-tool", "aggregation", "calendar", "email", "tasks"],
+      "metadata": { "difficulty": "medium", "category": "multi-tool-aggregation" }
+    },
+    {
+      "input": "use google calendar specifically, not outlook. add my gym session for tomorrow at 6am",
+      "expected_output": "Should respect the explicit tool preference and route to Google Calendar. Should not use Outlook or a default calendar if Google Calendar is available. If Google Calendar is not connected, should inform the user rather than silently using a different service.",
+      "context": "Explicit tool/service preference. Tests honoring user's specific tool choice.",
+      "tags": ["explicit-preference", "calendar", "google"],
+      "metadata": { "difficulty": "medium", "category": "tool-preference" }
+    },
+    {
+      "input": "i have a meeting at 2, a dentist at 4, and i need to pick up my prescription sometime today. whats the best order",
+      "expected_output": "Should primarily use reasoning/conversation to answer this scheduling question. May optionally check the calendar to verify the events. Should not create new events or todos. This is an advisory question, not an action request.",
+      "context": "Query that sounds like it needs tools but is really asking for advice/reasoning. Tests restraint from unnecessary tool use.",
+      "tags": ["advisory", "reasoning", "no-tool-needed"],
+      "metadata": { "difficulty": "hard", "category": "tool-restraint" }
+    },
+    {
+      "input": "find the email from the vendor about pricing and add those numbers to my budget spreadsheet",
+      "expected_output": "Should search email for the vendor pricing message, extract the relevant numbers, then attempt to update the spreadsheet. Should recognize this requires both email search and spreadsheet/document editing tools. If spreadsheet editing is not available, should provide the extracted data and explain the limitation.",
+      "context": "Chained tools across different domains (email to spreadsheet). Tests cross-domain tool chaining and graceful degradation if a tool is unavailable.",
+      "tags": ["chained", "email", "spreadsheet", "cross-domain"],
+      "metadata": { "difficulty": "hard", "category": "cross-domain-chain" }
+    },
+    {
+      "input": "block out 2 hours for deep work every day this week, check my calendar for conflicts first, and if there are conflicts move those meetings to the next available slot",
+      "expected_output": "Should execute a complex multi-step tool chain: (1) read calendar for the week, (2) identify available 2-hour blocks each day, (3) detect conflicts with existing events, (4) reschedule conflicting events, (5) create the deep work blocks. Must respect dependencies between steps.",
+      "context": "Complex multi-step calendar operation with conflict resolution. Tests sophisticated tool orchestration.",
+      "tags": ["multi-step", "calendar", "conflict-resolution", "complex"],
+      "metadata": { "difficulty": "hard", "category": "complex-orchestration" }
+    },
+    {
+      "input": "search my emails for anything about the project deadline, then check if theres a related task in my todos, and create one if there isn't",
+      "expected_output": "Should execute three tools conditionally: (1) search email for project deadline info, (2) search todos for a matching task, (3) only create a new todo if step 2 finds nothing. Must not create a duplicate todo if one already exists. The conditional logic must be correct.",
+      "context": "Conditional chained tool execution with deduplication logic. Tests conditional tool routing.",
+      "tags": ["conditional", "chained", "email", "todo", "dedup"],
+      "metadata": { "difficulty": "hard", "category": "conditional-chain" }
+    },
+    {
+      "input": "I said add it to my calendar but I actually just want to remember to do it. not a specific time thing just don't let me forget",
+      "expected_output": "Should override the initial 'calendar' mention and route to a todo/task tool instead of a reminder or calendar event. The user is describing a non-time-bound item they want to track, which is a task, not an event or timed reminder.",
+      "context": "User explicitly correcting their own terminology. Tests understanding intent over literal words and distinguishing between calendar events, timed reminders, and untimed tasks.",
+      "tags": ["correction", "intent-over-words", "todo", "disambiguation"],
+      "metadata": { "difficulty": "hard", "category": "intent-disambiguation" }
+    },
+    {
+      "input": "what meetings do I have tomorrow and how does a calendar even work technically like the ical protocol",
+      "expected_output": "Should handle two distinct intents in one message: (1) use the calendar tool to retrieve tomorrow's meetings, and (2) answer the technical question about iCal/CalDAV protocols from general knowledge without a tool. Should not conflate the two or skip either.",
+      "context": "Single message containing both a tool-requiring query and a knowledge-only query. Tests ability to split routing within one message.",
+      "tags": ["mixed-intent", "calendar", "knowledge", "split-routing"],
+      "metadata": { "difficulty": "hard", "category": "split-routing" }
+    }
+  ]
+}

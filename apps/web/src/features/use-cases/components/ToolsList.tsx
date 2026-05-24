@@ -1,6 +1,7 @@
 "use client";
 
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import { useState } from "react";
 
 import { formatToolName } from "@/features/chat/utils/chatUtils";
@@ -21,7 +22,7 @@ export default function ToolsList({ tools }: ToolsListProps) {
   if (!tools || tools.length === 0) return null;
 
   const toggleExpanded = () => {
-    setIsExpanded(!isExpanded);
+    setIsExpanded((prev) => !prev);
   };
 
   const uniqueTools = Array.from(

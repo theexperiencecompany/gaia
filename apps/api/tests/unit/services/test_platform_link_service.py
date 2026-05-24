@@ -2,11 +2,10 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from bson import ObjectId
+import pytest
 
 from app.services.platform_link_service import Platform, PlatformLinkService
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -74,9 +73,7 @@ class TestGetUserByPlatformId:
     async def test_finds_user(self, mock_users_collection, sample_user_doc):
         mock_users_collection.find_one = AsyncMock(return_value=sample_user_doc)
 
-        result = await PlatformLinkService.get_user_by_platform_id(
-            "discord", "discord123"
-        )
+        result = await PlatformLinkService.get_user_by_platform_id("discord", "discord123")
 
         assert result is not None
         assert result["email"] == "test@example.com"
@@ -87,9 +84,7 @@ class TestGetUserByPlatformId:
     async def test_returns_none_when_not_found(self, mock_users_collection):
         mock_users_collection.find_one = AsyncMock(return_value=None)
 
-        result = await PlatformLinkService.get_user_by_platform_id(
-            "slack", "nonexistent"
-        )
+        result = await PlatformLinkService.get_user_by_platform_id("slack", "nonexistent")
 
         assert result is None
 
@@ -101,9 +96,7 @@ class TestGetUserByPlatformId:
 
 @pytest.mark.unit
 class TestIsAuthenticated:
-    async def test_returns_true_when_linked(
-        self, mock_users_collection, sample_user_doc
-    ):
+    async def test_returns_true_when_linked(self, mock_users_collection, sample_user_doc):
         mock_users_collection.find_one = AsyncMock(return_value=sample_user_doc)
 
         result = await PlatformLinkService.is_authenticated("discord", "discord123")
@@ -133,13 +126,9 @@ class TestLinkAccount:
         mock_users_collection.find_one = AsyncMock(
             side_effect=[None, user_doc]  # first: no existing link, second: user lookup
         )
-        mock_users_collection.update_one = AsyncMock(
-            return_value=MagicMock(matched_count=1)
-        )
+        mock_users_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
 
-        result = await PlatformLinkService.link_account(
-            sample_user_id, "discord", "discord456"
-        )
+        result = await PlatformLinkService.link_account(sample_user_id, "discord", "discord456")
 
         assert result["status"] == "linked"
         assert result["platform"] == "discord"
@@ -152,9 +141,7 @@ class TestLinkAccount:
             "platform_links": {},
         }
         mock_users_collection.find_one = AsyncMock(side_effect=[None, user_doc])
-        mock_users_collection.update_one = AsyncMock(
-            return_value=MagicMock(matched_count=1)
-        )
+        mock_users_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
 
         result = await PlatformLinkService.link_account(
             sample_user_id,
@@ -172,9 +159,7 @@ class TestLinkAccount:
         assert link_value["username"] == "TestUser#1234"
         assert link_value["display_name"] == "Test User"
 
-    async def test_raises_on_empty_platform_user_id(
-        self, mock_users_collection, sample_user_id
-    ):
+    async def test_raises_on_empty_platform_user_id(self, mock_users_collection, sample_user_id):
         with pytest.raises(ValueError, match="platform_user_id must not be empty"):
             await PlatformLinkService.link_account(sample_user_id, "discord", "  ")
 
@@ -182,14 +167,10 @@ class TestLinkAccount:
         self, mock_users_collection, sample_user_id
     ):
         other_user_id = str(ObjectId())
-        mock_users_collection.find_one = AsyncMock(
-            return_value={"_id": ObjectId(other_user_id)}
-        )
+        mock_users_collection.find_one = AsyncMock(return_value={"_id": ObjectId(other_user_id)})
 
         with pytest.raises(ValueError, match="already linked to another GAIA user"):
-            await PlatformLinkService.link_account(
-                sample_user_id, "discord", "discord123"
-            )
+            await PlatformLinkService.link_account(sample_user_id, "discord", "discord123")
 
     async def test_raises_on_different_platform_id_already_linked(
         self, mock_users_collection, sample_user_id
@@ -204,31 +185,19 @@ class TestLinkAccount:
         # Second call: user lookup returns user with existing different link
         mock_users_collection.find_one = AsyncMock(side_effect=[None, user_doc])
 
-        with pytest.raises(
-            ValueError, match="already has a different discord account linked"
-        ):
-            await PlatformLinkService.link_account(
-                sample_user_id, "discord", "new_discord_id"
-            )
+        with pytest.raises(ValueError, match="already has a different discord account linked"):
+            await PlatformLinkService.link_account(sample_user_id, "discord", "new_discord_id")
 
-    async def test_raises_on_user_not_found(
-        self, mock_users_collection, sample_user_id
-    ):
+    async def test_raises_on_user_not_found(self, mock_users_collection, sample_user_id):
         mock_users_collection.find_one = AsyncMock(
             side_effect=[None, None]  # no existing link, no user
         )
-        mock_users_collection.update_one = AsyncMock(
-            return_value=MagicMock(matched_count=0)
-        )
+        mock_users_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=0))
 
         with pytest.raises(ValueError, match="User not found"):
-            await PlatformLinkService.link_account(
-                sample_user_id, "discord", "discord456"
-            )
+            await PlatformLinkService.link_account(sample_user_id, "discord", "discord456")
 
-    async def test_same_platform_id_re_link_succeeds(
-        self, mock_users_collection, sample_user_id
-    ):
+    async def test_same_platform_id_re_link_succeeds(self, mock_users_collection, sample_user_id):
         """Re-linking the same platform ID to the same user should succeed."""
         user_doc = {
             "_id": ObjectId(sample_user_id),
@@ -243,13 +212,9 @@ class TestLinkAccount:
                 user_doc,
             ]
         )
-        mock_users_collection.update_one = AsyncMock(
-            return_value=MagicMock(matched_count=1)
-        )
+        mock_users_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
 
-        result = await PlatformLinkService.link_account(
-            sample_user_id, "discord", "discord123"
-        )
+        result = await PlatformLinkService.link_account(sample_user_id, "discord", "discord123")
 
         assert result["status"] == "linked"
 
@@ -261,9 +226,7 @@ class TestLinkAccount:
             "platform_links": {},
         }
         mock_users_collection.find_one = AsyncMock(side_effect=[None, user_doc])
-        mock_users_collection.update_one = AsyncMock(
-            return_value=MagicMock(matched_count=1)
-        )
+        mock_users_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
 
         result = await PlatformLinkService.link_account(
             sample_user_id,
@@ -284,13 +247,9 @@ class TestLinkAccount:
             },
         }
         mock_users_collection.find_one = AsyncMock(side_effect=[None, user_doc])
-        mock_users_collection.update_one = AsyncMock(
-            return_value=MagicMock(matched_count=1)
-        )
+        mock_users_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
 
-        result = await PlatformLinkService.link_account(
-            sample_user_id, "discord", "new_discord_id"
-        )
+        result = await PlatformLinkService.link_account(sample_user_id, "discord", "new_discord_id")
 
         assert result["status"] == "linked"
 
@@ -303,29 +262,21 @@ class TestLinkAccount:
 @pytest.mark.unit
 class TestUnlinkAccount:
     async def test_unlinks_successfully(self, mock_users_collection, sample_user_id):
-        mock_users_collection.update_one = AsyncMock(
-            return_value=MagicMock(matched_count=1)
-        )
+        mock_users_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
 
         result = await PlatformLinkService.unlink_account(sample_user_id, "discord")
 
         assert result["status"] == "disconnected"
         assert result["platform"] == "discord"
 
-    async def test_raises_on_user_not_found(
-        self, mock_users_collection, sample_user_id
-    ):
-        mock_users_collection.update_one = AsyncMock(
-            return_value=MagicMock(matched_count=0)
-        )
+    async def test_raises_on_user_not_found(self, mock_users_collection, sample_user_id):
+        mock_users_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=0))
 
         with pytest.raises(ValueError, match="User not found"):
             await PlatformLinkService.unlink_account(sample_user_id, "discord")
 
     async def test_uses_unset_operation(self, mock_users_collection, sample_user_id):
-        mock_users_collection.update_one = AsyncMock(
-            return_value=MagicMock(matched_count=1)
-        )
+        mock_users_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
 
         await PlatformLinkService.unlink_account(sample_user_id, "slack")
 
@@ -342,14 +293,10 @@ class TestUnlinkAccount:
 
 @pytest.mark.unit
 class TestGetLinkedPlatforms:
-    async def test_returns_linked_platforms(
-        self, mock_users_collection, sample_user_doc
-    ):
+    async def test_returns_linked_platforms(self, mock_users_collection, sample_user_doc):
         mock_users_collection.find_one = AsyncMock(return_value=sample_user_doc)
 
-        result = await PlatformLinkService.get_linked_platforms(
-            str(sample_user_doc["_id"])
-        )
+        result = await PlatformLinkService.get_linked_platforms(str(sample_user_doc["_id"]))
 
         assert "discord" in result
         assert result["discord"]["platformUserId"] == "discord123"

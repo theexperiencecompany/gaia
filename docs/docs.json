@@ -1,6 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "maple",
+  "scripts": ["/scripts/changelog-filter.js"],
   "name": "GAIA Documentation",
   "colors": {
     "primary": "#00bbff",
@@ -78,6 +79,10 @@
             ]
           },
           {
+            "group": "Design System",
+            "pages": ["design-system"]
+          },
+          {
             "group": "Extra Developer Config",
             "pages": [
               "configuration/environment-variables",
@@ -86,6 +91,42 @@
               "configuration/code-style",
               "configuration/pull-requests",
               "configuration/conventional-commits"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Release Notes",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": ["release-notes"]
+          },
+          {
+            "group": "By App",
+            "pages": [
+              "release-notes/api",
+              "release-notes/web",
+              "release-notes/desktop",
+              "release-notes/mobile",
+              "release-notes/bots",
+              "release-notes/cli"
+            ]
+          },
+          {
+            "group": "By Category",
+            "pages": [
+              "release-notes/features",
+              "release-notes/bug-fixes",
+              "release-notes/improvements",
+              "release-notes/performance"
+            ]
+          },
+          {
+            "group": "Archive",
+            "pages": [
+              "release-notes/2026",
+              "release-notes/2025"
             ]
           }
         ]

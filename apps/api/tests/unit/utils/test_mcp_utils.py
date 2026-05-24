@@ -11,12 +11,12 @@ Tests cover:
 
 import base64
 import hashlib
-from typing import Any, Optional, Union
+from typing import Any, Union
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
+import pytest
 
 from app.utils.mcp_utils import (
     _CONNECTION_ERROR_PATTERNS,
@@ -27,13 +27,12 @@ from app.utils.mcp_utils import (
     wrap_tools_with_null_filter,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _make_tool(name: str = "test_tool", arun: Optional[AsyncMock] = None) -> BaseTool:
+def _make_tool(name: str = "test_tool", arun: AsyncMock | None = None) -> BaseTool:
     """Create a minimal BaseTool mock that behaves like a real LangChain tool."""
     tool = MagicMock(spec=BaseTool)
     tool.name = name
@@ -459,9 +458,7 @@ class TestSerializeArgsSchema:
 
     def test_model_json_schema_raises_exception(self) -> None:
         broken_model = MagicMock()
-        broken_model.model_json_schema = MagicMock(
-            side_effect=RuntimeError("schema broken")
-        )
+        broken_model.model_json_schema = MagicMock(side_effect=RuntimeError("schema broken"))
 
         tool = MagicMock(spec=BaseTool)
         tool.name = "broken"
@@ -473,9 +470,7 @@ class TestSerializeArgsSchema:
             pass
 
         # Patch the model_json_schema to raise
-        with patch.object(
-            BreakingModel, "model_json_schema", side_effect=RuntimeError("boom")
-        ):
+        with patch.object(BreakingModel, "model_json_schema", side_effect=RuntimeError("boom")):
             tool.args_schema = BreakingModel
             result = serialize_args_schema(tool)
             assert result is None

@@ -47,6 +47,19 @@ icon: "icon-name"   # optional, Font Awesome icon slug
 
 Page paths in `docs.json` are **relative and extensionless** (e.g., `"developers/introduction"` maps to `developers/introduction.mdx`).
 
+## Images
+
+**Always use `<Frame>` for images.** Do not use markdown image syntax (`![alt](src)`). Use absolute paths from the project root.
+
+```mdx
+<Frame>
+  <img src="/images/screenshots/example.webp" alt="Descriptive alt text" />
+</Frame>
+```
+
+- No relative paths (`../images/` or `./images/`) — always use absolute (`/images/...`)
+- Every image must have a meaningful `alt` attribute (not generic like "image")
+
 ## Mintlify Reference
 
 When making component changes or adding new Mintlify components, fetch the official docs:
@@ -62,6 +75,26 @@ Always invoke these via the `Skill` tool rather than doing the work ad-hoc:
 | `copywriting` | Writing or improving feature descriptions, explanations, or any prose in docs pages |
 | `landing-page-copywriter` | Homepage copy (`introduction.mdx`) or feature landing pages |
 | `seo-geo` | Optimizing page titles, descriptions, and meta in `docs.json` or `knowledge/` pages |
+
+## Release Notes Image Convention
+
+The in-app "What's New" sidebar card parses `release-notes.mdx` to display the latest release. To include a hero image in the sidebar card, **place an image as the very first element inside the `<Update>` block**, before the H1 title:
+
+```mdx
+<Update label="Mar 15, 2026" description="API, Web">
+
+![Release hero](/images/changelog/release-mar-15-2026.webp)
+
+# Feature Title Here
+
+...
+</Update>
+```
+
+- Images must go in `images/changelog/` (not the root `images/` dir)
+- Name pattern: `release-{mon}-{dd}-{yyyy}.webp` (e.g. `release-mar-15-2026.webp`)
+- The image is optional — omitting it is fine, the card will render without one
+- The parser grabs **only the first image** in the block; any subsequent images are ignored for the card
 
 ## Non-obvious Patterns
 

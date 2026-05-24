@@ -13,7 +13,7 @@ import {
 import OpenSourceAIClient from "./OpenSourceAIClient";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Open Source AI Assistant — Self-Host Your Personal AI | GAIA",
+  title: "Open Source AI Assistant — Self-Host Your Personal AI",
   description:
     "GAIA is the open source AI assistant that manages your email, calendar, tasks, and workflows. Fully self-hostable. Your data stays on your servers. Free forever.",
   path: "/open-source-ai-assistant",

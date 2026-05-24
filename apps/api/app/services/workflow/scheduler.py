@@ -2,10 +2,11 @@
 Workflow scheduler extending BaseSchedulerService for robust scheduling.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
-from shared.py.wide_events import log
+from arq.connections import RedisSettings
+
 from app.db.mongodb.collections import workflows_collection
 from app.models.scheduler_models import (
     BaseScheduledTask,
@@ -15,7 +16,7 @@ from app.models.scheduler_models import (
 )
 from app.models.workflow_models import Workflow
 from app.services.scheduler_service import BaseSchedulerService
-from arq.connections import RedisSettings
+from shared.py.wide_events import log
 
 
 class WorkflowScheduler(BaseSchedulerService):
@@ -30,7 +31,7 @@ class WorkflowScheduler(BaseSchedulerService):
     - stop_after and max_occurrences support
     """
 
-    def __init__(self, redis_settings: Optional[RedisSettings] = None):
+    def __init__(self, redis_settings: RedisSettings | None = None):
         """Initialize the workflow scheduler."""
         super().__init__(redis_settings)
 
@@ -38,9 +39,7 @@ class WorkflowScheduler(BaseSchedulerService):
         """Get the ARQ job name for workflow processing."""
         return "execute_workflow_by_id"
 
-    async def get_task(
-        self, task_id: str, user_id: Optional[str] = None
-    ) -> Optional[Workflow]:
+    async def get_task(self, task_id: str, user_id: str | None = None) -> Workflow | None:
         """
         Get a workflow by ID.
 
@@ -89,7 +88,7 @@ class WorkflowScheduler(BaseSchedulerService):
             Task execution result
         """
         try:
-            workflow: Optional[Workflow] = task if isinstance(task, Workflow) else None
+            workflow: Workflow | None = task if isinstance(task, Workflow) else None
             if not workflow:
                 raise ValueError("Task must be a Workflow instance")
 
@@ -119,16 +118,14 @@ class WorkflowScheduler(BaseSchedulerService):
             )
         except Exception as e:
             log.error(f"Error executing workflow {task.id}: {e}")
-            return TaskExecutionResult(
-                success=False, message=f"Workflow execution failed: {str(e)}"
-            )
+            return TaskExecutionResult(success=False, message=f"Workflow execution failed: {e!s}")
 
     async def update_task_status(
         self,
         task_id: str,
         status: ScheduledTaskStatus,
-        update_data: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
+        update_data: dict[str, Any] | None = None,
+        user_id: str | None = None,
     ) -> bool:
         """
         Update workflow status and other fields.
@@ -145,7 +142,7 @@ class WorkflowScheduler(BaseSchedulerService):
         try:
             update_fields = {
                 "status": status.value,
-                "updated_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(UTC),
             }
 
             if update_data:
@@ -156,23 +153,20 @@ class WorkflowScheduler(BaseSchedulerService):
             if user_id:
                 query["user_id"] = user_id
 
-            result = await workflows_collection.update_one(
-                query, {"$set": update_fields}
-            )
+            result = await workflows_collection.update_one(query, {"$set": update_fields})
 
             if result.modified_count > 0:
                 log.set(workflow={"id": task_id, "status": status.value})
                 log.info(f"Updated workflow {task_id} status to {status.value}")
                 return True
-            else:
-                log.warning(f"No workflow updated for {task_id}")
-                return False
+            log.warning(f"No workflow updated for {task_id}")
+            return False
 
         except Exception as e:
             log.error(f"Error updating workflow {task_id}: {e}")
             return False
 
-    async def get_pending_task(self, current_time: datetime) -> List[BaseScheduledTask]:
+    async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
         """
         Get workflows that should be scheduled for execution.
 
@@ -194,7 +188,7 @@ class WorkflowScheduler(BaseSchedulerService):
             }
 
             cursor = workflows_collection.find(query)
-            workflows: List[BaseScheduledTask] = []
+            workflows: list[BaseScheduledTask] = []
 
             async for workflow_doc in cursor:
                 try:
@@ -217,8 +211,8 @@ class WorkflowScheduler(BaseSchedulerService):
             return []
 
     async def create_workflow_with_scheduling(
-        self, workflow_data: Dict[str, Any], user_id: str
-    ) -> Optional[str]:
+        self, workflow_data: dict[str, Any], user_id: str
+    ) -> str | None:
         """
         Create a workflow and handle its initial scheduling.
 
@@ -254,7 +248,7 @@ class WorkflowScheduler(BaseSchedulerService):
                     scheduled_at=workflow.scheduled_at,
                     max_occurrences=workflow.max_occurrences,
                     stop_after=workflow.stop_after,
-                    base_time=datetime.now(timezone.utc),  # Add required base_time
+                    base_time=datetime.now(UTC),  # Add required base_time
                 )
 
                 await self.schedule_task(workflow.id, schedule_config)
@@ -271,9 +265,9 @@ class WorkflowScheduler(BaseSchedulerService):
         workflow_id: str,
         user_id: str,
         scheduled_at: datetime,
-        repeat: Optional[str] = None,
-        max_occurrences: Optional[int] = None,
-        stop_after: Optional[datetime] = None,
+        repeat: str | None = None,
+        max_occurrences: int | None = None,
+        stop_after: datetime | None = None,
     ) -> bool:
         """
         Schedule workflow execution using BaseSchedulerService.
@@ -313,7 +307,7 @@ class WorkflowScheduler(BaseSchedulerService):
             return success
 
         except Exception as e:
-            log.error(f"Error scheduling workflow {workflow_id}: {str(e)}")
+            log.error(f"Error scheduling workflow {workflow_id}: {e!s}")
             return False
 
     async def cancel_scheduled_workflow_execution(self, workflow_id: str) -> bool:
@@ -328,9 +322,7 @@ class WorkflowScheduler(BaseSchedulerService):
         """
         try:
             # Update workflow status to cancelled in database
-            db_success = await self.update_task_status(
-                workflow_id, ScheduledTaskStatus.CANCELLED
-            )
+            db_success = await self.update_task_status(workflow_id, ScheduledTaskStatus.CANCELLED)
 
             # Cancel ARQ job
             arq_success = await self.cancel_task(workflow_id, "")
@@ -338,9 +330,7 @@ class WorkflowScheduler(BaseSchedulerService):
             if db_success and arq_success:
                 log.info(f"Cancelled scheduled execution for workflow {workflow_id}")
             elif db_success:
-                log.warning(
-                    f"Cancelled workflow {workflow_id} in DB but ARQ cancellation failed"
-                )
+                log.warning(f"Cancelled workflow {workflow_id} in DB but ARQ cancellation failed")
             else:
                 log.warning(
                     f"Could not cancel workflow {workflow_id} - may not exist or already executed"
@@ -349,11 +339,11 @@ class WorkflowScheduler(BaseSchedulerService):
             return db_success
 
         except Exception as e:
-            log.error(f"Error cancelling workflow {workflow_id}: {str(e)}")
+            log.error(f"Error cancelling workflow {workflow_id}: {e!s}")
             return False
 
     async def reschedule_workflow(
-        self, workflow_id: str, new_scheduled_at: datetime, repeat: Optional[str] = None
+        self, workflow_id: str, new_scheduled_at: datetime, repeat: str | None = None
     ) -> bool:
         """
         Reschedule an existing workflow.
@@ -396,10 +386,10 @@ class WorkflowScheduler(BaseSchedulerService):
             return arq_success
 
         except Exception as e:
-            log.error(f"Error rescheduling workflow {workflow_id}: {str(e)}")
+            log.error(f"Error rescheduling workflow {workflow_id}: {e!s}")
             return False
 
-    async def get_workflow_status(self, workflow_id: str) -> Optional[str]:
+    async def get_workflow_status(self, workflow_id: str) -> str | None:
         """
         Get the current status of a workflow.
 
@@ -413,7 +403,7 @@ class WorkflowScheduler(BaseSchedulerService):
             workflow = await self.get_task(workflow_id)
             return workflow.status.value if workflow else None
         except Exception as e:
-            log.error(f"Error getting workflow status for {workflow_id}: {str(e)}")
+            log.error(f"Error getting workflow status for {workflow_id}: {e!s}")
             return None
 
 

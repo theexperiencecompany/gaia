@@ -7,11 +7,10 @@ import posthog from "posthog-js";
  * Provides type-safe event tracking with consistent naming conventions.
  */
 
-const ANALYTICS_STORAGE_KEY = "gaia_analytics_state";
-
 // Event name constants for consistent tracking
 export const ANALYTICS_EVENTS = {
   // Auth events
+  USER_SESSION_RESUMED: "user:session_resumed",
   USER_LOGGED_IN: "user:logged_in",
   USER_LOGGED_OUT: "user:logged_out",
 
@@ -35,6 +34,12 @@ export const ANALYTICS_EVENTS = {
   CHAT_MESSAGE_SENT: "chat:message_sent",
   CHAT_CONVERSATION_CREATED: "chat:conversation_created",
   CHAT_FIRST_MESSAGE_SENT: "chat:first_message_sent",
+  CHAT_VOICE_MODE_TOGGLED: "chat:voice_mode_toggled",
+  CHAT_FILE_UPLOADED: "chat:file_uploaded",
+  CHAT_CONVERSATION_DELETED: "chat:conversation_deleted",
+
+  // Chat – interaction detail events
+  CHAT_MESSAGE_FEEDBACK: "chat:message_feedback",
   CHAT_SUGGESTION_SHUFFLED: "chat:suggestion_shuffled",
   CHAT_SLASH_COMMAND_SELECTED: "chat:slash_command_selected",
   CHAT_SLASH_COMMAND_CATEGORY_CHANGED: "chat:slash_command_category_changed",
@@ -42,7 +47,9 @@ export const ANALYTICS_EVENTS = {
   CHAT_TOOLS_BUTTON_CLICKED: "chat:tools_button_clicked",
   CHAT_GRID_INTEGRATION_CONNECT_CLICKED:
     "chat:grid_integration_connect_clicked",
-  CHAT_MESSAGE_FEEDBACK: "chat:message_feedback",
+  CHAT_CONVERSATION_RENAMED: "chat:conversation_renamed",
+  CHAT_CONVERSATION_STARRED: "chat:conversation_starred",
+  CHAT_MESSAGE_RETRIED: "chat:message_retried",
 
   // Integration events
   INTEGRATION_CONNECTED: "integration:connected",
@@ -67,13 +74,54 @@ export const ANALYTICS_EVENTS = {
   TODOS_CREATED: "todos:created",
   TODOS_UPDATED: "todos:updated",
   TODOS_TOGGLED: "todos:toggled",
+  TODOS_VIEW_CHANGED: "todos:view_changed",
 
   // Goal events
   GOALS_CREATED: "goals:created",
+  GOALS_DELETED: "goals:deleted",
 
   // Calendar events
   CALENDAR_EVENT_CREATED: "calendar:event_created",
   CALENDAR_EVENT_DELETED: "calendar:event_deleted",
+
+  // Email events
+  EMAIL_OPENED: "email:opened",
+  EMAIL_REPLIED: "email:replied",
+  EMAIL_COMPOSE_OPENED: "email:compose_opened",
+  EMAIL_AI_DRAFT_GENERATED: "email:ai_draft_generated",
+
+  // Settings events
+  SETTINGS_PREFERENCES_CHANGED: "settings:preferences_changed",
+  SETTINGS_NOTIFICATIONS_TOGGLED: "settings:notifications_toggled",
+
+  // UI/UX events
+  UI_SIDEBAR_COLLAPSED: "ui:sidebar_collapsed",
+  UI_SIDEBAR_EXPANDED: "ui:sidebar_expanded",
+
+  // Search and filtering
+  SEARCH_PERFORMED: "search:performed",
+  SEARCH_GLOBAL_OPENED: "search:global_opened",
+  SEARCH_RESULT_CLICKED: "search:result_clicked",
+
+  // Pins/Bookmarks events
+  PIN_CREATED: "pin:created",
+  PIN_DELETED: "pin:deleted",
+  PIN_VIEWED: "pin:viewed",
+
+  // Memory events
+  MEMORY_CLEARED: "memory:cleared",
+  MEMORY_ITEM_DELETED: "memory:item_deleted",
+
+  // Profile events
+  PROFILE_LINK_COPIED: "profile:link_copied",
+
+  // Notifications events
+  NOTIFICATION_VIEWED: "notification:viewed",
+  NOTIFICATION_CLICKED: "notification:clicked",
+  NOTIFICATION_DISMISSED: "notification:dismissed",
+
+  // Content/Learning events
+  BLOG_ARTICLE_VIEWED: "blog:article_viewed",
 
   // Navigation events
   NAVIGATION_SIDEBAR_CLICKED: "navigation:sidebar_clicked",
@@ -94,6 +142,14 @@ export const ANALYTICS_EVENTS = {
   // Error events
   ERROR_OCCURRED: "error:occurred",
   API_ERROR: "api:error",
+
+  // What's new events
+  WHATS_NEW_CARD_SHOWN: "whats_new:card_shown",
+  WHATS_NEW_CARD_CLICKED: "whats_new:card_clicked",
+  WHATS_NEW_CARD_DISMISSED: "whats_new:card_dismissed",
+  WHATS_NEW_MODAL_OPENED: "whats_new:modal_opened",
+  WHATS_NEW_SLIDE_VIEWED: "whats_new:slide_viewed",
+  WHATS_NEW_DOCS_CLICKED: "whats_new:docs_clicked",
 } as const;
 
 export type AnalyticsEvent =
@@ -107,6 +163,7 @@ interface UserProperties {
   created_at?: string;
   profession?: string;
   onboarding_completed?: boolean;
+  first_message_sent?: boolean;
 }
 
 interface EventProperties {
@@ -155,89 +212,7 @@ export function trackEvent(
  * Set user properties without tracking an event.
  */
 export function setUserProperties(properties: UserProperties): void {
-  posthog.people.set(properties);
-}
-
-// --- Analytics State Management (persisted in localStorage) ---
-
-interface AnalyticsState {
-  hassentFirstMessage: boolean;
-  discoveredFeatures: string[];
-}
-
-function getAnalyticsState(): AnalyticsState {
-  if (typeof window === "undefined") {
-    return { hassentFirstMessage: false, discoveredFeatures: [] };
-  }
-  try {
-    const stored = localStorage.getItem(ANALYTICS_STORAGE_KEY);
-    return stored
-      ? JSON.parse(stored)
-      : { hassentFirstMessage: false, discoveredFeatures: [] };
-  } catch {
-    return { hassentFirstMessage: false, discoveredFeatures: [] };
-  }
-}
-
-function updateAnalyticsState(updates: Partial<AnalyticsState>): void {
-  if (typeof window === "undefined") return;
-  try {
-    const current = getAnalyticsState();
-    localStorage.setItem(
-      ANALYTICS_STORAGE_KEY,
-      JSON.stringify({ ...current, ...updates }),
-    );
-  } catch {
-    // Silently fail if localStorage is unavailable
-  }
-}
-
-/**
- * Track when user sends their first-ever message.
- * Only fires once per user (persisted in localStorage).
- */
-export function trackFirstMessageIfNeeded(): boolean {
-  const state = getAnalyticsState();
-  if (state.hassentFirstMessage) return false;
-
-  trackEvent(ANALYTICS_EVENTS.CHAT_FIRST_MESSAGE_SENT, {
-    milestone: "first_message",
-  });
-  setUserProperties({ first_message_sent: true } as UserProperties);
-  updateAnalyticsState({ hassentFirstMessage: true });
-  return true;
-}
-
-/**
- * Track when user creates a new conversation.
- */
-export function trackConversationCreated(properties?: {
-  conversationId?: string;
-  source?: string;
-}): void {
-  trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_CREATED, properties);
-}
-
-/**
- * Track when user discovers/uses a feature for the first time.
- * Only fires once per feature per user.
- */
-export function trackFeatureDiscovery(
-  featureName: string,
-  properties?: EventProperties,
-): boolean {
-  const state = getAnalyticsState();
-  if (state.discoveredFeatures.includes(featureName)) return false;
-
-  trackEvent(ANALYTICS_EVENTS.FEATURE_DISCOVERED, {
-    feature: featureName,
-    is_first_use: true,
-    ...properties,
-  });
-  updateAnalyticsState({
-    discoveredFeatures: [...state.discoveredFeatures, featureName],
-  });
-  return true;
+  posthog.setPersonProperties(properties);
 }
 
 /**
@@ -270,110 +245,3 @@ export function trackOnboardingComplete(properties: {
     profession: properties.profession,
   });
 }
-
-/**
- * Track subscription events.
- */
-export function trackSubscription(
-  action: "started" | "completed" | "cancelled" | "failed",
-  properties: {
-    plan?: string;
-    planId?: string;
-    amount?: number;
-    currency?: string;
-    interval?: string;
-    previousPlan?: string;
-    reason?: string;
-  },
-): void {
-  const eventMap = {
-    started: ANALYTICS_EVENTS.SUBSCRIPTION_CHECKOUT_STARTED,
-    completed: ANALYTICS_EVENTS.SUBSCRIPTION_COMPLETED,
-    cancelled: ANALYTICS_EVENTS.SUBSCRIPTION_CANCELLED,
-    failed: ANALYTICS_EVENTS.SUBSCRIPTION_FAILED,
-  };
-
-  trackEvent(eventMap[action], properties);
-
-  if (action === "completed" && properties.plan) {
-    setUserProperties({ plan: properties.plan });
-  }
-}
-
-/**
- * Track integration connection events.
- */
-export function trackIntegration(
-  action: "connected" | "disconnected" | "error",
-  integrationName: string,
-  properties?: EventProperties,
-): void {
-  const eventMap = {
-    connected: ANALYTICS_EVENTS.INTEGRATION_CONNECTED,
-    disconnected: ANALYTICS_EVENTS.INTEGRATION_DISCONNECTED,
-    error: ANALYTICS_EVENTS.INTEGRATION_ERROR,
-  };
-
-  trackEvent(eventMap[action], {
-    integration: integrationName,
-    ...properties,
-  });
-
-  // Track first-time integration connection as feature discovery
-  if (action === "connected") {
-    trackFeatureDiscovery(`integration_${integrationName}`, {
-      integration: integrationName,
-    });
-  }
-}
-
-/**
- * Track errors for debugging and monitoring.
- */
-export function trackError(
-  errorType: string,
-  error: Error | string,
-  properties?: EventProperties,
-): void {
-  trackEvent(ANALYTICS_EVENTS.ERROR_OCCURRED, {
-    error_type: errorType,
-    error_message: error instanceof Error ? error.message : error,
-    error_stack: error instanceof Error ? error.stack : undefined,
-    ...properties,
-  });
-}
-
-/**
- * Create a group (for team/organization tracking).
- */
-export function setGroup(
-  groupType: string,
-  groupKey: string,
-  properties?: Record<string, unknown>,
-): void {
-  posthog.group(groupType, groupKey, properties);
-}
-
-/**
- * Opt user out of tracking.
- */
-export function optOut(): void {
-  posthog.opt_out_capturing();
-}
-
-/**
- * Opt user back into tracking.
- */
-export function optIn(): void {
-  posthog.opt_in_capturing();
-}
-
-/**
- * Check if capturing is active.
- */
-export function isCapturingEnabled(): boolean {
-  return !posthog.has_opted_out_capturing();
-}
-
-// Re-export posthog for advanced usage
-export { posthog };

@@ -1,6 +1,5 @@
 """Unit tests for app.agents.skills.installer — GitHub and inline skill installation."""
 
-from typing import List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -159,9 +158,7 @@ class TestFetchGithubContents:
         mock_client.get = AsyncMock(return_value=response_404)
 
         with pytest.raises(ValueError, match="Path not found"):
-            await _fetch_github_contents(
-                "owner", "repo", "path", mock_client, branch="master"
-            )
+            await _fetch_github_contents("owner", "repo", "path", mock_client, branch="master")
 
     @patch(_PATCH_GITHUB_HEADERS, return_value={})
     async def test_403_raises_rate_limit(self, mock_headers: MagicMock) -> None:
@@ -328,9 +325,7 @@ Body.
         assert call_kwargs["target"] == "gmail_agent"
 
     @patch(_PATCH_GET_VFS, new_callable=AsyncMock)
-    async def test_install_invalid_skill_md_raises(
-        self, mock_get_vfs: AsyncMock
-    ) -> None:
+    async def test_install_invalid_skill_md_raises(self, mock_get_vfs: AsyncMock) -> None:
         mock_vfs = AsyncMock()
         mock_get_vfs.return_value = mock_vfs
 
@@ -374,9 +369,7 @@ class TestDownloadGithubDir:
     """Tests for _download_github_dir."""
 
     @patch(_PATCH_GITHUB_HEADERS, return_value={})
-    async def test_downloads_files_skipping_skill_md(
-        self, mock_headers: MagicMock
-    ) -> None:
+    async def test_downloads_files_skipping_skill_md(self, mock_headers: MagicMock) -> None:
         mock_vfs = AsyncMock()
         mock_client = AsyncMock(spec=httpx.AsyncClient)
 
@@ -399,7 +392,7 @@ class TestDownloadGithubDir:
                 "download_url": "https://example.com/helper.py",
             },
         ]
-        file_list: List[str] = []
+        file_list: list[str] = []
 
         await _download_github_dir(
             vfs=mock_vfs,
@@ -450,7 +443,7 @@ class TestDownloadGithubDir:
                 "path": "skill/lib",
             }
         ]
-        file_list: List[str] = []
+        file_list: list[str] = []
 
         await _download_github_dir(
             vfs=mock_vfs,

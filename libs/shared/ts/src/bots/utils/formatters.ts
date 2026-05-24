@@ -161,6 +161,44 @@ export function convertToSlackMrkdwn(text: string): string {
 }
 
 /**
+ * Converts standard CommonMark Markdown to WhatsApp-compatible formatting.
+ *
+ * WhatsApp supports: `*bold*`, `_italic_`, `~strikethrough~`, `` `code` ``,
+ * ` ```code``` `. Links are shown as bare URLs (WhatsApp auto-links them).
+ *
+ * Converts `**bold**` → `*bold*`, `[label](url)` → `label (url)`,
+ * strips `# headers` to bold, strips blockquote `>` prefixes and horizontal rules.
+ * Code blocks are preserved unchanged.
+ */
+export function convertToWhatsAppMarkdown(text: string): string {
+  return applyOutsideCodeBlocks(
+    text,
+    (segment) =>
+      segment
+        // Headings FIRST so the content gets wrapped in ``*`` before the
+        // bold rule sees it. Otherwise the model's ``### **Heading**`` would
+        // become ``### *Heading*`` (after bold) and then ``**Heading**`` once
+        // the heading rule wraps the already-emphasised content in ``*`` —
+        // re-introducing the double asterisks we tried to remove.
+        .replaceAll(/^#{1,6}\s+(.+)$/gm, "*$1*") // # Heading → *Heading*
+        // Horizontal-rule remover MUST run before the bold rule. Otherwise
+        // ``***`` on its own line followed by ``**Heading**`` lets the bold
+        // regex's ``[^*]`` greedy-match the inter-line newlines and pair
+        // chars across the ``***`` boundary into ``**X**``, splitting the
+        // ``**Heading**`` and leaving stray ``**`` glyphs in the output.
+        .replaceAll(/^[-_*]{3,}$/gm, "") // --- / ___ / *** → remove
+        // Bold rules: keep ``[^*\n]`` (no newlines) so a single ``**`` opener
+        // cannot reach across blank lines and accidentally pair with the
+        // opener of a SEPARATE bold span.
+        .replaceAll(/\*\*\*([^*\n]+)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
+        .replaceAll(/\*\*([^*\n]+)\*\*/g, "*$1*") // **bold** → *bold*
+        .replaceAll(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)") // [label](url) → label (url)
+        .replaceAll(/^(\s*)[*\-+]\s+/gm, "$1• ") // - / * / + bullet → •
+        .replaceAll(/^>\s*/gm, ""), // > quote → strip prefix
+  );
+}
+
+/**
  * Formats authentication required message with clear onboarding steps.
  */
 export function formatAuthRequiredMessage(
@@ -264,6 +302,10 @@ export function formatBotError(error: unknown): string {
     message.includes("AI is processing your request")
   ) {
     return "⏳ Your request is taking longer than usual. Try a simpler question or wait a moment and try again.";
+  }
+
+  if (message.includes("ECONNREFUSED") || message.includes("ETIMEDOUT")) {
+    return "🔌 The GAIA backend is unavailable. Please try again in a moment.";
   }
 
   if (

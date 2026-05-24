@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @source "../../../src";
 @source "../../../../../libs/shared/ts/src/**/*.{js,ts,jsx,tsx}";
+@source inline("row-span-2 row-span-3 row-span-4");
+@source inline("col-span-2 col-span-3 col-span-4");
+@source inline("grid-rows-3 grid-rows-4 grid-cols-3 grid-cols-4");
 
 /* HeroUI */
 @source "../../../../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
@@ -83,12 +86,20 @@
   background-color: rgb(59 130 246 / 0.4) !important;
 }
 
+/* Sileo viewport sits above HeroUI Modal (both default to z-50).
+   Sileo injects its own stylesheet at runtime, so we need !important
+   to win against its later-loaded rule at equal specificity. */
+[data-sileo-viewport] {
+  /* biome-ignore lint/complexity/noImportantStyles: override sileo's runtime-injected z-50 */
+  z-index: 1000 !important;
+}
+
 @theme {
   /* Font Family */
   --font-sans: var(--font-inter), system-ui, sans-serif;
   --font-serif: var(--font-pp-editorial-new), serif;
   --font-mono:
-    var(--font-anonymous-pro), ui-monospace, "Cascadia Code", "Source Code Pro",
+    var(--font-geist-mono), ui-monospace, "Cascadia Code", "Source Code Pro",
     Menlo, Consolas, "DejaVu Sans Mono", monospace;
 
   --color-secondary-bg: #1a1a1a; /* sidebar */
@@ -203,6 +214,15 @@
   }
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @keyframes shake {
   0%,
   100% {
@@ -245,6 +265,53 @@
   100% {
     transform: scale(1);
     filter: blur(0);
+  }
+}
+
+/* Hero animations — CSS-only replacements for motion/react so the LCP element
+   paints without waiting on JS hydration.
+   Only transform + opacity are animated so Chrome promotes the animation to the
+   compositor (off main thread). filter:blur() was previously used for a blur-in
+   feel but disqualified the animation from hardware acceleration. A subtle
+   scale(0.985→1) approximates the same "soften-in" effect while staying
+   compositor-only. */
+@keyframes hero-word-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 2px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes hero-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.hero-split-word {
+  display: inline-block;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: hero-word-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.hero-fade-in {
+  opacity: 0;
+  animation: hero-fade-in 0.4s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-split-word,
+  .hero-fade-in {
+    animation: none;
+    opacity: 1;
   }
 }
 
@@ -463,8 +530,37 @@
     display: none;
   }
 
+  .scrollbar-faint {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  }
+
+  .scrollbar-faint::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+  }
+
+  .scrollbar-faint::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-faint::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 100px;
+  }
+
+  .scrollbar-faint::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
   .heroimage {
     image-rendering: crisp-edges;
+  }
+  .maplibregl-popup-content {
+    @apply bg-transparent! shadow-none! p-0! rounded-none!;
+  }
+  .maplibregl-popup-tip {
+    @apply hidden!;
   }
 }
 
@@ -480,15 +576,20 @@
   }
 
   .mcp-app-surface > div {
-    display: block;
-    height: 100%;
-    width: 100%;
+    /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
+    display: block !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
+    height: 100% !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
+    width: 100% !important;
   }
 
   .mcp-app-surface iframe {
     display: block;
-    height: 100%;
-    width: 100%;
+    /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
+    height: 100% !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
+    width: 100% !important;
   }
 
   .chat_bubble {
@@ -559,27 +660,30 @@
     border-radius: 20px;
   }
 
-  .imessage-bubble::before,
-  .imessage-bubble::after {
+  /*
+   * Tail rendered as a single pseudo-element with clip-path tracing the
+   * exact iMessage tail silhouette. The clipped path matches the visible
+   * region produced by the previous ::before/::after bg-color trick — same
+   * shape, but a real cutout, so it composites correctly over any
+   * background (image, gradient, transparent, etc.).
+   *
+   * Geometry: 20px × 18px box anchored to the bubble's bottom-left
+   * (from-them) or bottom-right (from-me, mirrored).
+   */
+  .imessage-bubble::before {
     content: "";
     position: absolute;
     bottom: 0;
+    width: 20px;
     height: 18px;
   }
 
-  .imessage-grouped-first {
-    border-radius: 20px 20px 20px 20px;
-  }
-
-  .imessage-grouped-last {
-    border-radius: 20px 20px 20px 20px;
-  }
-
+  .imessage-grouped-first,
+  .imessage-grouped-last,
   .imessage-grouped-middle {
-    border-radius: 20px 20px 20px 20px;
+    border-radius: 20px;
   }
 
-  /* Bot messages (from-them style) */
   .imessage-from-them {
     background: #27272a;
     align-self: flex-start;
@@ -587,19 +691,12 @@
 
   .imessage-from-them::before {
     left: -7px;
-    width: 20px;
     background-color: #27272a;
-    border-bottom-right-radius: 16px;
+    clip-path: path(
+      "M 20 0 L 20 2 A 16 16 0 0 1 4 18 L 0 18 L 0 17.54 A 10 10 0 0 0 7 8 L 7 0 Z"
+    );
   }
 
-  .imessage-from-them::after {
-    left: -26px;
-    width: 26px;
-    background-color: var(--color-primary-bg);
-    border-bottom-right-radius: 10px;
-  }
-
-  /* User messages (from-me style) */
   .imessage-from-me {
     color: black;
     background: #00bbff;
@@ -608,24 +705,15 @@
 
   .imessage-from-me::before {
     right: -7px;
-    width: 20px;
     background-color: #00bbff;
-    border-bottom-left-radius: 16px 14px;
+    clip-path: path(
+      "M 0 0 L 0 2 A 16 16 0 0 0 16 18 L 20 18 L 20 17.54 A 10 10 0 0 1 13 8 L 13 0 Z"
+    );
   }
 
-  .imessage-from-me::after {
-    right: -26px;
-    width: 26px;
-    background-color: var(--color-primary-bg);
-    border-bottom-left-radius: 10px;
-  }
-
-  /* Grouped iMessage bubbles for NEW_MESSAGE_BREAK */
   /* Hide tails for grouped messages except the last one */
   .imessage-grouped-first::before,
-  .imessage-grouped-first::after,
-  .imessage-grouped-middle::before,
-  .imessage-grouped-middle::after {
+  .imessage-grouped-middle::before {
     display: none;
   }
 
@@ -636,6 +724,26 @@
     justify-content: flex-start;
     min-height: 70vh;
     padding: 2rem 0 2rem -0.5rem;
+  }
+
+  /* content-visibility: skip rendering off-screen items in long lists */
+  .cv-auto {
+    content-visibility: auto;
+  }
+
+  .cv-chat-message {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 120px;
+  }
+
+  .cv-notification-card {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 100px;
+  }
+
+  .cv-todo-item {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 60px;
   }
 
   .navbar {
@@ -704,9 +812,28 @@
   }
 
   .tiptap {
-    height: 90vh;
-    max-height: 90vh;
     outline: none;
+  }
+
+  .tiptap:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  /* OpenUI document card — outline only; let the conversation scroll the body */
+  .openui-document .tiptap {
+    outline: none;
+  }
+
+  /* Restore the keyboard focus ring inside OpenUI document cards so keyboard
+     users keep a visible focus indicator. */
+  .openui-document .tiptap:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  /* Mail reply editor — overflow only; height is capped by the parent max-h-[250px] wrapper */
+  .mail-editor .tiptap {
     overflow: auto;
   }
 
@@ -811,5 +938,193 @@
   }
   50% {
     opacity: 0;
+  }
+}
+
+/* ── WhatsNew changelog body ────────────────────────────────────── */
+.whats-new-content {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: rgb(161 161 170); /* zinc-400 */
+}
+.whats-new-content > *:first-child {
+  margin-top: 0;
+}
+.whats-new-content > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Paragraphs */
+.whats-new-content p {
+  margin-top: 0.625rem;
+  margin-bottom: 0.625rem;
+  color: rgb(161 161 170);
+  line-height: 1.65;
+}
+
+/* h2 = version link heading, e.g. "API v0.16.0" (always contains <a>) */
+.whats-new-content h2 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgb(113 113 122); /* zinc-500 */
+}
+.whats-new-content h2 a {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  color: rgb(228 228 231); /* zinc-200 */
+  text-decoration: underline;
+  text-decoration-color: rgb(82 82 91); /* zinc-600 */
+  text-underline-offset: 3px;
+  transition:
+    color 0.15s,
+    text-decoration-color 0.15s;
+}
+.whats-new-content h2 a:hover {
+  color: #fff;
+  text-decoration-color: rgb(161 161 170);
+}
+
+/* h3 = category label: Features / Bug Fixes / Improvements */
+.whats-new-content h3 {
+  margin-top: 1rem;
+  margin-bottom: 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgb(82 82 91); /* zinc-600 */
+}
+
+/* Bullet lists */
+.whats-new-content ul {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-left: 1.125rem;
+  list-style-type: disc;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.whats-new-content ol {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-left: 1.125rem;
+  list-style-type: decimal;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.whats-new-content li {
+  list-style-type: inherit;
+  color: rgb(161 161 170);
+  line-height: 1.6;
+  padding-left: 0.125rem;
+}
+.whats-new-content li::marker {
+  color: rgb(82 82 91); /* zinc-600 */
+}
+
+/* Bold feature name at start of li */
+/* biome-ignore lint/style/noDescendingSpecificity: scoped to .whats-new-content, unrelated to .chat_bubble selectors above */
+.whats-new-content strong,
+.whats-new-content li strong {
+  font-weight: 600;
+  color: rgb(228 228 231); /* zinc-200 */
+}
+/* biome-ignore lint/style/noDescendingSpecificity: scoped to .whats-new-content, unrelated to .chat_bubble selectors above */
+.whats-new-content em {
+  font-style: italic;
+  color: rgb(212 212 216); /* zinc-300 */
+}
+
+/* Links outside h2 */
+.whats-new-content a {
+  color: var(--color-primary, #3b82f6);
+  text-decoration: underline;
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--color-primary, #3b82f6) 35%,
+    transparent
+  );
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.15s;
+}
+/* biome-ignore lint/style/noDescendingSpecificity: hover for non-h2 links, intentionally less specific than .whats-new-content h2 a:hover above */
+.whats-new-content a:hover {
+  text-decoration-color: var(--color-primary, #3b82f6);
+}
+
+/* Inline code */
+.whats-new-content code {
+  border-radius: 0.25rem;
+  background: rgb(39 39 42); /* zinc-800 */
+  padding: 0.125rem 0.375rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: rgb(228 228 231);
+}
+
+/* Code blocks */
+.whats-new-content pre {
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(39 39 42);
+  background: rgb(9 9 11); /* zinc-950 */
+  padding: 0.75rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: rgb(212 212 216);
+}
+.whats-new-content pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Horizontal rule — separates package sections */
+.whats-new-content hr {
+  margin-top: 1.25rem;
+  margin-bottom: 1.25rem;
+  border: none;
+  border-top: 1px solid rgb(39 39 42 / 0.7); /* zinc-800/70 */
+}
+
+/* Landing bots-showcase chat bubble pop-in */
+@keyframes chat-bubble-pop {
+  from {
+    transform: scale(0.96) translateY(4px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+.chat-bubble-pop {
+  animation: chat-bubble-pop 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: bottom;
+}
+
+/* Landing bots-showcase typing-indicator dots */
+@keyframes chat-demo-typing {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 0.9;
   }
 }

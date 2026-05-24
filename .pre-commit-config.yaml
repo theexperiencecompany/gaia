@@ -12,7 +12,7 @@ repos:
       - id: check-merge-conflict
         priority: 0
       - id: check-added-large-files
-        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock|apps/web/public/|.*\.(png|jpg|jpeg|gif|webp|svg)|.*/i18n/.*\.json)$
+        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock|apps/web/public/.*|.*\.(png|jpg|jpeg|gif|webp|svg)|.*/i18n/.*\.json|\.secrets\.baseline)$
         priority: 0
       - id: check-ast
         exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
@@ -26,6 +26,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: generate-changelog-pages
+        name: Generate changelog sub-pages from release-notes.mdx
+        entry: bash -c 'node docs/scripts/generate-changelog-pages.js && git add docs/release-notes/'
+        language: system
+        files: ^docs/release-notes\.mdx$
+        pass_filenames: false
+
       - id: biome-check
         name: Biome check (lint + format + imports)
         entry: npx biome check --write --no-errors-on-unmatched --files-ignore-unknown=true
@@ -34,8 +41,9 @@ repos:
         exclude: ^(apps/api/|apps/voice-agent/|infra/|docs/)
 
   - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0
+    rev: v1.5.0
     hooks:
       - id: detect-secrets
-        exclude: ^(pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|.*\.env\.example|docs/configuration/environment-variables\.mdx|docs/configuration/environment-variables\.mdx|nx\.json|\.github/workflows/build\.yml|apps/api/pyproject\.toml)$
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: ^(pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|.*\.env\.example|docs/configuration/environment-variables\.mdx|docs/configuration/environment-variables\.mdx|nx\.json|\.github/workflows/build\.yml|apps/api/pyproject\.toml|skills-lock\.json|\.secrets\.baseline)$
         priority: 0

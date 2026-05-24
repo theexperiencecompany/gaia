@@ -37,11 +37,15 @@ Also covers:
     _build_trigger_hint, _build_available_triggers)
 """
 
-import pytest
-from datetime import datetime, timezone, timedelta
-from typing import List, Optional
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from app.models.workflow_execution_models import (
+    WorkflowExecution,
+    WorkflowExecutionsResponse,
+)
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     GeneratedStep,
@@ -55,32 +59,27 @@ from app.models.workflow_models import (
     WorkflowStatusResponse,
     WorkflowStep,
 )
-from app.models.workflow_execution_models import (
-    WorkflowExecution,
-    WorkflowExecutionsResponse,
+from app.services.workflow.execution_service import (
+    complete_execution,
+    create_execution,
+    get_workflow_executions,
 )
+from app.services.workflow.generation_service import (
+    WorkflowGenerationService,
+    _build_available_triggers,
+    _build_trigger_hint,
+    _parse_workflow_response,
+    enrich_steps,
+)
+from app.services.workflow.queue_service import WorkflowQueueService
+from app.services.workflow.scheduler import WorkflowScheduler
 from app.services.workflow.service import (
     WorkflowService,
     generate_unique_workflow_slug,
 )
-from app.services.workflow.generation_service import (
-    WorkflowGenerationService,
-    enrich_steps,
-    _parse_workflow_response,
-    _build_trigger_hint,
-    _build_available_triggers,
-)
-from app.services.workflow.execution_service import (
-    create_execution,
-    complete_execution,
-    get_workflow_executions,
-)
-from app.services.workflow.scheduler import WorkflowScheduler
-from app.services.workflow.queue_service import WorkflowQueueService
 from app.services.workflow.trigger_service import TriggerService
 from app.services.workflow.validators import WorkflowValidator
 from app.utils.exceptions import TriggerRegistrationError
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers / constants
@@ -95,10 +94,10 @@ def _make_trigger_config(
     *,
     trigger_type: TriggerType = TriggerType.MANUAL,
     enabled: bool = True,
-    cron_expression: Optional[str] = None,
-    trigger_name: Optional[str] = None,
-    composio_trigger_ids: Optional[List[str]] = None,
-    next_run: Optional[datetime] = None,
+    cron_expression: str | None = None,
+    trigger_name: str | None = None,
+    composio_trigger_ids: list[str] | None = None,
+    next_run: datetime | None = None,
 ) -> TriggerConfig:
     """Build a TriggerConfig for testing."""
     return TriggerConfig(
@@ -113,15 +112,15 @@ def _make_trigger_config(
 
 def _make_workflow(
     *,
-    workflow_id: Optional[str] = WORKFLOW_ID,
+    workflow_id: str | None = WORKFLOW_ID,
     activated: bool = True,
-    steps: Optional[list] = None,
-    trigger_config: Optional[TriggerConfig] = None,
+    steps: list | None = None,
+    trigger_config: TriggerConfig | None = None,
     description: str = "Test description",
     prompt: str = "Execute test workflow",
     user_id: str = USER_ID,
     is_todo_workflow: bool = False,
-    error_message: Optional[str] = None,
+    error_message: str | None = None,
 ) -> Workflow:
     """Build a minimal valid Workflow for testing."""
     if steps is None:
@@ -146,9 +145,9 @@ def _make_create_request(
     *,
     title: str = "New Workflow",
     prompt: str = "Do something useful",
-    description: Optional[str] = "A test workflow",
-    trigger_config: Optional[TriggerConfig] = None,
-    steps: Optional[List[WorkflowStep]] = None,
+    description: str | None = "A test workflow",
+    trigger_config: TriggerConfig | None = None,
+    steps: list[WorkflowStep] | None = None,
     generate_immediately: bool = False,
 ) -> CreateWorkflowRequest:
     """Build a CreateWorkflowRequest for testing."""
@@ -169,7 +168,7 @@ def _make_update_request(**kwargs) -> UpdateWorkflowRequest:
     return UpdateWorkflowRequest(**kwargs)
 
 
-def _workflow_doc(workflow: Optional[Workflow] = None) -> dict:
+def _workflow_doc(workflow: Workflow | None = None) -> dict:
     """Convert a Workflow to a MongoDB-style document dict."""
     wf = workflow or _make_workflow()
     doc = wf.model_dump(mode="json")
@@ -270,9 +269,7 @@ class TestGenerateUniqueWorkflowSlug:
 
     @patch("app.services.workflow.service.slugify", return_value="")
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_empty_title_falls_back_to_workflow(
-        self, mock_collection, _mock_slugify
-    ):
+    async def test_empty_title_falls_back_to_workflow(self, mock_collection, _mock_slugify):
         mock_collection.find_one = AsyncMock(return_value=None)
         slug = await generate_unique_workflow_slug("")
         assert slug == "workflow"
@@ -334,9 +331,7 @@ class TestCreateWorkflow:
         mock_collection.update_one = AsyncMock(return_value=_mock_update_result())
         mock_chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
 
-        steps = [
-            WorkflowStep(id="s1", title="Pre-existing", description="Already defined")
-        ]
+        steps = [WorkflowStep(id="s1", title="Pre-existing", description="Already defined")]
         request = _make_create_request(steps=steps)
         result = await WorkflowService.create_workflow(request, USER_ID)
 
@@ -376,7 +371,7 @@ class TestCreateWorkflow:
     async def test_create_schedule_workflow_schedules_execution(
         self, mock_collection, mock_chroma, mock_scheduler
     ):
-        next_run = datetime.now(timezone.utc) + timedelta(hours=1)
+        next_run = datetime.now(UTC) + timedelta(hours=1)
         trigger = _make_trigger_config(
             trigger_type=TriggerType.SCHEDULE,
             cron_expression="0 9 * * *",
@@ -391,9 +386,7 @@ class TestCreateWorkflow:
             trigger_config=trigger,
             steps=[WorkflowStep(id="s1", title="s", description="d")],
         )
-        await WorkflowService.create_workflow(
-            request, USER_ID, user_timezone="America/New_York"
-        )
+        await WorkflowService.create_workflow(request, USER_ID, user_timezone="America/New_York")
 
         mock_scheduler.schedule_workflow_execution.assert_awaited_once()
 
@@ -457,9 +450,7 @@ class TestCreateWorkflow:
     @patch("app.services.workflow.service.workflow_scheduler")
     @patch("app.services.workflow.service.ChromaClient")
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_create_fails_on_db_insert(
-        self, mock_collection, mock_chroma, mock_scheduler
-    ):
+    async def test_create_fails_on_db_insert(self, mock_collection, mock_chroma, mock_scheduler):
         bad_result = MagicMock()
         bad_result.inserted_id = None
         mock_collection.insert_one = AsyncMock(return_value=bad_result)
@@ -483,9 +474,7 @@ class TestCreateWorkflow:
         """ChromaDB failure should not prevent workflow creation."""
         mock_collection.insert_one = AsyncMock(return_value=_mock_insert_result())
         mock_collection.update_one = AsyncMock(return_value=_mock_update_result())
-        mock_chroma.get_langchain_client = AsyncMock(
-            side_effect=Exception("ChromaDB down")
-        )
+        mock_chroma.get_langchain_client = AsyncMock(side_effect=Exception("ChromaDB down"))
 
         request = _make_create_request()
         result = await WorkflowService.create_workflow(request, USER_ID)
@@ -527,9 +516,7 @@ class TestCreateWorkflow:
         """If a generic error occurs after triggers are registered, both triggers and workflow are cleaned up."""
         mock_collection.insert_one = AsyncMock(return_value=_mock_insert_result())
         # update_one for activation succeeds, but later code raises
-        mock_collection.update_one = AsyncMock(
-            side_effect=Exception("Unexpected error")
-        )
+        mock_collection.update_one = AsyncMock(side_effect=Exception("Unexpected error"))
         mock_collection.delete_one = AsyncMock()
         mock_chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
 
@@ -561,9 +548,7 @@ class TestGetWorkflow:
         result = await WorkflowService.get_workflow(WORKFLOW_ID, USER_ID)
         assert result is not None
         assert result.title == "Test Workflow"
-        mock_collection.find_one.assert_awaited_once_with(
-            {"_id": WORKFLOW_ID, "user_id": USER_ID}
-        )
+        mock_collection.find_one.assert_awaited_once_with({"_id": WORKFLOW_ID, "user_id": USER_ID})
 
     @patch("app.services.workflow.service.workflows_collection")
     async def test_get_workflow_not_found(self, mock_collection):
@@ -574,9 +559,7 @@ class TestGetWorkflow:
 
     @patch("app.services.workflow.service.workflows_collection")
     async def test_get_workflow_db_error_raises(self, mock_collection):
-        mock_collection.find_one = AsyncMock(
-            side_effect=Exception("DB connection lost")
-        )
+        mock_collection.find_one = AsyncMock(side_effect=Exception("DB connection lost"))
 
         with pytest.raises(Exception, match="DB connection lost"):
             await WorkflowService.get_workflow(WORKFLOW_ID, USER_ID)
@@ -615,9 +598,7 @@ class TestListWorkflows:
         assert result == []
 
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_list_workflows_excludes_todo_workflows_by_default(
-        self, mock_collection
-    ):
+    async def test_list_workflows_excludes_todo_workflows_by_default(self, mock_collection):
         mock_cursor = MagicMock()
         mock_cursor.sort = MagicMock(return_value=mock_cursor)
         mock_cursor.to_list = AsyncMock(return_value=[])
@@ -629,9 +610,7 @@ class TestListWorkflows:
         assert "$or" in query
 
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_list_workflows_includes_todo_workflows_when_false(
-        self, mock_collection
-    ):
+    async def test_list_workflows_includes_todo_workflows_when_false(self, mock_collection):
         mock_cursor = MagicMock()
         mock_cursor.sort = MagicMock(return_value=mock_cursor)
         mock_cursor.to_list = AsyncMock(return_value=[])
@@ -708,13 +687,9 @@ class TestUpdateWorkflow:
         new_callable=AsyncMock,
     )
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_update_matched_count_zero_returns_none(
-        self, mock_collection, mock_get
-    ):
+    async def test_update_matched_count_zero_returns_none(self, mock_collection, mock_get):
         mock_get.return_value = _make_workflow()
-        mock_collection.update_one = AsyncMock(
-            return_value=_mock_update_result(matched=0)
-        )
+        mock_collection.update_one = AsyncMock(return_value=_mock_update_result(matched=0))
 
         request = _make_update_request(title="Updated")
         result = await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
@@ -730,7 +705,7 @@ class TestUpdateWorkflow:
     async def test_update_trigger_config_reschedules(
         self, mock_collection, mock_get, mock_scheduler
     ):
-        next_run = datetime.now(timezone.utc) + timedelta(hours=2)
+        next_run = datetime.now(UTC) + timedelta(hours=2)
         old_trigger = _make_trigger_config(
             trigger_type=TriggerType.SCHEDULE,
             cron_expression="0 8 * * *",
@@ -760,9 +735,7 @@ class TestUpdateWorkflow:
         new_callable=AsyncMock,
     )
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_update_disable_schedule_cancels(
-        self, mock_collection, mock_get, mock_scheduler
-    ):
+    async def test_update_disable_schedule_cancels(self, mock_collection, mock_get, mock_scheduler):
         old_trigger = _make_trigger_config(
             trigger_type=TriggerType.SCHEDULE,
             cron_expression="0 8 * * *",
@@ -777,9 +750,7 @@ class TestUpdateWorkflow:
         updated_wf = _make_workflow(trigger_config=new_trigger)
         mock_get.side_effect = [wf, updated_wf]
         mock_collection.update_one = AsyncMock(return_value=_mock_update_result())
-        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(
-            return_value=True
-        )
+        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(return_value=True)
 
         request = _make_update_request(trigger_config=new_trigger)
         await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
@@ -857,9 +828,7 @@ class TestDeleteWorkflow:
         wf = _make_workflow()
         mock_get.return_value = wf
         mock_collection.delete_one = AsyncMock(return_value=_mock_delete_result(1))
-        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(
-            return_value=True
-        )
+        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(return_value=True)
         mock_scheduler.cancel_task = AsyncMock(return_value=True)
 
         result = await WorkflowService.delete_workflow(WORKFLOW_ID, USER_ID)
@@ -875,9 +844,7 @@ class TestDeleteWorkflow:
     async def test_delete_not_found(self, mock_collection, mock_get, mock_scheduler):
         mock_get.return_value = None
         mock_collection.delete_one = AsyncMock(return_value=_mock_delete_result(0))
-        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(
-            return_value=True
-        )
+        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(return_value=True)
         mock_scheduler.cancel_task = AsyncMock(return_value=True)
 
         result = await WorkflowService.delete_workflow("nonexistent", USER_ID)
@@ -905,9 +872,7 @@ class TestDeleteWorkflow:
         wf = _make_workflow(trigger_config=trigger)
         mock_get.return_value = wf
         mock_collection.delete_one = AsyncMock(return_value=_mock_delete_result(1))
-        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(
-            return_value=True
-        )
+        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(return_value=True)
         mock_scheduler.cancel_task = AsyncMock(return_value=True)
 
         result = await WorkflowService.delete_workflow(WORKFLOW_ID, USER_ID)
@@ -927,9 +892,7 @@ class TestDeleteWorkflow:
         wf = _make_workflow()
         mock_get.return_value = wf
         mock_collection.delete_one = AsyncMock(return_value=_mock_delete_result(1))
-        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(
-            return_value=True
-        )
+        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(return_value=True)
         mock_scheduler.cancel_task = AsyncMock(side_effect=Exception("ARQ error"))
 
         result = await WorkflowService.delete_workflow(WORKFLOW_ID, USER_ID)
@@ -941,14 +904,10 @@ class TestDeleteWorkflow:
         new_callable=AsyncMock,
     )
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_delete_db_error_raises(
-        self, mock_collection, mock_get, mock_scheduler
-    ):
+    async def test_delete_db_error_raises(self, mock_collection, mock_get, mock_scheduler):
         mock_get.return_value = _make_workflow()
         mock_collection.delete_one = AsyncMock(side_effect=Exception("DB error"))
-        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(
-            return_value=True
-        )
+        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(return_value=True)
         mock_scheduler.cancel_task = AsyncMock(return_value=True)
 
         with pytest.raises(Exception, match="DB error"):
@@ -972,9 +931,7 @@ class TestDeleteWorkflow:
         wf = _make_workflow(trigger_config=trigger)
         mock_get.return_value = wf
         mock_collection.delete_one = AsyncMock(return_value=_mock_delete_result(1))
-        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(
-            return_value=True
-        )
+        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(return_value=True)
         mock_scheduler.cancel_task = AsyncMock(return_value=True)
 
         result = await WorkflowService.delete_workflow(WORKFLOW_ID, USER_ID)
@@ -1139,9 +1096,7 @@ class TestActivateWorkflow:
         new_callable=AsyncMock,
     )
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_activate_manual_workflow(
-        self, mock_collection, mock_get, mock_scheduler
-    ):
+    async def test_activate_manual_workflow(self, mock_collection, mock_get, mock_scheduler):
         wf = _make_workflow(activated=False)
         activated_wf = _make_workflow(activated=True)
         mock_get.side_effect = [wf, activated_wf]
@@ -1166,14 +1121,10 @@ class TestActivateWorkflow:
         new_callable=AsyncMock,
     )
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_activate_db_update_no_match_returns_none(
-        self, mock_collection, mock_get
-    ):
+    async def test_activate_db_update_no_match_returns_none(self, mock_collection, mock_get):
         wf = _make_workflow(activated=False)
         mock_get.return_value = wf
-        mock_collection.update_one = AsyncMock(
-            return_value=_mock_update_result(matched=0)
-        )
+        mock_collection.update_one = AsyncMock(return_value=_mock_update_result(matched=0))
 
         result = await WorkflowService.activate_workflow(WORKFLOW_ID, USER_ID)
         assert result is None
@@ -1186,18 +1137,14 @@ class TestActivateWorkflow:
         "app.services.workflow.service.WorkflowService.get_workflow",
         new_callable=AsyncMock,
     )
-    async def test_activate_trigger_registration_failure_raises(
-        self, mock_get, mock_register
-    ):
+    async def test_activate_trigger_registration_failure_raises(self, mock_get, mock_register):
         trigger = _make_trigger_config(
             trigger_type=TriggerType.INTEGRATION,
             trigger_name="test_trigger",
         )
         wf = _make_workflow(activated=False, trigger_config=trigger)
         mock_get.return_value = wf
-        mock_register.side_effect = TriggerRegistrationError(
-            "Failed", trigger_name="test_trigger"
-        )
+        mock_register.side_effect = TriggerRegistrationError("Failed", trigger_name="test_trigger")
 
         with pytest.raises(TriggerRegistrationError):
             await WorkflowService.activate_workflow(WORKFLOW_ID, USER_ID)
@@ -1211,7 +1158,7 @@ class TestActivateWorkflow:
     async def test_activate_schedule_workflow_schedules_execution(
         self, mock_collection, mock_get, mock_scheduler
     ):
-        next_run = datetime.now(timezone.utc) + timedelta(hours=1)
+        next_run = datetime.now(UTC) + timedelta(hours=1)
         trigger = _make_trigger_config(
             trigger_type=TriggerType.SCHEDULE,
             cron_expression="0 9 * * *",
@@ -1247,9 +1194,7 @@ class TestDeactivateWorkflow:
         deactivated_wf = _make_workflow(activated=False)
         mock_get.side_effect = [wf, deactivated_wf]
         mock_collection.update_one = AsyncMock(return_value=_mock_update_result())
-        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(
-            return_value=True
-        )
+        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(return_value=True)
 
         result = await WorkflowService.deactivate_workflow(WORKFLOW_ID, USER_ID)
         assert result is not None
@@ -1271,17 +1216,11 @@ class TestDeactivateWorkflow:
         new_callable=AsyncMock,
     )
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_deactivate_db_update_no_match(
-        self, mock_collection, mock_get, mock_scheduler
-    ):
+    async def test_deactivate_db_update_no_match(self, mock_collection, mock_get, mock_scheduler):
         wf = _make_workflow(activated=True)
         mock_get.side_effect = [wf]
-        mock_collection.update_one = AsyncMock(
-            return_value=_mock_update_result(matched=0)
-        )
-        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(
-            return_value=True
-        )
+        mock_collection.update_one = AsyncMock(return_value=_mock_update_result(matched=0))
+        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(return_value=True)
 
         result = await WorkflowService.deactivate_workflow(WORKFLOW_ID, USER_ID)
         assert result is None
@@ -1309,9 +1248,7 @@ class TestDeactivateWorkflow:
         deactivated_wf = _make_workflow(activated=False, trigger_config=trigger)
         mock_get.side_effect = [wf, deactivated_wf]
         mock_collection.update_one = AsyncMock(return_value=_mock_update_result())
-        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(
-            return_value=True
-        )
+        mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock(return_value=True)
 
         result = await WorkflowService.deactivate_workflow(WORKFLOW_ID, USER_ID)
         assert result is not None
@@ -1391,9 +1328,7 @@ class TestRegenerateWorkflowSteps:
         new_callable=AsyncMock,
     )
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_regenerate_db_returns_none(
-        self, mock_collection, mock_get, mock_gen
-    ):
+    async def test_regenerate_db_returns_none(self, mock_collection, mock_get, mock_gen):
         wf = _make_workflow()
         mock_get.return_value = wf
         mock_gen.return_value = [
@@ -1444,9 +1379,7 @@ class TestIncrementExecutionCount:
 
     @patch("app.services.workflow.service.workflows_collection")
     async def test_increment_workflow_not_found(self, mock_collection):
-        mock_collection.update_one = AsyncMock(
-            return_value=_mock_update_result(matched=0)
-        )
+        mock_collection.update_one = AsyncMock(return_value=_mock_update_result(matched=0))
 
         result = await WorkflowService.increment_execution_count("nonexistent", USER_ID)
         assert result is False
@@ -1467,9 +1400,7 @@ class TestIncrementExecutionCount:
 class TestGenerateWorkflowSteps:
     """Tests for WorkflowService._generate_workflow_steps (internal)."""
 
-    @patch(
-        "app.services.workflow.service.handle_workflow_error", new_callable=AsyncMock
-    )
+    @patch("app.services.workflow.service.handle_workflow_error", new_callable=AsyncMock)
     @patch(
         "app.services.workflow.service.WorkflowGenerationService.generate_steps_with_llm",
         new_callable=AsyncMock,
@@ -1484,9 +1415,7 @@ class TestGenerateWorkflowSteps:
     ):
         wf = _make_workflow()
         mock_get.return_value = wf
-        steps_data = [
-            {"id": "step_0", "title": "S", "category": "gaia", "description": "D"}
-        ]
+        steps_data = [{"id": "step_0", "title": "S", "category": "gaia", "description": "D"}]
         mock_gen.return_value = steps_data
         mock_collection.find_one_and_update = AsyncMock(return_value=_workflow_doc(wf))
 
@@ -1496,9 +1425,7 @@ class TestGenerateWorkflowSteps:
         # Should be called at least twice: once at start and once to save steps
         assert mock_collection.find_one_and_update.await_count >= 2
 
-    @patch(
-        "app.services.workflow.service.handle_workflow_error", new_callable=AsyncMock
-    )
+    @patch("app.services.workflow.service.handle_workflow_error", new_callable=AsyncMock)
     @patch(
         "app.services.workflow.service.WorkflowService.get_workflow",
         new_callable=AsyncMock,
@@ -1514,9 +1441,7 @@ class TestGenerateWorkflowSteps:
         await WorkflowService._generate_workflow_steps(WORKFLOW_ID, USER_ID)
         mock_error_handler.assert_not_awaited()
 
-    @patch(
-        "app.services.workflow.service.handle_workflow_error", new_callable=AsyncMock
-    )
+    @patch("app.services.workflow.service.handle_workflow_error", new_callable=AsyncMock)
     @patch(
         "app.services.workflow.service.WorkflowGenerationService.generate_steps_with_llm",
         new_callable=AsyncMock,
@@ -1540,9 +1465,7 @@ class TestGenerateWorkflowSteps:
         update_calls = mock_collection.find_one_and_update.await_args_list
         # One of the calls should set error_message
         error_set_calls = [
-            c
-            for c in update_calls
-            if "$set" in c[0][1] and "error_message" in c[0][1]["$set"]
+            c for c in update_calls if "$set" in c[0][1] and "error_message" in c[0][1]["$set"]
         ]
         assert len(error_set_calls) >= 1
         mock_error_handler.assert_awaited_once()
@@ -1558,19 +1481,13 @@ class TestRegisterIntegrationTriggers:
 
     async def test_non_integration_trigger_returns_empty(self):
         trigger = _make_trigger_config(trigger_type=TriggerType.MANUAL)
-        result = await WorkflowService._register_integration_triggers(
-            WORKFLOW_ID, USER_ID, trigger
-        )
+        result = await WorkflowService._register_integration_triggers(WORKFLOW_ID, USER_ID, trigger)
         assert result == []
 
     async def test_integration_trigger_without_name_raises(self):
-        trigger = _make_trigger_config(
-            trigger_type=TriggerType.INTEGRATION, trigger_name=None
-        )
+        trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION, trigger_name=None)
         with pytest.raises(TriggerRegistrationError, match="trigger_name"):
-            await WorkflowService._register_integration_triggers(
-                WORKFLOW_ID, USER_ID, trigger
-            )
+            await WorkflowService._register_integration_triggers(WORKFLOW_ID, USER_ID, trigger)
 
     @patch(
         "app.services.workflow.service.TriggerService.register_triggers",
@@ -1581,9 +1498,7 @@ class TestRegisterIntegrationTriggers:
         trigger = _make_trigger_config(
             trigger_type=TriggerType.INTEGRATION, trigger_name="calendar_event"
         )
-        result = await WorkflowService._register_integration_triggers(
-            WORKFLOW_ID, USER_ID, trigger
-        )
+        result = await WorkflowService._register_integration_triggers(WORKFLOW_ID, USER_ID, trigger)
         assert result == ["tid_1"]
         mock_register.assert_awaited_once()
 
@@ -1617,9 +1532,7 @@ class TestParseWorkflowResponse:
     """Tests for _parse_workflow_response."""
 
     def test_parse_clean_json(self):
-        content = (
-            '{"steps": [{"title": "Test", "category": "gaia", "description": "Do it"}]}'
-        )
+        content = '{"steps": [{"title": "Test", "category": "gaia", "description": "Do it"}]}'
         result = _parse_workflow_response(content)
         assert isinstance(result, GeneratedWorkflow)
         assert len(result.steps) == 1
@@ -1631,9 +1544,7 @@ class TestParseWorkflowResponse:
         assert len(result.steps) == 1
 
     def test_parse_json_with_bare_fences(self):
-        content = (
-            '```\n{"steps": [{"title": "T", "category": "c", "description": "d"}]}\n```'
-        )
+        content = '```\n{"steps": [{"title": "T", "category": "c", "description": "d"}]}\n```'
         result = _parse_workflow_response(content)
         assert isinstance(result, GeneratedWorkflow)
 
@@ -1693,29 +1604,24 @@ class TestGenerateStepsWithLLM:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch("app.services.workflow.generation_service.init_llm")
-    @patch("app.agents.tools.core.registry.get_tool_registry", new_callable=AsyncMock)
-    async def test_generate_with_structured_output(
-        self, mock_registry_fn, mock_init_llm
-    ):
+    @patch(
+        "app.services.workflow.generation_service.get_tool_registry",
+        new_callable=AsyncMock,
+    )
+    async def test_generate_with_structured_output(self, mock_registry_fn, mock_init_llm):
         # Setup tool registry mock
         mock_registry = MagicMock()
         mock_category = MagicMock()
         mock_tool = MagicMock()
         mock_tool.name = "test_tool"
         mock_category.get_tool_objects.return_value = [mock_tool]
-        mock_registry.get_all_category_objects.return_value = {
-            "test_cat": mock_category
-        }
+        mock_registry.get_all_category_objects.return_value = {"test_cat": mock_category}
         mock_registry.get_core_tools.return_value = []
         mock_registry_fn.return_value = mock_registry
 
         # Setup LLM mock with structured output
         generated = GeneratedWorkflow(
-            steps=[
-                GeneratedStep(
-                    title="Step 1", category="gaia", description="Do something"
-                )
-            ]
+            steps=[GeneratedStep(title="Step 1", category="gaia", description="Do something")]
         )
         mock_llm = MagicMock()
         mock_structured_llm = MagicMock()
@@ -1733,10 +1639,11 @@ class TestGenerateStepsWithLLM:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch("app.services.workflow.generation_service.init_llm")
-    @patch("app.agents.tools.core.registry.get_tool_registry", new_callable=AsyncMock)
-    async def test_generate_fallback_text_parsing(
-        self, mock_registry_fn, mock_init_llm
-    ):
+    @patch(
+        "app.services.workflow.generation_service.get_tool_registry",
+        new_callable=AsyncMock,
+    )
+    async def test_generate_fallback_text_parsing(self, mock_registry_fn, mock_init_llm):
         """When with_structured_output is not available, fall back to text parsing."""
         mock_registry = MagicMock()
         mock_registry.get_all_category_objects.return_value = {}
@@ -1746,7 +1653,9 @@ class TestGenerateStepsWithLLM:
         # LLM without with_structured_output
         mock_llm = MagicMock(spec=[])  # No attributes at all
         mock_response = MagicMock()
-        mock_response.content = '{"steps": [{"title": "Parsed", "category": "gaia", "description": "From text"}]}'
+        mock_response.content = (
+            '{"steps": [{"title": "Parsed", "category": "gaia", "description": "From text"}]}'
+        )
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         mock_init_llm.return_value = mock_llm
 
@@ -1759,10 +1668,11 @@ class TestGenerateStepsWithLLM:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch("app.services.workflow.generation_service.init_llm")
-    @patch("app.agents.tools.core.registry.get_tool_registry", new_callable=AsyncMock)
-    async def test_generate_empty_steps_retries_then_fails(
-        self, mock_registry_fn, mock_init_llm
-    ):
+    @patch(
+        "app.services.workflow.generation_service.get_tool_registry",
+        new_callable=AsyncMock,
+    )
+    async def test_generate_empty_steps_retries_then_fails(self, mock_registry_fn, mock_init_llm):
         """If LLM returns empty steps, retry and ultimately raise RuntimeError."""
         mock_registry = MagicMock()
         mock_registry.get_all_category_objects.return_value = {}
@@ -1777,16 +1687,15 @@ class TestGenerateStepsWithLLM:
         mock_init_llm.return_value = mock_llm
 
         with pytest.raises(RuntimeError, match="failed"):
-            await WorkflowGenerationService.generate_steps_with_llm(
-                "Test prompt", "Test Title"
-            )
+            await WorkflowGenerationService.generate_steps_with_llm("Test prompt", "Test Title")
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch("app.services.workflow.generation_service.init_llm")
-    @patch("app.agents.tools.core.registry.get_tool_registry", new_callable=AsyncMock)
-    async def test_generate_llm_exception_retries(
-        self, mock_registry_fn, mock_init_llm
-    ):
+    @patch(
+        "app.services.workflow.generation_service.get_tool_registry",
+        new_callable=AsyncMock,
+    )
+    async def test_generate_llm_exception_retries(self, mock_registry_fn, mock_init_llm):
         """LLM exceptions should be retried up to _MAX_GENERATION_ATTEMPTS."""
         mock_registry = MagicMock()
         mock_registry.get_all_category_objects.return_value = {}
@@ -1800,16 +1709,17 @@ class TestGenerateStepsWithLLM:
         mock_init_llm.return_value = mock_llm
 
         with pytest.raises(RuntimeError, match="failed"):
-            await WorkflowGenerationService.generate_steps_with_llm(
-                "Test prompt", "Test Title"
-            )
+            await WorkflowGenerationService.generate_steps_with_llm("Test prompt", "Test Title")
 
         # Should have been called twice (max attempts = 2)
         assert mock_structured_llm.ainvoke.await_count == 2
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch("app.services.workflow.generation_service.init_llm")
-    @patch("app.agents.tools.core.registry.get_tool_registry", new_callable=AsyncMock)
+    @patch(
+        "app.services.workflow.generation_service.get_tool_registry",
+        new_callable=AsyncMock,
+    )
     async def test_generate_with_description(self, mock_registry_fn, mock_init_llm):
         """Description should be appended to the prompt context."""
         mock_registry = MagicMock()
@@ -1836,7 +1746,10 @@ class TestGenerateStepsWithLLM:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch("app.services.workflow.generation_service.init_llm")
-    @patch("app.agents.tools.core.registry.get_tool_registry", new_callable=AsyncMock)
+    @patch(
+        "app.services.workflow.generation_service.get_tool_registry",
+        new_callable=AsyncMock,
+    )
     async def test_generate_structured_output_not_implemented_fallback(
         self, mock_registry_fn, mock_init_llm
     ):
@@ -1847,17 +1760,15 @@ class TestGenerateStepsWithLLM:
         mock_registry_fn.return_value = mock_registry
 
         mock_llm = MagicMock()
-        mock_llm.with_structured_output.side_effect = NotImplementedError(
-            "Not supported"
-        )
+        mock_llm.with_structured_output.side_effect = NotImplementedError("Not supported")
         mock_response = MagicMock()
-        mock_response.content = '{"steps": [{"title": "Fallback", "category": "gaia", "description": "Worked"}]}'
+        mock_response.content = (
+            '{"steps": [{"title": "Fallback", "category": "gaia", "description": "Worked"}]}'
+        )
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
         mock_init_llm.return_value = mock_llm
 
-        result = await WorkflowGenerationService.generate_steps_with_llm(
-            "Prompt", "Title"
-        )
+        result = await WorkflowGenerationService.generate_steps_with_llm("Prompt", "Title")
         assert len(result) == 1
         assert result[0]["title"] == "Fallback"
 
@@ -1901,9 +1812,7 @@ class TestGenerateWorkflowPrompt:
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch("app.services.workflow.generation_service.prompt_output_parser")
     @patch("app.services.workflow.generation_service.init_llm")
-    async def test_generate_prompt_manual_no_suggested_trigger(
-        self, mock_init_llm, mock_parser
-    ):
+    async def test_generate_prompt_manual_no_suggested_trigger(self, mock_init_llm, mock_parser):
         mock_llm = MagicMock()
         mock_response = MagicMock()
         mock_response.content = "content"
@@ -2012,37 +1921,27 @@ class TestWorkflowScheduler:
 
     @patch("app.services.workflow.scheduler.workflows_collection")
     async def test_update_task_status_success(self, mock_collection):
-        mock_collection.update_one = AsyncMock(
-            return_value=_mock_update_result(modified=1)
-        )
+        mock_collection.update_one = AsyncMock(return_value=_mock_update_result(modified=1))
 
         scheduler = WorkflowScheduler()
         from app.models.scheduler_models import ScheduledTaskStatus
 
-        result = await scheduler.update_task_status(
-            WORKFLOW_ID, ScheduledTaskStatus.EXECUTING
-        )
+        result = await scheduler.update_task_status(WORKFLOW_ID, ScheduledTaskStatus.EXECUTING)
         assert result is True
 
     @patch("app.services.workflow.scheduler.workflows_collection")
     async def test_update_task_status_not_found(self, mock_collection):
-        mock_collection.update_one = AsyncMock(
-            return_value=_mock_update_result(modified=0)
-        )
+        mock_collection.update_one = AsyncMock(return_value=_mock_update_result(modified=0))
 
         scheduler = WorkflowScheduler()
         from app.models.scheduler_models import ScheduledTaskStatus
 
-        result = await scheduler.update_task_status(
-            "nonexistent", ScheduledTaskStatus.EXECUTING
-        )
+        result = await scheduler.update_task_status("nonexistent", ScheduledTaskStatus.EXECUTING)
         assert result is False
 
     @patch("app.services.workflow.scheduler.workflows_collection")
     async def test_update_task_status_with_user_id(self, mock_collection):
-        mock_collection.update_one = AsyncMock(
-            return_value=_mock_update_result(modified=1)
-        )
+        mock_collection.update_one = AsyncMock(return_value=_mock_update_result(modified=1))
 
         scheduler = WorkflowScheduler()
         from app.models.scheduler_models import ScheduledTaskStatus
@@ -2061,16 +1960,12 @@ class TestWorkflowScheduler:
         scheduler = WorkflowScheduler()
         from app.models.scheduler_models import ScheduledTaskStatus
 
-        result = await scheduler.update_task_status(
-            WORKFLOW_ID, ScheduledTaskStatus.EXECUTING
-        )
+        result = await scheduler.update_task_status(WORKFLOW_ID, ScheduledTaskStatus.EXECUTING)
         assert result is False
 
     @patch("app.services.workflow.scheduler.workflows_collection")
     async def test_update_task_status_with_extra_data(self, mock_collection):
-        mock_collection.update_one = AsyncMock(
-            return_value=_mock_update_result(modified=1)
-        )
+        mock_collection.update_one = AsyncMock(return_value=_mock_update_result(modified=1))
 
         scheduler = WorkflowScheduler()
         from app.models.scheduler_models import ScheduledTaskStatus
@@ -2088,7 +1983,7 @@ class TestWorkflowScheduler:
         scheduler = WorkflowScheduler()
         scheduler.schedule_task = AsyncMock(return_value=True)
 
-        scheduled_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
         result = await scheduler.schedule_workflow_execution(
             WORKFLOW_ID, USER_ID, scheduled_at, repeat="0 9 * * *"
         )
@@ -2099,20 +1994,16 @@ class TestWorkflowScheduler:
         scheduler = WorkflowScheduler()
         scheduler.schedule_task = AsyncMock(return_value=False)
 
-        scheduled_at = datetime.now(timezone.utc) + timedelta(hours=1)
-        result = await scheduler.schedule_workflow_execution(
-            WORKFLOW_ID, USER_ID, scheduled_at
-        )
+        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
+        result = await scheduler.schedule_workflow_execution(WORKFLOW_ID, USER_ID, scheduled_at)
         assert result is False
 
     async def test_schedule_workflow_execution_exception_returns_false(self):
         scheduler = WorkflowScheduler()
         scheduler.schedule_task = AsyncMock(side_effect=Exception("Redis down"))
 
-        scheduled_at = datetime.now(timezone.utc) + timedelta(hours=1)
-        result = await scheduler.schedule_workflow_execution(
-            WORKFLOW_ID, USER_ID, scheduled_at
-        )
+        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
+        result = await scheduler.schedule_workflow_execution(WORKFLOW_ID, USER_ID, scheduled_at)
         assert result is False
 
     async def test_cancel_scheduled_workflow_execution_success(self):
@@ -2152,17 +2043,15 @@ class TestWorkflowScheduler:
         scheduler.update_task_status = AsyncMock(return_value=True)
         scheduler.reschedule_task = AsyncMock(return_value=True)
 
-        new_time = datetime.now(timezone.utc) + timedelta(hours=2)
-        result = await scheduler.reschedule_workflow(
-            WORKFLOW_ID, new_time, repeat="0 10 * * *"
-        )
+        new_time = datetime.now(UTC) + timedelta(hours=2)
+        result = await scheduler.reschedule_workflow(WORKFLOW_ID, new_time, repeat="0 10 * * *")
         assert result is True
 
     async def test_reschedule_workflow_db_failure(self):
         scheduler = WorkflowScheduler()
         scheduler.update_task_status = AsyncMock(return_value=False)
 
-        new_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        new_time = datetime.now(UTC) + timedelta(hours=2)
         result = await scheduler.reschedule_workflow(WORKFLOW_ID, new_time)
         assert result is False
 
@@ -2171,7 +2060,7 @@ class TestWorkflowScheduler:
         scheduler.update_task_status = AsyncMock(return_value=True)
         scheduler.reschedule_task = AsyncMock(return_value=False)
 
-        new_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        new_time = datetime.now(UTC) + timedelta(hours=2)
         result = await scheduler.reschedule_workflow(WORKFLOW_ID, new_time)
         assert result is False
 
@@ -2179,7 +2068,7 @@ class TestWorkflowScheduler:
         scheduler = WorkflowScheduler()
         scheduler.update_task_status = AsyncMock(side_effect=Exception("Error"))
 
-        new_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        new_time = datetime.now(UTC) + timedelta(hours=2)
         result = await scheduler.reschedule_workflow(WORKFLOW_ID, new_time)
         assert result is False
 
@@ -2238,7 +2127,7 @@ class TestWorkflowScheduler:
 
         mock_collection.find = MagicMock(return_value=AsyncIterator(async_docs))
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = await scheduler.get_pending_task(now)
         assert len(result) == 1
 
@@ -2254,7 +2143,7 @@ class TestWorkflowScheduler:
         mock_collection.find = MagicMock(return_value=EmptyAsyncIterator())
 
         scheduler = WorkflowScheduler()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = await scheduler.get_pending_task(now)
         assert result == []
 
@@ -2263,7 +2152,7 @@ class TestWorkflowScheduler:
         mock_collection.find = MagicMock(side_effect=Exception("DB error"))
 
         scheduler = WorkflowScheduler()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = await scheduler.get_pending_task(now)
         assert result == []
 
@@ -2310,9 +2199,7 @@ class TestWorkflowQueueService:
         mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
         mock_redis.get_pool = AsyncMock(return_value=mock_pool)
 
-        result = await WorkflowQueueService.queue_workflow_generation(
-            WORKFLOW_ID, USER_ID
-        )
+        result = await WorkflowQueueService.queue_workflow_generation(WORKFLOW_ID, USER_ID)
         assert result is True
         mock_pool.enqueue_job.assert_awaited_once_with(
             "generate_workflow_steps", WORKFLOW_ID, USER_ID
@@ -2324,18 +2211,14 @@ class TestWorkflowQueueService:
         mock_pool.enqueue_job = AsyncMock(return_value=None)
         mock_redis.get_pool = AsyncMock(return_value=mock_pool)
 
-        result = await WorkflowQueueService.queue_workflow_generation(
-            WORKFLOW_ID, USER_ID
-        )
+        result = await WorkflowQueueService.queue_workflow_generation(WORKFLOW_ID, USER_ID)
         assert result is False
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")
     async def test_queue_generation_exception(self, mock_redis):
         mock_redis.get_pool = AsyncMock(side_effect=Exception("Redis down"))
 
-        result = await WorkflowQueueService.queue_workflow_generation(
-            WORKFLOW_ID, USER_ID
-        )
+        result = await WorkflowQueueService.queue_workflow_generation(WORKFLOW_ID, USER_ID)
         assert result is False
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")
@@ -2362,14 +2245,10 @@ class TestWorkflowQueueService:
         mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
         mock_redis.get_pool = AsyncMock(return_value=mock_pool)
 
-        result = await WorkflowQueueService.queue_workflow_execution(
-            WORKFLOW_ID, USER_ID
-        )
+        result = await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID)
         assert result is True
         # context defaults to empty dict
-        mock_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id", WORKFLOW_ID, {}
-        )
+        mock_pool.enqueue_job.assert_awaited_once_with("execute_workflow_by_id", WORKFLOW_ID, {})
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")
     async def test_queue_execution_failure(self, mock_redis):
@@ -2377,9 +2256,7 @@ class TestWorkflowQueueService:
         mock_pool.enqueue_job = AsyncMock(return_value=None)
         mock_redis.get_pool = AsyncMock(return_value=mock_pool)
 
-        result = await WorkflowQueueService.queue_workflow_execution(
-            WORKFLOW_ID, USER_ID
-        )
+        result = await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID)
         assert result is False
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")
@@ -2390,7 +2267,7 @@ class TestWorkflowQueueService:
         mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
         mock_redis.get_pool = AsyncMock(return_value=mock_pool)
 
-        scheduled_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
         result = await WorkflowQueueService.queue_scheduled_workflow_execution(
             WORKFLOW_ID, scheduled_at
         )
@@ -2405,7 +2282,7 @@ class TestWorkflowQueueService:
         mock_pool.enqueue_job = AsyncMock(return_value=None)
         mock_redis.get_pool = AsyncMock(return_value=mock_pool)
 
-        scheduled_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
         result = await WorkflowQueueService.queue_scheduled_workflow_execution(
             WORKFLOW_ID, scheduled_at
         )
@@ -2530,9 +2407,7 @@ class TestTriggerService:
         assert count == 3
 
     @patch("app.services.workflow.trigger_service.workflows_collection")
-    async def test_get_trigger_reference_count_error_returns_zero(
-        self, mock_collection
-    ):
+    async def test_get_trigger_reference_count_error_returns_zero(self, mock_collection):
         mock_collection.count_documents = AsyncMock(side_effect=Exception("DB error"))
 
         count = await TriggerService.get_trigger_reference_count("trigger_123")
@@ -2561,14 +2436,10 @@ class TestTriggerService:
         assert safe == ["t2"]
 
     @patch("app.services.workflow.trigger_service.workflows_collection")
-    async def test_get_triggers_safe_to_delete_with_excluding_workflow_id(
-        self, mock_collection
-    ):
+    async def test_get_triggers_safe_to_delete_with_excluding_workflow_id(self, mock_collection):
         mock_collection.count_documents = AsyncMock(return_value=0)
 
-        await TriggerService.get_triggers_safe_to_delete(
-            ["t1"], excluding_workflow_id="wf_123"
-        )
+        await TriggerService.get_triggers_safe_to_delete(["t1"], excluding_workflow_id="wf_123")
 
         query = mock_collection.count_documents.call_args[0][0]
         assert query["_id"] == {"$ne": "wf_123"}
@@ -2592,9 +2463,7 @@ class TestTriggerService:
         assert result == []
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
-    async def test_register_triggers_no_handler_raise_on_failure(
-        self, mock_get_handler
-    ):
+    async def test_register_triggers_no_handler_raise_on_failure(self, mock_get_handler):
         mock_get_handler.return_value = None
         trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION)
 
@@ -2616,9 +2485,7 @@ class TestTriggerService:
         assert result == ["tid_1", "tid_2"]
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
-    async def test_register_triggers_empty_result_raise_on_failure(
-        self, mock_get_handler
-    ):
+    async def test_register_triggers_empty_result_raise_on_failure(self, mock_get_handler):
         mock_handler = MagicMock()
         mock_handler.register = AsyncMock(return_value=[])
         mock_get_handler.return_value = mock_handler
@@ -2637,14 +2504,10 @@ class TestTriggerService:
 
         trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION)
         with pytest.raises(TypeError, match="Wrong type"):
-            await TriggerService.register_triggers(
-                USER_ID, WORKFLOW_ID, "trigger", trigger
-            )
+            await TriggerService.register_triggers(USER_ID, WORKFLOW_ID, "trigger", trigger)
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
-    async def test_register_triggers_generic_exception_raise_on_failure(
-        self, mock_get_handler
-    ):
+    async def test_register_triggers_generic_exception_raise_on_failure(self, mock_get_handler):
         mock_handler = MagicMock()
         mock_handler.register = AsyncMock(side_effect=RuntimeError("API down"))
         mock_get_handler.return_value = mock_handler
@@ -2701,15 +2564,11 @@ class TestTriggerService:
         return_value=[],
     )
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
-    async def test_unregister_triggers_none_safe_to_delete(
-        self, mock_get_handler, mock_safe
-    ):
+    async def test_unregister_triggers_none_safe_to_delete(self, mock_get_handler, mock_safe):
         mock_handler = MagicMock()
         mock_get_handler.return_value = mock_handler
 
-        result = await TriggerService.unregister_triggers(
-            USER_ID, "calendar_event", ["tid_1"]
-        )
+        result = await TriggerService.unregister_triggers(USER_ID, "calendar_event", ["tid_1"])
         assert result is True
         # Handler.unregister should not be called
         mock_handler.unregister.assert_not_called()
@@ -2719,9 +2578,7 @@ class TestTriggerService:
         new_callable=AsyncMock,
     )
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
-    async def test_unregister_triggers_exception_returns_false(
-        self, mock_get_handler, mock_safe
-    ):
+    async def test_unregister_triggers_exception_returns_false(self, mock_get_handler, mock_safe):
         mock_safe.side_effect = Exception("DB error")
         mock_handler = MagicMock()
         mock_get_handler.return_value = mock_handler
@@ -2753,14 +2610,12 @@ class TestExecutionService:
     async def test_create_execution_with_conversation_id(self, mock_collection):
         mock_collection.insert_one = AsyncMock()
 
-        result = await create_execution(
-            WORKFLOW_ID, USER_ID, conversation_id="conv_123"
-        )
+        result = await create_execution(WORKFLOW_ID, USER_ID, conversation_id="conv_123")
         assert result.conversation_id == "conv_123"
 
     @patch("app.services.workflow.execution_service.workflow_executions_collection")
     async def test_complete_execution_success(self, mock_collection):
-        started = datetime.now(timezone.utc) - timedelta(seconds=30)
+        started = datetime.now(UTC) - timedelta(seconds=30)
         mock_collection.find_one = AsyncMock(
             return_value={
                 "execution_id": EXECUTION_ID,
@@ -2768,9 +2623,7 @@ class TestExecutionService:
                 "started_at": started,
             }
         )
-        mock_collection.update_one = AsyncMock(
-            return_value=_mock_update_result(modified=1)
-        )
+        mock_collection.update_one = AsyncMock(return_value=_mock_update_result(modified=1))
 
         result = await complete_execution(EXECUTION_ID, "success", summary="All done")
         assert result is True
@@ -2784,7 +2637,7 @@ class TestExecutionService:
 
     @patch("app.services.workflow.execution_service.workflow_executions_collection")
     async def test_complete_execution_with_error(self, mock_collection):
-        started = datetime.now(timezone.utc) - timedelta(seconds=5)
+        started = datetime.now(UTC) - timedelta(seconds=5)
         mock_collection.find_one = AsyncMock(
             return_value={
                 "execution_id": EXECUTION_ID,
@@ -2792,13 +2645,9 @@ class TestExecutionService:
                 "started_at": started,
             }
         )
-        mock_collection.update_one = AsyncMock(
-            return_value=_mock_update_result(modified=1)
-        )
+        mock_collection.update_one = AsyncMock(return_value=_mock_update_result(modified=1))
 
-        result = await complete_execution(
-            EXECUTION_ID, "failed", error_message="Step 3 failed"
-        )
+        result = await complete_execution(EXECUTION_ID, "failed", error_message="Step 3 failed")
         assert result is True
 
         # Verify error_message was included in update
@@ -2815,9 +2664,7 @@ class TestExecutionService:
                 "started_at": None,
             }
         )
-        mock_collection.update_one = AsyncMock(
-            return_value=_mock_update_result(modified=1)
-        )
+        mock_collection.update_one = AsyncMock(return_value=_mock_update_result(modified=1))
 
         result = await complete_execution(EXECUTION_ID, "success")
         assert result is True
@@ -2834,7 +2681,7 @@ class TestExecutionService:
             "workflow_id": WORKFLOW_ID,
             "user_id": USER_ID,
             "status": "success",
-            "started_at": datetime.now(timezone.utc),
+            "started_at": datetime.now(UTC),
             "trigger_type": "manual",
         }
 

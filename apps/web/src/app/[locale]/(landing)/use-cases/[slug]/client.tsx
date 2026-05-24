@@ -1,10 +1,9 @@
 "use client";
 
 import { Avatar } from "@heroui/avatar";
-import { UserCircle02Icon } from "@icons";
-import { PlayIcon } from "@theexperiencecompany/gaia-icons/solid-standard";
+import { PlayIcon, UserCircle02Icon } from "@icons";
 import Image from "next/image";
-import { useState } from "react";
+import { useTransition } from "react";
 import { wallpapers } from "@/config/wallpapers";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
@@ -18,6 +17,7 @@ import type { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { getTriggerDisplayInfo } from "@/features/workflows/triggers/utils";
+import { resolveCreatorAvatar } from "@/features/workflows/utils/creator";
 import type { UseCase } from "@/types/features/workflowTypes";
 
 interface UseCaseDetailClientProps {
@@ -31,7 +31,7 @@ export default function UseCaseDetailClient({
   communityWorkflow,
   slug,
 }: UseCaseDetailClientProps) {
-  const [isCreating, setIsCreating] = useState(false);
+  const [isCreating, startCreateTransition] = useTransition();
   const { createWorkflow } = useWorkflowCreation();
   const { selectWorkflow } = useWorkflowSelection();
   const { integrations } = useIntegrations();
@@ -39,7 +39,7 @@ export default function UseCaseDetailClient({
   // Auth check
   const { isAuthenticated, openLoginModal } = useAuth();
 
-  const handleCreateWorkflow = async () => {
+  const handleCreateWorkflow = () => {
     // Check authentication first - open login modal if not authenticated
     if (!isAuthenticated) {
       openLoginModal();
@@ -52,42 +52,41 @@ export default function UseCaseDetailClient({
 
     if (!title || !description) return;
 
-    setIsCreating(true);
-    try {
-      // Convert PublicWorkflowStep to WorkflowStepData format if steps exist
-      const formattedSteps = existingSteps?.map((step, index) => ({
-        id: step.id || `step_${index}`,
-        title: step.title,
-        description: step.description,
-        category: step.category,
-      }));
+    startCreateTransition(async () => {
+      try {
+        // Convert PublicWorkflowStep to WorkflowStepData format if steps exist
+        const formattedSteps = existingSteps?.map((step, index) => ({
+          id: step.id || `step_${index}`,
+          title: step.title,
+          description: step.description,
+          category: step.category,
+        }));
 
-      const workflowRequest = {
-        title,
-        description,
-        prompt: useCase?.prompt || communityWorkflow?.prompt || description,
-        trigger_config: {
-          type: "manual" as const,
-          enabled: true,
-        },
-        // Pass formatted steps if available to avoid regeneration
-        ...(formattedSteps &&
-          formattedSteps.length > 0 && {
-            steps: formattedSteps,
-          }),
-        // Only generate if no steps exist
-        generate_immediately: !formattedSteps || formattedSteps.length === 0,
-      };
+        const workflowRequest = {
+          title,
+          description,
+          prompt: useCase?.prompt || communityWorkflow?.prompt || description,
+          trigger_config: {
+            type: "manual" as const,
+            enabled: true,
+          },
+          // Pass formatted steps if available to avoid regeneration
+          ...(formattedSteps &&
+            formattedSteps.length > 0 && {
+              steps: formattedSteps,
+            }),
+          // Only generate if no steps exist
+          generate_immediately: !formattedSteps || formattedSteps.length === 0,
+        };
 
-      const result = await createWorkflow(workflowRequest);
+        const result = await createWorkflow(workflowRequest);
 
-      if (result.success && result.workflow)
-        selectWorkflow(result.workflow, { autoSend: false });
-    } catch (error) {
-      console.error("Workflow creation error:", error);
-    } finally {
-      setIsCreating(false);
-    }
+        if (result.success && result.workflow)
+          selectWorkflow(result.workflow, { autoSend: false });
+      } catch (error) {
+        console.error("Workflow creation error:", error);
+      }
+    });
   };
 
   const data = useCase || communityWorkflow;
@@ -95,7 +94,7 @@ export default function UseCaseDetailClient({
 
   // Prepare common data
   const title = "title" in data ? data.title : "";
-  const currentSlug = useCase?.slug || communityWorkflow?.id || slug;
+  const currentSlug = useCase?.slug ?? communityWorkflow?.slug ?? slug;
 
   // Prepare breadcrumbs
   const breadcrumbs = [
@@ -121,9 +120,12 @@ export default function UseCaseDetailClient({
       : communityWorkflow
         ? "GAIA Team"
         : null;
-  const creatorAvatar = hasCreatorObject
-    ? communityWorkflow.creator?.avatar
-    : undefined;
+  const creatorRecord = hasCreatorObject
+    ? communityWorkflow.creator
+    : communityWorkflow?.created_by
+      ? { id: communityWorkflow.created_by }
+      : null;
+  const creatorAvatar = resolveCreatorAvatar(creatorRecord);
   const showCreator = !!communityWorkflow && !!creatorName;
 
   // Prepare tools - Type-safe extraction from steps, mapped to Tool format for ToolsList

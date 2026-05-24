@@ -89,7 +89,7 @@ If I moved files around while Dhruv and Vinit were editing them on the backend, 
 
 1.  **Stabilize:** We waited for Dhruv and Vinit to finish their sprint tasks and merged them into `develop`.
 2.  **Sync:** I pulled `develop` into my feature branch _before_ moving a single file.
-3.  **Shift:** I physically moved `backend/` $\rightarrow$ `apps/backend/` and `frontend/` $\rightarrow$ `apps/frontend/`.
+3.  **Shift:** I physically moved `backend/` $\rightarrow$ `apps/api/` and `frontend/` $\rightarrow$ `apps/web/`.
 4.  **Mobile Merge:** Once the structure was solid, we merged Sankalp's mobile UI work into `apps/mobile`.
 
 ---
@@ -118,7 +118,7 @@ We decided to keep `gaia-ui` in a separate repository to lower the barrier for o
 
 One detail that often gets overlooked in these blog posts is the Ops side. Moving folders breaks automation.
 
-We rely on `release-please` to automate our changelogs and versioning. Since we moved the root of our applications into `apps/backend` and `apps/frontend`, our old configuration broke immediately. We had to restructure our release manifest to point to the new paths—a small but necessary step to ensure that when we shipped this new architecture, we could actually _release_ it.
+We rely on `release-please` to automate our changelogs and versioning. Since we moved the root of our applications into `apps/api` and `apps/web`, our old configuration broke immediately. We had to restructure our release manifest to point to the new paths—a small but necessary step to ensure that when we shipped this new architecture, we could actually _release_ it.
 
 ---
 

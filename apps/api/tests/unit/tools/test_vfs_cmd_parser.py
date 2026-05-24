@@ -4,7 +4,7 @@ Tests parsing and execution of shell-like VFS commands including
 ls, tree, find, grep, cat, pwd, stat, echo, mv.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -25,7 +25,6 @@ from app.models.vfs_models import (
     VFSTreeNode,
 )
 from app.services.vfs import VFSAccessError
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -52,8 +51,8 @@ def _node(
         node_type=node_type,
         size_bytes=size_bytes,
         content_type=content_type,
-        created_at=updated_at or datetime(2025, 1, 1, tzinfo=timezone.utc),
-        updated_at=updated_at or datetime(2025, 1, 1, tzinfo=timezone.utc),
+        created_at=updated_at or datetime(2025, 1, 1, tzinfo=UTC),
+        updated_at=updated_at or datetime(2025, 1, 1, tzinfo=UTC),
         metadata=metadata or {},
     )
 
@@ -62,15 +61,11 @@ def _folder(name: str, **kwargs: Any) -> VFSNodeResponse:
     return _node(name, node_type=VFSNodeType.FOLDER, **kwargs)
 
 
-def _list_response(
-    items: list[VFSNodeResponse], path: str = AGENT_ROOT
-) -> VFSListResponse:
+def _list_response(items: list[VFSNodeResponse], path: str = AGENT_ROOT) -> VFSListResponse:
     return VFSListResponse(path=path, items=items, total_count=len(items))
 
 
-def _search_result(
-    matches: list[VFSNodeResponse], pattern: str = "*"
-) -> VFSSearchResult:
+def _search_result(matches: list[VFSNodeResponse], pattern: str = "*") -> VFSSearchResult:
     return VFSSearchResult(
         matches=matches,
         total_count=len(matches),
@@ -183,9 +178,7 @@ class TestParseCommand:
         assert args.number
 
     def test_parse_grep(self) -> None:
-        cmd, args, redirect = self.parser._parse_command(
-            "grep -ri 'hello world' notes/"
-        )
+        cmd, args, redirect = self.parser._parse_command("grep -ri 'hello world' notes/")
         assert cmd == "grep"
         assert args.pattern == "hello world"
         assert args.path == "notes/"
@@ -270,9 +263,7 @@ class TestParseCommand:
         assert cmd == "ls"
 
     def test_quoted_strings(self) -> None:
-        cmd, args, redirect = self.parser._parse_command(
-            'grep "hello world" myfile.txt'
-        )
+        cmd, args, redirect = self.parser._parse_command('grep "hello world" myfile.txt')
         assert args.pattern == "hello world"
 
     def test_invalid_syntax_unmatched_quote(self) -> None:
@@ -321,15 +312,11 @@ class TestResolvePath:
         assert f"/sessions/{CONVERSATION_ID}/.user-visible/report.md" in result
 
     def test_user_visible_folder_only_with_conversation_id(self) -> None:
-        result = self.parser._resolve_path(
-            ".user-visible", USER_ID, AGENT_NAME, CONVERSATION_ID
-        )
+        result = self.parser._resolve_path(".user-visible", USER_ID, AGENT_NAME, CONVERSATION_ID)
         assert f"/sessions/{CONVERSATION_ID}/.user-visible" in result
 
     def test_user_visible_without_conversation_id_fallback(self) -> None:
-        result = self.parser._resolve_path(
-            ".user-visible/report.md", USER_ID, AGENT_NAME, None
-        )
+        result = self.parser._resolve_path(".user-visible/report.md", USER_ID, AGENT_NAME, None)
         assert "/files/report.md" in result
 
     def test_user_visible_folder_without_conversation_id(self) -> None:
@@ -487,7 +474,7 @@ class TestCmdLs:
         assert "visible.txt" in result
 
     async def test_ls_long_format(self) -> None:
-        ts = datetime(2025, 6, 15, 10, 30, tzinfo=timezone.utc)
+        ts = datetime(2025, 6, 15, 10, 30, tzinfo=UTC)
         items = [
             _node("readme.txt", size_bytes=1024, updated_at=ts),
             _folder("subdir", size_bytes=0, updated_at=ts),
@@ -638,9 +625,7 @@ class TestCmdFind:
 
     async def test_find_no_matches(self) -> None:
         self.mock_vfs.search.return_value = _search_result([])
-        result = await self.parser.execute(
-            "find . -name '*.py'", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("find . -name '*.py'", USER_ID, agent_name=AGENT_NAME)
         assert "no files matching" in result
 
     async def test_find_with_matches(self) -> None:
@@ -649,9 +634,7 @@ class TestCmdFind:
             _node("test.py", path=f"{AGENT_ROOT}/test.py"),
         ]
         self.mock_vfs.search.return_value = _search_result(matches, "*.py")
-        result = await self.parser.execute(
-            "find . -name '*.py'", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("find . -name '*.py'", USER_ID, agent_name=AGENT_NAME)
         assert "app.py" in result
         assert "test.py" in result
 
@@ -673,27 +656,19 @@ class TestCmdFind:
             _folder("dir1", path=f"{AGENT_ROOT}/dir1"),
         ]
         self.mock_vfs.search.return_value = _search_result(matches)
-        result = await self.parser.execute(
-            "find . -type d", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("find . -type d", USER_ID, agent_name=AGENT_NAME)
         assert "dir1" in result
         assert "app.py" not in result
 
     async def test_find_error(self) -> None:
         self.mock_vfs.search.side_effect = Exception("boom")
-        result = await self.parser.execute(
-            "find . -name '*'", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("find . -name '*'", USER_ID, agent_name=AGENT_NAME)
         assert "error" in result
 
     async def test_find_truncation(self) -> None:
-        matches = [
-            _node(f"f{i}.txt", path=f"{AGENT_ROOT}/f{i}.txt") for i in range(150)
-        ]
+        matches = [_node(f"f{i}.txt", path=f"{AGENT_ROOT}/f{i}.txt") for i in range(150)]
         self.mock_vfs.search.return_value = _search_result(matches)
-        result = await self.parser.execute(
-            "find . -name '*'", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("find . -name '*'", USER_ID, agent_name=AGENT_NAME)
         assert "more matches" in result
 
     async def test_find_default_pattern(self) -> None:
@@ -706,9 +681,7 @@ class TestCmdFind:
     async def test_find_iname(self) -> None:
         matches = [_node("README.MD", path=f"{AGENT_ROOT}/README.MD")]
         self.mock_vfs.search.return_value = _search_result(matches, "*.MD")
-        result = await self.parser.execute(
-            "find . -iname '*.MD'", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("find . -iname '*.MD'", USER_ID, agent_name=AGENT_NAME)
         assert "README.MD" in result
 
 
@@ -735,9 +708,7 @@ class TestCmdGrep:
         info = _node("myfile.txt")
         self.mock_vfs.info.return_value = info
         self.mock_vfs.read.return_value = "line1 hello\nline2\nline3 hello again"
-        result = await self.parser.execute(
-            "grep hello myfile.txt", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("grep hello myfile.txt", USER_ID, agent_name=AGENT_NAME)
         assert "hello" in result
         assert ":1:" in result  # line number
         assert ":3:" in result
@@ -777,9 +748,7 @@ class TestCmdGrep:
         list_items = [_node("a.txt"), _node("b.txt")]
         self.mock_vfs.list_dir.return_value = _list_response(list_items)
         self.mock_vfs.read.side_effect = ["match here", "no match"]
-        result = await self.parser.execute(
-            "grep -l match mydir", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("grep -l match mydir", USER_ID, agent_name=AGENT_NAME)
         assert "a.txt" in result
 
     async def test_grep_recursive_directory(self) -> None:
@@ -791,9 +760,7 @@ class TestCmdGrep:
         ]
         self.mock_vfs.search.return_value = _search_result(search_matches)
         self.mock_vfs.read.side_effect = ["found it", "nothing here"]
-        result = await self.parser.execute(
-            "grep -r found mydir", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("grep -r found mydir", USER_ID, agent_name=AGENT_NAME)
         assert "found" in result
 
     async def test_grep_directory_nonrecursive(self) -> None:
@@ -802,9 +769,7 @@ class TestCmdGrep:
         list_items = [_node("a.txt"), _folder("subdir")]
         self.mock_vfs.list_dir.return_value = _list_response(list_items)
         self.mock_vfs.read.return_value = "matching line"
-        result = await self.parser.execute(
-            "grep matching mydir", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("grep matching mydir", USER_ID, agent_name=AGENT_NAME)
         assert "matching" in result
 
     async def test_grep_long_line_truncated(self) -> None:
@@ -812,16 +777,12 @@ class TestCmdGrep:
         self.mock_vfs.info.return_value = info
         long_line = "match" + "x" * 500
         self.mock_vfs.read.return_value = long_line
-        result = await self.parser.execute(
-            "grep match big.txt", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("grep match big.txt", USER_ID, agent_name=AGENT_NAME)
         assert "..." in result
 
     async def test_grep_error_accessing_path(self) -> None:
         self.mock_vfs.info.side_effect = Exception("access error")
-        result = await self.parser.execute(
-            "grep pattern badpath", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("grep pattern badpath", USER_ID, agent_name=AGENT_NAME)
         assert "error accessing" in result
 
     async def test_grep_read_returns_none(self) -> None:
@@ -839,18 +800,14 @@ class TestCmdGrep:
         # File larger than MAX_GREP_FILE_CHARS - the grep handler truncates it
         big_content = "match\n" * 100_000
         self.mock_vfs.read.return_value = big_content
-        result = await self.parser.execute(
-            "grep match huge.txt", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("grep match huge.txt", USER_ID, agent_name=AGENT_NAME)
         assert "match" in result
 
     async def test_grep_too_many_files_truncated(self) -> None:
         info = _folder("bigdir")
         self.mock_vfs.info.return_value = info
         # More files than MAX_GREP_FILES
-        many_files = [
-            _node(f"f{i}.txt", path=f"{AGENT_ROOT}/bigdir/f{i}.txt") for i in range(60)
-        ]
+        many_files = [_node(f"f{i}.txt", path=f"{AGENT_ROOT}/bigdir/f{i}.txt") for i in range(60)]
         self.mock_vfs.search.return_value = _search_result(many_files)
         self.mock_vfs.read.return_value = "matchline"
         result = await self.parser.execute(
@@ -883,32 +840,24 @@ class TestCmdCat:
 
     async def test_cat_file(self) -> None:
         self.mock_vfs.read.return_value = "file content here"
-        result = await self.parser.execute(
-            "cat notes/readme.txt", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("cat notes/readme.txt", USER_ID, agent_name=AGENT_NAME)
         assert result == "file content here"
 
     async def test_cat_file_not_found(self) -> None:
         self.mock_vfs.read.return_value = None
-        result = await self.parser.execute(
-            "cat missing.txt", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("cat missing.txt", USER_ID, agent_name=AGENT_NAME)
         assert "No such file" in result
 
     async def test_cat_with_line_numbers(self) -> None:
         self.mock_vfs.read.return_value = "line1\nline2\nline3"
-        result = await self.parser.execute(
-            "cat -n myfile.txt", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("cat -n myfile.txt", USER_ID, agent_name=AGENT_NAME)
         assert "1  line1" in result
         assert "2  line2" in result
         assert "3  line3" in result
 
     async def test_cat_error(self) -> None:
         self.mock_vfs.read.side_effect = Exception("io error")
-        result = await self.parser.execute(
-            "cat broken.txt", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("cat broken.txt", USER_ID, agent_name=AGENT_NAME)
         assert "io error" in result
 
 
@@ -925,7 +874,7 @@ class TestCmdStat:
         self.parser._vfs = self.mock_vfs
 
     async def test_stat_file(self) -> None:
-        ts = datetime(2025, 3, 1, 12, 0, tzinfo=timezone.utc)
+        ts = datetime(2025, 3, 1, 12, 0, tzinfo=UTC)
         info = _node(
             "readme.txt",
             size_bytes=2048,
@@ -935,9 +884,7 @@ class TestCmdStat:
         )
         info.created_at = ts
         self.mock_vfs.info.return_value = info
-        result = await self.parser.execute(
-            "stat readme.txt", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("stat readme.txt", USER_ID, agent_name=AGENT_NAME)
         assert "File:" in result
         assert "2048 bytes" in result
         assert "file" in result
@@ -947,16 +894,12 @@ class TestCmdStat:
 
     async def test_stat_not_found(self) -> None:
         self.mock_vfs.info.return_value = None
-        result = await self.parser.execute(
-            "stat missing.txt", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("stat missing.txt", USER_ID, agent_name=AGENT_NAME)
         assert "No such file or directory" in result
 
     async def test_stat_error(self) -> None:
         self.mock_vfs.info.side_effect = Exception("db error")
-        result = await self.parser.execute(
-            "stat broken.txt", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("stat broken.txt", USER_ID, agent_name=AGENT_NAME)
         assert "db error" in result
 
     async def test_stat_folder(self) -> None:
@@ -985,9 +928,7 @@ class TestCmdEcho:
         self.parser._vfs = self.mock_vfs
 
     async def test_echo_text(self) -> None:
-        result = await self.parser.execute(
-            "echo hello world", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("echo hello world", USER_ID, agent_name=AGENT_NAME)
         assert result == "hello world"
 
     async def test_echo_empty(self) -> None:
@@ -1050,9 +991,7 @@ class TestCmdMv:
 
     async def test_mv_success(self) -> None:
         self.mock_vfs.move.return_value = f"{AGENT_ROOT}/new.txt"
-        result = await self.parser.execute(
-            "mv old.txt new.txt", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("mv old.txt new.txt", USER_ID, agent_name=AGENT_NAME)
         assert "Moved" in result
 
     async def test_mv_file_not_found(self) -> None:
@@ -1071,9 +1010,7 @@ class TestCmdMv:
 
     async def test_mv_generic_error(self) -> None:
         self.mock_vfs.move.side_effect = Exception("unexpected")
-        result = await self.parser.execute(
-            "mv a.txt b.txt", USER_ID, agent_name=AGENT_NAME
-        )
+        result = await self.parser.execute("mv a.txt b.txt", USER_ID, agent_name=AGENT_NAME)
         assert "unexpected" in result
 
     async def test_mv_redirect_not_supported(self) -> None:

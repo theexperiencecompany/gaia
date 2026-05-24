@@ -6,8 +6,8 @@ Redis connection to verify serialization, TTL handling, and CRUD ops.
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from pydantic import BaseModel
+import pytest
 
 from app.db.redis import (
     RedisCache,
@@ -101,9 +101,7 @@ class TestRedisCacheOperations:
         cache = RedisCache.__new__(RedisCache)
         cache.default_ttl = 3600
         cache.redis = AsyncMock()
-        cache.redis.setex = AsyncMock(
-            side_effect=lambda k, ttl, v: stored.update({k: v})
-        )
+        cache.redis.setex = AsyncMock(side_effect=lambda k, ttl, v: stored.update({k: v}))
         cache.redis.get = AsyncMock(side_effect=lambda name: stored.get(name))
 
         data = {"key": "value", "count": 5}

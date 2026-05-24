@@ -1,6 +1,6 @@
 """Unit tests for notification storage and channel preferences."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,7 +19,6 @@ from app.utils.notification.channel_preferences import (
     normalize_channel_preferences,
 )
 from app.utils.notification.storage import MongoDBNotificationStorage
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -45,7 +44,7 @@ def _make_request(
 
 
 def _make_record(
-    request: Optional[NotificationRequest] = None,
+    request: NotificationRequest | None = None,
     status: NotificationStatus = NotificationStatus.PENDING,
 ) -> NotificationRecord:
     req = request or _make_request()
@@ -58,7 +57,7 @@ def _make_record(
     )
 
 
-def _record_to_dict(record: NotificationRecord) -> Dict[str, Any]:
+def _record_to_dict(record: NotificationRecord) -> dict[str, Any]:
     """Simulate what MongoDB would return by round-tripping through model_dump."""
     return record.model_dump()
 
@@ -116,9 +115,7 @@ class TestGetNotification:
         assert result is not None
         assert result.id == "notif-1"
         assert result.user_id == "user-1"
-        mock_collection.find_one.assert_awaited_once_with(
-            {"id": "notif-1", "user_id": "user-1"}
-        )
+        mock_collection.find_one.assert_awaited_once_with({"id": "notif-1", "user_id": "user-1"})
 
     async def test_get_notification_found_without_user_id(self) -> None:
         """When user_id is None, query does not include user_id."""
@@ -175,7 +172,7 @@ class TestUpdateNotification:
             mock_collection,
         ):
             storage = MongoDBNotificationStorage()
-            updates: Dict[str, Any] = {"status": "read"}
+            updates: dict[str, Any] = {"status": "read"}
             await storage.update_notification("notif-1", updates)
 
         mock_collection.update_one.assert_awaited_once()
@@ -233,7 +230,7 @@ class TestUpdateNotification:
 class TestGetUserNotifications:
     """Tests for MongoDBNotificationStorage.get_user_notifications."""
 
-    def _mock_cursor(self, results: List[Dict[str, Any]]) -> MagicMock:
+    def _mock_cursor(self, results: list[dict[str, Any]]) -> MagicMock:
         """Build a mock Motor cursor that supports chaining + to_list."""
         cursor = MagicMock()
         cursor.sort.return_value = cursor
@@ -272,9 +269,7 @@ class TestGetUserNotifications:
             mock_collection,
         ):
             storage = MongoDBNotificationStorage()
-            await storage.get_user_notifications(
-                "user-1", status=NotificationStatus.DELIVERED
-            )
+            await storage.get_user_notifications("user-1", status=NotificationStatus.DELIVERED)
 
         query = mock_collection.find.call_args[0][0]
         assert query["status"] == NotificationStatus.DELIVERED
@@ -445,9 +440,7 @@ class TestGetNotificationCount:
             mock_collection,
         ):
             storage = MongoDBNotificationStorage()
-            count = await storage.get_notification_count(
-                "user-1", channel_type="telegram"
-            )
+            count = await storage.get_notification_count("user-1", channel_type="telegram")
 
         assert count == 3
         query = mock_collection.count_documents.call_args[0][0]
@@ -502,12 +495,12 @@ class TestNormalizeChannelPreferences:
     def test_none_input_uses_defaults(self) -> None:
         """None prefs fallback to DEFAULT_CHANNEL_PREFERENCES values."""
         result = normalize_channel_preferences(None)
-        assert result == {"telegram": True, "discord": True}
+        assert result == {"telegram": True, "discord": True, "whatsapp": True}
 
     def test_empty_dict_uses_defaults(self) -> None:
         """Empty dict falls back to defaults for every channel."""
         result = normalize_channel_preferences({})
-        assert result == {"telegram": True, "discord": True}
+        assert result == {"telegram": True, "discord": True, "whatsapp": True}
 
     def test_explicit_false_overrides_default(self) -> None:
         """An explicitly False value overrides the default True."""
@@ -529,9 +522,7 @@ class TestNormalizeChannelPreferences:
 
     def test_extra_keys_ignored(self) -> None:
         """Keys not in DEFAULT_CHANNEL_PREFERENCES are not in the result."""
-        result = normalize_channel_preferences(
-            {"telegram": True, "discord": True, "sms": True}
-        )
+        result = normalize_channel_preferences({"telegram": True, "discord": True, "sms": True})
         assert "sms" not in result
 
     def test_partial_prefs_fill_missing_with_defaults(self) -> None:
@@ -562,7 +553,9 @@ class TestFetchChannelPreferences:
             "app.utils.notification.channel_preferences.users_collection",
             mock_collection,
         ):
-            result = await fetch_channel_preferences("507f1f77bcf86cd799439011")
+            result = await fetch_channel_preferences(
+                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+            )
 
         assert result["telegram"] is False
         assert result["discord"] is True
@@ -576,9 +569,11 @@ class TestFetchChannelPreferences:
             "app.utils.notification.channel_preferences.users_collection",
             mock_collection,
         ):
-            result = await fetch_channel_preferences("507f1f77bcf86cd799439011")
+            result = await fetch_channel_preferences(
+                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+            )
 
-        assert result == {"telegram": True, "discord": True}
+        assert result == {"telegram": True, "discord": True, "whatsapp": True}
 
     async def test_user_not_found(self) -> None:
         """When user doc is None, use defaults (None prefs)."""
@@ -589,9 +584,11 @@ class TestFetchChannelPreferences:
             "app.utils.notification.channel_preferences.users_collection",
             mock_collection,
         ):
-            result = await fetch_channel_preferences("507f1f77bcf86cd799439011")
+            result = await fetch_channel_preferences(
+                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+            )
 
-        assert result == {"telegram": True, "discord": True}
+        assert result == {"telegram": True, "discord": True, "whatsapp": True}
 
     async def test_user_with_null_prefs_field(self) -> None:
         """When notification_channel_prefs is explicitly None, use defaults."""
@@ -605,6 +602,8 @@ class TestFetchChannelPreferences:
             "app.utils.notification.channel_preferences.users_collection",
             mock_collection,
         ):
-            result = await fetch_channel_preferences("507f1f77bcf86cd799439011")
+            result = await fetch_channel_preferences(
+                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+            )
 
-        assert result == {"telegram": True, "discord": True}
+        assert result == {"telegram": True, "discord": True, "whatsapp": True}

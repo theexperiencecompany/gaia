@@ -92,9 +92,11 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                 isDisabled={isFetching}
                 className="min-w-0 text-zinc-400 transition-all duration-200 hover:bg-zinc-800"
               >
-                <RedoIcon
-                  className={`h-4 w-4 transition-transform duration-500 ${isFetching ? "animate-spin" : "hover:rotate-180"}`}
-                />
+                <div
+                  className={`transition-transform duration-500 ${isFetching ? "animate-spin" : "hover:rotate-180"}`}
+                >
+                  <RedoIcon className="h-4 w-4" />
+                </div>
               </Button>
             </Tooltip>
           )}

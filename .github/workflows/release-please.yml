@@ -35,7 +35,7 @@ jobs:
   release-please:
     # Runs release-please and exposes per-component outputs for downstream workflows.
     needs: enforce-master-ref
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       releases_created: ${{ steps.release.outputs.releases_created }}
@@ -86,7 +86,7 @@ jobs:
   trigger-cli-publish:
     needs: release-please
     if: needs.release-please.outputs.cli_release_created == 'true'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       # Dispatch dedicated publish workflow with resolved tag/version inputs.
       - name: Trigger CLI Publish Workflow

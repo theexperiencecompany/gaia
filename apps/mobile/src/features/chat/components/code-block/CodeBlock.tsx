@@ -1,6 +1,6 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { Button, Card, Chip } from "heroui-native";
+import { Button, Card } from "heroui-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, Text as RNText, ScrollView, View } from "react-native";
 import { AppIcon, Copy01Icon, Tick02Icon } from "@/components/icons";
@@ -19,7 +19,7 @@ const COLORS = {
 } as const;
 
 const FONT = {
-  mono: "RobotoMono_400Regular",
+  mono: "AnonymousPro_400Regular",
 } as const;
 
 // -- Types --------------------------------------------------------------------
@@ -44,9 +44,9 @@ export function InlineCode({ children }: InlineCodeProps) {
         fontSize: 13,
         backgroundColor: COLORS.codeBg,
         color: COLORS.codeText,
-        borderRadius: 4,
-        paddingHorizontal: 5,
-        paddingVertical: 1,
+        borderRadius: 10,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
       }}
     >
       {children}
@@ -143,7 +143,7 @@ function SyntaxLine({ line, language }: { line: string; language: string }) {
 export function CodeBlock({
   code,
   language,
-  showLineNumbers = false,
+  showLineNumbers = true,
 }: CodeBlockProps) {
   const lines = code.split("\n");
   const displayLines =
@@ -159,7 +159,7 @@ export function CodeBlock({
     <Card
       style={{
         backgroundColor: COLORS.blockBg,
-        borderRadius: 8,
+        borderRadius: 16,
         marginVertical: 6,
         overflow: "hidden",
       }}
@@ -173,30 +173,36 @@ export function CodeBlock({
           paddingHorizontal: 12,
           paddingVertical: 6,
           backgroundColor: COLORS.blockHeaderBg,
+          borderTopLeftRadius: 16,
+          borderTopRightRadius: 16,
           borderBottomWidth: 1,
           borderBottomColor: COLORS.blockHeaderBorder,
         }}
       >
-        <Chip variant="soft" color="default" size="sm" animation="disable-all">
-          <Chip.Label
-            style={{
-              fontFamily: FONT.mono,
-              fontSize: 11,
-              textTransform: "lowercase",
-            }}
-          >
-            {lang}
-          </Chip.Label>
-        </Chip>
+        <RNText
+          style={{
+            fontFamily: FONT.mono,
+            fontSize: 11,
+            color: "#71717a",
+          }}
+        >
+          {lang}
+        </RNText>
         <CopyButton code={code} />
       </Card.Header>
 
       {/* Code body — horizontal scroll for long lines */}
-      <Card.Body style={{ padding: 0 }}>
+      <Card.Body
+        style={{
+          padding: 0,
+          borderBottomLeftRadius: 16,
+          borderBottomRightRadius: 16,
+        }}
+      >
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ padding: 12 }}
+          contentContainerStyle={{ padding: 16 }}
         >
           <View>
             {displayLines.map((line, lineIdx) => {

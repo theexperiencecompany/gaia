@@ -207,7 +207,9 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
     >
       {initialLoading ? (
         <div className="flex h-full items-center justify-center">
-          <Loading02Icon className="h-8 w-8 animate-spin text-zinc-500" />
+          <div className="animate-spin">
+            <Loading02Icon className="h-8 w-8 text-zinc-500" />
+          </div>
         </div>
       ) : (
         <div className="space-y-0">

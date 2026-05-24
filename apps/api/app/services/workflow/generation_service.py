@@ -1,7 +1,5 @@
 """Workflow generation service for LLM-based step creation."""
 
-from typing import List, Optional
-
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
 
@@ -12,7 +10,7 @@ from app.agents.prompts.workflow_prompts import (
     WORKFLOW_PROMPT_GENERATION_TEMPLATE,
 )
 from app.agents.templates.workflow_template import WORKFLOW_GENERATION_TEMPLATE
-from shared.py.wide_events import log
+from app.agents.tools.core.registry import get_tool_registry
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.models.workflow_models import (
     GeneratedPromptOutput,
@@ -20,13 +18,35 @@ from app.models.workflow_models import (
     GeneratedWorkflow,
     SuggestedTrigger,
 )
+from shared.py.wide_events import log
 
 prompt_output_parser = PydanticOutputParser(pydantic_object=GeneratedPromptOutput)
 
 _MAX_GENERATION_ATTEMPTS = 2
 
 
-def _build_trigger_hint(trigger_config: Optional[dict]) -> str:
+def _slug_to_friendly_name(slug: str) -> str:
+    for integration in OAUTH_INTEGRATIONS:
+        if integration.id == slug:
+            return integration.name
+    return slug
+
+
+def _normalize_slugs(slugs: list[str] | None) -> list[str]:
+    if not slugs:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in slugs:
+        s = (raw or "").strip().lower()
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+    return out
+
+
+def _build_trigger_hint(trigger_config: dict | None) -> str:
     """Build a minimal, human-readable trigger hint for the LLM.
 
     We intentionally omit raw cron/timezone/next_run so the LLM cannot
@@ -59,26 +79,33 @@ def _build_trigger_hint(trigger_config: Optional[dict]) -> str:
     return f"User has selected trigger type: {trigger_type}."
 
 
-def _build_available_triggers() -> str:
-    """Build a compact list of available integration triggers for the LLM."""
-    lines: List[str] = []
+def _build_available_triggers(
+    connected_integration_ids: set[str] | None = None,
+) -> str:
+    """Build a compact list of available integration triggers for the LLM.
+
+    If `connected_integration_ids` is provided, only triggers from those
+    integrations are listed. This prevents the LLM from suggesting triggers
+    the user can't actually use.
+    """
+    lines: list[str] = []
     for integration in OAUTH_INTEGRATIONS:
+        if (
+            connected_integration_ids is not None
+            and integration.id not in connected_integration_ids
+        ):
+            continue
         for tc in integration.associated_triggers:
             schema = tc.workflow_trigger_schema
             if schema:
                 desc = f" — {schema.description}" if schema.description else ""
-                lines.append(
-                    f"- {schema.slug}: {schema.name} ({integration.name}){desc}"
-                )
+                lines.append(f"- {schema.slug}: {schema.name} ({integration.name}){desc}")
     if not lines:
         return ""
-    return (
-        "Available integration triggers (use the slug for trigger_name):\n"
-        + "\n".join(lines)
-    )
+    return "Available integration triggers (use the slug for trigger_name):\n" + "\n".join(lines)
 
 
-def enrich_steps(generated_steps: List[GeneratedStep]) -> List[dict]:
+def enrich_steps(generated_steps: list[GeneratedStep]) -> list[dict]:
     """Convert minimal generated steps to full step schema with id."""
     enriched = []
     for i, step in enumerate(generated_steps):
@@ -103,8 +130,7 @@ def _parse_workflow_response(content: str) -> GeneratedWorkflow:
             cleaned = cleaned[first_newline + 1 :]
         else:
             cleaned = cleaned[3:]
-    if cleaned.endswith("```"):
-        cleaned = cleaned[:-3]
+    cleaned = cleaned.removesuffix("```")
     cleaned = cleaned.strip()
     return GeneratedWorkflow.model_validate_json(cleaned)
 
@@ -114,7 +140,11 @@ class WorkflowGenerationService:
 
     @staticmethod
     async def generate_steps_with_llm(
-        prompt: str, title: str, trigger_config=None, description: str | None = None
+        prompt: str,
+        title: str,
+        trigger_config=None,
+        description: str | None = None,
+        selected_integrations: list[str] | None = None,
     ) -> list:
         """Generate workflow steps using LLM with structured output.
 
@@ -128,32 +158,34 @@ class WorkflowGenerationService:
         log.info(f"[WorkflowGen] ========== START: {title} ==========")
 
         log.info("[WorkflowGen] Getting tool registry...")
-        # Inline import required: top-level causes a circular import via
-        # registry → workflow_tool → services.workflow → generation_service
-        from app.agents.tools.core.registry import get_tool_registry
-
         tool_registry = await get_tool_registry()
+
+        normalized_slugs = _normalize_slugs(selected_integrations)
+        slug_set = set(normalized_slugs)
+        # An empty selection means "no filter" — show the whole registry.
+        filter_active = bool(slug_set)
 
         tools_with_categories = []
         category_names = []
         categories = tool_registry.get_all_category_objects()
         for category in categories.keys():
+            if filter_active and category.lower() not in slug_set:
+                continue
             category_names.append(category)
             category_tools = categories[category].get_tool_objects()
             tool_names = [
-                tool.name if hasattr(tool, "name") else str(tool)
-                for tool in category_tools
+                tool.name if hasattr(tool, "name") else str(tool) for tool in category_tools
             ]
             tools_with_categories.append(f"{category}: {', '.join(tool_names)}")
 
         # Add subagent capabilities
         for integration in OAUTH_INTEGRATIONS:
             if integration.subagent_config and integration.subagent_config.has_subagent:
+                if filter_active and integration.id.lower() not in slug_set:
+                    continue
                 cfg = integration.subagent_config
                 category_names.append(integration.id)
-                tools_with_categories.append(
-                    f"{integration.id} (subagent): {cfg.capabilities}"
-                )
+                tools_with_categories.append(f"{integration.id} (subagent): {cfg.capabilities}")
 
         for tool in tool_registry.get_core_tools():
             tool_name = tool.name if hasattr(tool, "name") else str(tool)
@@ -166,7 +198,10 @@ class WorkflowGenerationService:
             "generate outlines, extract key points, write briefs. No external tool call."
         )
 
-        log.info(f"[WorkflowGen] Categories: {len(category_names)}")
+        log.info(
+            f"[WorkflowGen] Categories: {len(category_names)} "
+            f"(filtered={filter_active}, slugs={normalized_slugs})"
+        )
 
         trigger_context = generate_trigger_context(trigger_config)
 
@@ -190,9 +225,17 @@ class WorkflowGenerationService:
         prompt_context = prompt
         if description:
             prompt_context = (
-                f"{prompt}\n\n"
-                f"Short display summary for additional context: {description}"
+                f"{prompt}\n\nShort display summary for additional context: {description}"
             )
+        if normalized_slugs:
+            friendly = [_slug_to_friendly_name(s) for s in normalized_slugs]
+            integration_hint = (
+                "User has selected these integrations as preferred tools for this workflow: "
+                + ", ".join(friendly)
+                + ". Prioritise steps that use these integrations where appropriate."
+            )
+            prompt_context = f"{prompt_context}\n\n{integration_hint}"
+
         formatted_prompt = WORKFLOW_GENERATION_TEMPLATE.format(
             description=prompt_context,
             title=title,
@@ -202,7 +245,7 @@ class WorkflowGenerationService:
         )
         log.info(f"[WorkflowGen] Prompt: {len(formatted_prompt)} chars")
 
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
         for attempt in range(_MAX_GENERATION_ATTEMPTS):
             try:
                 if attempt > 0:
@@ -224,12 +267,8 @@ class WorkflowGenerationService:
                         '"description": "..."}]}'
                     )
                     llm_response = await llm.ainvoke(fallback_prompt)
-                    response_content = getattr(
-                        llm_response, "content", str(llm_response)
-                    )
-                    log.debug(
-                        f"[WorkflowGen] Raw response ({len(response_content)} chars)"
-                    )
+                    response_content = getattr(llm_response, "content", str(llm_response))
+                    log.debug(f"[WorkflowGen] Raw response ({len(response_content)} chars)")
                     result = _parse_workflow_response(response_content)
 
                 log.info("[WorkflowGen] === LLM RESPONDED ===")
@@ -242,16 +281,13 @@ class WorkflowGenerationService:
 
                 steps_data = enrich_steps(result.steps)
 
-                log.info(
-                    f"[WorkflowGen] ========== DONE: {len(steps_data)} steps =========="
-                )
+                log.info(f"[WorkflowGen] ========== DONE: {len(steps_data)} steps ==========")
                 return steps_data
 
             except Exception as e:
                 last_error = e
                 log.warning(
-                    f"[WorkflowGen] Attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS} "
-                    f"failed: {e}"
+                    f"[WorkflowGen] Attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS} failed: {e}"
                 )
 
         log.error(
@@ -265,29 +301,46 @@ class WorkflowGenerationService:
 
     @staticmethod
     async def generate_workflow_prompt(
-        title: Optional[str] = None,
-        description: Optional[str] = None,
-        trigger_config: Optional[dict] = None,
-        existing_prompt: Optional[str] = None,
+        title: str | None = None,
+        description: str | None = None,
+        trigger_config: dict | None = None,
+        existing_prompt: str | None = None,
+        connected_integration_ids: set[str] | None = None,
+        selected_integrations: list[str] | None = None,
     ) -> dict:
         """Generate or improve workflow instructions using LLM.
 
         Returns a dict with keys: prompt, suggested_trigger (optional).
+
+        If `connected_integration_ids` is provided, the available-triggers
+        list shown to the LLM is restricted to those integrations.
+        If `selected_integrations` is provided, the LLM is hinted to prefer
+        those integrations when naming triggers/actions.
         """
         trigger_hint = _build_trigger_hint(trigger_config)
-        available_triggers = _build_available_triggers()
+        available_triggers = _build_available_triggers(connected_integration_ids)
 
-        llm = init_llm(use_free=True)
+        normalized_slugs = _normalize_slugs(selected_integrations)
+        if normalized_slugs:
+            friendly = [_slug_to_friendly_name(s) for s in normalized_slugs]
+            integrations_hint = (
+                "User has selected these integrations as preferred tools for this "
+                "workflow: " + ", ".join(friendly) + ". Name them naturally in the "
+                "instructions and prefer triggers/actions that use them."
+            )
+        else:
+            integrations_hint = ""
+
+        llm = init_llm()
 
         formatted = WORKFLOW_PROMPT_GENERATION_TEMPLATE.format(
             title_section=f"Title: {title}\n" if title else "",
             description_section=f"Description: {description}" if description else "",
             trigger_hint=trigger_hint,
+            integrations_hint=integrations_hint,
             available_triggers=available_triggers,
             existing_section=(
-                f"Existing instructions to improve:\n{existing_prompt}"
-                if existing_prompt
-                else ""
+                f"Existing instructions to improve:\n{existing_prompt}" if existing_prompt else ""
             ),
             mode_instruction=(
                 "Improve these instructions — keep the user's intent, add specificity, "
@@ -304,11 +357,17 @@ class WorkflowGenerationService:
         ]
 
         response = await llm.ainvoke(messages)
-        response_content = getattr(response, "content", str(response)).strip()
+        raw_content = getattr(response, "content", str(response))
+        if isinstance(raw_content, list):
+            raw_content = "".join(
+                block.get("text", "") if isinstance(block, dict) else str(block)
+                for block in raw_content
+            )
+        response_content = raw_content.strip()
 
         result = prompt_output_parser.parse(response_content)
 
-        suggested: Optional[SuggestedTrigger] = None
+        suggested: SuggestedTrigger | None = None
         if result.trigger_type in ("manual", "schedule", "integration"):
             suggested = SuggestedTrigger(
                 type=result.trigger_type,

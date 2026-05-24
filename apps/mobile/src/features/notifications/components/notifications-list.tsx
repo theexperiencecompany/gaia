@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { FlatList, RefreshControl, View } from "react-native";
+import { FlatList, Pressable, RefreshControl, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppIcon, Notification01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -17,6 +17,8 @@ interface NotificationsListProps {
   error?: string | null;
   emptyTitle: string;
   emptyDescription: string;
+  onEmptyAction?: () => void;
+  emptyActionLabel?: string;
   onRefresh: () => void;
   onMarkAsRead: (notificationId: string) => void;
   onDismiss?: (notificationId: string) => void;
@@ -34,14 +36,34 @@ interface NotificationsListProps {
   onSelectToggle?: (notificationId: string) => void;
 }
 
-function getTimeGroup(dateString: string): string {
+type TimeGroupKey = "today" | "yesterday" | "thisWeek" | "earlier";
+
+const TIME_GROUP_LABELS: Record<TimeGroupKey, string> = {
+  today: "Today",
+  yesterday: "Yesterday",
+  thisWeek: "This Week",
+  earlier: "Earlier",
+};
+
+const TIME_GROUP_ORDER: TimeGroupKey[] = [
+  "today",
+  "yesterday",
+  "thisWeek",
+  "earlier",
+];
+
+const SPARSE_LIST_THRESHOLD = 10;
+
+function getTimeGroup(dateString: string): TimeGroupKey {
   const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) return "Earlier";
+  if (Number.isNaN(date.getTime())) return "earlier";
 
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
+  const sevenDaysAgo = new Date(today);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
   const notifDate = new Date(
     date.getFullYear(),
@@ -49,9 +71,10 @@ function getTimeGroup(dateString: string): string {
     date.getDate(),
   );
 
-  if (notifDate.getTime() >= today.getTime()) return "Today";
-  if (notifDate.getTime() >= yesterday.getTime()) return "Yesterday";
-  return "Earlier";
+  if (notifDate.getTime() >= today.getTime()) return "today";
+  if (notifDate.getTime() >= yesterday.getTime()) return "yesterday";
+  if (notifDate.getTime() >= sevenDaysAgo.getTime()) return "thisWeek";
+  return "earlier";
 }
 
 type GroupedSection =
@@ -130,6 +153,8 @@ export function NotificationsList({
   error,
   emptyTitle,
   emptyDescription,
+  onEmptyAction,
+  emptyActionLabel,
   onRefresh,
   onMarkAsRead,
   onDismiss,
@@ -147,21 +172,29 @@ export function NotificationsList({
   const insets = useSafeAreaInsets();
 
   const sections = useMemo(() => {
-    const groups: Record<string, InAppNotification[]> = {};
+    const groups: Record<TimeGroupKey, InAppNotification[]> = {
+      today: [],
+      yesterday: [],
+      thisWeek: [],
+      earlier: [],
+    };
     for (const n of notifications) {
-      const group = getTimeGroup(n.created_at);
-      if (!groups[group]) groups[group] = [];
-      groups[group].push(n);
+      groups[getTimeGroup(n.created_at)].push(n);
     }
 
-    const order = ["Today", "Yesterday", "Earlier"];
+    // Drop the "Earlier" header when the list is sparse (<10 total) so we
+    // don't add ceremony around a tiny pile.
+    const isSparse = notifications.length < SPARSE_LIST_THRESHOLD;
     const result: GroupedSection[] = [];
-    for (const key of order) {
-      if (groups[key] && groups[key].length > 0) {
-        result.push({ type: "header", title: key });
-        for (const n of groups[key]) {
-          result.push({ type: "notification", notification: n });
-        }
+    for (const key of TIME_GROUP_ORDER) {
+      const bucket = groups[key];
+      if (bucket.length === 0) continue;
+      const skipHeader = key === "earlier" && isSparse;
+      if (!skipHeader) {
+        result.push({ type: "header", title: TIME_GROUP_LABELS[key] });
+      }
+      for (const n of bucket) {
+        result.push({ type: "notification", notification: n });
       }
     }
     return result;
@@ -205,14 +238,18 @@ export function NotificationsList({
   }
 
   if (notifications.length === 0) {
+    // Web parity (NotificationsList.tsx empty state):
+    //   16×16 zinc-900/50 ring zinc-800 circle, NotificationIcon
+    //   title: text-base font-semibold text-white
+    //   desc:  text-sm text-zinc-500
     return (
       <View
         style={{
           flex: 1,
           alignItems: "center",
           justifyContent: "center",
-          padding: spacing.lg,
-          gap: spacing.md,
+          padding: 24,
+          gap: 16,
         }}
       >
         <View
@@ -220,20 +257,20 @@ export function NotificationsList({
             width: 64,
             height: 64,
             borderRadius: 32,
-            backgroundColor: "rgba(255,255,255,0.04)",
+            backgroundColor: "rgba(24,24,27,0.5)",
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.07)",
+            borderColor: "#27272a",
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <AppIcon icon={Notification01Icon} size={28} color="#48484a" />
+          <AppIcon icon={Notification01Icon} size={28} color="#52525b" />
         </View>
         <View style={{ alignItems: "center", gap: 4 }}>
           <Text
             style={{
-              color: "#e8ebef",
-              fontSize: fontSize.base,
+              color: "#ffffff",
+              fontSize: 16,
               fontWeight: "600",
             }}
           >
@@ -241,14 +278,37 @@ export function NotificationsList({
           </Text>
           <Text
             style={{
-              color: "#8e8e93",
-              fontSize: fontSize.sm,
+              color: "#71717a",
+              fontSize: 14,
               textAlign: "center",
             }}
           >
             {emptyDescription}
           </Text>
         </View>
+        {onEmptyAction ? (
+          <Pressable
+            onPress={onEmptyAction}
+            style={{
+              marginTop: 8,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: "#3f3f46",
+              paddingVertical: 10,
+              paddingHorizontal: 18,
+            }}
+          >
+            <Text
+              style={{
+                color: "#e4e4e7",
+                fontSize: 13,
+                fontWeight: "500",
+              }}
+            >
+              {emptyActionLabel ?? "Notification preferences"}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }
@@ -259,9 +319,12 @@ export function NotificationsList({
       keyExtractor={(item, index) =>
         item.type === "header" ? `header-${item.title}` : `notif-${index}`
       }
+      // Web container uses `px-6 py-6` (24px) — but on mobile keep tighter
+      // horizontal padding (16) so cards don't feel cramped at 1080w.
       contentContainerStyle={{
-        padding: spacing.md,
-        paddingBottom: insets.bottom + spacing.lg,
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: insets.bottom + 24,
       }}
       refreshControl={
         <RefreshControl
@@ -270,19 +333,24 @@ export function NotificationsList({
           tintColor="#00bbff"
         />
       }
-      renderItem={({ item }) => {
+      renderItem={({ item, index }) => {
         if (item.type === "header") {
+          // Web: text-xs font-semibold tracking-wider text-zinc-500 uppercase
+          // Group separation: `space-y-8` between groups, `space-y-3` inside.
           return (
             <Text
+              // Web: text-xs font-semibold tracking-wider text-zinc-500 uppercase
+              //   text-xs = 12 (web). Section spacing is space-y-8 between groups
+              //   (32px gap) and space-y-3 (12px) before first card inside a group.
               style={{
-                fontSize: fontSize.xs,
+                fontSize: 12,
                 fontWeight: "600",
-                letterSpacing: 0.8,
+                letterSpacing: 1,
                 textTransform: "uppercase",
-                color: "#8e8e93",
-                paddingVertical: spacing.sm,
+                color: "#71717a",
+                marginTop: index === 0 ? 8 : 32,
+                marginBottom: 12,
                 paddingHorizontal: 2,
-                marginTop: spacing.sm,
               }}
             >
               {item.title}
@@ -291,7 +359,8 @@ export function NotificationsList({
         }
 
         return (
-          <View style={{ marginBottom: spacing.sm }}>
+          // Web: cards inside a group are spaced `space-y-2.5` (10px).
+          <View style={{ marginBottom: 10 }}>
             <NotificationCard
               notification={item.notification}
               onMarkAsRead={onMarkAsRead}

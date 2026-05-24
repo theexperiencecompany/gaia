@@ -13,7 +13,7 @@ Covers:
 
 import sys
 from types import ModuleType
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -40,12 +40,12 @@ if _stub_injected:
 from app.models.trigger_configs import (  # noqa: E402
     CalendarEventCreatedConfig,
     CalendarEventStartingSoonConfig,
-    GmailNewMessageConfig,
-    GmailPollInboxConfig,
     GitHubCommitEventConfig,
     GitHubIssueAddedConfig,
     GitHubPrEventConfig,
     GitHubStarAddedConfig,
+    GmailNewMessageConfig,
+    GmailPollInboxConfig,
     LinearCommentAddedConfig,
     LinearIssueCreatedConfig,
     LinearIssueUpdatedConfig,
@@ -121,7 +121,7 @@ def _make_workflow(
     activated: bool = True,
     trigger_name: str = "calendar_event_created",
     trigger_type: TriggerType = TriggerType.INTEGRATION,
-    composio_trigger_ids: Optional[List[str]] = None,
+    composio_trigger_ids: list[str] | None = None,
 ) -> Workflow:
     """Build a minimal valid Workflow for testing."""
     return Workflow(
@@ -144,7 +144,7 @@ def _make_trigger_config(
     trigger_name: str,
     trigger_type: TriggerType = TriggerType.INTEGRATION,
     trigger_data: Any = None,
-    composio_trigger_ids: Optional[List[str]] = None,
+    composio_trigger_ids: list[str] | None = None,
 ) -> TriggerConfig:
     """Build a TriggerConfig for testing."""
     return TriggerConfig(
@@ -159,7 +159,7 @@ def _make_trigger_config(
 class _AsyncCursorMock:
     """Mock for MongoDB async cursor that supports async iteration."""
 
-    def __init__(self, documents: List[Dict[str, Any]]) -> None:
+    def __init__(self, documents: list[dict[str, Any]]) -> None:
         self._documents = documents
         self._index = 0
 
@@ -184,11 +184,11 @@ class _ConcreteTriggerHandler(TriggerHandler):
     """Concrete implementation of TriggerHandler for testing the base class."""
 
     @property
-    def trigger_names(self) -> List[str]:
+    def trigger_names(self) -> list[str]:
         return ["test_trigger"]
 
     @property
-    def event_types(self) -> Set[str]:
+    def event_types(self) -> set[str]:
         return {"TEST_EVENT"}
 
     async def register(
@@ -197,12 +197,12 @@ class _ConcreteTriggerHandler(TriggerHandler):
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-    ) -> List[str]:
+    ) -> list[str]:
         return ["trigger_id_1"]
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: Dict[str, Any]
-    ) -> List[Workflow]:
+        self, event_type: str, trigger_id: str, data: dict[str, Any]
+    ) -> list[Workflow]:
         return []
 
 
@@ -246,9 +246,7 @@ class TestTriggerHandlerBase:
     @patch("app.services.triggers.base.get_composio_service")
     async def test_unregister_all_fail(self, mock_get_composio):
         mock_composio = MagicMock()
-        mock_composio.composio.triggers.delete = MagicMock(
-            side_effect=Exception("Delete failed")
-        )
+        mock_composio.composio.triggers.delete = MagicMock(side_effect=Exception("Delete failed"))
         mock_get_composio.return_value = mock_composio
 
         handler = _ConcreteTriggerHandler()
@@ -287,9 +285,7 @@ class TestTriggerHandlerBase:
         assert all(tid == "tid_new" for tid in result)
 
     @patch("app.services.triggers.base.get_composio_service")
-    async def test_register_triggers_parallel_returns_none_trigger_id(
-        self, mock_get_composio
-    ):
+    async def test_register_triggers_parallel_returns_none_trigger_id(self, mock_get_composio):
         """When composio returns a result without a trigger_id attribute, it is skipped."""
         mock_result = MagicMock(spec=[])  # no trigger_id attribute
         mock_composio = MagicMock()
@@ -307,9 +303,7 @@ class TestTriggerHandlerBase:
         assert result == []
 
     @patch("app.services.triggers.base.get_composio_service")
-    async def test_register_triggers_parallel_failure_rolls_back(
-        self, mock_get_composio
-    ):
+    async def test_register_triggers_parallel_failure_rolls_back(self, mock_get_composio):
         """If one config fails, all successful IDs are rolled back."""
         call_count = 0
 
@@ -323,9 +317,7 @@ class TestTriggerHandlerBase:
             return result
 
         mock_composio = MagicMock()
-        mock_composio.composio.triggers.create = MagicMock(
-            side_effect=create_side_effect
-        )
+        mock_composio.composio.triggers.create = MagicMock(side_effect=create_side_effect)
         mock_composio.composio.triggers.delete = MagicMock()
         mock_get_composio.return_value = mock_composio
 
@@ -339,14 +331,10 @@ class TestTriggerHandlerBase:
             )
 
     @patch("app.services.triggers.base.get_composio_service")
-    async def test_register_triggers_parallel_with_description_fn(
-        self, mock_get_composio
-    ):
+    async def test_register_triggers_parallel_with_description_fn(self, mock_get_composio):
         """config_description_fn is called on failure for logging."""
         mock_composio = MagicMock()
-        mock_composio.composio.triggers.create = MagicMock(
-            side_effect=Exception("boom")
-        )
+        mock_composio.composio.triggers.create = MagicMock(side_effect=Exception("boom"))
         mock_composio.composio.triggers.delete = MagicMock()
         mock_get_composio.return_value = mock_composio
 
@@ -364,9 +352,7 @@ class TestTriggerHandlerBase:
         desc_fn.assert_called_once_with({"x": 1})
 
     @patch("app.services.triggers.base.get_composio_service")
-    async def test_register_triggers_parallel_rollback_failure_logged(
-        self, mock_get_composio
-    ):
+    async def test_register_triggers_parallel_rollback_failure_logged(self, mock_get_composio):
         """When rollback itself fails, the error is raised with partial_ids."""
         call_count = 0
 
@@ -380,9 +366,7 @@ class TestTriggerHandlerBase:
             return result
 
         mock_composio = MagicMock()
-        mock_composio.composio.triggers.create = MagicMock(
-            side_effect=create_side_effect
-        )
+        mock_composio.composio.triggers.create = MagicMock(side_effect=create_side_effect)
         # Make delete also fail so rollback fails
         mock_composio.composio.triggers.delete = MagicMock(
             side_effect=Exception("Delete failed too")
@@ -415,9 +399,7 @@ class TestTriggerHandlerBase:
         mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
 
         handler = _ConcreteTriggerHandler()
-        workflows = await handler._load_workflows_from_query(
-            {"user_id": USER_ID}, "test"
-        )
+        workflows = await handler._load_workflows_from_query({"user_id": USER_ID}, "test")
         assert len(workflows) == 1
         assert workflows[0].user_id == USER_ID
 
@@ -476,18 +458,14 @@ class TestTriggerHandlerBase:
         workflow = _make_workflow()
         handler = _ConcreteTriggerHandler()
         handler.find_workflows = AsyncMock(return_value=[workflow])
-        mock_queue_svc.queue_workflow_execution = AsyncMock(
-            side_effect=Exception("Queue failed")
-        )
+        mock_queue_svc.queue_workflow_execution = AsyncMock(side_effect=Exception("Queue failed"))
 
         result = await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, {})
         assert result["status"] == "success"
         assert "Queued 0 workflows" in result["message"]
 
     @patch("app.services.triggers.base.WorkflowQueueService")
-    async def test_process_event_trigger_id_none_defaults_to_empty(
-        self, mock_queue_svc
-    ):
+    async def test_process_event_trigger_id_none_defaults_to_empty(self, mock_queue_svc):
         handler = _ConcreteTriggerHandler()
         handler.find_workflows = AsyncMock(return_value=[])
 
@@ -565,16 +543,14 @@ class TestTriggerRegistry:
 
         class _SecondHandler(TriggerHandler):
             @property
-            def trigger_names(self) -> List[str]:
+            def trigger_names(self) -> list[str]:
                 return ["second_trigger"]
 
             @property
-            def event_types(self) -> Set[str]:
+            def event_types(self) -> set[str]:
                 return {"SECOND_EVENT"}
 
-            async def register(
-                self, user_id, workflow_id, trigger_name, trigger_config
-            ):
+            async def register(self, user_id, workflow_id, trigger_name, trigger_config):
                 return []
 
             async def find_workflows(self, event_type, trigger_id, data):
@@ -622,18 +598,14 @@ class TestGmailTriggerHandler:
     async def test_register_success_no_trigger_data(self):
         handler = GmailTriggerHandler()
         config = _make_trigger_config("gmail_new_message", trigger_data=None)
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "gmail_new_message", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "gmail_new_message", config)
         assert result == []
 
     async def test_register_success_with_valid_trigger_data(self):
         handler = GmailTriggerHandler()
         data = GmailNewMessageConfig()
         config = _make_trigger_config("gmail_new_message", trigger_data=data)
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "gmail_new_message", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "gmail_new_message", config)
         assert result == []
 
     async def test_register_wrong_trigger_data_type_raises(self):
@@ -780,9 +752,7 @@ class TestGmailPollTriggerHandler:
         data = GmailPollInboxConfig(interval=30)
         config = _make_trigger_config("gmail_poll_inbox", trigger_data=data)
 
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "gmail_poll_inbox", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "gmail_poll_inbox", config)
         assert result == ["poll_tid_1"]
 
     async def test_register_wrong_trigger_data_raises(self):
@@ -790,18 +760,14 @@ class TestGmailPollTriggerHandler:
         wrong_data = GmailNewMessageConfig()
         config = _make_trigger_config("gmail_poll_inbox", trigger_data=wrong_data)
 
-        with pytest.raises(
-            TriggerRegistrationError, match="Expected GmailPollInboxConfig"
-        ):
+        with pytest.raises(TriggerRegistrationError, match="Expected GmailPollInboxConfig"):
             await handler.register(USER_ID, WORKFLOW_ID, "gmail_poll_inbox", config)
 
     async def test_register_none_trigger_data_raises(self):
         handler = GmailPollTriggerHandler()
         config = _make_trigger_config("gmail_poll_inbox", trigger_data=None)
 
-        with pytest.raises(
-            TriggerRegistrationError, match="Expected GmailPollInboxConfig"
-        ):
+        with pytest.raises(TriggerRegistrationError, match="Expected GmailPollInboxConfig"):
             await handler.register(USER_ID, WORKFLOW_ID, "gmail_poll_inbox", config)
 
     async def test_register_unknown_trigger_name_raises(self):
@@ -812,9 +778,7 @@ class TestGmailPollTriggerHandler:
         original = handler.TRIGGER_TO_COMPOSIO.copy()
         handler.TRIGGER_TO_COMPOSIO = {}
         try:
-            with pytest.raises(
-                TriggerRegistrationError, match="Unknown gmail poll trigger"
-            ):
+            with pytest.raises(TriggerRegistrationError, match="Unknown gmail poll trigger"):
                 await handler.register(USER_ID, WORKFLOW_ID, "gmail_poll_inbox", config)
         finally:
             handler.TRIGGER_TO_COMPOSIO = original
@@ -900,22 +864,16 @@ class TestSlackTriggerHandler:
             "slack_channel_created",
             trigger_data=SlackChannelCreatedConfig(),
         )
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "slack_channel_created", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "slack_channel_created", config)
         assert result == ["ch_created_tid"]
 
     @patch("app.services.triggers.handlers.slack.get_composio_service")
-    async def test_register_channel_created_wrong_data_type_raises(
-        self, mock_get_composio
-    ):
+    async def test_register_channel_created_wrong_data_type_raises(self, mock_get_composio):
         handler = SlackTriggerHandler()
         wrong_data = SlackNewMessageConfig()
         config = _make_trigger_config("slack_channel_created", trigger_data=wrong_data)
         with pytest.raises(TypeError, match="Expected SlackChannelCreatedConfig"):
-            await handler.register(
-                USER_ID, WORKFLOW_ID, "slack_channel_created", config
-            )
+            await handler.register(USER_ID, WORKFLOW_ID, "slack_channel_created", config)
 
     async def test_register_new_message_wrong_data_type_raises(self):
         handler = SlackTriggerHandler()
@@ -937,9 +895,7 @@ class TestSlackTriggerHandler:
         data = SlackNewMessageConfig(channel_ids=[])
         config = _make_trigger_config("slack_new_message", trigger_data=data)
 
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "slack_new_message", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "slack_new_message", config)
         # Should register SLACK_RECEIVE_MESSAGE + 5 non-excluded types, each for 1 empty channel
         assert len(result) > 0
 
@@ -955,9 +911,7 @@ class TestSlackTriggerHandler:
         data = SlackNewMessageConfig(channel_ids=["C001", "C002"])
         config = _make_trigger_config("slack_new_message", trigger_data=data)
 
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "slack_new_message", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "slack_new_message", config)
         # For 2 channels: 2 (RECEIVE_MESSAGE) + 2*5 (non-excluded types) = 12
         assert len(result) == 12
 
@@ -981,23 +935,19 @@ class TestSlackTriggerHandler:
         )
         config = _make_trigger_config("slack_new_message", trigger_data=data)
 
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "slack_new_message", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "slack_new_message", config)
         # Only SLACK_RECEIVE_MESSAGE for 1 channel
         assert len(result) == 1
 
     @patch("app.services.triggers.base.get_composio_service")
     @patch("app.services.triggers.handlers.slack.get_composio_service")
-    async def test_register_partial_failure_rolls_back(
-        self, mock_get_composio, mock_base_composio
-    ):
+    async def test_register_partial_failure_rolls_back(self, mock_get_composio, mock_base_composio):
         """If some trigger registrations fail, all successful ones are rolled back."""
         call_count = 0
 
         def sync_side_effect(
-            user_id: str, composio_slug: str, trigger_config: Dict[str, Any]
-        ) -> List[str]:
+            user_id: str, composio_slug: str, trigger_config: dict[str, Any]
+        ) -> list[str]:
             nonlocal call_count
             call_count += 1
             if call_count == 2:
@@ -1347,9 +1297,7 @@ class TestGitHubTriggerHandler:
         data = GitHubCommitEventConfig(repos=["owner/repo1"])
         config = _make_trigger_config("github_commit_event", trigger_data=data)
 
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "github_commit_event", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "github_commit_event", config)
         assert result == ["gh_tid_1"]
 
     @patch("app.services.triggers.base.get_composio_service")
@@ -1379,9 +1327,7 @@ class TestGitHubTriggerHandler:
         data = GitHubStarAddedConfig(repos=["owner/repo1"])
         config = _make_trigger_config("github_star_added", trigger_data=data)
 
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "github_star_added", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "github_star_added", config)
         assert result == ["star_tid_1"]
 
     @patch("app.services.triggers.base.get_composio_service")
@@ -1396,9 +1342,7 @@ class TestGitHubTriggerHandler:
         data = GitHubIssueAddedConfig(repos=["owner/repo1"])
         config = _make_trigger_config("github_issue_added", trigger_data=data)
 
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "github_issue_added", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "github_issue_added", config)
         assert result == ["issue_tid_1"]
 
     async def test_register_commit_event_wrong_data_type_raises(self):
@@ -1433,9 +1377,7 @@ class TestGitHubTriggerHandler:
         handler = GitHubTriggerHandler()
         data = GitHubCommitEventConfig(repos=[])
         config = _make_trigger_config("github_commit_event", trigger_data=data)
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "github_commit_event", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "github_commit_event", config)
         assert result == []
 
     async def test_register_invalid_repo_format_skipped(self):
@@ -1443,9 +1385,7 @@ class TestGitHubTriggerHandler:
         handler = GitHubTriggerHandler()
         data = GitHubCommitEventConfig(repos=["invalid_no_slash"])
         config = _make_trigger_config("github_commit_event", trigger_data=data)
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "github_commit_event", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "github_commit_event", config)
         assert result == []
 
     @patch("app.services.triggers.base.get_composio_service")
@@ -1454,9 +1394,7 @@ class TestGitHubTriggerHandler:
         handler = GitHubTriggerHandler()
         data = GitHubCommitEventConfig(repos=["org/sub/repo"])
         config = _make_trigger_config("github_commit_event", trigger_data=data)
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "github_commit_event", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "github_commit_event", config)
         assert result == []
 
     # GitHub register - unknown trigger name after slug lookup passes but
@@ -1469,9 +1407,7 @@ class TestGitHubTriggerHandler:
         data = GitHubCommitEventConfig(repos=["owner/repo"])
         config = _make_trigger_config("github_fake", trigger_data=data)
         try:
-            with pytest.raises(
-                TriggerRegistrationError, match="Unknown GitHub trigger"
-            ):
+            with pytest.raises(TriggerRegistrationError, match="Unknown GitHub trigger"):
                 await handler.register(USER_ID, WORKFLOW_ID, "github_fake", config)
         finally:
             del handler.TRIGGER_TO_COMPOSIO["github_fake"]
@@ -1593,9 +1529,7 @@ class TestGitHubTriggerHandler:
         mock_collection.find = MagicMock(return_value=_AsyncCursorMock([]))
 
         handler = GitHubTriggerHandler()
-        result = await handler.find_workflows(
-            "GITHUB_COMMIT_EVENT", "nonexistent_tid", {}
-        )
+        result = await handler.find_workflows("GITHUB_COMMIT_EVENT", "nonexistent_tid", {})
         assert result == []
 
     @patch("app.services.triggers.handlers.github.workflows_collection")
@@ -1747,9 +1681,7 @@ class TestCalendarTriggerHandler:
         data = CalendarEventCreatedConfig(calendar_ids=["primary"])
         config = _make_trigger_config("calendar_event_created", trigger_data=data)
 
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "calendar_event_created", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "calendar_event_created", config)
         assert result == ["cal_tid_1"]
 
     @patch("app.services.triggers.base.get_composio_service")
@@ -1792,14 +1724,10 @@ class TestCalendarTriggerHandler:
         )
         config = _make_trigger_config("calendar_event_created", trigger_data=data)
 
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "calendar_event_created", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "calendar_event_created", config)
         assert len(result) == 3
 
-    @patch(
-        "app.services.triggers.handlers.calendar.CalendarTriggerHandler._fetch_user_calendars"
-    )
+    @patch("app.services.triggers.handlers.calendar.CalendarTriggerHandler._fetch_user_calendars")
     @patch("app.services.triggers.base.get_composio_service")
     async def test_register_all_calendars_expands(self, mock_get_composio, mock_fetch):
         """calendar_ids=['all'] fetches actual calendar list."""
@@ -1814,9 +1742,7 @@ class TestCalendarTriggerHandler:
         data = CalendarEventCreatedConfig(calendar_ids=["all"])
         config = _make_trigger_config("calendar_event_created", trigger_data=data)
 
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "calendar_event_created", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "calendar_event_created", config)
         assert len(result) == 2
         mock_fetch.assert_awaited_once_with(USER_ID)
 
@@ -1825,9 +1751,7 @@ class TestCalendarTriggerHandler:
         data = CalendarEventCreatedConfig(calendar_ids=[])
         config = _make_trigger_config("calendar_event_created", trigger_data=data)
 
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "calendar_event_created", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "calendar_event_created", config)
         assert result == []
 
     async def test_register_unknown_trigger_raises(self):
@@ -1842,20 +1766,14 @@ class TestCalendarTriggerHandler:
         wrong_data = GmailNewMessageConfig()
         config = _make_trigger_config("calendar_event_created", trigger_data=wrong_data)
         with pytest.raises(TypeError, match="Expected CalendarEventCreatedConfig"):
-            await handler.register(
-                USER_ID, WORKFLOW_ID, "calendar_event_created", config
-            )
+            await handler.register(USER_ID, WORKFLOW_ID, "calendar_event_created", config)
 
     async def test_register_event_starting_soon_wrong_data_type_raises(self):
         handler = CalendarTriggerHandler()
         wrong_data = GmailNewMessageConfig()
-        config = _make_trigger_config(
-            "calendar_event_starting_soon", trigger_data=wrong_data
-        )
+        config = _make_trigger_config("calendar_event_starting_soon", trigger_data=wrong_data)
         with pytest.raises(TypeError, match="Expected CalendarEventStartingSoonConfig"):
-            await handler.register(
-                USER_ID, WORKFLOW_ID, "calendar_event_starting_soon", config
-            )
+            await handler.register(USER_ID, WORKFLOW_ID, "calendar_event_starting_soon", config)
 
     @patch("app.services.triggers.handlers.calendar.workflows_collection")
     async def test_find_workflows_event_created(self, mock_collection):
@@ -1984,9 +1902,7 @@ class TestCalendarTriggerHandler:
         assert result == ["primary"]
 
     @patch("app.services.calendar_service.list_calendars")
-    async def test_fetch_user_calendars_items_without_id_skipped(
-        self, mock_list_calendars
-    ):
+    async def test_fetch_user_calendars_items_without_id_skipped(self, mock_list_calendars):
         """Calendar items without 'id' field are excluded."""
         mock_list_calendars.return_value = {
             "items": [
@@ -2049,9 +1965,7 @@ class TestLinearTriggerHandler:
         data = LinearIssueCreatedConfig(team_id="team_abc")
         config = _make_trigger_config("linear_issue_created", trigger_data=data)
 
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "linear_issue_created", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "linear_issue_created", config)
         assert result == ["lin_tid_1"]
         # Verify team_id was passed in config
         call_kwargs = mock_composio.composio.triggers.create.call_args
@@ -2070,9 +1984,7 @@ class TestLinearTriggerHandler:
         data = LinearIssueUpdatedConfig(team_id="team_xyz")
         config = _make_trigger_config("linear_issue_updated", trigger_data=data)
 
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "linear_issue_updated", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "linear_issue_updated", config)
         assert result == ["lin_upd_tid"]
 
     @patch("app.services.triggers.base.get_composio_service")
@@ -2087,9 +1999,7 @@ class TestLinearTriggerHandler:
         data = LinearCommentAddedConfig(team_id="team_abc")
         config = _make_trigger_config("linear_comment_added", trigger_data=data)
 
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "linear_comment_added", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "linear_comment_added", config)
         assert result == ["lin_cmt_tid"]
 
     @patch("app.services.triggers.base.get_composio_service")
@@ -2105,9 +2015,7 @@ class TestLinearTriggerHandler:
         data = LinearIssueCreatedConfig(team_id="")
         config = _make_trigger_config("linear_issue_created", trigger_data=data)
 
-        result = await handler.register(
-            USER_ID, WORKFLOW_ID, "linear_issue_created", config
-        )
+        result = await handler.register(USER_ID, WORKFLOW_ID, "linear_issue_created", config)
         assert result == ["lin_no_team_tid"]
         call_kwargs = mock_composio.composio.triggers.create.call_args
         trigger_config_arg = call_kwargs.kwargs.get("trigger_config", {})
@@ -2141,9 +2049,7 @@ class TestLinearTriggerHandler:
         data = LinearIssueCreatedConfig()
         config = _make_trigger_config("linear_fake", trigger_data=data)
         try:
-            with pytest.raises(
-                TriggerRegistrationError, match="Unknown Linear trigger"
-            ):
+            with pytest.raises(TriggerRegistrationError, match="Unknown Linear trigger"):
                 await handler.register(USER_ID, WORKFLOW_ID, "linear_fake", config)
         finally:
             del handler.TRIGGER_TO_COMPOSIO["linear_fake"]
@@ -2240,9 +2146,7 @@ class TestLinearTriggerHandler:
         mock_collection.find = MagicMock(return_value=_AsyncCursorMock([]))
 
         handler = LinearTriggerHandler()
-        result = await handler.find_workflows(
-            "LINEAR_ISSUE_CREATED_TRIGGER", "nonexistent_tid", {}
-        )
+        result = await handler.find_workflows("LINEAR_ISSUE_CREATED_TRIGGER", "nonexistent_tid", {})
         assert result == []
 
     @patch("app.services.triggers.handlers.linear.workflows_collection")
@@ -2251,9 +2155,7 @@ class TestLinearTriggerHandler:
         mock_collection.find = MagicMock(return_value=_AsyncCursorMock([invalid_doc]))
 
         handler = LinearTriggerHandler()
-        result = await handler.find_workflows(
-            "LINEAR_ISSUE_CREATED_TRIGGER", TRIGGER_ID, {}
-        )
+        result = await handler.find_workflows("LINEAR_ISSUE_CREATED_TRIGGER", TRIGGER_ID, {})
         assert result == []
 
     @patch("app.services.triggers.handlers.linear.workflows_collection")
@@ -2261,9 +2163,7 @@ class TestLinearTriggerHandler:
         mock_collection.find = MagicMock(side_effect=Exception("DB error"))
 
         handler = LinearTriggerHandler()
-        result = await handler.find_workflows(
-            "LINEAR_ISSUE_CREATED_TRIGGER", TRIGGER_ID, {}
-        )
+        result = await handler.find_workflows("LINEAR_ISSUE_CREATED_TRIGGER", TRIGGER_ID, {})
         assert result == []
 
     @patch("app.services.triggers.handlers.linear.get_composio_service")

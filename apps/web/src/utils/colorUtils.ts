@@ -31,9 +31,7 @@ const CSS_COLOR_NAMES: Record<string, [number, number, number]> = {
  * @param hex Hex color string (e.g. "#ff0000" or "ff0000")
  * @returns RGB object or null if invalid
  */
-export function hexToRgb(
-  hex: string,
-): { r: number; g: number; b: number } | null {
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   // Handle various hex formats
   const normalizedHex = hex.charAt(0) === "#" ? hex.substring(1) : hex;
 
@@ -205,7 +203,7 @@ export function parseColor(
  * @param l Lightness (0-1)
  * @returns RGB color object
  */
-export function hslToRgb(
+function hslToRgb(
   h: number,
   s: number,
   l: number,

@@ -1,3 +1,4 @@
+import type { ToolDataEntry } from "@gaia/shared/chat";
 import { getAuthToken } from "@/features/auth/utils/auth-storage";
 import { apiService } from "@/lib/api";
 import { API_BASE_URL } from "@/lib/constants";
@@ -20,11 +21,8 @@ export interface ApiFileData {
   url?: string;
 }
 
-export interface ApiToolData {
-  tool_name: string;
-  data: Record<string, unknown>;
-  timestamp?: string | null;
-}
+/** @deprecated Use ToolDataEntry from @gaia/shared/chat instead. */
+export type ApiToolData = ToolDataEntry;
 
 export interface ApiMessage {
   type: "user" | "bot";
@@ -33,7 +31,7 @@ export interface ApiMessage {
   message_id: string;
   fileIds: string[];
   fileData: ApiFileData[];
-  tool_data?: ApiToolData[];
+  tool_data?: ToolDataEntry[];
   metadata?: Record<string, unknown>;
   replyToMessage?: ReplyToMessageData | null;
   reply_to_message?: ReplyToMessageData | null;
@@ -75,10 +73,11 @@ export interface Message {
   timestamp: Date;
   fileIds?: string[];
   fileData?: ApiFileData[];
-  toolData?: ApiToolData[];
+  toolData?: ToolDataEntry[];
   followUpActions?: string[];
   imageData?: ImageData | null;
   memoryData?: MemoryData | null;
+  pinned?: boolean;
   metadata?: Record<string, unknown>;
   replyToMessage?: ReplyToMessageData | null;
 }

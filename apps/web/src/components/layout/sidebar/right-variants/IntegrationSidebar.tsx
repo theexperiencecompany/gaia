@@ -14,7 +14,7 @@ import {
 } from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
@@ -23,6 +23,7 @@ import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
+import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
 import type { Integration } from "@/features/integrations/types";
 import { toast } from "@/lib/toast";
 import { useUserStore } from "@/stores/userStore";
@@ -52,6 +53,12 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const showRetry = integration.status === "created";
   const { tools } = useToolsWithIntegrations();
   const queryClient = useQueryClient();
+
+  // Hoist RegExp out of render loop - same pattern for all tools
+  const categoryPrefixRegex = useMemo(
+    () => (category ? new RegExp(`^${category}\\s*`, "gi") : null),
+    [category],
+  );
 
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -175,44 +182,51 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   };
 
   const handleDisconnect = () => {
-    if (isConnected && onDisconnect) {
-      setShowDisconnectDialog(true);
-    }
+    if (!isConnected || !onDisconnect) return;
+    setShowDisconnectDialog(true);
   };
 
   const confirmDisconnect = async () => {
-    if (onDisconnect) {
-      setIsDisconnecting(true);
-      try {
-        await onDisconnect(integration.id);
-      } finally {
-        setIsDisconnecting(false);
-        setShowDisconnectDialog(false);
-      }
+    if (!onDisconnect) return;
+    setIsDisconnecting(true);
+    try {
+      await onDisconnect(integration.id);
+    } finally {
+      setIsDisconnecting(false);
+      setShowDisconnectDialog(false);
     }
   };
 
   const handleDelete = () => {
-    if (onDelete) {
-      setShowDeleteDialog(true);
-    }
+    if (!onDelete) return;
+    setShowDeleteDialog(true);
   };
 
   const confirmDelete = async () => {
-    if (onDelete) {
-      setIsDeleting(true);
-      try {
-        await onDelete(integration.id);
-      } finally {
-        setIsDeleting(false);
-        setShowDeleteDialog(false);
-      }
+    if (!onDelete) return;
+    setIsDeleting(true);
+    try {
+      await onDelete(integration.id);
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
     }
   };
 
   const handlePublish = () => {
     if (isPublishing) return;
     setShowPublishDialog(true);
+  };
+
+  const handleShare = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        `${window.location.origin}/marketplace/${integration.slug}`,
+      );
+      toast.success("Link copied to clipboard!");
+    } catch {
+      toast.error("Failed to copy link to clipboard");
+    }
   };
 
   const confirmPublish = async () => {
@@ -441,16 +455,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   isIconOnly={useIconOnly}
                   className="w-full"
                   color="default"
-                  onPress={async () => {
-                    try {
-                      await navigator.clipboard.writeText(
-                        `${window.location.origin}/marketplace/${integration.slug}`,
-                      );
-                      toast.success("Link copied to clipboard!");
-                    } catch {
-                      toast.error("Failed to copy link to clipboard");
-                    }
-                  }}
+                  onPress={handleShare}
                   aria-label="Share"
                   startContent={<Share08Icon width={18} height={18} />}
                 >
@@ -474,16 +479,16 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           </Button>
         )}
         {integrationTools.length > 0 && (
-          <h2 className="mb-1 mt-3 text-xs font-medium text-zinc-400 -ml-1">
-            Available Tools ({integrationTools.length})
+          <h2 className="mt-3 text-sm font-medium text-zinc-300 relative right-1">
+            Available tools ({integrationTools.length})
           </h2>
         )}
       </SidebarHeader>
 
-      <SidebarContent className="flex-1 overflow-y-auto">
-        <div className="space-y-4 pb-4">
-          {integrationTools.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+      <SidebarContent className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        {integrationTools.length > 0 && (
+          <div className="flex-1 min-h-0 overflow-y-auto pb-2">
+            <div className="flex flex-wrap gap-2 content-start">
               {integrationTools.map((tool) => (
                 <Chip
                   key={tool.name}
@@ -492,15 +497,19 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   radius="full"
                   className="font-light border-1 text-zinc-300"
                 >
-                  {category
+                  {categoryPrefixRegex
                     ? formatToolName(tool.name)
-                        .replace(new RegExp(`^${category}\\s*`, "gi"), "")
+                        .replace(categoryPrefixRegex, "")
                         .trim()
                     : formatToolName(tool.name)}
                 </Chip>
               ))}
             </div>
-          )}
+          </div>
+        )}
+
+        <div className="shrink-0 pb-4">
+          <IntegrationRelatedWorkflows integrationId={integration.id} />
         </div>
       </SidebarContent>
 

@@ -48,7 +48,7 @@ export const NotificationItem = ({
             {content.body}
           </p>
           <div className="mt-1 flex items-center gap-2 text-xs text-zinc-600">
-            <span className="capitalize">
+            <span className="capitalize" suppressHydrationWarning>
               {formatDistanceToNow(new Date(notification.created_at), {
                 addSuffix: true,
               })}

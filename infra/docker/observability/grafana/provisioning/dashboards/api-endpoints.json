@@ -12,6 +12,21 @@
         "iconColor": "rgba(0, 211, 255, 1)",
         "name": "Annotations & Alerts",
         "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "enable": true,
+        "iconColor": "rgba(255, 96, 96, 1)",
+        "name": "Deploys",
+        "target": {
+          "expr": "{event=\"deploy\"}",
+          "refId": "Anno"
+        },
+        "titleFormat": "Deploy ({{service}})",
+        "textFormat": "{{sha}} by {{actor}}"
       }
     ]
   },
@@ -22,16 +37,25 @@
   "id": null,
   "links": [
     {
-      "title": "GAIA Application Logs",
-      "type": "dashboard",
-      "url": "/d/gaia-application-logs"
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [
+        "gaia"
+      ],
+      "targetBlank": false,
+      "title": "GAIA Dashboards",
+      "tooltip": "",
+      "type": "dashboards",
+      "url": ""
     }
   ],
   "panels": [
     {
       "datasource": {
         "type": "loki",
-        "uid": "${datasource}"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -110,7 +134,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${datasource}"
+            "uid": "loki"
           },
           "expr": "sum by (method) (rate({service=\"gaia-backend\"} | json | message = \"http_request\" | path =~ \"$path\" [$__auto]))",
           "interval": "5m",
@@ -124,7 +148,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "${datasource}"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -234,7 +258,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${datasource}"
+            "uid": "loki"
           },
           "expr": "sum(rate({service=\"gaia-backend\"} | json | message = \"http_request\" | path =~ \"$path\" | status_code >= 400 | status_code < 500 [$__auto]))",
           "interval": "5m",
@@ -244,7 +268,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${datasource}"
+            "uid": "loki"
           },
           "expr": "sum(rate({service=\"gaia-backend\"} | json | message = \"http_request\" | path =~ \"$path\" | status_code >= 500 [$__auto]))",
           "interval": "5m",
@@ -258,7 +282,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "${datasource}"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -337,7 +361,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${datasource}"
+            "uid": "loki"
           },
           "expr": "quantile_over_time(0.50, {service=\"gaia-backend\"} | json | message = \"http_request\" | path =~ \"$path\" | unwrap duration_ms [5m]) by (path)",
           "interval": "5m",
@@ -347,7 +371,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${datasource}"
+            "uid": "loki"
           },
           "expr": "quantile_over_time(0.95, {service=\"gaia-backend\"} | json | message = \"http_request\" | path =~ \"$path\" | unwrap duration_ms [5m]) by (path)",
           "interval": "5m",
@@ -361,7 +385,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "${datasource}"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -437,7 +461,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${datasource}"
+            "uid": "loki"
           },
           "expr": "topk(20, sum by (path) (count_over_time({service=\"gaia-backend\"} | json | message = \"http_request\" | path =~ \"$path\" [$__range])))",
           "instant": true,
@@ -471,7 +495,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "${datasource}"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -555,7 +579,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${datasource}"
+            "uid": "loki"
           },
           "expr": "topk(20, sum by (path) (count_over_time({service=\"gaia-backend\"} | json | message = \"http_request\" | path =~ \"$path\" | status_code >= 400 [$__range])))",
           "instant": true,
@@ -589,7 +613,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "${datasource}"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -674,7 +698,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${datasource}"
+            "uid": "loki"
           },
           "expr": "topk(20, quantile_over_time(0.95, {service=\"gaia-backend\"} | json | message = \"http_request\" | path =~ \"$path\" | unwrap duration_ms [$__range]) by (path))",
           "instant": true,
@@ -708,7 +732,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "${datasource}"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 10,
@@ -731,7 +755,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${datasource}"
+            "uid": "loki"
           },
           "expr": "{service=\"gaia-backend\"} | json | message = \"http_request\" | path =~ \"$path\" | status_code >= 400",
           "legendFormat": "",
@@ -747,23 +771,10 @@
   "tags": [
     "gaia",
     "api",
-    "loki"
+    "logs"
   ],
   "templating": {
     "list": [
-      {
-        "current": {},
-        "hide": 0,
-        "includeAll": false,
-        "label": "Datasource",
-        "multi": false,
-        "name": "datasource",
-        "options": [],
-        "query": "loki",
-        "refresh": 1,
-        "regex": "",
-        "type": "datasource"
-      },
       {
         "current": {
           "selected": true,

@@ -12,25 +12,7 @@
 import { z } from "zod";
 
 import type { Workflow } from "@/types/features/workflowTypes";
-
-// =============================================================================
-// TIMEZONE HELPERS
-// =============================================================================
-
-/**
- * Get the browser's IANA timezone (e.g., "America/New_York", "Asia/Kolkata").
- * Falls back to "UTC" in non-browser environments.
- */
-export const getBrowserTimezone = (): string => {
-  if (typeof window !== "undefined" && typeof Intl !== "undefined") {
-    try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone;
-    } catch {
-      return "UTC";
-    }
-  }
-  return "UTC";
-};
+import { getBrowserTimezone } from "../utils/browserTimezone";
 
 // =============================================================================
 // TRIGGER CONFIG SCHEMAS
@@ -58,7 +40,7 @@ const integrationTriggerConfigSchema = z
     type: z.string(),
     enabled: z.boolean(),
   })
-  .passthrough(); // Allow any additional properties
+  .catchall(z.unknown()); // Allow any additional properties
 
 // Combined trigger config - tries built-in first, then falls back to generic
 const triggerConfigSchema = z.union([
@@ -76,8 +58,8 @@ export const workflowFormSchema = z.object({
   description: z
     .string()
     .max(300, "Description too long (max 300 characters)")
-    .optional()
-    .transform((val) => val?.trim() || undefined),
+    .transform((val) => val.trim() || undefined)
+    .optional(),
   prompt: z.string().min(1, "Prompt is required").max(5000, "Prompt too long"),
   activeTab: z.enum(["manual", "schedule", "trigger"]),
   selectedTrigger: z.string(),

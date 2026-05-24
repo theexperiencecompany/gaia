@@ -1,3 +1,3 @@
-from app.db.mongodb import collections
+from . import collections
 
 __all__ = ["collections"]

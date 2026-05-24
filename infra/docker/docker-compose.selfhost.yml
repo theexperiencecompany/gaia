@@ -32,7 +32,7 @@ services:
       POSTGRES_PASSWORD: postgres # pragma: allowlist secret
       POSTGRES_DB: langgraph
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     restart: on-failure
@@ -163,7 +163,11 @@ services:
     environment:
       WORKER_TYPE: arq_worker
       PYTHONPATH: /app/apps/api
-    command: ["uv", "run", "python", "-m", "arq", "app.worker.WorkerSettings"]
+    # Python deps are installed system-wide via UV_PROJECT_ENVIRONMENT=/usr/local
+    # in the API Dockerfile, so call python directly. `uv run` would try to
+    # rewrite /app/uv.lock and fail (Permission denied) under the non-root
+    # appuser the runtime image switches to.
+    command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
     restart: always
     depends_on:
       redis:
@@ -182,7 +186,9 @@ services:
       - ../../apps/api/.env
     environment:
       PYTHONPATH: /app/apps/api
-    command: ["uv", "run", "python", "scripts/seed_models.py", "--force"]
+    # Same reason as arq_worker: drop the `uv run` wrapper so we don't hit
+    # the Permission denied on /app/uv.lock as appuser.
+    command: ["python", "scripts/seed_models.py", "--force"]
     depends_on:
       mongo:
         condition: service_healthy

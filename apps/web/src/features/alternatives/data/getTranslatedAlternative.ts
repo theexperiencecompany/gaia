@@ -1,4 +1,5 @@
 import { getLocale } from "next-intl/server";
+import { cache } from "react";
 import { loadFeatureTranslations } from "@/i18n/loadFeatureTranslations";
 import {
   type AlternativeData,
@@ -30,27 +31,35 @@ async function loadAlternativeTranslations(
   const locale = localeOverride ?? (await getLocale());
   return loadFeatureTranslations<Record<string, TranslationOverrides>>(
     locale,
-    (l) => import(`../i18n/${l}.json`),
+    "alternatives",
   );
 }
 
-export async function getTranslatedAlternative(
-  slug: string,
-  locale?: string,
-): Promise<AlternativeData | undefined> {
-  const base = getAlternative(slug);
-  if (!base) return undefined;
-  const translations = await loadAlternativeTranslations(locale);
-  const t = translations[slug];
-  if (!t) return base;
-  return { ...base, ...t };
-}
+/** Wrapped with React.cache() for per-request deduplication between generateMetadata and page component */
+export const getTranslatedAlternative = cache(
+  async (
+    slug: string,
+    locale?: string,
+  ): Promise<AlternativeData | undefined> => {
+    const [base, translations] = await Promise.all([
+      getAlternative(slug),
+      loadAlternativeTranslations(locale),
+    ]);
+    if (!base) return undefined;
+    const t = translations[slug];
+    if (!t) return base;
+    return { ...base, ...t };
+  },
+);
 
 export async function getTranslatedAlternatives(
   locale?: string,
 ): Promise<AlternativeData[]> {
-  const translations = await loadAlternativeTranslations(locale);
-  return getAllAlternatives().map((alt) => {
+  const [all, translations] = await Promise.all([
+    getAllAlternatives(),
+    loadAlternativeTranslations(locale),
+  ]);
+  return all.map((alt) => {
     const t = translations[alt.slug];
     return t ? { ...alt, ...t } : alt;
   });

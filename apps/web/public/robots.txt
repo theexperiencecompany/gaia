@@ -62,3 +62,4 @@ Allow: /
 
 Sitemap: https://heygaia.io/sitemap.xml
 Sitemap: https://heygaia.io/brand/sitemap.xml
+Sitemap: https://heygaia.io/feed.xml

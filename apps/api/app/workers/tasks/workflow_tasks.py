@@ -3,10 +3,12 @@ Workflow worker functions for ARQ task processing.
 Contains all workflow-related background tasks and execution logic.
 """
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 from zoneinfo import ZoneInfo
+
+from bson import ObjectId
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 from app.agents.prompts.workflow_prompts import (
     TODO_WORKFLOW_DESCRIPTION_TEMPLATE,
@@ -17,7 +19,6 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     tiered_rate_limit,
 )
 from app.core.websocket_manager import get_websocket_manager
-from shared.py.wide_events import WorkflowContext, log, wide_task
 from app.db.mongodb.collections import todos_collection
 from app.models.chat_models import MessageModel
 from app.models.message_models import (
@@ -50,8 +51,7 @@ from app.services.workflow.conversation_service import (
 )
 from app.services.workflow.scheduler import WorkflowScheduler
 from app.services.workflow.service import WorkflowService
-from bson import ObjectId
-from langchain_core.callbacks import UsageMetadataCallbackHandler
+from shared.py.wide_events import WorkflowContext, log, wide_task
 
 
 async def process_workflow_generation_task(
@@ -72,16 +72,12 @@ async def process_workflow_generation_task(
     Returns:
         Processing result message
     """
-    async with wide_task(
-        "process_workflow_generation_task", todo_id=todo_id, user_id=user_id
-    ):
+    async with wide_task("process_workflow_generation_task", todo_id=todo_id, user_id=user_id):
         log.info(f"Processing workflow generation for todo {todo_id}: {title}")
 
         try:
             # Build short card description plus detailed execution prompt
-            workflow_description = TODO_WORKFLOW_DESCRIPTION_TEMPLATE.format(
-                title=title
-            )
+            workflow_description = TODO_WORKFLOW_DESCRIPTION_TEMPLATE.format(title=title)
             workflow_prompt = TODO_WORKFLOW_PROMPT_TEMPLATE.format(
                 title=title,
                 details_section=f"**Details:** {description}" if description else "",
@@ -106,13 +102,11 @@ async def process_workflow_generation_task(
                 # Verify workflow actually has steps before linking
                 if not workflow.steps or len(workflow.steps) == 0:
                     reason = workflow.error_message or "unknown error"
-                    raise ValueError(
-                        f"Workflow {workflow.id} created but has no steps — {reason}"
-                    )
+                    raise ValueError(f"Workflow {workflow.id} created but has no steps — {reason}")
 
                 update_data = {
                     "workflow_id": workflow.id,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
 
                 result = await todos_collection.update_one(
@@ -132,9 +126,7 @@ async def process_workflow_generation_task(
                         )
                     )
 
-                    await TodoService._invalidate_cache(
-                        user_id, None, todo_id, "update"
-                    )
+                    await TodoService._invalidate_cache(user_id, None, todo_id, "update")
 
                     try:
                         websocket_manager = get_websocket_manager()
@@ -158,15 +150,11 @@ async def process_workflow_generation_task(
                     await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
 
                     return f"Successfully generated standalone workflow {workflow.id} for todo {todo_id}"
-                else:
-                    raise ValueError(f"Todo {todo_id} not found or not updated")
+                raise ValueError(f"Todo {todo_id} not found or not updated")
 
-            else:
-                # Mark workflow generation as failed
-                log.error(
-                    f"Failed to generate workflow for todo {todo_id}: No workflow created"
-                )
-                raise ValueError("Workflow generation failed: No workflow created")
+            # Mark workflow generation as failed
+            log.error(f"Failed to generate workflow for todo {todo_id}: No workflow created")
+            raise ValueError("Workflow generation failed: No workflow created")
 
         except Exception as e:
             # Clear the generating flag on failure too
@@ -197,13 +185,13 @@ async def process_workflow_generation_task(
             raise
 
 
-async def execute_workflow_by_id(
-    ctx: dict, workflow_id: str, context: Optional[dict] = None
-) -> str:
+async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | None = None) -> str:
     """
     Execute a workflow by ID with proper execution count tracking.
     """
     async with wide_task("execute_workflow_by_id", workflow_id=workflow_id):
+        actual_fire_utc = datetime.now(UTC)
+        log.set(actual_fire_utc=actual_fire_utc.isoformat())
         log.info(f"Processing workflow execution: {workflow_id}")
 
         scheduler = WorkflowScheduler()
@@ -225,9 +213,7 @@ async def execute_workflow_by_id(
                 return f"Workflow {workflow_id} not found"
 
             # Determine trigger type from context
-            trigger_type = (
-                context.get("trigger_type", "manual") if context else "manual"
-            )
+            trigger_type = context.get("trigger_type", "manual") if context else "manual"
             log.set(
                 workflow=WorkflowContext(
                     id=workflow_id,
@@ -235,6 +221,21 @@ async def execute_workflow_by_id(
                     steps_count=len(workflow.steps),
                 )
             )
+
+            scheduled_at = getattr(workflow, "scheduled_at", None)
+            if isinstance(scheduled_at, datetime):
+                if scheduled_at.tzinfo is None:
+                    scheduled_at = scheduled_at.replace(tzinfo=UTC)
+                drift = int((actual_fire_utc - scheduled_at).total_seconds())
+                log.set(
+                    scheduled_at_utc=scheduled_at.isoformat(),
+                    drift_from_scheduled_seconds=drift,
+                )
+                if abs(drift) > 300:
+                    log.warning(
+                        f"Workflow {workflow_id} fired {drift}s off schedule "
+                        f"(positive = late, negative = early)",
+                    )
 
             # Create execution record at start
             execution = await create_execution(
@@ -261,9 +262,7 @@ async def execute_workflow_by_id(
 
             # Complete execution record with success
             summary = f"Executed {len(execution_messages)} steps successfully"
-            conversation_id = (
-                conversation.get("conversation_id") if conversation else None
-            )
+            conversation_id = conversation.get("conversation_id") if conversation else None
             await complete_execution(
                 execution_id=execution_id,
                 status="success",
@@ -303,9 +302,7 @@ async def execute_workflow_by_id(
                 try:
                     if isinstance(e, RateLimitExceededException):
                         title = f"Workflow Failed: {workflow.title}"
-                        detail: dict[str, str] = (
-                            e.detail if isinstance(e.detail, dict) else {}
-                        )
+                        detail: dict[str, str] = e.detail if isinstance(e.detail, dict) else {}
                         plan_required = detail.get("plan_required", "pro").upper()
                         reset_time_str = detail.get("reset_time", "")
 
@@ -314,11 +311,9 @@ async def execute_workflow_by_id(
                             try:
                                 reset_dt = datetime.fromisoformat(reset_time_str)
                                 if reset_dt.tzinfo is None:
-                                    reset_dt = reset_dt.replace(tzinfo=timezone.utc)
-                                reset_dt_utc = reset_dt.astimezone(timezone.utc)
-                                formatted_reset = reset_dt_utc.strftime(
-                                    "%b %d at %I:%M %p UTC"
-                                )
+                                    reset_dt = reset_dt.replace(tzinfo=UTC)
+                                reset_dt_utc = reset_dt.astimezone(UTC)
+                                formatted_reset = reset_dt_utc.strftime("%b %d at %I:%M %p UTC")
                                 body = (
                                     f"'{workflow.title}' couldn't run — "
                                     f"you've used all your workflow executions for today. "
@@ -367,9 +362,7 @@ async def execute_workflow_by_id(
                                 actions=[upgrade_action] if upgrade_action else None,
                             ),
                             channels=[
-                                ChannelConfig(
-                                    channel_type="inapp", enabled=True, priority=1
-                                )
+                                ChannelConfig(channel_type="inapp", enabled=True, priority=1)
                             ],
                             metadata={
                                 "workflow_id": workflow.id,
@@ -424,7 +417,7 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
         except Exception as e:
             log.warning(f"Could not get user data for {user_id}: {e}")
             user_data = {"user_id": user_id}
-            user_time = datetime.now(timezone.utc)
+            user_time = datetime.now(UTC)
 
         user_model_config = None
 
@@ -435,9 +428,7 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
             workflow_title=workflow.title,
         )
         log.set(
-            conversation_context_found=bool(
-                conversation and conversation.get("conversation_id")
-            )
+            conversation_context_found=bool(conversation and conversation.get("conversation_id"))
         )
 
         # Convert workflow steps to the format expected by SelectedWorkflowData
@@ -487,7 +478,7 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
         execution_messages = []
 
         # Capture base timestamp to ensure proper message ordering
-        base_timestamp = datetime.now(timezone.utc)
+        base_timestamp = datetime.now(UTC)
 
         # Create a simple user message showing workflow execution (like frontend)
         # This message gets the base timestamp to ensure it appears first
@@ -516,12 +507,12 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
         return execution_messages
 
     except Exception as e:
-        log.error(f"Failed to execute workflow {workflow.id} as chat: {str(e)}")
+        log.error(f"Failed to execute workflow {workflow.id} as chat: {e!s}")
         # Return error message
         error_message = MessageModel(
             type="bot",
-            response=f"❌ **Workflow Execution Failed**\n\nWorkflow: {workflow.title}\nError: {str(e)}",
-            date=datetime.now(timezone.utc).isoformat(),
+            response=f"❌ **Workflow Execution Failed**\n\nWorkflow: {workflow.title}\nError: {e!s}",
+            date=datetime.now(UTC).isoformat(),
             message_id=str(uuid4()),
         )
         return [error_message]
@@ -547,9 +538,7 @@ async def regenerate_workflow_steps(
     Returns:
         Processing result message
     """
-    async with wide_task(
-        "regenerate_workflow_steps", workflow_id=workflow_id, user_id=user_id
-    ):
+    async with wide_task("regenerate_workflow_steps", workflow_id=workflow_id, user_id=user_id):
         log.info(
             f"Regenerating workflow steps: {workflow_id} for user {user_id}, reason: {regeneration_reason}"
         )
@@ -583,9 +572,7 @@ async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> 
     Returns:
         Processing result message
     """
-    async with wide_task(
-        "generate_workflow_steps", workflow_id=workflow_id, user_id=user_id
-    ):
+    async with wide_task("generate_workflow_steps", workflow_id=workflow_id, user_id=user_id):
         log.info(f"Generating workflow steps: {workflow_id} for user {user_id}")
 
         # Import here to avoid circular imports
@@ -632,9 +619,7 @@ async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> 
         return result
 
 
-async def create_workflow_completion_notification(
-    workflow, execution_messages, user_id: str
-):
+async def create_workflow_completion_notification(workflow, execution_messages, user_id: str):
     """Store workflow execution messages and send completion notification."""
 
     # Get or create conversation (required for storage)
@@ -643,9 +628,7 @@ async def create_workflow_completion_notification(
         user_id=user_id,
         workflow_title=workflow.title,
     )
-    log.info(
-        f"Workflow conversation: {conversation['conversation_id']} for workflow {workflow.id}"
-    )
+    log.info(f"Workflow conversation: {conversation['conversation_id']} for workflow {workflow.id}")
 
     # Store execution messages
     if execution_messages:
@@ -673,17 +656,13 @@ async def create_workflow_completion_notification(
     try:
         # Extract final bot response for external channel delivery
         bot_messages = (
-            [m for m in execution_messages if m.type == "bot"]
-            if execution_messages
-            else []
+            [m for m in execution_messages if m.type == "bot"] if execution_messages else []
         )
         bot_response = bot_messages[-1].response if bot_messages else ""
-        message_parts = [
-            p.strip() for p in bot_response.split("<NEW_MESSAGE_BREAK>") if p.strip()
-        ]
+        message_parts = [p.strip() for p in bot_response.split("<NEW_MESSAGE_BREAK>") if p.strip()]
 
         # Format completion timestamp
-        completed_at = datetime.now(timezone.utc)
+        completed_at = datetime.now(UTC)
         formatted_time = completed_at.strftime("%I:%M %p UTC, %b %d")
 
         await notification_service.create_notification(
@@ -715,9 +694,7 @@ async def create_workflow_completion_notification(
                         "conversation_id": conversation["conversation_id"],
                     },
                 ),
-                channels=[
-                    ChannelConfig(channel_type="inapp", enabled=True, priority=1)
-                ],
+                channels=[ChannelConfig(channel_type="inapp", enabled=True, priority=1)],
                 metadata={
                     "workflow_id": workflow.id,
                     "conversation_id": conversation["conversation_id"],

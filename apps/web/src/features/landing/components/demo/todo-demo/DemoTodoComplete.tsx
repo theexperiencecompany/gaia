@@ -8,7 +8,7 @@ import {
   Flag02Icon,
   Tag01Icon,
 } from "@icons";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import { ChevronRight } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {

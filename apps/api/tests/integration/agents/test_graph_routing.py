@@ -17,10 +17,10 @@ Deletion test: delete create_agent.py → every test below immediately fails.
 from typing import Any
 from uuid import uuid4
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
+import pytest
 
 from app.override.langgraph_bigtool.create_agent import create_agent
 from tests.helpers import (
@@ -28,7 +28,6 @@ from tests.helpers import (
     create_fake_llm,
     create_fake_llm_with_tool_calls,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -108,8 +107,7 @@ class TestGraphRouting:
 
         tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
         assert len(tool_messages) >= 1, (
-            "should_continue must route tool_calls to DynamicToolNode. "
-            "No ToolMessage was produced."
+            "should_continue must route tool_calls to DynamicToolNode. No ToolMessage was produced."
         )
         assert tool_messages[0].tool_call_id == "call_dummy_001", (
             f"ToolMessage.tool_call_id must match the AIMessage call ID. "
@@ -163,9 +161,7 @@ class TestGraphRouting:
             ],
         )
         graph = _compile(
-            BindableToolsFakeModel(
-                responses=[ai_with_two_calls, AIMessage(content="Both done.")]
-            )
+            BindableToolsFakeModel(responses=[ai_with_two_calls, AIMessage(content="Both done.")])
         )
 
         result = await graph.ainvoke(
@@ -257,14 +253,10 @@ class TestGraphRouting:
         )
         config = _thread_config()
 
-        await graph.ainvoke(
-            {"messages": [HumanMessage(content="Turn one")]}, config=config
-        )
+        await graph.ainvoke({"messages": [HumanMessage(content="Turn one")]}, config=config)
         count_after_1 = len((await graph.aget_state(config)).values["messages"])
 
-        await graph.ainvoke(
-            {"messages": [HumanMessage(content="Turn two")]}, config=config
-        )
+        await graph.ainvoke({"messages": [HumanMessage(content="Turn two")]}, config=config)
         count_after_2 = len((await graph.aget_state(config)).values["messages"])
 
         assert count_after_2 > count_after_1, (
@@ -275,9 +267,7 @@ class TestGraphRouting:
         # Verify original message content is preserved — not just that count grew
         final_state = await graph.aget_state(config)
         human_contents = [
-            m.content
-            for m in final_state.values["messages"]
-            if isinstance(m, HumanMessage)
+            m.content for m in final_state.values["messages"] if isinstance(m, HumanMessage)
         ]
         assert "Turn one" in human_contents, (
             f"Turn one HumanMessage must survive into final state. Got: {human_contents}"
@@ -304,22 +294,14 @@ class TestGraphRouting:
         config_a = _thread_config()
         config_b = _thread_config()
 
-        await graph.ainvoke(
-            {"messages": [HumanMessage(content="From A")]}, config=config_a
-        )
-        await graph.ainvoke(
-            {"messages": [HumanMessage(content="From B")]}, config=config_b
-        )
+        await graph.ainvoke({"messages": [HumanMessage(content="From A")]}, config=config_a)
+        await graph.ainvoke({"messages": [HumanMessage(content="From B")]}, config=config_b)
 
         state_a = await graph.aget_state(config_a)
         state_b = await graph.aget_state(config_b)
 
-        human_in_a = [
-            m.content for m in state_a.values["messages"] if isinstance(m, HumanMessage)
-        ]
-        human_in_b = [
-            m.content for m in state_b.values["messages"] if isinstance(m, HumanMessage)
-        ]
+        human_in_a = [m.content for m in state_a.values["messages"] if isinstance(m, HumanMessage)]
+        human_in_b = [m.content for m in state_b.values["messages"] if isinstance(m, HumanMessage)]
 
         assert "From A" in human_in_a, (
             f"Thread A's state must contain its own message. Got: {human_in_a}"
@@ -355,18 +337,13 @@ class TestGraphRouting:
         messages = result["messages"]
         types = [type(m).__name__ for m in messages]
 
-        assert any(
-            isinstance(m, AIMessage) and getattr(m, "tool_calls", None)
-            for m in messages
-        ), f"Missing AIMessage with tool_calls. Messages: {types}"
+        assert any(isinstance(m, AIMessage) and getattr(m, "tool_calls", None) for m in messages), (
+            f"Missing AIMessage with tool_calls. Messages: {types}"
+        )
         assert any(isinstance(m, ToolMessage) for m in messages), (
             f"Missing ToolMessage. Messages: {types}"
         )
         final_ai = [
-            m
-            for m in messages
-            if isinstance(m, AIMessage) and not getattr(m, "tool_calls", None)
+            m for m in messages if isinstance(m, AIMessage) and not getattr(m, "tool_calls", None)
         ]
-        assert len(final_ai) >= 1, (
-            f"Missing final plain-text AIMessage. Messages: {types}"
-        )
+        assert len(final_ai) >= 1, f"Missing final plain-text AIMessage. Messages: {types}"

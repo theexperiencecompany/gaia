@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
@@ -22,6 +23,11 @@ const NOTIFICATION_PLATFORMS = [
     name: "Discord",
     image: "/images/icons/macos/discord.webp",
   },
+  {
+    id: "whatsapp" as const,
+    name: "WhatsApp",
+    image: "/images/icons/macos/whatsapp.webp",
+  },
 ];
 
 export default function NotificationSettings() {
@@ -31,7 +37,8 @@ export default function NotificationSettings() {
   const [channelPrefs, setChannelPrefs] = useState<{
     telegram: boolean;
     discord: boolean;
-  }>({ telegram: true, discord: true });
+    whatsapp: boolean;
+  }>({ telegram: true, discord: true, whatsapp: true });
   const [loading, setLoading] = useState(true);
   const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
 
@@ -58,13 +65,17 @@ export default function NotificationSettings() {
   }, []);
 
   const handleToggle = async (
-    platform: "telegram" | "discord",
+    platform: "telegram" | "discord" | "whatsapp",
     enabled: boolean,
   ) => {
     setTogglingPlatform(platform);
     try {
       await NotificationsAPI.updateChannelPreference(platform, enabled);
       setChannelPrefs((prev) => ({ ...prev, [platform]: enabled }));
+      trackEvent(ANALYTICS_EVENTS.SETTINGS_NOTIFICATIONS_TOGGLED, {
+        platform,
+        enabled,
+      });
     } catch {
       toast.error(`Failed to update ${platform} notification preference`);
     } finally {

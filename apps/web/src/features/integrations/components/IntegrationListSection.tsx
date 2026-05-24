@@ -58,10 +58,10 @@ function IntegrationListSection({
   // Separate connected and not connected integrations, sorted alphabetically
   const connectedIntegrations = integrations
     .filter((i) => i.status === "connected")
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .toSorted((a, b) => a.name.localeCompare(b.name));
   const notConnectedIntegrations = integrations
     .filter((i) => i.status !== "connected")
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .toSorted((a, b) => a.name.localeCompare(b.name));
 
   const handleConnect = async (integrationId: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent card click

@@ -235,7 +235,8 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
 };
 
 export async function generateStaticParams() {
-  return getAllPersonaSlugs().map((persona) => ({ persona }));
+  const slugs = await getAllPersonaSlugs();
+  return slugs.map((persona) => ({ persona }));
 }
 
 export async function generateMetadata({
@@ -362,7 +363,6 @@ function IntegrationBadge({ name }: { name: string }) {
 export default async function PersonaPage({ params }: PageProps) {
   const { locale, persona } = await params;
   setRequestLocale(locale);
-  const t = await getTranslations();
 
   const config = SPECIAL_PERSONA_CONFIGS[persona];
   if (config) {
@@ -397,7 +397,10 @@ export default async function PersonaPage({ params }: PageProps) {
     );
   }
 
-  const data = await getTranslatedPersona(persona);
+  const [t, data] = await Promise.all([
+    getTranslations(),
+    getTranslatedPersona(persona),
+  ]);
 
   if (!data) {
     notFound();

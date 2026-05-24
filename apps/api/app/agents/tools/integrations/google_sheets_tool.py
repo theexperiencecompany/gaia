@@ -1,17 +1,17 @@
 """Google Sheets tools using Composio custom tool infrastructure.
 
-These tools provide Google Sheets functionality using the access_token from Composio's
-auth_credentials. Uses Google Drive API for sharing and Sheets API for spreadsheet operations.
+Provider API calls go through Composio's proxy via `proxy_request_sync`.
+Drive API is used for sharing; Sheets API for spreadsheet operations.
 
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
-import httpx
-from shared.py.wide_events import log
-from app.models.common_models import GatherContextInput
+from composio import Composio
+
 from app.decorators import with_doc
+from app.models.common_models import GatherContextInput
 from app.models.google_sheets_models import (
     ChartInput,
     ConditionalFormatInput,
@@ -19,39 +19,54 @@ from app.models.google_sheets_models import (
     DataValidationInput,
     ShareSpreadsheetInput,
 )
+from app.services.composio.proxy_client import proxy_request_sync
 from app.templates.docstrings.google_sheets_tool_docs import (
     CUSTOM_ADD_CONDITIONAL_FORMAT_DOC as CONDITIONAL_FORMAT_DOC,
-)
-from app.templates.docstrings.google_sheets_tool_docs import (
     CUSTOM_CREATE_CHART_DOC as CREATE_CHART_DOC,
-)
-from app.templates.docstrings.google_sheets_tool_docs import (
     CUSTOM_CREATE_PIVOT_TABLE_DOC as CREATE_PIVOT_DOC,
-)
-from app.templates.docstrings.google_sheets_tool_docs import (
     CUSTOM_SET_DATA_VALIDATION_DOC as DATA_VALIDATION_DOC,
-)
-from app.templates.docstrings.google_sheets_tool_docs import (
     CUSTOM_SHARE_SPREADSHEET_DOC as SHARE_DOC,
 )
+from app.utils.errors import AppError
 from app.utils.google_sheets_utils import (
     DRIVE_API_BASE,
     SHEETS_API_BASE,
-    auth_headers,
-    get_access_token,
     get_column_index_by_header,
     get_sheet_id_by_name,
     hex_to_rgb,
     parse_a1_range,
 )
-from composio import Composio
+from shared.py.wide_events import log
+
+SHEETS_TOOLKIT = "GOOGLESHEETS"
 
 
-# Reusable sync HTTP client
-_http_client = httpx.Client(timeout=60)
+def _user_id(auth_credentials: dict[str, Any]) -> str:
+    user_id = auth_credentials.get("user_id")
+    if not user_id:
+        raise ValueError("Missing user_id in auth_credentials")
+    return user_id
 
 
-def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
+def _sheets_proxy(
+    user_id: str,
+    *,
+    endpoint: str,
+    method: str,
+    body: dict[str, Any] | None = None,
+    query: dict[str, Any] | None = None,
+) -> Any:
+    return proxy_request_sync(
+        user_id=user_id,
+        toolkit=SHEETS_TOOLKIT,
+        endpoint=endpoint,
+        method=method,  # type: ignore[arg-type]
+        body=body,
+        query=query,
+    )
+
+
+def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
     """Register Google Sheets tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="GOOGLESHEETS")
@@ -59,47 +74,45 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_SHARE_SPREADSHEET(
         request: ShareSpreadsheetInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Share a Google Spreadsheet with one or more recipients."""
         log.set(tool={"integration": "google_sheets", "action": "share_spreadsheet"})
-        access_token = get_access_token(auth_credentials)
-        headers = auth_headers(access_token)
+        user_id = _user_id(auth_credentials)
 
         shared = []
         errors = []
 
         for recipient in request.recipients:
-            permission = {
-                "type": "user",
-                "role": recipient.role,
-                "emailAddress": recipient.email,
-            }
-
-            url = f"{DRIVE_API_BASE}/files/{request.spreadsheet_id}/permissions"
-            params = {"sendNotificationEmail": str(recipient.send_notification).lower()}
-
             try:
-                resp = _http_client.post(
-                    url, headers=headers, json=permission, params=params
+                result = _sheets_proxy(
+                    user_id,
+                    endpoint=f"{DRIVE_API_BASE}/files/{request.spreadsheet_id}/permissions",
+                    method="POST",
+                    body={
+                        "type": "user",
+                        "role": recipient.role,
+                        "emailAddress": recipient.email,
+                    },
+                    query={
+                        "sendNotificationEmail": str(recipient.send_notification).lower(),
+                    },
                 )
-                resp.raise_for_status()
-                result = resp.json()
                 shared.append(
                     {
                         "email": recipient.email,
                         "role": recipient.role,
-                        "permission_id": result.get("id"),
+                        "permission_id": (result or {}).get("id"),
                         "notification_sent": recipient.send_notification,
                     }
                 )
-            except httpx.HTTPStatusError as e:
+            except AppError as e:
                 log.error(f"Error sharing with {recipient.email}: {e}")
                 errors.append(
                     {
                         "email": recipient.email,
                         "role": recipient.role,
-                        "error": f"Failed: {e.response.status_code} - {e.response.text}",
+                        "error": f"Failed: {e.status_code} - {e.message}",
                     }
                 )
             except Exception as e:
@@ -112,7 +125,6 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                     }
                 )
 
-        # If all operations failed, raise an exception
         if shared == [] and errors:
             raise RuntimeError(f"Failed to share spreadsheet: {errors}")
 
@@ -131,36 +143,31 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_CREATE_PIVOT_TABLE(
         request: CreatePivotTableInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Create a pivot table from spreadsheet data."""
         log.set(tool={"integration": "google_sheets", "action": "create_pivot_table"})
-        access_token = get_access_token(auth_credentials)
-        headers = auth_headers(access_token)
+        user_id = _user_id(auth_credentials)
 
-        # Get source and destination sheet IDs
         source_sheet_id = get_sheet_id_by_name(
-            request.spreadsheet_id, request.source_sheet_name, headers
+            request.spreadsheet_id, request.source_sheet_name, user_id
         )
         dest_sheet_id = get_sheet_id_by_name(
-            request.spreadsheet_id, request.destination_sheet_name, headers
+            request.spreadsheet_id, request.destination_sheet_name, user_id
         )
 
         if source_sheet_id is None:
             raise ValueError(f"Source sheet '{request.source_sheet_name}' not found")
         if dest_sheet_id is None:
-            raise ValueError(
-                f"Destination sheet '{request.destination_sheet_name}' not found"
-            )
+            raise ValueError(f"Destination sheet '{request.destination_sheet_name}' not found")
 
-        # Get column indices for row/column/value fields
         row_indices = []
         for row_field in request.rows:
             idx = get_column_index_by_header(
                 request.spreadsheet_id,
                 request.source_sheet_name,
                 row_field,
-                headers,
+                user_id,
             )
             if idx is None:
                 raise ValueError(f"Column '{row_field}' not found in headers")
@@ -178,7 +185,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                 request.spreadsheet_id,
                 request.source_sheet_name,
                 col_field,
-                headers,
+                user_id,
             )
             if idx is None:
                 raise ValueError(f"Column '{col_field}' not found")
@@ -196,11 +203,11 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                 request.spreadsheet_id,
                 request.source_sheet_name,
                 val.column,
-                headers,
+                user_id,
             )
             if idx is None:
                 raise ValueError(f"Value column '{val.column}' not found")
-            spec: Dict[str, Any] = {
+            spec: dict[str, Any] = {
                 "sourceColumnOffset": idx,
                 "summarizeFunction": val.aggregation,
             }
@@ -208,17 +215,14 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                 spec["name"] = val.name
             value_specs.append(spec)
 
-        # Build source range
-        source_range = {"sheetId": source_sheet_id}
+        source_range: dict[str, Any] = {"sheetId": source_sheet_id}
         if request.source_range:
             range_spec = parse_a1_range(request.source_range)
             source_range.update(range_spec)
 
-        # Parse destination cell
         dest_range = parse_a1_range(request.destination_cell)
 
-        # Build pivot table request
-        pivot_table = {
+        pivot_table: dict[str, Any] = {
             "source": source_range,
             "rows": row_indices,
             "values": value_specs,
@@ -242,12 +246,12 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
             ]
         }
 
-        resp = _http_client.post(
-            f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
-            headers=headers,
-            json=batch_request,
+        _sheets_proxy(
+            user_id,
+            endpoint=f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
+            method="POST",
+            body=batch_request,
         )
-        resp.raise_for_status()
 
         url = f"https://docs.google.com/spreadsheets/d/{request.spreadsheet_id}/edit"
 
@@ -255,7 +259,9 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
             "spreadsheet_id": request.spreadsheet_id,
             "url": url,
             "pivot_sheet": request.destination_sheet_name,
-            "source_range": f"{request.source_sheet_name}!{request.source_range or 'entire sheet'}",
+            "source_range": (
+                f"{request.source_sheet_name}!{request.source_range or 'entire sheet'}"
+            ),
         }
 
     @composio.tools.custom_tool(toolkit="GOOGLESHEETS")
@@ -263,24 +269,20 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_SET_DATA_VALIDATION(
         request: DataValidationInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Set data validation rules on a range."""
         log.set(tool={"integration": "google_sheets", "action": "set_data_validation"})
-        access_token = get_access_token(auth_credentials)
-        headers = auth_headers(access_token)
+        user_id = _user_id(auth_credentials)
 
-        sheet_id = get_sheet_id_by_name(
-            request.spreadsheet_id, request.sheet_name, headers
-        )
+        sheet_id = get_sheet_id_by_name(request.spreadsheet_id, request.sheet_name, user_id)
         if sheet_id is None:
             raise ValueError(f"Sheet '{request.sheet_name}' not found")
 
         range_spec = parse_a1_range(request.range)
         range_spec["sheetId"] = sheet_id
 
-        # Build condition based on validation type
-        condition: Dict[str, Any] = {}
+        condition: dict[str, Any] = {}
 
         if request.validation_type == "dropdown_list":
             if not request.values:
@@ -316,9 +318,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                     "values": [{"userEnteredValue": str(request.max_value)}],
                 }
             else:
-                raise ValueError(
-                    "min_value or max_value required for number validation"
-                )
+                raise ValueError("min_value or max_value required for number validation")
         elif request.validation_type == "date":
             if request.min_value is not None and request.max_value is not None:
                 condition = {
@@ -348,7 +348,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                 "values": [{"userEnteredValue": request.formula}],
             }
 
-        validation_rule: Dict[str, Any] = {
+        validation_rule: dict[str, Any] = {
             "condition": condition,
             "strict": request.strict,
             "showCustomUi": request.show_dropdown,
@@ -369,17 +369,15 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         }
 
         try:
-            resp = _http_client.post(
-                f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
-                headers=headers,
-                json=batch_request,
+            _sheets_proxy(
+                user_id,
+                endpoint=f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
+                method="POST",
+                body=batch_request,
             )
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            log.error(f"Error setting data validation: {e.response.text}")
-            raise RuntimeError(
-                f"Failed to set data validation: {e.response.text}"
-            ) from e
+        except AppError as e:
+            log.error(f"Error setting data validation: {e.message}")
+            raise RuntimeError(f"Failed to set data validation: {e.message}") from e
 
         url = f"https://docs.google.com/spreadsheets/d/{request.spreadsheet_id}/edit"
 
@@ -395,29 +393,23 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_ADD_CONDITIONAL_FORMAT(
         request: ConditionalFormatInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Add conditional formatting rules to a range."""
-        log.set(
-            tool={"integration": "google_sheets", "action": "add_conditional_format"}
-        )
-        access_token = get_access_token(auth_credentials)
-        headers = auth_headers(access_token)
+        log.set(tool={"integration": "google_sheets", "action": "add_conditional_format"})
+        user_id = _user_id(auth_credentials)
 
-        sheet_id = get_sheet_id_by_name(
-            request.spreadsheet_id, request.sheet_name, headers
-        )
+        sheet_id = get_sheet_id_by_name(request.spreadsheet_id, request.sheet_name, user_id)
         if sheet_id is None:
             raise ValueError(f"Sheet '{request.sheet_name}' not found")
 
         range_spec = parse_a1_range(request.range)
         range_spec["sheetId"] = sheet_id
 
-        rule: Dict[str, Any] = {"ranges": [range_spec]}
+        rule: dict[str, Any] = {"ranges": [range_spec]}
 
         if request.format_type == "color_scale":
-            # Build gradient rule
-            color_scale: Dict[str, Any] = {}
+            color_scale: dict[str, Any] = {}
 
             if request.min_color:
                 color_scale["minpoint"] = {
@@ -444,8 +436,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                 rule["gradientRule"]["midpoint"] = color_scale["midpoint"]
 
         else:
-            # Boolean rule (value_based or custom_formula)
-            bool_condition: Dict[str, Any] = {}
+            bool_condition: dict[str, Any] = {}
 
             if request.format_type == "custom_formula":
                 if not request.formula:
@@ -454,7 +445,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                     "type": "CUSTOM_FORMULA",
                     "values": [{"userEnteredValue": request.formula}],
                 }
-            else:  # value_based
+            else:
                 condition_map = {
                     "greater_than": "NUMBER_GREATER",
                     "less_than": "NUMBER_LESS",
@@ -483,14 +474,11 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                         {"userEnteredValue": v} for v in request.condition_values
                     ]
 
-            # Build format
-            format_spec: Dict[str, Any] = {}
+            format_spec: dict[str, Any] = {}
             if request.background_color:
                 format_spec["backgroundColor"] = hex_to_rgb(request.background_color)
             if request.text_color:
-                format_spec["textFormat"] = {
-                    "foregroundColor": hex_to_rgb(request.text_color)
-                }
+                format_spec["textFormat"] = {"foregroundColor": hex_to_rgb(request.text_color)}
             if request.bold is not None:
                 format_spec.setdefault("textFormat", {})["bold"] = request.bold
             if request.italic is not None:
@@ -512,12 +500,12 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
             ]
         }
 
-        resp = _http_client.post(
-            f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
-            headers=headers,
-            json=batch_request,
+        _sheets_proxy(
+            user_id,
+            endpoint=f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
+            method="POST",
+            body=batch_request,
         )
-        resp.raise_for_status()
 
         url = f"https://docs.google.com/spreadsheets/d/{request.spreadsheet_id}/edit"
 
@@ -533,45 +521,32 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_CREATE_CHART(
         request: ChartInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Create a chart from spreadsheet data."""
         log.set(tool={"integration": "google_sheets", "action": "create_chart"})
-        access_token = get_access_token(auth_credentials)
-        headers = auth_headers(access_token)
+        user_id = _user_id(auth_credentials)
 
-        source_sheet_id = get_sheet_id_by_name(
-            request.spreadsheet_id, request.sheet_name, headers
-        )
+        source_sheet_id = get_sheet_id_by_name(request.spreadsheet_id, request.sheet_name, user_id)
         if source_sheet_id is None:
             raise ValueError(f"Sheet '{request.sheet_name}' not found")
 
         dest_sheet_name = request.destination_sheet_name or request.sheet_name
-        dest_sheet_id = get_sheet_id_by_name(
-            request.spreadsheet_id, dest_sheet_name, headers
-        )
+        dest_sheet_id = get_sheet_id_by_name(request.spreadsheet_id, dest_sheet_name, user_id)
         if dest_sheet_id is None:
             raise ValueError(f"Destination sheet '{dest_sheet_name}' not found")
 
-        # Parse data range
         range_spec = parse_a1_range(request.data_range)
 
-        # Calculate width to decide how to split domain/series
         start_col = range_spec.get("startColumnIndex", 0)
-        # Assuming endColumnIndex is present if start is. If not, it's a full row/sheet which is complex.
-        # But parse_a1_range usually returns it for standard A1:B10 ranges.
-        # If undefined, we can't easily split without knowing sheet size.
-        # We'll assume it's defined or strict single column if not.
         end_col = range_spec.get("endColumnIndex", start_col + 1)
         width = end_col - start_col
 
         if width > 1:
-            # First column is domain (X-axis/Labels)
             domain_range = dict(range_spec)
             domain_range["endColumnIndex"] = start_col + 1
             domain_range["sheetId"] = source_sheet_id
 
-            # Remaining columns are series (Y-axis/Values)
             series_ranges = []
             for i in range(start_col + 1, end_col):
                 s_range = dict(range_spec)
@@ -580,18 +555,13 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                 s_range["sheetId"] = source_sheet_id
                 series_ranges.append(s_range)
         else:
-            # Single column - use for both? Or just series?
-            # Usually users specify separate domain if needed.
-            # For now, treat as series, domain might be row nums.
             r_spec = dict(range_spec)
             r_spec["sheetId"] = source_sheet_id
             domain_range = r_spec
             series_ranges = [r_spec]
 
-        # Parse anchor cell
         anchor = parse_a1_range(request.anchor_cell)
 
-        # Map chart types
         chart_type_map = {
             "BAR": "BAR",
             "COLUMN": "COLUMN",
@@ -604,10 +574,8 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
 
         api_chart_type = chart_type_map.get(request.chart_type, "BAR")
 
-        # Build chart spec
         if request.chart_type == "PIE":
-            # Pie charts use different structure (single series usually)
-            chart_spec: Dict[str, Any] = {
+            chart_spec: dict[str, Any] = {
                 "pieChart": {
                     "legendPosition": request.legend_position,
                     "domain": {
@@ -619,7 +587,6 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                 }
             }
         else:
-            # Basic chart structure for bar, line, column, etc.
             series_list = []
             for s_range in series_ranges:
                 series_list.append(
@@ -647,7 +614,6 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                 }
             }
 
-            # Add axis titles
             if request.x_axis_title or request.y_axis_title:
                 chart_spec["basicChart"]["axis"] = []
                 if request.x_axis_title:
@@ -665,11 +631,9 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                         }
                     )
 
-        # Add title
         if request.title:
             chart_spec["title"] = request.title
 
-        # Build full chart request
         chart_request = {
             "chart": {
                 "spec": chart_spec,
@@ -690,19 +654,18 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         batch_request = {"requests": [{"addChart": chart_request}]}
 
         try:
-            resp = _http_client.post(
-                f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
-                headers=headers,
-                json=batch_request,
+            result = _sheets_proxy(
+                user_id,
+                endpoint=f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
+                method="POST",
+                body=batch_request,
             )
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            log.error(f"Error creating chart: {e.response.text}")
-            raise RuntimeError(f"Failed to create chart: {e.response.text}") from e
+        except AppError as e:
+            log.error(f"Error creating chart: {e.message}")
+            raise RuntimeError(f"Failed to create chart: {e.message}") from e
 
-        result = resp.json()
         chart_id = None
-        for reply in result.get("replies", []):
+        for reply in (result or {}).get("replies", []):
             if "addChart" in reply:
                 chart_id = reply["addChart"]["chart"]["chartId"]
                 break
@@ -720,31 +683,29 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get Google Sheets context snapshot: recently viewed/modified spreadsheets.
 
         Zero required parameters. Returns user's recently accessed spreadsheets.
         """
         log.set(tool={"integration": "google_sheets", "action": "gather_context"})
-        access_token = get_access_token(auth_credentials)
-        headers = auth_headers(access_token)
+        user_id = _user_id(auth_credentials)
 
         mime = "application/vnd.google-apps.spreadsheet"
-        files: List[Dict[str, Any]] = []
+        files: list[dict[str, Any]] = []
         try:
-            resp = _http_client.get(
-                "https://www.googleapis.com/drive/v3/files",
-                headers=headers,
-                params={
+            data = _sheets_proxy(
+                user_id,
+                endpoint=f"{DRIVE_API_BASE}/files",
+                method="GET",
+                query={
                     "q": f"mimeType='{mime}'",
                     "orderBy": "viewedByMeTime desc",
                     "pageSize": 20,
                     "fields": "files(id,name,modifiedTime,webViewLink)",
                 },
-                timeout=15,
             )
-            resp.raise_for_status()
             files = [
                 {
                     "id": f.get("id"),
@@ -752,7 +713,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                     "modified": f.get("modifiedTime"),
                     "url": f.get("webViewLink"),
                 }
-                for f in resp.json().get("files", [])
+                for f in (data or {}).get("files", [])
             ]
         except Exception as e:
             log.debug(f"Google Sheets fetch failed: {e}")

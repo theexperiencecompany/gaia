@@ -2,7 +2,7 @@ import { Button } from "@heroui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Skeleton } from "@heroui/skeleton";
 import { CircleArrowRight02Icon, NewsIcon } from "@icons";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { useImageDialog } from "@/stores/uiStore";
@@ -126,10 +126,10 @@ function ImageResults({ images }: ImageResultsProps) {
         />
       ))}
       {validImages.length > MAX_VISIBLE && (
-        <button
-          type="button"
-          onClick={cycleNext}
-          className="relative z-10 flex h-32 w-32 shrink-0 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-2xl bg-zinc-800/80 text-zinc-300 shadow-sm backdrop-blur-sm transition-colors hover:bg-zinc-700/80 hover:text-white"
+        <Button
+          onPress={cycleNext}
+          className="relative z-10 flex h-32 w-32 shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl bg-zinc-800/80 text-zinc-300 shadow-sm backdrop-blur-sm transition-colors hover:bg-zinc-700/80 hover:text-white"
+          variant="flat"
           style={{
             rotate: displayImages.length % 2 === 0 ? "8deg" : "-8deg",
           }}
@@ -140,7 +140,7 @@ function ImageResults({ images }: ImageResultsProps) {
             height={16}
             className="opacity-70"
           />
-        </button>
+        </Button>
       )}
     </div>
   );

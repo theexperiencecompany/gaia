@@ -36,7 +36,8 @@ interface PageProps {
 }
 
 export async function generateStaticParams() {
-  return getAllAlternativeSlugs().map((slug) => ({ slug }));
+  const slugs = await getAllAlternativeSlugs();
+  return slugs.map((slug) => ({ slug }));
 }
 
 export async function generateMetadata({
@@ -86,24 +87,30 @@ function FitScoreRow({ score }: { readonly score: number }) {
 export default async function AlternativePage({ params }: PageProps) {
   const { locale, slug } = await params;
   setRequestLocale(locale);
-  const t = await getTranslations();
-  const data = await getTranslatedAlternative(slug);
+  const [t, data, comparisonData, allComparisons, allAlternatives] =
+    await Promise.all([
+      getTranslations(),
+      getTranslatedAlternative(slug),
+      getTranslatedComparison(slug),
+      getTranslatedComparisons(),
+      getTranslatedAlternatives(),
+    ]);
 
   if (!data) {
     notFound();
   }
 
-  const hasComparisonPage = (await getTranslatedComparison(slug)) !== undefined;
+  const hasComparisonPage = comparisonData !== undefined;
 
   const currentCategory = COMPARISON_CATEGORIES[slug] ?? "Other";
-  const relatedComparisons = (await getTranslatedComparisons())
+  const relatedComparisons = allComparisons
     .filter(
       (c) =>
         c.slug !== slug && COMPARISON_CATEGORIES[c.slug] === currentCategory,
     )
     .slice(0, 3);
 
-  const relatedAlternatives = (await getTranslatedAlternatives())
+  const relatedAlternatives = allAlternatives
     .filter((a) => a.slug !== slug && a.category === data.category)
     .slice(0, 3);
 

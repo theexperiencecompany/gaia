@@ -24,12 +24,6 @@ export const ALLOWED_FILE_TYPES = [
   "image/webp",
 ] as const;
 
-export const API_ENDPOINTS = {
-  SUBMIT_REQUEST: "/api/support/requests",
-  GET_REQUEST_STATUS: "/api/support/requests",
-  GET_FAQ: "/api/support/faq",
-} as const;
-
 export const TOAST_MESSAGES = {
   SUCCESS: "Thanks for reaching out! We'll get back to you soon.",
   VALIDATION_ERROR: "Please fill in all fields",

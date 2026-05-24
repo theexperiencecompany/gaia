@@ -1,7 +1,7 @@
 """Tests for app.services.triggers.handlers.notion."""
 
 import sys
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,7 +13,6 @@ sys.modules.setdefault("app.services.workflow.queue_service", _queue_stub)
 sys.modules.setdefault("app.services.workflow.trigger_service", MagicMock())
 
 from app.services.triggers.handlers.notion import NotionTriggerHandler  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -34,7 +33,7 @@ def _make_workflow_doc(
     wid: str = "wf1",
     user_id: str = "u1",
     activated: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return {
         "_id": wid,
         "id": wid,
@@ -52,7 +51,7 @@ def _make_workflow_doc(
 class _AsyncCursorMock:
     """Simulates an async MongoDB cursor."""
 
-    def __init__(self, docs: List[Dict[str, Any]]) -> None:
+    def __init__(self, docs: list[dict[str, Any]]) -> None:
         self._docs = docs
         self._index = 0
 
@@ -111,9 +110,7 @@ class TestGetConfigOptions:
         svc.get_tool.return_value = mock_tool
         mock_get_svc.return_value = svc
 
-        with patch(
-            "app.services.triggers.handlers.notion.NotionFetchDataData"
-        ) as mock_cls:
+        with patch("app.services.triggers.handlers.notion.NotionFetchDataData") as mock_cls:
             mock_cls.model_validate.return_value = mock_data
 
             result = await handler.get_config_options(
@@ -143,9 +140,7 @@ class TestGetConfigOptions:
         svc.get_tool.return_value = mock_tool
         mock_get_svc.return_value = svc
 
-        with patch(
-            "app.services.triggers.handlers.notion.NotionFetchDataData"
-        ) as mock_cls:
+        with patch("app.services.triggers.handlers.notion.NotionFetchDataData") as mock_cls:
             mock_cls.model_validate.return_value = mock_data
             result = await handler.get_config_options(
                 "notion_page_updated", "page_id", "u1", "notion"
@@ -168,9 +163,7 @@ class TestGetConfigOptions:
         svc.get_tool.return_value = mock_tool
         mock_get_svc.return_value = svc
 
-        with patch(
-            "app.services.triggers.handlers.notion.NotionFetchDataData"
-        ) as mock_cls:
+        with patch("app.services.triggers.handlers.notion.NotionFetchDataData") as mock_cls:
             mock_cls.model_validate.return_value = mock_data
             result = await handler.get_config_options(
                 "notion_all_page_events", "something_else", "u1", "notion"
@@ -243,9 +236,7 @@ class TestGetConfigOptions:
         svc.get_tool.return_value = mock_tool
         mock_get_svc.return_value = svc
 
-        with patch(
-            "app.services.triggers.handlers.notion.NotionFetchDataData"
-        ) as mock_cls:
+        with patch("app.services.triggers.handlers.notion.NotionFetchDataData") as mock_cls:
             mock_cls.model_validate.return_value = mock_data
             result = await handler.get_config_options(
                 "notion_new_page_in_db", "database_id", "u1", "notion"
@@ -386,9 +377,7 @@ class TestFindWorkflows:
             mock_wf = MagicMock()
             mock_wf_cls.return_value = mock_wf
 
-            result = await handler.find_workflows(
-                "NOTION_PAGE_ADDED_TO_DATABASE", "trig1", {}
-            )
+            result = await handler.find_workflows("NOTION_PAGE_ADDED_TO_DATABASE", "trig1", {})
 
         assert len(result) == 1
 
@@ -398,9 +387,7 @@ class TestFindWorkflows:
         handler = _make_handler()
         mock_coll.find.return_value = _AsyncCursorMock([])
 
-        result = await handler.find_workflows(
-            "NOTION_PAGE_ADDED_TO_DATABASE", "trig_missing", {}
-        )
+        result = await handler.find_workflows("NOTION_PAGE_ADDED_TO_DATABASE", "trig_missing", {})
         assert result == []
 
     @pytest.mark.asyncio
@@ -413,9 +400,7 @@ class TestFindWorkflows:
             "app.services.triggers.handlers.notion.Workflow",
             side_effect=Exception("bad"),
         ):
-            result = await handler.find_workflows(
-                "NOTION_PAGE_ADDED_TO_DATABASE", "trig1", {}
-            )
+            result = await handler.find_workflows("NOTION_PAGE_ADDED_TO_DATABASE", "trig1", {})
 
         assert result == []
 
@@ -425,9 +410,7 @@ class TestFindWorkflows:
         handler = _make_handler()
         mock_coll.find.side_effect = RuntimeError("db error")
 
-        result = await handler.find_workflows(
-            "NOTION_PAGE_UPDATED_TRIGGER", "trig1", {}
-        )
+        result = await handler.find_workflows("NOTION_PAGE_UPDATED_TRIGGER", "trig1", {})
         assert result == []
 
     @pytest.mark.asyncio
@@ -436,13 +419,9 @@ class TestFindWorkflows:
         handler = _make_handler()
         mock_coll.find.return_value = _AsyncCursorMock([])
 
-        with patch(
-            "app.services.triggers.handlers.notion.NotionPageAddedPayload"
-        ) as mock_payload:
+        with patch("app.services.triggers.handlers.notion.NotionPageAddedPayload") as mock_payload:
             mock_payload.model_validate.return_value = MagicMock()
-            await handler.find_workflows(
-                "NOTION_new_page_EVENT", "trig1", {"some": "data"}
-            )
+            await handler.find_workflows("NOTION_new_page_EVENT", "trig1", {"some": "data"})
             mock_payload.model_validate.assert_called_once()
 
     @pytest.mark.asyncio
@@ -460,9 +439,7 @@ class TestFindWorkflows:
 
     @pytest.mark.asyncio
     @patch("app.services.triggers.handlers.notion.workflows_collection")
-    async def test_validates_all_page_events_payload(
-        self, mock_coll: MagicMock
-    ) -> None:
+    async def test_validates_all_page_events_payload(self, mock_coll: MagicMock) -> None:
         handler = _make_handler()
         mock_coll.find.return_value = _AsyncCursorMock([])
 

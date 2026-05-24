@@ -1,15 +1,12 @@
-import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useRef, useState } from "react";
-import { Alert, Pressable, View } from "react-native";
+import { FlashList } from "@shopify/flash-list";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useRef } from "react";
+import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  Add01Icon,
-  AppIcon,
-  ArrowLeft01Icon,
-  Folder02Icon,
-} from "@/components/icons";
+import { Add01Icon, AppIcon, Folder02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { useResponsive } from "@/lib/responsive";
+import { useConfirmDialog } from "@/shared/components/ui/app-confirm-dialog";
+import { BackButton } from "@/shared/components/ui/back-button";
 import { todoApi } from "../api/todo-api";
 import { useTodos } from "../hooks/use-todos";
 import type {
@@ -18,10 +15,15 @@ import type {
   TodoCreate,
   TodoUpdate,
 } from "../types/todo-types";
-import { CreateTodoModal } from "./create-todo-modal";
-import type { TodoDetailSheetRef } from "./todo-detail-sheet";
-import { TodoDetailSheet } from "./todo-detail-sheet";
-import { TodoList } from "./todo-list";
+import {
+  TodoCreateSheet,
+  type TodoCreateSheetRef,
+} from "./create/todo-create-sheet";
+import type { TodoDetailSheetRef } from "./detail/todo-detail-sheet";
+import { TodoDetailSheet } from "./detail/todo-detail-sheet";
+import { TodoEmptyState } from "./list/todo-empty-state";
+import { TodoListSkeleton } from "./list/todo-list-skeleton";
+import { TodoRow } from "./row/todo-row";
 
 interface ProjectDetailViewProps {
   project: Project;
@@ -32,16 +34,14 @@ export function ProjectDetailView({
   project,
   allProjects,
 }: ProjectDetailViewProps) {
-  const router = useRouter();
-  const { spacing, fontSize } = useResponsive();
   const insets = useSafeAreaInsets();
-  const [showCreate, setShowCreate] = useState(false);
+  const confirm = useConfirmDialog();
   const detailSheetRef = useRef<TodoDetailSheetRef>(null);
+  const createSheetRef = useRef<TodoCreateSheetRef>(null);
 
   const {
     todos,
     isLoading,
-    isRefreshing,
     error,
     refetch,
     createTodo,
@@ -56,14 +56,16 @@ export function ProjectDetailView({
     }, [refetch]),
   );
 
-  const handleCreated = async (data: TodoCreate) => {
-    try {
-      await createTodo({ ...data, project_id: project.id });
-      setShowCreate(false);
-    } catch {
-      // handled in hook
-    }
-  };
+  const handleCreated = useCallback(
+    async (data: TodoCreate) => {
+      try {
+        await createTodo({ ...data, project_id: project.id });
+      } catch {
+        // handled in hook
+      }
+    },
+    [createTodo, project.id],
+  );
 
   const handleTodoPress = useCallback((todo: Todo) => {
     detailSheetRef.current?.open(todo);
@@ -100,151 +102,146 @@ export function ProjectDetailView({
     [refetch],
   );
 
-  const projectColor = project.color ?? "#71717a";
+  const handleDelete = useCallback(
+    async (todo: Todo) => {
+      const ok = await confirm({
+        title: "Delete todo",
+        message: `Delete "${todo.title}"?`,
+        confirmLabel: "Delete",
+        destructive: true,
+      });
+      if (!ok) return;
+      void deleteTodo(todo.id);
+    },
+    [confirm, deleteTodo],
+  );
+
+  const projectColor = project.color ?? "#a1a1aa";
+
+  const renderItem = useCallback(
+    ({ item }: { item: Todo }) => (
+      <TodoRow
+        todo={item}
+        project={project}
+        onToggleComplete={toggleComplete}
+        onPress={handleTodoPress}
+        onDelete={handleDelete}
+        onSnooze={() => undefined}
+        onLongPress={() => undefined}
+        onOpenMenu={() => undefined}
+        selectionMode={false}
+        isSelected={false}
+        onSelect={() => undefined}
+      />
+    ),
+    [project, toggleComplete, handleTodoPress, handleDelete],
+  );
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#131416" }}>
-      {/* Header */}
+    <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
       <View
         style={{
-          paddingTop: insets.top + spacing.sm,
-          paddingHorizontal: spacing.md,
-          paddingBottom: spacing.md,
-          borderBottomWidth: 1,
-          borderBottomColor: "rgba(255,255,255,0.07)",
           flexDirection: "row",
           alignItems: "center",
-          gap: spacing.sm,
+          gap: 8,
+          paddingTop: insets.top + 6,
+          paddingHorizontal: 16,
+          paddingBottom: 12,
         }}
       >
-        <Pressable
-          onPress={() => router.back()}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 999,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(255,255,255,0.05)",
-          }}
-        >
-          <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-        </Pressable>
-
-        {/* Project icon */}
+        <BackButton />
         <View
           style={{
             width: 32,
             height: 32,
-            borderRadius: 8,
-            backgroundColor: `${projectColor}20`,
+            borderRadius: 10,
+            backgroundColor: "rgba(39,39,42,0.60)",
             alignItems: "center",
             justifyContent: "center",
-            borderWidth: 1,
-            borderColor: `${projectColor}35`,
           }}
         >
           <AppIcon icon={Folder02Icon} size={14} color={projectColor} />
         </View>
-
         <View style={{ flex: 1 }}>
-          <Text
-            style={{
-              fontSize: fontSize.lg,
-              fontWeight: "600",
-              color: "#f4f4f5",
-            }}
-          >
+          <Text style={{ fontSize: 17, fontWeight: "600", color: "#fafafa" }}>
             {project.name}
           </Text>
-          <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
-            {todos.length} {todos.length === 1 ? "task" : "tasks"}
+          <Text style={{ fontSize: 11, color: "#71717a" }}>
+            {todos.length} {todos.length === 1 ? "todo" : "todos"}
           </Text>
         </View>
-
         <Pressable
-          onPress={() => setShowCreate(true)}
+          onPress={() => createSheetRef.current?.open()}
+          hitSlop={8}
+          accessibilityLabel="Add todo"
           style={{
             width: 36,
             height: 36,
-            borderRadius: 999,
+            borderRadius: 18,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: "rgba(22,193,255,0.15)",
+            backgroundColor: "#00bbff",
           }}
         >
-          <AppIcon icon={Add01Icon} size={18} color="#16c1ff" />
+          <AppIcon icon={Add01Icon} size={18} color="#0a0a0a" />
         </Pressable>
       </View>
 
-      {/* Error state */}
       {error ? (
         <View
           style={{
             flex: 1,
             alignItems: "center",
             justifyContent: "center",
-            paddingHorizontal: spacing.xl,
-            gap: spacing.md,
+            paddingHorizontal: 32,
+            gap: 12,
           }}
         >
-          <Text
-            style={{
-              fontSize: fontSize.sm,
-              color: "#ef4444",
-              textAlign: "center",
-            }}
-          >
+          <Text style={{ fontSize: 14, color: "#fca5a5", textAlign: "center" }}>
             {error}
           </Text>
           <Pressable
             onPress={() => void refetch()}
             style={{
-              borderRadius: 8,
-              paddingHorizontal: spacing.md,
-              paddingVertical: spacing.sm,
-              backgroundColor: "rgba(22,193,255,0.1)",
+              borderRadius: 10,
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              backgroundColor: "rgba(0,187,255,0.15)",
             }}
           >
-            <Text style={{ fontSize: fontSize.sm, color: "#16c1ff" }}>
+            <Text style={{ fontSize: 13, color: "#00bbff", fontWeight: "600" }}>
               Try again
             </Text>
           </Pressable>
         </View>
+      ) : isLoading && todos.length === 0 ? (
+        <TodoListSkeleton />
+      ) : todos.length === 0 ? (
+        <TodoEmptyState
+          filter="all"
+          onAddTodo={() => createSheetRef.current?.open()}
+        />
       ) : (
-        <TodoList
-          todos={todos}
-          projects={allProjects}
-          isLoading={isLoading}
-          isRefreshing={isRefreshing}
-          onRefresh={() => void refetch()}
-          onToggleComplete={toggleComplete}
-          onTodoPress={handleTodoPress}
-          onDeleteTodo={(id) => {
-            Alert.alert("Delete Task", "Are you sure?", [
-              { text: "Cancel", style: "cancel" },
-              {
-                text: "Delete",
-                style: "destructive",
-                onPress: () => void deleteTodo(id),
-              },
-            ]);
-          }}
+        <FlashList
+          data={todos}
+          keyExtractor={(t) => t.id}
+          renderItem={renderItem}
+          contentContainerStyle={{ paddingTop: 8, paddingBottom: 24 }}
         />
       )}
 
-      <CreateTodoModal
-        visible={showCreate}
-        onClose={() => setShowCreate(false)}
-        onCreated={handleCreated}
+      <TodoCreateSheet
+        ref={createSheetRef}
         projects={allProjects}
         defaultProjectId={project.id}
+        onCreated={handleCreated}
       />
 
       <TodoDetailSheet
         ref={detailSheetRef}
         projects={allProjects}
         onUpdate={handleUpdate}
+        onDelete={handleDelete}
         onAddSubtask={handleAddSubtask}
         onToggleSubtask={handleToggleSubtask}
         onDeleteSubtask={handleDeleteSubtask}

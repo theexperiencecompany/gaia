@@ -1,7 +1,7 @@
-import re
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+import re
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -26,29 +26,27 @@ class BioStatus(str, Enum):
 
 
 class UserUpdateRequest(BaseModel):
-    name: Optional[str] = Field(None, description="New name for the user")
+    name: str | None = Field(None, description="New name for the user")
 
 
 class UserUpdateResponse(BaseModel):
     user_id: str = Field(..., description="Unique identifier for the user")
     name: str = Field(..., description="Name of the user")
     email: str = Field(..., description="Email address of the user")
-    picture: Optional[str] = Field(
-        None, description="URL of the user's profile picture"
-    )
-    updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
+    picture: str | None = Field(None, description="URL of the user's profile picture")
+    updated_at: datetime | None = Field(None, description="Last update timestamp")
 
 
 class OnboardingPreferences(BaseModel):
-    profession: Optional[str] = Field(
+    profession: str | None = Field(
         None,
         description="User's profession or main area of focus",
     )
-    response_style: Optional[str] = Field(
+    response_style: str | None = Field(
         None,
         description="Preferred communication style: brief, detailed, casual, professional",
     )
-    custom_instructions: Optional[str] = Field(
+    custom_instructions: str | None = Field(
         None, max_length=500, description="Custom instructions for the AI assistant"
     )
     # Removed timezone field - now only stored at user.timezone root level
@@ -92,52 +90,68 @@ class OnboardingPreferences(BaseModel):
 
 
 class OnboardingData(BaseModel):
-    completed: bool = Field(
-        default=False, description="Whether onboarding is completed"
-    )
-    completed_at: Optional[datetime] = Field(
+    completed: bool = Field(default=False, description="Whether onboarding is completed")
+    completed_at: datetime | None = Field(
         None, description="Timestamp when onboarding was completed"
     )
     phase: OnboardingPhase = Field(
         default=OnboardingPhase.INITIAL, description="Current onboarding phase"
     )
-    preferences: Optional[OnboardingPreferences] = Field(
+    preferences: OnboardingPreferences | None = Field(
         None, description="User's onboarding preferences"
     )
-    house: Optional[str] = Field(None, description="Assigned house name")
-    personality_phrase: Optional[str] = Field(
-        None, description="LLM-generated personality phrase"
-    )
-    user_bio: Optional[str] = Field(None, description="LLM-generated bio paragraph")
-    bio_status: BioStatus = Field(
-        default=BioStatus.PENDING, description="Status of bio generation"
-    )
-    suggested_workflows: Optional[list[str]] = Field(
+    house: str | None = Field(None, description="Assigned house name")
+    personality_phrase: str | None = Field(None, description="LLM-generated personality phrase")
+    user_bio: str | None = Field(None, description="LLM-generated bio paragraph")
+    bio_status: BioStatus = Field(default=BioStatus.PENDING, description="Status of bio generation")
+    suggested_workflows: list[str] | None = Field(
         default_factory=list, description="Workflow IDs suggested via RAG"
     )
-    overlay_color: Optional[str] = Field(
-        None, description="Personalization overlay color"
-    )
-    overlay_opacity: Optional[int] = Field(
-        None, description="Personalization overlay opacity"
-    )
-    account_number: Optional[int] = Field(None, description="User's account number")
-    member_since: Optional[str] = Field(None, description="Member since date string")
-    integration_scan_states: Optional[Dict[str, Dict[str, Any]]] = Field(
+    overlay_color: str | None = Field(None, description="Personalization overlay color")
+    overlay_opacity: int | None = Field(None, description="Personalization overlay opacity")
+    account_number: int | None = Field(None, description="User's account number")
+    member_since: str | None = Field(None, description="Member since date string")
+    integration_scan_states: dict[str, dict[str, Any]] | None = Field(
         default_factory=dict,
         description="Map of integration IDs to their scan state data (e.g. {'gmail': {'last_scan': timestamp}})",
+    )
+    writing_style: dict | None = Field(
+        None, description="Learned writing style profile from sent emails"
+    )
+    first_message_conversation_id: str | None = Field(
+        None, description="ID of the seeded onboarding conversation"
+    )
+    intelligence_job_id: str | None = Field(
+        None,
+        description="ARQ job id of the in-flight intelligence pipeline; used to abort on reset/re-enqueue",
+    )
+
+
+class ClarifyAnswer(BaseModel):
+    """One answered no-Gmail clarify question, persisted on onboarding.clarify_answers."""
+
+    id: str = Field(..., description="Question id — one of scope, blocker, constraint")
+    kind: str = Field(..., description="scope / blocker / constraint")
+    question: str = Field(..., description="Original question text")
+    value: str | None = Field(
+        None,
+        max_length=500,
+        description="User's answer; None means the question was skipped",
     )
 
 
 class OnboardingRequest(BaseModel):
-    name: str = Field(
-        ..., min_length=1, max_length=100, description="User's preferred name"
-    )
-    profession: str = Field(
-        ..., min_length=1, max_length=50, description="User's profession"
-    )
-    timezone: Optional[str] = Field(
+    name: str = Field(..., min_length=1, max_length=100, description="User's preferred name")
+    profession: str = Field(..., min_length=1, max_length=50, description="User's profession")
+    timezone: str | None = Field(
         None, description="User's detected timezone (e.g., 'America/New_York', 'UTC')"
+    )
+    focus: str | None = Field(
+        None, max_length=500, description="User's current primary focus or goal"
+    )
+    clarify_answers: list[ClarifyAnswer] | None = Field(
+        None,
+        description="No-Gmail follow-up answers (scope/blocker/constraint)",
     )
 
     @field_validator("name")
@@ -159,9 +173,7 @@ class OnboardingRequest(BaseModel):
         if not v:
             raise ValueError("Profession cannot be empty")
         if not re.match(r"^[a-zA-Z\s\-\.]+$", v):
-            raise ValueError(
-                "Profession can only contain letters, spaces, hyphens, and periods"
-            )
+            raise ValueError("Profession can only contain letters, spaces, hyphens, and periods")
         return v
 
     @field_validator("timezone")
@@ -188,13 +200,11 @@ class OnboardingRequest(BaseModel):
 class OnboardingResponse(BaseModel):
     success: bool = Field(..., description="Whether onboarding was successful")
     message: str = Field(..., description="Response message")
-    user: Optional[Dict[str, Any]] = Field(None, description="Updated user data")
+    user: dict[str, Any] | None = Field(None, description="Updated user data")
 
 
 class OnboardingPhaseUpdateRequest(BaseModel):
-    phase: OnboardingPhase = Field(
-        ..., description="The onboarding phase to transition to"
-    )
+    phase: OnboardingPhase = Field(..., description="The onboarding phase to transition to")
 
     @field_validator("phase")
     @classmethod

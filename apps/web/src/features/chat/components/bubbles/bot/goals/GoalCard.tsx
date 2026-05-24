@@ -256,7 +256,7 @@ export function GoalCard({
   const hasRoadmap = goal.roadmap?.nodes && goal.roadmap.nodes.length > 0;
 
   const roadmapTasks =
-    goal.roadmap?.nodes?.length && goal.roadmap.nodes.length > 0
+    goal.roadmap?.nodes && goal.roadmap.nodes.length > 0
       ? goal.roadmap.nodes.filter(
           (node) => node.data.type !== "start" && node.data.type !== "end",
         )

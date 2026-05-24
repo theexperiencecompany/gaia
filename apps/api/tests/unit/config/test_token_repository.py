@@ -6,21 +6,18 @@ Tests cover:
 - Storing new tokens and updating existing tokens
 - Retrieving tokens (by user/provider and by access token)
 - Token refresh flow (Google provider dispatch, unsupported providers)
-- Token revocation (single and all)
-- Authorized scope retrieval
-- Listing user tokens
+- Token revocation (single provider)
 - Edge cases: missing refresh tokens, expired tokens, malformed data
 """
 
+from datetime import UTC, datetime, timedelta
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from authlib.oauth2.rfc6749 import OAuth2Token
 from fastapi import HTTPException
-
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -32,11 +29,11 @@ def _make_token_record(
     user_id: str = "user_1",
     provider: str = "google",
     access_token: str = "access_123",
-    refresh_token: Optional[str] = "refresh_456",
-    token_data: Optional[str] = None,
-    scopes: Optional[str] = "openid email",
-    expires_at: Optional[datetime] = None,
-    updated_at: Optional[datetime] = None,
+    refresh_token: str | None = "refresh_456",
+    token_data: str | None = None,
+    scopes: str | None = "openid email",
+    expires_at: datetime | None = None,
+    updated_at: datetime | None = None,
     id: int = 1,
 ) -> MagicMock:
     """Create a mock OAuthToken database record."""
@@ -47,8 +44,8 @@ def _make_token_record(
     record.access_token = access_token
     record.refresh_token = refresh_token
     record.scopes = scopes
-    record.expires_at = expires_at or (datetime.now(timezone.utc) + timedelta(hours=1))
-    record.updated_at = updated_at or datetime.now(timezone.utc)
+    record.expires_at = expires_at or (datetime.now(UTC) + timedelta(hours=1))
+    record.updated_at = updated_at or datetime.now(UTC)
     if token_data is None:
         token_data = json.dumps(
             {
@@ -65,23 +62,18 @@ def _make_token_record(
 def _make_expired_record(**kwargs: Any) -> MagicMock:
     """Create a mock OAuthToken that is already expired."""
     return _make_token_record(
-        expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        expires_at=datetime.now(UTC) - timedelta(hours=1),
         **kwargs,
     )
 
 
 def _mock_db_session(
     scalar_one_or_none_return: Any = None,
-    scalars_all_return: Optional[List[Any]] = None,
 ) -> AsyncMock:
     """Build a mock async context manager for get_db_session."""
     session = AsyncMock()
     result_mock = MagicMock()
     result_mock.scalar_one_or_none.return_value = scalar_one_or_none_return
-    if scalars_all_return is not None:
-        scalars_mock = MagicMock()
-        scalars_mock.all.return_value = scalars_all_return
-        result_mock.scalars.return_value = scalars_mock
     session.execute = AsyncMock(return_value=result_mock)
     session.commit = AsyncMock()
     session.add = MagicMock()
@@ -118,8 +110,7 @@ class TestTokenRepositoryInit:
         assert call_kwargs[1]["name"] == "google"
         assert call_kwargs[1]["client_id"] == "client_id"
         assert (
-            call_kwargs[1]["client_secret"]
-            == "client_secret"  # pragma: allowlist secret
+            call_kwargs[1]["client_secret"] == "client_secret"  # pragma: allowlist secret
         )
         assert repo.oauth is mock_oauth_instance
 
@@ -224,7 +215,7 @@ class TestGetTokenExpiration:
         assert expected_min <= result <= expected_max
 
     def test_invalid_expires_at_and_invalid_expires_in_uses_default(self) -> None:
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         result = self.repo._get_token_expiration(
             {
                 "expires_at": "bad",
@@ -272,7 +263,7 @@ class TestStoreToken:
 
     async def test_store_new_token(self) -> None:
         session = _mock_db_session(scalar_one_or_none_return=None)
-        token_data: Dict[str, Any] = {
+        token_data: dict[str, Any] = {
             "access_token": "new_access",
             "refresh_token": "new_refresh",
             "token_type": "Bearer",
@@ -296,7 +287,7 @@ class TestStoreToken:
     async def test_store_updates_existing_token(self) -> None:
         existing = _make_token_record()
         session = _mock_db_session(scalar_one_or_none_return=existing)
-        token_data: Dict[str, Any] = {
+        token_data: dict[str, Any] = {
             "access_token": "updated_access",
             "refresh_token": "updated_refresh",
             "token_type": "Bearer",
@@ -319,7 +310,7 @@ class TestStoreToken:
     async def test_store_preserves_existing_refresh_token_when_missing(self) -> None:
         existing = _make_token_record(refresh_token="old_refresh")
         session = _mock_db_session(scalar_one_or_none_return=existing)
-        token_data: Dict[str, Any] = {
+        token_data: dict[str, Any] = {
             "access_token": "new_access",
             # No refresh_token provided
             "token_type": "Bearer",
@@ -339,7 +330,7 @@ class TestStoreToken:
 
     async def test_store_new_token_without_refresh_token(self) -> None:
         session = _mock_db_session(scalar_one_or_none_return=None)
-        token_data: Dict[str, Any] = {
+        token_data: dict[str, Any] = {
             "access_token": "new_access",
             "token_type": "Bearer",
             "expires_in": 3600,
@@ -413,9 +404,7 @@ class TestGetToken:
                 "access_token": "refreshed_access",
                 "refresh_token": "refreshed_refresh",
                 "token_type": "Bearer",
-                "expires_at": (
-                    datetime.now(timezone.utc) + timedelta(hours=1)
-                ).timestamp(),
+                "expires_at": (datetime.now(UTC) + timedelta(hours=1)).timestamp(),
             }
         )
 
@@ -428,9 +417,7 @@ class TestGetToken:
                 new_callable=AsyncMock,
                 return_value=refreshed_token,
             ):
-                result = await self.repo.get_token(
-                    "user_1", "google", renew_if_expired=True
-                )
+                result = await self.repo.get_token("user_1", "google", renew_if_expired=True)
 
         assert result["access_token"] == "refreshed_access"
 
@@ -458,9 +445,7 @@ class TestGetToken:
             mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
             mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            result = await self.repo.get_token(
-                "user_1", "google", renew_if_expired=False
-            )
+            result = await self.repo.get_token("user_1", "google", renew_if_expired=False)
 
         # Should return the token even though it is expired
         assert result["access_token"] == "access_123"
@@ -477,43 +462,6 @@ class TestGetToken:
             result = await self.repo.get_token("user_1", "google")
 
         assert result["expires_at"] is None
-
-
-# ---------------------------------------------------------------------------
-# Tests: update_token
-# ---------------------------------------------------------------------------
-
-
-class TestUpdateToken:
-    """Tests for update_token — delegates to store_token."""
-
-    @patch("app.config.token_repository.settings")
-    @patch("app.config.token_repository.OAuth")
-    def setup_method(
-        self,
-        method: Any,
-        mock_oauth_cls: MagicMock = MagicMock(),
-        mock_settings: MagicMock = MagicMock(),
-    ) -> None:
-        from app.config.token_repository import TokenRepository
-
-        mock_settings.GOOGLE_CLIENT_ID = None
-        mock_settings.GOOGLE_CLIENT_SECRET = None
-        self.repo = TokenRepository()
-
-    async def test_update_delegates_to_store(self) -> None:
-        expected = OAuth2Token(params={"access_token": "test"})
-        with patch.object(
-            self.repo, "store_token", new_callable=AsyncMock, return_value=expected
-        ) as mock_store:
-            result = await self.repo.update_token(
-                "user_1", "google", {"access_token": "test"}
-            )
-
-        mock_store.assert_awaited_once_with(
-            "user_1", "google", {"access_token": "test"}
-        )
-        assert result is expected
 
 
 # ---------------------------------------------------------------------------
@@ -566,9 +514,7 @@ class TestRefreshGoogleToken:
         with patch("app.config.token_repository.httpx.AsyncClient") as mock_httpx:
             mock_async_client = AsyncMock()
             mock_async_client.post = AsyncMock(return_value=mock_response)
-            mock_httpx.return_value.__aenter__ = AsyncMock(
-                return_value=mock_async_client
-            )
+            mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_async_client)
             mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
 
             result = await self.repo._refresh_google_token("old_refresh")
@@ -593,9 +539,7 @@ class TestRefreshGoogleToken:
         with patch("app.config.token_repository.httpx.AsyncClient") as mock_httpx:
             mock_async_client = AsyncMock()
             mock_async_client.post = AsyncMock(return_value=mock_response)
-            mock_httpx.return_value.__aenter__ = AsyncMock(
-                return_value=mock_async_client
-            )
+            mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_async_client)
             mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
 
             result = await self.repo._refresh_google_token("old_refresh")
@@ -611,9 +555,7 @@ class TestRefreshGoogleToken:
         self.mock_settings.GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
         with patch("app.config.token_repository.httpx.AsyncClient") as mock_httpx:
-            mock_httpx.return_value.__aenter__ = AsyncMock(
-                side_effect=ConnectionError("timeout")
-            )
+            mock_httpx.return_value.__aenter__ = AsyncMock(side_effect=ConnectionError("timeout"))
 
             result = await self.repo._refresh_google_token("old_refresh")
 
@@ -654,9 +596,7 @@ class TestRefreshProviderToken:
         assert result is expected
 
     async def test_unsupported_provider_returns_none(self) -> None:
-        result = await self.repo._refresh_provider_token(
-            "unsupported_provider", "refresh_tok"
-        )
+        result = await self.repo._refresh_provider_token("unsupported_provider", "refresh_tok")
         assert result is None
 
     async def test_slack_provider_returns_none(self) -> None:
@@ -844,266 +784,6 @@ class TestRevokeToken:
 
 
 # ---------------------------------------------------------------------------
-# Tests: revoke_all_tokens
-# ---------------------------------------------------------------------------
-
-
-class TestRevokeAllTokens:
-    """Tests for revoking all tokens for a user."""
-
-    @patch("app.config.token_repository.settings")
-    @patch("app.config.token_repository.OAuth")
-    def setup_method(
-        self,
-        method: Any,
-        mock_oauth_cls: MagicMock = MagicMock(),
-        mock_settings: MagicMock = MagicMock(),
-    ) -> None:
-        from app.config.token_repository import TokenRepository
-
-        mock_settings.GOOGLE_CLIENT_ID = None
-        mock_settings.GOOGLE_CLIENT_SECRET = None
-        self.repo = TokenRepository()
-
-    async def test_revoke_all_success(self) -> None:
-        tokens = [_make_token_record(id=1), _make_token_record(id=2, provider="slack")]
-        session = _mock_db_session(scalars_all_return=tokens)
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.revoke_all_tokens("user_1")
-
-        assert result is True
-        assert session.delete.await_count == 2
-        session.commit.assert_awaited_once()
-
-    async def test_revoke_all_no_tokens_returns_true(self) -> None:
-        session = _mock_db_session(scalars_all_return=[])
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.revoke_all_tokens("user_1")
-
-        assert result is True
-
-    async def test_revoke_all_exception_rolls_back(self) -> None:
-        tokens = [_make_token_record()]
-        session = _mock_db_session(scalars_all_return=tokens)
-        session.delete = AsyncMock(side_effect=RuntimeError("db error"))
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.revoke_all_tokens("user_1")
-
-        assert result is False
-        session.rollback.assert_awaited_once()
-
-
-# ---------------------------------------------------------------------------
-# Tests: get_authorized_scopes
-# ---------------------------------------------------------------------------
-
-
-class TestGetAuthorizedScopes:
-    """Tests for scope retrieval."""
-
-    @patch("app.config.token_repository.settings")
-    @patch("app.config.token_repository.OAuth")
-    def setup_method(
-        self,
-        method: Any,
-        mock_oauth_cls: MagicMock = MagicMock(),
-        mock_settings: MagicMock = MagicMock(),
-    ) -> None:
-        from app.config.token_repository import TokenRepository
-
-        mock_settings.GOOGLE_CLIENT_ID = None
-        mock_settings.GOOGLE_CLIENT_SECRET = None
-        self.repo = TokenRepository()
-
-    async def test_scopes_from_record(self) -> None:
-        record = _make_token_record(scopes="openid email profile")
-        session = _mock_db_session(scalar_one_or_none_return=record)
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.get_authorized_scopes("user_1", "google")
-
-        assert result == ["openid", "email", "profile"]
-
-    async def test_scopes_from_token_data_fallback(self) -> None:
-        token_json = json.dumps({"scope": "read write"})
-        record = _make_token_record(scopes=None, token_data=token_json)
-        record.scopes = None
-        session = _mock_db_session(scalar_one_or_none_return=record)
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.get_authorized_scopes("user_1", "google")
-
-        assert result == ["read", "write"]
-
-    async def test_no_scopes_anywhere_returns_empty(self) -> None:
-        token_json = json.dumps({"token_type": "Bearer"})
-        record = _make_token_record(scopes=None, token_data=token_json)
-        record.scopes = None
-        session = _mock_db_session(scalar_one_or_none_return=record)
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.get_authorized_scopes("user_1", "google")
-
-        assert result == []
-
-    async def test_no_token_record_returns_empty(self) -> None:
-        session = _mock_db_session(scalar_one_or_none_return=None)
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.get_authorized_scopes("user_1", "google")
-
-        assert result == []
-
-    async def test_malformed_token_data_json_returns_empty(self) -> None:
-        record = _make_token_record(scopes=None, token_data="not-valid-json")
-        record.scopes = None
-        session = _mock_db_session(scalar_one_or_none_return=record)
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.get_authorized_scopes("user_1", "google")
-
-        assert result == []
-
-
-# ---------------------------------------------------------------------------
-# Tests: list_user_tokens
-# ---------------------------------------------------------------------------
-
-
-class TestListUserTokens:
-    """Tests for listing all user tokens."""
-
-    @patch("app.config.token_repository.settings")
-    @patch("app.config.token_repository.OAuth")
-    def setup_method(
-        self,
-        method: Any,
-        mock_oauth_cls: MagicMock = MagicMock(),
-        mock_settings: MagicMock = MagicMock(),
-    ) -> None:
-        from app.config.token_repository import TokenRepository
-
-        mock_settings.GOOGLE_CLIENT_ID = None
-        mock_settings.GOOGLE_CLIENT_SECRET = None
-        self.repo = TokenRepository()
-
-    async def test_list_tokens_with_multiple_providers(self) -> None:
-        tokens = [
-            _make_token_record(id=1, provider="google"),
-            _make_token_record(id=2, provider="slack", scopes="chat:write"),
-        ]
-        session = _mock_db_session(scalars_all_return=tokens)
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.list_user_tokens("user_1")
-
-        assert result["user_id"] == "user_1"
-        assert result["token_count"] == 2
-        assert "google" in result["available_providers"]
-        assert "slack" in result["available_providers"]
-        assert len(result["tokens"]) == 2
-
-    async def test_list_tokens_empty(self) -> None:
-        session = _mock_db_session(scalars_all_return=[])
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.list_user_tokens("user_1")
-
-        assert result["token_count"] == 0
-        assert result["available_providers"] == []
-        assert result["tokens"] == []
-
-    async def test_list_tokens_details_structure(self) -> None:
-        record = _make_token_record(id=42, provider="google", scopes="openid email")
-        session = _mock_db_session(scalars_all_return=[record])
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.list_user_tokens("user_1")
-
-        token_detail = result["tokens"][0]
-        assert token_detail["id"] == 42
-        assert token_detail["provider"] == "google"
-        assert token_detail["has_refresh_token"] is True
-        assert token_detail["scopes"] == ["openid", "email"]
-        assert token_detail["expires_at"] is not None
-
-    async def test_list_tokens_no_scopes_returns_empty_list(self) -> None:
-        record = _make_token_record(scopes=None)
-        record.scopes = None
-        session = _mock_db_session(scalars_all_return=[record])
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.list_user_tokens("user_1")
-
-        assert result["tokens"][0]["scopes"] == []
-
-    async def test_list_tokens_no_expires_at(self) -> None:
-        record = _make_token_record()
-        record.expires_at = None
-        session = _mock_db_session(scalars_all_return=[record])
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.list_user_tokens("user_1")
-
-        assert result["tokens"][0]["expires_at"] is None
-
-    async def test_list_tokens_no_updated_at(self) -> None:
-        record = _make_token_record()
-        record.updated_at = None
-        session = _mock_db_session(scalars_all_return=[record])
-
-        with patch("app.config.token_repository.get_db_session") as mock_get_db:
-            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
-            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = await self.repo.list_user_tokens("user_1")
-
-        assert result["tokens"][0]["updated_at"] is None
-
-
-# ---------------------------------------------------------------------------
 # Tests: get_token_by_auth_token
 # ---------------------------------------------------------------------------
 
@@ -1157,9 +837,7 @@ class TestGetTokenByAuthToken:
             params={
                 "access_token": "refreshed",
                 "refresh_token": "ref",
-                "expires_at": (
-                    datetime.now(timezone.utc) + timedelta(hours=1)
-                ).timestamp(),
+                "expires_at": (datetime.now(UTC) + timedelta(hours=1)).timestamp(),
             }
         )
 
@@ -1189,9 +867,7 @@ class TestGetTokenByAuthToken:
                 self.repo, "refresh_token", new_callable=AsyncMock, return_value=None
             ):
                 with pytest.raises(HTTPException) as exc_info:
-                    await self.repo.get_token_by_auth_token(
-                        "access_123", renew_if_expired=True
-                    )
+                    await self.repo.get_token_by_auth_token("access_123", renew_if_expired=True)
 
         assert exc_info.value.status_code == 401
 

@@ -7,10 +7,10 @@ with authentication mocked out, rate limiter disabled, and lifespan skipped.
 from contextlib import asynccontextmanager
 from unittest.mock import patch
 
-import httpx
-import pytest
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import httpx
+import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 

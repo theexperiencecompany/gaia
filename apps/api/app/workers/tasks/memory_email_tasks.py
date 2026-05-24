@@ -33,8 +33,7 @@ async def process_gmail_emails_to_memory(ctx, user_id: str) -> str:
             message = f"Gmail email processing completed for user {user_id}: {successful}/{total} emails processed successfully"
             log.info(message)
             return message
-        else:
-            log.warning(
-                f"Gmail email processing incomplete for user {user_id}: {failed} failed",
-            )
-            return f"Gmail email processing failed for user {user_id}: {successful}/{total} emails processed, {failed} failed - not marking as complete"
+        log.warning(
+            f"Gmail email processing incomplete for user {user_id}: {failed} failed",
+        )
+        return f"Gmail email processing failed for user {user_id}: {successful}/{total} emails processed, {failed} failed - not marking as complete"

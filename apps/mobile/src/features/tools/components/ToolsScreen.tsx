@@ -1,22 +1,16 @@
-import { useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Pressable,
   RefreshControl,
   SectionList,
   TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  AppIcon,
-  ArrowLeft01Icon,
-  Search01Icon,
-  ToolsIcon,
-} from "@/components/icons";
+import { AppIcon, Search01Icon, ToolsIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BackButton } from "@/shared/components/ui/back-button";
 import type { Tool } from "../api/tools-api";
 import type { GroupedTools } from "../hooks/useTools";
 import { useTools } from "../hooks/useTools";
@@ -213,7 +207,6 @@ function formatCategoryLabel(category: string): string {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export function ToolsScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { spacing, fontSize, moderateScale } = useResponsive();
 
@@ -286,19 +279,7 @@ export function ToolsScreen() {
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Pressable
-            onPress={() => router.back()}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(255,255,255,0.05)",
-            }}
-          >
-            <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-          </Pressable>
+          <BackButton />
 
           <Text
             style={{

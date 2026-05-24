@@ -4,7 +4,6 @@ import base64
 import email.message
 from unittest.mock import patch
 
-
 from app.agents.templates.mail_templates import (
     GmailMessageParser,
     _get_text_from_html,
@@ -16,7 +15,6 @@ from app.agents.templates.mail_templates import (
     process_list_messages_response,
     thread_template,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -116,9 +114,7 @@ class TestGetTextFromHtml:
 
 class TestGmailMessageParserRaw:
     def test_parse_raw_email_success(self):
-        raw = _make_raw_email(
-            subject="Important", sender="a@b.com", body_text="content"
-        )
+        raw = _make_raw_email(subject="Important", sender="a@b.com", body_text="content")
         msg = _make_gmail_message(raw=raw)
 
         parser = GmailMessageParser(msg)
@@ -322,9 +318,7 @@ class TestGmailMessageParserPayload:
         msg = _make_gmail_message()
 
         parser = GmailMessageParser(msg)
-        with patch.object(
-            parser, "_parse_with_email_parser", side_effect=Exception("parse fail")
-        ):
+        with patch.object(parser, "_parse_with_email_parser", side_effect=Exception("parse fail")):
             assert parser.parse() is False
             assert parser._parsed is False
 
@@ -351,10 +345,7 @@ class TestGmailMessageParserComposio:
         parser._handle_composio_message()
 
         assert parser._parsed is True
-        assert (
-            "HTML content" in parser.html_content
-            or "HTML content" in parser.text_content
-        )
+        assert "HTML content" in parser.html_content or "HTML content" in parser.text_content
 
     def test_text_content_composio_html_extraction(self):
         """text_content should extract text from HTML for composio messages."""

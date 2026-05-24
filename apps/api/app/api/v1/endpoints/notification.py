@@ -1,8 +1,17 @@
 import asyncio
-from typing import Optional
+
+from bson import ObjectId
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+)
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from shared.py.wide_events import log
 from app.constants.notifications import EXPO_TOKEN_PATTERN, MAX_DEVICES_PER_USER
 from app.db.mongodb.collections import users_collection
 from app.models.device_token_models import (
@@ -22,39 +31,24 @@ from app.models.notification.request_models import (
 from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
-from bson import ObjectId
-from fastapi import (
-    APIRouter,
-    Body,
-    Depends,
-    HTTPException,
-    Path,
-    Query,
-    Request,
-)
+from shared.py.wide_events import log
 
 router = APIRouter()
 
 
 @router.get("/notifications", response_model=PaginatedNotificationsResponse)
 async def get_notifications(
-    status: Optional[NotificationStatus] = Query(None, description="Filter by status"),
-    limit: int = Query(
-        50, ge=1, le=100, description="Number of notifications to return"
-    ),
+    status: NotificationStatus | None = Query(None, description="Filter by status"),
+    limit: int = Query(50, ge=1, le=100, description="Number of notifications to return"),
     offset: int = Query(default=0, ge=0, description="Number of notifications to skip"),
-    channel_type: Optional[str] = Query(
-        None, description="Filter by channel type (e.g., email, sms)"
-    ),
+    channel_type: str | None = Query(None, description="Filter by channel type (e.g., email, sms)"),
     current_user: dict = Depends(get_current_user),
 ):
     """Get user's notifications with pagination"""
     user_id = current_user.get("user_id")
 
     if not user_id:
-        raise HTTPException(
-            status_code=401, detail="User not authenticated or user_id not found"
-        )
+        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
     log.set(
         user={"id": user_id},
@@ -71,9 +65,7 @@ async def get_notifications(
             notification_service.get_user_notifications(
                 user_id, status, limit + 1, offset, channel_type
             ),
-            notification_service.get_user_notifications_count(
-                user_id, status, channel_type
-            ),
+            notification_service.get_user_notifications_count(user_id, status, channel_type),
         )
 
         log.set(
@@ -100,16 +92,18 @@ async def get_channel_preferences(
     """Get user's notification channel preferences."""
     user_id = current_user.get("user_id")
     if not user_id:
-        raise HTTPException(
-            status_code=401, detail="User not authenticated or user_id not found"
-        )
+        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
     log.set(user={"id": user_id})
 
     try:
         prefs = await fetch_channel_preferences(user_id)
         log.set(operation="get_channel_preferences", outcome="success")
-        return ChannelPreferences(telegram=prefs["telegram"], discord=prefs["discord"])
+        return ChannelPreferences(
+            telegram=prefs["telegram"],
+            discord=prefs["discord"],
+            whatsapp=prefs["whatsapp"],
+        )
     except Exception as e:
         log.error(f"Failed to get channel preferences: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -123,15 +117,11 @@ async def update_channel_preferences(
     """Update user's notification channel preferences."""
     user_id = current_user.get("user_id")
     if not user_id:
-        raise HTTPException(
-            status_code=401, detail="User not authenticated or user_id not found"
-        )
+        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
     log.set(
         user={"id": user_id},
-        notification={
-            "channel_preferences_update": preferences.model_dump(exclude_none=True)
-        },
+        notification={"channel_preferences_update": preferences.model_dump(exclude_none=True)},
     )
 
     try:
@@ -140,15 +130,19 @@ async def update_channel_preferences(
             updates["notification_channel_prefs.telegram"] = preferences.telegram
         if preferences.discord is not None:
             updates["notification_channel_prefs.discord"] = preferences.discord
+        if preferences.whatsapp is not None:
+            updates["notification_channel_prefs.whatsapp"] = preferences.whatsapp
 
         if updates:
-            await users_collection.update_one(
-                {"_id": ObjectId(user_id)}, {"$set": updates}
-            )
+            await users_collection.update_one({"_id": ObjectId(user_id)}, {"$set": updates})
 
         prefs = await fetch_channel_preferences(user_id)
         log.set(operation="update_channel_preferences", outcome="success")
-        return ChannelPreferences(telegram=prefs["telegram"], discord=prefs["discord"])
+        return ChannelPreferences(
+            telegram=prefs["telegram"],
+            discord=prefs["discord"],
+            whatsapp=prefs["whatsapp"],
+        )
     except Exception as e:
         log.error(f"Failed to update channel preferences: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -164,9 +158,7 @@ async def execute_action(
     """Execute a notification action"""
     user_id = current_user.get("user_id")
     if not user_id:
-        raise HTTPException(
-            status_code=401, detail="User not authenticated or user_id not found"
-        )
+        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
     log.set(
         user={"id": user_id},
@@ -203,22 +195,16 @@ async def mark_as_read(
     """Mark notification as read"""
     user_id = current_user.get("user_id")
     if not user_id:
-        raise HTTPException(
-            status_code=401, detail="User not authenticated or user_id not found"
-        )
+        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
     log.set(user={"id": user_id}, notification={"id": notification_id})
 
     try:
-        updated_notification = await notification_service.mark_as_read(
-            notification_id, user_id
-        )
+        updated_notification = await notification_service.mark_as_read(notification_id, user_id)
         if not updated_notification:
             raise HTTPException(status_code=404, detail="Notification not found")
 
-        log.set(
-            operation="mark_read", notification_id=notification_id, outcome="success"
-        )
+        log.set(operation="mark_read", notification_id=notification_id, outcome="success")
         return NotificationResponse(
             success=True,
             message="Notification marked as read",
@@ -240,9 +226,7 @@ async def bulk_actions(
     """Perform bulk actions on multiple notifications"""
     user_id = current_user.get("user_id")
     if not user_id:
-        raise HTTPException(
-            status_code=401, detail="User not authenticated or user_id not found"
-        )
+        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
     notification_ids = request.notification_ids or []
     log.set(
@@ -258,9 +242,7 @@ async def bulk_actions(
         if not notification_ids:
             raise HTTPException(status_code=400, detail="No notification IDs provided")
 
-        results = await notification_service.bulk_actions(
-            notification_ids, user_id, request.action
-        )
+        results = await notification_service.bulk_actions(notification_ids, user_id, request.action)
 
         successful = sum(1 for success in results.values() if success)
         failed = len(results) - successful
@@ -299,9 +281,7 @@ async def register_device_token(
     user_id = current_user.get("user_id")
 
     if not user_id:
-        raise HTTPException(
-            status_code=401, detail="User not authenticated or user_id not found"
-        )
+        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
     log.set(
         user={"id": user_id},
@@ -322,9 +302,7 @@ async def register_device_token(
         device_count = await device_token_service.get_user_device_count(user_id)
         if device_count >= MAX_DEVICES_PER_USER:
             # Check if this token already exists (update is OK)
-            if not await device_token_service.verify_token_ownership(
-                request.token, user_id
-            ):
+            if not await device_token_service.verify_token_ownership(request.token, user_id):
                 raise HTTPException(
                     status_code=400,
                     detail=f"Maximum {MAX_DEVICES_PER_USER} devices allowed per user",
@@ -339,13 +317,8 @@ async def register_device_token(
 
         if success:
             log.set(operation="register_device", outcome="success")
-            return DeviceTokenResponse(
-                success=True, message="Device registered successfully"
-            )
-        else:
-            raise HTTPException(
-                status_code=500, detail="Failed to register device token"
-            )
+            return DeviceTokenResponse(success=True, message="Device registered successfully")
+        raise HTTPException(status_code=500, detail="Failed to register device token")
 
     except HTTPException:
         raise
@@ -365,9 +338,7 @@ async def unregister_device_token(
     user_id = current_user.get("user_id")
 
     if not user_id:
-        raise HTTPException(
-            status_code=401, detail="User not authenticated or user_id not found"
-        )
+        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
     log.set(user={"id": user_id})
 
@@ -379,11 +350,8 @@ async def unregister_device_token(
 
         if success:
             log.set(operation="unregister_device", outcome="success")
-            return DeviceTokenResponse(
-                success=True, message="Device unregistered successfully"
-            )
-        else:
-            return DeviceTokenResponse(success=False, message="Device token not found")
+            return DeviceTokenResponse(success=True, message="Device unregistered successfully")
+        return DeviceTokenResponse(success=False, message="Device token not found")
 
     except HTTPException:
         raise
@@ -400,16 +368,12 @@ async def get_notification(
     """Get a specific notification."""
     user_id = current_user.get("user_id")
     if not user_id:
-        raise HTTPException(
-            status_code=401, detail="User not authenticated or user_id not found"
-        )
+        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
 
     log.set(user={"id": user_id}, notification={"id": notification_id})
 
     try:
-        notification = await notification_service.get_notification(
-            notification_id, user_id
-        )
+        notification = await notification_service.get_notification(notification_id, user_id)
         if not notification:
             raise HTTPException(status_code=404, detail="Notification not found")
 

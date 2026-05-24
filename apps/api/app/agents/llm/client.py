@@ -1,6 +1,22 @@
-from typing import Any, Dict, List, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
-from shared.py.wide_events import log
+from google.api_core.exceptions import (
+    DeadlineExceeded,
+    InternalServerError,
+    ResourceExhausted,
+    ServiceUnavailable,
+)
+from langchain_core.language_models.chat_models import (
+    BaseChatModel,
+)
+from langchain_core.messages import BaseMessage
+from langchain_core.runnables import Runnable, RunnableConfig
+from langchain_core.runnables.utils import ConfigurableField
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
+from typing_extensions import TypedDict
+
 from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_FREE_MODEL_NAME,
@@ -10,15 +26,36 @@ from app.constants.llm import (
     OPENROUTER_BASE_URL,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from langchain_core.language_models.chat_models import (
-    BaseChatModel,
+from shared.py.wide_events import log
+
+# Exception types we retry at the LLM layer. All of these are transient /
+# infrastructure errors that are safe to retry and tend to succeed on a
+# second attempt. ``ResourceExhausted`` covers 429 from the provider's own
+# quota (distinct from the application-level rate limiter which raises
+# ``LangChainRateLimitException`` and must NOT be retried).
+_LLM_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    ResourceExhausted,
+    ServiceUnavailable,
+    DeadlineExceeded,
+    InternalServerError,
+    ConnectionError,
+    TimeoutError,
 )
-from langchain_core.messages import BaseMessage
-from langchain_core.runnables import RunnableConfig
-from langchain_core.runnables.utils import ConfigurableField
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
-from typing_extensions import TypedDict
+
+
+def _wrap_with_retry(llm: Runnable, *, attempts: int = 3) -> Runnable:
+    """Return ``llm`` unchanged.
+
+    We deliberately do NOT call ``llm.with_retry(...)`` here. It returns a
+    ``RunnableRetry`` wrapper that does not expose ``bind_tools``, which
+    breaks LangGraph's bigtool agent builder. Retry semantics for transient
+    provider errors belong on the agent NODE via ``RetryPolicy`` — see the
+    ``retry_policy`` wiring in the graph builder. The exception tuple above
+    stays here so the node-level policy can import it.
+    """
+    del attempts  # retained for signature compat
+    return llm
+
 
 PROVIDER_MODELS = {
     "gemini": DEFAULT_GEMINI_MODEL_NAME,
@@ -51,9 +88,7 @@ def init_openai_llm():
         streaming=True,
         stream_usage=True,
     ).configurable_fields(
-        model_name=ConfigurableField(
-            id="model", name="Model", description="Which model to use"
-        ),
+        model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
     )
 
 
@@ -65,15 +100,14 @@ def init_openai_llm():
 )
 def init_gemini_llm():
     """Initialize Gemini LLM with default model."""
-    return ChatGoogleGenerativeAI(
+    llm = ChatGoogleGenerativeAI(
         model=PROVIDER_MODELS["gemini"],
         temperature=0.1,
         streaming=True,
     ).configurable_fields(
-        model=ConfigurableField(
-            id="model_name", name="Model", description="Which model to use"
-        ),
+        model=ConfigurableField(id="model_name", name="Model", description="Which model to use"),
     )
+    return _wrap_with_retry(llm)
 
 
 @lazy_provider(
@@ -102,16 +136,13 @@ def init_openrouter_llm():
             }
         },
     ).configurable_fields(
-        model_name=ConfigurableField(
-            id="model", name="Model", description="Which model to use"
-        ),
+        model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
     )
 
 
 def init_llm(
-    preferred_provider: Optional[str] = None,
+    preferred_provider: str | None = None,
     fallback_enabled: bool = True,
-    use_free: bool = False,
 ):
     """
     Initialize LLM with configurable alternatives based on provider priority.
@@ -121,9 +152,6 @@ def init_llm(
                                           If None, uses default priority order.
         fallback_enabled (bool): Whether to enable fallback to other providers
                                if preferred provider is not available.
-        use_free (bool): If True, uses Gemini 2.0 Flash (free) via OpenRouter with
-                        automatic fallbacks. Useful for auxiliary tasks like
-                        follow-up actions and description generation.
 
     Returns:
         Configured LLM instance with alternatives
@@ -132,37 +160,6 @@ def init_llm(
         RuntimeError: If no LLM providers are properly configured
         ValueError: If preferred_provider is not a valid provider name
     """
-    # Use free model via OpenRouter for cost-effective auxiliary tasks
-    if use_free:
-        if not settings.OPENROUTER_API_KEY:
-            raise RuntimeError(
-                "OpenRouter API key not configured. Free LLM requires OPENROUTER_API_KEY."
-            )
-        log.set(
-            llm={
-                "model": DEFAULT_GEMINI_FREE_MODEL_NAME,
-                "provider": "openrouter",
-                "is_free": True,
-            }
-        )
-        return ChatOpenAI(
-            model=DEFAULT_GEMINI_FREE_MODEL_NAME,
-            temperature=0.1,
-            streaming=False,
-            model_kwargs={
-                "max_tokens": 2048
-            },  # Lower limit for free tier auxiliary tasks
-            api_key=settings.OPENROUTER_API_KEY,
-            base_url=OPENROUTER_BASE_URL,
-            default_headers={
-                "HTTP-Referer": settings.FRONTEND_URL,
-                "X-Title": "GAIA",
-            },
-            extra_body={
-                "models": GEMINI_FREE_FALLBACK_MODELS,
-            },
-        )
-
     # Validate preferred provider if specified
     if preferred_provider and preferred_provider not in PROVIDER_MODELS:
         valid_providers = list(PROVIDER_MODELS.keys())
@@ -194,9 +191,7 @@ def init_llm(
 
     log.set(
         llm={
-            "model": PROVIDER_MODELS.get(
-                primary_provider["name"], primary_provider["name"]
-            ),
+            "model": PROVIDER_MODELS.get(primary_provider["name"], primary_provider["name"]),
             "provider": primary_provider["name"],
             "is_free": False,
         }
@@ -204,7 +199,7 @@ def init_llm(
     return _create_configurable_llm(primary_provider, alternative_providers)
 
 
-def _get_available_providers() -> Dict[str, Any]:
+def _get_available_providers() -> dict[str, Any]:
     """
     Retrieve available LLM provider instances from global providers registry.
 
@@ -228,10 +223,10 @@ def _get_available_providers() -> Dict[str, Any]:
 
 
 def _get_ordered_providers(
-    available_providers: Dict[str, Any],
-    preferred_provider: Optional[str],
+    available_providers: dict[str, Any],
+    preferred_provider: str | None,
     fallback_enabled: bool,
-) -> List[LLMProvider]:
+) -> list[LLMProvider]:
     """
     Determine the order of providers based on preferences and availability.
 
@@ -263,15 +258,13 @@ def _get_ordered_providers(
             provider_name = PROVIDER_PRIORITY[priority]
             if provider_name in remaining_providers:
                 ordered.append(
-                    LLMProvider(
-                        name=provider_name, instance=remaining_providers[provider_name]
-                    )
+                    LLMProvider(name=provider_name, instance=remaining_providers[provider_name])
                 )
 
     return ordered
 
 
-def _create_configurable_llm(primary: LLMProvider, alternatives: List[LLMProvider]):
+def _create_configurable_llm(primary: LLMProvider, alternatives: list[LLMProvider]):
     """
     Create a configurable LLM instance with alternatives.
 
@@ -306,7 +299,7 @@ def register_llm_providers():
     init_openrouter_llm()
 
 
-def get_free_llm_chain() -> List[BaseChatModel]:
+def get_free_llm_chain() -> list[BaseChatModel]:
     """
     Get a chain of free/low-cost LLMs for auxiliary tasks with fallback support.
 
@@ -317,7 +310,7 @@ def get_free_llm_chain() -> List[BaseChatModel]:
     Returns:
         List of LLM instances to try in order
     """
-    llms: List[BaseChatModel] = []
+    llms: list[BaseChatModel] = []
 
     # Primary: OpenRouter free model with automatic model fallback
     if settings.OPENROUTER_API_KEY:
@@ -356,9 +349,9 @@ def get_free_llm_chain() -> List[BaseChatModel]:
 
 
 async def invoke_with_fallback(
-    llm_chain: List[BaseChatModel],
+    llm_chain: list[BaseChatModel],
     messages: Sequence[BaseMessage],
-    config: Optional[RunnableConfig] = None,
+    config: RunnableConfig | None = None,
 ) -> BaseMessage:
     """
     Invoke LLMs in sequence until one succeeds.
@@ -377,7 +370,7 @@ async def invoke_with_fallback(
     Raises:
         RuntimeError: If all LLMs in the chain fail
     """
-    last_error: Optional[Exception] = None
+    last_error: Exception | None = None
 
     for i, llm in enumerate(llm_chain):
         try:
@@ -386,9 +379,7 @@ async def invoke_with_fallback(
             provider_name = type(llm).__name__
             last_error = e
             if i < len(llm_chain) - 1:
-                log.warning(
-                    f"LLM {provider_name} failed, falling back to next provider: {e}"
-                )
+                log.warning(f"LLM {provider_name} failed, falling back to next provider: {e}")
             else:
                 log.error(f"All LLM providers failed. Last error: {e}")
 

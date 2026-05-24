@@ -1,19 +1,20 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Popover, PressableFeedback, TextField } from "heroui-native";
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type TextInput, View } from "react-native";
+import { Pressable, TextInput, View } from "react-native";
+import Animated, { ZoomIn } from "react-native-reanimated";
 import {
-  BubbleChatAddIcon,
   Cancel01Icon,
-  Menu01Icon,
-  MoreVerticalIcon,
-  Search01Icon,
+  Notification01Icon,
+  PencilEdit02Icon,
   Tick01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import type { Conversation } from "@/features/chat/types";
+import { useInappNotifications } from "@/features/notifications/hooks/use-inapp-notifications";
 import { impactHaptic } from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
+import { SidebarMenuButton } from "@/shared/components/sidebar-menu-button";
 import { useChatStore } from "@/stores/chat-store";
 import { chatApi } from "../../api/chat-api";
 import { chatKeys, useConversationsQuery } from "../../api/queries";
@@ -21,18 +22,15 @@ import { chatKeys, useConversationsQuery } from "../../api/queries";
 const TITLE_MAX_LENGTH = 200;
 
 interface ChatHeaderProps {
-  onMenuPress: () => void;
   onNewChatPress: () => void;
-  onSearchPress?: () => void;
 }
 
-export function ChatHeader({
-  onMenuPress,
-  onNewChatPress,
-  onSearchPress,
-}: ChatHeaderProps) {
+export function ChatHeader({ onNewChatPress }: ChatHeaderProps) {
   const { spacing, iconSize, moderateScale, fontSize } = useResponsive();
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const { unreadNotifications } = useInappNotifications();
+  const hasUnread = unreadNotifications.length > 0;
 
   const activeChatId = useChatStore((state) => state.activeChatId);
   const { data: conversations } = useConversationsQuery();
@@ -44,7 +42,6 @@ export function ChatHeader({
 
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -61,7 +58,6 @@ export function ChatHeader({
     if (!activeConversation) return;
     impactHaptic("light");
     setEditTitle(activeConversation.title);
-    setIsMenuOpen(false);
     setIsEditing(true);
   }, [activeConversation]);
 
@@ -128,31 +124,35 @@ export function ChatHeader({
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.sm,
         backgroundColor: "transparent",
       }}
     >
       {isEditing ? (
-        <PressableFeedback onPress={cancelEditing}>
+        <Pressable onPress={cancelEditing}>
           <View style={{ padding: moderateScale(4, 0.5) }}>
-            <Cancel01Icon size={iconSize.lg} color="#8e8e93" />
+            <Cancel01Icon size={iconSize.md} color="#a1a1aa" />
           </View>
-        </PressableFeedback>
+        </Pressable>
       ) : (
-        <PressableFeedback onPress={onMenuPress}>
-          <View style={{ padding: moderateScale(4, 0.5) }}>
-            <Menu01Icon size={iconSize.lg} color="#ffffff" />
-          </View>
-        </PressableFeedback>
+        <SidebarMenuButton />
       )}
 
       <View
         style={{ flex: 1, alignItems: "center", paddingHorizontal: spacing.sm }}
       >
         {isEditing ? (
-          <TextField className="w-full">
-            <TextField.Input
+          <View
+            style={{
+              width: "100%",
+              backgroundColor: "rgba(0,187,255,0.08)",
+              borderRadius: 8,
+              paddingHorizontal: spacing.xs,
+              paddingVertical: spacing.xs / 2,
+            }}
+          >
+            <TextInput
               ref={inputRef}
               value={editTitle}
               onChangeText={(text) => {
@@ -161,19 +161,17 @@ export function ChatHeader({
               onSubmitEditing={commitRename}
               returnKeyType="done"
               selectTextOnFocus
-              className="w-full"
               style={{
+                width: "100%",
                 color: "#ffffff",
                 fontSize: fontSize.md,
                 fontWeight: "600",
                 textAlign: "center",
-                borderBottomWidth: 1,
-                borderBottomColor: "#16c1ff",
               }}
             />
-          </TextField>
+          </View>
         ) : activeConversation ? (
-          <PressableFeedback onPress={startEditing}>
+          <Pressable onPress={startEditing}>
             <Text
               numberOfLines={1}
               style={{
@@ -185,62 +183,61 @@ export function ChatHeader({
             >
               {activeConversation.title}
             </Text>
-          </PressableFeedback>
+          </Pressable>
         ) : null}
       </View>
 
-      <View style={{ flexDirection: "row", gap: spacing.sm }}>
+      <View
+        style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}
+      >
         {isEditing ? (
-          <PressableFeedback onPress={commitRename}>
+          <Pressable onPress={commitRename}>
             <View style={{ padding: moderateScale(4, 0.5) }}>
-              <Tick01Icon size={iconSize.md - 2} color="#16c1ff" />
+              <Tick01Icon size={iconSize.md} color="#00bbff" />
             </View>
-          </PressableFeedback>
+          </Pressable>
         ) : (
           <>
-            {onSearchPress && (
-              <PressableFeedback onPress={onSearchPress}>
-                <View style={{ padding: moderateScale(4, 0.5) }}>
-                  <Search01Icon size={iconSize.md - 2} color="#bbbbbb" />
-                </View>
-              </PressableFeedback>
-            )}
-            {activeConversation && (
-              <Popover isOpen={isMenuOpen} onOpenChange={setIsMenuOpen}>
-                <Popover.Trigger>
-                  <View style={{ padding: moderateScale(4, 0.5) }}>
-                    <MoreVerticalIcon size={iconSize.md - 2} color="#bbbbbb" />
-                  </View>
-                </Popover.Trigger>
-                <Popover.Portal>
-                  <Popover.Overlay onPress={() => setIsMenuOpen(false)} />
-                  <Popover.Content placement="bottom" align="end">
-                    <PressableFeedback onPress={startEditing}>
-                      <View
-                        style={{
-                          paddingHorizontal: spacing.lg,
-                          paddingVertical: spacing.md,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: "#ffffff",
-                            fontSize: fontSize.sm,
-                          }}
-                        >
-                          Rename
-                        </Text>
-                      </View>
-                    </PressableFeedback>
-                  </Popover.Content>
-                </Popover.Portal>
-              </Popover>
-            )}
-            <PressableFeedback onPress={onNewChatPress}>
+            <Pressable
+              onPress={() => {
+                impactHaptic("light");
+                router.push("/(app)/notifications");
+              }}
+              hitSlop={8}
+            >
               <View style={{ padding: moderateScale(4, 0.5) }}>
-                <BubbleChatAddIcon size={iconSize.md - 2} color="#bbbbbb" />
+                <Notification01Icon
+                  size={iconSize.md}
+                  color={hasUnread ? "#ffffff" : "#a1a1aa"}
+                />
+                {hasUnread ? (
+                  <Animated.View
+                    entering={ZoomIn.springify().damping(14).stiffness(300)}
+                    style={{
+                      position: "absolute",
+                      top: moderateScale(4, 0.5),
+                      right: moderateScale(4, 0.5),
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: "#00bbff",
+                      borderWidth: 1.5,
+                      borderColor: "#111111",
+                    }}
+                  />
+                ) : null}
               </View>
-            </PressableFeedback>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                impactHaptic("light");
+                onNewChatPress();
+              }}
+            >
+              <View style={{ padding: moderateScale(4, 0.5) }}>
+                <PencilEdit02Icon size={iconSize.md} color="#a1a1aa" />
+              </View>
+            </Pressable>
           </>
         )}
       </View>

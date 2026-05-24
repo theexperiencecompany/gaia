@@ -1,14 +1,18 @@
 """Tests for shared.py.logging — configure_loguru, configure_file_logging, get_contextual_logger, JSON format."""
 
+from datetime import UTC, datetime
 import json
 import logging
-import sys
-from datetime import datetime, timezone
 from pathlib import Path
+import sys
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+if TYPE_CHECKING:
+    from loguru import Message
 
 import shared.py.logging as logging_mod
 from shared.py.logging import (
@@ -20,7 +24,6 @@ from shared.py.logging import (
     configure_loguru,
     get_contextual_logger,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -78,7 +81,10 @@ class TestConfigureLoguru:
 
     def test_configures_extra_with_default_logger_name(self, mock_logger: MagicMock):
         configure_loguru()
-        mock_logger.configure.assert_called_once_with(extra={"logger_name": "APP"})
+        mock_logger.configure.assert_called_once_with(
+            extra={"logger_name": "APP", "worker": "main"},
+            patcher=logging_mod._worker_name_patcher,
+        )
 
     def test_registers_custom_levels(self, mock_logger: MagicMock):
         configure_loguru()
@@ -103,7 +109,15 @@ class TestConfigureLoguru:
 
     def test_intercept_handlers_attached(self, mock_logger: MagicMock):
         configure_loguru()
-        for name in ["uvicorn", "uvicorn.access", "uvicorn.error", "fastapi", "gunicorn", "livekit", "app"]:
+        for name in [
+            "uvicorn",
+            "uvicorn.access",
+            "uvicorn.error",
+            "fastapi",
+            "gunicorn",
+            "livekit",
+            "app",
+        ]:
             specific = logging.getLogger(name)
             assert len(specific.handlers) == 1
             assert specific.propagate is False
@@ -160,7 +174,7 @@ class TestConfigureFileLogging:
         filter_fn = perf_call.kwargs["filter"]
         # Filter should pass when 'performance' is in extra
         record_with = {"extra": {"performance": True}}
-        record_without = {"extra": {}}
+        record_without: dict[str, dict[str, bool]] = {"extra": {}}
         assert filter_fn(record_with) is True
         assert filter_fn(record_without) is False
 
@@ -216,7 +230,7 @@ class TestBuildJsonEntry:
         exception: object = None,
     ) -> dict:
         return {
-            "time": datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+            "time": datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC),
             "level": SimpleNamespace(name=level_name),
             "message": message,
             "module": "test_module",
@@ -289,7 +303,7 @@ class TestJsonStdoutSink:
 
     def test_writes_to_stdout(self):
         record = TestBuildJsonEntry._make_record()
-        message = SimpleNamespace(record=record)
+        message = cast("Message", SimpleNamespace(record=record))
 
         with patch.object(sys, "stdout") as mock_stdout:
             mock_stdout.write = MagicMock()
@@ -313,7 +327,7 @@ class TestJsonFileSinkFactory:
     def test_creates_file_and_writes(self, tmp_path: Path):
         sink = _json_file_sink_factory(tmp_path)
         record = TestBuildJsonEntry._make_record()
-        message = SimpleNamespace(record=record)
+        message = cast("Message", SimpleNamespace(record=record))
 
         sink(message)
 
@@ -326,7 +340,7 @@ class TestJsonFileSinkFactory:
     def test_appends_to_same_file(self, tmp_path: Path):
         sink = _json_file_sink_factory(tmp_path)
         record = TestBuildJsonEntry._make_record()
-        message = SimpleNamespace(record=record)
+        message = cast("Message", SimpleNamespace(record=record))
 
         sink(message)
         sink(message)

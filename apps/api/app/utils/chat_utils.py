@@ -1,9 +1,6 @@
-from typing import List, Optional
-
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langsmith import traceable
-from shared.py.wide_events import log
 from uuid_extensions import uuid7str
 
 from app.agents.core.state import State
@@ -15,12 +12,13 @@ from app.services.conversation_service import (
     create_conversation_service,
     update_conversation_description,
 )
+from shared.py.wide_events import log
 
 
 async def _generate_description_from_message(
     last_message: MessageDict | None,
-    selectedTool: Optional[str],
-    selectedWorkflow: Optional[SelectedWorkflowData],
+    selectedTool: str | None,
+    selectedWorkflow: SelectedWorkflowData | None,
 ) -> str:
     """Helper to generate conversation description from message context."""
     user_message = (
@@ -29,9 +27,7 @@ async def _generate_description_from_message(
         else "New conversation started"
     )
 
-    workflow_context = (
-        f" - Workflow: {selectedWorkflow.title}" if selectedWorkflow else ""
-    )
+    workflow_context = f" - Workflow: {selectedWorkflow.title}" if selectedWorkflow else ""
 
     try:
         response = await do_prompt_no_stream(
@@ -56,10 +52,11 @@ async def _generate_description_from_message(
 async def create_conversation(
     last_message: MessageDict | None,
     user: dict,
-    selectedTool: Optional[str] | None,
-    selectedWorkflow: Optional[SelectedWorkflowData] | None = None,
+    selectedTool: str | None | None,
+    selectedWorkflow: SelectedWorkflowData | None | None = None,
     generate_description: bool = True,
-    conversation_id: Optional[str] = None,
+    conversation_id: str | None = None,
+    is_onboarding_demo: bool = False,
 ) -> dict:
     """
     Create a new conversation with optional description generation.
@@ -82,13 +79,13 @@ async def create_conversation(
     description = (
         "New Chat"
         if not generate_description
-        else await _generate_description_from_message(
-            last_message, selectedTool, selectedWorkflow
-        )
+        else await _generate_description_from_message(last_message, selectedTool, selectedWorkflow)
     )
 
     conversation = ConversationModel(
-        conversation_id=str(uuid_value), description=description
+        conversation_id=str(uuid_value),
+        description=description,
+        is_onboarding_demo=is_onboarding_demo,
     )
 
     await create_conversation_service(conversation, user)
@@ -104,8 +101,8 @@ async def generate_and_update_description(
     conversation_id: str,
     last_message: MessageDict | None,
     user: dict,
-    selectedTool: Optional[str] | None,
-    selectedWorkflow: Optional[SelectedWorkflowData] | None = None,
+    selectedTool: str | None | None,
+    selectedWorkflow: SelectedWorkflowData | None | None = None,
 ) -> str:
     """
     Generate a description for an existing conversation and update it.
@@ -135,7 +132,7 @@ async def generate_and_update_description(
 async def do_prompt_no_stream(
     prompt: str,
     system_prompt: str | None = None,
-) -> dict:
+) -> dict[str, str]:
     """
     Execute a single LLM prompt without streaming.
 
@@ -146,9 +143,7 @@ async def do_prompt_no_stream(
     Returns:
         dict with "response" key containing the AI's response content
     """
-    messages: List[AnyMessage] = (
-        [SystemMessage(content=system_prompt)] if system_prompt else []
-    )
+    messages: list[AnyMessage] = [SystemMessage(content=system_prompt)] if system_prompt else []
     messages.append(HumanMessage(content=prompt))
 
     state = State(messages=messages)
@@ -172,18 +167,3 @@ def get_user_id_from_config(config: RunnableConfig) -> str:
         log.error("No user_id found in config metadata")
 
     return user_id
-
-
-def get_user_name_from_config(config: RunnableConfig) -> str:
-    """Extract user name from the config."""
-    if not config:
-        log.error("Tool called without config")
-        return ""
-
-    metadata = config.get("metadata", {})
-    user_name = metadata.get("user_name", "")
-
-    if not user_name:
-        log.error("No user_name found in config metadata")
-
-    return user_name

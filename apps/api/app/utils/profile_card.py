@@ -1,22 +1,19 @@
 """Utilities for generating user profile card data (holo card) and bio."""
 
+from datetime import UTC, datetime
 import random
-from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from bson import ObjectId
+from langchain_core.messages import HumanMessage
 
 from app.agents.llm.client import init_llm
-from app.agents.prompts.onboarding_prompts import (
-    PERSONALITY_PHRASE_PROMPT,
-    USER_BIO_PROMPT,
-)
-from shared.py.wide_events import log
+from app.agents.prompts.onboarding_prompts import HOLO_CARD_PROMPT
 from app.constants.profession_bios import get_random_bio_for_profession
 from app.db.mongodb.collections import users_collection
-from app.models.memory_models import MemoryEntry
+from app.models.onboarding_models import HoloCardLLMOutput
 from app.models.user_models import BioStatus
-from app.services.composio.composio_service import get_composio_service
+from shared.py.wide_events import log
 
 # Available houses for user assignment
 HOUSES = ["frostpeak", "greenvale", "mistgrove", "bluehaven"]
@@ -32,7 +29,7 @@ def assign_random_house() -> str:
     return random.choice(HOUSES)  # nosec B311
 
 
-def generate_random_color() -> Tuple[str, int]:
+def generate_random_color() -> tuple[str, int]:
     """
     Generate a random vibrant color or gradient for holo card overlay.
 
@@ -46,7 +43,7 @@ def generate_random_color() -> Tuple[str, int]:
     """
     is_gradient = random.random() > 0.5  # nosec B311
 
-    def _hsl_to_rgb(h: float, s: float, lightness_val: float) -> Tuple[int, int, int]:
+    def _hsl_to_rgb(h: float, s: float, lightness_val: float) -> tuple[int, int, int]:
         """Convert HSL to RGB values."""
         if s == 0:
             r = g = b = lightness_val
@@ -102,7 +99,7 @@ def generate_random_color() -> Tuple[str, int]:
     return color_string, opacity
 
 
-async def get_user_metadata(user_id: str) -> Dict[str, Any]:
+async def get_user_metadata(user_id: str, user: dict[str, Any] | None = None) -> dict[str, Any]:
     """
     Calculate user metadata for profile card.
 
@@ -117,203 +114,93 @@ async def get_user_metadata(user_id: str) -> Dict[str, Any]:
         Dict with account_number and member_since
     """
     try:
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        if user is None:
+            user = await users_collection.find_one({"_id": ObjectId(user_id)})
         if not user:
-            return {"account_number": 1, "member_since": "Nov 21, 2024"}
+            return {
+                "account_number": 1,
+                "member_since": datetime.now(UTC).strftime("%b %d, %Y"),
+            }
 
         created_at = user.get("created_at")
 
-        # Calculate account number (sequential based on creation)
-        if created_at and isinstance(created_at, datetime):
-            count = await users_collection.count_documents(
-                {"created_at": {"$lt": created_at}}
-            )
-            account_number = count + 1
-        else:
-            account_number = 1
+        # Stable account number derived from the ObjectId creation timestamp.
+        oid = ObjectId(user_id)
+        account_number = int(oid.generation_time.timestamp()) % 1_000_000
 
         # Format member since date
         member_since = (
             created_at.strftime("%b %d, %Y")
             if created_at and isinstance(created_at, datetime)
-            else "Nov 21, 2024"
+            else datetime.now(UTC).strftime("%b %d, %Y")
         )
 
         return {"account_number": account_number, "member_since": member_since}
 
     except Exception:
         # Fallback to defaults on error
-        return {"account_number": 1, "member_since": "Nov 21, 2024"}
-
-
-async def generate_personality_phrase(
-    user_id: str, memories: List[MemoryEntry], profession: str = ""
-) -> str:
-    log.set(
-        operation="generate_personality_phrase",
-        user_id=user_id,
-        profession=profession,
-        memory_count=len(memories),
-    )
-    """
-    Generate a unique 2-3 word personality phrase using LLM.
-
-    Args:
-        user_id: User identifier
-        memories: User's memories for context
-        profession: User's profession (optional)
-
-    Returns:
-        Generated personality phrase (e.g., "Digital Alchemist")
-    """
-    try:
-        # Summarize memories
-        memory_summary = "\n".join([m.content for m in memories])
-
-        prompt = PERSONALITY_PHRASE_PROMPT.format(
-            profession=profession, memory_summary=memory_summary
-        )
-
-        llm = init_llm(preferred_provider="gemini").bind(temperature=1.2, top_k=80)
-        response = await llm.ainvoke(prompt)
-
-        content = (
-            response.content
-            if isinstance(response.content, str)
-            else str(response.content)
-        )
-        phrase = content.strip().strip('"').strip("'")
-        log.info(f"Generated personality phrase for user {user_id}: {phrase}")
-        return phrase
-
-    except Exception as e:
-        log.error(f"Error generating personality phrase: {e}", exc_info=True)
-        # Fallback based on profession
-        profession_map = {
-            "developer": "Curious Developer",
-            "designer": "Creative Designer",
-            "engineer": "Innovative Engineer",
-            "student": "Eager Learner",
-            "manager": "Strategic Leader",
+        return {
+            "account_number": 1,
+            "member_since": datetime.now(UTC).strftime("%b %d, %Y"),
         }
-        profession_lower = profession.lower() if profession else ""
-        for key, value in profession_map.items():
-            if key in profession_lower:
-                return value
-        return "Curious Adventurer"
 
 
-async def generate_user_bio(
-    user_id: str, memories: List[MemoryEntry]
-) -> Tuple[str, BioStatus]:
-    log.set(
-        operation="generate_user_bio",
-        user_id=user_id,
-        memory_count=len(memories),
-    )
-    """
-    Generate user bio paragraph using LLM based on memories.
+def _phrase_fallback(profession: str) -> str:
+    profession_map = {
+        "developer": "Curious Developer",
+        "designer": "Creative Designer",
+        "engineer": "Innovative Engineer",
+        "student": "Eager Learner",
+        "manager": "Strategic Leader",
+    }
+    profession_lower = profession.lower() if profession else ""
+    for key, value in profession_map.items():
+        if key in profession_lower:
+            return value
+    return "Curious Adventurer"
 
-    Flow:
-    - If no memories + Gmail + not processed → PROCESSING (waiting)
-    - If no memories + Gmail + processed → COMPLETED (fallback bio)
-    - If no memories + no Gmail → NO_GMAIL (profession bio)
-    - If memories exist → COMPLETED (LLM-generated bio)
 
-    Args:
-        user_id: User identifier
-        memories: User's memories
+async def generate_holo_card_content(
+    user_id: str,
+    context_summary: str,
+    user: dict[str, Any] | None = None,
+) -> tuple[str, str, BioStatus]:
+    """Generate the holo card's personality phrase and bio in one structured LLM call."""
+    log.set(operation="generate_holo_card_content", user_id=user_id)
 
-    Returns:
-        Tuple of (bio_text, bio_status)
-    """
-    try:
+    if user is None:
         user = await users_collection.find_one({"_id": ObjectId(user_id)})
-        if not user:
-            return ("Welcome to GAIA!", BioStatus.NO_GMAIL)
+    name = (user or {}).get("name", "User")
+    profession = (user or {}).get("onboarding", {}).get("preferences", {}).get("profession", "")
 
-        name = user.get("name", "User")
-        profession = (
-            user.get("onboarding", {}).get("preferences", {}).get("profession", "")
+    if not context_summary.strip():
+        default_bio = get_random_bio_for_profession(name, profession or "other")
+        return _phrase_fallback(profession), default_bio, BioStatus.NO_GMAIL
+
+    try:
+        prompt = HOLO_CARD_PROMPT.format(
+            name=name,
+            profession=profession or "",
+            context_summary=context_summary[:10000],
         )
-
-        # Check Gmail connection status
-        composio_service = get_composio_service()
-        connection_status = await composio_service.check_connection_status(
-            ["gmail"], str(user_id)
-        )
-        has_gmail = connection_status.get("gmail", False)
-
-        # Handle case: No memories
-        if not memories:
-            email_processed = user.get("email_memory_processed", False)
-
-            if has_gmail and email_processed:
-                # Emails processed but no memories - use fallback
-                log.warning(
-                    f"Email processed but no memories for user {user_id}. Using fallback bio."
-                )
-                default_bio = get_random_bio_for_profession(name, profession or "other")
-                return (default_bio, BioStatus.COMPLETED)
-            elif has_gmail:
-                # Gmail connected but emails not processed yet
-                return (
-                    "Processing your insights... Please check back in a moment.",
-                    BioStatus.PROCESSING,
-                )
-            else:
-                # No Gmail - use profession-based bio
-                default_bio = get_random_bio_for_profession(name, profession or "other")
-                return (default_bio, BioStatus.NO_GMAIL)
-
-        # Generate bio from memories using LLM
-        memory_summary = "\n".join([m.content for m in memories])
-
-        prompt = USER_BIO_PROMPT.format(
-            name=name, profession=profession, memory_summary=memory_summary[:10000]
-        )
-
-        llm = init_llm(preferred_provider="gemini")
-        response = await llm.ainvoke(prompt)
-
-        content = (
-            response.content
-            if isinstance(response.content, str)
-            else str(response.content)
-        )
-        bio = content.strip()
-        log.info(f"Generated bio for user {user_id}")
-        return bio, BioStatus.COMPLETED
+        llm = init_llm(preferred_provider="gemini").bind(temperature=1.0)
+        structured_llm = llm.with_structured_output(HoloCardLLMOutput)
+        result: HoloCardLLMOutput = await structured_llm.ainvoke([HumanMessage(content=prompt)])
+        phrase = result.personality_phrase.strip().strip('"').strip("'")
+        bio = result.user_bio.strip()
+        log.info(f"Generated holo card content for user {user_id}: phrase='{phrase}'")
+        return phrase, bio, BioStatus.COMPLETED
 
     except Exception as e:
-        log.error(f"Error generating user bio: {e}", exc_info=True)
-
-        # Fallback on error
-        try:
-            composio_service = get_composio_service()
-            connection_status = await composio_service.check_connection_status(
-                ["gmail"], str(user_id)
-            )
-            has_gmail = connection_status.get("gmail", False)
-
-            if has_gmail:
-                return (
-                    "Processing your insights... Please check back in a moment.",
-                    BioStatus.PROCESSING,
-                )
-            else:
-                return (
-                    "Connect your Gmail to unlock your personalized GAIA bio",
-                    BioStatus.NO_GMAIL,
-                )
-        except:  # noqa: E722
-            return (
-                "Connect your Gmail to unlock your personalized GAIA bio",
-                BioStatus.NO_GMAIL,
-            )
+        log.error(f"Error generating holo card content: {e}", exc_info=True)
+        return (
+            _phrase_fallback(profession),
+            get_random_bio_for_profession(name, profession or "other"),
+            BioStatus.NO_GMAIL,
+        )
 
 
-def generate_profile_card_design() -> Dict[str, Any]:
+def generate_profile_card_design() -> dict[str, Any]:
     """
     Generate complete profile card design (house, colors).
 

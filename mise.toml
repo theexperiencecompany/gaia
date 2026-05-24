@@ -172,8 +172,8 @@ description = "Run Mobile App + API (starts Docker automatically)"
 run = "nx run docker:docker:up && nx run-many -t dev --projects=api,mobile --parallel=2"
 
 [tasks."dev:bots"]
-description = "Run ALL bots (Discord, Telegram, Slack) in parallel"
-run = "nx run-many -t dev --projects=bot-discord,bot-telegram,bot-slack --parallel=3"
+description = "Run ALL bots (Discord, Telegram, Slack, WhatsApp) in parallel"
+run = "nx run-many -t dev --projects=bot-discord,bot-telegram,bot-slack,bot-whatsapp --parallel=4"
 
 [tasks."dev:arq"]
 description = "Run API + web + arq worker"
@@ -182,7 +182,7 @@ run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web -
 
 [tasks."dev:full"]
 description = "Run API + web + arq worker + voice agent + all bots in parallel"
-run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web,voice-agent,bot-discord,bot-telegram,bot-slack --parallel=7"
+run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web,voice-agent,bot-discord,bot-telegram,bot-slack,bot-whatsapp --parallel=8"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BUILD COMMANDS
@@ -201,40 +201,36 @@ run = "nx affected -t build"
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks.test]
-description = "Test all apps"
-run = "nx run-many -t test"
+description = "Run all JS/TS tests via Nx"
+run = "nx run-many -t test --parallel=3"
 
-[tasks."test:api"]
-description = "Run API tests (unit + integration)"
-run = "nx test api"
+[tasks."test:affected"]
+description = "Test only affected projects"
+run = "nx affected -t test --parallel=3"
 
-[tasks."test:api:unit"]
-description = "Run API unit tests only"
-run = "nx test:unit api"
+[tasks."test:python"]
+description = "Run all Python tests with real services via Dagger"
+run = "dagger call -s test-python"
 
-[tasks."test:api:integration"]
-description = "Run API integration tests only"
-run = "nx test:integration api"
+[tasks."test:python:unit"]
+description = "Run Python unit tests only (no services, fast)"
+run = "cd apps/api && USE_REAL_SERVICES=0 uv run pytest tests/unit --tb=short -q"
 
-[tasks."test:api:e2e"]
-description = "Run API end-to-end tests"
-run = "nx test:e2e api"
+[tasks."test:python:coverage"]
+description = "Run Python tests with coverage via Dagger"
+run = "dagger call -s test-python-coverage"
 
-[tasks."test:api:coverage"]
-description = "Run API tests with coverage report"
-run = "nx test:coverage api"
+[tasks."test:typescript"]
+description = "Run JS/TS tests via Nx"
+run = "nx run-many -t test --parallel=3"
 
 [tasks."test:bots"]
-description = "Test all bots (Discord, Slack, Telegram)"
+description = "Test all bots (Discord, Slack, Telegram, WhatsApp)"
 run = "cd apps/bots && pnpm vitest run"
 
 [tasks."test:cli"]
 description = "Run CLI tests"
 run = "cd packages/cli && pnpm vitest run"
-
-[tasks."test:affected"]
-description = "Test only affected projects"
-run = "nx affected -t test"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LINTING & FORMATTING
@@ -312,6 +308,10 @@ run = "nx run-many -t clean"
 description = "Clean Nx cache"
 run = "nx reset"
 
+[tasks."dagger-clean"]
+description = "Clear Dagger engine local cache"
+run = "dagger core engine local-cache prune"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # NX UTILITIES
 # ─────────────────────────────────────────────────────────────────────────────
@@ -328,35 +328,85 @@ run = "nx affected:graph"
 # CI/CD COMMANDS
 # ─────────────────────────────────────────────────────────────────────────────
 
-[tasks."ci:desktop"]
+# ── Dagger (only for tasks that need service containers) ──
+
+[tasks."ci:test-python"]
+description = "Run Python tests via Dagger with real services (same as CI)"
+run = "dagger call -s test-python"
+
+[tasks."ci:test-python:coverage"]
+description = "Run Python tests with coverage via Dagger"
+run = "dagger call -s test-python-coverage"
+
+[tasks."ci:quality"]
+description = "Run full quality gate via Dagger (local convenience, runs everything)"
+run = "dagger call -s quality-checks"
+
+[tasks."ci:quality:debug"]
+description = "Run quality gate with interactive debugging on failure"
+run = "dagger call quality-checks --interactive"
+
+[tasks."ci:quality:verbose"]
+description = "Run quality gate with full TUI and debug logs"
+run = "dagger call -vv quality-checks"
+
+# ── Docker image builds via Dagger ──
+
+[tasks."ci:docker"]
+description = "Build all Docker images via Dagger"
+run = "dagger call -s docker-build-all"
+
+[tasks."ci:docker:api"]
+description = "Build API Docker image via Dagger"
+run = "dagger call -s docker-build --app api"
+
+[tasks."ci:docker:web"]
+description = "Build web Docker image via Dagger"
+run = "dagger call -s docker-build --app web"
+
+[tasks."ci:docker:voice-agent"]
+description = "Build voice-agent Docker image via Dagger"
+run = "dagger call -s docker-build --app voice-agent"
+
+[tasks."ci:docker:bot-discord"]
+description = "Build Discord bot Docker image via Dagger"
+run = "dagger call -s docker-build --app bot-discord"
+
+[tasks."ci:docker:bot-slack"]
+description = "Build Slack bot Docker image via Dagger"
+run = "dagger call -s docker-build --app bot-slack"
+
+[tasks."ci:docker:bot-telegram"]
+description = "Build Telegram bot Docker image via Dagger"
+run = "dagger call -s docker-build --app bot-telegram"
+
+[tasks."ci:docker:bot-whatsapp"]
+description = "Build WhatsApp bot Docker image via Dagger"
+run = "dagger call -s docker-build --app bot-whatsapp"
+
+# ── GitHub Actions simulation (via act) ──
+
+[tasks."ci:act:quality"]
+description = "Dry-run quality-checks workflow locally with act"
+run = "act workflow_dispatch -n -W .github/workflows/main.yml"
+
+[tasks."ci:act:quality:run"]
+description = "Actually run quality-checks workflow locally with act"
+run = "act workflow_dispatch -W .github/workflows/main.yml"
+
+[tasks."ci:act:desktop"]
 description = "Test desktop-release workflow locally with act (dry-run)"
 run = "act release --job build -n --eventpath .github/test-events/release.json"
 
-[tasks."ci:desktop:run"]
+[tasks."ci:act:desktop:run"]
 description = "Actually run desktop-release workflow locally with act"
 run = "act release --job build --eventpath .github/test-events/release.json"
 
-[tasks."ci:list"]
-description = "List all available GitHub Actions workflows"
-run = "act -l"
-
-[tasks."ci:release-please"]
-description = "Test release-please workflow locally with act (dry-run)"
-run = "act push -n --job release-please"
-
-[tasks."ci:quality"]
-description = "Test main.yml quality-checks workflow (dry-run)"
-run = "act pull_request -n --job quality-checks"
-
-[tasks."ci:quality:run"]
-description = "Actually run quality-checks locally with act"
-run = "act pull_request --job quality-checks"
-
-[tasks."ci:build"]
+[tasks."ci:act:build"]
 description = "Test build.yml workflow (dry-run)"
 run = "act workflow_call -n -W .github/workflows/build.yml"
 
-[tasks."ci:all"]
+[tasks."ci:act:list"]
 description = "List all jobs across all workflows"
 run = "act -l --workflows .github/workflows/"
 

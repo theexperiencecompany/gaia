@@ -14,6 +14,7 @@ interface WorkflowRightPanelProps {
   onRegenerateWithReason: (reasonKey: string) => void;
   onInitialGeneration: () => void;
   onClearError: () => void;
+  isPreview?: boolean;
 }
 
 export default function WorkflowRightPanel({
@@ -25,7 +26,35 @@ export default function WorkflowRightPanel({
   onRegenerateWithReason,
   onInitialGeneration,
   onClearError,
+  isPreview = false,
 }: WorkflowRightPanelProps) {
+  if (isPreview) {
+    return (
+      <div className="flex w-96 min-h-0 flex-col overflow-hidden rounded-2xl bg-zinc-950/30 p-3">
+        <div className="mb-2 px-1 text-sm font-medium text-zinc-200">
+          Steps
+          {workflow?.steps?.length ? (
+            <span className="ml-2 rounded-full bg-primary/20 px-1.5 py-0.5 text-xs text-primary">
+              {workflow.steps.length}
+            </span>
+          ) : null}
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto py-2">
+          <WorkflowStepsPanel
+            workflow={workflow}
+            isGenerating={isGenerating}
+            isRegenerating={isRegenerating}
+            regenerationError={regenerationError}
+            onRegenerateWithReason={onRegenerateWithReason}
+            onInitialGeneration={onInitialGeneration}
+            onClearError={onClearError}
+            isPreview
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex w-96 min-h-0 flex-col overflow-hidden rounded-2xl bg-zinc-950/30 p-3">
       <Tabs

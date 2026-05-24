@@ -9,7 +9,7 @@ Covers:
 - Exception in main try block
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,12 +17,12 @@ import pytest
 MODULE = "app.agents.tools.research_tool"
 
 
-def _make_config(user_id: Optional[str] = "user-123") -> Dict[str, Any]:
+def _make_config(user_id: str | None = "user-123") -> dict[str, Any]:
     """Build a minimal RunnableConfig-like dict."""
     return {"configurable": {"user_id": user_id}}
 
 
-def _no_user_config() -> Dict[str, Any]:
+def _no_user_config() -> dict[str, Any]:
     return {"configurable": {}}
 
 
@@ -103,9 +103,7 @@ class TestDeepResearch:
         )
         assert result["cached"] is True
         assert result["query"] == "test"
-        _patch_stream_writer.assert_any_call(
-            {"progress": "Loaded research from cache!"}
-        )
+        _patch_stream_writer.assert_any_call({"progress": "Loaded research from cache!"})
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.get_user_id_from_config", return_value="user-123")
@@ -144,10 +142,10 @@ class TestDeepResearch:
     @patch(f"{MODULE}.decompose_research_queries", new_callable=AsyncMock)
     @patch(f"{MODULE}.search_with_duckduckgo", new_callable=AsyncMock)
     @patch(f"{MODULE}.rank_and_deduplicate_urls")
-    @patch(f"{MODULE}.fetch_with_crawl4ai", new_callable=AsyncMock)
+    @patch(f"{MODULE}.batch_fetch_with_crawl4ai", new_callable=AsyncMock)
     async def test_successful_research_crawl4ai(
         self,
-        mock_crawl4ai: AsyncMock,
+        mock_batch_crawl4ai: AsyncMock,
         mock_rank: MagicMock,
         mock_ddg: AsyncMock,
         mock_decompose: AsyncMock,
@@ -162,7 +160,13 @@ class TestDeepResearch:
             {"url": "https://example.com", "snippet": "A snippet"},
             {"url": "https://example2.com", "snippet": "Another snippet"},
         ]
-        mock_crawl4ai.return_value = "Full page content"
+        mock_batch_crawl4ai.return_value = (
+            {
+                "https://example.com": "Full page content",
+                "https://example2.com": "Full page content",
+            },
+            {},
+        )
 
         from app.agents.tools.research_tool import deep_research
 
@@ -192,15 +196,14 @@ class TestDeepResearch:
     @patch(f"{MODULE}.search_with_duckduckgo", new_callable=AsyncMock)
     @patch(f"{MODULE}.rank_and_deduplicate_urls")
     @patch(
-        f"{MODULE}.fetch_with_crawl4ai",
+        f"{MODULE}.batch_fetch_with_crawl4ai",
         new_callable=AsyncMock,
-        side_effect=Exception("crawl fail"),
     )
     @patch(f"{MODULE}.fetch_with_httpx", new_callable=AsyncMock)
     async def test_crawl4ai_fails_falls_back_to_httpx(
         self,
         mock_httpx: AsyncMock,
-        mock_crawl4ai: AsyncMock,
+        mock_batch_crawl4ai: AsyncMock,
         mock_rank: MagicMock,
         mock_ddg: AsyncMock,
         mock_decompose: AsyncMock,
@@ -212,6 +215,7 @@ class TestDeepResearch:
         mock_decompose.return_value = ["sub-q1"]
         mock_ddg.return_value = {"results": [{"url": "https://a.com"}]}
         mock_rank.return_value = [{"url": "https://a.com", "snippet": "snip"}]
+        mock_batch_crawl4ai.return_value = ({}, {"https://a.com": "crawl fail"})
         mock_httpx.return_value = "httpx content"
 
         from app.agents.tools.research_tool import deep_research
@@ -232,9 +236,8 @@ class TestDeepResearch:
     @patch(f"{MODULE}.search_with_duckduckgo", new_callable=AsyncMock)
     @patch(f"{MODULE}.rank_and_deduplicate_urls")
     @patch(
-        f"{MODULE}.fetch_with_crawl4ai",
+        f"{MODULE}.batch_fetch_with_crawl4ai",
         new_callable=AsyncMock,
-        side_effect=Exception("fail"),
     )
     @patch(
         f"{MODULE}.fetch_with_httpx",
@@ -244,7 +247,7 @@ class TestDeepResearch:
     async def test_all_fetchers_fail_uses_snippet(
         self,
         mock_httpx: AsyncMock,
-        mock_crawl4ai: AsyncMock,
+        mock_batch_crawl4ai: AsyncMock,
         mock_rank: MagicMock,
         mock_ddg: AsyncMock,
         mock_decompose: AsyncMock,
@@ -255,9 +258,8 @@ class TestDeepResearch:
     ) -> None:
         mock_decompose.return_value = ["sub-q1"]
         mock_ddg.return_value = {"results": [{"url": "https://a.com"}]}
-        mock_rank.return_value = [
-            {"url": "https://a.com", "snippet": "Search snippet text"}
-        ]
+        mock_rank.return_value = [{"url": "https://a.com", "snippet": "Search snippet text"}]
+        mock_batch_crawl4ai.return_value = ({}, {"https://a.com": "fail"})
 
         from app.agents.tools.research_tool import deep_research
 
@@ -278,9 +280,8 @@ class TestDeepResearch:
     @patch(f"{MODULE}.search_with_duckduckgo", new_callable=AsyncMock)
     @patch(f"{MODULE}.rank_and_deduplicate_urls")
     @patch(
-        f"{MODULE}.fetch_with_crawl4ai",
+        f"{MODULE}.batch_fetch_with_crawl4ai",
         new_callable=AsyncMock,
-        side_effect=Exception("fail"),
     )
     @patch(
         f"{MODULE}.fetch_with_httpx",
@@ -290,7 +291,7 @@ class TestDeepResearch:
     async def test_all_fetchers_fail_no_snippet_returns_null_content(
         self,
         mock_httpx: AsyncMock,
-        mock_crawl4ai: AsyncMock,
+        mock_batch_crawl4ai: AsyncMock,
         mock_rank: MagicMock,
         mock_ddg: AsyncMock,
         mock_decompose: AsyncMock,
@@ -302,6 +303,7 @@ class TestDeepResearch:
         mock_decompose.return_value = ["sub-q1"]
         mock_ddg.return_value = {"results": [{"url": "https://a.com"}]}
         mock_rank.return_value = [{"url": "https://a.com", "snippet": ""}]
+        mock_batch_crawl4ai.return_value = ({}, {"https://a.com": "fail"})
 
         from app.agents.tools.research_tool import deep_research
 
@@ -348,10 +350,10 @@ class TestDeepResearch:
     @patch(f"{MODULE}.decompose_research_queries", new_callable=AsyncMock)
     @patch(f"{MODULE}.search_with_duckduckgo", new_callable=AsyncMock)
     @patch(f"{MODULE}.rank_and_deduplicate_urls")
-    @patch(f"{MODULE}.fetch_with_crawl4ai", new_callable=AsyncMock)
+    @patch(f"{MODULE}.batch_fetch_with_crawl4ai", new_callable=AsyncMock)
     async def test_depth_3_max_sources(
         self,
-        mock_crawl4ai: AsyncMock,
+        mock_batch_crawl4ai: AsyncMock,
         mock_rank: MagicMock,
         mock_ddg: AsyncMock,
         mock_decompose: AsyncMock,
@@ -364,7 +366,7 @@ class TestDeepResearch:
         mock_decompose.return_value = ["q1"]
         mock_ddg.return_value = {"results": [{"url": "https://a.com"}]}
         mock_rank.return_value = [{"url": "https://a.com", "snippet": "s"}]
-        mock_crawl4ai.return_value = "content"
+        mock_batch_crawl4ai.return_value = ({"https://a.com": "content"}, {})
 
         from app.agents.tools.research_tool import deep_research
 
@@ -384,10 +386,10 @@ class TestDeepResearch:
     @patch(f"{MODULE}.decompose_research_queries", new_callable=AsyncMock)
     @patch(f"{MODULE}.search_with_duckduckgo", new_callable=AsyncMock)
     @patch(f"{MODULE}.rank_and_deduplicate_urls")
-    @patch(f"{MODULE}.fetch_with_crawl4ai", new_callable=AsyncMock)
+    @patch(f"{MODULE}.batch_fetch_with_crawl4ai", new_callable=AsyncMock)
     async def test_search_exceptions_counted_correctly(
         self,
-        mock_crawl4ai: AsyncMock,
+        mock_batch_crawl4ai: AsyncMock,
         mock_rank: MagicMock,
         mock_ddg: AsyncMock,
         mock_decompose: AsyncMock,
@@ -405,7 +407,7 @@ class TestDeepResearch:
             {"results": []},
         ]
         mock_rank.return_value = [{"url": "https://a.com", "snippet": "s"}]
-        mock_crawl4ai.return_value = "content"
+        mock_batch_crawl4ai.return_value = ({"https://a.com": "content"}, {})
 
         from app.agents.tools.research_tool import deep_research
 

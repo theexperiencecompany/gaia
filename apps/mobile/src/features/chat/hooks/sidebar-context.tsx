@@ -13,6 +13,10 @@ interface SidebarContextValue {
   openSidebar: () => void;
   closeSidebar: () => void;
   toggleSidebar: () => void;
+  // Internal: invoked by the DrawerLayout host to keep open-state in sync
+  // when the drawer opens/closes via swipe/tap-overlay (not just our buttons).
+  _notifyDrawerOpened: () => void;
+  _notifyDrawerClosed: () => void;
 }
 
 const SidebarContext = createContext<SidebarContextValue | null>(null);
@@ -23,31 +27,48 @@ interface SidebarProviderProps {
 
 export function SidebarProvider({ children }: SidebarProviderProps) {
   const drawerRef = useRef<DrawerLayoutMethods>(null);
-  const [isOpen, setIsOpen] = useState(false);
+  const isOpenRef = useRef(false);
+  const [, setRender] = useState(0);
+
+  const setIsOpen = useCallback((next: boolean) => {
+    if (isOpenRef.current === next) return;
+    isOpenRef.current = next;
+    setRender((n) => n + 1);
+  }, []);
 
   const openSidebar = useCallback(() => {
     drawerRef.current?.openDrawer();
     setIsOpen(true);
-  }, []);
+  }, [setIsOpen]);
 
   const closeSidebar = useCallback(() => {
     drawerRef.current?.closeDrawer();
     setIsOpen(false);
-  }, []);
+  }, [setIsOpen]);
 
   const toggleSidebar = useCallback(() => {
-    if (isOpen) {
+    if (isOpenRef.current) {
       drawerRef.current?.closeDrawer();
       setIsOpen(false);
     } else {
       drawerRef.current?.openDrawer();
       setIsOpen(true);
     }
-  }, [isOpen]);
+  }, [setIsOpen]);
+
+  const _notifyDrawerOpened = useCallback(() => setIsOpen(true), [setIsOpen]);
+  const _notifyDrawerClosed = useCallback(() => setIsOpen(false), [setIsOpen]);
 
   return (
     <SidebarContext.Provider
-      value={{ drawerRef, openSidebar, closeSidebar, toggleSidebar }}
+      value={{
+        drawerRef,
+        openSidebar,
+        closeSidebar,
+        toggleSidebar,
+        _notifyDrawerOpened,
+        _notifyDrawerClosed,
+      }}
     >
       {children}
     </SidebarContext.Provider>

@@ -1,10 +1,9 @@
 """User integration management functions."""
 
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from app.agents.tools.core.registry import get_tool_registry
-from shared.py.wide_events import log
 from app.constants.cache import ONE_DAY_TTL
 from app.db.mongodb.collections import user_integrations_collection
 from app.db.utils import serialize_document
@@ -16,15 +15,14 @@ from app.models.integration_models import (
     UserIntegrationsListResponse,
 )
 from app.services.integrations.marketplace import get_integration_details
+from shared.py.wide_events import log
 
 
 async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
     """Get all integrations a user has added to their workspace."""
     user_integrations = []
 
-    cursor = user_integrations_collection.find({"user_id": user_id}).sort(
-        "created_at", -1
-    )
+    cursor = user_integrations_collection.find({"user_id": user_id}).sort("created_at", -1)
 
     async for doc in cursor:
         try:
@@ -50,7 +48,7 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
 
 
 @Cacheable(key_pattern="tools:user:{user_id}:integrations", ttl=ONE_DAY_TTL)
-async def get_user_connected_integrations(user_id: str) -> List[Dict[str, Any]]:
+async def get_user_connected_integrations(user_id: str) -> list[dict[str, Any]]:
     """Get all user integrations (both 'created' and 'connected' status).
 
     Note: Despite the name, this now returns ALL integrations to allow
@@ -69,7 +67,7 @@ async def get_user_connected_integrations(user_id: str) -> List[Dict[str, Any]]:
 async def add_user_integration(
     user_id: str,
     integration_id: str,
-    initial_status: Optional[Literal["created", "connected"]] = None,
+    initial_status: Literal["created", "connected"] | None = None,
 ) -> UserIntegration:
     """Add an integration to user's workspace."""
     log.set(integration={"provider": integration_id, "action": "add_user_integration"})
@@ -110,9 +108,7 @@ async def add_user_integration(
 @CacheInvalidator(key_patterns=["tools:user:{user_id}:*", "tool_namespaces:{user_id}"])
 async def remove_user_integration(user_id: str, integration_id: str) -> bool:
     """Remove an integration from user's workspace."""
-    log.set(
-        integration={"provider": integration_id, "action": "remove_user_integration"}
-    )
+    log.set(integration={"provider": integration_id, "action": "remove_user_integration"})
     result = await user_integrations_collection.delete_one(
         {
             "user_id": user_id,
@@ -139,7 +135,7 @@ async def check_user_has_integration(user_id: str, integration_id: str) -> bool:
 
 
 @Cacheable(key_pattern="tools:user:{user_id}:integration_capabilities", ttl=ONE_DAY_TTL)
-async def get_user_integration_capabilities(user_id: str) -> Dict[str, Any]:
+async def get_user_integration_capabilities(user_id: str) -> dict[str, Any]:
     """
     Get capabilities (tools) for user's connected integrations + core tools.
 

@@ -1,9 +1,25 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import React, { useEffect, useRef, useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
-import { VoiceApp } from "@/features/chat/components/composer/VoiceModeOverlay";
+
+// ssr:false — VoiceModeOverlay imports `livekit-client` (~1.5 MB raw bundled
+// with @bufbuild/protobuf). Voice is opt-in, so the CLIENT bundle is split
+// and livekit only fetches on demand. This does NOT remove livekit from the
+// Cloudflare worker handler.mjs — OpenNext concatenates every chunk because
+// CF Workers can't load chunks at runtime. The client-side win (no livekit
+// in the initial JS download for chat users who don't use voice) is still
+// worth keeping.
+const VoiceApp = dynamic(
+  () =>
+    import("@/features/chat/components/composer/VoiceModeOverlay").then(
+      (m) => m.VoiceApp,
+    ),
+  { ssr: false },
+);
+
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { useChatLayout } from "@/features/chat/components/interface/hooks/useChatLayout";
 import { useScrollBehavior } from "@/features/chat/components/interface/hooks/useScrollBehavior";
@@ -13,6 +29,7 @@ import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchIntegrationStatus } from "@/features/integrations/hooks/useIntegrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { useSendMessage } from "@/hooks/useSendMessage";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { db } from "@/lib/db/chatDb";
 import { syncSingleConversation } from "@/services/syncService";
 import { useChatStore } from "@/stores/chatStore";
@@ -32,7 +49,6 @@ const ChatPage = React.memo(function MainChat() {
     (state) => state.setActiveConversationId,
   );
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   // --- Workflow auto-send ---
   // This runs at the ChatPage level (not inside Composer) so that the
@@ -41,8 +57,6 @@ const ChatPage = React.memo(function MainChat() {
   const selectedWorkflow = useWorkflowSelectionStore((s) => s.selectedWorkflow);
   const autoSend = useWorkflowSelectionStore((s) => s.autoSend);
   const autoSendFiredRef = useRef(false);
-  const shouldSync = searchParams.get("sync") === "true";
-  const queryParam = searchParams.get("q");
 
   // Fetching status on chat-page to resolve caching issues when new integration is connected
   useFetchIntegrationStatus({
@@ -82,6 +96,7 @@ const ChatPage = React.memo(function MainChat() {
 
   const {
     hasMessages,
+    isWelcomeConversation,
     chatRef,
     dummySectionRef,
     inputRef,
@@ -91,6 +106,8 @@ const ChatPage = React.memo(function MainChat() {
     appendToInputRef,
     convoIdParam,
   } = useChatLayout();
+
+  const useMessagesLayout = hasMessages || isWelcomeConversation;
 
   // Set active conversation ID and mark as read when opening
   useEffect(() => {
@@ -122,7 +139,6 @@ const ChatPage = React.memo(function MainChat() {
   }, [
     convoIdParam,
     setActiveConversationId,
-    shouldSync,
     // NOTE: Not including conversations or upsertConversation in deps
     // to avoid re-triggering when manually toggling read/unread status
   ]);
@@ -154,15 +170,18 @@ const ChatPage = React.memo(function MainChat() {
     }
   }, [pendingPrompt, clearPendingPrompt, appendToInputRef]);
 
-  // Handle ?q= query parameter for external app deep linking
+  // Handle ?q= query parameter for external app deep linking — read on
+  // mount only; avoids subscribing to all searchParam changes.
   useEffect(() => {
+    const queryParam = new URLSearchParams(window.location.search).get("q");
     if (queryParam && appendToInputRef.current) {
       appendToInputRef.current(queryParam);
       const url = new URL(window.location.href);
       url.searchParams.delete("q");
       router.replace(url.pathname + url.search, { scroll: false });
     }
-  }, [queryParam, appendToInputRef, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Common composer props
   const composerProps = {
@@ -174,7 +193,13 @@ const ChatPage = React.memo(function MainChat() {
     onDroppedFilesProcessed: () => setDroppedFiles([]),
     hasMessages,
     conversationId: convoIdParam,
-    voiceModeActive: () => setVoiceModeActive(true),
+    voiceModeActive: () => {
+      trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
+        voice_mode_enabled: true,
+        conversation_id: convoIdParam,
+      });
+      setVoiceModeActive(true);
+    },
   };
 
   return (
@@ -182,8 +207,16 @@ const ChatPage = React.memo(function MainChat() {
       <FileDropModal isDragging={isDragging} />
 
       {voiceModeActive ? (
-        <VoiceApp onEndCall={() => setVoiceModeActive(false)} />
-      ) : hasMessages ? (
+        <VoiceApp
+          onEndCall={() => {
+            trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
+              voice_mode_enabled: false,
+              conversation_id: convoIdParam,
+            });
+            setVoiceModeActive(false);
+          }}
+        />
+      ) : useMessagesLayout ? (
         <>
           <ChatWithMessages
             scrollContainerRef={scrollContainerRef}

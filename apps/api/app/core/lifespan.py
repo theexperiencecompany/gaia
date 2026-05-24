@@ -1,11 +1,13 @@
 from contextlib import asynccontextmanager
 
-from shared.py.wide_events import log
+from fastapi import FastAPI
+
 from app.core.provider_registration import (
     unified_shutdown,
     unified_startup,
 )
-from fastapi import FastAPI
+from app.utils.context_utils import _CONTEXT_EXECUTOR
+from shared.py.wide_events import log
 
 
 @asynccontextmanager
@@ -25,3 +27,4 @@ async def lifespan(app: FastAPI):
 
     finally:
         await unified_shutdown("main_app")
+        _CONTEXT_EXECUTOR.shutdown(wait=False)

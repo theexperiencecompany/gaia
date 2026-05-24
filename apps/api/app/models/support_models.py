@@ -1,8 +1,8 @@
 """Support request models for the GAIA API."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -38,9 +38,9 @@ class SupportAttachment(BaseModel):
     filename: str = Field(..., description="Original filename")
     file_size: int = Field(..., description="File size in bytes")
     content_type: str = Field(..., description="MIME type of the file")
-    file_url: Optional[str] = Field(None, description="URL to access the file")
+    file_url: str | None = Field(None, description="URL to access the file")
     uploaded_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Upload timestamp",
     )
 
@@ -48,12 +48,8 @@ class SupportAttachment(BaseModel):
 class SupportRequestCreate(BaseModel):
     """Request model for creating a support request."""
 
-    type: SupportRequestType = Field(
-        ..., description="Type of request (support or feature)"
-    )
-    title: str = Field(
-        ..., min_length=1, max_length=200, description="Title of the request"
-    )
+    type: SupportRequestType = Field(..., description="Type of request (support or feature)")
+    title: str = Field(..., min_length=1, max_length=200, description="Title of the request")
     description: str = Field(
         ..., min_length=10, max_length=5000, description="Detailed description"
     )
@@ -65,12 +61,8 @@ class SupportRequestResponse(BaseModel):
     id: str = Field(..., description="Unique identifier for the support request")
     ticket_id: str = Field(..., description="Human-readable ticket ID")
     user_id: str = Field(..., description="ID of the user who created the request")
-    user_email: str = Field(
-        ..., description="Email of the user who created the request"
-    )
-    user_name: Optional[str] = Field(
-        None, description="Name of the user who created the request"
-    )
+    user_email: str = Field(..., description="Email of the user who created the request")
+    user_name: str | None = Field(None, description="Name of the user who created the request")
     type: SupportRequestType = Field(..., description="Type of request")
     title: str = Field(..., description="Title of the request")
     description: str = Field(..., description="Description of the request")
@@ -82,12 +74,10 @@ class SupportRequestResponse(BaseModel):
     )
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
-    resolved_at: Optional[datetime] = Field(None, description="Resolution timestamp")
-    tags: List[str] = Field(default_factory=list, description="Tags for categorization")
-    metadata: Dict[str, Any] = Field(
-        default_factory=dict, description="Additional metadata"
-    )
-    attachments: List[SupportAttachment] = Field(
+    resolved_at: datetime | None = Field(None, description="Resolution timestamp")
+    tags: list[str] = Field(default_factory=list, description="Tags for categorization")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    attachments: list[SupportAttachment] = Field(
         default_factory=list, description="File attachments"
     )
 
@@ -95,10 +85,10 @@ class SupportRequestResponse(BaseModel):
 class SupportRequestUpdate(BaseModel):
     """Request model for updating a support request."""
 
-    status: Optional[SupportRequestStatus] = Field(None, description="New status")
-    priority: Optional[SupportRequestPriority] = Field(None, description="New priority")
-    tags: Optional[List[str]] = Field(None, description="New tags")
-    notes: Optional[str] = Field(None, description="Internal notes")
+    status: SupportRequestStatus | None = Field(None, description="New status")
+    priority: SupportRequestPriority | None = Field(None, description="New priority")
+    tags: list[str] | None = Field(None, description="New tags")
+    notes: str | None = Field(None, description="Internal notes")
 
 
 class SupportRequestSubmissionResponse(BaseModel):
@@ -106,8 +96,8 @@ class SupportRequestSubmissionResponse(BaseModel):
 
     success: bool = Field(..., description="Whether the submission was successful")
     message: str = Field(..., description="Response message")
-    ticket_id: Optional[str] = Field(None, description="Generated ticket ID")
-    support_request: Optional[SupportRequestResponse] = Field(
+    ticket_id: str | None = Field(None, description="Generated ticket ID")
+    support_request: SupportRequestResponse | None = Field(
         None, description="Created support request details"
     )
 
@@ -122,5 +112,5 @@ class SupportEmailNotification(BaseModel):
     title: str
     description: str
     created_at: datetime
-    support_emails: List[EmailStr]
-    attachments: List[SupportAttachment] = []
+    support_emails: list[EmailStr]
+    attachments: list[SupportAttachment] = []

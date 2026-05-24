@@ -4,7 +4,6 @@ import pytest
 
 from app.utils.markdown_utils import (
     convert_markdown_to_plain_text,
-    is_markdown_content,
     split_yaml_frontmatter,
 )
 
@@ -80,49 +79,6 @@ class TestSplitYamlFrontmatter:
 
 
 @pytest.mark.unit
-class TestIsMarkdownContent:
-    def test_detects_headers(self):
-        assert is_markdown_content("# Heading") is True
-        assert is_markdown_content("## Sub heading") is True
-        assert is_markdown_content("###### Deep heading") is True
-
-    def test_detects_bold(self):
-        assert is_markdown_content("This is **bold** text") is True
-        assert is_markdown_content("This is __bold__ text") is True
-
-    def test_detects_italic(self):
-        assert is_markdown_content("This is *italic* text") is True
-        assert is_markdown_content("This is _italic_ text") is True
-
-    def test_detects_links(self):
-        assert (
-            is_markdown_content("Click [here](http://example.com)") is True
-        )  # NOSONAR
-
-    def test_detects_lists(self):
-        assert is_markdown_content("- item one") is True
-        assert is_markdown_content("* item one") is True
-        assert is_markdown_content("1. first item") is True
-
-    def test_detects_code(self):
-        assert is_markdown_content("Use `code` here") is True
-        assert is_markdown_content("```python\nprint('hi')\n```") is True
-
-    def test_detects_blockquotes(self):
-        assert is_markdown_content("> This is a quote") is True
-
-    def test_returns_false_for_plain_text(self):
-        assert is_markdown_content("Just plain text without any formatting") is False
-
-    def test_returns_false_for_empty(self):
-        assert is_markdown_content("") is False
-        assert is_markdown_content(None) is False
-
-    def test_returns_false_for_non_string(self):
-        assert is_markdown_content(42) is False
-
-
-@pytest.mark.unit
 class TestConvertMarkdownToPlainText:
     def test_strips_headers(self):
         result = convert_markdown_to_plain_text("## My Header")
@@ -137,9 +93,7 @@ class TestConvertMarkdownToPlainText:
         assert result == "This is italic text"
 
     def test_converts_links(self):
-        result = convert_markdown_to_plain_text(
-            "[Click here](http://example.com)"
-        )  # NOSONAR
+        result = convert_markdown_to_plain_text("[Click here](http://example.com)")  # NOSONAR
         assert result == "Click here"
 
     def test_strips_code_blocks(self):

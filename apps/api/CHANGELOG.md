@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.17.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.16.0...api-v0.17.0) (2026-04-05)
+
+
+### Features
+
+* Add custom integration tools to gather context ([#534](https://github.com/theexperiencecompany/gaia/issues/534)) ([e256633](https://github.com/theexperiencecompany/gaia/commit/e256633270452e43e53acf2dcdd6bfca5b4bb0ec))
+* Add script to populate GAIA's knowledge base from markdown and include initial GAIA documentation. ([d359181](https://github.com/theexperiencecompany/gaia/commit/d359181821c53e4237903b33c5b101c387af0af1))
+* added support for artifacts ([#547](https://github.com/theexperiencecompany/gaia/issues/547)) ([bf95597](https://github.com/theexperiencecompany/gaia/commit/bf95597efedb2ab1dd9f87ee9d5c9e4df13aaaff))
+* **analytics:** add PostHog analytics to bots ([#599](https://github.com/theexperiencecompany/gaia/issues/599)) ([af894bf](https://github.com/theexperiencecompany/gaia/commit/af894bfe8a1bdeacbb99c6ccea487d3b8ac14554))
+* **analytics:** add PostHog analytics to bots and CLI ([8d799ef](https://github.com/theexperiencecompany/gaia/commit/8d799ef56f0f789f9ceb660ae0f6ab2eb01bb518))
+* **analytics:** audit and wire up all PostHog events, remove wrapper abstractions ([61bca75](https://github.com/theexperiencecompany/gaia/commit/61bca759fdbd0c52d1184e8da6600baead7c10e2))
+* **ci:** Dagger integration test overhaul — real-service tests + CI hardening ([#591](https://github.com/theexperiencecompany/gaia/issues/591)) ([7736c39](https://github.com/theexperiencecompany/gaia/commit/7736c3957b73b51e9e47291836c61a6f03e750bd))
+* Deep research tool, free-tier search fallbacks, and rate limit UI ([#530](https://github.com/theexperiencecompany/gaia/issues/530)) ([8e00025](https://github.com/theexperiencecompany/gaia/commit/8e00025a422426fa36e82e6a6e59f719e5c8e702))
+* Enhance calendar event creation with attendee and Google Meet support, and refactor meeting invite skills. ([dd2100c](https://github.com/theexperiencecompany/gaia/commit/dd2100cb5d330a2d948a5a756f1f905309bb1b91))
+* implement MCP Apps Builder ([#533](https://github.com/theexperiencecompany/gaia/issues/533)) ([2df1ad1](https://github.com/theexperiencecompany/gaia/commit/2df1ad18780a527c5a953f83652c1e1d7f6b6453))
+* Implement streaming for calendar data to the frontend and refine calendar tool functionalities, including a new Composio/Langchain patch. ([2f2dfe9](https://github.com/theexperiencecompany/gaia/commit/2f2dfe9fc8f1c25cbad449d8f3613cab076891ff))
+* **marketplace:** add native integrations to marketplace page ([#556](https://github.com/theexperiencecompany/gaia/issues/556)) ([1952869](https://github.com/theexperiencecompany/gaia/commit/1952869887ab744fda2122b87bed23b1212b48b8))
+* **observability:** comprehensive Grafana dashboard overhaul + alerting ([a942b4f](https://github.com/theexperiencecompany/gaia/commit/a942b4f09ef68fc600223bd7957281f59e693b0f))
+* OpenUI Lang integration for generative UI rendering ([#554](https://github.com/theexperiencecompany/gaia/issues/554)) ([5652824](https://github.com/theexperiencecompany/gaia/commit/5652824752cedad9ea8b76d59b01310b8724653d))
+* structured logging and Grafana observability stack ([#548](https://github.com/theexperiencecompany/gaia/issues/548)) ([be96cc0](https://github.com/theexperiencecompany/gaia/commit/be96cc05ff3b3e9d49877479f11d996fcbf04bb3))
+* **whatsapp:** integrate WhatsApp via Kapso ([#581](https://github.com/theexperiencecompany/gaia/issues/581)) ([c870d16](https://github.com/theexperiencecompany/gaia/commit/c870d16ef63cc103c6ce465cf029f17b449c91a3))
+
+
+### Bug Fixes
+
+* **analytics:** address PR [#579](https://github.com/theexperiencecompany/gaia/issues/579) review comments ([5461a05](https://github.com/theexperiencecompany/gaia/commit/5461a05a253a19713d042a7dd7d4ad458ada1d16))
+* **analytics:** fix all review issues ([2b6f2a5](https://github.com/theexperiencecompany/gaia/commit/2b6f2a5ecec1325bc4b0d8fd241a9ec264a78c0a))
+* **api:** align builtin skill tool slugs with Composio inventory ([#527](https://github.com/theexperiencecompany/gaia/issues/527)) ([095cfaa](https://github.com/theexperiencecompany/gaia/commit/095cfaaabb7269507dbbb7525ac01127ede95825))
+* **api:** backend resilience — prevent event loop starvation and outage recurrence ([#596](https://github.com/theexperiencecompany/gaia/issues/596)) ([7330aca](https://github.com/theexperiencecompany/gaia/commit/7330aca70e4fb80fec5492a1c527afef38025f96))
+* **api:** harden crawl4ai batching and profile crawl timeouts ([#604](https://github.com/theexperiencecompany/gaia/issues/604)) ([a6e0891](https://github.com/theexperiencecompany/gaia/commit/a6e0891d31909290b6cc83bac82fbd59e585502c))
+* **api:** overhaul todo cache invalidation to cover all filtered views ([59db8ec](https://github.com/theexperiencecompany/gaia/commit/59db8ec2de0ec704d5a513b5be0aa34cb03d582a))
+* **comms,toast:** content-length prompt rules and toast title overflow ([d5f7f8b](https://github.com/theexperiencecompany/gaia/commit/d5f7f8bbaa35040ca131f2a544f51d50b39175c8))
+* Docker version issues & system workflows instructions. ([#542](https://github.com/theexperiencecompany/gaia/issues/542)) ([ef9f3cc](https://github.com/theexperiencecompany/gaia/commit/ef9f3ccf7f2ce66bf63d65fc0c70f4b75e77a5d3))
+* Enhance caching logic in research tool and improve type validation in utility functions ([731be49](https://github.com/theexperiencecompany/gaia/commit/731be4953f2c0e8597c8020c56cb124ea9f57b41))
+* Enhance MCPClient connection handling with token refresh and status updates on auth errors ([#528](https://github.com/theexperiencecompany/gaia/issues/528)) ([420e4dd](https://github.com/theexperiencecompany/gaia/commit/420e4dd4e15724b6641ff74b929e714d121ffe5d))
+* enhance meeting preparation and reminder prompts for calendar and email workflows ([8f2e6df](https://github.com/theexperiencecompany/gaia/commit/8f2e6dfb9ffe75bc1e336c58aa6f433ab8289588))
+* Improve error handling and logging in subagent tool invocation; enhance research tool depth validation; update token management error logging; refine search utility URL validation ([#536](https://github.com/theexperiencecompany/gaia/issues/536)) ([d34b0ae](https://github.com/theexperiencecompany/gaia/commit/d34b0ae0cf1ceb045fe4ad82873bb038f0884ec7))
+* **mcp-sandbox-proxy:** enhance parent origin detection for postMessage ([2df1ad1](https://github.com/theexperiencecompany/gaia/commit/2df1ad18780a527c5a953f83652c1e1d7f6b6453))
+* **MCPAppRenderer:** improve error handling and adjust app height for better layout ([2df1ad1](https://github.com/theexperiencecompany/gaia/commit/2df1ad18780a527c5a953f83652c1e1d7f6b6453))
+* **observability:** mypy Coroutine types + per-worker Redis DB for tests ([04e27a0](https://github.com/theexperiencecompany/gaia/commit/04e27a0fe2f2cfa9fc8533a3e902cc1f2256caa6))
+* **payment:** allow customers to edit billing address country in payments ([#597](https://github.com/theexperiencecompany/gaia/issues/597)) ([fa983c1](https://github.com/theexperiencecompany/gaia/commit/fa983c15eae6fb931a3a3aa8ad94276677ebb8d2))
+* **seo:** sitemap fixes and human-readable slugs ([#562](https://github.com/theexperiencecompany/gaia/issues/562)) ([38a8e94](https://github.com/theexperiencecompany/gaia/commit/38a8e94389d3fdbcd4c024c11bfdf53aa278daca))
+
+
+### Performance Improvements
+
+* **todos:** Comprehensive performance and UX improvements ([#566](https://github.com/theexperiencecompany/gaia/issues/566)) ([cf5f7d4](https://github.com/theexperiencecompany/gaia/commit/cf5f7d49665da38ebf014efae6c24237df8e3121))
+* Vercel React best practices — 127 files, 62 rules ([#563](https://github.com/theexperiencecompany/gaia/issues/563)) ([899ea36](https://github.com/theexperiencecompany/gaia/commit/899ea3666cdccc95d282f2e921b7be639ffeaf36))
+
+
+### Documentation
+
+* add guides section with screenshots and content ([#561](https://github.com/theexperiencecompany/gaia/issues/561)) ([3cbc9c1](https://github.com/theexperiencecompany/gaia/commit/3cbc9c1e9cf6a1a5d96d1e07c44131c3c386fc2a))
+
 ## [0.16.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.15.0...api-v0.16.0) (2026-02-27)
 
 

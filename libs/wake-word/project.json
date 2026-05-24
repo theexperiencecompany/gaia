@@ -1,0 +1,51 @@
+{
+  "name": "wake-word",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "root": "libs/wake-word",
+  "sourceRoot": "libs/wake-word/src",
+  "projectType": "library",
+  "tags": ["scope:typescript", "scope:audio"],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "biome check .",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": ["default", "{workspaceRoot}/biome.json"]
+    },
+    "lint:fix": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "biome check --write .",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true
+    },
+    "models:fetch": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/fetch-models.sh",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
+    },
+    "train": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run python -m training.train",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
+    }
+  }
+}

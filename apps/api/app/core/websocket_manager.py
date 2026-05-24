@@ -1,10 +1,11 @@
 import json
-from typing import Any, ClassVar, Dict, Set, TypeVar, cast
+from typing import Any, ClassVar, TypeVar, cast
 
-from shared.py.wide_events import log
+from fastapi import WebSocket
+
 from app.db.rabbitmq import get_rabbitmq_publisher
 from app.utils.worker_detection import is_main_app
-from fastapi import WebSocket
+from shared.py.wide_events import log
 
 T = TypeVar("T", bound="WebSocketManager")
 
@@ -16,7 +17,7 @@ class WebSocketManager:
 
     def __new__(cls: type[T]) -> T:
         if cls._instance is None:
-            cls._instance = super(WebSocketManager, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
             # Initialize the instance in __new__ for singleton pattern
             cls._instance.initialized = False
             log.info("Created new WebSocketManager instance")
@@ -25,7 +26,7 @@ class WebSocketManager:
     def __init__(self) -> None:
         # Only initialize once
         if not hasattr(self, "initialized") or not self.initialized:
-            self.connections: Dict[str, Set[WebSocket]] = {}
+            self.connections: dict[str, set[WebSocket]] = {}
             self.initialized: bool = True
 
     def add_connection(self, user_id: str, websocket: WebSocket) -> None:
@@ -45,7 +46,7 @@ class WebSocketManager:
         log.set(websocket={"user_id": user_id, "connection_id": id(websocket)})
         log.info(f"Removed WebSocket connection for user {user_id}")
 
-    async def broadcast_to_user(self, user_id: str, message: Dict[str, Any]) -> None:
+    async def broadcast_to_user(self, user_id: str, message: dict[str, Any]) -> None:
         """Broadcast message to all connections for a user"""
 
         # If we don't have websocket pool (not main app), publish to RabbitMQ
@@ -68,7 +69,7 @@ class WebSocketManager:
         for ws in disconnected:
             self.connections[user_id].discard(ws)
 
-    async def _publish_to_rabbitmq(self, user_id: str, message: Dict[str, Any]) -> None:
+    async def _publish_to_rabbitmq(self, user_id: str, message: dict[str, Any]) -> None:
         """Publish WebSocket message to RabbitMQ for main app to broadcast."""
         try:
             publisher = await get_rabbitmq_publisher()
@@ -87,9 +88,7 @@ class WebSocketManager:
             log.debug(f"Published WebSocket message for user {user_id} to RabbitMQ")
 
         except Exception as e:
-            log.error(
-                f"Failed to publish WebSocket message to RabbitMQ: {e}", exc_info=True
-            )
+            log.error(f"Failed to publish WebSocket message to RabbitMQ: {e}", exc_info=True)
 
 
 # Create a singleton instance of WebSocketManager

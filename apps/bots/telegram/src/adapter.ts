@@ -25,7 +25,9 @@ import {
   BaseBotAdapter,
   type BotCommand,
   convertToTelegramMarkdown,
+  createBotLogger,
   handleStreamingChat,
+  hashLogIdentifier,
   type PlatformName,
   parseTextArgs,
   type RichMessage,
@@ -33,6 +35,7 @@ import {
   richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
+  sanitizeErrorForLog,
 } from "@gaia/shared";
 import type { Message } from "@grammyjs/types";
 import { Bot, type Context } from "grammy";
@@ -62,9 +65,11 @@ export function stripTelegramMention(
 
 export class TelegramAdapter extends BaseBotAdapter {
   readonly platform: PlatformName = "telegram";
+  protected readonly defaultServerPort = 3202;
   private bot!: Bot;
   private token!: string;
   private botUsername: string | undefined;
+  private readonly adapterLogger = createBotLogger("telegram", "adapter");
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -80,7 +85,7 @@ export class TelegramAdapter extends BaseBotAdapter {
 
     this.bot = new Bot(this.token);
     this.bot.catch((err) => {
-      console.error("Bot error:", err);
+      this.adapterLogger.error("bot_runtime_error", undefined, err);
     });
     // Cache the bot username upfront to avoid calling getMe() on every message
     const botInfo = await this.bot.api.getMe();
@@ -147,7 +152,10 @@ export class TelegramAdapter extends BaseBotAdapter {
     try {
       await this.bot.api.setMyCommands(telegramCommands);
     } catch (e) {
-      console.error("Failed to register Telegram bot commands:", e);
+      this.adapterLogger.error(
+        "set_my_commands_failed",
+        sanitizeErrorForLog(e),
+      );
     }
   }
 
@@ -165,6 +173,12 @@ export class TelegramAdapter extends BaseBotAdapter {
       if (!userId) return;
 
       const isPrivate = ctx.chat.type === "private";
+      this.adapterLogger.info("message_received", {
+        user_hash: hashLogIdentifier(userId),
+        chat_hash: hashLogIdentifier(ctx.chat.id),
+        chat_type: ctx.chat.type,
+        is_private: isPrivate,
+      });
 
       if (isPrivate) {
         await this.handleTelegramStreaming(ctx, userId, ctx.message.text);
@@ -186,11 +200,54 @@ export class TelegramAdapter extends BaseBotAdapter {
     });
   }
 
-  /** Starts long polling. */
+  /** Starts long polling, retrying after 35 s on 409 Conflict. */
   protected async start(): Promise<void> {
-    this.bot.start({
-      onStart: () => console.log("Telegram bot is running"),
-    });
+    // Remove any webhook that may have been set during development.
+    // A webhook prevents long polling and immediately returns 409.
+    try {
+      await this.bot.api.deleteWebhook({ drop_pending_updates: true });
+    } catch (e) {
+      this.adapterLogger.warn("delete_webhook_failed", sanitizeErrorForLog(e));
+    }
+
+    const runBot = async (retryDelayMs = 0): Promise<void> => {
+      if (retryDelayMs > 0) {
+        this.adapterLogger.info("long_poll_retry_waiting", {
+          delay_ms: retryDelayMs,
+        });
+        await new Promise<void>((r) => setTimeout(r, retryDelayMs));
+      }
+      await this.bot.start({
+        onStart: () => this.adapterLogger.info("long_polling_started"),
+      });
+    };
+
+    const startWithRetry = (retryDelayMs = 0): void => {
+      runBot(retryDelayMs).catch((err: unknown) => {
+        const code = (err as { error_code?: number })?.error_code;
+        if (code === 409) {
+          // Another getUpdates session is still active (e.g. previous container
+          // was SIGKILL'd before graceful shutdown). Wait 35 s for it to expire.
+          this.adapterLogger.warn("long_poll_conflict_retrying", {
+            wait_ms: 35_000,
+          });
+          startWithRetry(35_000);
+        } else {
+          this.adapterLogger.error("long_poll_fatal", undefined, err);
+          void this.shutdown()
+            .catch((shutdownErr) =>
+              this.adapterLogger.error(
+                "shutdown_failed",
+                undefined,
+                shutdownErr,
+              ),
+            )
+            .finally(() => process.exit(1));
+        }
+      });
+    };
+
+    startWithRetry();
   }
 
   /** Stops the bot. */
@@ -217,6 +274,12 @@ export class TelegramAdapter extends BaseBotAdapter {
         return;
       }
 
+      this.adapterLogger.info("slash_command_received", {
+        command: "gaia",
+        user_hash: hashLogIdentifier(userId),
+        chat_hash: hashLogIdentifier(ctx.chat?.id),
+      });
+
       await this.handleTelegramStreaming(ctx, userId, message);
     });
   }
@@ -234,6 +297,12 @@ export class TelegramAdapter extends BaseBotAdapter {
   ): Promise<void> {
     const chatId = ctx.chat?.id;
     if (!chatId) return;
+
+    this.adapterLogger.info("streaming_started", {
+      user_hash: hashLogIdentifier(userId),
+      chat_hash: hashLogIdentifier(chatId),
+      message_length: message.length,
+    });
 
     const loading = await ctx.reply("Thinking...");
     let currentMessageId = loading.message_id;
@@ -290,7 +359,11 @@ export class TelegramAdapter extends BaseBotAdapter {
               } catch {}
               return;
             }
-            console.error("Telegram editMessageText error:", e);
+            this.adapterLogger.error(
+              "edit_message_text_failed",
+              { chat_id: chatId, message_id: currentMessageId },
+              e,
+            );
           }
         },
         async (text: string) => {
@@ -333,7 +406,11 @@ export class TelegramAdapter extends BaseBotAdapter {
                 } catch {}
                 return;
               }
-              console.error("Telegram editMessageText error:", e);
+              this.adapterLogger.error(
+                "edit_message_text_failed",
+                { chat_id: chatId, message_id: newMessage.message_id },
+                e,
+              );
             }
           };
         },
@@ -354,7 +431,11 @@ export class TelegramAdapter extends BaseBotAdapter {
               await ctx.api.editMessageText(chatId, currentMessageId, authMsg);
             }
           } catch (e) {
-            console.error("Telegram auth message error:", e);
+            this.adapterLogger.error(
+              "auth_message_failed",
+              { chat_id: chatId, user_id: userId },
+              e,
+            );
             // DM failed (privacy settings) — update group message with fallback
             try {
               const fallback = this.botUsername
@@ -362,8 +443,9 @@ export class TelegramAdapter extends BaseBotAdapter {
                 : `I couldn't send you a DM — your privacy settings may be blocking bot messages.\n\nPlease message me directly and use /auth to link your account.`;
               await ctx.api.editMessageText(chatId, currentMessageId, fallback);
             } catch (fallbackErr) {
-              console.error(
-                "Telegram fallback group message also failed:",
+              this.adapterLogger.error(
+                "auth_fallback_message_failed",
+                { chat_id: chatId, user_id: userId },
                 fallbackErr,
               );
             }
@@ -374,10 +456,15 @@ export class TelegramAdapter extends BaseBotAdapter {
           try {
             await ctx.api.editMessageText(chatId, currentMessageId, errMsg);
           } catch (e) {
-            console.error("Telegram editMessageText error:", e);
+            this.adapterLogger.error(
+              "edit_message_text_failed",
+              { chat_id: chatId, message_id: currentMessageId },
+              e,
+            );
           }
         },
         STREAMING_DEFAULTS.telegram,
+        this.analytics,
       );
     } finally {
       clearTyping();
@@ -439,7 +526,11 @@ export class TelegramAdapter extends BaseBotAdapter {
               try {
                 await api.editMessageText(chatId, msg.message_id, t);
               } catch (e) {
-                console.error("Telegram editMessageText error:", e);
+                this.adapterLogger.error(
+                  "edit_message_text_failed",
+                  { chat_id: chatId, message_id: msg.message_id },
+                  e,
+                );
               }
             }
           },
@@ -474,7 +565,11 @@ export class TelegramAdapter extends BaseBotAdapter {
               try {
                 await api.editMessageText(targetChat, msg.message_id, t);
               } catch (e) {
-                console.error("Telegram editMessageText error:", e);
+                this.adapterLogger.error(
+                  "edit_message_text_failed",
+                  { chat_id: targetChat, message_id: msg.message_id },
+                  e,
+                );
               }
             }
           },
@@ -498,7 +593,11 @@ export class TelegramAdapter extends BaseBotAdapter {
             try {
               await api.editMessageText(targetChat, msg.message_id, t);
             } catch (e) {
-              console.error("Telegram editMessageText error:", e);
+              this.adapterLogger.error(
+                "edit_message_text_failed",
+                { chat_id: targetChat, message_id: msg.message_id },
+                e,
+              );
             }
           },
         };

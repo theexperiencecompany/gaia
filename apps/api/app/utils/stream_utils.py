@@ -12,22 +12,21 @@ Used by:
 """
 
 import asyncio
+from datetime import UTC, datetime
 import json
-from datetime import datetime, timezone
-from typing import Any, Optional
-
-from shared.py.wide_events import ChatContext, log
+from typing import Any
 
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import ToolDataEntry, tool_fields
 from app.models.message_models import MessageRequestWithHistory
 from app.utils.agent_utils import IntegrationMetadata, format_tool_call_entry
+from shared.py.wide_events import ChatContext, log
 
 
 async def extract_tool_entries_from_update(
     state_update: dict,
     emitted_tool_calls: set[str],
-    integration_metadata: Optional[IntegrationMetadata] = None,
+    integration_metadata: IntegrationMetadata | None = None,
 ) -> list[tuple[str, dict]]:
     """
     Extract tool_data entries from a LangGraph state update.
@@ -75,15 +74,9 @@ async def extract_tool_entries_from_update(
             # Format tool call as tool_data entry
             tool_entry = await format_tool_call_entry(
                 tc,
-                icon_url=(
-                    integration_metadata.get("icon_url")
-                    if integration_metadata
-                    else None
-                ),
+                icon_url=(integration_metadata.get("icon_url") if integration_metadata else None),
                 integration_id=(
-                    integration_metadata.get("integration_id")
-                    if integration_metadata
-                    else None
+                    integration_metadata.get("integration_id") if integration_metadata else None
                 ),
                 integration_name=(
                     integration_metadata.get("name") if integration_metadata else None
@@ -100,8 +93,7 @@ async def extract_tool_entries_from_update(
 def _extract_response_text(chunk: str) -> str:
     """Extract response text from a data chunk."""
     try:
-        if chunk.startswith("data: "):
-            chunk = chunk[6:]
+        chunk = chunk.removeprefix("data: ")
         data = json.loads(chunk)
         return data.get("response", "")
     except (json.JSONDecodeError, KeyError):
@@ -125,7 +117,7 @@ def normalize_custom_event(payload: dict[str, Any]) -> dict[str, Any]:
     if "tool_data" in payload:
         return payload
 
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(UTC).isoformat()
     entries: list[ToolDataEntry] = []
     for field_name in tool_fields:
         if payload.get(field_name) is not None:
@@ -202,7 +194,7 @@ async def process_data_chunk(
     """
     chunk_payload = chunk[6:]
 
-    chunk_json: Optional[dict[str, Any]] = None
+    chunk_json: dict[str, Any] | None = None
     try:
         chunk_json = json.loads(chunk_payload)
     except json.JSONDecodeError:
@@ -219,9 +211,9 @@ async def process_data_chunk(
                 f"data: {json.dumps({'subagent_start': chunk_json['subagent_start']})}\n\n",
             )
         if "subagent_end" in chunk_json:
-            tool_data.setdefault("subagent_ends", {})[
-                chunk_json["subagent_end"]["subagent_id"]
-            ] = chunk_json["subagent_end"]
+            tool_data.setdefault("subagent_ends", {})[chunk_json["subagent_end"]["subagent_id"]] = (
+                chunk_json["subagent_end"]
+            )
             await stream_manager.publish_chunk(
                 stream_id,
                 f"data: {json.dumps({'subagent_end': chunk_json['subagent_end']})}\n\n",
@@ -290,7 +282,7 @@ async def process_data_chunk(
 
 def set_stream_log_context(
     body: MessageRequestWithHistory,
-    user_id: Optional[str],
+    user_id: str | None,
     conversation_id: str,
     stream_id: str,
     is_new_conversation: bool,
@@ -308,26 +300,32 @@ def set_stream_log_context(
             tool_category=body.toolCategory or "",
             has_reply=bool(body.replyToMessage),
             has_calendar_event=bool(body.selectedCalendarEvent),
-            selected_workflow_id=body.selectedWorkflow.id
-            if body.selectedWorkflow
-            else "",
+            selected_workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else "",
         ),
         user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
         selected_tool=body.selectedTool,
     )
 
 
-def aggregate_usage_metadata(usage_metadata: dict[str, Any]) -> tuple[int, int]:
-    """Sum input and output tokens across all model entries in usage metadata."""
-    total_input = sum(
-        v.get("input_tokens", 0) for v in usage_metadata.values() if isinstance(v, dict)
-    )
-    total_output = sum(
-        v.get("output_tokens", 0)
-        for v in usage_metadata.values()
-        if isinstance(v, dict)
-    )
-    return total_input, total_output
+def aggregate_usage_metadata(usage_metadata: dict[str, Any]) -> tuple[int, int, int]:
+    """Sum input, output, and cache_read tokens across all model entries.
+
+    Returns (total_input, total_output, total_cached). ``cache_read`` lives in
+    each entry's ``input_token_details`` (LangChain canonical shape). Some
+    provider SDK versions surface it under different keys, hence the fallbacks.
+    """
+    total_input = 0
+    total_output = 0
+    total_cached = 0
+    for v in usage_metadata.values():
+        if not isinstance(v, dict):
+            continue
+        total_input += int(v.get("input_tokens") or 0)
+        total_output += int(v.get("output_tokens") or 0)
+        details = v.get("input_token_details") or {}
+        cached = details.get("cache_read") or v.get("cached_content_token_count") or 0
+        total_cached += int(cached or 0)
+    return total_input, total_output, total_cached
 
 
 def merge_tool_outputs(
@@ -354,7 +352,7 @@ def inject_todo_progress(
             {
                 "tool_name": "todo_progress",
                 "data": todo_progress_accumulated,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
         )
 
@@ -389,8 +387,8 @@ async def recover_stream_state(
 
 async def publish_description_if_ready(
     stream_id: str,
-    description_task: Optional[asyncio.Task],
-) -> Optional[asyncio.Task]:
+    description_task: asyncio.Task | None,
+) -> asyncio.Task | None:
     """Publish conversation description chunk if the task has completed. Returns None to clear it."""
     if not description_task or not description_task.done():
         return description_task
@@ -417,7 +415,7 @@ def reconstruct_subagent_groups(tool_data: dict[str, Any]) -> None:
     if not subagent_starts:
         return
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     # Build groups from start events
     groups: dict[str, dict[str, Any]] = {}
@@ -441,7 +439,7 @@ def reconstruct_subagent_groups(tool_data: dict[str, Any]) -> None:
     flat_entries: list[dict[str, Any]] = tool_data.get("tool_data", [])
     top_level: list[dict[str, Any]] = []
     for entry in flat_entries:
-        target_id: Optional[str] = entry.get("subagent_id")
+        target_id: str | None = entry.get("subagent_id")
         if target_id and target_id in groups and entry.get("tool_name") == "tool_calls_data":
             groups[target_id]["tool_calls"].append(entry.get("data", {}))
         else:
@@ -450,7 +448,7 @@ def reconstruct_subagent_groups(tool_data: dict[str, Any]) -> None:
     # Nest child groups inside their parent
     root_groups: list[dict[str, Any]] = []
     for subagent_id, group in groups.items():
-        parent_id: Optional[str] = subagent_starts[subagent_id].get("parent_subagent_id")
+        parent_id: str | None = subagent_starts[subagent_id].get("parent_subagent_id")
         if parent_id and parent_id in groups:
             groups[parent_id]["nested_subagents"].append(group)
         else:

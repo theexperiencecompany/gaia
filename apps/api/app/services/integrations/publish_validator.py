@@ -1,7 +1,5 @@
 """Validation for integration publishing."""
 
-from typing import List
-
 from profanity_check import predict
 
 
@@ -19,7 +17,7 @@ class PublishIntegrationValidator:
         name: str,
         description: str | None,
         tools: list,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Validate integration content for publishing.
 
@@ -41,16 +39,12 @@ class PublishIntegrationValidator:
 
         # Check for profanity using ML model
         # predict() returns an array of 0s and 1s (1 = profane)
-        if predict([name])[0] == 1:
-            errors.append("Content contains profanity")
-        elif description and predict([description])[0] == 1:
+        if predict([name])[0] == 1 or (description and predict([description])[0] == 1):
             errors.append("Content contains profanity")
 
         # Description length
         if description and len(description) > cls.MAX_DESCRIPTION_LENGTH:
-            errors.append(
-                f"Description must be at most {cls.MAX_DESCRIPTION_LENGTH} characters"
-            )
+            errors.append(f"Description must be at most {cls.MAX_DESCRIPTION_LENGTH} characters")
 
         # Tools requirement
         if not tools or len(tools) < cls.MIN_TOOLS:

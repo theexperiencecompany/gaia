@@ -55,6 +55,9 @@ export async function createSSEConnection(
   let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
   let hasReceivedData = false;
   let isDone = false;
+  // Guard against double-close: [DONE] fires onClose via onMessage, then the
+  // SSE library fires onclose again when the connection terminates.
+  let doneReceived = false;
 
   const cleanup = () => {
     isDone = true;
@@ -107,6 +110,13 @@ export async function createSSEConnection(
       if (event.data) {
         hasReceivedData = true;
         retryCount = 0;
+
+        // Detect [DONE] sentinel before forwarding so we can set doneReceived
+        // and prevent the subsequent onclose from calling onClose a second time.
+        if (event.data === "[DONE]") {
+          doneReceived = true;
+        }
+
         callbacks.onMessage({
           data: event.data,
           id: event.lastEventId ?? undefined,
@@ -150,7 +160,11 @@ export async function createSSEConnection(
       if (controller.signal.aborted || isDone) return;
       controller.signal.removeEventListener("abort", handleAbort);
       if (hasReceivedData || retryCount >= maxRetries) {
-        callbacks.onClose?.();
+        // Only call onClose if [DONE] didn't already trigger it.
+        // Connection closes without [DONE] (e.g. network failure) still need cleanup.
+        if (!doneReceived) {
+          callbacks.onClose?.();
+        }
         cleanup();
       } else {
         retryCount += 1;

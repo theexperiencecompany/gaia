@@ -5,22 +5,21 @@ Populate GAIA's knowledge base in ChromaDB from content.md file.
 
 import argparse
 import asyncio
+from pathlib import Path
 import re
 import sys
-from pathlib import Path
-from typing import Optional
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Initialize settings and providers
+# Create actual embedding instance and register it (not lazy)
+from langchain_google_genai import GoogleGenerativeAIEmbeddings  # noqa: E402
+
 from app.config.settings import settings  # noqa: F401
 
 # Import chromadb module so @lazy_provider decorators register all providers
 from app.db.chroma.chromadb import init_chromadb_constructor  # noqa: F401
-
-# Create actual embedding instance and register it (not lazy)
-from langchain_google_genai import GoogleGenerativeAIEmbeddings  # noqa: E402
 
 embedding_instance = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 
@@ -79,9 +78,7 @@ def split_markdown_by_headers(content: str) -> list[tuple[str, str]]:
     return sections
 
 
-def prepare_knowledge_items(
-    sections: list[tuple[str, str]], min_length: int = 50
-) -> list[dict]:
+def prepare_knowledge_items(sections: list[tuple[str, str]], min_length: int = 50) -> list[dict]:
     """
     Prepare knowledge items using hierarchical chunking strategy.
 
@@ -132,12 +129,8 @@ def prepare_knowledge_items(
 
         elif header_level == 2:  # H2
             # Include parent H1 context
-            parent_context = (
-                f"{current_h1['header']}\n\n" if current_h1["header"] else ""
-            )
-            full_content = (
-                f"{parent_context}{clean_header}\n\n{section_content}".strip()
-            )
+            parent_context = f"{current_h1['header']}\n\n" if current_h1["header"] else ""
+            full_content = f"{parent_context}{clean_header}\n\n{section_content}".strip()
 
             current_h2 = {"header": clean_header, "content": section_content.strip()}
 
@@ -165,9 +158,7 @@ def prepare_knowledge_items(
             if current_h2["header"]:
                 parent_context += f"{current_h2['header']}\n\n"
 
-            full_content = (
-                f"{parent_context}{clean_header}\n\n{section_content}".strip()
-            )
+            full_content = f"{parent_context}{clean_header}\n\n{section_content}".strip()
 
             if len(full_content) >= min_length:
                 items.append(
@@ -188,9 +179,7 @@ def prepare_knowledge_items(
     return items
 
 
-async def populate_knowledge(
-    content_path: Optional[str] = None, clear_first: bool = False
-) -> None:
+async def populate_knowledge(content_path: str | None = None, clear_first: bool = False) -> None:
     """
     Populate the GAIA knowledge base from content.md.
 
@@ -199,9 +188,7 @@ async def populate_knowledge(
         clear_first: Whether to clear existing knowledge first
     """
     if not content_path:
-        content_path = str(
-            Path(__file__).parent.parent.parent.parent / "docs" / "GAIA.md"
-        )
+        content_path = str(Path(__file__).parent.parent.parent.parent / "docs" / "GAIA.md")
 
     # Eagerly initialize providers needed by the script
     print("⚙️  Initializing providers...")
@@ -301,9 +288,7 @@ async def _test_knowledge_search() -> None:
 
 def main() -> None:
     """Main entry point."""
-    parser = argparse.ArgumentParser(
-        description="Populate GAIA knowledge base from content.md"
-    )
+    parser = argparse.ArgumentParser(description="Populate GAIA knowledge base from content.md")
     parser.add_argument(
         "--content",
         default=str(Path(__file__).parent.parent.parent.parent / "docs" / "GAIA.md"),

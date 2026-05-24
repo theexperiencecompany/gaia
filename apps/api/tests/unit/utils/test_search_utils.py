@@ -1,7 +1,5 @@
 """Unit tests for app.utils.search_utils."""
 
-import socket
-from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -9,13 +7,12 @@ import pytest
 
 from app.utils.exceptions import FetchError
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _make_tavily_client_mock(search_return: Optional[dict] = None) -> MagicMock:
+def _make_tavily_client_mock(search_return: dict | None = None) -> MagicMock:
     """Return a mock TavilyClient whose .search() returns *search_return*."""
     client = MagicMock()
     client.search.return_value = search_return or {
@@ -29,8 +26,8 @@ def _make_tavily_client_mock(search_return: Optional[dict] = None) -> MagicMock:
 
 
 def _make_firecrawl_client_mock(
-    markdown: Optional[str] = "# Hello",
-    raise_on_scrape: Optional[Exception] = None,
+    markdown: str | None = "# Hello",
+    raise_on_scrape: Exception | None = None,
 ) -> MagicMock:
     """Return a mock FirecrawlApp whose .scrape() returns a Document-like object."""
     client = MagicMock()
@@ -63,11 +60,13 @@ class TestGetTavilyClient:
     def test_creates_client_when_key_present(
         self, mock_cls: MagicMock, mock_settings: MagicMock
     ) -> None:
-        mock_settings.TAVILY_API_KEY = "key-123"
+        mock_settings.TAVILY_API_KEY = "test-tavily-key"  # pragma: allowlist secret
         from app.utils.search_utils import get_tavily_client
 
         client = get_tavily_client()
-        mock_cls.assert_called_once_with(api_key="key-123")
+        mock_cls.assert_called_once_with(
+            api_key="test-tavily-key"  # pragma: allowlist secret
+        )
         assert client is mock_cls.return_value
 
     @patch("app.utils.search_utils.settings")
@@ -83,7 +82,7 @@ class TestGetTavilyClient:
     def test_returns_cached_instance_on_second_call(
         self, mock_cls: MagicMock, mock_settings: MagicMock
     ) -> None:
-        mock_settings.TAVILY_API_KEY = "key-123"
+        mock_settings.TAVILY_API_KEY = "test-tavily-key"  # pragma: allowlist secret
         from app.utils.search_utils import get_tavily_client
 
         first = get_tavily_client()
@@ -106,11 +105,13 @@ class TestGetFirecrawlClient:
     def test_creates_client_when_key_present(
         self, mock_cls: MagicMock, mock_settings: MagicMock
     ) -> None:
-        mock_settings.FIRECRAWL_API_KEY = "fc-key"
+        mock_settings.FIRECRAWL_API_KEY = "test-firecrawl-key"  # pragma: allowlist secret
         from app.utils.search_utils import get_firecrawl_client
 
         client = get_firecrawl_client()
-        mock_cls.assert_called_once_with(api_key="fc-key")
+        mock_cls.assert_called_once_with(
+            api_key="test-firecrawl-key"  # pragma: allowlist secret
+        )
         assert client is mock_cls.return_value
 
     @patch("app.utils.search_utils.settings")
@@ -160,9 +161,7 @@ class TestFetchTavilySearch:
         assert call_kwargs["max_results"] == 3
 
     @patch("app.utils.search_utils.get_tavily_client")
-    async def test_returns_empty_dict_on_exception(
-        self, mock_get_client: MagicMock
-    ) -> None:
+    async def test_returns_empty_dict_on_exception(self, mock_get_client: MagicMock) -> None:
         mock_get_client.side_effect = RuntimeError("boom")
 
         from app.utils.search_utils import fetch_tavily_search
@@ -172,9 +171,7 @@ class TestFetchTavilySearch:
         assert result == {}
 
     @patch("app.utils.search_utils.get_tavily_client")
-    async def test_default_search_topic_is_general(
-        self, mock_get_client: MagicMock
-    ) -> None:
+    async def test_default_search_topic_is_general(self, mock_get_client: MagicMock) -> None:
         client = _make_tavily_client_mock({"results": []})
         mock_get_client.return_value = client
 
@@ -187,9 +184,7 @@ class TestFetchTavilySearch:
         assert call_kwargs["topic"] == "general"
 
     @patch("app.utils.search_utils.get_tavily_client")
-    async def test_no_extra_params_does_not_inject_none(
-        self, mock_get_client: MagicMock
-    ) -> None:
+    async def test_no_extra_params_does_not_inject_none(self, mock_get_client: MagicMock) -> None:
         client = _make_tavily_client_mock({"results": []})
         mock_get_client.return_value = client
 
@@ -403,77 +398,6 @@ class TestFetchWithFirecrawl:
 
 
 # ---------------------------------------------------------------------------
-# fetch_with_crawl4ai
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestFetchWithCrawl4ai:
-    """Tests for fetch_with_crawl4ai."""
-
-    @patch("app.utils.search_utils.AsyncWebCrawler")
-    async def test_success(self, mock_crawler_cls: MagicMock) -> None:
-        result_obj = MagicMock()
-        result_obj.markdown = "# Crawled"
-        crawler_inst = AsyncMock()
-        crawler_inst.arun = AsyncMock(return_value=result_obj)
-        ctx = AsyncMock()
-        ctx.__aenter__ = AsyncMock(return_value=crawler_inst)
-        ctx.__aexit__ = AsyncMock(return_value=False)
-        mock_crawler_cls.return_value = ctx
-
-        from app.utils.search_utils import fetch_with_crawl4ai
-
-        fn = fetch_with_crawl4ai.__wrapped__  # type: ignore[attr-defined]
-        result = await fn(url="https://example.com")
-        assert result == "# Crawled"
-
-    @patch("app.utils.search_utils.AsyncWebCrawler")
-    async def test_empty_content_raises(self, mock_crawler_cls: MagicMock) -> None:
-        result_obj = MagicMock()
-        result_obj.markdown = "   "
-        crawler_inst = AsyncMock()
-        crawler_inst.arun = AsyncMock(return_value=result_obj)
-        ctx = AsyncMock()
-        ctx.__aenter__ = AsyncMock(return_value=crawler_inst)
-        ctx.__aexit__ = AsyncMock(return_value=False)
-        mock_crawler_cls.return_value = ctx
-
-        from app.utils.search_utils import fetch_with_crawl4ai
-
-        fn = fetch_with_crawl4ai.__wrapped__  # type: ignore[attr-defined]
-        with pytest.raises(FetchError, match="empty content"):
-            await fn(url="https://example.com")
-
-    @patch("app.utils.search_utils.AsyncWebCrawler")
-    async def test_none_result_raises(self, mock_crawler_cls: MagicMock) -> None:
-        crawler_inst = AsyncMock()
-        crawler_inst.arun = AsyncMock(return_value=None)
-        ctx = AsyncMock()
-        ctx.__aenter__ = AsyncMock(return_value=crawler_inst)
-        ctx.__aexit__ = AsyncMock(return_value=False)
-        mock_crawler_cls.return_value = ctx
-
-        from app.utils.search_utils import fetch_with_crawl4ai
-
-        fn = fetch_with_crawl4ai.__wrapped__  # type: ignore[attr-defined]
-        with pytest.raises(FetchError):
-            await fn(url="https://example.com")
-
-    @patch("app.utils.search_utils.AsyncWebCrawler")
-    async def test_generic_exception_wraps_as_fetch_error(
-        self, mock_crawler_cls: MagicMock
-    ) -> None:
-        mock_crawler_cls.side_effect = RuntimeError("driver crash")
-
-        from app.utils.search_utils import fetch_with_crawl4ai
-
-        fn = fetch_with_crawl4ai.__wrapped__  # type: ignore[attr-defined]
-        with pytest.raises(FetchError, match="crawl4ai error"):
-            await fn(url="https://example.com")
-
-
-# ---------------------------------------------------------------------------
 # fetch_with_httpx
 # ---------------------------------------------------------------------------
 
@@ -529,14 +453,10 @@ class TestFetchWithHttpx:
             assert "empty content" in str(e)
 
     @patch("app.utils.search_utils.httpx.AsyncClient")
-    async def test_http_status_error_wraps_as_fetch_error(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_http_status_error_wraps_as_fetch_error(self, mock_client_cls: MagicMock) -> None:
         mock_response = MagicMock()
         mock_response.status_code = 404
-        error = httpx.HTTPStatusError(
-            "Not Found", request=MagicMock(), response=mock_response
-        )
+        error = httpx.HTTPStatusError("Not Found", request=MagicMock(), response=mock_response)
 
         client_inst = AsyncMock()
         client_inst.get = AsyncMock(side_effect=error)
@@ -552,9 +472,7 @@ class TestFetchWithHttpx:
             await fn(url="https://example.com/missing")
 
     @patch("app.utils.search_utils.httpx.AsyncClient")
-    async def test_generic_exception_wraps_as_fetch_error(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_generic_exception_wraps_as_fetch_error(self, mock_client_cls: MagicMock) -> None:
         mock_client_cls.side_effect = RuntimeError("DNS failure")
 
         from app.utils.search_utils import fetch_with_httpx
@@ -612,161 +530,6 @@ class TestFetchWithHttpx:
         assert "Nav" not in result
         assert "Foot" not in result
         assert "js" not in result
-
-
-# ---------------------------------------------------------------------------
-# fetch_page_resilient — 3-tier fallback chain
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestFetchPageResilient:
-    """Tests for the resilient 3-tier fallback page fetcher."""
-
-    @patch("app.utils.search_utils.fetch_with_httpx", new_callable=AsyncMock)
-    @patch("app.utils.search_utils.fetch_with_crawl4ai", new_callable=AsyncMock)
-    @patch("app.utils.search_utils.fetch_with_firecrawl", new_callable=AsyncMock)
-    @patch("app.utils.search_utils.socket.getaddrinfo")
-    async def test_tier1_firecrawl_succeeds(
-        self,
-        mock_getaddr: MagicMock,
-        mock_firecrawl: AsyncMock,
-        mock_crawl4ai: AsyncMock,
-        mock_httpx: AsyncMock,
-    ) -> None:
-        mock_getaddr.return_value = [(None, None, None, None, ("93.184.216.34", 80))]
-        mock_firecrawl.return_value = "# Firecrawl content"
-
-        from app.utils.search_utils import fetch_page_resilient
-
-        result = await fetch_page_resilient("https://example.com")
-        assert result == "# Firecrawl content"
-        mock_crawl4ai.assert_not_called()
-        mock_httpx.assert_not_called()
-
-    @patch("app.utils.search_utils.fetch_with_httpx", new_callable=AsyncMock)
-    @patch("app.utils.search_utils.fetch_with_crawl4ai", new_callable=AsyncMock)
-    @patch("app.utils.search_utils.fetch_with_firecrawl", new_callable=AsyncMock)
-    @patch("app.utils.search_utils.socket.getaddrinfo")
-    async def test_tier2_crawl4ai_after_firecrawl_fails(
-        self,
-        mock_getaddr: MagicMock,
-        mock_firecrawl: AsyncMock,
-        mock_crawl4ai: AsyncMock,
-        mock_httpx: AsyncMock,
-    ) -> None:
-        mock_getaddr.return_value = [(None, None, None, None, ("93.184.216.34", 80))]
-        mock_firecrawl.side_effect = FetchError("firecrawl down")
-        mock_crawl4ai.return_value = "# crawl4ai content"
-
-        from app.utils.search_utils import fetch_page_resilient
-
-        result = await fetch_page_resilient("https://example.com")
-        assert result == "# crawl4ai content"
-        mock_httpx.assert_not_called()
-
-    @patch("app.utils.search_utils.fetch_with_httpx", new_callable=AsyncMock)
-    @patch("app.utils.search_utils.fetch_with_crawl4ai", new_callable=AsyncMock)
-    @patch("app.utils.search_utils.fetch_with_firecrawl", new_callable=AsyncMock)
-    @patch("app.utils.search_utils.socket.getaddrinfo")
-    async def test_tier3_httpx_after_both_fail(
-        self,
-        mock_getaddr: MagicMock,
-        mock_firecrawl: AsyncMock,
-        mock_crawl4ai: AsyncMock,
-        mock_httpx: AsyncMock,
-    ) -> None:
-        mock_getaddr.return_value = [(None, None, None, None, ("93.184.216.34", 80))]
-        mock_firecrawl.side_effect = FetchError("firecrawl fail")
-        mock_crawl4ai.side_effect = FetchError("crawl4ai fail")
-        mock_httpx.return_value = "# httpx content"
-
-        from app.utils.search_utils import fetch_page_resilient
-
-        result = await fetch_page_resilient("https://example.com")
-        assert result == "# httpx content"
-
-    @patch("app.utils.search_utils.fetch_with_httpx", new_callable=AsyncMock)
-    @patch("app.utils.search_utils.fetch_with_crawl4ai", new_callable=AsyncMock)
-    @patch("app.utils.search_utils.fetch_with_firecrawl", new_callable=AsyncMock)
-    @patch("app.utils.search_utils.socket.getaddrinfo")
-    async def test_all_tiers_fail_raises_fetch_error(
-        self,
-        mock_getaddr: MagicMock,
-        mock_firecrawl: AsyncMock,
-        mock_crawl4ai: AsyncMock,
-        mock_httpx: AsyncMock,
-    ) -> None:
-        mock_getaddr.return_value = [(None, None, None, None, ("93.184.216.34", 80))]
-        mock_firecrawl.side_effect = FetchError("f1")
-        mock_crawl4ai.side_effect = FetchError("c1")
-        mock_httpx.side_effect = FetchError("h1")
-
-        from app.utils.search_utils import fetch_page_resilient
-
-        with pytest.raises(FetchError, match="All fetchers failed"):
-            await fetch_page_resilient("https://example.com")
-
-    @pytest.mark.parametrize(
-        "url",
-        [
-            "ftp://example.com",
-            "javascript:alert(1)",
-            "data:text/html,<h1>hi</h1>",
-            "file:///etc/passwd",
-        ],
-    )
-    async def test_rejects_non_http_schemes(self, url: str) -> None:
-        from app.utils.search_utils import fetch_page_resilient
-
-        with pytest.raises(FetchError, match="Only absolute http"):
-            await fetch_page_resilient(url)
-
-    async def test_rejects_url_without_hostname(self) -> None:
-        from app.utils.search_utils import fetch_page_resilient
-
-        with pytest.raises(FetchError, match="Only absolute http"):
-            await fetch_page_resilient("http://")
-
-    @pytest.mark.parametrize(
-        "ip",
-        [
-            "127.0.0.1",
-            "10.0.0.1",
-            "192.168.1.1",
-            "169.254.169.254",
-            "224.0.0.1",
-        ],
-    )
-    async def test_blocks_private_and_special_ips(self, ip: str) -> None:
-        from app.utils.search_utils import fetch_page_resilient
-
-        with pytest.raises(FetchError, match="Blocked non-public"):
-            await fetch_page_resilient(f"https://{ip}/path")
-
-    @patch("app.utils.search_utils.socket.getaddrinfo")
-    async def test_blocks_hostname_resolving_to_private_ip(
-        self, mock_getaddr: MagicMock
-    ) -> None:
-        mock_getaddr.return_value = [
-            (None, None, None, None, ("127.0.0.1", 80)),
-        ]
-
-        from app.utils.search_utils import fetch_page_resilient
-
-        with pytest.raises(FetchError, match="Blocked non-public"):
-            await fetch_page_resilient("https://evil.com")
-
-    @patch("app.utils.search_utils.socket.getaddrinfo")
-    async def test_dns_resolution_failure_raises_fetch_error(
-        self, mock_getaddr: MagicMock
-    ) -> None:
-        mock_getaddr.side_effect = socket.gaierror("Name or service not known")
-
-        from app.utils.search_utils import fetch_page_resilient
-
-        with pytest.raises(FetchError, match="Unable to resolve host"):
-            await fetch_page_resilient("https://nonexistent.example.com")
 
 
 # ---------------------------------------------------------------------------

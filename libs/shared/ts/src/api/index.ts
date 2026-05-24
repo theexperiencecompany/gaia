@@ -5,6 +5,5 @@ export * from "./notificationsApi";
 export * from "./queryBuilder";
 export * from "./responseNormalizer";
 export * from "./searchApi";
-export * from "./timezone";
 export * from "./todosApi";
 export * from "./workflowsApi";

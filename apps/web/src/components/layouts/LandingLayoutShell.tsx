@@ -1,11 +1,18 @@
 "use client";
+import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
-import Footer from "@/components/navigation/Footer";
 import Navbar from "@/components/navigation/Navbar";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { usePathname } from "@/i18n/navigation";
 import LandingProvidersLayout from "@/layouts/LandingProvidersLayout";
+
+// Footer is always below the fold on landing pages — defer it so it doesn't
+// compete with hero-above-the-fold rendering for main-thread time.
+const Footer = dynamic(() => import("@/components/navigation/Footer"), {
+  ssr: true,
+  loading: () => null,
+});
 
 const BLUR_CONFIG: BlurLayer[] = [
   { blur: 0.078125, maskStops: [0, 12.5, 25, 37.5], zIndex: 1 },
@@ -29,12 +36,6 @@ export default function LandingLayoutShell({
   return (
     <LandingProvidersLayout>
       <div className="relative ">
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-9999 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-black focus:shadow-lg"
-        >
-          Skip to main content
-        </a>
         <div
           id="navbar-backdrop"
           className="pointer-events-none fixed inset-0 z-40 bg-black/20 opacity-0 backdrop-blur-sm transition-opacity duration-300 ease-in-out"

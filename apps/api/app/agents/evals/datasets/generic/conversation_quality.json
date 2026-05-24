@@ -1,0 +1,141 @@
+{
+  "name": "Conversation Quality",
+  "description": "Tests general conversational ability including greeting handling, clarification seeking, multi-step instructions, graceful refusal, topic switching, and understanding implied requests.",
+  "version": "1.0.0",
+  "eval_type": "conversation_quality",
+  "items": [
+    {
+      "input": "hey",
+      "expected_output": "Should respond with a friendly, concise greeting and offer to help. Should not launch into a long introduction or list of capabilities unprompted.",
+      "context": "Minimal greeting with no task. Tests whether the assistant keeps it natural vs over-explaining.",
+      "tags": ["greeting", "small-talk"],
+      "metadata": { "difficulty": "easy", "category": "greeting" }
+    },
+    {
+      "input": "send an email",
+      "expected_output": "Should ask for the recipient, subject, and body content before attempting to send. Must not fabricate any of the missing fields.",
+      "context": "Incomplete request missing all required parameters. Tests whether the assistant asks for necessary info rather than guessing.",
+      "tags": ["clarification", "missing-info"],
+      "metadata": { "difficulty": "easy", "category": "missing-info" }
+    },
+    {
+      "input": "thanks that was super helpful!!",
+      "expected_output": "Should acknowledge the gratitude briefly and naturally. Should not be overly effusive or restart the conversation unprompted.",
+      "context": "User expressing gratitude after a completed task. Tests appropriate response to praise without over-engaging.",
+      "tags": ["gratitude", "social"],
+      "metadata": { "difficulty": "easy", "category": "social" }
+    },
+    {
+      "input": "whats the weather like",
+      "expected_output": "Should ask for the user's location or use a known default location if one has been set previously. Should not invent a weather report.",
+      "context": "Ambiguous query missing location. Tests whether the assistant seeks clarification vs hallucinating data.",
+      "tags": ["clarification", "ambiguous", "lazy-input"],
+      "metadata": { "difficulty": "easy", "category": "clarification" }
+    },
+    {
+      "input": "nvm forget it",
+      "expected_output": "Should gracefully acknowledge the cancellation without guilt-tripping or asking excessive follow-up questions. A short confirmation is ideal.",
+      "context": "User abandoning a conversation mid-flow. Tests graceful handling of cancellation.",
+      "tags": ["abandonment", "social"],
+      "metadata": { "difficulty": "easy", "category": "abandonment" }
+    },
+    {
+      "input": "reschedule my meeting",
+      "expected_output": "Should ask which meeting the user wants to reschedule and what the new time should be. If the user has multiple meetings, should list them or ask for clarification.",
+      "context": "User may have multiple meetings. The assistant must disambiguate before acting.",
+      "tags": ["clarification", "ambiguous", "calendar"],
+      "metadata": { "difficulty": "medium", "category": "clarification" }
+    },
+    {
+      "input": "do that thing from last time",
+      "expected_output": "Should attempt to reference recent conversation history to identify what 'that thing' refers to. If no history is available or the reference is unclear, should ask for clarification rather than guessing.",
+      "context": "Vague back-reference with no explicit context. Tests memory usage and willingness to clarify.",
+      "tags": ["vague", "memory", "back-reference"],
+      "metadata": { "difficulty": "medium", "category": "vague-reference" }
+    },
+    {
+      "input": "its really cold in here",
+      "expected_output": "Should recognize this as a potential implied request (adjust thermostat, close a window) and offer to help if smart home controls are available. If no such capability exists, should acknowledge sympathetically without pretending it can help.",
+      "context": "Implied request rather than explicit command. Tests the assistant's ability to infer intent from indirect statements.",
+      "tags": ["implied-request", "smart-home", "inference"],
+      "metadata": { "difficulty": "medium", "category": "implied-request" }
+    },
+    {
+      "input": "ok so first cancel my 3pm then move the 4pm to 3 and also remind me to call janet at 5",
+      "expected_output": "Should parse three distinct actions: (1) cancel the 3pm event, (2) move the 4pm event to 3pm, (3) set a reminder to call Janet at 5pm. Should execute them in the correct sequence and confirm each.",
+      "context": "Multi-step instruction packed into a single message. Tests parsing and sequencing of compound requests.",
+      "tags": ["multi-step", "compound", "calendar", "reminder"],
+      "metadata": { "difficulty": "medium", "category": "multi-step" }
+    },
+    {
+      "input": "can you make me a millionaire by tomorrow",
+      "expected_output": "Should politely decline or use light humor while acknowledging it cannot fulfill the request. Should not lecture the user or be condescending.",
+      "context": "Impossible/absurd request. Tests graceful refusal without being preachy.",
+      "tags": ["impossible", "refusal", "humor"],
+      "metadata": { "difficulty": "medium", "category": "refusal" }
+    },
+    {
+      "input": "actually wait no go back to what we were talking about before the calendar stuff",
+      "expected_output": "Should identify the conversation topic that preceded the calendar discussion and resume it. If unable to determine the prior topic, should ask which topic the user means.",
+      "context": "User wants to revert to a previous conversation thread. Tests topic tracking across conversation turns.",
+      "tags": ["topic-switch", "memory", "back-reference"],
+      "metadata": { "difficulty": "medium", "category": "topic-switch" }
+    },
+    {
+      "input": "hey can you help me with somethign? actually two things. first I need to find a good restaurant for friday night, somewhere italian maybe, and also can you look at my calendar and see if im even free friday",
+      "expected_output": "Should identify two tasks: (1) search for Italian restaurants for Friday evening, (2) check calendar availability for Friday. Should handle both, ideally checking availability first since it affects the restaurant search. Should note the typo in 'somethign' is irrelevant.",
+      "context": "Rambling multi-part request with a typo. Tests parsing natural, messy human language and task prioritization.",
+      "tags": ["multi-step", "typo", "rambling", "restaurant", "calendar"],
+      "metadata": { "difficulty": "medium", "category": "multi-step" }
+    },
+    {
+      "input": "I told you three times already I want the BLUE theme not the green one",
+      "expected_output": "Should acknowledge the user's frustration, apologize for the repeated issue, and attempt to apply the blue theme. Should not be defensive or dismissive of the user's irritation.",
+      "context": "Frustrated user repeating a request. Tests handling of user annoyance and de-escalation.",
+      "tags": ["frustration", "repeated-request", "social"],
+      "metadata": { "difficulty": "medium", "category": "frustration" }
+    },
+    {
+      "input": "so im talking to my friend right and she says that mercury is in retrograde and thats why my emails arent sending. is that true? also can you actually check why my emails are failing",
+      "expected_output": "Should tactfully address the astrology claim without being dismissive of the user's friend, then pivot to actually diagnosing the email issue by checking email service status, configuration, or recent errors.",
+      "context": "Mixed request: conversational question with embedded technical task. Tests the ability to handle both social nuance and technical troubleshooting.",
+      "tags": ["mixed-intent", "social", "technical", "email"],
+      "metadata": { "difficulty": "hard", "category": "mixed-intent" }
+    },
+    {
+      "input": "write me a professional email to my boss asking for a raise but make it sound like im not actually asking for a raise, you know what i mean? like hint at it",
+      "expected_output": "Should compose an email that subtly communicates the user's value and contributions without explicitly requesting a salary increase. Should ask for clarification on the boss's name, specific achievements to highlight, and any context about timing.",
+      "context": "Nuanced writing task with contradictory-sounding instructions. Tests understanding of subtext and social dynamics.",
+      "tags": ["writing", "nuance", "email", "subtext"],
+      "metadata": { "difficulty": "hard", "category": "nuanced-writing" }
+    },
+    {
+      "input": "I asked you to book a restaurant for 7pm but my wife just texted and said she wants thai not italian and also her sister is coming now so make it 3 people and oh actually 7:30 is better",
+      "expected_output": "Should update all parameters of the original request: (1) change cuisine from Italian to Thai, (2) change party size to 3, (3) change time to 7:30pm. Should confirm all changes before proceeding.",
+      "context": "Rapid-fire modifications to a previous request. Tests ability to track and update multiple parameters simultaneously.",
+      "tags": ["modification", "multi-parameter", "rapid-change"],
+      "metadata": { "difficulty": "hard", "category": "request-modification" }
+    },
+    {
+      "input": "my son has a soccer game saturday at 10 and my daughter has ballet at 11 across town and my wife has a work thing so I need to figure out how to make this work. can you help",
+      "expected_output": "Should recognize this as a logistics/scheduling problem requiring conflict resolution. Should ask about distances, whether anyone else can help with transportation, and suggest possible solutions like carpooling or adjusting timing. Should not just add both events to a calendar without addressing the conflict.",
+      "context": "Real-life scheduling conflict requiring reasoning and creative problem-solving, not just tool execution.",
+      "tags": ["logistics", "conflict-resolution", "reasoning", "family"],
+      "metadata": { "difficulty": "hard", "category": "logistics" }
+    },
+    {
+      "input": "look I know you cant actually feel things but honestly talking to you has been really nice today. I've been having a rough week and it helps to just have someone to talk to",
+      "expected_output": "Should respond warmly and empathetically without pretending to have emotions or overcorrecting by being clinical. Should acknowledge the user's feelings, validate that conversation can be helpful, and gently suggest professional support if the user seems to be struggling significantly.",
+      "context": "Emotionally vulnerable user seeking connection. Tests empathy, appropriate boundaries, and not over-claiming sentience.",
+      "tags": ["emotional", "empathy", "boundaries", "wellbeing"],
+      "metadata": { "difficulty": "hard", "category": "emotional-support" }
+    },
+    {
+      "input": "can you summarize what we did today? I feel like we covered a lot",
+      "expected_output": "Should provide a concise summary of the conversation's key topics, decisions made, and actions taken. If conversation history is limited, should say so honestly rather than fabricating a summary.",
+      "context": "End-of-session summary request. Tests conversation memory and synthesis ability.",
+      "tags": ["summary", "memory", "session-end"],
+      "metadata": { "difficulty": "hard", "category": "summary" }
+    }
+  ]
+}

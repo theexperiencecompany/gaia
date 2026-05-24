@@ -1,5 +1,5 @@
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { toast } from "@/lib/toast";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
@@ -33,6 +33,10 @@ export function useNotificationWebSocket() {
   const isAuthenticated = !!user?.email;
   const { addNotification, updateNotification } = useNotificationStore();
   const router = useRouter();
+  const pathname = usePathname();
+  // Ref keeps handleMessage stable so the ws listener isn't re-registered.
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
 
   const handleMessage = useCallback(
     (msg: unknown) => {
@@ -44,8 +48,10 @@ export function useNotificationWebSocket() {
 
             const isTestNotification =
               message.notification.metadata?.test === true;
+            const isOnboarding =
+              pathnameRef.current?.includes("/onboarding") ?? false;
 
-            if (!isTestNotification) {
+            if (!isTestNotification && !isOnboarding) {
               if (message.notification.content?.title) {
                 const actions = message.notification.content.actions ?? [];
                 const redirectAction = actions.find(

@@ -1,0 +1,22 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Barrel re-exports in src/features/ and src/app/ are prohibited.
+// The generate-barrels script explicitly excludes these directories.
+// Consumers must import directly from the source file, not an index aggregator.
+//
+// GritQL limitation: metavariables inside `export { }` specifier lists are not
+// supported by the Biome GritQL engine (only exact literal specifiers match).
+// This rule catches `export *` and `export * as` — the most destructive forms.
+// Named re-exports (`export { X } from '...'`) are caught by the pre-commit
+// hook's Biome lint pass and enforced by code review.
+or {
+  `export * from $source`,
+  `export * as $_ from $source`
+} as $node where {
+  register_diagnostic(
+    span = $node,
+    message = "Barrel re-exports are not allowed in src/features/ or src/app/. Import directly from the source file (e.g. `import { Foo } from './components/Foo'`).",
+    severity = "error"
+  )
+}

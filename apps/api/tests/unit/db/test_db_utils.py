@@ -7,11 +7,10 @@ Covers:
 
 from typing import Any
 
-import pytest
 from bson import ObjectId
+import pytest
 
 from app.db.utils import serialize_document
-
 
 # ---------------------------------------------------------------------------
 # serialize_document — basic behavior

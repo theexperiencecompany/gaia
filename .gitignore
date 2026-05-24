@@ -1,5 +1,6 @@
 .history
 .claude/worktrees
+.claude/scheduled_tasks.lock
 venv
 api/__pycache__
 */__pycache__/*
@@ -14,6 +15,7 @@ api/.env
 .DS_Store
 
 venv/
+.venv
 .venv/
 .venv311/
 
@@ -45,6 +47,7 @@ chroma-data/
 sticky-notes.snotes
 
 # dependencies
+node_modules
 node_modules/
 /.pnp
 .pnp.*
@@ -110,6 +113,7 @@ out
 postman/
 
 .agents/plans/
+.agents/recording/
 
 # whatsapp-web.js
 .wwebjs_auth/
@@ -125,12 +129,30 @@ docs/plans/
 i18n.cache
 .worktrees/
 
-# dagger
-.dagger/sdk
+docs/superpowers
+superpowers/
 
 bin/dagger
 
-# Beads / Dolt files (added by bd init)
-.dolt/
-*.db
-.beads-credential-key
+.nx/polygraph
+.claude/settings.local.json
+
+~/
+
+# Local prod config (secrets, credentials, etc.) — runbooks should be tracked
+ops/*.env
+ops/secrets/
+ops/**/*.key
+ops/**/*.pem
+ops/**/*.p12
+ops/**/*.pfx
+chrome/
+
+# Claude Code / agent session transcripts (top-level, dated)
+/20[0-9][0-9]-[0-1][0-9]-[0-3][0-9]-*.txt
+.claude/sessions/
+
+skills-lock.json
+
+# JSCPD copy-paste reports
+.jscpd-report/

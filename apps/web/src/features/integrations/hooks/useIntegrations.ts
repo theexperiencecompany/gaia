@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
-import { trackIntegration } from "@/lib/analytics";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 import { integrationsApi } from "../api/integrationsApi";
@@ -117,11 +117,14 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       userIntegrations.map((ui) => ui.integrationId),
     );
 
+    // Build a Map for O(1) status lookups
+    const statusMap = new Map(statuses.map((s) => [s.integrationId, s]));
+
     // Add platform integrations that user hasn't added yet
     const availablePlatformIntegrations: Integration[] = platformConfigs
       .filter((pi) => !userIntegrationIds.has(pi.id))
       .map((pi) => {
-        const status = statuses.find((s) => s.integrationId === pi.id);
+        const status = statusMap.get(pi.id);
         return {
           ...pi,
           source: "platform" as const,
@@ -142,7 +145,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       ...availablePlatformIntegrations,
     ];
 
-    return allIntegrations.sort((a, b) => {
+    return allIntegrations.toSorted((a, b) => {
       const priorityA = statusPriority[a.status] ?? 3;
       const priorityB = statusPriority[b.status] ?? 3;
 
@@ -178,12 +181,12 @@ export const useIntegrations = (): UseIntegrationsReturn => {
 
       try {
         const result = await integrationsApi.connectIntegration(integrationId);
-        // Track integration connection attempt
-        trackIntegration("connected", integrationId, {
-          source: "integration_settings",
-        });
 
         if (result.status === "connected") {
+          trackEvent(ANALYTICS_EVENTS.INTEGRATION_CONNECTED, {
+            integration: integrationId,
+            source: "integration_settings",
+          });
           toast.success(`Connected to ${result.name}`, { id: toastId });
           // Refetch all data
           await Promise.all([
@@ -204,7 +207,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
           `Failed to connect: ${error instanceof Error ? error.message : "Unknown error"}`,
           { id: toastId },
         );
-        trackIntegration("error", integrationId, {
+        trackEvent(ANALYTICS_EVENTS.INTEGRATION_ERROR, {
+          integration: integrationId,
           error: error instanceof Error ? error.message : "Unknown error",
         });
         throw error;
@@ -218,8 +222,9 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     async (integrationId: string): Promise<void> => {
       try {
         await integrationsApi.disconnectIntegration(integrationId);
-        // Track integration disconnection
-        trackIntegration("disconnected", integrationId);
+        trackEvent(ANALYTICS_EVENTS.INTEGRATION_DISCONNECTED, {
+          integration: integrationId,
+        });
         toast.success("Integration disconnected");
         // Refetch all data
         await queryClient.refetchQueries({ queryKey: ["integrations"] });
@@ -227,7 +232,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         toast.error(
           `Failed to disconnect: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
-        trackIntegration("error", integrationId, {
+        trackEvent(ANALYTICS_EVENTS.INTEGRATION_ERROR, {
+          integration: integrationId,
           error: error instanceof Error ? error.message : "Unknown error",
         });
         throw error;

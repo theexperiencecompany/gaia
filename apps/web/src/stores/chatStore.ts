@@ -119,7 +119,7 @@ export const useChatStore = create<ChatState>((set) => ({
 
       // Sort by createdAt to ensure correct chronological order
       // This is critical: events may arrive out of order (bot before user)
-      updatedMessages = updatedMessages.sort(
+      updatedMessages = updatedMessages.toSorted(
         (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
       );
 
@@ -290,7 +290,7 @@ export const useChatStoreSync = () => {
       }
 
       // Sort by createdAt to ensure correct order
-      updatedMessages.sort(
+      updatedMessages = updatedMessages.toSorted(
         (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
       );
 

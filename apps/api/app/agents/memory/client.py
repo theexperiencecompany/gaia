@@ -1,7 +1,5 @@
 """Centralized memory client management."""
 
-from typing import Optional
-
 from mem0 import AsyncMemoryClient
 
 from app.config.settings import settings
@@ -11,7 +9,7 @@ class MemoryClientManager:
     """Manages memory client lifecycle and configuration."""
 
     def __init__(self) -> None:
-        self._client: Optional[AsyncMemoryClient] = None
+        self._client: AsyncMemoryClient | None = None
         self._graph_enabled: bool = False
 
     async def get_client(self) -> AsyncMemoryClient:

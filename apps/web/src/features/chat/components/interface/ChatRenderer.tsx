@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence } from "motion/react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import CreatedByGAIABanner from "@/features/chat/components/banners/CreatedByGAIABanner";
@@ -11,6 +11,7 @@ import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUs
 import GeneratedImageSheet from "@/features/chat/components/image/GeneratedImageSheet";
 import { LoadingIndicator } from "@/features/chat/components/interface/LoadingIndicator";
 import MemoryModal from "@/features/chat/components/memory/MemoryModal";
+import { WelcomeChat } from "@/features/chat/components/welcome/WelcomeChat";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
 import { useLoading } from "@/features/chat/hooks/useLoading";
@@ -23,6 +24,7 @@ import {
 import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
 import type {
   ChatBubbleBotProps,
+  ChatBubbleUserProps,
   SetImageDataType,
 } from "@/types/features/chatBubbleTypes";
 import type { MessageType } from "@/types/features/convoTypes";
@@ -39,8 +41,6 @@ export default function ChatRenderer({
   const { conversations } = useConversationList();
   const [openGeneratedImage, setOpenGeneratedImage] = useState<boolean>(false);
   const [openMemoryModal, setOpenMemoryModal] = useState<boolean>(false);
-  const searchParams = useSearchParams();
-  const messageId = searchParams.get("messageId");
   const { isLoading } = useLoading();
   const { loadingText, loadingTextKey, toolInfo } = useLoadingText();
   const { id: convoIdParam } = useParams<{ id: string }>();
@@ -57,6 +57,10 @@ export default function ChatRenderer({
       (convo) => convo.conversation_id === convoIdParam,
     );
   }, [conversations, convoIdParam]);
+
+  // Read off the conversation, not userStore, to avoid a stale-rehydrate race.
+  const isWelcomeConversation =
+    conversation?.is_onboarding_conversation === true;
 
   // Handle retry callback
   const handleRetry = useCallback(
@@ -150,6 +154,9 @@ export default function ChatRenderer({
   }, [filteredMessages]);
 
   useEffect(() => {
+    const messageId = new URLSearchParams(window.location.search).get(
+      "messageId",
+    );
     if (
       messageId &&
       messagesWithDeduplicatedToolCalls.length > 0 &&
@@ -158,7 +165,7 @@ export default function ChatRenderer({
       scrollToMessage(messageId);
       scrolledToMessageRef.current = messageId;
     }
-  }, [messageId, messagesWithDeduplicatedToolCalls]);
+  }, [messagesWithDeduplicatedToolCalls]);
 
   const scrollToMessage = (messageId: string) => {
     if (!messageId) return;
@@ -193,9 +200,11 @@ export default function ChatRenderer({
       />
       <SearchedImageDialog />
       <CreatedByGAIABanner show={conversation?.is_system_generated === true} />
+      {isWelcomeConversation && <WelcomeChat />}
       {messagesWithDeduplicatedToolCalls?.map(
         (message: MessageType, index: number) => {
-          let messageProps = null;
+          let messageProps: ChatBubbleBotProps | ChatBubbleUserProps | null =
+            null;
 
           if (message.type === "bot")
             messageProps = getMessageProps(message, "bot", messagePropsOptions);
@@ -223,7 +232,7 @@ export default function ChatRenderer({
           if (
             message.type === "bot" &&
             !isBotMessageEmpty(messageProps as ChatBubbleBotProps)
-          )
+          ) {
             return (
               <ChatBubbleBot
                 key={message.message_id || index}
@@ -237,7 +246,7 @@ export default function ChatRenderer({
                 isGroupedWithPrev={isPrecededByBot}
               />
             );
-
+          }
           return (
             <ChatBubbleUser
               key={message.message_id || index}

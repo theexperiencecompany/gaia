@@ -1,13 +1,14 @@
 import json
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from shared.py.wide_events import log
+from fastapi import UploadFile
+
 from app.services.composio.composio_service import (
     get_composio_service,
 )
 from app.utils.general_utils import transform_gmail_message
-from fastapi import UploadFile
+from shared.py.wide_events import log
 
 
 def get_gmail_tool(tool_name: str, user_id: str):
@@ -33,8 +34,8 @@ def get_gmail_tool(tool_name: str, user_id: str):
 
 
 async def invoke_gmail_tool(
-    user_id: str, tool_name: str, parameters: Dict[str, Any]
-) -> Dict[str, Any]:
+    user_id: str, tool_name: str, parameters: dict[str, Any]
+) -> dict[str, Any]:
     """
     Invoke a specific Gmail tool with the given parameters asynchronously.
 
@@ -59,7 +60,7 @@ async def invoke_gmail_tool(
         return {"error": str(e), "successful": False}
 
 
-def _process_attachments(attachments: List[UploadFile]) -> List[Dict[str, Any]]:
+def _process_attachments(attachments: list[UploadFile]) -> list[dict[str, Any]]:
     """Process UploadFile objects into format expected by Composio."""
     processed = [
         {
@@ -80,13 +81,12 @@ async def send_email(
     to: str,
     subject: str,
     body: str,
-    thread_id: Optional[str] = None,
-    is_html: bool = False,
-    extra_recipients: List[str] = [],
-    cc_list: Optional[List[str]] = None,
-    bcc_list: Optional[List[str]] = None,
-    attachments: Optional[List[UploadFile]] = None,
-) -> Dict[str, Any]:
+    thread_id: str | None = None,
+    extra_recipients: list[str] = [],
+    cc_list: list[str] | None = None,
+    bcc_list: list[str] | None = None,
+    attachments: list[UploadFile] | None = None,
+) -> dict[str, Any]:
     """
     Send an email using Composio Gmail tools.
 
@@ -94,13 +94,16 @@ async def send_email(
     GMAIL_REPLY_TO_THREAD (when thread_id is provided) to handle both
     new emails and thread replies appropriately.
 
+    Body content is always delivered as HTML — Markdown inputs are converted
+    transparently by the Composio before-hook so Gmail renders formatting
+    instead of literal ``**`` / ``###`` characters.
+
     Args:
         user_id: User ID for Composio authentication
         to: Primary recipient email address
         subject: Email subject
-        body: Email body content
+        body: Email body content (Markdown or HTML; converted if needed)
         thread_id: Optional thread ID - if provided, uses GMAIL_REPLY_TO_THREAD
-        is_html: Whether the body is HTML content
         extra_recipients: Additional recipient email addresses
         cc_list: Optional list of CC recipients
         bcc_list: Optional list of BCC recipients
@@ -123,13 +126,15 @@ async def send_email(
         tool_name = "GMAIL_REPLY_TO_THREAD" if is_reply else "GMAIL_SEND_EMAIL"
         body_param = "message_body" if is_reply else "body"
 
-        # Build parameters
-        parameters: Dict[str, Any] = {
+        # Build parameters. The Composio before-hook (gmail_compose_before_hook)
+        # normalises body → HTML and sets is_html=True for every compose tool,
+        # so callers can hand us either Markdown or HTML and Gmail will render
+        # consistently.
+        parameters: dict[str, Any] = {
             "recipient_email": to,
             "extra_recipients": extra_recipients,
             body_param: body,
             "subject": subject,
-            "is_html": is_html,
         }
 
         # Add thread_id for replies
@@ -156,8 +161,8 @@ async def send_email(
 
 
 async def fetch_detailed_messages(
-    user_id: str, messages: List[Dict[str, Any]], batch_size: int = 20, delay: float = 2
-) -> List[Dict[str, Any]]:
+    user_id: str, messages: list[dict[str, Any]], batch_size: int = 20, delay: float = 2
+) -> list[dict[str, Any]]:
     """
     Fetch detailed Gmail messages using Composio tools while handling rate limits.
 
@@ -192,9 +197,7 @@ async def fetch_detailed_messages(
                 if result.get("successful", True):
                     detailed_messages.append(result)
                 else:
-                    log.error(
-                        f"Error fetching message {message_id}: {result.get('error')}"
-                    )
+                    log.error(f"Error fetching message {message_id}: {result.get('error')}")
 
             except Exception as e:
                 log.error(f"Error fetching message {message_id}: {e}")
@@ -208,10 +211,10 @@ async def fetch_detailed_messages(
 
 async def modify_message_labels(
     user_id: str,
-    message_ids: List[str],
-    add_labels: Optional[List[str]] = None,
-    remove_labels: Optional[List[str]] = None,
-) -> List[Dict[str, Any]]:
+    message_ids: list[str],
+    add_labels: list[str] | None = None,
+    remove_labels: list[str] | None = None,
+) -> list[dict[str, Any]]:
     """
     Modify the labels of Gmail messages using Composio Gmail tools.
 
@@ -238,9 +241,7 @@ async def modify_message_labels(
                 "message_ids": message_ids,
                 "label_ids": add_labels,
             }
-            add_result = await invoke_gmail_tool(
-                user_id, "GMAIL_ADD_LABEL_TO_EMAIL", add_params
-            )
+            add_result = await invoke_gmail_tool(user_id, "GMAIL_ADD_LABEL_TO_EMAIL", add_params)
             if add_result.get("successful", True):
                 results.extend(add_result.get("messages", []))
         except Exception as e:
@@ -253,9 +254,7 @@ async def modify_message_labels(
                 "message_ids": message_ids,
                 "label_ids": remove_labels,
             }
-            remove_result = await invoke_gmail_tool(
-                user_id, "GMAIL_REMOVE_LABEL", remove_params
-            )
+            remove_result = await invoke_gmail_tool(user_id, "GMAIL_REMOVE_LABEL", remove_params)
             if remove_result.get("successful", True):
                 # Only extend if we didn't already get results from adding labels
                 if not add_labels:
@@ -266,9 +265,7 @@ async def modify_message_labels(
     return results
 
 
-async def mark_messages_as_read(
-    user_id: str, message_ids: List[str]
-) -> List[Dict[str, Any]]:
+async def mark_messages_as_read(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
     """
     Mark Gmail messages as read by removing the UNREAD label using Composio Gmail tool.
 
@@ -282,9 +279,7 @@ async def mark_messages_as_read(
     return await modify_message_labels(user_id, message_ids, remove_labels=["UNREAD"])
 
 
-async def mark_messages_as_unread(
-    user_id: str, message_ids: List[str]
-) -> List[Dict[str, Any]]:
+async def mark_messages_as_unread(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
     """
     Mark Gmail messages as unread by adding the UNREAD label using Composio Gmail tool.
 
@@ -298,7 +293,7 @@ async def mark_messages_as_unread(
     return await modify_message_labels(user_id, message_ids, add_labels=["UNREAD"])
 
 
-async def star_messages(user_id: str, message_ids: List[str]) -> List[Dict[str, Any]]:
+async def star_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
     """
     Star Gmail messages by adding the STARRED label.
 
@@ -313,7 +308,7 @@ async def star_messages(user_id: str, message_ids: List[str]) -> List[Dict[str, 
     return await modify_message_labels(user_id, message_ids, add_labels=["STARRED"])
 
 
-async def unstar_messages(user_id: str, message_ids: List[str]) -> List[Dict[str, Any]]:
+async def unstar_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
     """
     Unstar Gmail messages by removing the STARRED label.
 
@@ -328,7 +323,7 @@ async def unstar_messages(user_id: str, message_ids: List[str]) -> List[Dict[str
     return await modify_message_labels(user_id, message_ids, remove_labels=["STARRED"])
 
 
-async def trash_messages(user_id: str, message_ids: List[str]) -> List[Dict[str, Any]]:
+async def trash_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
     """
     Move Gmail messages to trash.
 
@@ -356,9 +351,7 @@ async def trash_messages(user_id: str, message_ids: List[str]) -> List[Dict[str,
     return results
 
 
-async def untrash_messages(
-    user_id: str, message_ids: List[str]
-) -> List[Dict[str, Any]]:
+async def untrash_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
     """
     Restore Gmail messages from trash.
 
@@ -375,24 +368,18 @@ async def untrash_messages(
     for message_id in message_ids:
         try:
             parameters = {"message_id": message_id}
-            result = await invoke_gmail_tool(
-                user_id, "GMAIL_UNTRASH_MESSAGE", parameters
-            )
+            result = await invoke_gmail_tool(user_id, "GMAIL_UNTRASH_MESSAGE", parameters)
             if result.get("successful", True):
                 results.append(result)
             else:
-                log.error(
-                    f"Error untrashing message {message_id}: {result.get('error')}"
-                )
+                log.error(f"Error untrashing message {message_id}: {result.get('error')}")
         except Exception as e:
             log.error(f"Error untrashing message {message_id}: {e}")
 
     return results
 
 
-async def archive_messages(
-    user_id: str, message_ids: List[str]
-) -> List[Dict[str, Any]]:
+async def archive_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
     """
     Archive Gmail messages by removing the INBOX label.
 
@@ -407,7 +394,7 @@ async def archive_messages(
     return await modify_message_labels(user_id, message_ids, remove_labels=["INBOX"])
 
 
-async def move_to_inbox(user_id: str, message_ids: List[str]) -> List[Dict[str, Any]]:
+async def move_to_inbox(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
     """
     Move Gmail messages to inbox by adding the INBOX label.
 
@@ -422,7 +409,7 @@ async def move_to_inbox(user_id: str, message_ids: List[str]) -> List[Dict[str, 
     return await modify_message_labels(user_id, message_ids, add_labels=["INBOX"])
 
 
-async def fetch_thread(user_id: str, thread_id: str) -> Dict[str, Any]:
+async def fetch_thread(user_id: str, thread_id: str) -> dict[str, Any]:
     """
     Fetch a complete email thread with all messages using Composio Gmail tool.
 
@@ -439,28 +426,21 @@ async def fetch_thread(user_id: str, thread_id: str) -> Dict[str, Any]:
             "thread_id": thread_id,
         }
 
-        result = await invoke_gmail_tool(
-            user_id, "GMAIL_FETCH_MESSAGE_BY_THREAD_ID", parameters
-        )
+        result = await invoke_gmail_tool(user_id, "GMAIL_FETCH_MESSAGE_BY_THREAD_ID", parameters)
 
         if result.get("successful", True):
             thread = result
 
             # Transform messages in the thread for easier frontend processing
             if "messages" in thread:
-                thread["messages"] = [
-                    transform_gmail_message(msg) for msg in thread["messages"]
-                ]
+                thread["messages"] = [transform_gmail_message(msg) for msg in thread["messages"]]
 
                 # Sort messages by date (oldest first)
                 thread["messages"].sort(key=lambda msg: int(msg.get("internalDate", 0)))
 
             return thread
-        else:
-            log.error(
-                f"Error from GMAIL_FETCH_MESSAGE_BY_THREAD_ID: {result.get('error')}"
-            )
-            return {"messages": []}
+        log.error(f"Error from GMAIL_FETCH_MESSAGE_BY_THREAD_ID: {result.get('error')}")
+        return {"messages": []}
 
     except Exception as error:
         log.error(f"Error fetching thread {thread_id}: {error}")
@@ -469,29 +449,32 @@ async def fetch_thread(user_id: str, thread_id: str) -> Dict[str, Any]:
 
 async def search_messages(
     user_id: str,
-    query: Optional[str] = None,
+    query: str | None = None,
     max_results: int = 20,
-    page_token: Optional[str] = None,
-) -> Dict[str, Any]:
+    page_token: str | None = None,
+    format: str | None = None,
+    include_payload: bool | None = None,
+    verbose: bool | None = None,
+) -> dict[str, Any]:
     """
     Search Gmail messages using Composio Gmail tool.
 
-    Args:
-        user_id: User ID for Composio authentication
-        query: Search query in Gmail's search syntax
-        max_results: Maximum number of results to return
-        page_token: Token for pagination
-
-    Returns:
-        Dict containing messages and next page token
+    Pass format="metadata" with include_payload=False and verbose=False to
+    skip body decode and bypass GMAIL_FULL_FETCH_HARD_LIMIT.
     """
     try:
-        parameters = {
+        parameters: dict[str, Any] = {
             "query": query or "",
             "max_results": max_results,
         }
         if page_token:
             parameters["page_token"] = page_token
+        if format is not None:
+            parameters["format"] = format
+        if include_payload is not None:
+            parameters["include_payload"] = include_payload
+        if verbose is not None:
+            parameters["verbose"] = verbose
 
         result = await invoke_gmail_tool(user_id, "GMAIL_FETCH_EMAILS", parameters)
 
@@ -503,8 +486,7 @@ async def search_messages(
                 "messages": [transform_gmail_message(msg) for msg in messages],
                 "nextPageToken": data.get("nextPageToken"),
             }
-        else:
-            return {"messages": [], "nextPageToken": None}
+        return {"messages": [], "nextPageToken": None}
 
     except Exception:
         return {"messages": [], "nextPageToken": None}
@@ -515,9 +497,9 @@ async def create_label(
     name: str,
     label_list_visibility: str = "labelShow",
     message_list_visibility: str = "show",
-    background_color: Optional[str] = None,
-    text_color: Optional[str] = None,
-) -> Dict[str, Any]:
+    background_color: str | None = None,
+    text_color: str | None = None,
+) -> dict[str, Any]:
     """
     Create a new Gmail label using Composio Gmail tool.
 
@@ -559,12 +541,12 @@ async def create_label(
 async def update_label(
     user_id: str,
     label_id: str,
-    name: Optional[str] = None,
-    label_list_visibility: Optional[str] = None,
-    message_list_visibility: Optional[str] = None,
-    background_color: Optional[str] = None,
-    text_color: Optional[str] = None,
-) -> Dict[str, Any]:
+    name: str | None = None,
+    label_list_visibility: str | None = None,
+    message_list_visibility: str | None = None,
+    background_color: str | None = None,
+    text_color: str | None = None,
+) -> dict[str, Any]:
     """
     Update an existing Gmail label using Composio Gmail tool.
 
@@ -632,8 +614,8 @@ async def delete_label(user_id: str, label_id: str) -> bool:
 
 
 async def apply_labels(
-    user_id: str, message_ids: List[str], label_ids: List[str]
-) -> List[Dict[str, Any]]:
+    user_id: str, message_ids: list[str], label_ids: list[str]
+) -> list[dict[str, Any]]:
     """
     Apply one or more labels to specified messages.
 
@@ -650,8 +632,8 @@ async def apply_labels(
 
 
 async def remove_labels(
-    user_id: str, message_ids: List[str], label_ids: List[str]
-) -> List[Dict[str, Any]]:
+    user_id: str, message_ids: list[str], label_ids: list[str]
+) -> list[dict[str, Any]]:
     """
     Remove one or more labels from specified messages.
 
@@ -670,23 +652,24 @@ async def remove_labels(
 async def create_draft(
     user_id: str,
     sender: str,
-    to_list: List[str],
+    to_list: list[str],
     subject: str,
     body: str,
-    is_html: bool = False,
-    cc_list: Optional[List[str]] = None,
-    bcc_list: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    cc_list: list[str] | None = None,
+    bcc_list: list[str] | None = None,
+) -> dict[str, Any]:
     """
     Create a new Gmail draft using Composio Gmail tool.
+
+    Body content is always sent as HTML — the Composio before-hook converts
+    Markdown inputs transparently.
 
     Args:
         user_id: User ID for Composio authentication
         sender: Email address of the sender
         to_list: Email addresses of recipients
         subject: Email subject
-        body: Email body
-        is_html: Whether the body is HTML content
+        body: Email body (Markdown or HTML; converted if needed)
         cc_list: Email addresses for CC
         bcc_list: Email addresses for BCC
 
@@ -695,7 +678,7 @@ async def create_draft(
     """
     log.info(f"Creating draft email to {to_list} with subject: {subject}")
     try:
-        parameters: Dict[str, Any] = {
+        parameters: dict[str, Any] = {
             "to": to_list,
             "subject": subject,
             "body": body,
@@ -706,12 +689,8 @@ async def create_draft(
             parameters["cc"] = cc_list
         if bcc_list:
             parameters["bcc"] = bcc_list
-        if is_html:
-            parameters["html"] = True
 
-        result = await invoke_gmail_tool(
-            user_id, "GMAIL_CREATE_EMAIL_DRAFT", parameters
-        )
+        result = await invoke_gmail_tool(user_id, "GMAIL_CREATE_EMAIL_DRAFT", parameters)
         return result
     except Exception as error:
         log.error(f"Error creating draft: {error}")
@@ -719,8 +698,8 @@ async def create_draft(
 
 
 async def list_drafts(
-    user_id: str, max_results: int = 20, page_token: Optional[str] = None
-) -> Dict[str, Any]:
+    user_id: str, max_results: int = 20, page_token: str | None = None
+) -> dict[str, Any]:
     """
     List Gmail draft messages using Composio Gmail tool.
 
@@ -734,7 +713,7 @@ async def list_drafts(
     """
     log.info(f"Listing drafts, max_results={max_results}")
     try:
-        parameters: Dict[str, Any] = {
+        parameters: dict[str, Any] = {
             "max_results": max_results,
         }
         if page_token:
@@ -756,16 +735,15 @@ async def list_drafts(
                 "drafts": detailed_drafts,
                 "nextPageToken": result.get("nextPageToken"),
             }
-        else:
-            log.error(f"Error from GMAIL_LIST_DRAFTS: {result.get('error')}")
-            return {"drafts": [], "nextPageToken": None}
+        log.error(f"Error from GMAIL_LIST_DRAFTS: {result.get('error')}")
+        return {"drafts": [], "nextPageToken": None}
 
     except Exception as error:
         log.error(f"Error listing drafts: {error}")
         return {"drafts": [], "nextPageToken": None}
 
 
-async def get_draft(user_id: str, draft_id: str) -> Dict[str, Any]:
+async def get_draft(user_id: str, draft_id: str) -> dict[str, Any]:
     """
     Get a specific Gmail draft.
 
@@ -786,9 +764,8 @@ async def get_draft(user_id: str, draft_id: str) -> Dict[str, Any]:
             if "message" in result:
                 result["message"] = transform_gmail_message(result["message"])
             return result
-        else:
-            log.error(f"Error from GMAIL_GET_DRAFT: {result.get('error')}")
-            return {"error": result.get("error"), "successful": False}
+        log.error(f"Error from GMAIL_GET_DRAFT: {result.get('error')}")
+        return {"error": result.get("error"), "successful": False}
 
     except Exception as error:
         log.error(f"Error fetching draft {draft_id}: {error}")
@@ -799,15 +776,17 @@ async def update_draft(
     user_id: str,
     draft_id: str,
     sender: str,
-    to_list: List[str],
+    to_list: list[str],
     subject: str,
     body: str,
-    is_html: bool = False,
-    cc_list: Optional[List[str]] = None,
-    bcc_list: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    cc_list: list[str] | None = None,
+    bcc_list: list[str] | None = None,
+) -> dict[str, Any]:
     """
     Update an existing Gmail draft.
+
+    Body content is always sent as HTML — the Composio before-hook converts
+    Markdown inputs transparently.
 
     Args:
         user_id: User ID for Composio authentication
@@ -815,8 +794,7 @@ async def update_draft(
         sender: Email address of the sender
         to_list: Email addresses of recipients
         subject: Email subject
-        body: Email body
-        is_html: Whether the body is HTML content
+        body: Email body (Markdown or HTML; converted if needed)
         cc_list: Email addresses for CC
         bcc_list: Email addresses for BCC
 
@@ -842,9 +820,8 @@ async def update_draft(
 
         if result.get("successful", True):
             return result
-        else:
-            log.error(f"Error from GMAIL_UPDATE_DRAFT: {result.get('error')}")
-            return {"error": result.get("error"), "successful": False}
+        log.error(f"Error from GMAIL_UPDATE_DRAFT: {result.get('error')}")
+        return {"error": result.get("error"), "successful": False}
 
     except Exception as error:
         log.error(f"Error updating draft {draft_id}: {error}")
@@ -872,7 +849,7 @@ async def delete_draft(user_id: str, draft_id: str) -> bool:
         return False
 
 
-async def send_draft(user_id: str, draft_id: str) -> Dict[str, Any]:
+async def send_draft(user_id: str, draft_id: str) -> dict[str, Any]:
     """
     Send an existing Gmail draft.
 
@@ -890,16 +867,15 @@ async def send_draft(user_id: str, draft_id: str) -> Dict[str, Any]:
 
         if result.get("successful", True):
             return result
-        else:
-            log.error(f"Error from GMAIL_SEND_DRAFT: {result.get('error')}")
-            return {"error": result.get("error"), "successful": False}
+        log.error(f"Error from GMAIL_SEND_DRAFT: {result.get('error')}")
+        return {"error": result.get("error"), "successful": False}
 
     except Exception as error:
         log.error(f"Error sending draft {draft_id}: {error}")
         return {"error": str(error), "successful": False}
 
 
-async def list_labels(user_id: str) -> Dict[str, Any]:
+async def list_labels(user_id: str) -> dict[str, Any]:
     """
     List all Gmail labels using Composio Gmail tool.
 
@@ -911,7 +887,7 @@ async def list_labels(user_id: str) -> Dict[str, Any]:
     """
     log.info(f"Listing Gmail labels for user {user_id}")
     try:
-        parameters: Dict[str, Any] = {}  # No parameters needed for listing labels
+        parameters: dict[str, Any] = {}  # No parameters needed for listing labels
         result = await invoke_gmail_tool(user_id, "GMAIL_LIST_LABELS", parameters)
 
         if result.get("successful", True):
@@ -921,13 +897,12 @@ async def list_labels(user_id: str) -> Dict[str, Any]:
                 "labels": labels,
                 "count": len(labels),
             }
-        else:
-            log.error(f"Error from GMAIL_LIST_LABELS: {result.get('error')}")
-            return {
-                "success": False,
-                "error": result.get("error"),
-                "labels": [],
-            }
+        log.error(f"Error from GMAIL_LIST_LABELS: {result.get('error')}")
+        return {
+            "success": False,
+            "error": result.get("error"),
+            "labels": [],
+        }
 
     except Exception as error:
         log.error(f"Error listing Gmail labels: {error}")
@@ -938,7 +913,7 @@ async def list_labels(user_id: str) -> Dict[str, Any]:
         }
 
 
-async def get_email_by_id(user_id: str, message_id: str) -> Dict[str, Any]:
+async def get_email_by_id(user_id: str, message_id: str) -> dict[str, Any]:
     """
     Get a Gmail message by its ID using Composio Gmail tool.
 
@@ -952,9 +927,7 @@ async def get_email_by_id(user_id: str, message_id: str) -> Dict[str, Any]:
     log.info(f"Fetching email with ID: {message_id}")
     try:
         parameters = {"message_id": message_id}
-        result = await invoke_gmail_tool(
-            user_id, "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", parameters
-        )
+        result = await invoke_gmail_tool(user_id, "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", parameters)
 
         if result.get("successful", True):
             # Transform the message data for easier frontend processing
@@ -963,15 +936,12 @@ async def get_email_by_id(user_id: str, message_id: str) -> Dict[str, Any]:
                 "success": True,
                 "message": transformed_message,
             }
-        else:
-            log.error(
-                f"Error from GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID: {result.get('error')}"
-            )
-            return {
-                "success": False,
-                "error": result.get("error"),
-                "message": None,
-            }
+        log.error(f"Error from GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID: {result.get('error')}")
+        return {
+            "success": False,
+            "error": result.get("error"),
+            "message": None,
+        }
 
     except Exception as error:
         log.error(f"Error fetching email {message_id}: {error}")
@@ -1000,9 +970,7 @@ async def get_contact_list(user_id: str, max_results=100):
         # First, get message IDs using search
         search_params = {"query": query, "max_results": max_results}
 
-        search_result = await invoke_gmail_tool(
-            user_id, "GMAIL_FETCH_EMAILS", search_params
-        )
+        search_result = await invoke_gmail_tool(user_id, "GMAIL_FETCH_EMAILS", search_params)
 
         if not search_result.get("successful", True):
             log.error(f"Error searching for messages: {search_result.get('error')}")
@@ -1037,7 +1005,7 @@ async def get_contact_list(user_id: str, max_results=100):
 
             # Extract email addresses from From, To, Cc, and Reply-To fields
             for field in ["From", "To", "Cc", "Reply-To"]:
-                if field in headers and headers[field]:
+                if headers.get(field):
                     # Split multiple addresses in a single field
                     addresses = headers[field].split(",")
 
@@ -1069,5 +1037,5 @@ async def get_contact_list(user_id: str, max_results=100):
         return contact_list
 
     except Exception as e:
-        log.error(f"Error getting contact list: {str(e)}")
+        log.error(f"Error getting contact list: {e!s}")
         return []

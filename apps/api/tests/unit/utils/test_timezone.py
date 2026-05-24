@@ -1,10 +1,9 @@
 """Unit tests for timezone utilities."""
 
-from datetime import datetime, timedelta, timezone, tzinfo
-from typing import Optional
+from datetime import UTC, datetime, timedelta, timezone, tzinfo
 
-import pytz
 import pytest
+import pytz
 
 from app.utils.timezone import (
     TIMEZONE_KOLKATA,
@@ -25,16 +24,16 @@ class _StubTzInfo(tzinfo):
     """A minimal tzinfo subclass for testing edge cases where tzname returns
     None or empty string."""
 
-    def __init__(self, name: Optional[str]) -> None:
+    def __init__(self, name: str | None) -> None:
         self._name = name
 
-    def tzname(self, dt: Optional[datetime]) -> Optional[str]:
+    def tzname(self, dt: datetime | None) -> str | None:
         return self._name
 
-    def utcoffset(self, dt: Optional[datetime]) -> timedelta:
+    def utcoffset(self, dt: datetime | None) -> timedelta:
         return timedelta(0)
 
-    def dst(self, dt: Optional[datetime]) -> timedelta:
+    def dst(self, dt: datetime | None) -> timedelta:
         return timedelta(0)
 
 
@@ -46,7 +45,7 @@ class _StubTzInfo(tzinfo):
 @pytest.mark.unit
 class TestModuleConstants:
     def test_timezone_utc_is_builtin_utc(self):
-        assert TIMEZONE_UTC is timezone.utc
+        assert TIMEZONE_UTC is UTC
 
     def test_timezone_kolkata_value(self):
         assert TIMEZONE_KOLKATA == "Asia/Kolkata"
@@ -70,12 +69,12 @@ class TestModuleConstants:
 class TestParseTimezone:
     def test_utc_string_returns_builtin_utc(self):
         result = parse_timezone("UTC")
-        assert result is timezone.utc
+        assert result is UTC
 
     @pytest.mark.parametrize("utc_variant", ["UTC", "utc", "Utc", "uTc"])
     def test_utc_string_case_insensitive(self, utc_variant: str):
         result = parse_timezone(utc_variant)
-        assert result is timezone.utc
+        assert result is UTC
 
     @pytest.mark.parametrize(
         "tz_name",
@@ -106,8 +105,8 @@ class TestParseTimezone:
         assert result is tz
 
     def test_builtin_utc_object_returned_as_is(self):
-        result = parse_timezone(timezone.utc)
-        assert result is timezone.utc
+        result = parse_timezone(UTC)
+        assert result is UTC
 
     def test_non_string_non_timezone_raises_value_error(self):
         with pytest.raises(ValueError, match="Invalid timezone type"):
@@ -137,11 +136,11 @@ class TestParseTimezone:
 class TestReplaceTimezoneInfo:
     def test_string_datetime_with_new_timezone_string(self):
         result = replace_timezone_info("2025-06-18T19:00:00", new_timezone="UTC")
-        assert result == datetime(2025, 6, 18, 19, 0, 0, tzinfo=timezone.utc)
+        assert result == datetime(2025, 6, 18, 19, 0, 0, tzinfo=UTC)
         assert result.hour == 19
 
     def test_datetime_object_with_new_timezone_string(self):
-        dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=UTC)
         result = replace_timezone_info(dt, new_timezone="Asia/Kolkata")
         # Time should stay 19:00, only timezone changes
         assert result.hour == 19
@@ -149,7 +148,7 @@ class TestReplaceTimezoneInfo:
         assert result.tzinfo is not None
 
     def test_preserves_time_values_not_converts(self):
-        dt = datetime(2025, 6, 18, 7, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2025, 6, 18, 7, 0, 0, tzinfo=UTC)
         kolkata_tz = pytz.timezone("Asia/Kolkata")
         result = replace_timezone_info(dt, new_timezone="Asia/Kolkata")
         # Time should NOT change from 7:00 to 12:30 -- it stays 7:00
@@ -158,9 +157,9 @@ class TestReplaceTimezoneInfo:
         assert result.tzinfo == kolkata_tz
 
     def test_string_datetime_with_timezone_source_datetime(self):
-        source = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        source = datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC)
         result = replace_timezone_info("2025-06-18T19:00:00", timezone_source=source)
-        assert result.tzinfo is timezone.utc
+        assert result.tzinfo is UTC
         assert result.hour == 19
 
     def test_string_datetime_with_timezone_source_string(self):
@@ -178,7 +177,7 @@ class TestReplaceTimezoneInfo:
             new_timezone="UTC",
             timezone_source=source,
         )
-        assert result.tzinfo is timezone.utc
+        assert result.tzinfo is UTC
 
     def test_neither_param_raises_value_error(self):
         with pytest.raises(
@@ -231,7 +230,7 @@ class TestReplaceTimezoneInfo:
 @pytest.mark.unit
 class TestConvertDatetimeToTimezone:
     def test_utc_to_kolkata_converts_time(self):
-        utc_dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=timezone.utc)
+        utc_dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=UTC)
         result = convert_datetime_to_timezone(utc_dt, "Asia/Kolkata")
         # UTC+5:30 => 19:00 + 5:30 = 00:30 next day
         assert result.hour == 0
@@ -270,18 +269,18 @@ class TestConvertDatetimeToTimezone:
             convert_datetime_to_timezone("2025-06-18T19:00:00", "UTC")
 
     def test_invalid_target_timezone_raises_value_error(self):
-        utc_dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=timezone.utc)
+        utc_dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=UTC)
         with pytest.raises(ValueError, match="Unknown timezone string"):
             convert_datetime_to_timezone(utc_dt, "Fake/Zone")
 
     def test_same_timezone_no_change(self):
-        utc_dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=timezone.utc)
+        utc_dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=UTC)
         result = convert_datetime_to_timezone(utc_dt, "UTC")
         assert result.hour == 19
         assert result.minute == 0
 
     def test_builtin_timezone_object_as_target(self):
-        utc_dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=timezone.utc)
+        utc_dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=UTC)
         eastern = timezone(timedelta(hours=-5))
         result = convert_datetime_to_timezone(utc_dt, eastern)
         assert result.hour == 14
@@ -325,7 +324,7 @@ class TestSetTimezonePreservingTime:
     def test_string_input(self):
         result = set_timezone_preserving_time("2025-06-18T19:00:00", "UTC")
         assert result.hour == 19
-        assert result.tzinfo is timezone.utc
+        assert result.tzinfo is UTC
 
     def test_preserves_time_values(self):
         dt = datetime(2025, 3, 15, 14, 30, 45)
@@ -349,15 +348,15 @@ class TestAddTimezoneInfo:
     def test_naive_datetime_gets_timezone_added(self):
         dt = datetime(2025, 6, 18, 19, 0, 0)
         result = add_timezone_info(dt, "UTC")
-        assert result.tzinfo is timezone.utc
+        assert result.tzinfo is UTC
         assert result.hour == 19
 
     def test_aware_datetime_is_returned_unchanged(self):
-        dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=UTC)
         result = add_timezone_info(dt, "Asia/Kolkata")
         # Should return original datetime since it already has tzinfo
         assert result is dt
-        assert result.tzinfo is timezone.utc
+        assert result.tzinfo is UTC
 
     def test_string_naive_gets_timezone_added(self):
         result = add_timezone_info("2025-06-18T19:00:00", "Asia/Kolkata")
@@ -402,7 +401,7 @@ class TestAddTimezoneInfo:
 @pytest.mark.unit
 class TestGetTimezoneFromDatetime:
     def test_utc_datetime_returns_utc(self):
-        dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2025, 6, 18, 19, 0, 0, tzinfo=UTC)
         result = get_timezone_from_datetime(dt)
         assert result == "UTC"
 

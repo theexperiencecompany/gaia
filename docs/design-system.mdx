@@ -1,0 +1,665 @@
+---
+title: "Design System"
+description: "Visual language, tokens, and component rules for GAIA — sourced from DESIGN.md"
+icon: "palette"
+---
+
+{/*
+  Visual rendering of DESIGN.md at the repository root.
+  All tokens and rules here are sourced directly from that file.
+  Update DESIGN.md first — this page reflects it.
+*/}
+
+<Note>
+  Source of truth is [`DESIGN.md`](https://github.com/heygaia/gaia/blob/develop/DESIGN.md) at the repo root. This page renders it visually. Keep them in sync when tokens change.
+</Note>
+
+## Philosophy
+
+GAIA's UI is **dark-first**, **flat**, and **single-accent**. Every decision flows from five constraints:
+
+- **Dark-first.** Primary experience is dark mode (`#111111` background). Light mode is supported via CSS variables but is secondary.
+- **Flat depth.** Depth comes from layered backgrounds (`zinc-800` → `zinc-900`) only. Never borders, rings, or outlines.
+- **Single accent.** One primary action color: `#00bbff`. Everything else is zinc-scale neutrals.
+- **Borderless cards.** Data cards use background-only separation — no `border-`, `ring-`, or `outline-` in the card tree.
+- **Subtle motion.** Animations serve entrance, exit, and state changes only. Never decorative. Keep durations ≤ 300ms.
+
+---
+
+## Colors
+
+### Brand Tokens
+
+<Color variant="table">
+  <Color.Row title="Primary">
+    <Color.Item name="--color-primary" value="#00bbff" />
+    <Color.Item name="--color-primary-foreground" value="#000000" />
+    <Color.Item name="--color-primary-bg" value="#111111" />
+    <Color.Item name="--color-secondary-bg" value="#1a1a1a" />
+  </Color.Row>
+  <Color.Row title="Selection">
+    <Color.Item name="selection background" value="#00364b" />
+    <Color.Item name="selection text" value="#00bbff" />
+  </Color.Row>
+</Color>
+
+**Layout rule:** Use `--color-primary` for CTAs, user chat bubbles, selection highlights, and links. Use `--color-primary-bg` / `--color-secondary-bg` for the main app canvas and sidebar. Never use these on dark card surfaces — use zinc directly there.
+
+### Semantic Variables (Shadcn / Radix)
+
+Use on layout surfaces and standard components. Switch automatically between light and dark.
+
+| Variable | Light | Dark |
+|----------|-------|------|
+| `--background` | `hsl(0 0% 100%)` | `hsl(224 71% 4%)` |
+| `--foreground` | `hsl(222.2 47.4% 11.2%)` | `hsl(213 31% 91%)` |
+| `--muted` | `hsl(210 40% 96.1%)` | `hsl(223 47% 11%)` |
+| `--muted-foreground` | `hsl(215.4 16.3% 46.9%)` | `hsl(215.4 16.3% 56.9%)` |
+| `--accent` | `hsl(210 40% 96.1%)` | `hsl(216 34% 17%)` |
+| `--border` | `hsl(214.3 31.8% 91.4%)` | `hsl(216 34% 17%)` |
+| `--ring` | `hsl(215 20.2% 65.1%)` | `hsl(216 34% 17%)` |
+| `--destructive` | `hsl(0 100% 50%)` | `hsl(0 63% 31%)` |
+
+### Zinc Scale — Dark Card Surfaces
+
+Use zinc directly on dark card surfaces — not the CSS variables above.
+
+<Color variant="table">
+  <Color.Row title="Surfaces">
+    <Color.Item name="bg-zinc-800 — outer card" value="#27272a" />
+    <Color.Item name="bg-zinc-900 — inner item" value="#18181b" />
+    <Color.Item name="bg-zinc-700 — hover / accent" value="#3f3f46" />
+  </Color.Row>
+  <Color.Row title="Text">
+    <Color.Item name="text-zinc-100 — section headers" value="#f4f4f5" />
+    <Color.Item name="text-zinc-200 — item titles" value="#e4e4e7" />
+    <Color.Item name="text-zinc-400 — body / secondary" value="#a1a1aa" />
+    <Color.Item name="text-zinc-500 — meta / timestamps" value="#71717a" />
+  </Color.Row>
+</Color>
+
+### Status Colors
+
+Always use `/10` opacity background paired with matching foreground text. Never solid.
+
+<Color variant="table">
+  <Color.Row title="Status">
+    <Color.Item name="emerald-400 — success" value="#34d399" />
+    <Color.Item name="amber-400 — warning" value="#fbbf24" />
+    <Color.Item name="red-400 — error" value="#f87171" />
+    <Color.Item name="blue-400 — info" value="#60a5fa" />
+    <Color.Item name="zinc-400 — pending" value="#a1a1aa" />
+  </Color.Row>
+  <Color.Row title="Priority">
+    <Color.Item name="red-500 — high" value="#ef4444" />
+    <Color.Item name="yellow-500 — medium" value="#eab308" />
+    <Color.Item name="blue-500 — low" value="#3b82f6" />
+  </Color.Row>
+</Color>
+
+```tsx
+bg-emerald-400/10 text-emerald-400  // success
+bg-amber-400/10  text-amber-400     // warning
+bg-red-400/10    text-red-400       // error
+bg-blue-400/10   text-blue-400      // info
+bg-zinc-700/50   text-zinc-400      // pending
+```
+
+<Warning>Never use solid color backgrounds for status badges — always `/10` opacity background paired with matching text color.</Warning>
+
+---
+
+## Typography
+
+Three font families. Never set `font-family` inline — use the Tailwind token class.
+
+| Token | Family | Weights | Use |
+|-------|--------|---------|-----|
+| `font-sans` | Inter | All | All UI — body, labels, buttons, inputs |
+| `font-serif` | PP Editorial New | 200, 400 | Editorial headings, landing hero text |
+| `font-mono` | Anonymous Pro | 400, 700 | Code blocks, `<code>`, technical content |
+
+### Specimens
+
+<div style={{ borderRadius: '12px', overflow: 'hidden', margin: '24px 0' }}>
+  <div style={{ background: '#18181b', padding: '32px 36px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+    <div style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '20px', fontFamily: 'monospace' }}>Inter — font-sans</div>
+    <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '30px', fontWeight: 700, color: '#f4f4f5', lineHeight: 1.15, marginBottom: '10px' }}>The quick brown fox jumps</div>
+    <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 400, color: '#a1a1aa', lineHeight: 1.65, marginBottom: '16px' }}>GAIA proactively manages your email, calendar, tasks, and workflows — so you don't have to.</div>
+    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 300, fontSize: '13px', color: '#52525b' }}>Light 300</span>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 400, fontSize: '13px', color: '#71717a' }}>Regular 400</span>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: '13px', color: '#a1a1aa' }}>Medium 500</span>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: '13px', color: '#d4d4d8' }}>Semibold 600</span>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '13px', color: '#f4f4f5' }}>Bold 700</span>
+    </div>
+  </div>
+
+  <div style={{ background: '#18181b', padding: '32px 36px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+    <div style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '20px', fontFamily: 'monospace' }}>PP Editorial New — font-serif</div>
+    <div style={{ fontFamily: "'PP Editorial New', serif", fontSize: '38px', fontWeight: 200, color: '#f4f4f5', lineHeight: 1.08, marginBottom: '6px' }}>The future of personal AI</div>
+    <div style={{ fontFamily: "'PP Editorial New', serif", fontSize: '38px', fontWeight: 200, color: '#a1a1aa', lineHeight: 1.08, fontStyle: 'italic', marginBottom: '20px' }}>is already here.</div>
+    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+      <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 200, fontSize: '14px', color: '#52525b' }}>Ultralight 200</span>
+      <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 200, fontSize: '14px', color: '#71717a', fontStyle: 'italic' }}>Ultralight Italic</span>
+      <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 400, fontSize: '14px', color: '#d4d4d8' }}>Regular 400</span>
+      <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 400, fontSize: '14px', color: '#e4e4e7', fontStyle: 'italic' }}>Regular Italic</span>
+    </div>
+  </div>
+
+  <div style={{ background: '#18181b', padding: '32px 36px' }}>
+    <div style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '20px', fontFamily: 'monospace' }}>Anonymous Pro — font-mono</div>
+    <div style={{ fontFamily: "'Anonymous Pro', monospace", fontSize: '15px', color: '#a1a1aa', lineHeight: 1.75 }}>
+      <span style={{ color: '#60a5fa' }}>const</span>
+      <span style={{ color: '#f4f4f5' }}> gaia </span>
+      <span style={{ color: '#71717a' }}>=</span>
+      <span style={{ color: '#34d399' }}> await </span>
+      <span style={{ color: '#f4f4f5' }}>agent</span>
+      <span style={{ color: '#71717a' }}>.</span>
+      <span style={{ color: '#fbbf24' }}>run</span>
+      <span style={{ color: '#71717a' }}>(</span>
+      <span style={{ color: '#86efac' }}>"Summarize my inbox"</span>
+      <span style={{ color: '#71717a' }}>);</span>
+    </div>
+  </div>
+</div>
+
+### Heading scale
+
+Defined globally via `@layer base` — use semantic HTML tags, styles apply automatically.
+
+| Tag | Classes | Size |
+|-----|---------|------|
+| `<h1>` | `text-3xl font-bold` | 30px |
+| `<h2>` | `text-2xl font-bold` | 24px |
+| `<h3>` | `text-xl font-bold` | 20px |
+| `<h4>` | `text-lg font-bold` | 18px |
+| `<h5>` | `text-base font-bold` | 16px |
+| `<h6>` | `text-sm font-bold` | 14px |
+
+### Text patterns
+
+```tsx
+// Uppercase section labels — settings, card headers, form groups
+<p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+  Section Title
+</p>
+
+// Truncation — always truncate in constrained containers
+<span className="truncate">...</span>
+<p className="line-clamp-2">...</p>
+<p className="line-clamp-1 max-w-[200px]">...</p>
+```
+
+Inline code gets `border-radius: 10px` and `padding: 4px` globally. Use `font-mono` or `.monospace` class.
+
+---
+
+## Spacing
+
+| Value | Use |
+|-------|-----|
+| `gap-1` / `gap-1.5` | Icon + label pairs |
+| `gap-2` | Standard row items |
+| `gap-3` | Section spacing inside cards |
+| `space-y-2` | Vertical list of items inside a card |
+| `p-3` | Inner card item padding |
+| `p-4` | Outer card padding |
+| `px-3` / `px-4` | Horizontal padding on inputs, buttons |
+
+---
+
+## Border Radius
+
+| Context | Class | Size |
+|---------|-------|------|
+| Dark cards — outer | `rounded-2xl` | 16px |
+| Dark cards — inner items | `rounded-2xl` or `rounded-xl` | 12px |
+| Images | `rounded-3xl` | 24px |
+| Buttons, inputs | `rounded-md` | 6px |
+| Badges, pills | `rounded-full` | — |
+| Context menus | `rounded-xl` | 12px |
+
+<Warning>
+  Never use `rounded-lg` on card containers — that's the Shadcn base radius, visually too small. Cards always use `rounded-2xl`.
+</Warning>
+
+---
+
+## Depth & Elevation
+
+Depth primarily from background layering and blur, not shadow.
+
+| Context | Value |
+|---------|-------|
+| Buttons, inputs | `shadow-xs` |
+| Dialogs, sheets | `shadow-lg` |
+| Dark cards (solid) | No shadow — flat design |
+| Dark cards (glass) | `bg-zinc-800/40 backdrop-blur-xl` |
+| Hover on dark surfaces | `hover:bg-white/5` |
+
+| Level | Class | Use |
+|-------|-------|-----|
+| Moderate | `backdrop-blur-lg` | Glass cards |
+| Standard | `backdrop-blur-xl` | Panels overlaying content, floating cards |
+| Maximum | `backdrop-blur-2xl` | Search overlays, full-screen modals |
+
+---
+
+## Dark Card System
+
+All data cards, tool sections, and info panels use this contract. Two-tone zinc depth, no borders.
+
+### Template
+
+```tsx
+"use client";
+
+const statusClasses = {
+  success: "bg-emerald-400/10 text-emerald-400",
+  error:   "bg-red-400/10 text-red-400",
+  warning: "bg-amber-400/10 text-amber-400",
+  info:    "bg-blue-400/10 text-blue-400",
+  pending: "bg-zinc-700/50 text-zinc-400",
+} as const;
+
+export default function MyCard({ title, items, badge }) {
+  return (
+    <div className="rounded-2xl bg-zinc-800 p-4 w-fit min-w-[400px]">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-semibold text-zinc-100">{title}</p>
+        {badge && (
+          <span className="rounded-full bg-zinc-700/50 px-2 py-0.5 text-xs text-zinc-400">
+            {badge}
+          </span>
+        )}
+      </div>
+      <div className="space-y-2">
+        {items.map((item) => (
+          <div key={item.id} className="rounded-2xl bg-zinc-900 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium text-zinc-200">{item.label}</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs ${statusClasses[item.status]}`}>
+                {item.value}
+              </span>
+            </div>
+            {item.meta && <p className="text-xs text-zinc-500 mt-1">{item.meta}</p>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+### Live preview
+
+<div style={{ background: '#0d0d0d', padding: '28px', borderRadius: '12px', margin: '16px 0' }}>
+  <div style={{ borderRadius: '16px', background: '#27272a', padding: '16px', maxWidth: '380px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+      <span style={{ fontSize: '14px', fontWeight: 600, color: '#f4f4f5', fontFamily: 'Inter, sans-serif' }}>Recent Activity</span>
+      <span style={{ borderRadius: '999px', background: 'rgba(63,63,70,0.5)', padding: '2px 10px', fontSize: '12px', color: '#a1a1aa', fontFamily: 'Inter, sans-serif' }}>4 items</span>
+    </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <div style={{ borderRadius: '16px', background: '#18181b', padding: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+          <span style={{ fontSize: '14px', fontWeight: 500, color: '#e4e4e7', fontFamily: 'Inter, sans-serif' }}>Deploy pipeline</span>
+          <span style={{ borderRadius: '999px', background: 'rgba(52,211,153,0.1)', color: '#34d399', padding: '2px 10px', fontSize: '12px', fontFamily: 'Inter, sans-serif' }}>Success</span>
+        </div>
+        <p style={{ fontSize: '12px', color: '#71717a', fontFamily: 'Inter, sans-serif', margin: 0 }}>2 minutes ago</p>
+      </div>
+      <div style={{ borderRadius: '16px', background: '#18181b', padding: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+          <span style={{ fontSize: '14px', fontWeight: 500, color: '#e4e4e7', fontFamily: 'Inter, sans-serif' }}>Memory sync</span>
+          <span style={{ borderRadius: '999px', background: 'rgba(251,191,36,0.1)', color: '#fbbf24', padding: '2px 10px', fontSize: '12px', fontFamily: 'Inter, sans-serif' }}>Warning</span>
+        </div>
+        <p style={{ fontSize: '12px', color: '#71717a', fontFamily: 'Inter, sans-serif', margin: 0 }}>12 minutes ago</p>
+      </div>
+      <div style={{ borderRadius: '16px', background: '#18181b', padding: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+          <span style={{ fontSize: '14px', fontWeight: 500, color: '#e4e4e7', fontFamily: 'Inter, sans-serif' }}>Email batch</span>
+          <span style={{ borderRadius: '999px', background: 'rgba(96,165,250,0.1)', color: '#60a5fa', padding: '2px 10px', fontSize: '12px', fontFamily: 'Inter, sans-serif' }}>Info</span>
+        </div>
+        <p style={{ fontSize: '12px', color: '#71717a', fontFamily: 'Inter, sans-serif', margin: 0 }}>1 hour ago</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+### Layer reference
+
+| Layer | Classes |
+|-------|---------|
+| Outer container | `rounded-2xl bg-zinc-800 p-4 w-fit min-w-[400px]` |
+| Outer (accordion) | `rounded-2xl bg-zinc-800 p-3 py-0` |
+| Inner item | `rounded-2xl bg-zinc-900 p-3` |
+| Inner item compact | `rounded-xl bg-zinc-900 p-3` |
+| Glass variant | `rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl` |
+| Section header | `text-sm font-semibold text-zinc-100 mb-3` |
+| Item title | `text-sm font-medium text-zinc-200` |
+| Item title (prominent) | `text-sm font-medium text-zinc-100` |
+| Body text | `text-xs text-zinc-400` |
+| Meta / timestamp | `text-xs text-zinc-500` |
+| Item spacing | `space-y-2` |
+| Status badge | `rounded-full px-2 py-0.5 text-xs` + status color |
+| Section divider | `<Divider className="bg-zinc-700/50" />` (HeroUI) |
+| Hoverable list item | `p-4 transition-all hover:bg-white/5` |
+
+**Constraints:** Never `border-`, `ring-`, `outline-` anywhere in the card tree. `rounded-2xl` on outer containers always. `zinc-800` outer → `zinc-900` inner is the entire separation mechanism. Status colors always use `/10` opacity backgrounds.
+
+---
+
+## Icons
+
+All icons come from `@icons` (`@theexperiencecompany/gaia-icons`). Never raw SVGs.
+
+```typescript
+import { CheckmarkCircle02Icon, Alert01Icon, Copy01Icon } from "@icons";
+```
+
+Icons accept `className`, `height`, `width`, and `size` props.
+
+| Context | Value |
+|---------|-------|
+| Inline (badges, text) | `height={17}` |
+| Action buttons | `size={16}` |
+| Prominent / decorative | `size={24}` |
+
+```tsx
+// In a button
+<Button variant="ghost" size="icon">
+  <Copy01Icon className="h-4 w-4" />
+</Button>
+
+// In a chip / badge
+<Alert01Icon className="text-warning-500" height={17} />
+
+// With hover animation
+<SomeIcon className="transition-all duration-200 group-hover:scale-110" />
+```
+
+<Warning>
+  Never use Unicode/text symbols in JSX: no `→`, `↗`, `•`, `✓`, `×`, or similar. Always use icon components from `@icons`.
+</Warning>
+
+---
+
+## Animations
+
+### Available classes
+
+| Class | Duration | Use |
+|-------|----------|-----|
+| `animate-spin` | Infinite | Loading spinner |
+| `animate-pulse` | Infinite | Skeleton placeholder |
+| `animate-accordion-down` | 0.2s ease-out | Accordion open |
+| `animate-accordion-up` | 0.2s ease-out | Accordion close |
+| `animate-scale-in` | 0.4s bounce | Element entrance |
+| `animate-scale-in-blur` | 0.5s bounce | Blurred entrance |
+| `animate-shimmer` | 2s linear | Shimmer effect |
+| `animate-shake` | 0.7s | Error shake |
+
+### Transitions
+
+Default: `transition-all duration-200`. Use this everywhere unless a specific property needs targeting.
+
+| Scenario | Classes |
+|----------|---------|
+| All properties | `transition-all duration-200` |
+| Color only | `transition-colors duration-200` |
+| Button press | `active:scale-95 transition-all! duration-300` |
+
+### Easing
+
+| Name | Value | Use |
+|------|-------|-----|
+| Default | `ease` | Most transitions |
+| Exit / entrance | `ease-out` | Entrances, exits |
+| Bounce | `cubic-bezier(0.34, 1.56, 0.64, 1)` | `scale-in`, `scale-in-blur` |
+
+### Framer Motion
+
+Import from `motion/react` — not `framer-motion`. `AnimatePresence` is required for exit animations. Keep durations ≤ 300ms for micro-interactions, ≤ 500ms for entrances.
+
+```typescript
+import { AnimatePresence, m } from "motion/react";
+
+<AnimatePresence mode="wait">
+  {visible && (
+    <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      {content}
+    </m.div>
+  )}
+</AnimatePresence>
+```
+
+---
+
+## Toast / Notifications
+
+**Sileo** — already mounted globally. Call the toast function directly. Never add `<Toaster>` or import from `sonner` / `react-hot-toast`.
+
+Toast style: dark fill (`#262626`), white title, white/75 description, top-right position. Action button colors apply automatically by type: error → red, warning → amber, success → green, info → blue.
+
+```typescript
+import { toast } from "@/lib/toast";
+
+toast.success("File saved");
+toast.error("Something went wrong");
+toast.warning("Storage almost full");
+toast.info("New message received");
+```
+
+---
+
+## Component Library
+
+<Tabs>
+  <Tab title="Shadcn UI">
+    Style preset: `new-york` · Base color: `zinc` · CSS variables: on · Located at `src/components/ui/`
+
+    | Component | Key details |
+    |-----------|-------------|
+    | `Button` | `default` `destructive` `outline` `secondary` `ghost` `link` · sizes: `default` `sm` `lg` `icon` |
+    | `Input` | `h-9 rounded-md shadow-xs` · focus ring · `aria-invalid` for errors |
+    | `Textarea` | Same as Input · `min-h-16` · auto-height via `field-sizing-content` |
+    | `Dialog` | Zoom + fade · use for confirmations, forms requiring focus |
+    | `Sheet` | Fade-in slide panel · use for side panels, settings drawers |
+    | `Popover` | Anchored overlay · use for inline pickers, contextual options |
+    | `Tooltip` | Hover label only — no interactive content |
+    | `DropdownMenu` / `ContextMenu` | Action lists |
+    | `Accordion` | Animated expand/collapse |
+    | `Avatar` | `rounded-full`, image + fallback |
+    | `Skeleton` | `animate-pulse rounded-md` |
+    | `ScrollArea` | Radix scrollable with edge shadows |
+    | `Sidebar` | Collapsible · `Cmd/Ctrl+B` toggle · cookie-persisted |
+  </Tab>
+
+  <Tab title="HeroUI">
+    Used for richer UI inside cards. Located at `@heroui/*`.
+
+    | Component | Standard usage |
+    |-----------|----------------|
+    | `Chip` | Status badges · `variant="flat"` always |
+    | `Button` | Card actions · `variant="flat"` or `variant="solid"` |
+    | `Accordion` / `AccordionItem` | Expandable card sections |
+    | `Progress` | Progress bars |
+    | `Tabs` / `Tab` | Tabbed card content |
+    | `Avatar` | Contact / user avatars |
+    | `ScrollShadow` | Wraps overflowing lists |
+
+    Chart palette (Recharts): `["#a78bfa", "#34d399", "#60a5fa", "#f472b6", "#fb923c"]`
+  </Tab>
+
+  <Tab title="Overlay hierarchy">
+    Pick the right overlay for the context:
+
+    | Use case | Component |
+    |----------|-----------|
+    | Destructive confirmation, focused form | `Dialog` |
+    | Side panel, settings, multi-step flow | `Sheet` |
+    | Inline picker, date selector, contextual detail | `Popover` |
+    | Single-line label on hover | `Tooltip` |
+    | Action list from a trigger | `DropdownMenu` |
+    | Right-click actions | `ContextMenu` |
+  </Tab>
+</Tabs>
+
+---
+
+## Styling Tools
+
+```typescript
+// cn() — always use for conditional class merging, never string concatenation
+import { cn } from "@/lib/utils";
+<div className={cn("base-class", condition && "conditional-class", className)} />
+
+// cva — for components with multiple visual variants
+import { cva } from "class-variance-authority";
+const cardVariants = cva("rounded-2xl p-4", {
+  variants: {
+    depth: {
+      outer: "bg-zinc-800",
+      inner: "bg-zinc-900",
+    },
+  },
+});
+```
+
+---
+
+## Forms & Validation
+
+### Field pattern
+
+```tsx
+<FormField
+  control={form.control}
+  name="fieldName"
+  render={({ field }) => (
+    <FormItem>
+      <FormLabel>Label</FormLabel>
+      <FormControl>
+        <Input placeholder="..." {...field} />
+      </FormControl>
+      <FormMessage />  {/* auto-shows error */}
+    </FormItem>
+  )}
+/>
+```
+
+### Input states
+
+Error state is driven by `aria-invalid={!!error}` — styling applies automatically via the Input component.
+
+| State | Visual |
+|-------|--------|
+| Default | `border-input bg-transparent` |
+| Focus | `ring-ring/50 ring-[3px] border-ring` |
+| Error | `ring-destructive/20 border-destructive` (via `aria-invalid`) |
+| Disabled | `opacity-50 cursor-not-allowed` |
+| Loading | `cursor-wait` (set `disabled` on the input) |
+
+---
+
+## Loading & Empty States
+
+### Loading
+
+| Pattern | When |
+|---------|------|
+| `<Skeleton className="h-4 w-32 rounded-md" />` | Known content shape, replacing text/images |
+| `animate-pulse` on the container | Unknown shape, shimmer a region |
+| `animate-spin` on an icon | Inline action in progress |
+| Full `<LoadingIndicator />` | Whole chat response pending |
+
+Skeleton inherits: `bg-accent animate-pulse rounded-md`. Match the skeleton shape to the content it replaces.
+
+### Empty states
+
+No shared component — build inline:
+
+```tsx
+<div className="flex flex-col items-center gap-2 py-8 text-center">
+  <SomeIcon className="text-zinc-600" size={24} />
+  <p className="text-sm text-zinc-400">No items yet</p>
+  <p className="text-xs text-zinc-500">Optional sub-text</p>
+</div>
+```
+
+---
+
+## Interactive States
+
+| State | Classes |
+|-------|---------|
+| Hover (standard) | `hover:bg-accent` · `hover:bg-primary/90` · `hover:opacity-80` |
+| Hover (dark surface) | `hover:bg-white/5` |
+| Focus visible | `focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:border-ring` |
+| Active / press | `active:scale-95` |
+| Disabled | `disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed` |
+| Error | `aria-invalid:ring-destructive/20 aria-invalid:border-destructive` |
+| Hover reveal | `opacity-0 transition-all group-hover:opacity-100` (parent needs `group`) |
+
+---
+
+## Dark / Light Mode
+
+Class-based: `.dark` on `<html>`. Tailwind `dark:` modifier works everywhere.
+
+- **Layout surfaces** → `bg-background text-foreground` (auto-switches via CSS vars)
+- **Dark cards** → `bg-zinc-800 / bg-zinc-900` (always dark — no `dark:` needed)
+- **Explicit overrides** → only when CSS variables don't cover it
+- Brand cyan (`#00bbff`) is the same in both modes
+
+---
+
+## Responsiveness
+
+| Breakpoint | Value | Impact |
+|------------|-------|--------|
+| Mobile | `max-width: 600px` | Full-width layouts, larger tap targets |
+| Tablet | `max-width: 990px` | Navbar becomes full-width strip |
+| `md:` | 768px | Text size shifts (`text-base` → `text-sm`) |
+
+Core layout does not use `lg:`, `xl:`, or `2xl:` breakpoints.
+
+---
+
+## Scrollbars
+
+Global scrollbar is already styled (8px, pill-shaped, zinc-700 thumb). Use `.no-scrollbar` to suppress chrome on scroll areas where it would be distracting.
+
+---
+
+## Rules
+
+<Columns cols={2}>
+  <Column>
+    **Do**
+
+    - `rounded-2xl` on all outer card containers
+    - `zinc-800` outer → `zinc-900` inner for card depth
+    - `/10` opacity backgrounds for all status colors
+    - Import icons from `@icons`
+    - `cn()` for all conditional class merging
+    - `transition-all duration-200` as the default transition
+    - `AnimatePresence` for exit animations
+    - Import from `motion/react`
+    - `import { toast } from "@/lib/toast"`
+  </Column>
+
+  <Column>
+    **Don't**
+
+    - `border-`, `ring-`, or `outline-` anywhere in a card tree
+    - `rounded-lg` on card containers
+    - Solid backgrounds for status badges
+    - Unicode symbols in JSX (`→`, `•`, `✓`) — use icons
+    - Add `<Toaster>` — already mounted globally
+    - Import from `sonner` or `react-hot-toast`
+    - CSS variables on dark card surfaces — use zinc directly
+    - Set `font-family` inline — use Tailwind token classes
+    - Import from `framer-motion` — use `motion/react`
+  </Column>
+</Columns>

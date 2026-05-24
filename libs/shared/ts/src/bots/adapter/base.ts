@@ -32,6 +32,8 @@
  *
  * @module
  */
+
+import { Analytics, BOT_EVENTS } from "../../analytics";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
 import type {
@@ -42,6 +44,13 @@ import type {
   RichMessageTarget,
 } from "../types";
 import { formatBotError } from "../utils/formatters";
+import {
+  type BotLogger,
+  createBotLogger,
+  hashLogIdentifier,
+  sanitizeErrorForLog,
+} from "../utils/logger";
+import { BotServer } from "./base-server";
 
 /**
  * Abstract base class that all platform bot adapters extend.
@@ -70,6 +79,12 @@ export abstract class BaseBotAdapter {
    */
   abstract readonly platform: PlatformName;
 
+  /**
+   * Default HTTP server port for this bot.
+   * Override in each subclass. Overrideable at runtime via `BOT_SERVER_PORT`.
+   */
+  protected abstract readonly defaultServerPort: number;
+
   /** GAIA API client shared across all command handlers. */
   protected gaia!: GaiaClient;
 
@@ -78,6 +93,33 @@ export abstract class BaseBotAdapter {
 
   /** Map of registered unified commands, keyed by command name. */
   protected commands: Map<string, BotCommand> = new Map();
+
+  /** Server-side PostHog analytics. No-op when POSTHOG_API_KEY is absent. */
+  protected analytics: Analytics = new Analytics(undefined);
+
+  /** Shared structured logger for adapter lifecycle and command execution. */
+  protected logger: BotLogger = createBotLogger("shared", "base-adapter");
+
+  private _botServer: BotServer | null = null;
+
+  /**
+   * Shared HTTP server for this bot process.
+   *
+   * Always available during lifecycle methods ({@link initialize},
+   * {@link registerCommands}, {@link registerEvents}, {@link start},
+   * {@link stop}). Created in {@link boot} using a per-platform default port
+   * (discord: 3200, slack: 3201, telegram: 3202, whatsapp: 3203). Override
+   * with `BOT_SERVER_PORT`. Includes `GET /health` by default. Subclasses
+   * can mount additional routes (e.g. webhook endpoints) via
+   * `this.botServer.app` in their {@link registerEvents} implementation,
+   * before the server starts.
+   */
+  protected get botServer(): BotServer {
+    if (!this._botServer) {
+      throw new Error("botServer accessed before boot() — call boot() first");
+    }
+    return this._botServer;
+  }
 
   // ---------------------------------------------------------------------------
   // Lifecycle — template method pattern
@@ -97,20 +139,46 @@ export abstract class BaseBotAdapter {
    * @param commands - Array of unified {@link BotCommand} definitions to register.
    */
   async boot(commands: BotCommand[]): Promise<void> {
+    this.logger = createBotLogger(this.platform, "base-adapter");
+    this.logger.info("boot_started", { command_count: commands.length });
+
     this.config = await loadConfig();
     this.gaia = new GaiaClient(
       this.config.gaiaApiUrl,
       this.config.gaiaApiKey,
       this.config.gaiaFrontendUrl,
     );
+    this.analytics = new Analytics(this.config.posthogApiKey);
 
     for (const cmd of commands) {
       this.commands.set(cmd.name, cmd);
     }
-    await this.initialize();
-    await this.registerCommands(commands);
-    await this.registerEvents();
-    await this.start();
+    // Create the shared HTTP server before registerEvents() so subclasses
+    // can mount custom routes (e.g. WhatsApp /webhook) on this.botServer.app.
+    const serverPort =
+      Number(process.env.BOT_SERVER_PORT) || this.defaultServerPort;
+    this._botServer = new BotServer(this.platform, serverPort);
+
+    let platformStarted = false;
+    try {
+      await this.initialize();
+      await this.registerCommands(commands);
+      await this.registerEvents();
+      await this.start();
+      platformStarted = true;
+
+      // Start the server after registerEvents() so all routes are mounted.
+      await this._botServer.start();
+    } catch (error) {
+      if (platformStarted) {
+        await this.stop().catch(() => undefined);
+      }
+      await this._botServer?.stop().catch(() => undefined);
+      this._botServer = null;
+      throw error;
+    }
+
+    this.logger.info("boot_completed", { gaia_api_configured: true });
   }
 
   /**
@@ -120,8 +188,14 @@ export abstract class BaseBotAdapter {
    * Delegates to the platform-specific {@link stop} implementation.
    */
   async shutdown(): Promise<void> {
-    console.log(`Shutting down ${this.platform} bot...`);
+    this.logger.info("shutdown_started");
     await this.stop();
+    if (this._botServer) {
+      await this._botServer.stop();
+      this._botServer = null;
+    }
+    await this.analytics.shutdown();
+    this.logger.info("shutdown_completed");
   }
 
   // ---------------------------------------------------------------------------
@@ -190,6 +264,26 @@ export abstract class BaseBotAdapter {
     args: Record<string, string | number | boolean | undefined> = {},
     rawText?: string,
   ): Promise<void> {
+    const distinctId = `${this.platform}:${target.userId}`;
+
+    // No identify() — platform-handle PII (username, display_name) is
+    // intentionally not shipped to PostHog. Profiles are auto-created from
+    // the first capture using the distinctId.
+
+    this.analytics.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
+      interaction_type: "command",
+      command: name,
+      has_args: Object.keys(args).length > 0,
+      has_raw_text: !!rawText,
+      channel_id: target.channelId,
+    });
+
+    if (name === "auth") {
+      this.analytics.capture(distinctId, BOT_EVENTS.AUTH_INITIATED, {
+        channel_id: target.channelId,
+      });
+    }
+
     const command = this.commands.get(name);
     if (!command) {
       await target.sendEphemeral(`Unknown command: /${name}`);
@@ -202,16 +296,51 @@ export abstract class BaseBotAdapter {
       target.profile,
     );
 
+    const startMs = Date.now();
     try {
-      await command.execute({
-        gaia: this.gaia,
-        target,
-        ctx,
-        args,
-        rawText,
+      this.logger.info("command_dispatch_started", {
+        command: name,
+        user_hash: hashLogIdentifier(target.userId),
+        channel_hash: hashLogIdentifier(target.channelId),
+      });
+      await command.execute({ gaia: this.gaia, target, ctx, args, rawText });
+      this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
+        command: name,
+        duration_ms: Date.now() - startMs,
+        success: true,
+        channel_id: target.channelId,
+      });
+      this.logger.info("command_dispatch_completed", {
+        command: name,
+        user_hash: hashLogIdentifier(target.userId),
+        channel_hash: hashLogIdentifier(target.channelId),
+        duration_ms: Date.now() - startMs,
       });
     } catch (error) {
-      console.error(`Error executing command /${name}:`, error);
+      const durationMs = Date.now() - startMs;
+      const errorType = error instanceof Error ? error.name : "Unknown";
+      this.logger.error("command_dispatch_failed", {
+        command: name,
+        user_hash: hashLogIdentifier(target.userId),
+        channel_hash: hashLogIdentifier(target.channelId),
+        duration_ms: durationMs,
+        error_type: errorType,
+        ...sanitizeErrorForLog(error),
+      });
+      // Capture only the error class name. Raw messages can contain file
+      // paths, request IDs, or upstream-echoed tokens — never ship them.
+      this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
+        command: name,
+        duration_ms: durationMs,
+        success: false,
+        error_type: errorType,
+        channel_id: target.channelId,
+      });
+      this.analytics.capture(distinctId, BOT_EVENTS.ERROR, {
+        context: `command:${name}`,
+        error_type: errorType,
+        channel_id: target.channelId,
+      });
       const errMsg = formatBotError(error);
       try {
         await target.sendEphemeral(errMsg);

@@ -1,24 +1,31 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { type ReactNode, Suspense } from "react";
 
 import { ElectronRouteGuard } from "@/components/electron/ElectronRouteGuard";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
 import { Toaster } from "@/components/ui/Toaster";
-import LoginModal from "@/features/auth/components/LoginModal";
 import { useBgMessageWebSocket } from "@/features/chat/hooks/useBgMessageWebSocket";
 import { useExecutorStream } from "@/features/chat/hooks/useExecutorStream";
-import { GlobalIntegrationModal } from "@/features/integrations/components/GlobalIntegrationModal";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
 import { useTodoWorkflowGlobalListener } from "@/features/todo/hooks/useTodoWorkflowGlobalListener";
 
+import useAxiosInterceptor from "@/hooks/api/useAxiosInterceptor";
 import GlobalAuth from "@/hooks/providers/GlobalAuth";
 import GlobalInterceptor from "@/hooks/providers/GlobalInterceptor";
-import { HeroUIProvider } from "@/layouts/HeroUIProvider";
 import QueryProvider from "@/layouts/QueryProvider";
 import { useWebSocketConnection } from "@/lib/websocket/useWebSocketConnection";
+
+const GlobalIntegrationModal = dynamic(
+  () =>
+    import("@/features/integrations/components/GlobalIntegrationModal").then(
+      (m) => ({ default: m.GlobalIntegrationModal }),
+    ),
+  { ssr: false },
+);
 
 export default function ProvidersLayout({ children }: { children: ReactNode }) {
   // Populate the notification store on app load
@@ -40,8 +47,14 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
   // Subscribe to workflow generation events — updates todo store globally
   useTodoWorkflowGlobalListener();
 
+  // App-shell-only API error handling. Surfaces toasts for 5xx/429/403
+  // and auto-opens the login modal on 401. Landing pages mount neither.
+  useAxiosInterceptor();
+
   return (
-    <HeroUIProvider>
+    <>
+      {/* Keep Toaster outside LazyMotion: sileo uses motion.* internally. */}
+      <Toaster position="top-right" />
       <LazyMotionProvider>
         <QueryProvider>
           {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
@@ -49,9 +62,6 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
             <GlobalAuth />
           </Suspense>
           <GlobalInterceptor />
-          {/* <HydrationManager /> */}
-          <Toaster position="top-right" />
-          <LoginModal />
           <GlobalIntegrationModal />
           <ElectronRouteGuard>
             <KeyboardShortcutsProvider>
@@ -61,6 +71,6 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
           </ElectronRouteGuard>
         </QueryProvider>
       </LazyMotionProvider>
-    </HeroUIProvider>
+    </>
   );
 }

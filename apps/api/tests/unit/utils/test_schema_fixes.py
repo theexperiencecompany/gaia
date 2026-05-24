@@ -15,7 +15,6 @@ from app.utils.schema_fixes import (
     patch_tool_schema,
 )
 
-
 # ---------------------------------------------------------------------------
 # normalize_schema_refs
 # ---------------------------------------------------------------------------
@@ -196,9 +195,7 @@ class TestNormalizeSchemaRefs:
             },
         }
         result = normalize_schema_refs(schema)
-        deep_ref = result["properties"]["level1"]["properties"]["level2"]["properties"][
-            "level3"
-        ]
+        deep_ref = result["properties"]["level1"]["properties"]["level2"]["properties"]["level3"]
         assert deep_ref["$ref"] == "#/$defs/Def0"
 
     def test_original_schema_not_mutated(self) -> None:
@@ -581,9 +578,7 @@ class TestNormalizeSchemaRefsParametrized:
         self, numeric_keys: list[str], expected_def_keys: list[str]
     ) -> None:
         defs: dict[str, Any] = {k: {"type": "string"} for k in numeric_keys}
-        props: dict[str, Any] = {
-            f"prop_{k}": {"$ref": f"#/$defs/{k}"} for k in numeric_keys
-        }
+        props: dict[str, Any] = {f"prop_{k}": {"$ref": f"#/$defs/{k}"} for k in numeric_keys}
 
         schema: dict[str, Any] = {
             "type": "object",
@@ -595,9 +590,7 @@ class TestNormalizeSchemaRefsParametrized:
         for old_key, new_key in zip(numeric_keys, expected_def_keys):
             assert new_key in result["$defs"]
             assert old_key not in result["$defs"]
-            assert (
-                result["properties"][f"prop_{old_key}"]["$ref"] == f"#/$defs/{new_key}"
-            )
+            assert result["properties"][f"prop_{old_key}"]["$ref"] == f"#/$defs/{new_key}"
 
     def test_ref_in_list_inside_allof(self) -> None:
         schema: dict[str, Any] = {

@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Cancel01Icon } from "@icons";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useEffectEvent } from "react";
 import {
   type RightSidebarVariant,
   useRightSidebar,
@@ -24,20 +24,20 @@ export default function RightSidebar({
   const artifactWidth = "clamp(520px, 46vw, 980px)";
 
   // Close sidebar on Escape key
+  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key === "Escape" && isOpen) {
+      close();
+    }
+  });
+
   useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        close();
-      }
-    };
     if (typeof window !== "undefined")
       window.addEventListener("keydown", handleKeyDown);
     return () => {
       if (typeof window !== "undefined")
         window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen, close]);
+  }, []);
 
   const closeButton = (
     <div className="flex w-full items-center justify-end px-3 pt-3 pb-1">

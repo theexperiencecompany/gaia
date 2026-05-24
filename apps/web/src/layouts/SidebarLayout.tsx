@@ -15,7 +15,9 @@ import {
   SidebarHeader,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { WhatsNewCard } from "@/features/whats-new/components/WhatsNewCard";
 import { usePlatform } from "@/hooks/ui/usePlatform";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 interface SidebarLayoutProps {
   children: ReactNode;
@@ -26,9 +28,18 @@ export const CustomSidebarTrigger = () => {
   const { open, toggleSidebar } = useSidebar();
   const { isMac } = usePlatform();
 
+  const handleToggle = () => {
+    trackEvent(
+      open
+        ? ANALYTICS_EVENTS.UI_SIDEBAR_COLLAPSED
+        : ANALYTICS_EVENTS.UI_SIDEBAR_EXPANDED,
+    );
+    toggleSidebar();
+  };
+
   return (
     <SidebarHeaderButton
-      onClick={toggleSidebar}
+      onClick={handleToggle}
       aria-label="Toggle Sidebar"
       tooltip={
         <span className="flex items-center gap-2 text-xs">
@@ -72,6 +83,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
       </SidebarContent>
 
       <SidebarFooter className="relative z-4 p-2 px-3 pb-3">
+        <WhatsNewCard />
         <UserContainer />
         <ContactSupport />
       </SidebarFooter>

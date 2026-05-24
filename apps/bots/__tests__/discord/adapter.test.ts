@@ -153,6 +153,22 @@ vi.mock("@gaia/shared", () => {
 
   return {
     BaseBotAdapter,
+    createBotLogger: vi.fn(() => ({
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    })),
+    hashLogIdentifier: vi.fn((value: string | number | undefined | null) => {
+      if (value === undefined || value === null) return undefined;
+      return `h_${String(value)}`;
+    }),
+    sanitizeErrorForLog: vi.fn((error: unknown) => {
+      if (error instanceof Error) {
+        return { error_name: error.name, error_message: error.message };
+      }
+      return { error_name: "Unknown", error_message: String(error) };
+    }),
     formatBotError: vi.fn((err: unknown) =>
       err instanceof Error ? `Error: ${err.message}` : "Something went wrong",
     ),
@@ -376,6 +392,7 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
       expect.any(Function), // auth error callback
       expect.any(Function), // generic error callback
       expect.objectContaining({ platform: "discord" }),
+      undefined,
     );
   });
 
@@ -603,6 +620,7 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
+      undefined,
     );
   });
 
@@ -629,6 +647,7 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
+      undefined,
     );
   });
 
@@ -674,6 +693,7 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
+      undefined,
     );
   });
 });
@@ -785,6 +805,7 @@ describe("DiscordAdapter - DM welcome flow", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "discord" }),
+      undefined,
     );
   });
 
@@ -889,6 +910,7 @@ describe("DiscordAdapter - context menu interaction", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "discord" }),
+      undefined,
     );
   });
 
@@ -926,6 +948,7 @@ describe("DiscordAdapter - context menu interaction", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "discord" }),
+      undefined,
     );
   });
 });

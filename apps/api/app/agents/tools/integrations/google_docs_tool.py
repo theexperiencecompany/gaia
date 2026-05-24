@@ -1,57 +1,45 @@
 """Google Docs tools using Composio custom tool infrastructure.
 
-These tools provide Google Docs functionality using the access_token from Composio's
-auth_credentials. Uses Google Drive API for sharing operations and composio.tools.execute
-for calling other Composio tools.
+Provider API calls go through Composio's proxy via `proxy_request_sync`.
+The Drive API is the GOOGLEDOCS toolkit's underlying surface.
 
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
 import json
-from typing import Any, Dict, List
+from typing import Any
 
-import httpx
 from composio import Composio
 from composio.core.models.tools import ToolExecutionResponse
-from shared.py.wide_events import log
+
 from app.decorators import with_doc
 from app.models.common_models import GatherContextInput
 from app.models.google_docs_models import CreateTOCInput, DeleteDocInput, ShareDocInput
+from app.services.composio.proxy_client import proxy_request_sync
 from app.templates.docstrings.google_docs_tool_docs import (
     CUSTOM_CREATE_TOC as CUSTOM_CREATE_TOC_DOC,
-)
-from app.templates.docstrings.google_docs_tool_docs import (
     CUSTOM_DELETE_DOC as CUSTOM_DELETE_DOC_DOC,
-)
-from app.templates.docstrings.google_docs_tool_docs import (
     CUSTOM_SHARE_DOC as CUSTOM_SHARE_DOC_DOC,
 )
+from app.utils.errors import AppError
 from app.utils.google_docs_utils import (
     extract_headings_from_document,
     generate_toc_text,
 )
-
+from shared.py.wide_events import log
 
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
-
-# Reusable sync HTTP client for direct API calls
-_http_client = httpx.Client(timeout=30)
+DOCS_TOOLKIT = "GOOGLEDOCS"
 
 
-def _get_access_token(auth_credentials: Dict[str, Any]) -> str:
-    """Extract access token from auth_credentials."""
-    token = auth_credentials.get("access_token")
-    if not token:
-        raise ValueError("Missing access_token in auth_credentials")
-    return token
+def _user_id(auth_credentials: dict[str, Any]) -> str:
+    user_id = auth_credentials.get("user_id")
+    if not user_id:
+        raise ValueError("Missing user_id in auth_credentials")
+    return user_id
 
 
-def _auth_headers(access_token: str) -> Dict[str, str]:
-    """Return Bearer token header for Google Drive API."""
-    return {"Authorization": f"Bearer {access_token}"}
-
-
-def register_google_docs_custom_tools(composio: Composio) -> List[str]:
+def register_google_docs_custom_tools(composio: Composio) -> list[str]:
     """Register Google Docs tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="GOOGLEDOCS")
@@ -59,56 +47,49 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_SHARE_DOC(
         request: ShareDocInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Share a Google Doc with one or more recipients."""
         log.set(tool={"integration": "google_docs", "action": "share_doc"})
-        access_token = _get_access_token(auth_credentials)
-        headers = _auth_headers(access_token)
-        headers["Content-Type"] = "application/json"
+        user_id = _user_id(auth_credentials)
 
         shared = []
         errors = []
 
         for recipient in request.recipients:
-            permission = {
-                "type": "user",
-                "role": recipient.role,
-                "emailAddress": recipient.email,
-            }
-
-            url = f"{DRIVE_API_BASE}/files/{request.document_id}/permissions"
-            params = {"sendNotificationEmail": str(recipient.send_notification).lower()}
-
             try:
-                resp = _http_client.post(
-                    url, headers=headers, json=permission, params=params
+                result = proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=DOCS_TOOLKIT,
+                    endpoint=f"{DRIVE_API_BASE}/files/{request.document_id}/permissions",
+                    method="POST",
+                    body={
+                        "type": "user",
+                        "role": recipient.role,
+                        "emailAddress": recipient.email,
+                    },
+                    query={"sendNotificationEmail": str(recipient.send_notification).lower()},
                 )
-                resp.raise_for_status()
-                result = resp.json()
                 shared.append(
                     {
                         "email": recipient.email,
                         "role": recipient.role,
-                        "permission_id": result.get("id"),
+                        "permission_id": (result or {}).get("id"),
                         "notification_sent": recipient.send_notification,
                     }
                 )
-            except httpx.HTTPStatusError as e:
+            except AppError as e:
                 log.error(f"Error sharing with {recipient.email}: {e}")
                 errors.append(
                     {
                         "email": recipient.email,
                         "role": recipient.role,
-                        "error": f"Failed to share: {e.response.status_code} - {e.response.text}",
+                        "error": f"Failed to share: {e.status_code} - {e.message}",
                     }
                 )
 
-        # If all shares failed, raise an exception
         if errors and not shared:
-            raise RuntimeError(
-                f"Failed to share document with all recipients: {errors}"
-            )
+            raise RuntimeError(f"Failed to share document with all recipients: {errors}")
 
         doc_url = f"https://docs.google.com/document/d/{request.document_id}/edit"
 
@@ -123,8 +104,8 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_CREATE_TOC(
         request: CreateTOCInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         log.set(tool={"integration": "google_docs", "action": "create_toc"})
         try:
             get_doc_result: ToolExecutionResponse = composio.tools.execute(
@@ -199,23 +180,22 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_DELETE_DOC(
         request: DeleteDocInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Delete a file permanently using Drive API."""
         log.set(tool={"integration": "google_docs", "action": "delete_doc"})
-        access_token = _get_access_token(auth_credentials)
-        headers = _auth_headers(access_token)
-
-        url = f"{DRIVE_API_BASE}/files/{request.document_id}"
+        user_id = _user_id(auth_credentials)
 
         try:
-            resp = _http_client.delete(url, headers=headers)
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            log.error(f"Error deleting doc {request.document_id}: {e}")
-            raise RuntimeError(
-                f"Failed to delete document: {e.response.status_code} - {e.response.text}"
+            proxy_request_sync(
+                user_id=user_id,
+                toolkit=DOCS_TOOLKIT,
+                endpoint=f"{DRIVE_API_BASE}/files/{request.document_id}",
+                method="DELETE",
             )
+        except AppError as e:
+            log.error(f"Error deleting doc {request.document_id}: {e}")
+            raise RuntimeError(f"Failed to delete document: {e.status_code} - {e.message}")
 
         return {
             "successful": True,
@@ -226,31 +206,30 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get Google Docs context snapshot: recently viewed/modified documents.
 
         Zero required parameters. Returns user's recently accessed Google Docs.
         """
         log.set(tool={"integration": "google_docs", "action": "gather_context"})
-        access_token = _get_access_token(auth_credentials)
-        headers = _auth_headers(access_token)
+        user_id = _user_id(auth_credentials)
 
         mime = "application/vnd.google-apps.document"
-        files: List[Dict[str, Any]] = []
+        files: list[dict[str, Any]] = []
         try:
-            resp = _http_client.get(
-                "https://www.googleapis.com/drive/v3/files",
-                headers=headers,
-                params={
+            data = proxy_request_sync(
+                user_id=user_id,
+                toolkit=DOCS_TOOLKIT,
+                endpoint=f"{DRIVE_API_BASE}/files",
+                method="GET",
+                query={
                     "q": f"mimeType='{mime}'",
                     "orderBy": "viewedByMeTime desc",
                     "pageSize": 20,
                     "fields": "files(id,name,modifiedTime,webViewLink)",
                 },
-                timeout=15,
             )
-            resp.raise_for_status()
             files = [
                 {
                     "id": f.get("id"),
@@ -258,7 +237,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
                     "modified": f.get("modifiedTime"),
                     "url": f.get("webViewLink"),
                 }
-                for f in resp.json().get("files", [])
+                for f in (data or {}).get("files", [])
             ]
         except Exception as e:
             log.debug(f"Google Docs fetch failed: {e}")

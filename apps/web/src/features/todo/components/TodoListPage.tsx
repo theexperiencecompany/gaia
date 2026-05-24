@@ -95,7 +95,6 @@ export default function TodoListPage({
   const {
     todos: dataTodos,
     projects: dataProjects,
-    loading,
     updateTodo,
     deleteTodo,
     refresh,

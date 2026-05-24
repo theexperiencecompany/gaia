@@ -34,6 +34,19 @@ config.resolver.extraNodeModules = {
   "@gaia/shared": path.resolve(workspaceRoot, "libs/shared/ts/src"),
 };
 
+// 4. Inline require()s — defers loading of JS modules until first use.
+//    Speeds up cold start in release builds by avoiding eager evaluation
+//    of the entire bundle.
+config.transformer = {
+  ...config.transformer,
+  getTransformOptions: async () => ({
+    transform: {
+      experimentalImportSupport: false,
+      inlineRequires: true,
+    },
+  }),
+};
+
 module.exports = withUniwindConfig(config, {
   // Path to your global.css file
   cssEntryFile: "./global.css",

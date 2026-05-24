@@ -4,7 +4,8 @@ import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Cancel01Icon, GridIcon, SearchIcon, Tick02Icon } from "@icons";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import type React from "react";
 import { useMemo, useState } from "react";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
@@ -554,7 +555,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   const categories = useMemo(() => {
-    return ["all", ...dummyTools.categories.sort()];
+    return ["all", ...dummyTools.categories.toSorted()];
   }, []);
 
   const filteredTools = useMemo(() => {

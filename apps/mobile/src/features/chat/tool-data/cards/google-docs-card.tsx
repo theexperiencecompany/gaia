@@ -1,9 +1,12 @@
-import { Button, Card, Chip } from "heroui-native";
 import { useState } from "react";
 import { Image, Linking, View } from "react-native";
 import { SquareArrowUpRight02Icon, ToolsIcon } from "@/components/icons";
 import { AppIcon } from "@/components/icons/app-icon";
 import { Text } from "@/components/ui/text";
+import {
+  ToolCardInner,
+  ToolCardShell,
+} from "@/features/chat/tool-data/primitives";
 
 const GOOGLE_DOCS_LOGO_URI =
   "https://upload.wikimedia.org/wikipedia/commons/thumb/0/01/Google_Docs_logo_%282020%29.svg/512px-Google_Docs_logo_%282020%29.svg.png";
@@ -52,6 +55,17 @@ function getActionLabel(action?: string): string {
   }
 }
 
+/** Action badge using bg contrast only — no borders */
+function ActionBadge({ label }: { label: string }) {
+  return (
+    <View className="px-2 py-0.5 rounded-full bg-[#00bbff]/10">
+      <Text className="text-xs font-medium text-[#00bbff] capitalize">
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 function GoogleDocsIcon() {
   const [errored, setErrored] = useState(false);
 
@@ -87,65 +101,50 @@ export function GoogleDocsCard({ data }: { data: GoogleDocsData }) {
   };
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Optional message header */}
-        {!!data.message && (
-          <Text className="text-xs text-muted mb-2">{data.message}</Text>
-        )}
+    <ToolCardShell>
+      {/* Optional message header */}
+      {!!data.message && (
+        <Text className="text-xs text-zinc-400 mb-3">{data.message}</Text>
+      )}
 
-        {/* Document row */}
+      <ToolCardInner onPress={url ? handleOpen : undefined}>
         <View className="flex-row items-center gap-3">
           {/* Google Docs icon */}
-          <View className="w-10 h-10 rounded-xl bg-white/5 items-center justify-center flex-shrink-0">
+          <View className="w-10 h-10 rounded-xl bg-zinc-700/50 items-center justify-center flex-shrink-0">
             <GoogleDocsIcon />
           </View>
 
           {/* Document info */}
           <View className="flex-1 min-w-0">
             <Text
-              className="text-sm font-medium text-foreground"
+              className="text-sm font-medium text-zinc-200"
               numberOfLines={2}
             >
               {title}
             </Text>
-            <View className="flex-row items-center gap-2 mt-0.5 flex-wrap">
-              {doc.modified_time && (
-                <Text className="text-[11px] text-muted">
-                  Modified: {formatDate(doc.modified_time)}
+            <View className="flex-row items-center gap-2 mt-1 flex-wrap">
+              {!!doc.modified_time && (
+                <Text className="text-xs text-zinc-500">
+                  Modified {formatDate(doc.modified_time)}
                 </Text>
               )}
-              {!!actionLabel && (
-                <Chip
-                  size="sm"
-                  variant="primary"
-                  color="accent"
-                  animation="disable-all"
-                >
-                  <Chip.Label>{actionLabel}</Chip.Label>
-                </Chip>
-              )}
+              {!!actionLabel && <ActionBadge label={actionLabel} />}
             </View>
           </View>
 
-          {/* Open button */}
+          {/* Open link indicator */}
           {!!url && (
-            <Button
-              size="sm"
-              variant="secondary"
-              onPress={handleOpen}
-              className="flex-shrink-0 rounded-xl"
-            >
+            <View className="flex-shrink-0 flex-row items-center gap-1.5 bg-zinc-800 rounded-xl px-3 py-2">
               <AppIcon
                 icon={SquareArrowUpRight02Icon}
                 size={14}
                 color="#00bbff"
               />
-              <Button.Label className="text-[#00bbff]">Open</Button.Label>
-            </Button>
+              <Text className="text-xs font-medium text-[#00bbff]">Open</Text>
+            </View>
           )}
         </View>
-      </Card.Body>
-    </Card>
+      </ToolCardInner>
+    </ToolCardShell>
   );
 }

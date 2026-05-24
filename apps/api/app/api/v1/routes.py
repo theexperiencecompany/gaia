@@ -4,6 +4,8 @@ GAIA API v1 package.
 This package contains the API routes and dependencies for version 1 of the GAIA API.
 """
 
+from fastapi import APIRouter
+
 from app.api.v1.endpoints import (
     blog,
     bot,
@@ -29,7 +31,6 @@ from app.api.v1.endpoints import (
     search,
     skills,
     support,
-    team,
     todos,
     tools,
     triggers,
@@ -42,7 +43,6 @@ from app.api.v1.endpoints import (
     workflows,
 )
 from app.api.v1.endpoints.integrations import router as integrations_router
-from fastapi import APIRouter
 
 router = APIRouter()
 
@@ -56,16 +56,13 @@ router.include_router(notes.router, tags=["Notes/Memories"])
 router.include_router(memory.router, tags=["Memory"], prefix="/memory")
 router.include_router(goals.router, tags=["Goals"])
 router.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
-router.include_router(
-    integrations_router, prefix="/integrations", tags=["Integrations"]
-)
+router.include_router(integrations_router, prefix="/integrations", tags=["Integrations"])
 router.include_router(mcp.router, prefix="/mcp", tags=["MCP"])
 router.include_router(mcp_proxy.router, prefix="/mcp", tags=["MCP"])
 router.include_router(onboarding.router, prefix="/onboarding", tags=["Onboarding"])
 router.include_router(user.router, prefix="/user", tags=["User"])
 router.include_router(mail.router, tags=["Mail"])
 router.include_router(blog.router, tags=["Blog"])
-router.include_router(team.router, tags=["Team"])
 router.include_router(file.router, tags=["File"])
 router.include_router(notification.router, tags=["Notification"])
 router.include_router(websocket.router, tags=["WebSocket"])
@@ -82,9 +79,5 @@ router.include_router(usage.router, tags=["Usage"])
 router.include_router(tools.router, tags=["Tools"])
 router.include_router(models.router, tags=["Models"])
 router.include_router(bot.router, prefix="/bot", tags=["Bot"])
-router.include_router(
-    platform_auth.router, prefix="/platform-auth", tags=["Platform Auth"]
-)
-router.include_router(
-    platform_links.router, prefix="/platform-links", tags=["Platform Links"]
-)
+router.include_router(platform_auth.router, prefix="/platform-auth", tags=["Platform Auth"])
+router.include_router(platform_links.router, prefix="/platform-links", tags=["Platform Links"])

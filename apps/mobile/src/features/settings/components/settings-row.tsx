@@ -19,7 +19,7 @@ export function SettingsGroup({ label, children }: SettingsGroupProps) {
         <Text
           style={{
             fontSize: fontSize.xs,
-            color: "#8e8e93",
+            color: "#71717a",
             textTransform: "uppercase",
             letterSpacing: 0.8,
             marginBottom: spacing.xs,
@@ -31,11 +31,9 @@ export function SettingsGroup({ label, children }: SettingsGroupProps) {
       ) : null}
       <View
         style={{
-          backgroundColor: "#1c1c1e",
-          borderRadius: 14,
+          backgroundColor: "#18181b",
+          borderRadius: 16,
           overflow: "hidden",
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.06)",
         }}
       >
         {children}
@@ -60,7 +58,7 @@ interface SettingsRowProps {
 export function SettingsRow({
   icon,
   iconColor = "#ffffff",
-  iconBg = "rgba(255,255,255,0.1)",
+  iconBg = "rgba(255,255,255,0.06)",
   title,
   subtitle,
   rightElement,
@@ -72,6 +70,9 @@ export function SettingsRow({
   const { spacing, fontSize } = useResponsive();
   const titleColor = isDestructive ? "#ef4444" : "#ffffff";
 
+  const titleLineHeight = Math.round(fontSize.md * 1.35);
+  const subtitleLineHeight = Math.round(fontSize.xs * 1.4);
+
   const content = (
     <View>
       <View
@@ -79,16 +80,16 @@ export function SettingsRow({
           flexDirection: "row",
           alignItems: "center",
           paddingHorizontal: spacing.md,
-          paddingVertical: spacing.sm + 2,
-          gap: spacing.sm,
-          minHeight: 52,
+          paddingVertical: subtitle ? 12 : 14,
+          gap: spacing.sm + 2,
+          minHeight: 56,
         }}
       >
         {icon ? (
           <View
             style={{
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
               borderRadius: 8,
               backgroundColor: isDestructive ? "rgba(239,68,68,0.15)" : iconBg,
               alignItems: "center",
@@ -98,17 +99,18 @@ export function SettingsRow({
           >
             <AppIcon
               icon={icon}
-              size={17}
+              size={16}
               color={isDestructive ? "#ef4444" : iconColor}
             />
           </View>
         ) : null}
 
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ flex: 1, minWidth: 0, justifyContent: "center" }}>
           <Text
             style={{
-              fontSize: fontSize.base,
-              fontWeight: "400",
+              fontSize: fontSize.md,
+              fontWeight: "500",
+              lineHeight: titleLineHeight,
               color: titleColor,
             }}
             numberOfLines={1}
@@ -119,8 +121,9 @@ export function SettingsRow({
             <Text
               style={{
                 fontSize: fontSize.xs,
-                color: "#8e8e93",
-                marginTop: 1,
+                lineHeight: subtitleLineHeight,
+                color: "#71717a",
+                marginTop: 2,
               }}
               numberOfLines={2}
             >
@@ -134,7 +137,7 @@ export function SettingsRow({
         ) : null}
 
         {showChevron ? (
-          <AppIcon icon={ArrowRight01Icon} size={16} color="#3a3a3c" />
+          <AppIcon icon={ArrowRight01Icon} size={16} color="#52525b" />
         ) : null}
       </View>
 
@@ -143,7 +146,7 @@ export function SettingsRow({
           style={{
             height: 1,
             backgroundColor: "rgba(255,255,255,0.06)",
-            marginLeft: icon ? spacing.md + 32 + spacing.sm : spacing.md,
+            marginLeft: icon ? spacing.md + 28 + spacing.sm + 2 : spacing.md,
           }}
         />
       ) : null}
@@ -181,7 +184,7 @@ interface SettingsSwitchRowProps {
 export function SettingsSwitchRow({
   icon,
   iconColor = "#ffffff",
-  iconBg = "rgba(255,255,255,0.1)",
+  iconBg = "rgba(255,255,255,0.06)",
   title,
   subtitle,
   value,
@@ -203,7 +206,7 @@ export function SettingsSwitchRow({
           onValueChange={onValueChange}
           disabled={disabled}
           trackColor={{ false: "#3a3a3c", true: "rgba(22,193,255,0.6)" }}
-          thumbColor={value ? "#16c1ff" : "#8e8e93"}
+          thumbColor={value ? "#16c1ff" : "#71717a"}
         />
       }
     />

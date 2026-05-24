@@ -92,7 +92,7 @@ services:
       POSTGRES_PASSWORD: postgres # pragma: allowlist secret
       POSTGRES_DB: langgraph
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     restart: on-failure
@@ -171,6 +171,9 @@ services:
       - PYTHONPATH=/app/apps/api
       - LOG_FORMAT=json
       - LOG_COLORIZE=false
+      - ARQ_METRICS_PORT=9100
+    expose:
+      - "9100"
     command: ["uv", "run", "python", "-m", "arq", "app.worker.WorkerSettings"]
     restart: always
     volumes:
@@ -211,6 +214,12 @@ services:
         BOT_NAME: discord
     env_file:
       - ../../apps/bots/.env
+    environment:
+      - BOT_SERVER_PORT=3200
+      - LOG_FORMAT=json
+      - LOG_COLORIZE=false
+    ports:
+      - "${DISCORD_BOT_PORT:-3200}:3200"
     restart: on-failure
     depends_on:
       gaia-backend:
@@ -229,6 +238,12 @@ services:
         BOT_NAME: slack
     env_file:
       - ../../apps/bots/.env
+    environment:
+      - BOT_SERVER_PORT=3201
+      - LOG_FORMAT=json
+      - LOG_COLORIZE=false
+    ports:
+      - "${SLACK_BOT_PORT:-3201}:3201"
     restart: on-failure
     depends_on:
       gaia-backend:
@@ -248,6 +263,36 @@ services:
     # Generate ../../apps/bots/.env from apps/bots/.env.example before enabling bots.
     env_file:
       - ../../apps/bots/.env
+    environment:
+      - BOT_SERVER_PORT=3202
+      - LOG_FORMAT=json
+      - LOG_COLORIZE=false
+    ports:
+      - "${TELEGRAM_BOT_PORT:-3202}:3202"
+    restart: on-failure
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  # WhatsApp Bot — serves both /health and /webhook on the same port
+  whatsapp-bot:
+    container_name: whatsapp-bot
+    profiles: ["bots", "all"]
+    build:
+      context: ../..
+      dockerfile: apps/bots/Dockerfile
+      args:
+        BOT_NAME: whatsapp
+    env_file:
+      - ../../apps/bots/.env
+    environment:
+      - BOT_SERVER_PORT=3203
+      - LOG_FORMAT=json
+      - LOG_COLORIZE=false
+    ports:
+      - "${WHATSAPP_BOT_PORT:-3203}:3203"
     restart: on-failure
     depends_on:
       gaia-backend:
@@ -283,117 +328,10 @@ services:
     networks:
       - gaia_network
 
-  # ---------------------------------------------------------------------------
-  # Metrics exporters
-  # ---------------------------------------------------------------------------
-
-  # cAdvisor — Docker container CPU / memory / network / disk metrics
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.52.1
-    container_name: cadvisor
-    privileged: true
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-    command:
-      - "--docker_only=true"
-      - "--housekeeping_interval=30s"
-    restart: unless-stopped
-    networks:
-      - gaia_network
-
-  # Blackbox Exporter — HTTP probe for services without Prometheus metrics (e.g. ChromaDB)
-  blackbox_exporter:
-    image: prom/blackbox-exporter:v0.25.0
-    container_name: blackbox_exporter
-    volumes:
-      - ./observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
-    restart: unless-stopped
-    networks:
-      - gaia_network
-
-  # Node Exporter — host CPU / memory / disk / network metrics
-  node_exporter:
-    image: prom/node-exporter:v1.8.2
-    container_name: node_exporter
-    pid: host
-    command:
-      - "--path.rootfs=/host"
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /etc:/host/etc:ro
-      - /:/host:ro
-    restart: unless-stopped
-    networks:
-      - gaia_network
-
-  # MongoDB Exporter
-  mongodb_exporter:
-    image: percona/mongodb_exporter:0.43
-    container_name: mongodb_exporter
-    command:
-      - "--mongodb.uri=mongodb://mongo:27017"
-      - "--collect-all"
-    restart: unless-stopped
-    depends_on:
-      mongo:
-        condition: service_healthy
-    networks:
-      - gaia_network
-
-  postgres_exporter:
-    image: prometheuscommunity/postgres-exporter:v0.17.0
-    container_name: postgres_exporter
-    environment:
-      DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/langgraph?sslmode=disable" # pragma: allowlist secret
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - gaia_network
-
-  redis_exporter:
-    image: oliver006/redis_exporter:v1.66.0
-    container_name: redis_exporter
-    environment:
-      REDIS_ADDR: "redis://redis:6379"
-    restart: unless-stopped
-    depends_on:
-      redis:
-        condition: service_healthy
-    networks:
-      - gaia_network
-
-  prometheus:
-    image: prom/prometheus:v3.1.0
-    container_name: prometheus
-    volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./observability/metrics_token:/etc/prometheus/metrics_token:ro
-      - prometheus_data:/prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.retention.time=30d"
-    restart: unless-stopped
-    networks:
-      - gaia_network
-    mem_limit: 512m
-    cpus: "0.5"
-
-  # ---------------------------------------------------------------------------
-  # Observability stack — Loki + Promtail + Grafana
-  # Always started with docker compose up (no profile needed).
-  # Access Grafana at http://localhost:4000  (admin / admin)
-  # ---------------------------------------------------------------------------
-
   loki:
     image: grafana/loki:3.3.2
     container_name: loki
+    profiles: ["observability", "all"]
     ports:
       - "${LOKI_HOST_PORT:-3100}:3100"
     volumes:
@@ -404,11 +342,7 @@ services:
     networks:
       - gaia_network
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1",
-        ]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -418,6 +352,7 @@ services:
   promtail:
     image: grafana/promtail:3.3.2
     container_name: promtail
+    profiles: ["observability", "all"]
     user: root
     # Prevent log feedback loop — Promtail's own stdout must not be captured by
     # Docker, or JSON parse errors spiral into tens of GB of disk usage.
@@ -431,7 +366,7 @@ services:
       - ../../apps/api/logs:/var/log/gaia-api:ro
       - ../../apps/api/logs/worker:/var/log/gaia-worker:ro
       - ../../apps/voice-agent/logs:/var/log/gaia-voice-agent:ro
-    command: -config.file=/etc/promtail/config.yaml -config.expand-env=true
+    command: -config.file=/etc/promtail/config.yaml
     restart: unless-stopped
     depends_on:
       loki:
@@ -444,6 +379,7 @@ services:
   grafana:
     image: grafana/grafana:11.4.0
     container_name: grafana
+    profiles: ["observability", "all"]
     ports:
       - "${GRAFANA_HOST_PORT:-4000}:3000"
     volumes:
@@ -456,6 +392,11 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
+      # Use the provisioned GAIA Overview dashboard as the home page
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/overview.json
+      # Slack webhook consumed by contact-points.yaml (leave empty to disable alerts)
+      SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-}
+      SLACK_ALERT_CHANNEL: ${SLACK_ALERT_CHANNEL:-#alerts}
     restart: unless-stopped
     depends_on:
       loki:

@@ -134,7 +134,7 @@ export default function TwitterSearchSection({
 
   return (
     <div className="mt-3 flex w-full flex-col gap-3">
-      {result_count && (
+      {result_count != null && result_count > 0 && (
         <p className="text-xs text-default-500 px-1">
           Found {result_count} tweet{result_count !== 1 ? "s" : ""}
         </p>

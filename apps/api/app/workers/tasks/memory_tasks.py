@@ -1,7 +1,6 @@
 """ARQ worker tasks for storing memories in mem0."""
 
-from datetime import datetime, timezone
-from typing import Dict, List
+from datetime import UTC, datetime
 
 from app.services.memory_service import memory_service
 from shared.py.wide_events import log, wide_task
@@ -10,7 +9,7 @@ from shared.py.wide_events import log, wide_task
 async def store_memories_batch(
     ctx: dict,
     user_id: str,
-    emails_batch: List[Dict],
+    emails_batch: list[dict],
     user_name: str | None = None,
     user_email: str | None = None,
 ) -> str:
@@ -33,9 +32,7 @@ async def store_memories_batch(
         if not emails_batch:
             return f"No emails to process for user {user_id}"
 
-        log.info(
-            f"Processing batch of {len(emails_batch)} emails for user {user_id} ({user_name})"
-        )
+        log.info(f"Processing batch of {len(emails_batch)} emails for user {user_id} ({user_name})")
 
         # Build messages array for single API call
         messages = []
@@ -63,9 +60,7 @@ Subject: {subject}
             log.warning(f"No valid emails to process for user {user_id}")
             return f"No valid emails to process for user {user_id}"
 
-        log.info(
-            f"Storing {len(messages)} emails in a single mem0 API call (user {user_id})..."
-        )
+        log.info(f"Storing {len(messages)} emails in a single mem0 API call (user {user_id})...")
 
         # Build user context for consistent attribution
         user_context = ""
@@ -80,7 +75,7 @@ Subject: {subject}
                 messages=messages,
                 user_id=user_id,
                 metadata={
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                     "source": "gmail_background_batch",
                     "batch_size": len(messages),
                     "user_name": user_name,
@@ -128,13 +123,10 @@ Example: "User works as Software Engineer at Acme Corp", "User's email is john@e
                 f"✓ Batch completed for user {user_id}: stored {len(messages)} emails successfully"
             )
             return f"Stored {len(messages)} emails in mem0 successfully"
-        else:
-            # Note: result=False means Mem0 filtered all emails (returned 0 memories)
-            # This is NOT an error - it's a valid outcome
-            log.set(emails_stored=0, emails_filtered=len(messages))
-            log.warning(
-                f"Mem0 filtered all {len(messages)} emails for user {user_id} (deemed non-memorable)"
-            )
-            return (
-                f"Processed {len(messages)} emails - Mem0 filtered all as non-memorable"
-            )
+        # Note: result=False means Mem0 filtered all emails (returned 0 memories)
+        # This is NOT an error - it's a valid outcome
+        log.set(emails_stored=0, emails_filtered=len(messages))
+        log.warning(
+            f"Mem0 filtered all {len(messages)} emails for user {user_id} (deemed non-memorable)"
+        )
+        return f"Processed {len(messages)} emails - Mem0 filtered all as non-memorable"

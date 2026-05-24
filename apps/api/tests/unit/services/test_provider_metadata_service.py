@@ -1,11 +1,10 @@
 """Tests for app.services.provider_metadata_service."""
 
 import json
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -56,13 +55,13 @@ class TestExtractNestedField:
     def test_nested_key(self) -> None:
         from app.services.provider_metadata_service import _extract_nested_field
 
-        data: Dict[str, Any] = {"data": {"login": "octocat"}}
+        data: dict[str, Any] = {"data": {"login": "octocat"}}
         assert _extract_nested_field(data, "data.login") == "octocat"
 
     def test_deeply_nested_key(self) -> None:
         from app.services.provider_metadata_service import _extract_nested_field
 
-        data: Dict[str, Any] = {"a": {"b": {"c": "deep"}}}
+        data: dict[str, Any] = {"a": {"b": {"c": "deep"}}}
         assert _extract_nested_field(data, "a.b.c") == "deep"
 
     def test_missing_key_returns_none(self) -> None:
@@ -73,7 +72,7 @@ class TestExtractNestedField:
     def test_non_dict_intermediate_returns_none(self) -> None:
         from app.services.provider_metadata_service import _extract_nested_field
 
-        data: Dict[str, Any] = {"a": "string_value"}
+        data: dict[str, Any] = {"a": "string_value"}
         assert _extract_nested_field(data, "a.b") is None
 
     def test_none_value_returns_none(self) -> None:
@@ -110,9 +109,7 @@ class TestFetchToolResponse:
 
     @pytest.mark.asyncio
     @patch("app.services.provider_metadata_service.get_composio_service")
-    async def test_returns_parsed_json_string(
-        self, mock_get_composio: MagicMock
-    ) -> None:
+    async def test_returns_parsed_json_string(self, mock_get_composio: MagicMock) -> None:
         from app.services.provider_metadata_service import fetch_tool_response
 
         mock_tool = AsyncMock()
@@ -127,9 +124,7 @@ class TestFetchToolResponse:
 
     @pytest.mark.asyncio
     @patch("app.services.provider_metadata_service.get_composio_service")
-    async def test_returns_none_for_invalid_json_string(
-        self, mock_get_composio: MagicMock
-    ) -> None:
+    async def test_returns_none_for_invalid_json_string(self, mock_get_composio: MagicMock) -> None:
         from app.services.provider_metadata_service import fetch_tool_response
 
         mock_tool = AsyncMock()
@@ -144,9 +139,7 @@ class TestFetchToolResponse:
 
     @pytest.mark.asyncio
     @patch("app.services.provider_metadata_service.get_composio_service")
-    async def test_returns_none_for_unexpected_type(
-        self, mock_get_composio: MagicMock
-    ) -> None:
+    async def test_returns_none_for_unexpected_type(self, mock_get_composio: MagicMock) -> None:
         from app.services.provider_metadata_service import fetch_tool_response
 
         mock_tool = AsyncMock()
@@ -161,9 +154,7 @@ class TestFetchToolResponse:
 
     @pytest.mark.asyncio
     @patch("app.services.provider_metadata_service.get_composio_service")
-    async def test_returns_none_when_tool_not_found(
-        self, mock_get_composio: MagicMock
-    ) -> None:
+    async def test_returns_none_when_tool_not_found(self, mock_get_composio: MagicMock) -> None:
         from app.services.provider_metadata_service import fetch_tool_response
 
         svc = MagicMock()
@@ -175,9 +166,7 @@ class TestFetchToolResponse:
 
     @pytest.mark.asyncio
     @patch("app.services.provider_metadata_service.get_composio_service")
-    async def test_returns_none_on_exception(
-        self, mock_get_composio: MagicMock
-    ) -> None:
+    async def test_returns_none_on_exception(self, mock_get_composio: MagicMock) -> None:
         from app.services.provider_metadata_service import fetch_tool_response
 
         mock_get_composio.side_effect = RuntimeError("boom")
@@ -213,9 +202,7 @@ class TestFetchProviderUserInfo:
 
     @pytest.mark.asyncio
     @patch("app.services.provider_metadata_service.get_integration_by_id")
-    async def test_returns_none_when_no_integration(
-        self, mock_get_int: MagicMock
-    ) -> None:
+    async def test_returns_none_when_no_integration(self, mock_get_int: MagicMock) -> None:
         from app.services.provider_metadata_service import fetch_provider_user_info
 
         mock_get_int.return_value = None
@@ -224,9 +211,7 @@ class TestFetchProviderUserInfo:
 
     @pytest.mark.asyncio
     @patch("app.services.provider_metadata_service.get_integration_by_id")
-    async def test_returns_none_when_no_metadata_config(
-        self, mock_get_int: MagicMock
-    ) -> None:
+    async def test_returns_none_when_no_metadata_config(self, mock_get_int: MagicMock) -> None:
         from app.services.provider_metadata_service import fetch_provider_user_info
 
         mock_get_int.return_value = _make_integration(metadata_config=None)
@@ -280,9 +265,7 @@ class TestFetchProviderUserInfo:
         new_callable=AsyncMock,
     )
     @patch("app.services.provider_metadata_service.get_integration_by_id")
-    async def test_multiple_tools(
-        self, mock_get_int: MagicMock, mock_fetch: AsyncMock
-    ) -> None:
+    async def test_multiple_tools(self, mock_get_int: MagicMock, mock_fetch: AsyncMock) -> None:
         from app.services.provider_metadata_service import fetch_provider_user_info
 
         v1 = _make_variable("username", "login")
@@ -338,9 +321,7 @@ class TestStoreProviderMetadata:
         from app.services.provider_metadata_service import store_provider_metadata
 
         mock_coll.update_one = AsyncMock(side_effect=RuntimeError("db error"))
-        ok = await store_provider_metadata(
-            "507f1f77bcf86cd799439011", "github", {"a": "b"}
-        )
+        ok = await store_provider_metadata("507f1f77bcf86cd799439011", "github", {"a": "b"})
         assert ok is False
 
 
@@ -372,9 +353,7 @@ class TestGetProviderMetadata:
 
     @pytest.mark.asyncio
     @patch("app.services.provider_metadata_service.users_collection")
-    async def test_returns_none_when_provider_missing(
-        self, mock_coll: MagicMock
-    ) -> None:
+    async def test_returns_none_when_provider_missing(self, mock_coll: MagicMock) -> None:
         from app.services.provider_metadata_service import get_provider_metadata
 
         mock_coll.find_one = AsyncMock(return_value={"provider_metadata": {}})
@@ -403,18 +382,14 @@ class TestGetAllProviderMetadata:
         from app.services.provider_metadata_service import get_all_provider_metadata
 
         mock_coll.find_one = AsyncMock(
-            return_value={
-                "provider_metadata": {"github": {"u": "a"}, "twitter": {"u": "b"}}
-            }
+            return_value={"provider_metadata": {"github": {"u": "a"}, "twitter": {"u": "b"}}}
         )
         result = await get_all_provider_metadata("507f1f77bcf86cd799439011")
         assert len(result) == 2
 
     @pytest.mark.asyncio
     @patch("app.services.provider_metadata_service.users_collection")
-    async def test_returns_empty_when_user_not_found(
-        self, mock_coll: MagicMock
-    ) -> None:
+    async def test_returns_empty_when_user_not_found(self, mock_coll: MagicMock) -> None:
         from app.services.provider_metadata_service import get_all_provider_metadata
 
         mock_coll.find_one = AsyncMock(return_value=None)
@@ -432,9 +407,7 @@ class TestGetAllProviderMetadata:
 
     @pytest.mark.asyncio
     @patch("app.services.provider_metadata_service.users_collection")
-    async def test_returns_empty_when_no_metadata_key(
-        self, mock_coll: MagicMock
-    ) -> None:
+    async def test_returns_empty_when_no_metadata_key(self, mock_coll: MagicMock) -> None:
         from app.services.provider_metadata_service import get_all_provider_metadata
 
         mock_coll.find_one = AsyncMock(return_value={"name": "test"})
@@ -481,9 +454,7 @@ class TestFetchAndStoreProviderMetadata:
 
     @pytest.mark.asyncio
     @patch("app.services.provider_metadata_service.get_integration_by_id")
-    async def test_returns_false_when_no_integration(
-        self, mock_get_int: MagicMock
-    ) -> None:
+    async def test_returns_false_when_no_integration(self, mock_get_int: MagicMock) -> None:
         from app.services.provider_metadata_service import (
             fetch_and_store_provider_metadata,
         )
@@ -494,9 +465,7 @@ class TestFetchAndStoreProviderMetadata:
 
     @pytest.mark.asyncio
     @patch("app.services.provider_metadata_service.get_integration_by_id")
-    async def test_returns_false_when_no_metadata_config(
-        self, mock_get_int: MagicMock
-    ) -> None:
+    async def test_returns_false_when_no_metadata_config(self, mock_get_int: MagicMock) -> None:
         from app.services.provider_metadata_service import (
             fetch_and_store_provider_metadata,
         )
@@ -518,9 +487,7 @@ class TestFetchAndStoreProviderMetadata:
             fetch_and_store_provider_metadata,
         )
 
-        mock_get_int.return_value = _make_integration(
-            metadata_config=_make_metadata_config([])
-        )
+        mock_get_int.return_value = _make_integration(metadata_config=_make_metadata_config([]))
         mock_fetch.return_value = None
         result = await fetch_and_store_provider_metadata("u1", "github")
         assert result is False

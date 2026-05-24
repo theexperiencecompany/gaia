@@ -18,6 +18,8 @@ export type PendingStreamArgs = [
     content: string;
     role: "user" | "assistant";
   } | null,
+  conversationId?: string | null,
+  isOnboardingDemo?: boolean,
 ];
 
 export interface StreamRefs {

@@ -101,9 +101,3 @@ export const useWorkflowSelectionStore = create<WorkflowSelectionStore>()(
     { name: "workflow-selection-store" },
   ),
 );
-
-// Selectors
-export const useSelectedWorkflow = () =>
-  useWorkflowSelectionStore((state) => state.selectedWorkflow);
-export const useWorkflowAutoSend = () =>
-  useWorkflowSelectionStore((state) => state.autoSend);

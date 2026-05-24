@@ -42,7 +42,7 @@ function hasElectronAPI(
  * Hook to check if the app is running inside Electron
  * @returns boolean indicating if running in Electron
  */
-export function useIsElectron(): boolean {
+function useIsElectron(): boolean {
   const [isElectron, setIsElectron] = useState(false);
 
   useEffect(() => {
