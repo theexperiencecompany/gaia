@@ -270,7 +270,6 @@ def _build_search_tasks(
 
 def _process_public_integration_result(
     result: list[dict[str, Any]],
-    task_idx: int,
 ) -> list[dict[str, str | float | None]]:
     """Process public integration search results."""
     processed = []
@@ -295,7 +294,6 @@ def _process_public_integration_result(
 
 def _process_chroma_search_result(
     result: list[SearchItem],
-    task_idx: int,
     available_tool_names: set[str],
     tool_registry,
     include_subagents: bool,
@@ -380,7 +378,7 @@ async def _process_search_results(
         is_public_search = isinstance(result[0], dict)
 
         if is_public_search:
-            processed = _process_public_integration_result(result, idx)
+            processed = _process_public_integration_result(result)
         else:
             try:
                 preview = [
@@ -399,7 +397,6 @@ async def _process_search_results(
                 log.debug(f"Chroma search raw hits log failed (task={idx}): {e}")
             processed = _process_chroma_search_result(
                 result,
-                idx,
                 available_tool_names,
                 tool_registry,
                 include_subagents,

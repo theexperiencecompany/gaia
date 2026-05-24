@@ -10,21 +10,3 @@ export interface ContentCreator {
   name: string;
   avatar?: string;
 }
-
-/**
- * Tool information with category for icon display
- */
-export interface ToolInfo {
-  name: string;
-  description: string;
-  category: string;
-}
-
-/**
- * Step information for instructions/guides
- */
-export interface StepInfo {
-  title: string;
-  description: string;
-  details?: string;
-}

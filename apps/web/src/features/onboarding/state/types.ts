@@ -6,11 +6,7 @@
  */
 
 import type { ClarifyAnswer, ClarifyQuestion } from "../types";
-import type {
-  OnboardingStage,
-  PersonalizationData,
-  StagePayloads,
-} from "../types/websocket";
+import type { OnboardingStage, PersonalizationData } from "../types/websocket";
 
 export type Stage =
   | "questions"
@@ -100,5 +96,3 @@ export type Action =
   | { type: "clarifySkip"; questionId: string }
   | { type: "clarifyTab"; questionId: string }
   | { type: "clarifySubmit" };
-
-export type StagePayload<K extends OnboardingStage> = StagePayloads[K];

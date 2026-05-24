@@ -1,52 +1,8 @@
 import Image from "next/image";
 import { type ReactNode, useId } from "react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useUser } from "@/features/auth/hooks/useUser";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { cn } from "@/lib/utils";
-
-export function SimpleChatBubbleUser({
-  children,
-  hideMobile = false,
-  className = "",
-  className2 = "",
-}: {
-  children: ReactNode;
-  hideMobile?: boolean;
-  className?: string;
-  className2?: string;
-}) {
-  const user = useUser();
-
-  if (hideMobile) return null;
-
-  return (
-    <div className={`mb-3 flex items-end justify-end gap-3 ${className}`}>
-      <div
-        className={`imessage-bubble imessage-from-me whitespace-pre-wrap select-none ${className2}`}
-      >
-        {children}
-      </div>
-      <Avatar className="h-8 w-8 shrink-0 rounded-full border-2 border-white/20">
-        <AvatarImage src={user?.profilePicture} alt={user?.name || "User"} />
-        <AvatarFallback className="bg-blue-500 text-xs text-white">
-          {user?.name ? (
-            user.name.charAt(0).toUpperCase()
-          ) : (
-            <Image
-              src="/images/avatars/default.webp"
-              width={32}
-              height={32}
-              alt="Default avatar"
-              className="rounded-full"
-            />
-          )}
-        </AvatarFallback>
-      </Avatar>
-    </div>
-  );
-}
 
 export function SimpleChatBubbleBot({
   className,
