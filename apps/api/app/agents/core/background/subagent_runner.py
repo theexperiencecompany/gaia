@@ -9,9 +9,6 @@ subagents complete and to collect their results.
 """
 
 import time
-from typing import Optional
-
-from shared.py.wide_events import log
 
 from app.agents.core.background.inbox import (
     append_bg_subagent_result,
@@ -27,16 +24,17 @@ from app.utils.agent_utils import (
     format_subagent_end_event,
     format_subagent_start_event,
 )
+from shared.py.wide_events import log
 
 
 async def run_subagent_background(
     ctx: SubagentExecutionContext,
     stream_id: str,
-    integration_metadata: Optional[IntegrationMetadata] = None,
-    subagent_id: Optional[str] = None,
-    display_name: Optional[str] = None,
-    tool_category: Optional[str] = None,
-    icon_url: Optional[str] = None,
+    integration_metadata: IntegrationMetadata | None = None,
+    subagent_id: str | None = None,
+    display_name: str | None = None,
+    tool_category: str | None = None,
+    icon_url: str | None = None,
 ) -> None:
     """Run a provider subagent in the background and store its result.
 
@@ -83,17 +81,22 @@ async def run_subagent_background(
                 }
             )
         log.info(
-            f"Background subagent {ctx.agent_name} completed for stream {stream_id}"
+            "Background subagent completed",
+            agent_name=ctx.agent_name,
+            stream_id=stream_id,
         )
         append_bg_subagent_result(stream_id, ctx.agent_name, result)
     except Exception as e:
         log.error(
-            f"Background subagent {ctx.agent_name} failed for stream {stream_id}: {e}"
+            "Background subagent failed",
+            agent_name=ctx.agent_name,
+            stream_id=stream_id,
+            error=str(e),
         )
         append_bg_subagent_result(
             stream_id,
             ctx.agent_name,
-            f"Error from {ctx.agent_name}: {str(e)}",
+            f"Error from {ctx.agent_name}: {e!s}",
         )
     finally:
         # Decrement AFTER appending the result so any wait_for_subagents

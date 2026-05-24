@@ -5,11 +5,10 @@ Indexes canvas.md content for semantic search across all of a user's
 tracked todos. Follows the same pattern as todo_vector_utils.py.
 """
 
-from datetime import datetime, timezone
-
-from shared.py.wide_events import log
+from datetime import UTC, datetime
 
 from app.db.chroma.chromadb import ChromaClient
+from shared.py.wide_events import log
 
 COLLECTION_NAME = "gaia_canvas"
 
@@ -31,7 +30,7 @@ async def store_canvas_embedding(
             "user_id": str(user_id),
             "todo_id": str(todo_id),
             "title": title,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
             "completed": False,
         }
         if labels:
@@ -121,7 +120,7 @@ async def mark_canvas_completed(todo_id: str) -> bool:
             existing["metadatas"][0]
         )
         metadata["completed"] = True
-        metadata["completed_at"] = datetime.now(timezone.utc).isoformat()
+        metadata["completed_at"] = datetime.now(UTC).isoformat()
 
         await collection.update(ids=[doc_id], metadatas=[metadata])
         return True

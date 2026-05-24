@@ -6,20 +6,21 @@ and search across canvas context via ChromaDB.
 """
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Annotated, Optional
+from datetime import UTC, datetime
+from typing import Annotated
 from zoneinfo import ZoneInfo
 
-from app.db.mongodb.collections import todos_collection
-from app.models.todo_models import Priority
-from app.services.tracked_todo_service import tracked_todo_service
-from app.services.user_service import get_user_by_id
-from app.services.vfs.mongo_vfs import MongoVFS
-from app.utils.canvas_vector_utils import search_canvas_context
 from bson import ObjectId
 from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+
+from app.db.mongodb.collections import todos_collection
+from app.models.todo_models import Priority
+from app.services.tracked_todo_service import GAIA_TRACKED_LABEL, tracked_todo_service
+from app.services.user_service import get_user_by_id
+from app.services.vfs.mongo_vfs import MongoVFS
+from app.utils.canvas_vector_utils import search_canvas_context
 from shared.py.wide_events import log
 
 _RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
@@ -42,24 +43,25 @@ async def _get_user_tz(user_id: str) -> str:
             except Exception:
                 pass
     except Exception as e:
-        log.warning(f"_get_user_tz: lookup failed for {user_id}: {e}")
-    log.warning("tracked_todo.user_tz_fallback_utc — no usable IANA tz")
+        log.warning("tracked_todo.user_tz_lookup_failed", user_id=user_id, error=str(e))
+    log.warning("tracked_todo.user_tz_fallback_utc", user_id=user_id)
     return "UTC"
 
 
 def _compute_first_fire_from_cron(cron_expr: str, tz_name: str) -> datetime:
     """Compute the next fire of a cron expression in the given timezone, returned as UTC."""
     tz = ZoneInfo(tz_name)
-    now_local = datetime.now(timezone.utc).astimezone(tz)
+    now_local = datetime.now(UTC).astimezone(tz)
     cron = _croniter(cron_expr, now_local)
     next_dt: datetime = cron.get_next(datetime)
     if next_dt.tzinfo is None:
         next_dt = next_dt.replace(tzinfo=tz)
-    return next_dt.astimezone(timezone.utc)
+    return next_dt.astimezone(UTC)
 
 
 def _is_cron_expression(recurrence: str) -> bool:
     return recurrence not in _RECURRENCE_SHORTCUTS
+
 
 _background_tasks: set[asyncio.Task] = set()
 
@@ -91,7 +93,7 @@ async def create_tracked_todo(
         "Priority: 'high', 'medium', 'low', or 'none'",
     ] = "none",
     scheduled_at: Annotated[
-        Optional[str],
+        str | None,
         "ISO datetime for a ONE-TIME future execution. "
         "Use this ONLY when there is no recurrence, or when the recurrence is a "
         "delta-style shortcut ('daily', 'weekly', 'every_4h', 'every_1h') that "
@@ -102,7 +104,7 @@ async def create_tracked_todo(
         "never 'Z' unless the user explicitly says UTC.",
     ] = None,
     recurrence: Annotated[
-        Optional[str],
+        str | None,
         "How often to repeat. Options: 'daily', 'weekly', 'every_4h', 'every_1h', "
         "or a 5-field cron expression. "
         "ALWAYS evaluated in the user's stored timezone — the backend handles "
@@ -112,7 +114,7 @@ async def create_tracked_todo(
         "Do NOT bake timezone offsets into the cron string itself.",
     ] = None,
     expires_at: Annotated[
-        Optional[str],
+        str | None,
         "ISO datetime string when this todo becomes irrelevant. "
         "Always include the user's timezone offset (e.g., '2026-04-01T23:59:00+05:30'). "
         "Use for time-sensitive context like 'check if package arrived' (expires in 3 days) "
@@ -191,23 +193,24 @@ async def create_tracked_todo(
                     "or use a cron expression that fully specifies when to fire."
                 )
             try:
-                parsed_scheduled_at = datetime.fromisoformat(
-                    scheduled_at.replace("Z", "+00:00")
-                )
+                parsed_scheduled_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
             except ValueError:
                 return f"Error: invalid scheduled_at format '{scheduled_at}'."
-            if parsed_scheduled_at <= datetime.now(timezone.utc):
+            if parsed_scheduled_at <= datetime.now(UTC):
                 return "Error: scheduled_at must be in the future."
     elif scheduled_at:
         # One-shot scheduled execution (no recurrence).
         try:
-            parsed_scheduled_at = datetime.fromisoformat(
-                scheduled_at.replace("Z", "+00:00")
-            )
+            parsed_scheduled_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
         except ValueError:
             return f"Error: invalid scheduled_at format '{scheduled_at}'."
-        if parsed_scheduled_at <= datetime.now(timezone.utc):
+        if parsed_scheduled_at <= datetime.now(UTC):
             return "Error: scheduled_at must be in the future."
+
+    try:
+        parsed_priority = Priority(priority)
+    except ValueError:
+        return f"Error: invalid priority '{priority}'. Use one of: high, medium, low, none"
 
     result = await tracked_todo_service.create_tracked_todo(
         user_id=user_id,
@@ -215,7 +218,7 @@ async def create_tracked_todo(
         description=description,
         initial_canvas=initial_canvas,
         labels=labels,
-        priority=Priority(priority),
+        priority=parsed_priority,
     )
 
     # Persist scheduling fields
@@ -240,9 +243,7 @@ async def create_tracked_todo(
     # Schedule execution
     if parsed_scheduled_at:
         try:
-            success = await tracked_todo_service.schedule_execution(
-                result.id, parsed_scheduled_at
-            )
+            success = await tracked_todo_service.schedule_execution(result.id, parsed_scheduled_at)
             if not success:
                 return (
                     f"Tracked todo created (ID: {result.id}) but scheduling failed. "
@@ -346,7 +347,7 @@ async def update_tracked_todo_canvas(
         "'replace' — overwrite the entire canvas. Only use for initial setup or full restructure.",
     ] = "append",
     section: Annotated[
-        Optional[str],
+        str | None,
         "Section heading to replace when mode='section'. "
         "Exact heading text without ## (e.g. 'Current State', 'Key Details', 'Learnings'). "
         "If the section does not exist, it is appended as a new section.",
@@ -372,9 +373,7 @@ async def update_tracked_todo_canvas(
 
     vfs = MongoVFS()
 
-    doc = await todos_collection.find_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id}
-    )
+    doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
     if not doc:
         return f"Error: tracked todo {todo_id} not found"
     vfs_path = doc.get("vfs_path")
@@ -453,40 +452,40 @@ async def update_tracked_todo(
     config: RunnableConfig,
     todo_id: Annotated[str, "ID of the tracked todo to update"],
     labels: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         "New labels to SET on the todo (replaces all existing labels). "
         "Always include 'gaia-tracked' in the list.",
     ] = None,
     due_date: Annotated[
-        Optional[str],
+        str | None,
         "ISO datetime string for the deadline. Set to empty string '' to clear.",
     ] = None,
     priority: Annotated[
-        Optional[str],
+        str | None,
         "Priority: 'high', 'medium', 'low', or 'none'.",
     ] = None,
     scheduled_at: Annotated[
-        Optional[str],
+        str | None,
         "ISO datetime for one-shot scheduled execution, or first-fire anchor for "
         "shortcut recurrences ('daily', 'weekly', 'every_4h', 'every_1h'). "
         "OMIT for cron-style recurrence — first fire is computed from the cron. "
         "Always include the user's timezone offset. Set to empty string '' to clear.",
     ] = None,
     recurrence: Annotated[
-        Optional[str],
+        str | None,
         "Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or 5-field cron. "
         "ALWAYS evaluated in the user's stored timezone. "
         "Example: '0 9,20 * * *' = 9 AM and 8 PM daily in the user's tz. "
         "Set to empty string '' to clear.",
     ] = None,
     expires_at: Annotated[
-        Optional[str],
+        str | None,
         "ISO datetime when this todo becomes irrelevant. Set to empty string '' to clear. "
         "Different from due_date: due_date = deadline (overdue = still needs doing), "
         "expires_at = relevance window (expired = no longer worth tracking).",
     ] = None,
     references: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         "IDs of related past tracked todos to link. Appended to existing references.",
     ] = None,
 ) -> str:
@@ -513,8 +512,9 @@ async def update_tracked_todo(
     update_fields: dict[str, object] = {}
 
     if labels is not None:
-        if "gaia-tracked" not in labels:
-            labels.append("gaia-tracked")
+        # Copy instead of mutating the caller's list.
+        if GAIA_TRACKED_LABEL not in labels:
+            labels = [*labels, GAIA_TRACKED_LABEL]
         update_fields["labels"] = labels
 
     if due_date is not None:
@@ -522,14 +522,15 @@ async def update_tracked_todo(
             update_fields["due_date"] = None
         else:
             try:
-                update_fields["due_date"] = datetime.fromisoformat(
-                    due_date.replace("Z", "+00:00")
-                )
+                update_fields["due_date"] = datetime.fromisoformat(due_date.replace("Z", "+00:00"))
             except ValueError:
                 return f"Error: invalid due_date format '{due_date}'."
 
     if priority is not None:
-        update_fields["priority"] = priority
+        try:
+            update_fields["priority"] = Priority(priority).value
+        except ValueError:
+            return f"Error: invalid priority '{priority}'. Use one of: high, medium, low, none"
 
     if scheduled_at is not None:
         if scheduled_at == "":
@@ -539,7 +540,7 @@ async def update_tracked_todo(
                 parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
             except ValueError:
                 return f"Error: invalid scheduled_at format '{scheduled_at}'."
-            if parsed_at <= datetime.now(timezone.utc):
+            if parsed_at <= datetime.now(UTC):
                 return "Error: scheduled_at must be in the future."
             update_fields["scheduled_at"] = parsed_at
 
@@ -599,9 +600,7 @@ async def update_tracked_todo(
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
 
     # Compute the effective post-update values for scheduling fields
-    effective_scheduled_at = update_fields.get(
-        "scheduled_at", existing.get("scheduled_at")
-    )
+    effective_scheduled_at = update_fields.get("scheduled_at", existing.get("scheduled_at"))
     effective_recurrence = update_fields.get("recurrence", existing.get("recurrence"))
 
     if effective_recurrence and not effective_scheduled_at:
@@ -610,7 +609,7 @@ async def update_tracked_todo(
             "Either clear recurrence or provide a scheduled_at value."
         )
 
-    update_fields["updated_at"] = datetime.now(timezone.utc)
+    update_fields["updated_at"] = datetime.now(UTC)
 
     result = await todos_collection.update_one(
         {"_id": ObjectId(todo_id), "user_id": user_id},
@@ -672,7 +671,7 @@ async def list_tracked_todos(
     if not docs:
         return "No active tracked todos."
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     lines: list[str] = []
 
     for doc in docs:

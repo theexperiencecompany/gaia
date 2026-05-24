@@ -40,7 +40,8 @@ _CONFIGURABLE_SCALAR_KEYS = frozenset(
         "thread_id",
         "conversation_id",
         "user_id",
-        "user_email",
+        "email",
+        "user_timezone",
         "user_name",
         "user_time",
         "stream_id",
@@ -104,8 +105,7 @@ async def _enqueue_task(
     safe_configurable = {
         k: v
         for k, v in configurable.items()
-        if k in _CONFIGURABLE_SCALAR_KEYS
-        and isinstance(v, str | int | float | bool | None)
+        if k in _CONFIGURABLE_SCALAR_KEYS and isinstance(v, str | int | float | bool | None)
     }
     queue_item = json.dumps(
         {
@@ -184,13 +184,13 @@ async def call_executor(
         else:
             detail: dict[str, str] = e.detail if isinstance(e.detail, dict) else {}
             feature = detail.get("feature", "")
-        log.warning(f"Rate limit exceeded for executor task: {feature}")
+        log.warning("Rate limit exceeded for executor task", feature=feature)
         return (
             f"Rate limit exceeded for {feature or 'this feature'}. "
             "The user has been shown an upgrade prompt."
         )
     except Exception as e:  # noqa: BLE001
-        log.error(f"Error dispatching executor: {e}")
+        log.error("Error dispatching executor", error=str(e))
         await redis_cache.delete(
             f"{EXECUTOR_BUSY_PREFIX}{conversation_id}",
         )
@@ -231,8 +231,9 @@ async def _dispatch_executor(
             user_message_id=user_message_id,
         )
         log.info(
-            f"Executor busy — task queued (task_id={task_id}) "
-            f"for conversation {conversation_id}",
+            "Executor busy — task queued",
+            task_id=task_id,
+            conversation_id=conversation_id,
         )
         return (
             "I'm already working on a task for this conversation. "
@@ -247,15 +248,15 @@ async def _dispatch_executor(
             loaded = await tool_registry.load_user_mcp_tools(user_id)
             if loaded:
                 log.info(
-                    f"Loaded MCP tools for user {user_id}: {list(loaded.keys())}",
+                    "Loaded MCP tools for user",
+                    user_id=user_id,
+                    tools=list(loaded.keys()),
                 )
         except Exception:  # noqa: BLE001
             log.warning("Failed to load user MCP tools", exc_info=True)
 
     user_time_str = configurable.get("user_time", "")
-    user_time = (
-        datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
-    )
+    user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
 
     if stream_id:
         mark_executor_spawned(stream_id)
@@ -275,12 +276,11 @@ async def _dispatch_executor(
     bg_task.add_done_callback(_executor_tasks.discard)
 
     log.info(
-        f"Executor dispatched (task_id={task_id}) to background for stream {stream_id}",
+        "Executor dispatched to background",
+        task_id=task_id,
+        stream_id=stream_id,
     )
-    return (
-        f"Task accepted (task_id: {task_id}). "
-        "I'm on it — you'll get progress updates as I work."
-    )
+    return f"Task accepted (task_id: {task_id}). I'm on it — you'll get progress updates as I work."
 
 
 @tool
@@ -322,12 +322,8 @@ async def cancel_executor(
 
     # Use raw client.get() — lock value is a plain string ("stream_id:task_id"),
     # not JSON. redis_cache.get() would fail to deserialize it.
-    raw_lock = (
-        await redis_cache.client.get(lock_key) if redis_cache.client else None
-    )
-    lock_value: str | None = (
-        str(raw_lock) if raw_lock is not None else None
-    )
+    raw_lock = await redis_cache.client.get(lock_key) if redis_cache.client else None
+    lock_value: str | None = str(raw_lock) if raw_lock is not None else None
     has_queue = redis_cache.client and await redis_cache.client.llen(queue_key) > 0
 
     if not lock_value and not has_queue:
@@ -355,13 +351,11 @@ async def cancel_executor(
 
         result = f"Cancelled: {', '.join(cancelled)}."
         if skipped_running:
-            result += (
-                " Currently running task was not in the cancel list — still running."
-            )
+            result += " Currently running task was not in the cancel list — still running."
         return result
 
     except Exception as e:  # noqa: BLE001
-        log.error(f"cancel_executor failed: {e}")
+        log.error("cancel_executor failed", error=str(e))
         await redis_cache.delete(lock_key)
         return f"Cancellation attempted but hit an error: {e}"
 
@@ -389,8 +383,10 @@ async def _cancel_running_task(
     await redis_cache.delete(lock_key)
 
     log.info(
-        f"cancel_executor: stopped running task {active_task_id} "
-        f"(stream={active_stream_id}) for {conversation_id}",
+        "cancel_executor: stopped running task",
+        task_id=active_task_id,
+        stream_id=active_stream_id,
+        conversation_id=conversation_id,
     )
     return [active_task_id or "running"]
 
@@ -412,8 +408,9 @@ async def _cancel_queued_tasks(
     if cancel_all:
         await redis_cache.client.delete(queue_key)
         log.info(
-            f"cancel_executor: cleared entire queue "
-            f"({queue_len}) for {conversation_id}",
+            "cancel_executor: cleared entire queue",
+            queue_len=queue_len,
+            conversation_id=conversation_id,
         )
         return [f"{queue_len} queued task(s)"]
 
@@ -456,8 +453,10 @@ async def _remove_queued_by_ids(
                 EXECUTOR_QUEUE_TTL,
             )
         log.info(
-            f"cancel_executor: removed {len(cancelled)} queued task(s), "
-            f"{len(keep)} remaining for {conversation_id}",
+            "cancel_executor: removed queued tasks",
+            removed=len(cancelled),
+            remaining=len(keep),
+            conversation_id=conversation_id,
         )
 
     return cancelled

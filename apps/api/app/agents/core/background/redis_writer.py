@@ -10,13 +10,13 @@ Usage:
 """
 
 import asyncio
+from collections.abc import Callable
 import json
-from typing import Any, Callable
-
-from shared.py.wide_events import log
+from typing import Any
 
 from app.agents.core.background.inbox import get_tool_event_collector
 from app.core.stream_manager import stream_manager
+from shared.py.wide_events import log
 
 # Prevent GC of in-flight publish tasks (asyncio.create_task is weakly referenced)
 _publish_tasks: set[asyncio.Task[None]] = set()
@@ -42,7 +42,7 @@ def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, Any]], None]
             _publish_tasks.add(task)
             task.add_done_callback(_publish_tasks.discard)
         except RuntimeError:
-            log.error(f"redis_writer: no event loop for stream {stream_id}")
+            log.error("redis_writer: no event loop for stream", stream_id=stream_id)
 
         collector = get_tool_event_collector(stream_id)
         if collector is not None:

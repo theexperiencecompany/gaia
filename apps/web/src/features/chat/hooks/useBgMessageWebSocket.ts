@@ -41,14 +41,10 @@ interface BgMessageEvent {
  */
 export function useBgMessageWebSocket() {
   const handleBgMessage = useCallback(async (raw: unknown) => {
-    console.log("[useBgMessageWebSocket] Received event:", raw);
     const event = raw as BgMessageEvent;
     const { conversation_id, message } = event;
 
     if (!conversation_id || !message?.message_id) {
-      console.warn(
-        "[useBgMessageWebSocket] Missing conversation_id or message_id",
-      );
       return;
     }
 
@@ -87,12 +83,8 @@ export function useBgMessageWebSocket() {
 
     // Also update store directly for immediate render if viewing this conversation
     const activeConvoId = useChatStore.getState().activeConversationId;
-    console.log(
-      `[useBgMessageWebSocket] Active: ${activeConvoId}, Message for: ${conversation_id}`,
-    );
     if (conversation_id === activeConvoId) {
       useChatStore.getState().addOrUpdateMessage(iMessage);
-      console.log("[useBgMessageWebSocket] Message inserted into store");
     }
   }, []);
 

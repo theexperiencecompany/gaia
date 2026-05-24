@@ -2,6 +2,7 @@
 
 import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/react";
 import { Spinner } from "@heroui/spinner";
+import { AlertCircleIcon } from "@icons";
 import type React from "react";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 
@@ -11,6 +12,8 @@ interface MarkdownViewerModalProps {
   title: string;
   content: string | null;
   isLoading?: boolean;
+  hasError?: boolean;
+  errorMessage?: string;
 }
 
 const MarkdownViewerModal: React.FC<MarkdownViewerModalProps> = ({
@@ -19,6 +22,8 @@ const MarkdownViewerModal: React.FC<MarkdownViewerModalProps> = ({
   title,
   content,
   isLoading,
+  hasError,
+  errorMessage = "Something went wrong while loading this file.",
 }) => {
   return (
     <Modal
@@ -40,6 +45,15 @@ const MarkdownViewerModal: React.FC<MarkdownViewerModalProps> = ({
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
               <Spinner size="md" color="default" />
+            </div>
+          ) : hasError ? (
+            <div className="flex flex-col items-center gap-2 py-12 text-center">
+              <AlertCircleIcon
+                width={28}
+                height={28}
+                className="text-red-400"
+              />
+              <p className="text-sm text-zinc-400">{errorMessage}</p>
             </div>
           ) : content ? (
             <MarkdownRenderer content={content} className="text-sm" />

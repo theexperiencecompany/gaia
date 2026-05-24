@@ -17,6 +17,8 @@ Folder Structure (per user):
   - ../skills/   - Shared skills (learned and custom)
 """
 
+import asyncio
+from collections.abc import Coroutine
 import contextlib
 import re
 from typing import Annotated, Any
@@ -41,6 +43,16 @@ from app.services.vfs.path_resolver import (
     validate_user_access,
 )
 from shared.py.wide_events import log
+
+# Module-level set to hold references to fire-and-forget tasks and prevent GC.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _fire_and_forget(coro: Coroutine[Any, Any, Any]) -> None:
+    """Schedule a coroutine without awaiting it, keeping a strong ref alive."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 def _get_context(config: RunnableConfig) -> dict[str, Any]:
@@ -327,14 +339,15 @@ async def vfs_write(
             )
             result = f"Wrote {len(content)} characters to: {resolved_path}"
 
-        # After successful write, check if this is a tracked todo canvas
+        # After successful write, check if this is a tracked todo canvas.
+        # Re-index ChromaDB out-of-band — never block the write on it.
         if "/todos/" in resolved_path and resolved_path.endswith("/canvas.md"):
             try:
                 # Extract todo_id from path: /users/{uid}/todos/{todo_id}/canvas.md
                 canvas_match = re.search(r"/todos/([^/]+)/canvas\.md$", resolved_path)
                 if canvas_match:
                     todo_id = canvas_match.group(1)
-                    await tracked_todo_service.reindex_canvas(todo_id, ctx["user_id"])
+                    _fire_and_forget(tracked_todo_service.reindex_canvas(todo_id, ctx["user_id"]))
             except Exception as reindex_err:
                 log.debug(f"Canvas reindex skipped: {reindex_err}", path=resolved_path)
 

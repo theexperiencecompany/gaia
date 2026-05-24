@@ -8,12 +8,10 @@ A tracked todo is a regular todo with:
 - log.md (system-written audit trail)
 """
 
+from datetime import UTC, datetime
 import re
-from datetime import datetime, timezone
 
 from bson import ObjectId
-
-from shared.py.wide_events import log
 
 from app.db.mongodb.collections import todos_collection
 from app.models.todo_models import Priority, TodoModel, TodoResponse
@@ -25,7 +23,7 @@ from app.utils.canvas_vector_utils import (
     update_canvas_embedding,
 )
 from app.utils.redis_utils import RedisPoolManager
-
+from shared.py.wide_events import log
 
 CANVAS_TEMPLATE = """# {title}
 
@@ -52,10 +50,14 @@ GAIA_TRACKED_LABEL = "gaia-tracked"
 
 
 class TrackedTodoService:
-    """Manages VFS lifecycle for tracked (GAIA working memory) todos."""
+    """Manages VFS lifecycle for tracked (GAIA working memory) todos.
 
+    All methods are static — the service holds no instance state. The
+    ``tracked_todo_service`` singleton is kept for call-site compatibility.
+    """
+
+    @staticmethod
     async def create_tracked_todo(
-        self,
         user_id: str,
         title: str,
         description: str | None = None,
@@ -94,7 +96,7 @@ class TrackedTodoService:
         canvas_content = initial_canvas or CANVAS_TEMPLATE.format(title=title)
 
         vfs = MongoVFS()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         await vfs.write(
             path=f"{vfs_path}/canvas.md",
@@ -140,13 +142,10 @@ class TrackedTodoService:
         )
         return result
 
-    async def complete_tracked_todo(
-        self, todo_id: str, user_id: str, summary: str
-    ) -> bool:
+    @staticmethod
+    async def complete_tracked_todo(todo_id: str, user_id: str, summary: str) -> bool:
         """Complete a tracked todo: archive VFS, remove from ChromaDB index."""
-        doc = await todos_collection.find_one(
-            {"_id": ObjectId(todo_id), "user_id": user_id}
-        )
+        doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
         if not doc:
             return False
 
@@ -158,7 +157,7 @@ class TrackedTodoService:
         if not vfs_path:
             return False
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         vfs = MongoVFS()
 
         # Append completion to log
@@ -204,9 +203,8 @@ class TrackedTodoService:
         )
         return True
 
-    async def get_active_tracked_summary(
-        self, user_id: str, active_todo_id: str | None = None
-    ) -> str:
+    @staticmethod
+    async def get_active_tracked_summary(user_id: str, active_todo_id: str | None = None) -> str:
         """Formatted summary of active tracked todos for context injection.
 
         When active_todo_id is provided, that todo is pinned at the top with
@@ -234,7 +232,7 @@ class TrackedTodoService:
             if pinned_idx is not None and pinned_idx > 0:
                 docs.insert(0, docs.pop(pinned_idx))
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         lines = ["ACTIVE TRACKED TODOS:"]
 
         for doc in docs:
@@ -260,9 +258,8 @@ class TrackedTodoService:
 
         return "\n".join(lines)
 
-    async def append_canvas_timeline(
-        self, todo_id: str, user_id: str, entry: str
-    ) -> bool:
+    @staticmethod
+    async def append_canvas_timeline(todo_id: str, user_id: str, entry: str) -> bool:
         """Append a line to the canvas Timeline section.
 
         Called by code (not agent) to guarantee a paper trail for scheduled runs
@@ -270,9 +267,7 @@ class TrackedTodoService:
         section, the line is inserted at the top of its body; otherwise a new
         section is appended at the end of the canvas.
         """
-        doc = await todos_collection.find_one(
-            {"_id": ObjectId(todo_id), "user_id": user_id}
-        )
+        doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
         if not doc or not doc.get("vfs_path"):
             return False
 
@@ -310,28 +305,26 @@ class TrackedTodoService:
             return False
         return True
 
-    async def system_log(
-        self, todo_id: str, user_id: str, event_type: str, details: str
-    ) -> None:
+    @staticmethod
+    async def system_log(todo_id: str, user_id: str, event_type: str, details: str) -> None:
         """Append a system log entry to a tracked todo's log.md.
 
         Called by code (not agent) for audit trail. Agent writes to canvas.md.
         """
-        doc = await todos_collection.find_one(
-            {"_id": ObjectId(todo_id), "user_id": user_id}
-        )
+        doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
         if not doc or not doc.get("vfs_path"):
             return
 
         vfs = MongoVFS()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await vfs.append(
             path=f"{doc['vfs_path']}/log.md",
             content=f"\n## {now.isoformat()} [{event_type}]\n- {details}\n",
             user_id=user_id,
         )
 
-    async def get_signal_matching_context(self, user_id: str) -> str:
+    @staticmethod
+    async def get_signal_matching_context(user_id: str) -> str:
         """Compact tracked todos summary optimized for signal matching.
 
         Includes key IDs (thread_ids, email addresses, event_ids) so the
@@ -361,9 +354,7 @@ class TrackedTodoService:
             key_details = ""
             if vfs_path:
                 try:
-                    canvas = await vfs.read(
-                        path=f"{vfs_path}/canvas.md", user_id=user_id
-                    )
+                    canvas = await vfs.read(path=f"{vfs_path}/canvas.md", user_id=user_id)
                     if canvas:
                         # Extract Key Details section
                         match = re.search(
@@ -390,23 +381,19 @@ class TrackedTodoService:
 
             lines.append(entry)
 
-        return (
-            "ACTIVE TRACKED TODOS (check if incoming signal relates to any):\n"
-            + "\n".join(lines)
+        return "ACTIVE TRACKED TODOS (check if incoming signal relates to any):\n" + "\n".join(
+            lines
         )
 
-    async def reindex_canvas(self, todo_id: str, user_id: str) -> bool:
+    @staticmethod
+    async def reindex_canvas(todo_id: str, user_id: str) -> bool:
         """Re-index a todo's canvas.md in ChromaDB after agent writes to it."""
-        doc = await todos_collection.find_one(
-            {"_id": ObjectId(todo_id), "user_id": user_id}
-        )
+        doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
         if not doc or not doc.get("vfs_path"):
             return False
 
         vfs = MongoVFS()
-        canvas_content = await vfs.read(
-            path=f"{doc['vfs_path']}/canvas.md", user_id=user_id
-        )
+        canvas_content = await vfs.read(path=f"{doc['vfs_path']}/canvas.md", user_id=user_id)
         if not canvas_content:
             return False
 
@@ -418,7 +405,8 @@ class TrackedTodoService:
             labels=doc.get("labels"),
         )
 
-    async def schedule_execution(self, todo_id: str, scheduled_at: datetime) -> bool:
+    @staticmethod
+    async def schedule_execution(todo_id: str, scheduled_at: datetime) -> bool:
         """Enqueue an ARQ deferred job to execute this tracked todo at scheduled_at.
 
         Returns True if job was enqueued successfully, False otherwise.
@@ -435,37 +423,36 @@ class TrackedTodoService:
             log.warning("tracked_todo.schedule_failed", todo_id=todo_id, error=str(e))
             return False
 
-    async def reschedule_execution(
-        self, todo_id: str, new_scheduled_at: datetime
-    ) -> bool:
+    @staticmethod
+    async def reschedule_execution(todo_id: str, new_scheduled_at: datetime) -> bool:
         """Cancel any existing ARQ job for this todo and enqueue a new one.
 
         Note: ARQ does not support cancelling deferred jobs by argument.
         We enqueue a new job; the task itself uses a Redis lock to prevent
         double-execution. This is safe — at most one execution fires per lock window.
         """
-        return await self.schedule_execution(todo_id, new_scheduled_at)
+        return await TrackedTodoService.schedule_execution(todo_id, new_scheduled_at)
 
-    async def archive_tracked_todo(
-        self, todo_id: str, user_id: str, reason: str
-    ) -> bool:
+    @staticmethod
+    async def archive_tracked_todo(todo_id: str, user_id: str, reason: str) -> bool:
         """Archive a tracked todo by marking it completed with a system-generated summary.
 
         Used by maintenance sweep when a todo expires cleanly (no action needed).
         Logs the archival reason to log.md before completing.
         """
         try:
-            await self.system_log(
+            await TrackedTodoService.system_log(
                 todo_id,
                 user_id,
                 "auto_archived",
                 f"Archived by maintenance sweep: {reason}",
             )
-            return await self.complete_tracked_todo(
+            return await TrackedTodoService.complete_tracked_todo(
                 todo_id, user_id, summary=f"Auto-archived: {reason}"
             )
         except Exception as e:
             log.warning("tracked_todo.archive_failed", todo_id=todo_id, error=str(e))
             return False
+
 
 tracked_todo_service = TrackedTodoService()

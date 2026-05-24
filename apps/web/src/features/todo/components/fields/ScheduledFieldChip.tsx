@@ -1,6 +1,6 @@
 "use client";
 
-import { Input } from "@heroui/react";
+import { Button, Divider, Input } from "@heroui/react";
 import { Cancel01Icon, Clock01Icon } from "@icons";
 import BaseFieldChip from "./BaseFieldChip";
 
@@ -122,66 +122,66 @@ export default function ScheduledFieldChip({
               className="w-full"
               aria-label="Select scheduled date"
             />
-            <input
+            <Input
               type="time"
               value={timeInputValue}
               onChange={handleTimeChange}
-              className="w-full rounded-lg bg-zinc-800 px-3 py-2 text-sm text-zinc-200 outline-none focus:ring-1 focus:ring-zinc-600"
+              size="sm"
+              variant="flat"
+              className="w-full"
               aria-label="Select scheduled time"
             />
           </div>
 
           {/* Quick schedule options */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleQuickSchedule(1, onClose);
-            }}
-            className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
+          <Button
+            variant="light"
+            fullWidth
+            radius="lg"
+            className="justify-start gap-2 px-3 text-zinc-500"
+            startContent={<Clock01Icon width={18} height={18} />}
+            onPress={() => handleQuickSchedule(1, onClose)}
           >
-            <Clock01Icon width={18} height={18} />
             In 1 hour
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleQuickSchedule(4, onClose);
-            }}
-            className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
+          </Button>
+          <Button
+            variant="light"
+            fullWidth
+            radius="lg"
+            className="justify-start gap-2 px-3 text-zinc-500"
+            startContent={<Clock01Icon width={18} height={18} />}
+            onPress={() => handleQuickSchedule(4, onClose)}
           >
-            <Clock01Icon width={18} height={18} />
             In 4 hours
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleQuickSchedule(24, onClose);
-            }}
-            className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
+          </Button>
+          <Button
+            variant="light"
+            fullWidth
+            radius="lg"
+            className="justify-start gap-2 px-3 text-zinc-500"
+            startContent={<Clock01Icon width={18} height={18} />}
+            onPress={() => handleQuickSchedule(24, onClose)}
           >
-            <Clock01Icon width={18} height={18} />
             Tomorrow
-          </button>
+          </Button>
 
           {/* Clear option */}
           {value && (
             <>
-              <div className="my-1 h-px bg-zinc-700" />
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
+              <Divider className="my-1 bg-zinc-700" />
+              <Button
+                variant="light"
+                fullWidth
+                radius="lg"
+                className="justify-start gap-2 px-3 text-red-400"
+                startContent={<Cancel01Icon width={18} height={18} />}
+                onPress={() => {
                   onChange(undefined);
                   onClose();
                 }}
-                className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-red-400 transition-colors hover:bg-zinc-800"
               >
-                <Cancel01Icon width={18} height={18} />
                 Clear schedule
-              </button>
+              </Button>
             </>
           )}
         </div>

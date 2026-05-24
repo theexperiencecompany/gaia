@@ -12,9 +12,10 @@ import {
   Folder02Icon,
   Tag01Icon,
 } from "@icons";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { memo, useMemo } from "react";
 import { ChevronRight } from "@/components/shared/icons";
+import { useUser } from "@/features/auth/hooks/useUser";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
@@ -58,6 +59,26 @@ const priorityRingColors = {
   [Priority.NONE]: "border-zinc-500",
 } as const;
 
+const formatScheduledLabel = (
+  scheduledAt: string | null | undefined,
+  timezone: string | undefined,
+): string | undefined => {
+  if (!scheduledAt) return undefined;
+  const resolvedTimezone =
+    timezone && timezone.trim() !== ""
+      ? timezone
+      : Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: resolvedTimezone,
+  }).format(new Date(scheduledAt));
+};
+
 export default memo(function TodoItem({
   todo,
   projects,
@@ -81,6 +102,14 @@ export default memo(function TodoItem({
 
     onUpdate(todo.id, { completed: newCompletedState });
   };
+
+  const user = useUser();
+  // Format scheduled time in the user's preferred timezone so it matches the
+  // todo modal / ScheduledFieldChip instead of the browser's local timezone.
+  const scheduledLabel = useMemo(
+    () => formatScheduledLabel(todo.scheduled_at, user?.timezone),
+    [todo.scheduled_at, user?.timezone],
+  );
 
   const todoProject = projects?.find((p) => p.id === todo.project_id);
 
@@ -185,10 +214,7 @@ export default memo(function TodoItem({
                     <Clock01Icon width={16} height={16} className="mx-1" />
                   }
                 >
-                  {format(
-                    new Date(todo.scheduled_at),
-                    "EEE, MMM d 'at' h:mm a",
-                  )}
+                  {scheduledLabel}
                 </Chip>
               )}
 

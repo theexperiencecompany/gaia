@@ -12,6 +12,11 @@ import ChatBubble_Actions from "@/features/chat/components/bubbles/actions/ChatB
 import ChatBubble_Actions_Image from "@/features/chat/components/bubbles/actions/ChatBubble_Actions_Image";
 import MemoryIndicator from "@/features/chat/components/memory/MemoryIndicator";
 import { useLoading } from "@/features/chat/hooks/useLoading";
+import {
+  MESSAGE_BREAK_DURATION_SECONDS,
+  MESSAGE_BREAK_EASE_OUT_QUART,
+  MESSAGE_BREAK_STAGGER_SECONDS,
+} from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
@@ -20,12 +25,6 @@ import { parseDate } from "@/utils/date/dateUtils";
 import FollowUpActions from "./FollowUpActions";
 import ImageBubble from "./ImageBubble";
 import TextBubble from "./TextBubble";
-
-const MESSAGE_BREAK_STAGGER_SECONDS = 0.08;
-const MESSAGE_BREAK_DURATION_SECONDS = 0.25;
-const MESSAGE_BREAK_EASE_OUT_QUART: [number, number, number, number] = [
-  0.25, 1, 0.5, 1,
-];
 
 export default function ChatBubbleBot(
   props: ChatBubbleBotProps & {

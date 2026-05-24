@@ -16,16 +16,20 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({ vfsPath, todoTitle }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [content, setContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
   const handleOpen = async () => {
     setIsOpen(true);
+    // Re-fetch if we have neither content nor a prior successful load, so a
+    // failed read can be retried simply by reopening the viewer.
     if (content !== null) return;
     setIsLoading(true);
+    setHasError(false);
     try {
       const res = await vfsApi.readFile(`${vfsPath}/canvas.md`);
       setContent(res.content);
     } catch {
-      setContent(null);
+      setHasError(true);
     } finally {
       setIsLoading(false);
     }
@@ -54,6 +58,8 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({ vfsPath, todoTitle }) => {
         title={`canvas.md — ${todoTitle}`}
         content={content}
         isLoading={isLoading}
+        hasError={hasError}
+        errorMessage="Couldn't load canvas.md. Close and reopen to try again."
       />
     </>
   );

@@ -18,41 +18,57 @@ Requires:
 """
 
 import asyncio
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 import json
+import os
+from pathlib import Path
 import sys
 import time
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from pathlib import Path
 
+from dotenv import load_dotenv
 import httpx
 from jose import jwt
 
 # ── Config ─────────────────────────────────────────────────────────────────────
+# Secrets and the test user identity come from the environment (.env). Never
+# hardcode them — AGENT_SECRET is a real signing key.
 
-API_BASE = "http://localhost:8000"
-AGENT_SECRET = "gaia_dev_testing_secret_2026"
-EVAL_USER_ID = "69c411d74afc56a363ad3781"  # local dev user (dhruvmaradiya0@gmail.com)
+load_dotenv()
+
+API_BASE = os.environ.get("API_BASE", "http://localhost:8000")
+AGENT_SECRET = os.environ.get("AGENT_SECRET")
+EVAL_USER_ID = os.environ.get("EVAL_USER_ID")
 JWT_ALGORITHM = "HS256"
 STREAM_TIMEOUT = 120  # seconds to wait for each stream to finish
+
+if not AGENT_SECRET:
+    print("ERROR: AGENT_SECRET is not set. Add it to apps/api/.env and re-run.")
+    sys.exit(1)
+if not EVAL_USER_ID:
+    print("ERROR: EVAL_USER_ID is not set. Add the test user id to apps/api/.env.")
+    sys.exit(1)
 
 
 # ── Auth helper ────────────────────────────────────────────────────────────────
 
+
 def create_agent_token(user_id: str) -> str:
     from datetime import timedelta
-    expire = datetime.now(timezone.utc) + timedelta(minutes=60)
+
+    expire = datetime.now(UTC) + timedelta(minutes=60)
     payload = {
         "sub": user_id,
         "role": "agent",
         "exp": expire,
-        "iat": datetime.now(timezone.utc),
+        "iat": datetime.now(UTC),
     }
     return jwt.encode(payload, AGENT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 # ── Test scenario definitions ──────────────────────────────────────────────────
+
 
 @dataclass
 class TestScenario:
@@ -141,7 +157,6 @@ SCENARIOS: list[TestScenario] = [
         tags=["chat", "no-todo", "no-integration-needed"],
         requires_integrations=[],
     ),
-
     # ── READ actions — should NOT create tracked todos ─────────────────────────
     TestScenario(
         id="S05",
@@ -215,14 +230,15 @@ SCENARIOS: list[TestScenario] = [
         tags=["gcalendar", "linear", "read", "no-todo"],
         requires_integrations=[],
     ),
-
     # ── Integration-required write tests (skipped when integrations absent) ────
     TestScenario(
         id="S11",
         name="Linear issue creation + comment",
         description="Create a Linear issue, then add a comment to it — one tracked todo for both actions",
         chats=[
-            "create a Linear issue titled 'Test: flaky auth timeout " + datetime.now(timezone.utc).strftime("%Y%m%d%H%M") + "' with medium priority, assign to me",
+            "create a Linear issue titled 'Test: flaky auth timeout "
+            + datetime.now(UTC).strftime("%Y%m%d%H%M")
+            + "' with medium priority, assign to me",
             "add a comment to that issue: 'Reproduced on staging, affects ~5% of logins'",
         ],
         expected_todo_created=True,
@@ -271,6 +287,7 @@ SCENARIOS: list[TestScenario] = [
 
 
 # ── API helpers ────────────────────────────────────────────────────────────────
+
 
 async def send_chat_message(
     client: httpx.AsyncClient,
@@ -337,10 +354,12 @@ async def send_chat_message(
                     td = event["tool_data"]
                     tool_name = td.get("tool_name", td.get("name", ""))
                     if tool_name:
-                        tool_calls.append({
-                            "name": tool_name,
-                            "input": td.get("tool_input", td.get("input", {})),
-                        })
+                        tool_calls.append(
+                            {
+                                "name": tool_name,
+                                "input": td.get("tool_input", td.get("input", {})),
+                            }
+                        )
 
                 # Error
                 if "error" in event or "[STREAM_ERROR]" in str(event):
@@ -367,12 +386,15 @@ async def get_tracked_todos(client: httpx.AsyncClient, token: str) -> list[dict]
     """
     try:
         from motor.motor_asyncio import AsyncIOMotorClient
+
         mongo = AsyncIOMotorClient("mongodb://localhost:27017")
         db = mongo["GAIA"]
-        docs = await db.todos.find({
-            "user_id": EVAL_USER_ID,
-            "labels": "gaia-tracked",
-        }).to_list(100)
+        docs = await db.todos.find(
+            {
+                "user_id": EVAL_USER_ID,
+                "labels": "gaia-tracked",
+            }
+        ).to_list(100)
         return [
             {
                 "id": str(doc["_id"]),
@@ -392,8 +414,9 @@ async def get_tracked_todos(client: httpx.AsyncClient, token: str) -> list[dict]
 async def delete_todos_by_ids(todo_ids: list[str]) -> None:
     """Clean up test todos via MongoDB (agent token doesn't support DELETE endpoint)."""
     try:
-        from motor.motor_asyncio import AsyncIOMotorClient
         from bson import ObjectId
+        from motor.motor_asyncio import AsyncIOMotorClient
+
         mongo = AsyncIOMotorClient("mongodb://localhost:27017")
         db = mongo["GAIA"]
         for tid in todo_ids:
@@ -404,9 +427,8 @@ async def delete_todos_by_ids(todo_ids: list[str]) -> None:
 
 # ── Tester ────────────────────────────────────────────────────────────────────
 
-async def check_connected_integrations(
-    client: httpx.AsyncClient, token: str
-) -> set[str]:
+
+async def check_connected_integrations(client: httpx.AsyncClient, token: str) -> set[str]:
     """Return set of connected integration IDs for the current user (via MongoDB)."""
     from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -414,9 +436,7 @@ async def check_connected_integrations(
     db = mongo["GAIA"]
     connected: set[str] = set()
     try:
-        cursor = db.user_integrations.find(
-            {"user_id": EVAL_USER_ID, "status": "connected"}
-        )
+        cursor = db.user_integrations.find({"user_id": EVAL_USER_ID, "status": "connected"})
         async for doc in cursor:
             integration_id = doc.get("integration_id", "")
             if integration_id:
@@ -433,7 +453,7 @@ async def run_scenario(
     cleanup: bool = True,
 ) -> ScenarioResult:
     """Run a single test scenario."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"[{scenario.id}] {scenario.name}")
     print(f"  Tags: {', '.join(scenario.tags)}")
 
@@ -463,10 +483,8 @@ async def run_scenario(
         chat_results: list[ChatResult] = []
 
         for i, message in enumerate(scenario.chats):
-            print(f"  Chat {i+1}: {message[:80]}{'...' if len(message) > 80 else ''}")
-            result = await send_chat_message(
-                client, token, message, conversation_id, history
-            )
+            print(f"  Chat {i + 1}: {message[:80]}{'...' if len(message) > 80 else ''}")
+            result = await send_chat_message(client, token, message, conversation_id, history)
             chat_results.append(result)
 
             if result.error:
@@ -501,9 +519,7 @@ async def run_scenario(
         actual_new_count = len(new_todos)
 
         if scenario.expected_todo_created and actual_new_count == 0:
-            failures.append(
-                "Expected ≥1 tracked todo to be created, but got 0"
-            )
+            failures.append("Expected ≥1 tracked todo to be created, but got 0")
         elif not scenario.expected_todo_created and actual_new_count > 0:
             todo_titles = [t.get("title", "?") for t in new_todos]
             failures.append(
@@ -524,18 +540,19 @@ async def run_scenario(
         if "create_tracked_todo" in tool_names_ordered:
             create_idx = tool_names_ordered.index("create_tracked_todo")
             search_before = any(
-                t["name"] == "search_todo_context"
-                for t in all_tool_calls[:create_idx]
+                t["name"] == "search_todo_context" for t in all_tool_calls[:create_idx]
             )
             if not search_before:
-                failures.append("create_tracked_todo called WITHOUT prior search_todo_context (search-first rule violated)")
+                failures.append(
+                    "create_tracked_todo called WITHOUT prior search_todo_context (search-first rule violated)"
+                )
             else:
                 notes.append("✓ search_todo_context was called before create_tracked_todo")
 
         # Check for errors
         for i, cr in enumerate(chat_results):
             if cr.error:
-                failures.append(f"Chat {i+1} errored: {cr.error[:200]}")
+                failures.append(f"Chat {i + 1} errored: {cr.error[:200]}")
 
         passed = len(failures) == 0
 
@@ -573,8 +590,9 @@ async def run_scenario(
 
 # ── Reporter ──────────────────────────────────────────────────────────────────
 
+
 def generate_report(results: list[ScenarioResult], duration_s: float) -> str:
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     skipped = [r for r in results if r.notes and any("Skipped" in n for n in r.notes)]
     run = [r for r in results if not (r.notes and any("Skipped" in n for n in r.notes))]
     passed = [r for r in run if r.passed]
@@ -649,7 +667,7 @@ def generate_report(results: list[ScenarioResult], duration_s: float) -> str:
         lines.append("**Chat transcript:**")
         lines.append("")
         for i, cr in enumerate(r.chat_results):
-            lines.append(f"*Chat {i+1}:* `{cr.message[:100]}`")
+            lines.append(f"*Chat {i + 1}:* `{cr.message[:100]}`")
             if cr.tool_calls:
                 tools = ", ".join(t["name"] for t in cr.tool_calls)
                 lines.append(f"- Tools called: {tools}")
@@ -667,6 +685,7 @@ def generate_report(results: list[ScenarioResult], duration_s: float) -> str:
 
 
 # ── Improver ──────────────────────────────────────────────────────────────────
+
 
 def generate_improvement_plan(results: list[ScenarioResult]) -> str:
     skipped = [r for r in results if r.notes and any("Skipped" in n for n in r.notes)]
@@ -811,21 +830,24 @@ def generate_improvement_plan(results: list[ScenarioResult]) -> str:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+
 async def reset_rate_limits() -> None:
     """Clear all chat_messages rate limit keys for the test user in Redis."""
+    from datetime import datetime
+
     import redis.asyncio as aioredis
-    from datetime import datetime, timezone
 
     r = aioredis.from_url("redis://localhost:6379")
     try:
         # Key format: rate_limit:{user_id}:{feature}:{period_repr}:{time_window}
         # period_repr uses Python enum repr: "RateLimitPeriod.DAY" / "RateLimitPeriod.MONTH"
-        today = datetime.now(timezone.utc).strftime("%Y%m%d")
-        month = datetime.now(timezone.utc).strftime("%Y%m")
+        today = datetime.now(UTC).strftime("%Y%m%d")
+        month = datetime.now(UTC).strftime("%Y%m")
         # Also cover yesterday in case UTC date hasn't rolled over yet
         from datetime import timedelta
-        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y%m%d")
-        prev_month = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y%m")
+
+        yesterday = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y%m%d")
+        prev_month = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y%m")
 
         keys_to_delete = [
             f"rate_limit:{EVAL_USER_ID}:chat_messages:RateLimitPeriod.DAY:{today}",
@@ -846,10 +868,12 @@ async def purge_orphaned_todos() -> None:
     mongo = AsyncIOMotorClient("mongodb://localhost:27017")
     db = mongo["GAIA"]
     try:
-        result = await db.todos.delete_many({
-            "user_id": EVAL_USER_ID,
-            "labels": "gaia-tracked",
-        })
+        result = await db.todos.delete_many(
+            {
+                "user_id": EVAL_USER_ID,
+                "labels": "gaia-tracked",
+            }
+        )
         print(f"  Purged {result.deleted_count} orphaned gaia-tracked todo(s)")
     finally:
         mongo.close()
@@ -909,16 +933,20 @@ async def main() -> None:
     # Print summary
     skipped_count = sum(1 for r in results if r.notes and any("Skipped" in n for n in r.notes))
     run_count = len(results) - skipped_count
-    passed_count = sum(1 for r in results if r.passed and not (r.notes and any("Skipped" in n for n in r.notes)))
-    print(f"\n{'='*60}")
-    print(f"FINAL RESULTS: {passed_count}/{run_count} passed, {skipped_count} skipped ({duration:.1f}s)")
+    passed_count = sum(
+        1 for r in results if r.passed and not (r.notes and any("Skipped" in n for n in r.notes))
+    )
+    print(f"\n{'=' * 60}")
+    print(
+        f"FINAL RESULTS: {passed_count}/{run_count} passed, {skipped_count} skipped ({duration:.1f}s)"
+    )
     print(f"Report:       {report_path}")
     print(f"Action plan:  {plan_path}")
 
     # Print report to stdout too
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print(report)
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print(plan)
 
 

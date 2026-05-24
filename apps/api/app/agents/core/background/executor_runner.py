@@ -12,16 +12,19 @@ conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import uuid4
 
 from langchain_core.messages import SystemMessage
 from langsmith import traceable
-from shared.py.wide_events import log
 
 from app.agents.core.background.inbox import (
+    deregister_bg_subagent_results,
+    deregister_executor_done_event,
+    deregister_executor_spawned,
+    deregister_pending_subagents,
     deregister_tool_event_collector,
     get_executor_done_event,
     get_tool_event_collector,
@@ -44,6 +47,7 @@ from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import ReplyToMessageData
 from app.services.conversation_service import update_messages
 from app.utils.stream_utils import reconstruct_subagent_groups
+from shared.py.wide_events import log
 
 # Prevent GC of background tasks spawned from the queue
 _queued_executor_tasks: set[asyncio.Task] = set()
@@ -73,7 +77,7 @@ async def _invoke_comms_graph(
         config = build_agent_config(
             conversation_id=conversation_id,
             user=user,
-            user_time=datetime.now(timezone.utc),
+            user_time=datetime.now(UTC),
             agent_name="comms_agent",
         )
         initial_state = {
@@ -84,12 +88,10 @@ async def _invoke_comms_graph(
                 ),
             ],
         }
-        notification_text, _ = await execute_graph_silent(
-            comms_graph, initial_state, config
-        )
+        notification_text, _ = await execute_graph_silent(comms_graph, initial_state, config)
         return notification_text
     except Exception as e:
-        log.error(f"_invoke_comms_graph: failed: {e}")
+        log.error("_invoke_comms_graph: failed", error=str(e))
         return ""
 
 
@@ -109,13 +111,13 @@ async def _lookup_user_message_content(
         if conv_doc and conv_doc.get("messages"):
             return conv_doc["messages"][0].get("response", "")[:150]
     except Exception as e:
-        log.warning(f"_lookup_user_message_content: failed: {e}")
+        log.warning("_lookup_user_message_content: failed", error=str(e))
     return ""
 
 
 def _collect_queued_tool_events(
     stream_id: str,
-) -> Optional[List[Dict[str, Any]]]:
+) -> list[dict[str, Any]] | None:
     """Drain the tool event collector for a queued stream into a tool_data list.
 
     Only called for queued tasks — live tasks already have tool_data on the
@@ -124,8 +126,8 @@ def _collect_queued_tool_events(
     collector = get_tool_event_collector(stream_id)
     if not collector:
         return None
-    accumulated: Dict[str, Any] = {"tool_data": []}
-    tool_outputs: Dict[str, str] = {}
+    accumulated: dict[str, Any] = {"tool_data": []}
+    tool_outputs: dict[str, str] = {}
     for evt in collector:
         if "tool_data" in evt:
             accumulated["tool_data"].append(evt["tool_data"])
@@ -135,13 +137,13 @@ def _collect_queued_tool_events(
             if tid and val:
                 tool_outputs[tid] = val
         if "subagent_start" in evt:
-            accumulated.setdefault("subagent_starts", {})[
-                evt["subagent_start"]["subagent_id"]
-            ] = evt["subagent_start"]
+            accumulated.setdefault("subagent_starts", {})[evt["subagent_start"]["subagent_id"]] = (
+                evt["subagent_start"]
+            )
         if "subagent_end" in evt:
-            accumulated.setdefault("subagent_ends", {})[
-                evt["subagent_end"]["subagent_id"]
-            ] = evt["subagent_end"]
+            accumulated.setdefault("subagent_ends", {})[evt["subagent_end"]["subagent_id"]] = evt[
+                "subagent_end"
+            ]
     for entry in accumulated["tool_data"]:
         data = entry.get("data", {})
         if isinstance(data, dict):
@@ -152,7 +154,7 @@ def _collect_queued_tool_events(
     return accumulated.get("tool_data") or None
 
 
-async def _broadcast_message(user_id: str, ws_event: Dict[str, Any]) -> None:
+async def _broadcast_message(user_id: str, ws_event: dict[str, Any]) -> None:
     """Best-effort WebSocket broadcast with one retry."""
     for attempt in range(2):
         try:
@@ -160,8 +162,10 @@ async def _broadcast_message(user_id: str, ws_event: Dict[str, Any]) -> None:
             return
         except Exception as ws_err:
             log.warning(
-                f"_broadcast_message: attempt {attempt + 1} failed "
-                f"for user {user_id}: {ws_err}"
+                "_broadcast_message: broadcast attempt failed",
+                attempt=attempt + 1,
+                user_id=user_id,
+                error=str(ws_err),
             )
             if attempt == 0:
                 await asyncio.sleep(0.5)
@@ -173,9 +177,9 @@ async def _deliver_bg_notification(
     msg_type: str,
     conversation_id: str,
     user: dict,
-    task_id: Optional[str] = None,
-    user_message_id: Optional[str] = None,
-    tool_data: Optional[List[Dict[str, Any]]] = None,
+    task_id: str | None = None,
+    user_message_id: str | None = None,
+    tool_data: list[dict[str, Any]] | None = None,
 ) -> None:
     """Run comms once with the executor result, then save + WS-push the message.
 
@@ -196,9 +200,7 @@ async def _deliver_bg_notification(
     """
     user_id = user.get("user_id", "")
 
-    notification_text = await _invoke_comms_graph(
-        result_text, msg_type, conversation_id, user
-    )
+    notification_text = await _invoke_comms_graph(result_text, msg_type, conversation_id, user)
     # If comms is unavailable, fall back to the raw executor text rather than
     # dropping the message entirely.
     if not notification_text:
@@ -207,7 +209,7 @@ async def _deliver_bg_notification(
     bot_message = MessageModel(
         type="bot",
         response=notification_text,
-        date=datetime.now(timezone.utc).isoformat(),
+        date=datetime.now(UTC).isoformat(),
     )
     bot_message.message_id = str(uuid4())
     if tool_data:
@@ -215,9 +217,7 @@ async def _deliver_bg_notification(
 
     user_msg_content = ""
     if user_message_id:
-        user_msg_content = await _lookup_user_message_content(
-            conversation_id, user_message_id
-        )
+        user_msg_content = await _lookup_user_message_content(conversation_id, user_message_id)
         bot_message.replyToMessage = ReplyToMessageData(
             id=user_message_id,
             content=user_msg_content,
@@ -233,10 +233,10 @@ async def _deliver_bg_notification(
             user=user,
         )
     except Exception as e:
-        log.error(f"_deliver_bg_notification: failed to save message: {e}")
+        log.error("_deliver_bg_notification: failed to save message", error=str(e))
         return
 
-    ws_payload: Dict[str, Any] = {
+    ws_payload: dict[str, Any] = {
         "type": "bot",
         "response": notification_text,
         "message_id": bot_message.message_id,
@@ -261,8 +261,10 @@ async def _deliver_bg_notification(
         },
     )
     log.info(
-        f"_deliver_bg_notification: delivered message {bot_message.message_id} "
-        f"(task_id={task_id}) for conversation {conversation_id}"
+        "_deliver_bg_notification: delivered message",
+        message_id=bot_message.message_id,
+        task_id=task_id,
+        conversation_id=conversation_id,
     )
 
 
@@ -273,8 +275,8 @@ async def run_executor_background(
     user_time: datetime,
     stream_id: str,
     conversation_id: str,
-    task_id: Optional[str] = None,
-    user_message_id: Optional[str] = None,
+    task_id: str | None = None,
+    user_message_id: str | None = None,
 ) -> None:
     """Run executor agent in background and hand its result to comms for delivery.
 
@@ -294,7 +296,7 @@ async def run_executor_background(
 
     user: dict = {
         "user_id": configurable.get("user_id", ""),
-        "email": configurable.get("user_email", ""),
+        "email": configurable.get("email", ""),
         "name": configurable.get("user_name", ""),
     }
 
@@ -309,23 +311,27 @@ async def run_executor_background(
         if error or ctx is None:
             result_text = error or "Executor agent not available"
             result_type = "error"
-            log.error(f"Background executor prep failed: {result_text}")
+            log.error("Background executor prep failed", error=result_text)
             return
 
         writer = make_redis_stream_writer(stream_id)
         result_text = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
 
         log.info(
-            f"Background executor completed (task_id={task_id}) for stream {stream_id}"
+            "Background executor completed",
+            task_id=task_id,
+            stream_id=stream_id,
         )
 
     except Exception as e:
-        log.error(f"Background executor failed for stream {stream_id}: {e}")
+        log.error(
+            "Background executor failed",
+            stream_id=stream_id,
+            error=str(e),
+        )
         result_text = str(e)
         result_type = "error"
     finally:
-        await redis_cache.delete(lock_key)
-
         was_cancelled = bool(stream_id) and await StreamManager.is_cancelled(stream_id)
         is_queued = stream_id.startswith("queued_")
 
@@ -338,8 +344,9 @@ async def run_executor_background(
 
         if was_cancelled:
             log.info(
-                f"Skipping notification for cancelled executor "
-                f"(task_id={task_id}, stream={stream_id})"
+                "Skipping notification for cancelled executor",
+                task_id=task_id,
+                stream_id=stream_id,
             )
 
         if result_text and not was_cancelled:
@@ -359,48 +366,69 @@ async def run_executor_background(
                     tool_data=queued_tool_data,
                 )
             except Exception as e:
-                log.error(f"Background notification delivery failed: {e}")
+                log.error("Background notification delivery failed", error=str(e))
 
+        # Queued streams never reach chat_service's finally block, so the
+        # in-process per-stream orchestration state they registered would
+        # leak. Mirror chat_service's cleanup here for queued streams.
         if is_queued:
+            deregister_executor_done_event(stream_id)
             deregister_tool_event_collector(stream_id)
+            deregister_pending_subagents(stream_id)
+            deregister_executor_spawned(stream_id)
+            deregister_bg_subagent_results(stream_id)
 
         if is_queued and not was_cancelled:
             await StreamManager.publish_chunk(stream_id, "data: [DONE]\n\n")
             await StreamManager.complete_stream(stream_id)
 
+        # Hand the busy lock to the next queued task atomically: _process_next_
+        # queued_task overwrites the lock value (no intervening delete) before
+        # spawning, so a concurrent call_executor cannot grab it via SET NX in
+        # a delete→re-set gap. Only release the lock when nothing was handed off
+        # (cancelled, or the queue is empty).
+        spawned_next = False
         if not was_cancelled:
-            await _process_next_queued_task(conversation_id)
+            spawned_next = await _process_next_queued_task(conversation_id)
+        if not spawned_next:
+            await redis_cache.delete(lock_key)
 
 
-async def _process_next_queued_task(conversation_id: str) -> None:
+async def _process_next_queued_task(conversation_id: str) -> bool:
     """Pop the next queued task for this conversation and spawn it.
 
-    Called from run_executor_background's finally block. Acquires the executor
-    lock before spawning so the queued run is still protected against
-    concurrent access to the executor_{conversation_id} checkpoint.
+    Called from run_executor_background's finally block. Overwrites the executor
+    busy lock with the next task's value (no intervening delete) before spawning,
+    so the queued run inherits the lock atomically and a concurrent call_executor
+    cannot acquire it via SET NX in a delete→re-set gap.
+
+    Returns True if a queued task was popped and spawned (caller keeps the lock),
+    False if the queue was empty or unparseable (caller releases the lock).
     """
     if not redis_cache.client:
-        return
+        return False
 
     queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
     raw = await redis_cache.client.lpop(queue_key)
     if not raw:
-        return
+        return False
 
     try:
         item: dict = json.loads(raw)
     except (json.JSONDecodeError, ValueError) as e:
-        log.error(f"Failed to parse queued executor task for {conversation_id}: {e}")
-        return
+        log.error(
+            "Failed to parse queued executor task",
+            conversation_id=conversation_id,
+            error=str(e),
+        )
+        return False
 
     task = item.get("task", "")
     task_id = item.get("task_id")
     queued_user_message_id = item.get("user_message_id")
     configurable: dict = item.get("configurable", {})
     user_time_str: str = item.get("user_time_str", "")
-    user_time = (
-        datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
-    )
+    user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
 
     queued_stream_id = f"queued_{uuid4()}"
     user_id: str = configurable.get("user_id", "")
@@ -446,6 +474,9 @@ async def _process_next_queued_task(conversation_id: str) -> None:
     bg_task.add_done_callback(_queued_executor_tasks.discard)
 
     log.info(
-        f"Queued executor task spawned (task_id={task_id}) for conversation "
-        f"{conversation_id} as stream {queued_stream_id}"
+        "Queued executor task spawned",
+        task_id=task_id,
+        conversation_id=conversation_id,
+        stream_id=queued_stream_id,
     )
+    return True

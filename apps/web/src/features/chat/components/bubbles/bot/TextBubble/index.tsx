@@ -1,10 +1,21 @@
 import { Chip } from "@heroui/chip";
 import { Alert01Icon } from "@icons";
+import {
+  parseOpenUISegments,
+  splitByBreaksPreservingFences,
+} from "@shared/utils";
+import * as m from "motion/react-m";
+import dynamic from "next/dynamic";
 import React, { useId } from "react";
 import type { ToolDataEntry, ToolName } from "@/config/registries/toolRegistry";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
-import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
+import {
+  MESSAGE_BREAK_DURATION_SECONDS,
+  MESSAGE_BREAK_EASE_OUT_QUART,
+  MESSAGE_BREAK_STAGGER_SECONDS,
+  splitMessageByBreaks,
+} from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
@@ -14,6 +25,13 @@ import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
 import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
 import { useSubagentSynthesis } from "./useSubagentSynthesis";
+
+// OpenUI components use bg-zinc-800 (same as the bubble) and must render
+// OUTSIDE the imessage-bubble — see bubbles/bot/CLAUDE.md.
+const OpenUIRenderer = dynamic(
+  () => import("../../../interface/OpenUIRenderer"),
+  { ssr: false },
+);
 
 const REPLY_QUOTE_MAX_LENGTH = 40;
 
@@ -133,8 +151,10 @@ export default function TextBubble({
         (() => {
           // Use cleaned text without thinking tags
           const displayText = parsedContent.cleanText || "";
-          const textParts = splitMessageByBreaks(displayText);
-          // const hasMultipleParts = textParts.length > 1;
+          // Preserve :::openui fences when splitting so they aren't mangled.
+          const textParts = displayText.includes(":::openui")
+            ? splitByBreaksPreservingFences(displayText)
+            : splitMessageByBreaks(displayText);
 
           const renderBubbleContent = (
             content: string,
@@ -164,52 +184,107 @@ export default function TextBubble({
                 const isFirst = index === 0;
                 const isLast = index === textParts.length - 1;
                 const isSingle = textParts.length === 1;
+                const segments = parseOpenUISegments(part, !!loading);
+                const hasOpenUI = segments.some((s) => s.type === "openui");
+                const partTransition = {
+                  duration: MESSAGE_BREAK_DURATION_SECONDS,
+                  ease: MESSAGE_BREAK_EASE_OUT_QUART,
+                  delay: index * MESSAGE_BREAK_STAGGER_SECONDS,
+                };
 
-                // Emoji detection for this specific part
-                const isEmojiOnly = isOnlyEmojis(part);
-                const emojiCount = isEmojiOnly ? getEmojiCount(part) : 0;
+                // ── Pure markdown part — normal iMessage bubble ──
+                if (!hasOpenUI) {
+                  const isEmojiOnly = isOnlyEmojis(part);
+                  const emojiCount = isEmojiOnly ? getEmojiCount(part) : 0;
 
-                // Single message should show tail (use last styling)
-                // Otherwise: first = no tail, middle = no tail, last = show tail
-                let groupedClasses = isSingle
-                  ? "imessage-grouped-last"
-                  : isFirst
-                    ? "imessage-grouped-first mb-1.5"
-                    : isLast
-                      ? "imessage-grouped-last"
-                      : "imessage-grouped-middle mb-1.5";
+                  // Single message shows tail (last styling); otherwise first =
+                  // no tail, middle = no tail, last = show tail.
+                  let groupedClasses = isSingle
+                    ? "imessage-grouped-last"
+                    : isFirst
+                      ? "imessage-grouped-first mb-1.5"
+                      : isLast
+                        ? "imessage-grouped-last"
+                        : "imessage-grouped-middle mb-1.5";
+                  let bubbleClassName = "imessage-bubble imessage-from-them";
+                  let textClass = "";
 
-                let bubbleClassName = "imessage-bubble imessage-from-them";
-
-                // Construct styles for emoji-only messages
-                let textClass = "";
-
-                if (isEmojiOnly) {
-                  if (emojiCount === 1) {
-                    bubbleClassName = "select-none";
-                    groupedClasses = "";
-                    textClass = "text-[4rem] leading-none";
-                  } else if (emojiCount === 2) {
-                    textClass = "text-5xl";
-                  } else if (emojiCount === 3) {
-                    textClass = "text-4xl";
+                  if (isEmojiOnly) {
+                    if (emojiCount === 1) {
+                      bubbleClassName = "select-none";
+                      groupedClasses = "";
+                      textClass = "text-[4rem] leading-none";
+                    } else if (emojiCount === 2) {
+                      textClass = "text-5xl";
+                    } else if (emojiCount === 3) {
+                      textClass = "text-4xl";
+                    }
                   }
+
+                  return (
+                    <m.div
+                      // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
+                      key={`${baseId}-text-part-${index}`}
+                      className={`${bubbleClassName} ${groupedClasses}`}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={partTransition}
+                    >
+                      {/* Reply quote: full-width card, scrolls to original on click */}
+                      {isFirst && replyToMessage?.content && (
+                        <ReplyQuote replyToMessage={replyToMessage} />
+                      )}
+                      <div className={textClass}>
+                        {renderBubbleContent(part, isLast)}
+                      </div>
+                    </m.div>
+                  );
                 }
 
+                // ── Mixed part: OpenUI segments render OUTSIDE the bubble ──
+                const lastMdIdx = segments.reduce(
+                  (acc, s, i) =>
+                    s.type === "markdown" && s.content.trim() ? i : acc,
+                  -1,
+                );
+
                 return (
-                  <div
+                  <m.div
                     // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
                     key={`${baseId}-text-part-${index}`}
-                    className={`${bubbleClassName} ${groupedClasses}`}
+                    className="flex flex-col"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={partTransition}
                   >
-                    {/* Reply quote: full-width card with left accent border, scrolls to original on click */}
-                    {isFirst && replyToMessage?.content && (
-                      <ReplyQuote replyToMessage={replyToMessage} />
-                    )}
-                    <div className={textClass}>
-                      {renderBubbleContent(part, isLast)}
-                    </div>
-                  </div>
+                    {segments.map((seg, segIdx) => {
+                      const segKey = `${baseId}-seg-${index}-${segIdx}`;
+                      if (seg.type === "openui") {
+                        return (
+                          <OpenUIRenderer
+                            key={segKey}
+                            code={seg.content}
+                            isStreaming={!!loading && !seg.isComplete}
+                          />
+                        );
+                      }
+                      if (!seg.content.trim()) return null;
+                      const isLastMdInLastPart = isLast && segIdx === lastMdIdx;
+                      return (
+                        <div
+                          key={segKey}
+                          className={`imessage-bubble imessage-from-them ${isLastMdInLastPart ? "imessage-grouped-last" : "imessage-grouped-first"} mb-1.5`}
+                        >
+                          {isFirst &&
+                            segIdx === 0 &&
+                            replyToMessage?.content && (
+                              <ReplyQuote replyToMessage={replyToMessage} />
+                            )}
+                          {renderBubbleContent(seg.content, isLastMdInLastPart)}
+                        </div>
+                      );
+                    })}
+                  </m.div>
                 );
               })}
             </div>

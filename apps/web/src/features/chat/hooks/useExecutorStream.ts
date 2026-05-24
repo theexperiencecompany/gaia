@@ -34,10 +34,6 @@ export function useExecutorStream() {
     const { stream_id, conversation_id, task_id } = event;
 
     if (!stream_id || !conversation_id || !task_id) {
-      console.warn(
-        "[useExecutorStream] Missing fields in executor.stream_started",
-        event,
-      );
       return;
     }
 

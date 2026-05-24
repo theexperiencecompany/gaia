@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/react";
 import { Cancel01Icon, RepeatIcon } from "@icons";
 
 import BaseFieldChip from "./BaseFieldChip";
@@ -41,37 +42,35 @@ export default function RecurrenceFieldChip({
     >
       {({ onClose }) => (
         <div className="p-1">
-          {RECURRENCE_OPTIONS.map((option) => (
-            <div
-              key={option.value ?? "none"}
-              role="option"
-              tabIndex={0}
-              onClick={(e) => {
-                e.stopPropagation();
-                onChange(option.value);
-                onClose();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
+          {RECURRENCE_OPTIONS.map((option) => {
+            const isOptionSelected =
+              value === option.value || (!value && option.value === undefined);
+            return (
+              <Button
+                key={option.value ?? "none"}
+                variant="light"
+                fullWidth
+                radius="lg"
+                aria-pressed={isOptionSelected}
+                className={`justify-start gap-2 px-3 text-sm ${
+                  isOptionSelected ? "text-zinc-200" : "text-zinc-500"
+                }`}
+                startContent={
+                  option.value === undefined ? (
+                    <Cancel01Icon width={18} height={18} />
+                  ) : (
+                    <RepeatIcon width={18} height={18} />
+                  )
+                }
+                onPress={() => {
                   onChange(option.value);
                   onClose();
-                }
-              }}
-              className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-zinc-800 ${
-                value === option.value || (!value && option.value === undefined)
-                  ? "text-zinc-200"
-                  : "text-zinc-500"
-              }`}
-            >
-              {option.value === undefined ? (
-                <Cancel01Icon width={18} height={18} />
-              ) : (
-                <RepeatIcon width={18} height={18} />
-              )}
-              {option.label}
-            </div>
-          ))}
+                }}
+              >
+                {option.label}
+              </Button>
+            );
+          })}
         </div>
       )}
     </BaseFieldChip>

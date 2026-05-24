@@ -14,7 +14,7 @@ deployments.
 """
 
 import asyncio
-from typing import Any, Optional
+from typing import Any
 
 # ── Per-stream "executor was spawned" flag ─────────────────────────
 # Distinguishes "executor running for THIS stream" from "executor running
@@ -53,7 +53,7 @@ def register_executor_done_event(stream_id: str) -> asyncio.Event:
     return event
 
 
-def get_executor_done_event(stream_id: str) -> Optional[asyncio.Event]:
+def get_executor_done_event(stream_id: str) -> asyncio.Event | None:
     """Return the executor-done event, or None if not registered."""
     return _executor_done_events.get(stream_id)
 
@@ -104,9 +104,7 @@ _bg_subagent_results: dict[str, list[dict[str, str]]] = {}
 
 def append_bg_subagent_result(stream_id: str, agent: str, result: str) -> None:
     """Append a background subagent's final result for this stream."""
-    _bg_subagent_results.setdefault(stream_id, []).append(
-        {"agent": agent, "message": result}
-    )
+    _bg_subagent_results.setdefault(stream_id, []).append({"agent": agent, "message": result})
 
 
 def drain_bg_subagent_results(stream_id: str) -> list[dict[str, str]]:
@@ -135,7 +133,7 @@ def register_tool_event_collector(stream_id: str) -> list[dict[str, Any]]:
     return collector
 
 
-def get_tool_event_collector(stream_id: str) -> Optional[list[dict[str, Any]]]:
+def get_tool_event_collector(stream_id: str) -> list[dict[str, Any]] | None:
     """Return the tool event collector for a stream, or None."""
     return _executor_tool_event_collectors.get(stream_id)
 

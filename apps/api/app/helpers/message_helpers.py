@@ -18,7 +18,11 @@ from app.agents.templates.agent_template import (
     EXECUTOR_PROMPT_TEMPLATE,
     get_comms_static_prompt,
 )
-from app.db.mongodb.collections import conversations_collection, users_collection
+from app.db.mongodb.collections import (
+    conversations_collection,
+    todos_collection,
+    users_collection,
+)
 from app.db.redis import get_cache, set_cache
 from app.models.message_models import (
     FileData,
@@ -207,16 +211,12 @@ async def _build_active_todo_banner(user_id: str, active_todo_id: str | None) ->
     if not active_todo_id:
         return ""
     try:
-        from bson import ObjectId  # local to avoid top-level dep on helper
-
-        from app.db.mongodb.collections import todos_collection
-
         doc = await todos_collection.find_one({"_id": ObjectId(active_todo_id), "user_id": user_id})
         if not doc:
             return ""
         return _format_active_todo_banner(doc)
     except Exception as e:
-        log.warning(f"active todo banner fetch failed: {e}")
+        log.warning("active_todo_banner_fetch_failed", error=str(e))
         return ""
 
 

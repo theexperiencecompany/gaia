@@ -42,8 +42,9 @@ export const useSubagentSynthesis = (
       }
 
       if (GROUPED_TOOLS.has(toolName)) {
-        if (!grouped.has(toolName)) grouped.set(toolName, []);
-        grouped.get(toolName)!.push(entry.data);
+        const bucket = grouped.get(toolName) ?? [];
+        bucket.push(entry.data);
+        grouped.set(toolName, bucket);
       } else {
         individual.push(entry);
       }

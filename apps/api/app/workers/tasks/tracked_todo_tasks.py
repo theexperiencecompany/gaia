@@ -9,15 +9,14 @@ Handles:
 - Safety-net cron for orphaned todos
 """
 
+from datetime import UTC, datetime, timedelta
 import random
-from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from bson import ObjectId
 from croniter import croniter
-from shared.py.wide_events import log, wide_task
 
 from app.agents.core.agent import call_agent_silent
 from app.db.mongodb.collections import todos_collection
@@ -29,13 +28,13 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
-from app.services.notification_service import notification_service
 from app.services.model_service import get_default_model
+from app.services.notification_service import notification_service
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
 from app.services.vfs.mongo_vfs import MongoVFS
 from app.utils.redis_utils import RedisPoolManager
-
+from shared.py.wide_events import log, wide_task
 
 MAX_RETRY_ATTEMPTS = 3
 RETRY_BACKOFF = [timedelta(hours=1), timedelta(hours=4)]
@@ -57,7 +56,7 @@ async def _load_user_with_tz(user_id: str) -> tuple[dict, ZoneInfo]:
             return user_data, ZoneInfo(user_data.get("timezone") or "UTC")
         return {"user_id": user_id}, ZoneInfo("UTC")
     except Exception as e:
-        log.warning(f"_load_user_with_tz: could not fetch user {user_id}: {e}")
+        log.warning("tracked_todo.load_user_failed", user_id=user_id, error=str(e))
         return {"user_id": user_id}, ZoneInfo("UTC")
 
 
@@ -70,14 +69,14 @@ async def execute_tracked_todo(ctx: dict, todo_id: str) -> str:
     finally block.
     """
     async with wide_task("execute_tracked_todo", todo_id=todo_id):
-        log.info(f"execute_tracked_todo: starting for todo {todo_id}")
+        log.info("tracked_todo.execute_started", todo_id=todo_id)
 
         pool = await RedisPoolManager.get_pool()
         lock_key = f"gaia_todo_exec:{todo_id}"
 
         acquired = await pool.set(lock_key, "1", nx=True, ex=LOCK_TTL_SECONDS)
         if not acquired:
-            log.info(f"execute_tracked_todo: lock held, skipping todo {todo_id}")
+            log.info("tracked_todo.execute_lock_held", todo_id=todo_id)
             return f"skipped:{todo_id} (lock held)"
 
         try:
@@ -93,30 +92,32 @@ async def _execute_todo_with_retry(ctx: dict, todo_id: str, pool: Any) -> str:
     """
     doc = await todos_collection.find_one({"_id": ObjectId(todo_id)})
     if not doc:
-        log.warning(f"_execute_todo_with_retry: todo {todo_id} not found")
+        log.warning("tracked_todo.execute_not_found", todo_id=todo_id)
         return f"not_found:{todo_id}"
 
     if doc.get("completed"):
-        log.info(f"_execute_todo_with_retry: todo {todo_id} already completed")
+        log.info("tracked_todo.execute_already_completed", todo_id=todo_id)
         return f"completed:{todo_id}"
 
     # Skip expired todos — let maintenance sweep handle gracefully
-    if doc.get("expires_at") and doc["expires_at"] <= datetime.now(timezone.utc):
+    if doc.get("expires_at") and doc["expires_at"] <= datetime.now(UTC):
         log.info(
-            f"Todo {todo_id} has expired (expires_at={doc['expires_at']}), skipping execution"
+            "tracked_todo.execute_expired",
+            todo_id=todo_id,
+            expires_at=doc["expires_at"].isoformat(),
         )
         return f"expired:{todo_id}"
 
     # Skip failed todos — user must manually reset before re-execution
     if "failed" in doc.get("labels", []):
-        log.info(f"Todo {todo_id} is marked failed, skipping execution")
+        log.info("tracked_todo.execute_marked_failed", todo_id=todo_id)
         return f"skipped:{todo_id} (marked failed)"
 
     user_id: str = doc.get("user_id", "")
     retry_count: int = doc.get("gaia_retry_count", 0)
 
     if not user_id:
-        log.error(f"Todo {todo_id} has no user_id, cannot execute")
+        log.error("tracked_todo.execute_missing_user_id", todo_id=todo_id)
         return f"error:{todo_id} (missing user_id)"
 
     # Single user fetch per run — pattern matches workflow_tasks.py:416–427.
@@ -131,20 +132,22 @@ async def _execute_todo_with_retry(ctx: dict, todo_id: str, pool: Any) -> str:
         # Reset retry counter on success
         await todos_collection.update_one(
             {"_id": ObjectId(todo_id)},
-            {"$set": {"gaia_retry_count": 0, "updated_at": datetime.now(timezone.utc)}},
+            {"$set": {"gaia_retry_count": 0, "updated_at": datetime.now(UTC)}},
         )
 
         # Re-enqueue if recurring. Recurrence is always evaluated in the
         # user's stored timezone (looked up once at the top of this run).
         if doc.get("recurrence"):
-            next_run = _compute_next_run(doc["recurrence"], str(user_tz))
+            next_run = _compute_next_run(
+                doc["recurrence"], str(user_tz), anchor=doc.get("scheduled_at")
+            )
             if next_run:
                 await todos_collection.update_one(
                     {"_id": ObjectId(todo_id)},
                     {
                         "$set": {
                             "scheduled_at": next_run,
-                            "updated_at": datetime.now(timezone.utc),
+                            "updated_at": datetime.now(UTC),
                         }
                     },
                 )
@@ -154,22 +157,22 @@ async def _execute_todo_with_retry(ctx: dict, todo_id: str, pool: Any) -> str:
                     _defer_until=next_run,
                 )
                 log.info(
-                    f"_execute_todo_with_retry: re-enqueued todo {todo_id} at {next_run}"
+                    "tracked_todo.re_enqueued",
+                    todo_id=todo_id,
+                    next_run=next_run.isoformat(),
                 )
 
         return f"success:{todo_id}"
 
     except Exception as exc:
-        log.exception(
-            f"_execute_todo_with_retry: execution failed for todo {todo_id}: {exc}"
-        )
+        log.exception("tracked_todo.execution_failed", todo_id=todo_id, error=str(exc))
         new_retry_count = retry_count + 1
         await todos_collection.update_one(
             {"_id": ObjectId(todo_id)},
             {
                 "$set": {
                     "gaia_retry_count": new_retry_count,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
         )
@@ -181,22 +184,23 @@ async def _execute_todo_with_retry(ctx: dict, todo_id: str, pool: Any) -> str:
         # Compute backoff delay
         backoff_index = min(new_retry_count - 1, len(RETRY_BACKOFF) - 1)
         backoff = RETRY_BACKOFF[backoff_index]
-        next_attempt = datetime.now(timezone.utc) + backoff
+        next_attempt = datetime.now(UTC) + backoff
         await pool.enqueue_job(
             "execute_tracked_todo",
             todo_id,
             _defer_until=next_attempt,
         )
         log.info(
-            f"_execute_todo_with_retry: re-enqueued todo {todo_id} for retry at {next_attempt} "
-            f"(attempt {new_retry_count}/{MAX_RETRY_ATTEMPTS})"
+            "tracked_todo.retry_enqueued",
+            todo_id=todo_id,
+            next_attempt=next_attempt.isoformat(),
+            attempt=new_retry_count,
+            max_attempts=MAX_RETRY_ATTEMPTS,
         )
         return f"retry:{todo_id} (attempt {new_retry_count})"
 
 
-async def _run_execution(
-    doc: dict, user_id: str, *, user_data: dict, user_tz: ZoneInfo
-) -> None:
+async def _run_execution(doc: dict, user_id: str, *, user_data: dict, user_tz: ZoneInfo) -> None:
     """
     Dispatch execution to the correct path:
     - If the todo has a workflow_id, queue the workflow.
@@ -212,21 +216,19 @@ async def _run_execution(
             "trigger_type": "scheduled_todo",
             "todo_id": str(doc["_id"]),
         }
-        success = await WorkflowQueueService.queue_workflow_execution(
-            workflow_id, user_id, context
-        )
+        success = await WorkflowQueueService.queue_workflow_execution(workflow_id, user_id, context)
         if not success:
-            raise RuntimeError(
-                f"Failed to queue workflow {workflow_id} for todo {doc['_id']}"
-            )
-        log.info(f"_run_execution: queued workflow {workflow_id} for todo {doc['_id']}")
+            raise RuntimeError(f"Failed to queue workflow {workflow_id} for todo {doc['_id']}")
+        log.info(
+            "tracked_todo.workflow_queued",
+            workflow_id=workflow_id,
+            todo_id=str(doc["_id"]),
+        )
     else:
         await _execute_via_agent(doc, user_id, user_data=user_data, user_tz=user_tz)
 
 
-async def _execute_via_agent(
-    doc: dict, user_id: str, *, user_data: dict, user_tz: ZoneInfo
-) -> str:
+async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict, user_tz: ZoneInfo) -> str:
     """
     Execute the todo using call_agent_silent directly (no workflow needed).
 
@@ -239,19 +241,20 @@ async def _execute_via_agent(
     try:
         user_model_config = await get_default_model()
     except Exception as exc:
-        log.warning(f"_execute_via_agent: could not get user model config: {exc}")
+        log.warning("tracked_todo.model_config_failed", todo_id=todo_id, error=str(exc))
 
     # Read canvas content from VFS if a path is stored on the todo
     canvas_content: str | None = None
     vfs_path: str | None = doc.get("vfs_path")
     if vfs_path:
         try:
-            canvas_content = await MongoVFS().read(
-                path=f"{vfs_path}/canvas.md", user_id=user_id
-            )
+            canvas_content = await MongoVFS().read(path=f"{vfs_path}/canvas.md", user_id=user_id)
         except Exception as exc:
             log.warning(
-                f"_execute_via_agent: could not read VFS canvas at {vfs_path}: {exc}"
+                "tracked_todo.canvas_read_failed",
+                todo_id=todo_id,
+                vfs_path=vfs_path,
+                error=str(exc),
             )
 
     # Read referenced canvases for institutional memory
@@ -278,14 +281,11 @@ async def _execute_via_agent(
                             f'From past todo "{ref_doc.get("title", "Unknown")}":\n{learnings.strip()}'
                         )
             except Exception as e:
-                log.debug(
-                    "execute_todo.reference_read_failed", ref_id=ref_id, error=str(e)
-                )
+                log.debug("execute_todo.reference_read_failed", ref_id=ref_id, error=str(e))
                 continue
         if ref_parts:
             reference_context = (
-                "\n\nPast experience (from similar completed todos):\n"
-                + "\n\n".join(ref_parts)
+                "\n\nPast experience (from similar completed todos):\n" + "\n\n".join(ref_parts)
             )
 
     # Build prompt
@@ -323,7 +323,7 @@ async def _execute_via_agent(
     # Structural paper trail — write a start marker to the canvas Timeline
     # BEFORE the agent runs, so the run leaves evidence even if the LLM forgets.
     short_conv = conversation_id[:8]
-    start_iso = datetime.now(timezone.utc).isoformat()
+    start_iso = datetime.now(UTC).isoformat()
     await tracked_todo_service.append_canvas_timeline(
         todo_id=todo_id,
         user_id=user_id,
@@ -341,13 +341,11 @@ async def _execute_via_agent(
             trigger_context=trigger_context,
         )
 
-        if complete_message and complete_message.startswith(
-            "Error when calling silent agent:"
-        ):
+        if complete_message and complete_message.startswith("Error when calling silent agent:"):
             raise RuntimeError(complete_message)
     except Exception as exc:
         # End marker: failure
-        fail_iso = datetime.now(timezone.utc).isoformat()
+        fail_iso = datetime.now(UTC).isoformat()
         await tracked_todo_service.append_canvas_timeline(
             todo_id=todo_id,
             user_id=user_id,
@@ -356,7 +354,7 @@ async def _execute_via_agent(
         raise
 
     # End marker: success
-    end_iso = datetime.now(timezone.utc).isoformat()
+    end_iso = datetime.now(UTC).isoformat()
     summary = (complete_message or "").strip().replace("\n", " ")[:120]
     await tracked_todo_service.append_canvas_timeline(
         todo_id=todo_id,
@@ -364,7 +362,7 @@ async def _execute_via_agent(
         entry=f"✓ {end_iso} — scheduled run finished (summary={summary!r})",
     )
 
-    log.info(f"_execute_via_agent: agent completed for todo {todo_id}")
+    log.info("tracked_todo.agent_completed", todo_id=todo_id)
     return complete_message[:200] if complete_message else ""
 
 
@@ -377,10 +375,10 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: dict) -> None:
         {"_id": ObjectId(todo_id)},
         {
             "$addToSet": {"labels": "failed"},
-            "$set": {"updated_at": datetime.now(timezone.utc)},
+            "$set": {"updated_at": datetime.now(UTC)},
         },
     )
-    log.info(f"_mark_todo_failed: marked todo {todo_id} as failed")
+    log.info("tracked_todo.marked_failed", todo_id=todo_id)
 
     title: str = doc.get("title", "Untitled Todo")
     try:
@@ -396,9 +394,7 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: dict) -> None:
                         f"{MAX_RETRY_ATTEMPTS} attempts. Please check the task and try again."
                     ),
                 ),
-                channels=[
-                    ChannelConfig(channel_type="inapp", enabled=True, priority=1)
-                ],
+                channels=[ChannelConfig(channel_type="inapp", enabled=True, priority=1)],
                 metadata={
                     "todo_id": todo_id,
                     "retry_count": MAX_RETRY_ATTEMPTS,
@@ -407,12 +403,16 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: dict) -> None:
         )
     except Exception as notify_exc:
         log.warning(
-            f"_mark_todo_failed: could not send failure notification: {notify_exc}"
+            "tracked_todo.failure_notification_failed",
+            todo_id=todo_id,
+            error=str(notify_exc),
         )
 
 
 def _compute_next_run(
-    recurrence: str, recurrence_tz: str | None = None
+    recurrence: str,
+    recurrence_tz: str | None = None,
+    anchor: datetime | None = None,
 ) -> datetime | None:
     """
     Compute the next scheduled run time from a recurrence string.
@@ -420,35 +420,60 @@ def _compute_next_run(
     Evaluated in the user's timezone (recurrence_tz, IANA name). Returned as
     a UTC-aware datetime suitable for ARQ's _defer_until.
 
-    Supports named shortcuts (deltas, tz-agnostic):
-    - "daily"    → +1 day
-    - "weekly"   → +7 days
-    - "every_4h" → +4 hours
-    - "every_1h" → +1 hour
+    Supports named shortcuts:
+    - "daily"    → next occurrence at the anchor's local wall-clock time
+    - "weekly"   → next occurrence at the anchor's local weekday + time
+    - "every_4h" → +4 hours (interval)
+    - "every_1h" → +1 hour (interval)
+
+    "daily"/"weekly" are anchored to ``anchor`` (the original scheduled_at) so
+    a late run does NOT drift the wall-clock time forward. The next fire keeps
+    the anchor's local time-of-day and advances by whole days/weeks until it is
+    strictly in the future. Without an anchor we fall back to a plain delta.
 
     Falls back to croniter for cron expressions (e.g. "0 9 * * *"), which are
     evaluated in recurrence_tz so "9am" means user-local 9am.
     Returns None if the recurrence string is unrecognised.
     """
     try:
-        tz = ZoneInfo(recurrence_tz) if recurrence_tz else timezone.utc
+        tz = ZoneInfo(recurrence_tz) if recurrence_tz else UTC
     except Exception:
         log.warning(
-            f"_compute_next_run: invalid recurrence_tz '{recurrence_tz}', falling back to UTC"
+            "tracked_todo.next_run_invalid_tz",
+            recurrence_tz=recurrence_tz,
+            fallback="UTC",
         )
-        tz = timezone.utc
+        tz = UTC
 
-    now_utc = datetime.now(timezone.utc)
-    shortcuts: dict[str, timedelta] = {
-        "daily": timedelta(days=1),
-        "weekly": timedelta(weeks=1),
+    now_utc = datetime.now(UTC)
+
+    interval_shortcuts: dict[str, timedelta] = {
         "every_4h": timedelta(hours=4),
         "every_1h": timedelta(hours=1),
     }
+    if recurrence in interval_shortcuts:
+        # Intervals are deltas from "now" — drift is acceptable/expected.
+        return now_utc + interval_shortcuts[recurrence]
 
-    if recurrence in shortcuts:
-        # Pure deltas — timezone-agnostic.
-        return now_utc + shortcuts[recurrence]
+    anchored_steps: dict[str, timedelta] = {
+        "daily": timedelta(days=1),
+        "weekly": timedelta(weeks=1),
+    }
+    if recurrence in anchored_steps:
+        step = anchored_steps[recurrence]
+        if anchor is None:
+            # No anchor available — fall back to a plain delta from now.
+            return now_utc + step
+        # Anchor to the original local wall-clock time. Advance whole
+        # days/weeks from the anchor until strictly after now, preserving
+        # the time-of-day (and weekday for weekly).
+        anchor_local = anchor.astimezone(tz)
+        next_local = anchor_local
+        if next_local <= now_utc.astimezone(tz):
+            elapsed = now_utc.astimezone(tz) - anchor_local
+            steps_to_skip = (elapsed // step) + 1
+            next_local = anchor_local + step * steps_to_skip
+        return next_local.astimezone(UTC)
 
     # Cron expression — evaluate in the user's local timezone.
     try:
@@ -457,11 +482,9 @@ def _compute_next_run(
         next_dt: datetime = cron.get_next(datetime)
         if next_dt.tzinfo is None:
             next_dt = next_dt.replace(tzinfo=tz)
-        return next_dt.astimezone(timezone.utc)
+        return next_dt.astimezone(UTC)
     except Exception:
-        log.warning(
-            f"_compute_next_run: unrecognised recurrence expression '{recurrence}'"
-        )
+        log.warning("tracked_todo.next_run_unrecognised", recurrence=recurrence)
         return None
 
 
@@ -480,8 +503,8 @@ async def safety_net_check_orphaned_todos(ctx: dict) -> str:
     re-enqueues with a random 0–60 second jitter to spread load.
     """
     async with wide_task("safety_net_check_orphaned_todos"):
-        now = datetime.now(timezone.utc)
-        log.info("safety_net_check_orphaned_todos: scanning for orphaned todos")
+        now = datetime.now(UTC)
+        log.info("tracked_todo.safety_net_scan_started")
 
         cursor = todos_collection.find(
             {
@@ -511,10 +534,14 @@ async def safety_net_check_orphaned_todos(ctx: dict) -> str:
             await pool.enqueue_job("execute_tracked_todo", todo_id, _defer_until=run_at)
             re_enqueued += 1
             log.info(
-                f"safety_net_check_orphaned_todos: re-enqueued todo {todo_id} at {run_at}"
+                "tracked_todo.safety_net_re_enqueued",
+                todo_id=todo_id,
+                run_at=run_at.isoformat(),
             )
 
         log.info(
-            f"safety_net_check_orphaned_todos: done — re_enqueued={re_enqueued} skipped={skipped}"
+            "tracked_todo.safety_net_done",
+            re_enqueued=re_enqueued,
+            skipped=skipped,
         )
         return f"re_enqueued:{re_enqueued} skipped:{skipped}"

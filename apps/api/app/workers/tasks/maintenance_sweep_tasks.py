@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import random
-from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
 from bson import ObjectId
-from shared.py.wide_events import log, wide_task
 
 from app.agents.core.agent import call_agent_silent
 from app.db.mongodb.collections import todos_collection
@@ -25,7 +24,7 @@ from app.services.notification_service import notification_service
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
 from app.utils.redis_utils import RedisPoolManager
-
+from shared.py.wide_events import log, wide_task
 
 DORMANT_DAYS = 5
 WAITING_LABEL_MAX_DAYS = 8
@@ -45,14 +44,12 @@ async def maintenance_sweep_tracked_todos(ctx: dict) -> str:
     - Dormant: no update in DORMANT_DAYS days → health-check agent re-queues or bundles digest
     """
     async with wide_task("maintenance_sweep_tracked_todos"):
-        now = datetime.now(timezone.utc)
-        log.info("maintenance_sweep_tracked_todos: scanning active tracked todos")
+        now = datetime.now(UTC)
+        log.info("maintenance_sweep.scan_started")
 
         pool = await RedisPoolManager.get_pool()
 
-        cursor = todos_collection.find(
-            {"completed": False, "labels": "gaia-tracked"}
-        ).limit(200)
+        cursor = todos_collection.find({"completed": False, "labels": "gaia-tracked"}).limit(200)
 
         expired: list[dict] = []
         overdue: list[dict] = []
@@ -126,7 +123,14 @@ async def maintenance_sweep_tracked_todos(ctx: dict) -> str:
             f"notified_overdue:{notified_overdue} requeued:{requeued} "
             f"digest_items:{len(needs_attention_todos)}"
         )
-        log.info(f"maintenance_sweep_tracked_todos: done — {summary}")
+        log.info(
+            "maintenance_sweep.done",
+            archived=archived,
+            notified_expired=notified_expired,
+            notified_overdue=notified_overdue,
+            requeued=requeued,
+            digest_items=len(needs_attention_todos),
+        )
         return summary
 
 
@@ -216,25 +220,20 @@ async def _health_check_expired(doc: dict, pool: Any) -> str:
         reason = response[len("ARCHIVE:") :].strip()
         await tracked_todo_service.archive_tracked_todo(todo_id, user_id, reason)
         await _set_cooldown(pool, todo_id)
-        log.info(f"_health_check_expired: archived todo {todo_id} — {reason}")
+        log.info("maintenance_sweep.expired_archived", todo_id=todo_id, reason=reason)
         return "archived"
 
     # Default: notify
-    message = (
-        response[len("NOTIFY:") :].strip()
-        if response.startswith("NOTIFY:")
-        else response
-    )
+    message = response[len("NOTIFY:") :].strip() if response.startswith("NOTIFY:") else response
     await _send_individual_notification(
         user_id=user_id,
         title=f"Expired: {title}",
-        body=message
-        or f"Your tracked todo '{title}' has expired and may need attention.",
+        body=message or f"Your tracked todo '{title}' has expired and may need attention.",
         todo_id=todo_id,
         notification_type=NotificationType.WARNING,
     )
     await _set_cooldown(pool, todo_id)
-    log.info(f"_health_check_expired: notified user for expired todo {todo_id}")
+    log.info("maintenance_sweep.expired_notified", todo_id=todo_id)
     return "notified"
 
 
@@ -249,7 +248,7 @@ async def _health_check_dormant(doc: dict, pool: Any) -> str:
     user_id: str = doc.get("user_id", "")
     title: str = doc.get("title", "Untitled Todo")
     updated_at: datetime | None = doc.get("updated_at")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     idle_days = (now - updated_at).days if updated_at else DORMANT_DAYS
 
@@ -279,11 +278,15 @@ async def _health_check_dormant(doc: dict, pool: Any) -> str:
             f"Dormant todo re-queued by maintenance sweep (idle {idle_days}d). Action: {action}",
         )
         await _set_cooldown(pool, todo_id)
-        log.info(f"_health_check_dormant: re-queued todo {todo_id} at {scheduled_at}")
+        log.info(
+            "maintenance_sweep.dormant_requeued",
+            todo_id=todo_id,
+            scheduled_at=scheduled_at.isoformat(),
+        )
         return "requeued"
 
     await _set_cooldown(pool, todo_id)
-    log.info(f"_health_check_dormant: todo {todo_id} needs attention")
+    log.info("maintenance_sweep.dormant_needs_attention", todo_id=todo_id)
     return "needs_attention"
 
 
@@ -293,7 +296,7 @@ async def _notify_overdue(doc: dict, pool: Any) -> None:
     user_id: str = doc.get("user_id", "")
     title: str = doc.get("title", "Untitled Todo")
     due_date: datetime | None = doc.get("due_date")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     days_overdue = (now - due_date).days if due_date else 0
 
@@ -316,7 +319,9 @@ async def _notify_overdue(doc: dict, pool: Any) -> None:
 
     await _set_cooldown(pool, todo_id)
     log.info(
-        f"_notify_overdue: notified for overdue todo {todo_id} ({days_overdue}d overdue)"
+        "maintenance_sweep.overdue_notified",
+        todo_id=todo_id,
+        days_overdue=days_overdue,
     )
 
 
@@ -325,7 +330,7 @@ async def _send_dormant_digest(todos: list[dict]) -> None:
     if not todos:
         return
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Collect user_ids — send one digest per user
     by_user: dict[str, list[dict]] = {}
@@ -356,18 +361,20 @@ async def _send_dormant_digest(todos: list[dict]) -> None:
                         title=f"{count} dormant todo{'s' if count != 1 else ''} need attention",
                         body=body,
                     ),
-                    channels=[
-                        ChannelConfig(channel_type="inapp", enabled=True, priority=1)
-                    ],
+                    channels=[ChannelConfig(channel_type="inapp", enabled=True, priority=1)],
                     metadata={"todo_count": count},
                 )
             )
             log.info(
-                f"_send_dormant_digest: sent digest for user {user_id} ({count} todos)"
+                "maintenance_sweep.dormant_digest_sent",
+                user_id=user_id,
+                todo_count=count,
             )
         except Exception as exc:
             log.warning(
-                f"_send_dormant_digest: could not send digest for user {user_id}: {exc}"
+                "maintenance_sweep.dormant_digest_failed",
+                user_id=user_id,
+                error=str(exc),
             )
 
 
@@ -386,7 +393,9 @@ async def _read_canvas(doc: dict) -> str:
         return content or ""
     except Exception as exc:
         log.warning(
-            f"_read_canvas: could not read canvas for todo {doc.get('_id')}: {exc}"
+            "maintenance_sweep.canvas_read_failed",
+            todo_id=str(doc.get("_id")),
+            error=str(exc),
         )
         return ""
 
@@ -406,16 +415,20 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
         else:
             user_data = {"user_id": user_id, "name": "User"}
     except Exception as exc:
-        log.warning(f"_call_health_check_agent: could not fetch user {user_id}: {exc}")
+        log.warning("maintenance_sweep.user_fetch_failed", user_id=user_id, error=str(exc))
         user_data = {"user_id": user_id, "name": "User"}
 
     user_model_config = None
     try:
         user_model_config = await get_default_model()
     except Exception as exc:
-        log.warning(f"_call_health_check_agent: could not get user model config: {exc}")
+        log.warning(
+            "maintenance_sweep.model_config_failed",
+            todo_id=todo_id,
+            error=str(exc),
+        )
 
-    user_time = datetime.now(timezone.utc)
+    user_time = datetime.now(UTC)
     conversation_id = str(uuid4())
 
     request = MessageRequestWithHistory(
@@ -440,13 +453,13 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
         )
     except Exception as exc:
         log.warning(
-            f"_call_health_check_agent: agent call failed for todo {todo_id}: {exc}"
+            "maintenance_sweep.health_check_agent_failed",
+            todo_id=todo_id,
+            error=str(exc),
         )
         return "NEEDS_ATTENTION: Health check failed"
 
-    if complete_message and complete_message.startswith(
-        "Error when calling silent agent:"
-    ):
+    if complete_message and complete_message.startswith("Error when calling silent agent:"):
         return "NEEDS_ATTENTION: Health check failed"
 
     return (complete_message or "").strip()
@@ -470,15 +483,15 @@ async def _send_individual_notification(
                     title=title,
                     body=body,
                 ),
-                channels=[
-                    ChannelConfig(channel_type="inapp", enabled=True, priority=1)
-                ],
+                channels=[ChannelConfig(channel_type="inapp", enabled=True, priority=1)],
                 metadata={"todo_id": todo_id},
             )
         )
     except Exception as exc:
         log.warning(
-            f"_send_individual_notification: could not send notification for todo {todo_id}: {exc}"
+            "maintenance_sweep.notification_failed",
+            todo_id=todo_id,
+            error=str(exc),
         )
 
 
