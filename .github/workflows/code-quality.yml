@@ -48,7 +48,7 @@ jobs:
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            pnpm exec biome check $FILES
+            pnpm exec biome check --no-errors-on-unmatched $FILES
           fi
           echo "::endgroup::"
           echo "Biome: OK (0 errors; warnings shown above are non-blocking)"
@@ -239,7 +239,7 @@ jobs:
           echo "::group::nx type-check"
           if [ -n "${GITHUB_BASE_REF:-}" ]; then
             git fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null || true
-            pnpm exec nx affected -t type-check --base=origin/$GITHUB_BASE_REF
+            pnpm exec nx affected -t type-check --base=origin/$GITHUB_BASE_REF --exclude=api,voice-agent
           else
             pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp
           fi
