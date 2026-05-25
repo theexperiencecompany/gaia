@@ -3,7 +3,7 @@
   "checkpoint_id": "a19f0ae3115f",
   "strategy": "manual-commit",
   "branch": "feat/whatsapp-media-support",
-  "checkpoints_count": 4,
+  "checkpoints_count": 5,
   "files_touched": [
     "apps/api/app/api/v1/endpoints/bot.py",
     "apps/bots/__tests__/discord/adapter.test.ts",
@@ -12,6 +12,7 @@
     "apps/bots/__tests__/telegram/adapter.test.ts",
     "apps/bots/__tests__/whatsapp/media-flow.test.ts",
     "apps/bots/discord/src/adapter.ts",
+    "apps/bots/telegram/src/adapter.ts",
     "libs/shared/ts/src/bots/utils/formatters.ts",
     "libs/shared/ts/src/bots/utils/media.ts",
     "libs/shared/ts/src/bots/utils/text.ts"
@@ -22,13 +23,19 @@
       "transcript": "/a1/9f0ae3115f/0/full.jsonl",
       "content_hash": "/a1/9f0ae3115f/0/content_hash.txt",
       "prompt": "/a1/9f0ae3115f/0/prompt.txt"
+    },
+    {
+      "metadata": "/a1/9f0ae3115f/1/metadata.json",
+      "transcript": "/a1/9f0ae3115f/1/full.jsonl",
+      "content_hash": "/a1/9f0ae3115f/1/content_hash.txt",
+      "prompt": "/a1/9f0ae3115f/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 61904,
-    "cache_creation_tokens": 1251895,
-    "cache_read_tokens": 25896073,
-    "output_tokens": 304816,
-    "api_call_count": 91
+    "input_tokens": 124539,
+    "cache_creation_tokens": 5333545,
+    "cache_read_tokens": 145393811,
+    "output_tokens": 851007,
+    "api_call_count": 367
   }
 }
