@@ -1,0 +1,117 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "6dba3625f5fa",
+  "session_id": "a522db44-1d98-49a1-8c68-94d4bb510a57",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-25T19:50:53.042663Z",
+  "branch": "chore/claude-rules-cleanup",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "CLAUDE.md",
+    "DESIGN.md",
+    "apps/api/CLAUDE.md",
+    "apps/bots/CLAUDE.md",
+    "apps/voice-agent/CLAUDE.md",
+    "apps/web/CLAUDE.md",
+    "apps/web/src/app/[locale]/(landing)/CLAUDE.md",
+    "apps/web/src/config/openui/CLAUDE.md",
+    "apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "a06d67de5abd",
+  "token_usage": {
+    "input_tokens": 35747,
+    "cache_creation_tokens": 514035,
+    "cache_read_tokens": 10872686,
+    "output_tokens": 205519,
+    "api_call_count": 62
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-25T19:50:53.013689Z",
+    "agent_lines": 0,
+    "agent_removed": 30,
+    "human_added": 0,
+    "human_modified": 12,
+    "human_removed": 1675,
+    "total_committed": 754,
+    "total_lines_changed": 2566,
+    "agent_percentage": 1.1691348402182384,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 55,
+      "user_lines_removed": 1033,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/rules/design.md": 2,
+        "DESIGN.md": 1,
+        "apps/bots/CLAUDE.md": 52
+      },
+      "user_removed_per_file": {
+        ".claude/rules/design.md": 2,
+        ".claude/rules/linear.md": 103,
+        "DESIGN.md": 1,
+        "apps/bots/CLAUDE.md": 649,
+        "apps/web/src/config/openui/CLAUDE.md": 1,
+        "apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md": 277
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 439,
+      "agent_lines_removed": 1176
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 4,
+      "user_lines_removed": 0,
+      "agent_lines_added": 439,
+      "agent_lines_removed": 1176,
+      "user_added_per_file": {
+        ".claude/rules/seo.md": 4
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 4,
+      "user_lines_removed": 0,
+      "agent_lines_added": 439,
+      "agent_lines_removed": 1176,
+      "user_added_per_file": {
+        ".claude/rules/seo.md": 4
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 4,
+      "user_lines_removed": 0,
+      "agent_lines_added": 829,
+      "agent_lines_removed": 1180,
+      "user_added_per_file": {
+        ".claude/rules/seo.md": 4
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 654,
+      "agent_lines_added": 841,
+      "agent_lines_removed": 1187,
+      "user_removed_per_file": {
+        ".claude/rules/design.md": 35,
+        ".claude/rules/python.md": 198,
+        ".claude/rules/seo.md": 231,
+        ".claude/rules/typescript.md": 190
+      }
+    }
+  ]
+}

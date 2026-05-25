@@ -1,0 +1,108 @@
+can u please evaluate all your code rules? like how many rules files do we have? how much context is used? how much is just ubllshit and shouldnt be there? lile is linear rules and other unnecessary rules ingested al the time and is context polluted? what online tools can we use to evaluate codebase health with claude??
+
+---
+
+also seo and everything might be a bit overkill too
+
+---
+
+a) Two CLAUDE.md files are byte-identical duplicates — diff -q confirms it:
+  - apps/web/src/config/openui/CLAUDE.md
+  - apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md
+
+  Both exactly 10,191 bytes, identical content. This violates your own DRY rule. One should be the source; the other should be a one-line pointer. and then if this is the case then we should just rmove the chat bubbles one since its unnecessary. also sure remove the linear issues i guess. then bots/claude.md please use an agent to figure out the best practices for a claude.md and completely rewrite it.
+
+---
+
+also wait no chat bubble's should have their own claude.md btw to explain how to design components fpr us, not just openui components. please creat a task for that and change the references properly.
+
+---
+
+verify the seo.md shit please.
+
+---
+
+mate try editing landing and tell me if you get the cotent
+
+---
+
+dude fucking fix shit then u retard
+
+---
+
+<task-notification>
+<task-id>aeef8d77a28b58018</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-aryan-Projects-GAIA-gaia-develop/a522db44-1d98-49a1-8c68-94d4bb510a57/tasks/aeef8d77a28b58018.output</output-file>
+<status>completed</status>
+<summary>Agent "Merge Python rules into api/voice CLAUDE.md" completed</summary>
+<result>Done. Merged the net-new content from `.claude/rules/python.md` into both target files. Left `.claude/rules/python.md` untouched for you to delete.
+
+## New byte sizes
+
+- `/Users/aryan/Projects/GAIA/gaia-develop/apps/api/CLAUDE.md` — 17657 bytes
+- `/Users/aryan/Projects/GAIA/gaia-develop/apps/voice-agent/CLAUDE.md` — 4681 bytes
+
+## apps/api/CLAUDE.md
+
+**Added (net-new):**
+- **Tooling and the autofix hook** subsection under Code Style — explains the PostToolUse `ruff format` + `ruff check --fix` hook, what it auto-corrects vs. what you handle (type errors via mypy, non-autofixable lint), and Python 3.11+ modern syntax.
+- **File &amp; Structural Organization** — the models/schemas/services/endpoints/db/constants one-domain-per-file layering.
+- **Pydantic Models** — `BaseModel`, `ConfigDict(from_attributes=True)`, `Field(description=...)`, inline constraints, naming convention.
+- **FastAPI Route Handlers** — the explicit 3-step contract (`log.set` → service → `log.set` → `JSONResponse`) with the code example, `response_model`/status code rules, no raw dicts.
+- **Service Layer** — module-level async functions not classes, `@staticmethod`-only grouping, direct collection access (no repository layer), wrong/correct example.
+- **Anti-Patterns** — sync I/O in async, `time.sleep`, global mutable state, monolithic service files, copying from `gaia-shared`.
+
+**Skipped (already present):** lazy providers, AppError, wide events/logging (`log.set`), `@Cacheable` caching, type annotations + no-inline-imports + ruff code style, ARQ worker, testing, architecture, database, environment. The bulk DRY/error-handling/logging detail from python.md was already covered by the existing api doc + root CLAUDE.md, so I only pulled the structural/contract pieces.
+
+## apps/voice-agent/CLAUDE.md
+
+**Added (net-new):**
+- **Tooling and the autofix hook** subsection — same hook explanation, scoped to `nx type-check` / `nx lint voice-agent`.
+- **Structure &amp; Service Conventions** — one-domain-per-file, async module functions over service classes, `gaia-shared` for cross-app code, constants over magic values.
+- **Anti-Patterns** — blocking I/O in async, `time.sleep`, global mutable state, copying from `gaia-shared`.
+- Updated the existing type-annotation line to add the `Any`-only-for-untyped-third-party guidance and Python 3.11+ modern syntax.
+
+**Fixed a conflict:** the old line `Use Optional[T] for nullable values (already established pattern)` directly contradicted the autofix hook (which rewrites `Optional[X]` → `X | None`). I replaced it with the modern-syntax guidance so the doc no longer tells you to write something the hook will immediately undo.
+
+**Skipped:** FastAPI route-handler contract, Pydantic API-doc/`response_model` conventions, `@Cacheable`, ARQ `wide_task`, lazy providers, lifespan — these are API/FastAPI-specific and the voice-agent is a LiveKit worker that doesn't use FastAPI. Also skipped uv/ruff/imports basics already in its Code Style section.
+
+One thing worth flagging: the voice-agent doc references `nx type-check voice-agent` in the new hook text, but the existing Key Commands block only lists `nx lint` and `nx format` for voice-agent (no `type-check` target shown). If voice-agent has no mypy target wired in nx, that command reference may not resolve — worth a check, though I left it since the type-annotation rule still applies.</result>
+<usage><total_tokens>48661</total_tokens><tool_uses>8</tool_uses><duration_ms>50447</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>af63e65ed00332d81</task-id>
+<tool-use-id>toolu_011fZpSbwQWwxugngveNaaou</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-aryan-Projects-GAIA-gaia-develop/a522db44-1d98-49a1-8c68-94d4bb510a57/tasks/af63e65ed00332d81.output</output-file>
+<status>completed</status>
+<summary>Agent "Merge TS rules into web CLAUDE.md" completed</summary>
+<result>Done. I merged the net-new content from `.claude/rules/typescript.md` and `.claude/rules/design.md` into `/Users/aryan/Projects/GAIA/gaia-develop/apps/web/CLAUDE.md`. Source files left untouched.
+
+**New byte size: 12,303 bytes** (was ~5,400).
+
+## Added (net-new, non-tool-enforced, not already covered)
+
+- **API Layer section** — new: never raw `fetch`/`axios`, all calls through `apiService` from `@/lib/api/service` (auth/errors/toasts/analytics), `silent: true` for background requests, `fetchEventSource` via `chatApi.ts` for SSE, wrong/correct snippet.
+- **React Components section** — new: components render / hooks think, named exports only (except `page.tsx`), logic-in-hooks, `"use client"` only when needed + prefer Server Components, props as `interface` above component, &lt;150 line cap, no prop drilling past 2 levels, no reaching into another feature's internals.
+- **Error Boundaries section** — new: wrap independent feature areas, use the shared `src/components/shared/ErrorBoundary.tsx`, reports to PostHog.
+- **Zustand patterns** (folded into existing State Management) — added: devtools action name as 3rd `set()` arg, `partialize` requirement, optimistic update + rollback (with `/rollback` action name), never-store-derived-state rule, IndexedDB-not-Zustand for heavy data with hydrate-at-module-load.
+- **Full HeroUI component table** (13 rows) + the **DropdownTrigger-must-wrap-a-HeroUI-Button** rule + **do-not-override-HeroUI-styling** behavioral rule.
+- **OpenUI render-outside-imessage-bubble** rule with cross-ref to `apps/web/src/config/openui/CLAUDE.md`.
+- Framer Motion / `AnimatePresence` note + cross-ref to `DESIGN.md` for tokens/contract instead of restating.
+
+## Skipped (already in apps/web/CLAUDE.md or enforced elsewhere)
+
+- Zustand basics, named selectors, `useShallow`, persist+devtools, IndexedDB/Dexie/`dbEventEmitter` baseline — already present (enhanced in place, not duplicated).
+- Types split across `src/types/` dirs + search-before-create — already present.
+- Feature module structure (components/hooks/api/types/utils) — already present (added only the "don't reach into internals" + logic-in-hooks pointer).
+- HeroUI-over-raw-HTML prose, icon-not-as-spinner, HeroUI-over-Radix, Tailwind/`twMerge`/`clsx`/CVA — already present (the prose HeroUI list was replaced by the structured table to avoid saying it twice).
+- Path aliases `@/`, `@shared/*`, icons from `@icons`, no `any`, no inline imports, strict TS, i18n — already present.
+- Biome-autofixable items (line width, quotes, import order, naming, `noArrayIndexKey`, no-`console`) — skipped per instructions (PostToolUse hook handles them).
+- Monorepo-wide rules (Engineering Discipline, no `// biome-ignore` / `as any`, Code Style) — left to root `/CLAUDE.md`; cross-referenced rather than copied.
+
+One small judgment call: I dropped the `interface`-vs-`type` and type-directory guidance from typescript.md since the Types section already specifies the three dirs and search-before-create; restating `interface` for shapes / `type` for unions would have been low-value near-duplication.</result>
+<usage><total_tokens>47087</total_tokens><tool_uses>9</tool_uses><duration_ms>59622</duration_ms></usage>
+</task-notification>
