@@ -106,3 +106,7 @@ One thing worth flagging: the voice-agent doc references `nx type-check voice-ag
 One small judgment call: I dropped the `interface`-vs-`type` and type-directory guidance from typescript.md since the Types section already specifies the three dirs and search-before-create; restating `interface` for shapes / `type` for unions would have been low-value near-duplication.</result>
 <usage><total_tokens>47087</total_tokens><tool_uses>9</tool_uses><duration_ms>59622</duration_ms></usage>
 </task-notification>
+
+---
+
+create a pr -> develop. also no nested claude.md discovery doesnt happen at the start are you fucking retarded?
