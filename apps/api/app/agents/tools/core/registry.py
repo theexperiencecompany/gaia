@@ -4,9 +4,12 @@ from collections.abc import Iterator, KeysView, Mapping
 
 from langchain_core.tools import BaseTool
 
+from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.helpers.namespace_utils import derive_integration_namespace
+from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.integration_resolver import IntegrationResolver
+from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from shared.py.wide_events import log
 
 
@@ -283,8 +286,6 @@ class ToolRegistry:
         if toolkit_name in self._categories:
             return self._categories[toolkit_name]
 
-        from app.services.composio.composio_service import get_composio_service
-
         log.info(f"Registering provider tools for {toolkit_name} (space: {space_name})")
 
         composio_service = get_composio_service()
@@ -315,7 +316,6 @@ class ToolRegistry:
         that have subagent configurations and syncs them to the store.
         Tools are loaded in parallel for better performance.
         """
-        from app.config.oauth_config import OAUTH_INTEGRATIONS
 
         async def load_provider(integration):
             toolkit_name = integration.composio_config.toolkit
@@ -368,10 +368,10 @@ class ToolRegistry:
         subagent is first created (``register_provider_tools``), so a process
         only ever holds the working set of tools it actually uses.
         """
-        from app.config.oauth_config import OAUTH_INTEGRATIONS
+        # index_tools_to_store lives in chroma_tools_store, which imports
+        # get_tool_registry from this module — keep this one local to break the
+        # import cycle (see _index_category_tools below).
         from app.db.chroma.chroma_tools_store import index_tools_to_store
-        from app.services.composio.composio_service import get_composio_service
-        from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 
         composio_service = get_composio_service()
         mcp_store = get_mcp_tools_store()
@@ -413,7 +413,12 @@ class ToolRegistry:
             # Reuse the existing indexing path; it only reads .name/.description
             # and is idempotent via the ChromaDB diff + Redis hash cache, so the
             # later per-provider register_provider_tools re-index is a no-op.
-            await index_tools_to_store([(m, space) for m in metas])
+            try:
+                await index_tools_to_store([(m, space) for m in metas])
+            except Exception as e:
+                log.error(f"Failed to index catalog metadata for {toolkit}: {e}")
+                return
+
             mongo_batch.append(
                 (
                     toolkit.lower(),
@@ -422,7 +427,17 @@ class ToolRegistry:
             )
             total += len(metas)
 
-        await asyncio.gather(*[load_metadata(i) for i in integrations])
+        # return_exceptions so one toolkit's failure can't abort the whole
+        # population run and leave the catalog half-indexed.
+        results = await asyncio.gather(
+            *[load_metadata(i) for i in integrations], return_exceptions=True
+        )
+        for integration, result in zip(integrations, results):
+            if isinstance(result, Exception):
+                log.error(
+                    "Catalog metadata population failed for "
+                    f"{integration.composio_config.toolkit}: {result}"
+                )
 
         if mongo_batch:
             try:

@@ -210,8 +210,12 @@ async def create_subagent_for_user(integration_id: str, user_id: str) -> Compile
             #      never frees a graph that is currently running.
             while len(_USER_SUBAGENT_CACHE) > _MAX_USER_SUBAGENTS:
                 evicted_key, _ = _USER_SUBAGENT_CACHE.popitem(last=False)
+                # Log only the non-sensitive integration id — the user id in the
+                # cache key must not leak into logs.
+                evicted_integration_id, _ = evicted_key
                 log.info(
-                    f"Evicted LRU subagent graph {evicted_key} (cache at {_MAX_USER_SUBAGENTS} cap)"
+                    f"Evicted LRU subagent graph for integration "
+                    f"{evicted_integration_id} (cache at {_MAX_USER_SUBAGENTS} cap)"
                 )
         log.set(
             subagent_graph_cache={

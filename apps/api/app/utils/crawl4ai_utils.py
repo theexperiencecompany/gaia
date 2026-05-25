@@ -16,15 +16,46 @@ from shared.py.wide_events import log
 # crawler per URL), unbounded concurrency means dozens of Chromium processes at
 # 150-400MB each — the dominant worker memory spike. This single gate bounds the
 # number of live browsers across the whole process regardless of caller count.
-_MAX_CONCURRENT_BROWSERS = int(os.getenv("CRAWL4AI_MAX_BROWSERS", "2"))
+_DEFAULT_MAX_CONCURRENT_BROWSERS = 2
+
+
+def _parse_max_browsers() -> int:
+    """Parse ``CRAWL4AI_MAX_BROWSERS`` safely.
+
+    A bad value must not crash import, and ``0``/negative must not deadlock all
+    crawler access — clamp to a minimum of 1.
+    """
+    raw = os.getenv("CRAWL4AI_MAX_BROWSERS")
+    if raw is None:
+        return _DEFAULT_MAX_CONCURRENT_BROWSERS
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        log.warning(
+            f"Invalid CRAWL4AI_MAX_BROWSERS={raw!r}; "
+            f"falling back to {_DEFAULT_MAX_CONCURRENT_BROWSERS}"
+        )
+        return _DEFAULT_MAX_CONCURRENT_BROWSERS
+
+
+_MAX_CONCURRENT_BROWSERS = _parse_max_browsers()
 _browser_semaphore: asyncio.Semaphore | None = None
+_browser_semaphore_loop: asyncio.AbstractEventLoop | None = None
 
 
 def get_browser_semaphore() -> asyncio.Semaphore:
-    """Lazily create the shared browser semaphore bound to the running loop."""
-    global _browser_semaphore
-    if _browser_semaphore is None:
+    """Return the shared browser semaphore bound to the running loop.
+
+    ``asyncio.Semaphore`` binds to the loop that created its internal futures, so
+    a semaphore built under one loop raises "bound to a different event loop" if
+    awaited under another (e.g. a sync caller that spins up a fresh loop, like
+    the profile crawler). Recreate it whenever the running loop changes.
+    """
+    global _browser_semaphore, _browser_semaphore_loop
+    loop = asyncio.get_running_loop()
+    if _browser_semaphore is None or _browser_semaphore_loop is not loop:
         _browser_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_BROWSERS)
+        _browser_semaphore_loop = loop
     return _browser_semaphore
 
 

@@ -605,12 +605,14 @@ class ProviderRegistry:
         if errors:
             log.warning(
                 f"Provider warmup completed with {len(errors)} errors "
-                f"({skipped_unavailable} unavailable providers skipped)"
+                f"({skipped_unavailable} unavailable, "
+                f"{skipped_no_warmup} no-warmup providers skipped)"
             )
         else:
             log.info(
                 f"Provider warmup completed for {len(warmup_names)} providers "
-                f"({skipped_unavailable} unavailable providers skipped)"
+                f"({skipped_unavailable} unavailable, "
+                f"{skipped_no_warmup} no-warmup providers skipped)"
             )
 
         if strict and errors:

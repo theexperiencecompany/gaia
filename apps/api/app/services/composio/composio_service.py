@@ -2,6 +2,7 @@ import asyncio
 import time
 
 from composio import Composio, after_execute, before_execute, schema_modifier
+from composio.types import Tool
 
 from app.config.oauth_config import get_composio_social_configs
 from app.config.settings import settings
@@ -201,7 +202,7 @@ class ComposioService:
         self,
         tool_kit: str | None = None,
         specific_tools: list[str] | None = None,
-    ) -> list:
+    ) -> list[Tool]:
         """Fetch raw Composio tool definitions WITHOUT wrapping them.
 
         ``get_tools``/``get_tools_by_name`` run the LangchainProvider, which

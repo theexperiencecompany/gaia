@@ -64,6 +64,15 @@ _LEET = str.maketrans(
 )
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
+# Terms long enough to match safely as substrings of the separator-collapsed
+# text (this is what catches "f u c k" / "f.u.c.k"). Short terms are excluded
+# here because they appear inside benign words (e.g. "cum" in "document",
+# "fag" in many) and would block legitimate names; they are still caught as
+# exact tokens via the ``tokens & _PROFANITY`` check below.
+_COLLAPSED_SUBSTRING_TERMS: frozenset[str] = frozenset(
+    term for term in _PROFANITY if len(term) >= 4
+)
+
 
 def contains_profanity(text: str | None) -> bool:
     """Return True if ``text`` contains a profane term (leet/spacing tolerant)."""
@@ -76,4 +85,4 @@ def contains_profanity(text: str | None) -> bool:
     tokens = set(spaced.split())
     if tokens & _PROFANITY:
         return True
-    return any(word in collapsed for word in _PROFANITY)
+    return any(word in collapsed for word in _COLLAPSED_SUBSTRING_TERMS)
