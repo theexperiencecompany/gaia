@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "0cff14482a27",
+  "session_id": "a522db44-1d98-49a1-8c68-94d4bb510a57",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-25T20:08:23.009654Z",
+  "branch": "chore/claude-rules-cleanup",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "9e1f1290c178",
+  "token_usage": {
+    "input_tokens": 45255,
+    "cache_creation_tokens": 538974,
+    "cache_read_tokens": 14618541,
+    "output_tokens": 225024,
+    "api_call_count": 73
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
