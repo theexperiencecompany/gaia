@@ -7,3 +7,7 @@ please first figure out the cleanest architecture of surfacing any errors and th
 ---
 
 alos how will this fix the actual errors like apart from 429 rate limited shit?
+
+---
+
+fuck it just fix the 429 rate limited shit
