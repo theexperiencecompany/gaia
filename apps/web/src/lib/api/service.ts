@@ -47,8 +47,8 @@ async function request<T = unknown>(
       message?: string;
     };
 
-    // The global interceptor (processAxiosError) marks errors it already
-    // toasted (401/403/429/5xx). Don't double-toast those.
+    // The interceptor (processAxiosError) toasts and marks errors it handles
+    // (network, 401/403/429/5xx). Don't double-toast those.
     const handledByInterceptor =
       (error as { handled?: boolean }).handled === true;
 

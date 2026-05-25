@@ -246,10 +246,6 @@ export default function FileUpload({
       clearAllFiles();
     } catch (error) {
       console.error("Error uploading files:", error);
-      // The interceptor already toasts handled errors (429 rate-limit, etc.).
-      if (!(error as { handled?: boolean }).handled) {
-        toast.error("Error uploading files. Please try again.");
-      }
 
       if (onFilesUploaded) {
         onFilesUploaded([]);
