@@ -238,9 +238,10 @@ The visual language for building any UI in this codebase. Tokens, patterns, and 
 
 **Related files:**
 - Token source: `apps/web/src/app/styles/globals.css`
-- Claude design rules: `.claude/rules/design.md` → points here
+- Claude design rules: `apps/web/CLAUDE.md` (behavioral) + this file (tokens)
 - Visual docs: `docs/design-system.mdx` → renders this file as a style guide
-- Chat card contract + workflow: `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`
+- Chat bubble & tool-card design: `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`
+- OpenUI system guide: `apps/web/src/config/openui/CLAUDE.md`
 
 ## Overview
 

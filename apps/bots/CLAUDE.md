@@ -1,678 +1,81 @@
-# CLAUDE.md — apps/bots
+# apps/bots
 
-## Overview
-
-This workspace contains four GAIA bot integrations (Discord, Slack, Telegram, WhatsApp) plus a shared end-to-end test suite. Each bot is an independent npm package that connects to the GAIA backend by extending `BaseBotAdapter` from `@gaia/shared`.
+Four GAIA chat bots (Discord, Slack, Telegram, WhatsApp) plus a shared Vitest suite. Each bot is an independent ESM package that talks to the GAIA backend by extending `BaseBotAdapter` from `@gaia/shared`. All platform-agnostic logic (commands, streaming, markdown, API client, config) lives in `libs/shared/ts/src/bots/` — the per-bot packages are thin adapters.
 
 ```
 apps/bots/
-  discord/     - @gaia/bot-discord  (discord.js v14)
-  slack/       - @gaia/bot-slack    (@slack/bolt v4, Socket Mode)
-  telegram/    - @gaia/bot-telegram (grammY v1)
-  whatsapp/    - @gaia/bot-whatsapp (Kapso + Hono webhook)
-  __tests__/   - Vitest e2e/unit tests (run from apps/bots/)
+  discord/    @gaia/bot-discord   (discord.js v14, WebSocket gateway)
+  slack/      @gaia/bot-slack     (@slack/bolt v4, Socket Mode)
+  telegram/   @gaia/bot-telegram  (grammY, long polling)
+  whatsapp/   @gaia/bot-whatsapp  (Kapso proxy, Hono webhook)
+  __tests__/  Vitest suite (nx project: bots-e2e)
 ```
 
-## Key Commands
-
-Use **pnpm**, not npm or yarn.
+## Commands
 
 ```bash
-# Run all bots in parallel (mise task)
-mise dev:bots
+mise dev:bots                    # all four bots in parallel
+nx dev bot-discord               # single bot, hot reload (tsx watch)
+nx build bot-discord             # tsup → dist/index.js, all deps bundled
+nx test bots-e2e                 # Vitest (or: mise test:bots)
 
-# Run a single bot in dev mode (hot reload via tsx watch)
-nx dev bot-discord
-nx dev bot-telegram
-nx dev bot-slack
-nx dev bot-whatsapp
+# Register platform commands after adding/renaming a command:
+pnpm --filter @gaia/bot-discord deploy-commands   # Discord slash + context menu
+pnpm --filter @gaia/bot-telegram set-commands     # Telegram /-menu
+# Slack: configured in the Slack App dashboard. WhatsApp: matched by text prefix.
 
-# Build (tsup produces dist/index.js with all deps bundled)
-nx build bot-discord
-
-# Run tests (always from apps/bots/ — vitest.config.ts lives there)
-nx test bots-e2e
-
-# Deploy/register platform commands (run after adding or renaming commands)
-pnpm --filter @gaia/bot-discord deploy-commands   # registers Discord slash + context menu commands
-pnpm --filter @gaia/bot-telegram set-commands     # pushes command list to Telegram API
-# Slack: no manual registration step — slash commands are configured in the Slack App dashboard
-# WhatsApp: no registration step — commands matched by text prefix
-
-# CI Docker builds (Dagger)
-mise ci:docker:bot-discord
-mise ci:docker:bot-slack
-mise ci:docker:bot-telegram
-mise ci:docker:bot-whatsapp
+mise ci:docker:bot-<platform>    # Dagger Docker build
 ```
 
-**Single-instance constraint**: Discord and Telegram use persistent connections (WebSocket / long polling). Only **one instance** can run per token at a time. Running `mise dev:bots` while a Docker container is also running the same bot will cause a `409 Conflict` on Telegram or gateway disconnects on Discord. Stop one before starting the other.
-
-## Configuration Pipeline
-
-Environment variables are resolved in this order (first value wins):
-
-```
-1. Process env vars         (Docker -e flags, CI env, shell exports)
-2. apps/bots/.env           (shared across all bots, loaded by loadConfig via dotenv)
-3. apps/bots/{platform}/.env (legacy/Docker fallback, rarely used)
-4. Infisical remote secrets  (fills remaining gaps, local env takes precedence)
-```
-
-`loadConfig()` in `libs/shared/ts/src/bots/config/index.ts` handles this. It is called inside `BaseBotAdapter.boot()`, not in the constructor. No `--require dotenv` flags are needed — dotenv is loaded explicitly in code.
-
-After all sources are exhausted, four vars are validated as required:
-- `GAIA_API_URL` — backend API URL
-- `GAIA_BOT_API_KEY` — shared secret (must match backend's `BOT_API_KEY`)
-- `GAIA_FRONTEND_URL` — web app URL for auth redirects
-- `BOT_LOG_HASH_SECRET` — HMAC-SHA256 key (min 32 chars) for hashing PII in logs. Generate with `openssl rand -hex 32`.
-
-If any are missing, the process throws and exits.
-
-**Infisical** (production secrets manager):
-- Optional in dev (skipped if not configured)
-- Required in production (`NODE_ENV=production`) — missing Infisical creds = fatal error
-- Only injects keys not already set in `process.env`
-- Needs: `INFISICAL_TOKEN`, `INFISICAL_PROJECT_ID`, `INFISICAL_MACHINE_IDENTITY_CLIENT_ID`, `INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET`
+**Single-instance constraint**: Discord and Telegram hold a persistent connection per token. Running `mise dev:bots` while a Docker container runs the same bot causes Telegram `409 Conflict` / Discord gateway disconnects. Run one or the other, not both.
 
 ## Architecture
 
-### Adapter pattern
+`BaseBotAdapter` (`libs/shared/ts/src/bots/adapter/base.ts`) owns `dispatchCommand`, `buildContext`, the `GaiaClient`, error handling, and the shared `BotServer`. Each bot implements five abstract methods, called in this order by `boot()`:
 
-Every bot follows the same lifecycle:
+`initialize` (create SDK client) → `registerCommands` (wire commands) → `registerEvents` (listen for mentions/DMs, mount webhook routes) → `start` (connect) → then `boot()` starts `BotServer` automatically. `stop()` is the only shutdown hook; entry points wire `SIGINT`/`SIGTERM` to it.
 
-```
-boot(allCommands)
-  → initialize()       create platform client
-  → registerCommands() wire BotCommand list to platform slash/command handlers
-  → registerEvents()   register mention/DM event listeners (mount webhook routes here)
-  → start()            connect to gateway / start polling
-  → BotServer.start()  start shared HTTP server (after all routes are mounted)
-```
+- **BotServer** (`adapter/base-server.ts`): Hono server auto-created in `boot()`, serves `GET /health`. Mount extra routes on `this.botServer.app` inside `registerEvents()` (before it starts). Default ports: discord 3200, slack 3201, telegram 3202, whatsapp 3203; override with `BOT_SERVER_PORT`. Do not start/stop it manually.
+- **Unified commands** (`bots/commands/`): defined once, exported as `allCommands`. Each `BotCommand.execute()` gets a platform-agnostic `RichMessageTarget` (`send`, `sendEphemeral`, `sendRich`, `startTyping`) and never touches a platform SDK. The `/gaia` command is special-cased in every adapter to route through `handleStreamingChat` instead of `execute`.
+- **Streaming** (`bots/utils/streaming.ts`): `handleStreamingChat` does throttled edits, cursor indicator, `<NEW_MESSAGE_BREAK>` splitting, and auth-vs-generic error classification. Per-platform behavior in `STREAMING_DEFAULTS`.
+- **Markdown**: each platform needs different syntax. Converters in `bots/utils/formatters.ts` (`convertToTelegramMarkdown`, `convertToSlackMrkdwn`, `convertToWhatsAppMarkdown`); all use `applyOutsideCodeBlocks()` to leave fenced code untouched. Discord uses native embeds via `richMessageToEmbed`.
+- **Auth** (`GaiaClient`, `bots/api/index.ts`): sends `X-Bot-API-Key`, `X-Bot-Platform`, `X-Bot-Platform-User-Id`. Session tokens cached 12 min; on 401 the cache is cleared and the call retried once. Users link accounts via `/auth` → backend issues a 10-min Redis token → web confirm → `platform_links.{platform}` in MongoDB.
 
-The `BaseBotAdapter` (in `libs/shared/ts/src/bots/adapter/base.ts`) owns `dispatchCommand`, `buildContext`, error handling, the `GaiaClient` instance, and the shared `BotServer`. Each bot only implements the five abstract methods above.
+## Config
 
-**BotServer** (`libs/shared/ts/src/bots/adapter/base-server.ts`) is a Hono HTTP server created automatically in `boot()`. It provides `GET /health` by default. Subclasses can mount additional routes on `this.botServer.app` inside `registerEvents()` before the server starts. Each bot has a hardcoded `defaultServerPort` (discord: 3200, slack: 3201, telegram: 3202, whatsapp: 3203), overridable with `BOT_SERVER_PORT`.
+`loadConfig()` (`bots/config/index.ts`) is called inside `boot()`, not the constructor. Resolution order, first wins: process env → `apps/bots/.env` (shared by all bots) → `apps/bots/{platform}/.env` (legacy) → Infisical. dotenv is loaded in code, so no `--require dotenv` flag.
 
-Shutdown: entry points register `SIGINT`/`SIGTERM` handlers that call `adapter.shutdown()` → `stop()`. No `uncaughtException` or `unhandledRejection` handlers are registered — errors during boot propagate to `main().catch()` and exit with code 1.
+Required for every bot (process throws if missing): `GAIA_API_URL`, `GAIA_BOT_API_KEY` (must equal backend `BOT_API_KEY`), `GAIA_FRONTEND_URL`, `BOT_LOG_HASH_SECRET` (≥32 chars, HMAC key for hashing PII in logs; `openssl rand -hex 32`).
 
-### Unified command system
+Platform-specific: Discord `DISCORD_BOT_TOKEN` + `DISCORD_CLIENT_ID`; Slack `SLACK_BOT_TOKEN` + `SLACK_SIGNING_SECRET` + `SLACK_APP_TOKEN`; Telegram `TELEGRAM_BOT_TOKEN`; WhatsApp `KAPSO_API_KEY` + `KAPSO_PHONE_NUMBER_ID` + `KAPSO_WEBHOOK_SECRET`.
 
-Commands are defined **once** in `libs/shared/ts/src/bots/commands/` and exported as `allCommands` from `@gaia/shared`. Each `BotCommand` has an `execute(params: CommandExecuteParams)` function that receives a platform-agnostic `RichMessageTarget` — it never touches Discord/Slack/Telegram APIs directly.
+Infisical is optional in dev, fatal-if-missing when `NODE_ENV=production`, and only fills keys not already in `process.env`.
 
-The `/gaia` command is special-cased in every adapter to use `handleStreamingChat` instead of the unified `execute` path.
+## Platform gotchas
 
-### RichMessageTarget
+| | Discord | Slack | Telegram | WhatsApp |
+|---|---|---|---|---|
+| Connection | WebSocket | Socket Mode | Long polling | Kapso → Hono webhook |
+| Streaming | off | on | on | off |
+| Edit interval | 1200ms | 1500ms | 1000ms | 2000ms |
+| Editing | yes | non-ephemeral only | yes | no (sends new) |
+| Ephemeral | flags | response_type | DM fallback | falls back to send |
+| Rich msg | embeds | markdown | markdown | markdown |
+| Response deadline | 3s | 3s | none | none |
+| Max length | 2000 | 4000 | 4096 | 4096 |
 
-Each adapter creates a `RichMessageTarget` from its native context (Discord `Interaction`, Slack `respond`, Telegram `ctx`, WhatsApp `waId`). This target has four methods: `send`, `sendEphemeral`, `sendRich`, `startTyping`. Commands only use these — they never import platform libraries.
+- **Discord**: 3s interaction deadline — adapter auto-defers on first `send`. The defer's ephemeral flag is set by whichever of `send`/`sendEphemeral` fires first. Slash commands need `deploy-commands` before they appear. Typing refreshes every 8s; presence rotates every 3 min; DM welcome sent once per user per process.
+- **Slack**: every handler `ack()`s immediately (3s rule). No embeds, no typing API (`startTyping` is a no-op). Ephemeral messages cannot be edited (`edit` is a no-op). Auth URLs sent ephemeral to avoid leaking tokens.
+- **Telegram**: `/start` maps to the `help` command. `setMyCommands()` runs inside `registerCommands` and via the standalone `set-commands` script. In group chats `sendEphemeral`/`sendRich` DM the user (with a group fallback if DMs are blocked). On a parse error the adapter retries without `parse_mode`. Username cached via `getMe()` on startup.
+- **WhatsApp**: Kapso (`https://api.kapso.ai/meta/whatsapp`) POSTs `/webhook`; signature verified by HMAC-SHA256 over the raw body against `KAPSO_WEBHOOK_SECRET`. `platform_user_id` = wa_id (phone, no leading `+`). Non-text messages get a text-only-support reply. Welcome sent once per user per process.
 
-### Streaming
+## Conventions
 
-The shared `handleStreamingChat` function in `libs/shared/ts/src/bots/utils/streaming.ts` handles the full streaming lifecycle:
-- Text accumulation with throttled edits (respects platform rate limits)
-- Cursor indicator display during streaming
-- `<NEW_MESSAGE_BREAK>` tag support for splitting long responses
-- Error classification: auth vs. generic
-- Platform-specific config via `STREAMING_DEFAULTS`
+- ESM only (`"type": "module"`). Build is `tsup` with `noExternal: [/.*/]` — bundles every dep into `dist/index.js` so the Docker image ships only `dist/` + `package.json` (no `node_modules`). A `banner` shims `require()` for CJS deps. All bots share one `BOT_NAME`-parameterized `apps/bots/Dockerfile`.
+- Before adding a type, check `libs/shared/ts/src/bots/types/index.ts` — `BotCommand`, `RichMessage`, `RichMessageTarget`, `SentMessage`, `PlatformName`, etc. live there.
+- `SentMessage` is `{ id: string; edit: (text) => Promise<void> }`. On platforms without edit support, `edit` sends a new message guarded by a sent-once flag.
+- Tests use Vitest (not Jest), run sequentially (shared module-level mocks), all platform SDKs and `@gaia/shared` mocked with `vi.mock()`. `vitest.config.ts` aliases `@gaia/shared` to source, so no shared-lib build is needed. Real shared logic is tested in `__tests__/shared/`.
 
-Each platform defines its streaming behavior in `STREAMING_DEFAULTS`:
+## Adding a new platform
 
-| Platform  | Streaming | Edit Interval | Notes |
-|-----------|-----------|---------------|-------|
-| Discord   | false     | 1200ms        | Uses deferred reply + edit |
-| Slack     | true      | 1500ms        | Uses chat.update by timestamp |
-| Telegram  | true      | 1000ms        | Edits message in-place |
-| WhatsApp  | false     | 2000ms        | No edit API; full response sent once |
-
-### Markdown conversion
-
-Each platform has different markdown syntax. The shared library provides:
-
-| Function | Input | Output |
-|----------|-------|--------|
-| `richMessageToMarkdown(msg, platform)` | `RichMessage` | Platform-appropriate markdown |
-| `convertToTelegramMarkdown(text)` | CommonMark | Telegram legacy markdown (`*bold*`) |
-| `convertToSlackMrkdwn(text)` | CommonMark | Slack mrkdwn (`*bold*`, `<url\|label>`) |
-| `convertToWhatsAppMarkdown(text)` | CommonMark | WhatsApp markdown (`*bold*`, bare URLs) |
-
-All converters use `applyOutsideCodeBlocks()` to preserve fenced code blocks.
-
-### Shared library path alias
-
-`vitest.config.ts` maps `@gaia/shared` to `libs/shared/ts/src/index.ts` directly (not the built output). Tests do not require a prior build of the shared lib.
-
-## Per-Platform Notes
-
-### Discord (`discord/`)
-
-- **Connection**: WebSocket gateway via discord.js Client
-- Slash commands must be **deployed** to Discord's API before they appear. Run `pnpm deploy-commands` after any command change. This calls `Routes.applicationCommands(clientId)` globally.
-- Interactions have a **3-second deadline**. The adapter auto-defers (`interaction.deferReply()`) on the first `send`/`sendEphemeral`/`sendRich` call to avoid expiry.
-- Ephemeral replies defer with `MessageFlags.Ephemeral`. Public replies defer without it. The flag is determined by which method (`send` vs `sendEphemeral`) fires first.
-- `sendRich` converts `RichMessage` to a Discord `EmbedBuilder` via `richMessageToEmbed` (exported from `discord/src/adapter.ts`).
-- Typing indicator: `sendTyping()` lasts ~10 s; the adapter refreshes it every 8 s.
-- Rotating presence statuses cycle every 3 minutes (`ROTATING_STATUSES` array).
-- DM welcome embed is sent once per user per process lifetime (tracked in `dmWelcomeSent` Set).
-- Context menu commands ("Summarize with GAIA", "Add as Todo") use `MessageContextMenuCommandInteraction` and always reply ephemeral.
-- Required env vars: `DISCORD_BOT_TOKEN`, `DISCORD_CLIENT_ID`
-
-### Slack (`slack/`)
-
-- **Connection**: Socket Mode (no public HTTP endpoint needed)
-- Every slash command handler must call `ack()` immediately (Slack's 3-second rule). This happens before any async work.
-- Slack has **no native embed API**. `sendRich` renders `RichMessage` as markdown via `richMessageToMarkdown`.
-- Ephemeral messages (via `respond({ response_type: "ephemeral" })`) **cannot be edited** after sending. The `SentMessage.edit` returned from `sendEphemeral` is a no-op.
-- Slack has no typing indicator API for bots. `startTyping` returns a no-op.
-- Streaming chat posts an initial "Thinking..." message and updates it via `chat.update` (keyed by the message's `ts` timestamp).
-- Auth URLs are sent as ephemeral messages to avoid exposing tokens publicly in a channel.
-- Required env vars: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_APP_TOKEN`
-
-### Telegram (`telegram/`)
-
-- **Connection**: Long polling (no webhook setup needed for dev)
-- `/start` is a Telegram convention — the adapter maps it to the `help` command, not a separate handler.
-- Bot commands are also registered with Telegram's API via `bot.api.setMyCommands()` inside `registerCommands` (so the "/" suggestion menu stays current). The standalone `set-commands.ts` script does the same thing manually.
-- `sendEphemeral` in group chats sends a DM to the user instead of posting publicly. If the user's privacy settings block DMs, the adapter posts a fallback message in the group.
-- `sendRich` also DMs rich content in group chats.
-- Markdown: all outbound text goes through `convertToTelegramMarkdown` which converts `**bold**` → `*bold*`, headings → bold, strips blockquotes/horizontal rules, and leaves code blocks unchanged. If Telegram rejects the markdown (`"can't parse entities"`), the adapter retries without `parse_mode`.
-- Typing indicator refreshes every 5 s (Telegram's typing action expires after ~5 s).
-- `hasTelegramMention` / `stripTelegramMention` are exported from `adapter.ts` for testability (case-sensitive string matching, not regex).
-- Bot username is fetched once on startup via `bot.api.getMe()` and cached to avoid repeated API calls.
-- Required env vars: `TELEGRAM_BOT_TOKEN`
-
-### WhatsApp (`whatsapp/`)
-
-- **Connection**: HTTP webhook server (`BotServer` — Hono + `@hono/node-server`) on port 3203 — Kapso calls `POST /webhook`
-- **Kapso** is a Meta WhatsApp Cloud API proxy service at `https://api.kapso.ai/meta/whatsapp`. It simplifies webhook handling and message sending.
-- Webhook signature verified via HMAC-SHA256 on raw body against `KAPSO_WEBHOOK_SECRET`.
-- No slash-command registry step needed — commands matched by text prefix (`/command`)
-- Non-command messages (plain text) are treated as chat messages (like Telegram DMs)
-- Non-text messages (images, audio, video, documents) receive a helpful reply explaining text-only support
-- WhatsApp does **not** support message editing — `SentMessage.edit()` sends a new message instead, guarded by `finalMessageSent` flag to prevent multi-send
-- `sendEphemeral` falls back to `send` (no ephemeral concept in WhatsApp)
-- `sendRich` renders `RichMessage` via `richMessageToMarkdown` then `convertToWhatsAppMarkdown` to convert `**bold**` → `*bold*` and `[label](url)` → `label (url)`
-- Typing indicator: shown via `messages.markRead({ typingIndicator: { type: 'text' } })` at the start of every incoming message. Auto-dismisses after ~25s or when a reply is sent. Refreshed every 20s. `startTyping()` on the target is a no-op.
-- Welcome message sent once per user per process lifetime (tracked in `welcomeSent` Set), matching Discord's DM welcome pattern
-- Streaming is **disabled** (`streaming: false`) — full response sent once complete
-- `platform_user_id` = wa_id (phone number without leading `+`, e.g. `"15551234567"`)
-- **Webhook architecture**: Kapso POSTs to a public HTTPS endpoint which is proxied to `http://whatsapp-bot:3203/webhook` on the internal Docker network. The bot verifies the Kapso HMAC signature.
-- **Port**: `3203` (default, override with `BOT_SERVER_PORT` env var). Port is exposed on the host for external monitoring; the `/health` endpoint returns `{ status: "ok", platform: "whatsapp" }`.
-- Required env vars: `KAPSO_API_KEY`, `KAPSO_PHONE_NUMBER_ID`, `KAPSO_WEBHOOK_SECRET`
-
-## Testing
-
-- Framework: **Vitest** (not Jest). All test files are under `__tests__/`.
-- Tests run sequentially (`fileParallelism: false`, `sequence.concurrent: false`) because some test suites share module-level mocks.
-- Timeout: 15 s per test, 10 s for hooks.
-- Platform libraries (discord.js, @slack/bolt, grammy, @kapso/whatsapp-cloud-api) are fully mocked with `vi.mock()`. No real network calls are made.
-- `@gaia/shared` is also mocked in adapter tests — its real implementation is tested in `__tests__/shared/`.
-- Private adapter methods are accessed in tests via `(adapter as unknown as { method: ... }).method(...)` casting.
-- Do not create test files unless explicitly asked.
-
-### Test file organization
-
-```
-__tests__/
-  discord/
-    adapter.test.ts       - Discord adapter behavior tests
-  slack/
-    adapter.test.ts       - Slack adapter behavior tests
-  telegram/
-    adapter.test.ts       - Telegram adapter behavior tests
-    mention.test.ts       - Mention detection/stripping + markdown tests
-  whatsapp/
-    adapter.test.ts       - WhatsApp adapter behavior tests (welcome, media, streaming, commands)
-    webhook.test.ts       - Pure webhook utilities (signature, wa_id extraction, message filtering)
-  shared/
-    adapter/
-      rich-renderer.test.ts - RichMessage → markdown rendering tests
-    utils/
-      commands.test.ts      - Unified command handler tests (todo, workflow, conversations)
-      formatters.test.ts    - Formatter tests (Telegram/Slack/WhatsApp markdown, errors, display)
-      text-utils.test.ts    - parseTextArgs, truncateResponse tests
-```
-
-## Code Rules
-
-- Package manager: **pnpm**
-- No inline imports — all imports at the top of the file
-- Never use `any` type — use explicit interfaces or `unknown` with narrowing
-- Before adding a new type, check `libs/shared/ts/src/bots/types/index.ts` — most domain types (`BotCommand`, `RichMessage`, `CommandContext`, `SentMessage`, `PlatformName`, etc.) are already defined there
-- Each bot package is `"type": "module"` (ESM). Avoid CommonJS patterns.
-- Build tool is `tsup`; dev runner is `tsx watch`.
-
-## Adding a New Bot
-
-This is a complete checklist for integrating a new messaging platform into GAIA. Follow every step — skipping any will result in a partially working integration.
-
-### 1. Scaffold the bot package
-
-Create `apps/bots/{platform}/` with the following files:
-
-```
-apps/bots/{platform}/
-  src/
-    adapter.ts    - Main adapter extending BaseBotAdapter
-    index.ts      - Entry point (create adapter, call boot, handle signals)
-  package.json    - ESM package with platform SDK dependency
-  tsconfig.json   - TypeScript config (target ES2022, module ESNext)
-  tsup.config.ts  - Build config (format esm, target node20+)
-```
-
-**`tsup.config.ts`** must match the standard config used by all bots:
-
-```typescript
-import { defineConfig } from "tsup";
-
-export default defineConfig({
-  entry: ["src/index.ts"],
-  format: "esm",
-  target: "node20",
-  outDir: "dist",
-  clean: true,
-  noExternal: [/.*/],      // Bundle ALL dependencies into dist/index.js (required for Docker)
-  banner: {
-    js: `import{createRequire}from"module";const require=createRequire(import.meta.url);`,
-  },
-});
-```
-
-The `noExternal` flag bundles everything into a single file so the Docker production image only needs `dist/` and `package.json` — no `node_modules`. The `banner` shims `require()` for any CJS dependencies consumed from ESM.
-
-**`package.json`** must include:
-- `"name": "@gaia/bot-{platform}"`
-- `"type": "module"`
-- `"private": true`
-- `"@gaia/shared": "workspace:*"` as a dependency
-- The platform's SDK as a dependency
-- Scripts: `build`, `dev`, `start`
-
-**`tsconfig.json`** is identical for all bots:
-
-```json
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "outDir": "dist",
-    "rootDir": "src",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
-  },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist"]
-}
-```
-
-**`index.ts`** is always the same pattern:
-
-```typescript
-import { allCommands } from "@gaia/shared";
-import { {Platform}Adapter } from "./adapter";
-
-const adapter = new {Platform}Adapter();
-adapter.boot(allCommands).catch((err) => {
-  console.error("Failed to boot:", err);
-  process.exit(1);
-});
-
-process.on("SIGINT", () => adapter.stop().then(() => process.exit(0)));
-process.on("SIGTERM", () => adapter.stop().then(() => process.exit(0)));
-```
-
-### 2. Implement the adapter
-
-Your adapter class must extend `BaseBotAdapter` and implement:
-
-```typescript
-class {Platform}Adapter extends BaseBotAdapter {
-  readonly platform: PlatformName = "{platform}";
-
-  protected async initialize(): Promise<void> { /* create SDK client */ }
-  protected async registerCommands(commands: BotCommand[]): Promise<void> { /* wire commands */ }
-  protected async registerEvents(): Promise<void> { /* listen for messages */ }
-  protected async start(): Promise<void> { /* connect/start */ }
-  protected async stop(): Promise<void> { /* graceful shutdown */ }
-}
-```
-
-#### Key decisions for each method:
-
-**`initialize()`**: Load config from env vars, create the platform SDK client. Validate required env vars and throw if missing.
-
-**`registerCommands()`**: Wire the command list to the platform's command system. Options:
-- **Discord**: Deploy slash commands via REST API
-- **Telegram**: Register via `bot.api.setMyCommands()`
-- **Slack**: Configured externally in the Slack App dashboard
-- **WhatsApp/others**: No registration needed — match by text prefix
-
-**`registerEvents()`**: Subscribe to incoming messages. Route them to:
-- Commands (text starting with `/`) → `this.dispatchCommand(name, target, args)`
-- Chat messages → `handleStreamingChat(this.gaia, request, ...callbacks)`
-- Non-text messages → graceful rejection message
-
-**`start()`**: Connect to the platform (WebSocket, long polling). The `BotServer` is started automatically by `boot()` after `start()` returns — do not start it manually.
-
-**`stop()`**: Clean up connections, clear intervals. The `BotServer` is stopped automatically by `shutdown()` — do not stop it manually.
-
-#### Creating a RichMessageTarget
-
-Every adapter must create a `RichMessageTarget` for each incoming message context. This is the bridge between platform-agnostic commands and platform-specific message sending.
-
-```typescript
-private createTarget(/* platform context */): RichMessageTarget {
-  return {
-    platform: "{platform}",
-    userId: /* platform user ID */,
-    channelId: /* channel/conversation ID */,
-    send: async (text) => { /* send a message, return SentMessage */ },
-    sendEphemeral: async (text) => { /* send user-only message, or fallback to send */ },
-    sendRich: async (richMsg) => { /* render RichMessage for this platform */ },
-    startTyping: async () => { /* show typing indicator, return stop function */ },
-  };
-}
-```
-
-#### SentMessage contract
-
-`send` and `sendEphemeral` must return `{ id: string, edit: (text: string) => Promise<void> }`.
-- `id` — the platform's message ID
-- `edit` — updates the message in-place, or sends a new message if the platform doesn't support edits
-
-### 3. Handle platform-specific concerns
-
-Research and document these for your platform:
-
-| Concern | What to decide |
-|---------|---------------|
-| **Connection type** | WebSocket, long polling, HTTP webhook, or Socket Mode? |
-| **Message editing** | Does the platform support editing sent messages? If not, `SentMessage.edit` should send a new message with a guard flag to prevent multi-send. |
-| **Ephemeral messages** | Does the platform support user-only messages? If not, `sendEphemeral` falls back to `send`. |
-| **Rich messages** | Native embeds (Discord), or render as markdown? If markdown, add a `convertTo{Platform}Markdown()` function in `libs/shared/ts/src/bots/utils/formatters.ts`. |
-| **Typing indicator** | How long does the platform show "typing"? Set a refresh interval accordingly. |
-| **Streaming** | Can you edit messages fast enough for streaming? If not, set `streaming: false` in `STREAMING_DEFAULTS`. |
-| **Rate limits** | What are the API rate limits? Set `editIntervalMs` accordingly. |
-| **Response deadline** | Does the platform require a response within N seconds? (Discord: 3s, Slack: 3s) If so, defer immediately. |
-| **Media messages** | What non-text message types can arrive? Reply gracefully to unsupported types. |
-| **Group vs DM** | Does the bot need different behavior in groups vs DMs? (Telegram does.) |
-| **Welcome message** | Send a welcome on first contact per-process lifetime (tracked via a Set). |
-| **Command registration** | Does the platform have a command menu that needs updating? Add a registration script if so. |
-
-### 4. Add markdown conversion (if needed)
-
-If the platform uses different markdown syntax from CommonMark, add a converter in `libs/shared/ts/src/bots/utils/formatters.ts`:
-
-```typescript
-export function convertTo{Platform}Markdown(text: string): string {
-  return applyOutsideCodeBlocks(text, (segment) =>
-    segment
-      .replace(/\*\*\*(.+?)\*\*\*/g, "*$1*")   // ***bold italic*** → platform bold
-      .replace(/\*\*(.+?)\*\*/g, "*$1*")         // **bold** → platform bold
-      // ... platform-specific conversions
-  );
-}
-```
-
-Apply it in `sendRich` after `richMessageToMarkdown()`, and optionally to streaming responses.
-
-### 5. Add streaming defaults
-
-In `libs/shared/ts/src/bots/utils/streaming.ts`, add your platform to `STREAMING_DEFAULTS`:
-
-```typescript
-{platform}: {
-  editIntervalMs: 1500,   // milliseconds between message edits
-  streaming: true,         // or false if edits not supported
-  platform: "{platform}",
-}
-```
-
-### 6. Update shared types
-
-In `libs/shared/ts/src/bots/types/index.ts`:
-- Add `"{platform}"` to the `PlatformName` union type
-- Add platform to `PLATFORM_LIMITS` in `libs/shared/ts/src/bots/utils/index.ts` (character limit)
-
-### 7. Wire into Nx
-
-**`apps/bots/{platform}/project.json`**:
-
-```json
-{
-  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "name": "bot-{platform}",
-  "root": "apps/bots/{platform}",
-  "sourceRoot": "apps/bots/{platform}/src",
-  "projectType": "application",
-  "release": {
-    "docker": {
-      "repositoryName": "theexperiencecompany/gaia-bot-{platform}"
-    }
-  },
-  "targets": {
-    "build": { "executor": "nx:run-commands", "options": { "command": "pnpm tsup", "cwd": "{projectRoot}" } },
-    "dev": { "executor": "nx:run-commands", "options": { "command": "pnpm tsx watch src/index.ts", "cwd": "{projectRoot}" } },
-    "lint": { "executor": "nx:run-commands", "options": { "command": "pnpm biome check src/", "cwd": "{projectRoot}" } },
-    "type-check": { "executor": "nx:run-commands", "options": { "command": "pnpm tsc --noEmit", "cwd": "{projectRoot}" } },
-    "docker:build": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "docker build -f apps/bots/Dockerfile --build-arg BOT_NAME={platform} -t ghcr.io/theexperiencecompany/gaia-bot-{platform}:latest ."
-      }
-    }
-  }
-}
-```
-
-**`nx.json`** — add `"bot-{platform}"` to the `bots` release group `projects` array and the `groupPreVersionCommand`.
-
-### 8. Wire into Docker
-
-The shared `apps/bots/Dockerfile` is parameterized by `BOT_NAME` build arg — no Dockerfile changes needed.
-
-**`infra/docker/docker-compose.yml`** — add a service:
-
-```yaml
-{platform}-bot:
-  container_name: {platform}-bot
-  profiles: ["bots", "all"]
-  build:
-    context: ../..
-    dockerfile: apps/bots/Dockerfile
-    args:
-      BOT_NAME: {platform}
-  env_file:
-    - ../../apps/bots/.env
-  restart: on-failure
-  depends_on:
-    gaia-backend:
-      condition: service_healthy
-  networks:
-    - gaia_network
-```
-
-All bots expose their `BotServer` port on the host for health monitoring and status pages:
-```yaml
-  environment:
-    - BOT_SERVER_PORT=32XX
-  ports:
-    - "${PLATFORM_BOT_PORT:-32XX}:32XX"
-```
-
-For webhook-based bots (WhatsApp), also add an nginx location block to route external traffic to the bot container — see step 11.
-
-**`infra/docker/docker-compose.prod.yml`** — add the same service using the pre-built image:
-```yaml
-  image: ghcr.io/theexperiencecompany/gaia-bot-{platform}:latest
-```
-
-### 9. Add to workspace dependencies
-
-**`apps/bots/package.json`** — add `"@gaia/bot-{platform}": "workspace:*"` to dependencies.
-
-### 10. Add environment variables
-
-**`apps/bots/.env.example`** — add all required env vars with descriptions.
-
-### 11. Server proxy integration (if webhook-based)
-
-If the platform uses webhooks (like WhatsApp), configure a reverse proxy on the server to route the public HTTPS webhook URL to the bot container on the internal Docker network. TLS is terminated at the proxy; the bot receives plain HTTP.
-
-```text
-[External Service] → POST https://api.heygaia.io/api/v1/webhook/{platform}
-                           ↓ (reverse proxy, internal Docker network)
-                     [{platform}-bot:32XX/webhook]
-                           ↓ (verify HMAC signature)
-                     [Bot Container] → process message
-```
-
-The bot handles signature verification itself in `registerEvents()`. No API-layer proxy is needed.
-
-### 12. Notification channel
-
-To send proactive notifications (not just replies):
-
-1. **Channel adapter** (`apps/api/app/utils/notification/channels/{platform}.py`):
-   - Extend `ExternalPlatformAdapter`
-   - Implement `send_notification()` using the platform's API
-   - Define `channel_type`, `max_message_length`, `bold_marker`
-
-2. **Constants** (`apps/api/app/constants/notifications.py`):
-   - Add `CHANNEL_TYPE_{PLATFORM}`
-   - Add to `ALL_AUTO_INJECTED_CHANNELS`
-   - Add to `DEFAULT_CHANNEL_PREFERENCES`
-
-3. **Models** (`apps/api/app/models/notification/notification_models.py`):
-   - Add `{platform}: bool` field to `ChannelPreferences`
-   - Add `{platform}: Optional[bool]` to `ChannelPreferencesUpdate`
-
-4. **Orchestrator** (`apps/api/app/utils/notification/orchestrator.py`):
-   - Register the new adapter in `_register_default_components()`
-
-5. **Frontend** (`apps/web/src/features/settings/components/NotificationSettings.tsx`):
-   - Add platform to `NOTIFICATION_PLATFORMS` array
-   - Add platform icon to `public/images/icons/macos/`
-
-6. **Mobile** (`apps/mobile/src/features/settings/`):
-   - Update `ChannelPreferences` type in `api/settings-api.ts` (add `{platform}: boolean`)
-   - Update `updateChannelPreference()` platform union type to include `"{platform}"`
-   - Add `SettingsSwitchRow` toggle in `components/sections/notification-section.tsx`
-   - Icon: add to `apps/mobile/src/lib/gaia-icons.tsx` via `createIcon("{Platform}Icon")`, import from `@/components/icons`
-   - Update initial state, `updatingChannel` type, and `handleToggle` type to include `"{platform}"`
-
-### 13. Platform linking / auth
-
-Users link their platform account to GAIA via:
-
-1. Bot sends `/auth` → backend creates a time-limited link token (Redis, 10-min TTL)
-2. User visits web URL with the token
-3. Web app confirms connection, stores `platform_links.{platform}` in MongoDB
-4. Backend can now identify the user by `platform_user_id`
-
-Add the platform to:
-- `apps/api/app/api/v1/endpoints/platform_links.py` — `initiate_platform_connect()` handler
-- `apps/api/app/services/platform_link_service.py` — platform enum/validation
-- Bot auth headers: `X-Bot-Platform: {platform}`, `X-Bot-Platform-User-Id: {id}`
-
-### 14. Agent platform context
-
-The LangGraph agent adjusts its output based on the platform:
-- `apps/api/app/agents/core/nodes/message_helpers.py` — `get_platform_context_message()`
-  - Add formatting instructions for the new platform
-  - Specify which markdown syntax works (bold, italic, code, links)
-  - Note: messaging platforms should NOT use artifacts, HTML, or files
-
-### 15. Write tests
-
-Create `apps/bots/__tests__/{platform}/adapter.test.ts` following the existing patterns:
-
-1. Mock the platform SDK with `vi.mock()`
-2. Mock `@gaia/shared` with a `BaseBotAdapter` stub
-3. Create a `makeAdapter()` helper that injects mock client + config
-4. Use `PrivateAdapter` type cast to access private methods
-5. Test: platform identity, message sending, editing, rich messages, typing, command routing, streaming, welcome message, media handling, error callbacks
-
-Also create `__tests__/{platform}/webhook.test.ts` if the bot uses webhooks (pure function tests, no mocks needed).
-
-### 16. Quality checks
-
-Run before considering work complete:
-
-```bash
-nx type-check bot-{platform}
-nx lint bot-{platform}
-nx test bots-e2e
-```
-
-### Platform comparison reference
-
-| Feature | Discord | Slack | Telegram | WhatsApp |
-|---------|---------|-------|----------|----------|
-| Connection | WebSocket | Socket Mode | Long polling | HTTP webhook |
-| Message editing | Yes | Yes (non-ephemeral) | Yes | No |
-| Ephemeral messages | Yes (flags) | Yes (response_type) | DM fallback | No |
-| Native embeds | Yes (EmbedBuilder) | No | No | No |
-| Typing indicator | ~10s, refresh 8s | No API | ~5s, refresh 5s | ~25s, refresh 20s |
-| Streaming | Disabled | Enabled | Enabled | Disabled |
-| Command menu | Slash commands API | App dashboard | setMyCommands API | Text prefix only |
-| Response deadline | 3 seconds | 3 seconds | None | None |
-| Markdown syntax | `**bold**` | `*bold*` | `*bold*` | `*bold*` |
-| Link syntax | `[label](url)` | `<url\|label>` | `[label](url)` | Bare URLs |
-| Max message length | 2000 | 4000 | 4096 | 4096 |
-| Welcome message | DM embed + buttons | None | None | Text markdown |
-| Media support | Text only | Text only | Text only | Text only (graceful rejection) |
-| Auth flow | Link token + web | Link token + web | Link token + web | Link token + web |
-| Webhook routing | No | No | No | nginx → bot:3203 |
-
-### Docker build
-
-All bots share a single parameterized `apps/bots/Dockerfile`:
-
-```dockerfile
-ARG BOT_NAME
-FROM node:20-alpine AS builder
-# Copies pnpm-workspace.yaml, libs/shared/ts, and apps/bots/${BOT_NAME}
-# Runs pnpm install --frozen-lockfile, then pnpm --filter @gaia/bot-${BOT_NAME} build
-
-FROM node:20-alpine AS runner
-# Copies only dist/ and package.json from builder
-# Runs as non-root 'node' user
-# CMD ["node", "dist/index.js"]
-```
-
-Because `noExternal: [/.*/]` in tsup bundles everything into `dist/index.js`, the production image has no `node_modules` and is very small (~50MB). The `BOT_NAME` build arg selects which bot to build.
-
-### Env vars
-
-All bots read from a single `apps/bots/.env` file (shared via `env_file` in Docker Compose). Platform-specific vars are only read by the bot that needs them. The `.env.example` documents every variable.
-
-Shared vars (required by all bots):
-- `GAIA_API_URL` — backend URL (e.g. `http://localhost:8000` or `http://gaia-backend:8000`)
-- `GAIA_BOT_API_KEY` — must match the backend's `BOT_API_KEY` setting
-- `GAIA_FRONTEND_URL` — web app URL for auth redirects (e.g. `https://heygaia.io`)
-
-### GaiaClient authentication
-
-The `GaiaClient` (in `libs/shared/ts/src/bots/api/index.ts`) authenticates with the backend using:
-- `X-Bot-API-Key` — shared secret between bot and backend
-- `X-Bot-Platform` — `"discord"`, `"slack"`, `"telegram"`, or `"whatsapp"`
-- `X-Bot-Platform-User-Id` — platform-specific user ID
-
-Session tokens are cached client-side (12-min TTL) to avoid repeated auth calls. On 401, the token cache is cleared and retried once.
-
-### Key shared library files
-
-| File | Purpose |
-|------|---------|
-| `libs/shared/ts/src/bots/adapter/base.ts` | `BaseBotAdapter` — abstract lifecycle, command dispatch |
-| `libs/shared/ts/src/bots/adapter/rich-renderer.ts` | `richMessageToMarkdown()` — RichMessage to text |
-| `libs/shared/ts/src/bots/types/index.ts` | All type definitions (BotCommand, RichMessage, PlatformName, etc.) |
-| `libs/shared/ts/src/bots/api/index.ts` | `GaiaClient` — authenticated API client for bot endpoints |
-| `libs/shared/ts/src/bots/utils/streaming.ts` | `handleStreamingChat()` + `STREAMING_DEFAULTS` |
-| `libs/shared/ts/src/bots/utils/formatters.ts` | Markdown converters, error formatter, display formatters |
-| `libs/shared/ts/src/bots/utils/index.ts` | `parseTextArgs()`, `truncateResponse()`, `PLATFORM_LIMITS` |
-| `libs/shared/ts/src/bots/commands/` | All unified command handlers (help, auth, todo, workflow, etc.) |
-| `libs/shared/ts/src/bots/config/index.ts` | `loadConfig()` — env var loading |
+A new bot touches many surfaces beyond this dir: a new package under `apps/bots/`, `PlatformName` + `PLATFORM_LIMITS` + `STREAMING_DEFAULTS` + a markdown converter in `libs/shared/ts/src/bots/`, an nx project + the `bots` release group in `nx.json`, a Docker Compose service, env vars in `.env.example`, backend platform-link + notification-channel + agent-platform-context handlers in `apps/api`, and notification toggles in `apps/web` + `apps/mobile`. Do not start without mapping all of these first.

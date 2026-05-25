@@ -1,13 +1,6 @@
----
-description: SEO rules for Next.js metadata, page titles, structured data, programmatic SEO, sitemaps, hreflang, and OG images
-paths:
-  - "apps/web/src/app/**/*.tsx"
-  - "apps/web/src/app/**/*.ts"
-  - "apps/web/src/lib/seo.ts"
-  - "apps/web/src/utils/seoUtils.ts"
----
+# SEO Rules (marketing / landing pages)
 
-# SEO Rules
+This directory is the `(landing)` route group: public marketing pages that are crawled and indexed. These rules apply here, and to the SEO infrastructure they touch: `apps/web/src/app/sitemap/`, `apps/web/src/app/api/og/`, `apps/web/src/lib/seo.ts`, and `apps/web/src/utils/seoUtils.ts`.
 
 Full reference infrastructure lives in:
 - `apps/web/src/lib/seo.ts` — siteConfig, 19 schema generators, `generatePageMetadata()`
