@@ -44,12 +44,26 @@ vi.mock("@slack/bolt", () => ({
 
 vi.mock("@gaia/shared", async () => {
   const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
-  return makeGaiaSharedMock("slack", {
+  const base = makeGaiaSharedMock("slack", {
     streamingDefaults: {
       slack: { editIntervalMs: 1500, streaming: true, platform: "slack" },
     },
     defaultRichMarkdown: "## Rich Title\nBody text",
   });
+  // The Slack adapter lifts the first token of subcommand-style commands
+  // (todo, workflow) into args.subcommand; every other command gets `{}`.
+  // Mirror the real extractSubcommandArgs so dispatched args match production.
+  const SUBCOMMAND_COMMANDS = new Set(["todo", "workflow"]);
+  return {
+    ...base,
+    extractSubcommandArgs: vi.fn(
+      (commandName: string, rawText: string | undefined) => {
+        if (!SUBCOMMAND_COMMANDS.has(commandName)) return {};
+        const subcommand = (rawText ?? "").trim().split(/\s+/)[0] || "list";
+        return { subcommand };
+      },
+    ),
+  };
 });
 
 // ---------------------------------------------------------------------------
@@ -434,20 +448,28 @@ describe("SlackAdapter - handleSlackStreaming streaming callbacks", () => {
 // ---------------------------------------------------------------------------
 
 describe("SlackAdapter - ACK timing in registerCommands", () => {
-  it("registers a Bolt command handler that acks before doing any work", async () => {
+  it("acks immediately and dispatches the command with subcommand args", async () => {
     vi.clearAllMocks();
     const adapter = new SlackAdapter();
 
     // Give adapter a mock app
     (adapter as unknown as { app: typeof mockApp }).app = { ...mockApp };
 
-    const executeMock = vi.fn().mockResolvedValue(undefined);
+    // Spy on the base dispatch so we can assert the args object that the
+    // adapter derives from the raw slash-command text reaches it.
+    const dispatchSpy = vi
+      .spyOn(
+        adapter as unknown as { dispatchCommand: () => Promise<void> },
+        "dispatchCommand",
+      )
+      .mockResolvedValue(undefined);
+
     const commands = [
       {
         name: "todo",
         description: "Manage todos",
         options: [],
-        execute: executeMock,
+        execute: vi.fn().mockResolvedValue(undefined),
       },
     ];
 
@@ -481,7 +503,7 @@ describe("SlackAdapter - ACK timing in registerCommands", () => {
       command: {
         user_id: "U1",
         channel_id: "C1",
-        text: "list",
+        text: "add buy milk",
         user_name: "alice",
       },
       ack,
@@ -489,7 +511,77 @@ describe("SlackAdapter - ACK timing in registerCommands", () => {
       client,
     });
 
+    // Slack's 3-second rule: ack() fires before any other work.
     expect(ack).toHaveBeenCalledOnce();
+
+    // The first token of a subcommand command (todo) becomes args.subcommand,
+    // and the raw text is forwarded so the command can parse the remainder.
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      "todo",
+      expect.objectContaining({ platform: "slack", userId: "U1" }),
+      { subcommand: "add" },
+      "add buy milk",
+    );
+  });
+
+  it("dispatches a non-subcommand command with an empty args object", async () => {
+    vi.clearAllMocks();
+    const adapter = new SlackAdapter();
+    (adapter as unknown as { app: typeof mockApp }).app = { ...mockApp };
+
+    const dispatchSpy = vi
+      .spyOn(
+        adapter as unknown as { dispatchCommand: () => Promise<void> },
+        "dispatchCommand",
+      )
+      .mockResolvedValue(undefined);
+
+    const commands = [
+      {
+        name: "help",
+        description: "Show help",
+        options: [],
+        execute: vi.fn().mockResolvedValue(undefined),
+      },
+    ];
+
+    await (
+      adapter as unknown as {
+        registerCommands: (cmds: typeof commands) => Promise<void>;
+      }
+    ).registerCommands(commands);
+
+    const handlerFn = vi.mocked(mockApp.command).mock.calls[0][1] as (args: {
+      command: {
+        user_id: string;
+        channel_id: string;
+        text: string;
+        user_name: string;
+      };
+      ack: () => Promise<void>;
+      respond: () => Promise<void>;
+      client: ReturnType<typeof makeSlackClient>;
+    }) => Promise<void>;
+
+    await handlerFn({
+      command: {
+        user_id: "U1",
+        channel_id: "C1",
+        text: "",
+        user_name: "alice",
+      },
+      ack: vi.fn().mockResolvedValue(undefined),
+      respond: makeRespondFn(),
+      client: makeSlackClient(),
+    });
+
+    // `help` is not a subcommand command, so it dispatches with empty args.
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      "help",
+      expect.objectContaining({ platform: "slack", userId: "U1" }),
+      {},
+      undefined,
+    );
   });
 });
 

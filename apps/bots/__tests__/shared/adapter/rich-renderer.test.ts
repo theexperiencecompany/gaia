@@ -19,10 +19,9 @@ function makeMsg(overrides: Partial<RichMessage> = {}): RichMessage {
 // ---------------------------------------------------------------------------
 describe("richMessageToMarkdown", () => {
   // -- Title formatting per platform ---------------------------------------
-  it("formats title with *title* for Telegram", () => {
+  it("formats title with **title** for Telegram (CommonMark bold)", () => {
     const result = richMessageToMarkdown(makeMsg(), "telegram");
-    expect(result).toContain("*Test Title*");
-    expect(result).not.toContain("**Test Title**");
+    expect(result).toContain("**Test Title**");
   });
 
   it("formats title with **title** for Discord", () => {
@@ -122,15 +121,14 @@ describe("richMessageToMarkdown", () => {
     });
     const result = richMessageToMarkdown(msg, "telegram");
     // Should only have the title
-    expect(result.trim()).toBe("*Test Title*");
+    expect(result.trim()).toBe("**Test Title**");
   });
 
   // -- Defaults to telegram ------------------------------------------------
   it("defaults to telegram platform when none specified", () => {
     const result = richMessageToMarkdown(makeMsg());
-    // Telegram uses single asterisks for bold
-    expect(result).toContain("*Test Title*");
-    expect(result).not.toContain("**Test Title**");
+    // Telegram uses CommonMark double asterisks for bold
+    expect(result).toContain("**Test Title**");
   });
 
   // -- Multiple fields and links -------------------------------------------

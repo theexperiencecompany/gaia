@@ -1,25 +1,28 @@
 /**
- * End-to-end tests for the WhatsApp media pipeline.
+ * Adapter-level tests for the WhatsApp media pipeline.
  *
- * Exercises {@link WhatsAppAdapter.handleMediaMessage} against mocked Kapso +
- * Gaia clients so we cover every branch without touching real services:
+ * The transcribe-vs-upload-vs-reject decision now lives in the SHARED
+ * {@link processBotMedia} (covered exhaustively in __tests__/shared/utils/media.test.ts).
+ * These tests therefore cover only the ADAPTER's own responsibilities around
+ * {@link WhatsAppAdapter.handleMediaMessage}:
  *
- * 1. Image: download → upload → chat-stream with fileIds + fileData
- * 2. Voice note: download → transcribe → chat-stream (no upload)
- * 3. Plain audio file: same transcription path, filename derived from mime
- * 4. Document: download → upload → chat-stream with fallback prompt
- * 5. Image with caption: caption used as the user message
- * 6. Video: politely declined (no download, no upload)
- * 7. Sticker: politely declined
- * 8. Empty transcript: "couldn't understand audio" reply
- * 9. Oversize audio (>25 MB): rejected before transcribing
- * 10. Oversize file (>10 MB): rejected before uploading
- * 11. Upload returns 401: surfaces "link your account" message
- * 12. Upload returns 413: surfaces "too large" message
- * 13. Upload returns 415: surfaces unsupported-format message
+ * 1. It maps a Kapso media descriptor onto an {@link IncomingMedia} shape and
+ *    calls resolveIncomingMedia with a working download thunk.
+ * 2. A "chat" outcome is dispatched to handleStreamingChat with fileIds/fileData.
+ * 3. A "reply" outcome is sent verbatim via sendWhatsAppText.
+ * 4. The download thunk actually downloads the right Kapso media bytes.
+ * 5. A thrown error from the shared pipeline produces a friendlyMediaError reply.
+ *
+ * Only the boundaries are mocked: the Kapso WhatsApp client and @gaia/shared
+ * (via the shared mock factory). The real friendlyMediaError copy is wired into
+ * the mock so the error-path assertions exercise production strings.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  friendlyMediaError,
+  unsupportedMediaMessage,
+} from "../../../../libs/shared/ts/src/bots/utils";
 
 // ---------------------------------------------------------------------------
 // Mocks — must run before importing the adapter so they take effect.
@@ -57,6 +60,9 @@ vi.mock("@hono/node-server", () => ({
 
 vi.mock("@gaia/shared", async () => {
   const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
+  // Wire the REAL pure helpers the adapter imports so the error/unsupported
+  // paths assert production copy, not a stub.
+  const real = await import("../../../../libs/shared/ts/src/bots/utils");
   return makeGaiaSharedMock("whatsapp", {
     streamingDefaults: {
       whatsapp: {
@@ -66,7 +72,9 @@ vi.mock("@gaia/shared", async () => {
       },
     },
     converters: {
-      convertToWhatsAppMarkdown: vi.fn((text: string) => text),
+      friendlyMediaError: vi.fn(real.friendlyMediaError),
+      unsupportedMediaMessage: vi.fn(real.unsupportedMediaMessage),
+      extractSubcommandArgs: vi.fn(real.extractSubcommandArgs),
     },
     defaultRichMarkdown: "*GAIA Help*\nUse /gaia to chat",
   });
@@ -91,46 +99,48 @@ const MOCK_CONFIG = {
   kapsoWebhookSecret: "test-secret", // pragma: allowlist secret
 };
 
-interface FakeGaia {
-  uploadFile: ReturnType<typeof vi.fn>;
-  transcribeAudio: ReturnType<typeof vi.fn>;
-  checkAuthStatus: ReturnType<typeof vi.fn>;
+/** Outcome returned by the shared media pipeline (overridable per-test). */
+type MediaOutcome =
+  | {
+      action: "chat";
+      text: string;
+      attachments: {
+        fileId: string;
+        url: string;
+        filename: string;
+        type: string;
+      }[];
+    }
+  | { action: "reply"; text: string };
+
+interface MediaInternals {
+  waClient: typeof mockWaClientInstance;
+  waConfig: typeof MOCK_CONFIG;
+  linkedUsers: Set<string>;
+  welcomeSent: Set<string>;
+  resolveIncomingMedia: ReturnType<typeof vi.fn>;
 }
 
-function buildAdapter(): {
-  adapter: WhatsAppAdapter;
-  gaia: FakeGaia;
-} {
+function buildAdapter(): WhatsAppAdapter {
   const adapter = new WhatsAppAdapter();
-  const inner = adapter as unknown as {
-    waClient: typeof mockWaClientInstance;
-    waConfig: typeof MOCK_CONFIG;
-    gaia: FakeGaia;
-    linkedUsers: Set<string>;
-    welcomeSent: Set<string>;
-  };
+  const inner = adapter as unknown as MediaInternals;
   inner.waClient = mockWaClientInstance;
   inner.waConfig = MOCK_CONFIG;
-  const gaia: FakeGaia = {
-    uploadFile: vi.fn(async (input) => ({
-      fileId: `file-${input.filename}`,
-      url: `https://cdn.example/${input.filename}`,
-      filename: input.filename,
-      type: input.mimeType,
-      message: "ok",
-    })),
-    transcribeAudio: vi.fn(async () => "this is the transcribed voice note"),
-    checkAuthStatus: vi.fn(async () => ({
-      authenticated: true,
-      platform: "whatsapp",
-      platformUserId: WA_ID,
-    })),
-  };
-  inner.gaia = gaia;
-  // Skip the welcome gate for the focused media tests.
+  // Skip the welcome gate so these tests focus on media routing only.
   inner.linkedUsers = new Set([WA_ID]);
   inner.welcomeSent = new Set([WA_ID]);
-  return { adapter, gaia };
+  return adapter;
+}
+
+/** Stubs the shared resolveIncomingMedia outcome for the next call. */
+function setOutcome(adapter: WhatsAppAdapter, outcome: MediaOutcome): void {
+  (
+    adapter as unknown as MediaInternals
+  ).resolveIncomingMedia.mockResolvedValueOnce(outcome);
+}
+
+function resolveCalls(adapter: WhatsAppAdapter): ReturnType<typeof vi.fn> {
+  return (adapter as unknown as MediaInternals).resolveIncomingMedia;
 }
 
 function media(overrides: Partial<ExtractedMedia>): ExtractedMedia {
@@ -169,6 +179,7 @@ function getChatRequest(): {
   fileIds?: string[];
   fileData?: { fileId: string; url: string }[];
   platform: string;
+  platformUserId: string;
 } {
   const mocked = vi.mocked(handleStreamingChat);
   return mocked.mock.calls.at(-1)![1] as ReturnType<typeof getChatRequest>;
@@ -190,8 +201,9 @@ describe("WhatsAppAdapter - media routing", () => {
     vi.clearAllMocks();
   });
 
-  it("downloads, uploads, and dispatches chat-stream for images with captions", async () => {
-    const { adapter, gaia } = buildAdapter();
+  it("builds an IncomingMedia descriptor from the Kapso media for an image with a caption", async () => {
+    const adapter = buildAdapter();
+    setOutcome(adapter, { action: "chat", text: "x", attachments: [] });
 
     await callHandle(
       adapter,
@@ -200,34 +212,24 @@ describe("WhatsAppAdapter - media routing", () => {
         mediaId: "wa-media-image",
         mimeType: "image/png",
         caption: "what's in this picture?",
+        filename: "photo.png",
       }),
     );
 
-    expect(mockMediaDownload).toHaveBeenCalledTimes(1);
-    expect(mockMediaDownload).toHaveBeenCalledWith({
-      mediaId: "wa-media-image",
-      phoneNumberId: "test-phone-id",
+    expect(resolveCalls(adapter)).toHaveBeenCalledTimes(1);
+    const incoming = resolveCalls(adapter).mock.calls[0][0];
+    expect(incoming).toMatchObject({
+      kind: "image",
+      isVoiceNote: false,
+      mimeType: "image/png",
+      filename: "photo.png",
+      caption: "what's in this picture?",
     });
-
-    expect(gaia.uploadFile).toHaveBeenCalledTimes(1);
-    const upload = gaia.uploadFile.mock.calls[0][0];
-    expect(upload.mimeType).toBe("image/png");
-    expect(upload.filename).toBe("image.png");
-    expect(Buffer.isBuffer(upload.data)).toBe(true);
-    expect(upload.data.length).toBe(5);
-
-    expect(handleStreamingChat).toHaveBeenCalledTimes(1);
-    const req = getChatRequest();
-    expect(req.platform).toBe("whatsapp");
-    expect(req.message).toBe("what's in this picture?");
-    expect(req.fileIds).toEqual(["file-image.png"]);
-    expect(req.fileData![0].url).toBe("https://cdn.example/image.png");
-
-    expect(gaia.transcribeAudio).not.toHaveBeenCalled();
   });
 
-  it("transcribes voice notes and uses the transcript as the chat message", async () => {
-    const { adapter, gaia } = buildAdapter();
+  it("preserves the voice-note flag and audio mime type in the descriptor", async () => {
+    const adapter = buildAdapter();
+    setOutcome(adapter, { action: "chat", text: "x", attachments: [] });
 
     await callHandle(
       adapter,
@@ -239,197 +241,215 @@ describe("WhatsAppAdapter - media routing", () => {
       }),
     );
 
-    expect(gaia.transcribeAudio).toHaveBeenCalledTimes(1);
-    const t = gaia.transcribeAudio.mock.calls[0][0];
-    expect(t.mimeType).toBe("audio/ogg");
-    expect(t.filename).toBe("voice-note.ogg");
+    const incoming = resolveCalls(adapter).mock.calls[0][0];
+    expect(incoming).toMatchObject({
+      kind: "audio",
+      isVoiceNote: true,
+      mimeType: "audio/ogg",
+    });
+  });
+
+  it("passes a download thunk that fetches the correct Kapso media bytes", async () => {
+    const adapter = buildAdapter();
+    setOutcome(adapter, { action: "chat", text: "x", attachments: [] });
+
+    await callHandle(
+      adapter,
+      media({ mediaId: "wa-media-download", mimeType: "image/png" }),
+    );
+
+    // The adapter must hand resolveIncomingMedia a thunk, not pre-downloaded
+    // bytes — unsupported kinds must be able to skip the download entirely.
+    const thunk = resolveCalls(adapter).mock
+      .calls[0][1] as () => Promise<Uint8Array>;
+    expect(mockMediaDownload).not.toHaveBeenCalled();
+
+    const bytes = await thunk();
+    expect(mockMediaDownload).toHaveBeenCalledWith({
+      mediaId: "wa-media-download",
+      phoneNumberId: "test-phone-id",
+    });
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    expect(Array.from(bytes)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("dispatches a 'chat' outcome to handleStreamingChat with fileIds and fileData", async () => {
+    const adapter = buildAdapter();
+    setOutcome(adapter, {
+      action: "chat",
+      text: "Please describe this image.",
+      attachments: [
+        {
+          fileId: "file-1",
+          url: "https://cdn.example/photo.png",
+          filename: "photo.png",
+          type: "image/png",
+        },
+      ],
+    });
+
+    await callHandle(adapter, media({ kind: "image", mimeType: "image/png" }));
+
+    expect(handleStreamingChat).toHaveBeenCalledTimes(1);
+    const req = getChatRequest();
+    expect(req.platform).toBe("whatsapp");
+    expect(req.platformUserId).toBe(WA_ID);
+    expect(req.message).toBe("Please describe this image.");
+    expect(req.fileIds).toEqual(["file-1"]);
+    expect(req.fileData![0].url).toBe("https://cdn.example/photo.png");
+    expect(mockSendText).not.toHaveBeenCalled();
+  });
+
+  it("dispatches a transcript 'chat' outcome with no attachments", async () => {
+    const adapter = buildAdapter();
+    setOutcome(adapter, {
+      action: "chat",
+      text: "this is the transcribed voice note",
+      attachments: [],
+    });
+
+    await callHandle(
+      adapter,
+      media({ kind: "audio", isVoiceNote: true, mimeType: "audio/ogg" }),
+    );
 
     const req = getChatRequest();
     expect(req.message).toBe("this is the transcribed voice note");
     expect(req.fileIds).toBeUndefined();
     expect(req.fileData).toBeUndefined();
-    expect(gaia.uploadFile).not.toHaveBeenCalled();
   });
 
-  it("derives an audio filename from the mime type for non-voice audio", async () => {
-    const { adapter, gaia } = buildAdapter();
+  it("sends a 'reply' outcome verbatim and does NOT start a chat turn", async () => {
+    const adapter = buildAdapter();
+    setOutcome(adapter, {
+      action: "reply",
+      text: "That file is too large to process (limit: 10 MB). Please share a smaller file.",
+    });
 
-    await callHandle(
-      adapter,
-      media({
-        kind: "audio",
-        isVoiceNote: false,
-        mediaId: "wa-media-audio",
-        mimeType: "audio/mpeg",
-      }),
-    );
-
-    expect(gaia.transcribeAudio.mock.calls[0][0].filename).toBe("audio.mp3");
-  });
-
-  it("uploads documents and prompts the agent to review when no caption is set", async () => {
-    const { adapter, gaia } = buildAdapter();
-
-    await callHandle(
-      adapter,
-      media({
-        kind: "document",
-        mediaId: "wa-media-doc",
-        mimeType: "application/pdf",
-        filename: "spec.pdf",
-      }),
-    );
-
-    expect(gaia.uploadFile).toHaveBeenCalledTimes(1);
-    const upload = gaia.uploadFile.mock.calls[0][0];
-    expect(upload.filename).toBe("spec.pdf");
-    expect(upload.mimeType).toBe("application/pdf");
-
-    const req = getChatRequest();
-    expect(req.message).toMatch(/document/i);
-    expect(req.fileIds).toEqual(["file-spec.pdf"]);
-  });
-
-  it("politely declines videos without downloading them", async () => {
-    const { adapter, gaia } = buildAdapter();
-
-    await callHandle(
-      adapter,
-      media({
-        kind: "video",
-        mediaId: "wa-media-vid",
-        mimeType: "video/mp4",
-      }),
-    );
+    await callHandle(adapter, media({ kind: "image", mimeType: "image/png" }));
 
     expect(handleStreamingChat).not.toHaveBeenCalled();
-    expect(gaia.uploadFile).not.toHaveBeenCalled();
-    expect(gaia.transcribeAudio).not.toHaveBeenCalled();
-    expect(lastSentBody()).toMatch(/videos/i);
+    expect(lastSentBody()).toBe(
+      "That file is too large to process (limit: 10 MB). Please share a smaller file.",
+    );
   });
 
-  it("politely declines stickers without downloading them", async () => {
-    const { adapter, gaia } = buildAdapter();
+  it("replies with a friendly media error when the shared pipeline throws", async () => {
+    const adapter = buildAdapter();
+    const err = Object.assign(new Error("API error: 401"), { status: 401 });
+    (
+      adapter as unknown as MediaInternals
+    ).resolveIncomingMedia.mockRejectedValueOnce(err);
 
-    await callHandle(
-      adapter,
-      media({
-        kind: "sticker",
-        mediaId: "wa-media-sticker",
-        mimeType: "image/webp",
-      }),
-    );
+    await callHandle(adapter, media({ kind: "image", mimeType: "image/png" }));
 
     expect(handleStreamingChat).not.toHaveBeenCalled();
-    expect(gaia.uploadFile).not.toHaveBeenCalled();
-    expect(lastSentBody()).toMatch(/stickers/i);
-  });
-
-  it("falls back to a friendly error when the transcript is empty", async () => {
-    const { adapter, gaia } = buildAdapter();
-    gaia.transcribeAudio.mockResolvedValueOnce("   ");
-
-    await callHandle(
-      adapter,
-      media({
-        kind: "audio",
-        isVoiceNote: true,
-        mediaId: "wa-media-blank",
-        mimeType: "audio/ogg",
-      }),
-    );
-
-    expect(handleStreamingChat).not.toHaveBeenCalled();
-    expect(lastSentBody()).toMatch(/couldn't understand/i);
-  });
-
-  it("rejects oversize voice notes before transcribing", async () => {
-    const { adapter, gaia } = buildAdapter();
-    mockMediaDownload.mockResolvedValueOnce(new ArrayBuffer(26 * 1024 * 1024));
-
-    await callHandle(
-      adapter,
-      media({
-        kind: "audio",
-        isVoiceNote: true,
-        mediaId: "huge",
-        mimeType: "audio/ogg",
-      }),
-    );
-
-    expect(gaia.transcribeAudio).not.toHaveBeenCalled();
-    expect(lastSentBody()).toMatch(/too large/i);
-  });
-
-  it("rejects oversize files before uploading", async () => {
-    const { adapter, gaia } = buildAdapter();
-    mockMediaDownload.mockResolvedValueOnce(new ArrayBuffer(11 * 1024 * 1024));
-
-    await callHandle(
-      adapter,
-      media({
-        kind: "image",
-        mediaId: "huge-img",
-        mimeType: "image/png",
-      }),
-    );
-
-    expect(gaia.uploadFile).not.toHaveBeenCalled();
-    expect(lastSentBody()).toMatch(/too large/i);
-  });
-
-  it("surfaces a not-linked message when the upload returns 401", async () => {
-    const { adapter, gaia } = buildAdapter();
-    gaia.uploadFile.mockRejectedValueOnce(
-      Object.assign(new Error("API error: 401"), { status: 401 }),
-    );
-
-    await callHandle(
-      adapter,
-      media({
-        kind: "image",
-        mediaId: "unauth",
-        mimeType: "image/png",
-      }),
-    );
-
+    // friendlyMediaError("image", 401) → link-account copy.
+    expect(lastSentBody()).toBe(friendlyMediaError("image", err));
     expect(lastSentBody()).toMatch(/link your GAIA account/i);
   });
 
-  it("surfaces a too-large message when the upload returns 413", async () => {
-    const { adapter, gaia } = buildAdapter();
-    gaia.uploadFile.mockRejectedValueOnce(
-      Object.assign(new Error("API error: 413"), { status: 413 }),
-    );
+  it("maps a 413 failure to the too-large reply via friendlyMediaError", async () => {
+    const adapter = buildAdapter();
+    const err = Object.assign(new Error("API error: 413"), { status: 413 });
+    (
+      adapter as unknown as MediaInternals
+    ).resolveIncomingMedia.mockRejectedValueOnce(err);
 
     await callHandle(
       adapter,
-      media({
-        kind: "image",
-        mediaId: "big",
-        mimeType: "image/png",
-      }),
+      media({ kind: "document", mimeType: "application/pdf" }),
     );
 
+    expect(lastSentBody()).toBe(friendlyMediaError("document", err));
     expect(lastSentBody()).toMatch(/too large/i);
   });
+});
 
-  it("surfaces a format-unsupported message when the upload returns 415", async () => {
-    const { adapter, gaia } = buildAdapter();
-    gaia.uploadFile.mockRejectedValueOnce(
-      Object.assign(new Error("API error: 415"), { status: 415 }),
-    );
+// ---------------------------------------------------------------------------
+// Unsupported / unparseable media — driven through the real webhook router.
+// When extractMedia returns null (unknown type, or media without an id) the
+// adapter must reply with unsupportedMediaMessage(type) and never touch the
+// shared pipeline or download anything.
+// ---------------------------------------------------------------------------
 
-    await callHandle(
+/** Builds a Kapso event with a fresh timestamp so the replay guard accepts it. */
+function kapsoEvent(over: {
+  type: string;
+  body?: Record<string, unknown>;
+}): unknown {
+  return {
+    message: {
+      id: "wamid.unsupported",
+      timestamp: String(Math.floor(Date.now() / 1000)),
+      type: over.type,
+      ...(over.body ?? {}),
+    },
+    conversation: {
+      id: "conv-1",
+      phone_number: `+${WA_ID}`,
+      phone_number_id: "test-phone-id",
+      status: "active",
+    },
+    phone_number_id: "test-phone-id",
+  };
+}
+
+/** Drives a single event through the private webhook router. */
+function routeEvent(adapter: WhatsAppAdapter, event: unknown): void {
+  (
+    adapter as unknown as {
+      handleWebhookEvent: (event: unknown) => void;
+    }
+  ).handleWebhookEvent(event);
+}
+
+/** Lets the per-user queue drain so async handlers have run. */
+async function flushQueue(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+describe("WhatsAppAdapter - unsupported media (extractMedia returns null)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSendText.mockResolvedValue({ messages: [{ id: "sent-msg" }] });
+    mockMediaDownload.mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("replies with unsupportedMediaMessage for an unknown message type", async () => {
+    const adapter = buildAdapter();
+
+    routeEvent(
       adapter,
-      media({
-        kind: "document",
-        mediaId: "weird",
-        mimeType: "application/x-weird",
-        filename: "weird.xyz",
+      kapsoEvent({ type: "contacts", body: { contacts: [] } }),
+    );
+    await flushQueue();
+
+    expect(lastSentBody()).toBe(unsupportedMediaMessage("contacts"));
+    expect(lastSentBody()).toMatch(/contacts messages/i);
+    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(mockMediaDownload).not.toHaveBeenCalled();
+  });
+
+  it("replies with unsupportedMediaMessage when a media payload lacks an id", async () => {
+    const adapter = buildAdapter();
+
+    // image payload without `id` → extractMedia returns null → unsupported path.
+    routeEvent(
+      adapter,
+      kapsoEvent({
+        type: "image",
+        body: { image: { mime_type: "image/png" } },
       }),
     );
+    await flushQueue();
 
-    expect(lastSentBody()).toMatch(/can't read this kind/i);
+    expect(lastSentBody()).toBe(unsupportedMediaMessage("image"));
+    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(mockMediaDownload).not.toHaveBeenCalled();
   });
 });

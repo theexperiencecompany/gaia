@@ -119,50 +119,153 @@ function applyOutsideCodeBlocks(
 }
 
 /**
- * Converts standard CommonMark Markdown to Telegram legacy Markdown.
+ * Escapes the three characters that are special in Telegram HTML body text:
+ * `&`, `<`, `>`. Everything else (`_`, `*`, `(`, `)`, `.`, `-`, …) is literal
+ * in HTML mode — which is exactly why HTML is immune to the legacy-Markdown
+ * breakage where an underscore in a URL or a snake_case token gets parsed as
+ * an emphasis marker.
  *
- * Telegram's legacy `Markdown` parse mode supports:
- * `*bold*`, `_italic_`, `` `code` ``, ` ```code``` `, `[text](url)`.
- *
- * Converts `**bold**` → `*bold*`, strips unsupported `# headers` to bold,
- * and removes blockquote `>` prefixes and horizontal rules.
- * Code blocks are preserved unchanged.
+ * Slack's mrkdwn control-character escaping happens to require the same three
+ * entities, so {@link convertToSlackMrkdwn} reuses this helper.
  */
-export function convertToTelegramMarkdown(text: string): string {
-  return applyOutsideCodeBlocks(
-    text,
-    (segment) =>
-      segment
-        .replace(/\*\*\*(.+?)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
-        .replace(/\*\*(.+?)\*\*/g, "*$1*") // **bold** → *bold*
-        .replace(/^#{1,6}\s+(.+)$/gm, "*$1*") // # Heading → *Heading*
-        .replace(/^>\s*/gm, "") // > quote → strip prefix
-        .replace(/^[-_]{3,}$/gm, ""), // --- / ___ → remove
-  );
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Escapes a string for use inside an HTML attribute value (a link `href`):
+ * {@link escapeHtml} plus the double quote that would otherwise close the
+ * attribute.
+ */
+export function escapeHtmlAttr(text: string): string {
+  return escapeHtml(text).replace(/"/g, "&quot;");
+}
+
+/**
+ * Best-effort conversion of Telegram HTML back to plain text. Used only as the
+ * fallback when Telegram rejects an HTML message — which, with fully escaped
+ * output, should essentially never happen. Strips tags and decodes the
+ * entities {@link escapeHtml}/{@link escapeHtmlAttr} can introduce, so the user
+ * sees clean text instead of literal `<b>` tags. `&amp;` is decoded last so a
+ * literal `&lt;` in the source does not get double-decoded.
+ */
+export function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&");
+}
+
+/**
+ * Converts the CommonMark the agent emits for Telegram into Telegram's **HTML**
+ * parse mode (https://core.telegram.org/bots/api#html-style).
+ *
+ * HTML is used instead of legacy `Markdown`/`MarkdownV2` because it is the only
+ * mode where URLs and prose never collide with formatting markers: the sole
+ * special characters are `&`, `<`, `>`, so underscores in tokens/URLs,
+ * snake_case identifiers and stray `*` can never trigger a parse error or eat
+ * characters. (Legacy Markdown italicized `..._x_...` inside auth-token URLs and
+ * silently dropped the underscores — see the formatter tests.)
+ *
+ * Strategy: pull code spans, code blocks and links out into placeholders so
+ * their contents are never treated as markup, HTML-escape the remaining
+ * narrative, translate the markdown that survives into Telegram tags, then
+ * splice the placeholders back in. Telegram HTML has no heading or list tags,
+ * so headings become bold and bullets become `•`.
+ */
+export function convertToTelegramHtml(text: string): string {
+  const stash: string[] = [];
+  const hold = (html: string): string => {
+    stash.push(html);
+    return `\uE000${stash.length - 1}\uE000`;
+  };
+
+  let out = text
+    // Fenced code: ```lang\n…``` → <pre>[<code class="language-…">]…</pre>
+    .replace(/```([\w+-]+)?[ \t]*\r?\n?([\s\S]*?)```/g, (_m, lang, code) => {
+      const body = escapeHtml((code as string).replace(/\n$/, ""));
+      return hold(
+        lang
+          ? `<pre><code class="language-${lang}">${body}</code></pre>`
+          : `<pre>${body}</pre>`,
+      );
+    })
+    // Inline code: `…`
+    .replace(/`([^`\n]+)`/g, (_m, code) =>
+      hold(`<code>${escapeHtml(code as string)}</code>`),
+    )
+    // Masked links: [label](url) → <a href="url">label</a>
+    .replace(/\[([^\]\n]{1,500})\]\(([^)\s]{1,2048})\)/g, (_m, label, url) =>
+      hold(
+        `<a href="${escapeHtmlAttr(url as string)}">${escapeHtml(label as string)}</a>`,
+      ),
+    );
+
+  out = escapeHtml(out)
+    // Block structure (line-anchored). `>` is `&gt;` now, after escaping.
+    .replace(/^(\s*)[-*+][ \t]+/gm, "$1• ") // bullets → •
+    .replace(/^#{1,6}[ \t]+(.+)$/gm, "<b>$1</b>") // headings → bold
+    .replace(/^&gt;[ \t]?/gm, "") // blockquote → strip marker
+    .replace(/^[-_]{3,}$/gm, "") // horizontal rule → remove
+    // Inline emphasis. Bold before italic so `**` is consumed first.
+    .replace(/\*\*\*([^*\n]+?)\*\*\*/g, "<b><i>$1</i></b>") // ***x***
+    .replace(/\*\*([^*\n]+?)\*\*/g, "<b>$1</b>") // **x**
+    .replace(/__([^_\n]+?)__/g, "<b>$1</b>") // __x__
+    .replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, "<i>$1</i>") // *x*
+    .replace(/(?<![\w_])_([^_\n]+?)_(?![\w_])/g, "<i>$1</i>") // _x_ (skips snake_case)
+    .replace(/~~([^~\n]+?)~~/g, "<s>$1</s>"); // ~~x~~
+
+  return out.replace(/\uE000(\d+)\uE000/g, (_m, i) => stash[Number(i)]);
 }
 
 /**
  * Converts standard CommonMark Markdown to Slack mrkdwn.
  *
- * Slack mrkdwn supports: `*bold*`, `_italic_`, `` `code` ``, ` ```code``` `,
- * `<url|label>` hyperlinks.
+ * Slack mrkdwn supports: `*bold*`, `_italic_`, `~strike~`, `` `code` ``,
+ * ` ```code``` `, `<url|label>` hyperlinks.
  *
- * Converts `**bold**` → `*bold*`, `[label](url)` → `<url|label>`,
- * strips `# headers` to bold, strips blockquote `>` prefixes and horizontal rules.
- * Code blocks are preserved unchanged.
+ * Converts `**bold**` → `*bold*`, `~~strike~~` → `~strike~`,
+ * `[label](url)` → `<url|label>`, strips `# headers` to bold, strips
+ * blockquote `>` prefixes and horizontal rules. Crucially it also escapes the
+ * three Slack control characters (`&`, `<`, `>`) in narrative text so a stray
+ * `<` no longer makes Slack swallow the rest of the line as a broken link.
+ * Link `<url|label>` sequences and fenced code blocks are protected from that
+ * escaping. (Underscores and `*` are literal in mrkdwn, so they need no
+ * escaping — only the angle-bracket/ampersand trio does.)
  */
 export function convertToSlackMrkdwn(text: string): string {
-  return applyOutsideCodeBlocks(
-    text,
-    (segment) =>
-      segment
-        .replace(/\*\*\*(.+?)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
-        .replace(/\*\*(.+?)\*\*/g, "*$1*") // **bold** → *bold*
-        .replace(/\[([^\]]{1,500})\]\(([^)]{1,2048})\)/g, "<$2|$1>") // [label](url) → <url|label>
-        .replace(/^#{1,6}\s+(.+)$/gm, "*$1*") // # Heading → *Heading*
-        .replace(/^>\s*/gm, "") // > quote → strip prefix
-        .replace(/^[-_]{3,}$/gm, ""), // --- / ___ → remove
-  );
+  return applyOutsideCodeBlocks(text, (segment) => {
+    // Stash link control-sequences so the escape pass below cannot mangle the
+    // URL or the `<url|label>` angle brackets. U+E000 sentinels never occur in
+    // real text and survive escaping untouched.
+    const stash: string[] = [];
+    const hold = (mrkdwn: string): string => {
+      stash.push(mrkdwn);
+      return `\uE000${stash.length - 1}\uE000`;
+    };
+    const converted = segment
+      // Masked links → <url|label>. Only the label (display text) is escaped;
+      // the URL is left verbatim, as Slack expects inside the angle brackets.
+      .replace(/\[([^\]\n]{1,500})\]\(([^)\s]{1,2048})\)/g, (_m, label, url) =>
+        hold(`<${url}|${escapeHtml(label as string)}>`),
+      )
+      .replace(/\*\*\*([^*\n]+?)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
+      .replace(/\*\*([^*\n]+?)\*\*/g, "*$1*") // **bold** → *bold*
+      .replace(/~~([^~\n]+?)~~/g, "~$1~") // ~~strike~~ → ~strike~
+      .replace(/^#{1,6}[ \t]+(.+)$/gm, "*$1*") // # Heading → *Heading*
+      .replace(/^>[ \t]*/gm, "") // > quote → strip prefix (before escaping)
+      .replace(/^[-_]{3,}$/gm, ""); // --- / ___ → remove
+    // Escape Slack control chars in surviving narrative, then restore links.
+    return escapeHtml(converted).replace(
+      /\uE000(\d+)\uE000/g,
+      (_m, i) => stash[Number(i)],
+    );
+  });
 }
 
 /**
@@ -230,7 +333,7 @@ export const PLATFORM_MARKDOWN: Record<PlatformName, (text: string) => string> =
   {
     discord: convertToDiscordMarkdown,
     slack: convertToSlackMrkdwn,
-    telegram: convertToTelegramMarkdown,
+    telegram: convertToTelegramHtml,
     whatsapp: convertToWhatsAppMarkdown,
   };
 
@@ -250,24 +353,30 @@ export function renderForPlatform(
 }
 
 /**
- * Formats authentication required message with clear onboarding steps.
+ * The single canonical "link your account" prompt.
+ *
+ * Used BOTH by the `/auth` command and by every adapter's streaming
+ * `onAuthError` path, on all four platforms — so an unlinked user sees the
+ * exact same message whether they type `/auth` or just send "hi". Previously
+ * each adapter hardcoded its own divergent copy, which is the inconsistency
+ * this removes.
+ *
+ * The URL is shown **bare** (not a masked link) on purpose: a bare URL stays
+ * visible and copy-pasteable, and every platform auto-links it once it points
+ * at a real public domain (the production `GAIA_FRONTEND_URL`). A masked
+ * `[label](url)` would hide the URL, and Telegram refuses to linkify or accept
+ * `<a href>` entities for non-public hosts like `localhost`, so in dev it would
+ * render as dead plain text with no URL at all.
+ *
+ * Callers still send it through `renderForPlatform` (and `parse_mode: HTML` on
+ * Telegram) so the `**bold**` heading renders consistently.
  */
-export function formatAuthRequiredMessage(
-  platform: string,
-  authUrl: string,
-  context?: string,
-): string {
-  const platformName = platform.charAt(0).toUpperCase() + platform.slice(1);
-
+export function buildAuthLinkMessage(authUrl: string): string {
   return (
-    `🔐 **Authentication Required**\n\n` +
-    `To ${context || "use this feature"}, link your ${platformName} account to GAIA.\n\n` +
-    `**Steps:**\n` +
-    `1. Click: ${authUrl}\n` +
-    `2. Sign in to GAIA (or create account)\n` +
-    `3. Confirm connection\n` +
-    `4. Return and try again!\n\n` +
-    `Need help? Use /help`
+    "🔗 **Link your account to GAIA**\n\n" +
+    "Tap the link below to sign in and link your account:\n" +
+    `${authUrl}\n\n` +
+    "After linking, you'll be able to use all GAIA commands!"
   );
 }
 

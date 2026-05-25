@@ -90,7 +90,22 @@ boot(allCommands)
   → BotServer.start()  start shared HTTP server (after all routes are mounted)
 ```
 
-The `BaseBotAdapter` (in `libs/shared/ts/src/bots/adapter/base.ts`) owns `dispatchCommand`, `buildContext`, error handling, the `GaiaClient` instance, and the shared `BotServer`. Each bot only implements the five abstract methods above.
+`BaseBotAdapter` (in `libs/shared/ts/src/bots/adapter/base.ts`) is the heart of the **class-based template-method pattern**: it owns all generic behavior; each adapter implements/overrides only what is genuinely platform-specific.
+
+**Generic behavior owned by `BaseBotAdapter`** — call these, do not reimplement:
+
+- `dispatchCommand` / `buildContext` — command dispatch + context, with analytics, logging, error handling.
+- `shouldSendWelcome(userId)` — one-shot per-process welcome gate (Discord + WhatsApp). WhatsApp's auth-aware welcome layers on top of this gate rather than duplicating it.
+- `startTypingIndicator(sendTyping, refreshMs)` — fires typing once, refreshes on an interval, returns a `stop()` to call in `finally` (Discord + Telegram).
+- `resolveIncomingMedia(media, download, userId, channelId?)` — routes inbound media (transcribe audio / upload images+documents / reject video+sticker) via the shared `processBotMedia`, injecting the `GaiaClient` (Telegram + WhatsApp).
+- The `GaiaClient` instance, analytics, and the shared `BotServer`.
+
+**Abstract methods each adapter implements** (the only required platform code): `initialize`, `registerCommands`, `registerEvents`, `start`, `stop`.
+
+**Where logic goes (no divergence, no duplication):**
+- Generic, behavioral, or stateful logic → a `BaseBotAdapter` method (made overridable when one platform legitimately differs).
+- Pure, stateless transforms (markdown converters, arg parsing, the media-routing decision, the auth/welcome message text) → functions in `libs/shared/ts/src/bots/utils/`.
+- Adapters hold **only** platform-API glue (how to send/edit/typing/download on that platform). If you find yourself copy-pasting logic between two adapters, it belongs in the base class or a shared util instead.
 
 **BotServer** (`libs/shared/ts/src/bots/adapter/base-server.ts`) is a Hono HTTP server created automatically in `boot()`. It provides `GET /health` by default. Subclasses can mount additional routes on `this.botServer.app` inside `registerEvents()` before the server starts. Each bot has a hardcoded `defaultServerPort` (discord: 3200, slack: 3201, telegram: 3202, whatsapp: 3203), overridable with `BOT_SERVER_PORT`.
 
@@ -126,16 +141,34 @@ Each platform defines its streaming behavior in `STREAMING_DEFAULTS`:
 
 ### Markdown conversion
 
-Each platform has different markdown syntax. The shared library provides:
+The agent always emits CommonMark; one converter per platform translates it to that platform's dialect. `renderForPlatform(text, platform)` (backed by the `PLATFORM_MARKDOWN` map) is the single chokepoint — streaming (`handleStreamingChat`) and non-streaming sends both go through it.
 
-| Function | Input | Output |
-|----------|-------|--------|
-| `richMessageToMarkdown(msg, platform)` | `RichMessage` | Platform-appropriate markdown |
-| `convertToTelegramMarkdown(text)` | CommonMark | Telegram legacy markdown (`*bold*`) |
-| `convertToSlackMrkdwn(text)` | CommonMark | Slack mrkdwn (`*bold*`, `<url\|label>`) |
-| `convertToWhatsAppMarkdown(text)` | CommonMark | WhatsApp markdown (`*bold*`, bare URLs) |
+| Function | Output dialect |
+|----------|----------------|
+| `convertToTelegramHtml(text)` | Telegram **HTML** — `<b> <i> <s> <a href> <code> <pre>`; escapes `& < >` |
+| `convertToSlackMrkdwn(text)` | Slack mrkdwn — `*bold*`, `<url\|label>`; escapes `& < >` in narrative |
+| `convertToWhatsAppMarkdown(text)` | WhatsApp — `*bold*`, `label (url)`, `•` bullets |
+| `convertToDiscordMarkdown(text)` | Discord — native CommonMark; only masked links → `label (url)` |
+| `richMessageToMarkdown(msg, platform)` | a `RichMessage` rendered in the platform's dialect |
 
-All converters use `applyOutsideCodeBlocks()` to preserve fenced code blocks.
+**Telegram uses HTML, not Markdown.** Legacy Telegram Markdown italicized underscores inside URLs/tokens and silently dropped them (auth links broke) and had no escaping. HTML is the only mode where URLs and prose never collide with formatting markers — the sole specials are `& < >`. `convertToTelegramHtml` pulls code/links into placeholders, escapes the narrative, then translates the surviving markdown to tags. If Telegram ever rejects the HTML the adapter falls back to `htmlToPlainText` (stripped tags), never raw `<b>`.
+
+All markdown-family converters use `applyOutsideCodeBlocks()` to leave fenced code untouched.
+
+### Inbound media (images, documents, voice, audio) — shared pipeline
+
+The decision for any inbound media is identical across platforms and lives ONCE in `processBotMedia` (`utils/media.ts`), reached via `BaseBotAdapter.resolveIncomingMedia`:
+
+- **video / sticker** → polite reply, no download (lazy `download` thunk is never called).
+- **audio / voice note** → `gaia.transcribeAudio` (Whisper) → the transcript becomes the chat message.
+- **image / document** → `gaia.uploadFile` → referenced on the chat request via `fileIds`/`fileData`.
+- Size caps: 10 MB files, 25 MB audio (`BOT_MEDIA_LIMITS`); upload/transcribe failures map to friendly replies via `friendlyMediaError`.
+
+Each adapter supplies only the platform glue: detect the media type → build an `IncomingMedia` descriptor → pass a lazy `download` thunk → act on the returned `MediaOutcome` (`reply` vs `chat`). WhatsApp extracts from the Kapso webhook (`extractMedia`) and downloads via the Kapso SDK; Telegram maps the grammY message (`extractTelegramMedia`) and downloads via `getFile`.
+
+### Auth / welcome messaging
+
+The "link your account" prompt is ONE shared string — `buildAuthLinkMessage(authUrl)` — used by both the `/auth` command and every adapter's streaming `onAuthError`, on all four platforms. Never hardcode an auth message in an adapter: an unlinked user must see the same text whether they type `/auth` or just send "hi". The first-contact welcome is gated by `BaseBotAdapter.shouldSendWelcome` (WhatsApp layers an auth check on top via the same gate).
 
 ### Shared library path alias
 
@@ -152,7 +185,7 @@ All converters use `applyOutsideCodeBlocks()` to preserve fenced code blocks.
 - `sendRich` converts `RichMessage` to a Discord `EmbedBuilder` via `richMessageToEmbed` (exported from `discord/src/adapter.ts`).
 - Typing indicator: `sendTyping()` lasts ~10 s; the adapter refreshes it every 8 s.
 - Rotating presence statuses cycle every 3 minutes (`ROTATING_STATUSES` array).
-- DM welcome embed is sent once per user per process lifetime (tracked in `dmWelcomeSent` Set).
+- DM welcome embed is sent once per user per process lifetime, gated by the shared `BaseBotAdapter.shouldSendWelcome`.
 - Context menu commands ("Summarize with GAIA", "Add as Todo") use `MessageContextMenuCommandInteraction` and always reply ephemeral.
 - Required env vars: `DISCORD_BOT_TOKEN`, `DISCORD_CLIENT_ID`
 
@@ -174,8 +207,9 @@ All converters use `applyOutsideCodeBlocks()` to preserve fenced code blocks.
 - Bot commands are also registered with Telegram's API via `bot.api.setMyCommands()` inside `registerCommands` (so the "/" suggestion menu stays current). The standalone `set-commands.ts` script does the same thing manually.
 - `sendEphemeral` in group chats sends a DM to the user instead of posting publicly. If the user's privacy settings block DMs, the adapter posts a fallback message in the group.
 - `sendRich` also DMs rich content in group chats.
-- Markdown: all outbound text goes through `convertToTelegramMarkdown` which converts `**bold**` → `*bold*`, headings → bold, strips blockquotes/horizontal rules, and leaves code blocks unchanged. If Telegram rejects the markdown (`"can't parse entities"`), the adapter retries without `parse_mode`.
-- Typing indicator refreshes every 5 s (Telegram's typing action expires after ~5 s).
+- Formatting: all outbound text is sent with `parse_mode: "HTML"`, converted by `convertToTelegramHtml` (`**bold**`→`<b>`, `[label](url)`→`<a href>`, escapes `& < >`; underscores in URLs/snake_case stay literal). The adapter's `sendHtml` / `editHtml` helpers fall back to `htmlToPlainText` (stripped tags) if Telegram ever rejects the HTML — never raw `<b>`.
+- Media: photos, documents, voice notes, and audio are handled via the shared `resolveIncomingMedia` pipeline (`getFile` download → transcribe/upload → chat). `extractTelegramMedia` (exported, pure, testable) maps the grammY message to `IncomingMedia`; video/stickers get a polite reply. In groups, media is processed only when the caption @mentions the bot, mirroring the text path.
+- Typing indicator refreshes every 5 s via the shared `startTypingIndicator` (Telegram's typing action expires after ~5 s).
 - `hasTelegramMention` / `stripTelegramMention` are exported from `adapter.ts` for testability (case-sensitive string matching, not regex).
 - Bot username is fetched once on startup via `bot.api.getMe()` and cached to avoid repeated API calls.
 - Required env vars: `TELEGRAM_BOT_TOKEN`
@@ -619,11 +653,12 @@ nx test bots-e2e
 | Streaming | Disabled | Enabled | Enabled | Disabled |
 | Command menu | Slash commands API | App dashboard | setMyCommands API | Text prefix only |
 | Response deadline | 3 seconds | 3 seconds | None | None |
-| Markdown syntax | `**bold**` | `*bold*` | `*bold*` | `*bold*` |
-| Link syntax | `[label](url)` | `<url\|label>` | `[label](url)` | Bare URLs |
+| Markdown syntax | `**bold**` (native) | `*bold*` mrkdwn | HTML (`<b>`) | `*bold*` |
+| Link syntax | `label (url)` | `<url\|label>` | `<a href>` (HTML) | `label (url)` |
+| Parse mode | none (native) | none (mrkdwn) | **HTML** | none |
 | Max message length | 2000 | 4000 | 4096 | 4096 |
 | Welcome message | DM embed + buttons | None | None | Text markdown |
-| Media support | Text only | Text only | Text only | Text only (graceful rejection) |
+| Media support | Text only | Text only | image / doc / voice / audio | image / doc / voice / audio |
 | Auth flow | Link token + web | Link token + web | Link token + web | Link token + web |
 | Webhook routing | No | No | No | nginx → bot:3203 |
 

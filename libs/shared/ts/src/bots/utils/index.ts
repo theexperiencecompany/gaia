@@ -20,5 +20,6 @@
 export * from "./commands";
 export * from "./formatters";
 export * from "./logger";
+export * from "./media";
 export * from "./streaming";
 export * from "./text";

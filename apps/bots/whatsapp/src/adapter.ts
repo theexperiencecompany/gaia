@@ -19,11 +19,14 @@ import {
   BaseBotAdapter,
   type BotCommand,
   type BotFileData,
+  buildAuthLinkMessage,
   createBotLogger,
+  extractSubcommandArgs,
+  friendlyMediaError,
   handleStreamingChat,
   hashLogIdentifier,
+  type IncomingMedia,
   type PlatformName,
-  parseTextArgs,
   type RichMessage,
   type RichMessageTarget,
   renderForPlatform,
@@ -31,6 +34,7 @@ import {
   type SentMessage,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
+  unsupportedMediaMessage,
 } from "@gaia/shared";
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import { REPLAY_WINDOW_MS } from "./constants";
@@ -75,8 +79,6 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   private waClient: WhatsAppClient | null = null;
   private waConfig: WhatsAppConfig | null = null;
 
-  /** Tracks users who have already received a welcome message this process. */
-  private readonly welcomeSent = new Set<string>();
   /**
    * Tracks users whose platform_links status has been confirmed as linked this
    * process. Avoids a backend round-trip on every first-seen message after restart.
@@ -241,15 +243,20 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     if (!media) {
       // No usable media descriptor (sticker without id, unknown type, etc.)
       // Fall back to the friendly rejection.
-      this.enqueueForUser(waId, () =>
-        this.handleUnsupportedMedia(waId, event.message.type).catch((err) =>
+      this.enqueueForUser(waId, async () => {
+        try {
+          await this.sendWhatsAppText(
+            waId,
+            unsupportedMediaMessage(event.message.type),
+          );
+        } catch (err) {
           this.adapterLogger.error("unsupported_media_handling_failed", {
             wa_hash: waIdHash,
             message_type: event.message.type,
             ...sanitizeErrorForLog(err),
-          }),
-        ),
-      );
+          });
+        }
+      });
       return;
     }
 
@@ -269,7 +276,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * Starts the WhatsApp "typing…" indicator and keeps it alive on a 20s timer
    * (Meta dismisses it after ~25s). Call `stop()` once the reply is sent.
    */
-  private startTypingIndicator(
+  private startWhatsAppTyping(
     waId: string,
     messageId: string,
   ): { refresh: () => void; stop: () => void } {
@@ -304,8 +311,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     refreshTyping: () => void,
     authCheckTimeoutMs?: number,
   ): Promise<void> {
-    if (this.welcomeSent.has(waId)) return;
-    this.welcomeSent.add(waId);
+    // Base one-shot gate (shared with Discord) — fires at most once per user.
+    if (!this.shouldSendWelcome(waId)) return;
 
     let isLinked = this.linkedUsers.has(waId);
     if (!isLinked) {
@@ -411,7 +418,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       is_command: text.startsWith("/"),
     });
 
-    const typing = this.startTypingIndicator(waId, messageId);
+    const typing = this.startWhatsAppTyping(waId, messageId);
 
     try {
       await this.ensureWelcomed(waId, typing.refresh, 2_000);
@@ -436,11 +443,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           return;
         }
 
-        const args: Record<string, string | number | boolean | undefined> = {};
-        if (commandName === "todo" || commandName === "workflow") {
-          const parsed = parseTextArgs(rest);
-          args.subcommand = parsed.subcommand;
-        }
+        const args = extractSubcommandArgs(commandName, rest);
 
         await this.dispatchCommand(
           commandName,
@@ -527,7 +530,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         async (authUrl: string) => {
           await this.sendWhatsAppText(
             waId,
-            `To use GAIA on WhatsApp, link your account first:\n${authUrl}`,
+            renderForPlatform(buildAuthLinkMessage(authUrl), "whatsapp"),
           );
         },
         // onGenericError
@@ -568,8 +571,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    *
    * Gated by platform_links check via `gaia.checkAuthStatus` (2s timeout) — linked
    * users skip the welcome entirely and are cached in {@link linkedUsers} for the
-   * process lifetime. Unlinked users receive it once per process restart at most,
-   * tracked via {@link welcomeSent}.
+   * process lifetime. Unlinked users receive it once per process restart at
+   * most, gated by the shared {@link BaseBotAdapter.shouldSendWelcome}.
    */
   private async sendWelcome(waId: string): Promise<void> {
     const text =
@@ -593,28 +596,15 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   // Media handling
   // ---------------------------------------------------------------------------
 
-  /** WhatsApp upload size caps that mirror Meta's per-type limits. */
-  private static readonly MEDIA_LIMITS = {
-    // GAIA upload pipeline caps at 10 MB regardless of WhatsApp's larger caps.
-    file: 10 * 1024 * 1024,
-    // OpenAI Whisper hard cap (also matches our backend transcribe endpoint).
-    audio: 25 * 1024 * 1024,
-  } as const;
-
   /**
    * Handles an inbound media message (image, audio, voice note, or document).
    *
-   * Pipeline:
-   * 1. Mark-as-read + typing indicator (parity with text path).
-   * 2. Download the media bytes via the Kapso WhatsApp client.
-   * 3. For audio: transcribe → use transcript as the user's message text.
-   *    For image/document: upload to GAIA storage → reference the {@link BotFileData}
-   *    on the chat request via `fileIds` / `fileData`.
-   * 4. Hand off to {@link handleStreamingMessage} so the agent reply path is
-   *    identical to plain text — keeps adapters single-purpose and the test
-   *    surface minimal.
-   *
-   * Videos and stickers are not supported yet; the user gets a polite reply.
+   * Platform-specific responsibilities only: typing indicator, welcome gate,
+   * downloading the bytes via Kapso, and mapping the Kapso descriptor onto the
+   * shared {@link IncomingMedia} shape. The actual decision (transcribe vs
+   * upload vs reject, size caps, prompts) lives in {@link processBotMedia} so
+   * Telegram and WhatsApp behave identically. The reply path then folds back
+   * into {@link handleStreamingMessage}, identical to plain text.
    */
   private async handleMediaMessage(
     waId: string,
@@ -631,29 +621,35 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     });
 
     // Always show typing first — matches the text path so the UX is identical.
-    const typing = this.startTypingIndicator(waId, messageId);
+    const typing = this.startWhatsAppTyping(waId, messageId);
 
     try {
-      // Welcome gate runs once per process per user — same as text path. If
-      // the user isn't linked we send a different friendly message because
-      // /api/v1/upload + /api/v1/bot/transcribe both require a linked user.
+      // Welcome gate runs once per process per user — same as text path.
       await this.ensureWelcomed(waId, typing.refresh);
 
-      if (media.kind === "video" || media.kind === "sticker") {
-        await this.handleUnsupportedMedia(waId, media.kind);
-        return;
+      const incoming: IncomingMedia = {
+        kind: media.kind,
+        isVoiceNote: media.isVoiceNote,
+        mimeType: media.mimeType,
+        filename: media.filename,
+        caption: media.caption,
+      };
+      const outcome = await this.resolveIncomingMedia(
+        incoming,
+        () => this.downloadMediaBytes(media),
+        waId,
+        waId,
+      );
+
+      if (outcome.action === "reply") {
+        await this.sendWhatsAppText(waId, outcome.text);
+      } else {
+        await this.handleStreamingMessage(
+          waId,
+          outcome.text,
+          outcome.attachments,
+        );
       }
-
-      // Download once, then route to the matching pipeline.
-      const bytes = await this.downloadMediaBytes(media);
-
-      if (media.kind === "audio") {
-        await this.handleAudioMedia(waId, media, bytes);
-        return;
-      }
-
-      // image | document
-      await this.handleFileMedia(waId, media, bytes);
     } catch (err) {
       this.adapterLogger.error("media_message_failed", {
         wa_hash: waIdHash,
@@ -662,10 +658,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         ...sanitizeErrorForLog(err),
       });
       try {
-        await this.sendWhatsAppText(
-          waId,
-          this.friendlyMediaError(media.kind, err),
-        );
+        await this.sendWhatsAppText(waId, friendlyMediaError(media.kind, err));
       } catch (sendErr) {
         this.adapterLogger.error("media_error_message_send_failed", {
           wa_hash: waIdHash,
@@ -684,176 +677,6 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
     })) as ArrayBuffer;
     return new Uint8Array(arrayBuf);
-  }
-
-  /** Transcribes a voice note / audio file and runs it through the chat pipeline. */
-  private async handleAudioMedia(
-    waId: string,
-    media: ExtractedMedia,
-    bytes: Uint8Array,
-  ): Promise<void> {
-    if (bytes.byteLength > WhatsAppAdapter.MEDIA_LIMITS.audio) {
-      await this.sendWhatsAppText(
-        waId,
-        `That voice note is too large to transcribe (limit: ${
-          WhatsAppAdapter.MEDIA_LIMITS.audio / (1024 * 1024)
-        } MB). Please send a shorter message.`,
-      );
-      return;
-    }
-
-    const filename = media.isVoiceNote
-      ? "voice-note.ogg"
-      : `audio${this.extensionForMime(media.mimeType, ".ogg")}`;
-
-    const transcript = await this.gaia.transcribeAudio(
-      {
-        data: Buffer.from(bytes),
-        filename,
-        mimeType: media.mimeType,
-      },
-      { platform: "whatsapp", platformUserId: waId },
-    );
-
-    const trimmed = transcript.trim();
-    if (!trimmed) {
-      await this.sendWhatsAppText(
-        waId,
-        "I couldn't understand that audio. Could you try recording again or sending a text message?",
-      );
-      return;
-    }
-
-    // Include the user's caption (if any) ahead of the transcript so the
-    // agent sees both signals — voice notes rarely carry captions but image-
-    // shaped audio captures sometimes do.
-    const messageText = media.caption
-      ? `${media.caption.trim()}\n\n${trimmed}`
-      : trimmed;
-    await this.handleStreamingMessage(waId, messageText);
-  }
-
-  /** Uploads the media to GAIA storage and references it on the chat request. */
-  private async handleFileMedia(
-    waId: string,
-    media: ExtractedMedia,
-    bytes: Uint8Array,
-  ): Promise<void> {
-    if (bytes.byteLength > WhatsAppAdapter.MEDIA_LIMITS.file) {
-      await this.sendWhatsAppText(
-        waId,
-        `That file is too large to process (limit: ${
-          WhatsAppAdapter.MEDIA_LIMITS.file / (1024 * 1024)
-        } MB). Please share a smaller file.`,
-      );
-      return;
-    }
-
-    const filename =
-      media.filename ??
-      (media.kind === "image"
-        ? `image${this.extensionForMime(media.mimeType, ".jpg")}`
-        : `document${this.extensionForMime(media.mimeType, "")}`);
-
-    const fileData = await this.gaia.uploadFile(
-      {
-        data: Buffer.from(bytes),
-        filename,
-        mimeType: media.mimeType,
-      },
-      { platform: "whatsapp", platformUserId: waId },
-    );
-
-    // Caption — when present — is the user's prompt. Otherwise prompt the
-    // agent to summarise / answer questions about the attachment.
-    const attachmentNoun = media.filename ? "document" : "file";
-    const fallbackPrompt =
-      media.kind === "image"
-        ? "Please describe this image."
-        : `Please review this ${attachmentNoun} and tell me what's in it.`;
-    const messageText = media.caption?.trim() || fallbackPrompt;
-
-    await this.handleStreamingMessage(waId, messageText, [fileData]);
-  }
-
-  /** Returns a leading-dot file extension for a known mime type, or fallback. */
-  private extensionForMime(mimeType: string, fallback: string): string {
-    const mime = mimeType.split(";")[0].trim().toLowerCase();
-    const lookup: Record<string, string> = {
-      "image/jpeg": ".jpg",
-      "image/png": ".png",
-      "image/gif": ".gif",
-      "image/webp": ".webp",
-      "image/bmp": ".bmp",
-      "audio/ogg": ".ogg",
-      "audio/opus": ".opus",
-      "audio/mpeg": ".mp3",
-      "audio/mp3": ".mp3",
-      "audio/mp4": ".m4a",
-      "audio/m4a": ".m4a",
-      "audio/wav": ".wav",
-      "audio/webm": ".webm",
-      "audio/aac": ".aac",
-      "application/pdf": ".pdf",
-      "application/msword": ".doc",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        ".docx",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
-        ".xlsx",
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation":
-        ".pptx",
-      "text/plain": ".txt",
-      "text/markdown": ".md",
-      "text/csv": ".csv",
-      "application/json": ".json",
-    };
-    return lookup[mime] ?? fallback;
-  }
-
-  /** Maps known failure paths to a user-facing reply. */
-  private friendlyMediaError(
-    kind: ExtractedMedia["kind"],
-    err: unknown,
-  ): string {
-    const status = (err as { status?: number; response?: { status?: number } })
-      ?.status;
-    const responseStatus = (err as { response?: { status?: number } })?.response
-      ?.status;
-    const code = status ?? responseStatus;
-
-    if (code === 401 || code === 403) {
-      return "I need you to link your GAIA account first before I can read attachments. Send /auth to get started.";
-    }
-    if (code === 413) {
-      return `That ${kind} is too large for me to process. Please share a smaller file.`;
-    }
-    if (code === 415) {
-      return `I can't read this kind of ${kind} yet. Try a common format like JPG, PNG, PDF, or an OGG voice note.`;
-    }
-    if (code === 429) {
-      return "You've reached your file upload limit for now. Please try again later, or upgrade your plan for higher limits.";
-    }
-    return "Something went wrong while processing your attachment. Please try again in a moment.";
-  }
-
-  /**
-   * Replies to genuinely unsupported message types (video, sticker, etc.).
-   * Kept narrow now that image/audio/document are first-class.
-   */
-  private async handleUnsupportedMedia(
-    waId: string,
-    messageType: string,
-  ): Promise<void> {
-    const typeLabelMap: Record<string, string> = {
-      video: "videos",
-      sticker: "stickers",
-    };
-    const typeLabel = typeLabelMap[messageType] ?? `${messageType} messages`;
-
-    await this.sendWhatsAppText(
-      waId,
-      `I can't process ${typeLabel} yet — please send your message as text, an image, a document, or a voice note. Type /help for available commands.`,
-    );
   }
 
   // ---------------------------------------------------------------------------

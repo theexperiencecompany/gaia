@@ -20,6 +20,7 @@
 import {
   BaseBotAdapter,
   type BotCommand,
+  buildAuthLinkMessage,
   createBotLogger,
   formatBotError,
   handleStreamingChat,
@@ -170,7 +171,6 @@ export class DiscordAdapter extends BaseBotAdapter {
   protected readonly defaultServerPort = 3200;
   private client!: Client;
   private token!: string;
-  private dmWelcomeSent = new Set<string>();
   private statusRotationTimer: ReturnType<typeof setInterval> | null = null;
   private statusIndex = Math.floor(Math.random() * ROTATING_STATUSES.length);
   private readonly adapterLogger = createBotLogger("discord", "adapter");
@@ -381,7 +381,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           "To use GAIA, please authenticate first — an ephemeral link has been sent above.";
         try {
           await interaction.user.send(
-            `Please authenticate with GAIA: ${authUrl}`,
+            renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
           );
           if (isFirstMessage) {
             await interaction.editReply({ content: publicContent });
@@ -390,7 +390,10 @@ export class DiscordAdapter extends BaseBotAdapter {
           }
         } catch {
           await interaction.followUp({
-            content: `Please authenticate with GAIA: ${authUrl}`,
+            content: renderForPlatform(
+              buildAuthLinkMessage(authUrl),
+              "discord",
+            ),
             ephemeral: true,
           });
           if (isFirstMessage) {
@@ -466,13 +469,16 @@ export class DiscordAdapter extends BaseBotAdapter {
         async (authUrl: string) => {
           try {
             await interaction.editReply({
-              content: `Please link your GAIA account first: ${authUrl}`,
+              content: renderForPlatform(
+                buildAuthLinkMessage(authUrl),
+                "discord",
+              ),
             });
             replied = true;
           } catch {
             try {
               await interaction.user.send(
-                `Please link your GAIA account to use GAIA: ${authUrl}`,
+                renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
               );
               replied = true;
             } catch {
@@ -520,13 +526,16 @@ export class DiscordAdapter extends BaseBotAdapter {
         async (authUrl: string) => {
           try {
             await interaction.editReply({
-              content: `Please link your GAIA account first: ${authUrl}`,
+              content: renderForPlatform(
+                buildAuthLinkMessage(authUrl),
+                "discord",
+              ),
             });
             replied = true;
           } catch {
             try {
               await interaction.user.send(
-                `Please link your GAIA account to use GAIA: ${authUrl}`,
+                renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
               );
               replied = true;
             } catch {
@@ -555,8 +564,7 @@ export class DiscordAdapter extends BaseBotAdapter {
   private async handleDMMessage(message: Message): Promise<void> {
     const userId = message.author.id;
 
-    if (!this.dmWelcomeSent.has(userId)) {
-      this.dmWelcomeSent.add(userId);
+    if (this.shouldSendWelcome(userId)) {
       await this.sendDMWelcome(message);
     }
 
@@ -573,24 +581,15 @@ export class DiscordAdapter extends BaseBotAdapter {
 
     try {
       const hasTyping = "sendTyping" in message.channel;
-      if (hasTyping) await message.channel.sendTyping();
-
-      let typingInterval: ReturnType<typeof setInterval> | null = hasTyping
-        ? setInterval(async () => {
-            try {
-              await (
+      const stopTyping = hasTyping
+        ? this.startTypingIndicator(
+            () =>
+              (
                 message.channel as { sendTyping: () => Promise<void> }
-              ).sendTyping();
-            } catch {}
-          }, 8000)
-        : null;
-
-      const clearTyping = () => {
-        if (typingInterval) {
-          clearInterval(typingInterval);
-          typingInterval = null;
-        }
-      };
+              ).sendTyping(),
+            8000,
+          )
+        : () => {};
 
       let currentMsg: Message | null = null;
 
@@ -603,7 +602,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           channelId: message.channelId,
         },
         async (content: string) => {
-          clearTyping();
+          stopTyping();
           if (!currentMsg) {
             currentMsg = await send(content);
           } else {
@@ -611,15 +610,18 @@ export class DiscordAdapter extends BaseBotAdapter {
           }
         },
         async (content: string) => {
-          clearTyping();
+          stopTyping();
           currentMsg = await send(content);
           return async (updatedText: string) => {
             await currentMsg?.edit(updatedText);
           };
         },
         async (authUrl: string) => {
-          clearTyping();
-          const msg = `Please authenticate first: ${authUrl}`;
+          stopTyping();
+          const msg = renderForPlatform(
+            buildAuthLinkMessage(authUrl),
+            "discord",
+          );
           if (!currentMsg) {
             currentMsg = await send(msg);
           } else {
@@ -627,7 +629,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           }
         },
         async (errMsg: string) => {
-          clearTyping();
+          stopTyping();
           if (!currentMsg) {
             currentMsg = await send(errMsg);
           } else {
@@ -638,7 +640,7 @@ export class DiscordAdapter extends BaseBotAdapter {
         this.analytics,
       );
 
-      clearTyping();
+      stopTyping();
     } catch (error) {
       this.adapterLogger.error(
         "dm_message_processing_failed",
@@ -748,31 +750,20 @@ export class DiscordAdapter extends BaseBotAdapter {
 
     try {
       const hasTyping = "sendTyping" in message.channel;
-      if (hasTyping) {
-        await message.channel.sendTyping();
-      }
-
-      let typingInterval: ReturnType<typeof setInterval> | null = hasTyping
-        ? setInterval(async () => {
-            try {
-              await (
+      const stopTyping = hasTyping
+        ? this.startTypingIndicator(
+            () =>
+              (
                 message.channel as { sendTyping: () => Promise<void> }
-              ).sendTyping();
-            } catch {}
-          }, 8000)
-        : null;
-
-      const clearTyping = () => {
-        if (typingInterval) {
-          clearInterval(typingInterval);
-          typingInterval = null;
-        }
-      };
+              ).sendTyping(),
+            8000,
+          )
+        : () => {};
 
       let currentMsg: Message | null = null;
 
       const sendOrEdit = async (content: string) => {
-        clearTyping();
+        stopTyping();
         if (!currentMsg) {
           currentMsg = await send(content);
         } else {
@@ -790,18 +781,18 @@ export class DiscordAdapter extends BaseBotAdapter {
         },
         sendOrEdit,
         async (content: string) => {
-          clearTyping();
+          stopTyping();
           currentMsg = await send(content);
           return async (updatedText: string) => {
             await currentMsg?.edit(updatedText);
           };
         },
         async (authUrl: string) => {
-          clearTyping();
+          stopTyping();
           let dmSent = false;
           try {
             await message.author.send(
-              `Please link your GAIA account to use me here: ${authUrl}`,
+              renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
             );
             dmSent = true;
           } catch {
@@ -814,14 +805,14 @@ export class DiscordAdapter extends BaseBotAdapter {
           );
         },
         async (errMsg: string) => {
-          clearTyping();
+          stopTyping();
           await sendOrEdit(errMsg);
         },
         STREAMING_DEFAULTS.discord,
         this.analytics,
       );
 
-      clearTyping();
+      stopTyping();
     } catch (error) {
       this.adapterLogger.error(
         "mention_message_processing_failed",

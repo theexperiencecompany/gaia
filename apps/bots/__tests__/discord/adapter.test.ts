@@ -149,6 +149,29 @@ vi.mock("@gaia/shared", () => {
         profile,
       };
     }
+
+    // Real once-per-user welcome gate (mirrors BaseBotAdapter): returns true the
+    // first time a userId is seen, false on every subsequent call.
+    private _welcomed = new Set<string>();
+    protected shouldSendWelcome(userId: string): boolean {
+      if (this._welcomed.has(userId)) return false;
+      this._welcomed.add(userId);
+      return true;
+    }
+
+    // Real typing-indicator helper (mirrors BaseBotAdapter): fires the send
+    // function once and returns a no-op stop function.
+    protected startTypingIndicator(
+      sendTyping: () => Promise<unknown>,
+      _refreshMs: number,
+    ): () => void {
+      void sendTyping().catch(() => {
+        // Swallow typing-indicator errors — they are non-fatal.
+      });
+      return () => {
+        // No-op stop function (the real timer is covered by base behavior tests).
+      };
+    }
   };
 
   return {
@@ -814,27 +837,31 @@ describe("DiscordAdapter - DM welcome flow", () => {
     vi.clearAllMocks();
     const adapter = new DiscordAdapter();
 
-    // Skip welcome for this user so we can isolate the blank-content check.
-    (adapter as unknown as { dmWelcomeSent: Set<string> }).dmWelcomeSent.add(
-      "blank-user",
-    );
-
     const send = vi.fn().mockResolvedValue({ edit: vi.fn() });
-    const message = {
+    const makeBlankMessage = () => ({
       content: "   ",
       author: { id: "blank-user", bot: false },
       guild: null,
       channelId: "dm-channel",
       partial: false,
       channel: { send, sendTyping: vi.fn() },
-    };
+    });
 
-    await (
-      adapter as unknown as {
-        handleDMMessage: (m: typeof message) => Promise<void>;
-      }
-    ).handleDMMessage(message);
+    const handleDM = (m: ReturnType<typeof makeBlankMessage>) =>
+      (
+        adapter as unknown as {
+          handleDMMessage: (m: typeof m) => Promise<void>;
+        }
+      ).handleDMMessage(m);
 
+    // First blank DM also triggers the one-time welcome — consume it here so the
+    // second call isolates the blank-content reply.
+    await handleDM(makeBlankMessage());
+
+    send.mockClear();
+    await handleDM(makeBlankMessage());
+
+    // On the repeat DM (welcome already sent) the only reply is the blank prompt.
     expect(send).toHaveBeenCalledWith("How can I help you?");
     expect(handleStreamingChat).not.toHaveBeenCalled();
   });

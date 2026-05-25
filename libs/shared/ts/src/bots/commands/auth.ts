@@ -7,6 +7,7 @@
  * @module
  */
 import type { BotCommand, CommandExecuteParams } from "../types";
+import { buildAuthLinkMessage } from "../utils/formatters";
 
 /** `/auth` command definition. */
 export const authCommand: BotCommand = {
@@ -31,15 +32,7 @@ export const authCommand: BotCommand = {
         ctx.platformUserId,
         ctx.profile,
       );
-      // NOTE: Avoid _italic_ markers here — underscores in the URL token
-      // pair with them and break Telegram's legacy Markdown parser.
-      // And the bare URL is auto-linked by Telegram on real domains (not localhost).
-      await target.sendEphemeral(
-        "🔗 **Link your account to GAIA**\n\n" +
-          "Tap the link below to sign in and link your account:\n" +
-          `${authUrl}\n\n` +
-          "After linking, you'll be able to use all GAIA commands!",
-      );
+      await target.sendEphemeral(buildAuthLinkMessage(authUrl));
     } catch {
       await target.sendEphemeral(
         "❌ Failed to generate auth link. Please try again.",

@@ -23,10 +23,11 @@
 import {
   BaseBotAdapter,
   type BotCommand,
+  buildAuthLinkMessage,
   createBotLogger,
+  extractSubcommandArgs,
   handleStreamingChat,
   type PlatformName,
-  parseTextArgs,
   type RichMessage,
   type RichMessageTarget,
   renderForPlatform,
@@ -149,18 +150,8 @@ export class SlackAdapter extends BaseBotAdapter {
             command.user_name,
           );
 
-          // Parse text args for subcommand-style commands
-          const args: Record<string, string | number | boolean | undefined> =
-            {};
           const rawText = command.text || undefined;
-
-          if (
-            rawText &&
-            (commandName === "todo" || commandName === "workflow")
-          ) {
-            const parsed = parseTextArgs(rawText);
-            args.subcommand = parsed.subcommand;
-          }
+          const args = extractSubcommandArgs(commandName, rawText);
 
           await this.dispatchCommand(commandName, target, args, rawText);
         },
@@ -354,7 +345,7 @@ export class SlackAdapter extends BaseBotAdapter {
         await client.chat.postEphemeral({
           channel: channelId,
           user: userId,
-          text: `Please authenticate first: ${authUrl}`,
+          text: renderForPlatform(buildAuthLinkMessage(authUrl), "slack"),
         });
       },
       async (errMsg: string) => {

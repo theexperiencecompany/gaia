@@ -1,7 +1,26 @@
 {
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
-  "python.analysis.extraPaths": ["${workspaceFolder}/libs"],
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/libs"
+  ],
   "python.analysis.typeCheckingMode": "basic",
   "python.analysis.autoImportCompletions": true,
-  "python.analysis.indexing": true
+  "python.analysis.indexing": true,
+  "files.exclude": {
+    "**/.git": false,
+    "**/.svn": false,
+    "**/.hg": false,
+    "**/.DS_Store": false,
+    "**/Thumbs.db": false,
+    "**/node_modules": false,
+    "**/.next": false,
+    "**/.venv": false,
+    "**/__pycache__": false,
+    "**/.mypy_cache": false,
+    "**/.ruff_cache": false,
+    "**/dist": false,
+    "**/.nx": false,
+    "**/.turbo": false
+  },
+  "explorerExclude.backup": {}
 }

@@ -37,9 +37,11 @@
  * 27. dispatchCommand — registered command that throws sends ephemeral error
  * 28. handleIncomingMessage — sends welcome on first contact, not on second
  * 29. handleIncomingMessage — welcome sent per user (different users each get one)
- * 30. handleUnsupportedMedia — replies with helpful message for image
- * 31. handleUnsupportedMedia — replies with type-specific label for audio/voice/video/document
- * 32. createWaTarget.sendRich — sends platform-aware rendered markdown without an extra convert pass
+ *
+ * Inbound media routing (build descriptor → resolveIncomingMedia → reply/chat
+ * dispatch, unsupported-kind rejection, friendly error mapping) is covered in
+ * media-flow.test.ts; the shared transcribe/upload/reject decision lives in
+ * processBotMedia and is covered in __tests__/shared/utils/media.test.ts.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -101,6 +103,10 @@ vi.mock("../../whatsapp/src/webhook", () => ({
 
 vi.mock("@gaia/shared", async () => {
   const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
+  // Wire the REAL pure helpers the adapter imports (command-arg parsing and the
+  // media error/unsupported copy) so behavior is asserted against production
+  // output, not stubs.
+  const real = await import("../../../../libs/shared/ts/src/bots/utils");
   return makeGaiaSharedMock("whatsapp", {
     streamingDefaults: {
       whatsapp: {
@@ -108,6 +114,11 @@ vi.mock("@gaia/shared", async () => {
         streaming: false,
         platform: "whatsapp",
       },
+    },
+    converters: {
+      extractSubcommandArgs: vi.fn(real.extractSubcommandArgs),
+      friendlyMediaError: vi.fn(real.friendlyMediaError),
+      unsupportedMediaMessage: vi.fn(real.unsupportedMediaMessage),
     },
     defaultRichMarkdown: "*GAIA Help*\nUse /gaia to chat",
   });
@@ -168,7 +179,6 @@ type PrivateAdapter = {
     messageId: string,
   ) => Promise<void>;
   handleStreamingMessage: (waId: string, text: string) => Promise<void>;
-  handleUnsupportedMedia: (waId: string, messageType: string) => Promise<void>;
   sendWelcome: (waId: string) => Promise<void>;
   welcomeSent: Set<string>;
   dispatchCommand: (
@@ -553,7 +563,7 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
     );
   });
 
-  it("onAuthError callback sends 'To use GAIA on WhatsApp, link your account first:' with the auth URL", async () => {
+  it("onAuthError sends the shared canonical auth-link message with the URL", async () => {
     vi.mocked(handleStreamingChat).mockImplementation(
       async (_gaia, _ctx, _editMsg, _sendNew, onAuthError) => {
         await onAuthError("https://auth.example.com/link");
@@ -564,10 +574,12 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
 
     const allCalls = mockSendText.mock.calls.map((c) => c[0].body as string);
     const authMessage = allCalls.find((b) =>
-      b.includes("To use GAIA on WhatsApp, link your account first:"),
+      b.includes("https://auth.example.com/link"),
     );
     expect(authMessage).toBeDefined();
-    expect(authMessage).toContain("https://auth.example.com/link");
+    // Uses the single shared buildAuthLinkMessage (not a WhatsApp-specific
+    // hardcoded string) so /auth and the chat auth-prompt stay identical.
+    expect(authMessage).toContain("Link your account to GAIA");
   });
 
   it("onGenericError callback sends the error message via sendText", async () => {
@@ -651,10 +663,11 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
 // ---------------------------------------------------------------------------
 
 describe("WhatsAppAdapter - dispatchCommand (via BaseBotAdapter stub)", () => {
+  type DispatchTarget = Parameters<PrivateAdapter["dispatchCommand"]>[1];
   let adapter: WhatsAppAdapter;
   let priv: PrivateAdapter;
   let mockSendEphemeral: ReturnType<typeof vi.fn>;
-  let mockTarget: { sendEphemeral: typeof mockSendEphemeral };
+  let mockTarget: DispatchTarget;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -665,7 +678,10 @@ describe("WhatsAppAdapter - dispatchCommand (via BaseBotAdapter stub)", () => {
     mockSendEphemeral = vi
       .fn()
       .mockResolvedValue({ id: "eph-msg", edit: vi.fn() });
-    mockTarget = { sendEphemeral: mockSendEphemeral };
+    mockTarget = {
+      sendEphemeral:
+        mockSendEphemeral as unknown as DispatchTarget["sendEphemeral"],
+    };
   });
 
   afterEach(() => {
@@ -759,65 +775,5 @@ describe("WhatsAppAdapter - welcome message", () => {
     mockSendText.mockRejectedValueOnce(new Error("Network error"));
 
     await expect(priv.sendWelcome("15551234567")).resolves.toBeUndefined();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// handleUnsupportedMedia — non-text message handling
-// ---------------------------------------------------------------------------
-
-describe("WhatsAppAdapter - handleUnsupportedMedia", () => {
-  let adapter: WhatsAppAdapter;
-  let priv: PrivateAdapter;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockSendText.mockResolvedValue({ messages: [{ id: "wa-msg-123" }] });
-    adapter = makeAdapter();
-    priv = adapter as unknown as PrivateAdapter;
-  });
-
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('replies with "videos" for video messages', async () => {
-    await priv.handleUnsupportedMedia("15551234567", "video");
-
-    expect(mockSendText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.stringContaining("videos"),
-      }),
-    );
-  });
-
-  it('replies with "stickers" for sticker messages', async () => {
-    await priv.handleUnsupportedMedia("15551234567", "sticker");
-
-    expect(mockSendText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.stringContaining("stickers"),
-      }),
-    );
-  });
-
-  it("replies with generic label for unknown message types", async () => {
-    await priv.handleUnsupportedMedia("15551234567", "contact");
-
-    expect(mockSendText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.stringContaining("contact messages"),
-      }),
-    );
-  });
-
-  it("includes help hint in all media responses", async () => {
-    await priv.handleUnsupportedMedia("15551234567", "video");
-
-    expect(mockSendText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.stringContaining("/help"),
-      }),
-    );
   });
 });
