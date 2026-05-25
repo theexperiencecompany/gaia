@@ -1,0 +1,97 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "a19f0ae3115f",
+  "session_id": "4e9aed05-5bbf-4c2d-9990-e1d9ecb66e46",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-25T22:02:51.097146Z",
+  "branch": "feat/whatsapp-media-support",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "apps/api/app/api/v1/endpoints/bot.py",
+    "apps/bots/__tests__/discord/adapter.test.ts",
+    "apps/bots/__tests__/shared/mocks/gaiaSharedBase.ts",
+    "apps/bots/__tests__/slack/adapter.test.ts",
+    "apps/bots/__tests__/telegram/adapter.test.ts",
+    "apps/bots/__tests__/whatsapp/media-flow.test.ts",
+    "apps/bots/discord/src/adapter.ts",
+    "libs/shared/ts/src/bots/utils/formatters.ts",
+    "libs/shared/ts/src/bots/utils/media.ts",
+    "libs/shared/ts/src/bots/utils/text.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "7eb7482db6ce",
+  "token_usage": {
+    "input_tokens": 61904,
+    "cache_creation_tokens": 1251895,
+    "cache_read_tokens": 25896073,
+    "output_tokens": 304816,
+    "api_call_count": 91
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-25T22:02:51.050996Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 314,
+    "human_removed": 93,
+    "total_committed": 20,
+    "total_lines_changed": 452,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 166,
+      "agent_lines_removed": 126
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 166,
+      "agent_lines_removed": 126
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 166,
+      "agent_lines_removed": 126
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 168,
+      "user_lines_removed": 226,
+      "agent_lines_added": 170,
+      "agent_lines_removed": 132,
+      "user_added_per_file": {
+        "apps/bots/__tests__/discord/adapter.test.ts": 18,
+        "apps/bots/__tests__/slack/adapter.test.ts": 24,
+        "apps/bots/__tests__/telegram/adapter.test.ts": 36,
+        "apps/bots/discord/src/adapter.ts": 68,
+        "apps/bots/telegram/src/adapter.ts": 22
+      },
+      "user_removed_per_file": {
+        "apps/bots/__tests__/discord/adapter.test.ts": 21,
+        "apps/bots/__tests__/slack/adapter.test.ts": 28,
+        "apps/bots/__tests__/telegram/adapter.test.ts": 34,
+        "apps/bots/discord/src/adapter.ts": 98,
+        "apps/bots/telegram/src/adapter.ts": 45
+      }
+    }
+  ]
+}

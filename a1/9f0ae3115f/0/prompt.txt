@@ -1,0 +1,326 @@
+Skip to content
+theexperiencecompany
+gaia
+Repository navigation
+Code
+Issues
+3
+ (3)
+Pull requests
+10
+ (10)
+Agents
+Discussions
+Actions
+Projects
+Wiki
+Security and quality
+259
+ (259)
+Insights
+Settings
+We are having a problem billing your account. Please update your payment method or call your payment provider for details on why the transaction failed.
+You can contact support with any questions.
+feat(bots): WhatsApp + Telegram media & voice support, with cross-cutting bot and API fixes
+#688
+Open
+aryanranderiya
+wants to merge 24 commits into
+develop
+from
+feat/whatsapp-media-support
++4,504
+-1,021
+Lines changed: 4504 additions & 1021 deletions
+Conversation15 (15)
+Commits24 (24)
+Checks33 (33)
+Files changed55 (55)
+Open
+feat(bots): WhatsApp + Telegram media & voice support, with cross-cutting bot and API fixes#688
+aryanranderiya
+wants to merge 24 commits into
+develop
+from
+feat/whatsapp-media-support
+chore(bots): align @grammyjs/types to ^3.23.0 across packages
+Mintlify
+Vercel
+Cloudflare Workers and Pages
+Workers Builds: gaia
+SonarQubeCloud
+SonarCloud Code Analysis
+PR Naming Conventions
+on: pull_request
+Code Quality
+on: pull_request
+ 17
+Quality Checks
+on: pull_request
+ 7
+detect
+static-python
+static-typescript
+build
+test-python
+test-typescript
+dead-code
+changelog-sync
+trivy-scan
+coverage
+SonarQubeCloud / SonarCloud Code Analysis
+failed 1 minute ago in 3m 51s
+Quality Gate failed
+Failed conditions
+ 6 Security Hotspots
+ 3.1% Duplication on New Code (required ≤ 3%)
+
+See analysis details on SonarQube Cloud
+
+Annotations
+ Check warning on line 19 in apps/bots/__tests__/telegram/adapter.test.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Complete the task associated to this "TODO" comment.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUh7jYKQVvvkLeU6&open=AZ5gdUh7jYKQVvvkLeU6&pullRequest=688
+ Check warning on line 462 in apps/bots/__tests__/slack/adapter.test.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+This assertion is unnecessary since the receiver accepts the original type of the expression.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUiRjYKQVvvkLeVD&open=AZ5gdUiRjYKQVvvkLeVD&pullRequest=688
+ Check warning on line 54 in apps/bots/__tests__/slack/adapter.test.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Complete the task associated to this "TODO" comment.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUiRjYKQVvvkLeVC&open=AZ5gdUiRjYKQVvvkLeVC&pullRequest=688
+ Check warning on line 1261 in apps/bots/__tests__/telegram/adapter.test.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Move function 'makePhotoCtx' to the outer scope.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUh7jYKQVvvkLeVB&open=AZ5gdUh7jYKQVvvkLeVB&pullRequest=688
+ Check warning on line 168 in apps/bots/__tests__/shared/mocks/gaiaSharedBase.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `String#replaceAll()` over `String#replace()`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUQ6jYKQVvvkLeU4&open=AZ5gdUQ6jYKQVvvkLeU4&pullRequest=688
+ Check warning on line 155 in apps/bots/__tests__/discord/adapter.test.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Member '_welcomed' is never reassigned; mark it as `readonly`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUhbjYKQVvvkLeU5&open=AZ5gdUhbjYKQVvvkLeU5&pullRequest=688
+ Check warning on line 160 in libs/shared/ts/src/bots/utils/formatters.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `String#replaceAll()` over `String#replace()`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUkMjYKQVvvkLeVK&open=AZ5gdUkMjYKQVvvkLeVK&pullRequest=688
+ Check warning on line 386 in apps/bots/__tests__/whatsapp/media-flow.test.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+The empty object is useless.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUiujYKQVvvkLeVG&open=AZ5gdUiujYKQVvvkLeVG&pullRequest=688
+ Check warning on line 65 in libs/shared/ts/src/bots/utils/media.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Extract this nested ternary operation into an independent statement.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUjcjYKQVvvkLeVI&open=AZ5gdUjcjYKQVvvkLeVI&pullRequest=688
+ Check warning on line 96 in apps/bots/__tests__/telegram/adapter.test.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `String#replaceAll()` over `String#replace()`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUh7jYKQVvvkLeU_&open=AZ5gdUh7jYKQVvvkLeU_&pullRequest=688
+ Check warning on line 93 in apps/bots/__tests__/telegram/adapter.test.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `String#replaceAll()` over `String#replace()`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUh7jYKQVvvkLeU8&open=AZ5gdUh7jYKQVvvkLeU8&pullRequest=688
+ Check warning on line 534 in apps/bots/__tests__/slack/adapter.test.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+This assertion is unnecessary since the receiver accepts the original type of the expression.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUiRjYKQVvvkLeVF&open=AZ5gdUiRjYKQVvvkLeVF&pullRequest=688
+ Check warning on line 144 in libs/shared/ts/src/bots/utils/formatters.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `String#replaceAll()` over `String#replace()`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUkMjYKQVvvkLeVJ&open=AZ5gdUkMjYKQVvvkLeVJ&pullRequest=688
+ Check warning on line 493 in apps/api/app/api/v1/endpoints/bot.py 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Use "Annotated" type hints for FastAPI dependency injection
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gaxm47TqawLdB8ePe&open=AZ5gaxm47TqawLdB8ePe&pullRequest=688
+ Check failure on line 840 in apps/bots/discord/src/adapter.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Refactor this function to reduce its Cognitive Complexity from 25 to the 15 allowed.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gjFXaOcYDVOXjuovx&open=AZ5gjFXaOcYDVOXjuovx&pullRequest=688
+ Check warning on line 780 in apps/bots/__tests__/telegram/adapter.test.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Complete the task associated to this "TODO" comment.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUh7jYKQVvvkLeVA&open=AZ5gdUh7jYKQVvvkLeVA&pullRequest=688
+ Check warning on line 92 in apps/bots/__tests__/shared/mocks/gaiaSharedBase.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Member '_welcomed' is never reassigned; mark it as `readonly`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUQ6jYKQVvvkLeU0&open=AZ5gdUQ6jYKQVvvkLeU0&pullRequest=688
+ Check warning on line 95 in apps/bots/__tests__/telegram/adapter.test.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `String#replaceAll()` over `String#replace()`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUh7jYKQVvvkLeU-&open=AZ5gdUh7jYKQVvvkLeU-&pullRequest=688
+ Check warning on line 220 in libs/shared/ts/src/bots/utils/formatters.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Remove duplicates in this character class.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUkMjYKQVvvkLeVP&open=AZ5gdUkMjYKQVvvkLeVP&pullRequest=688
+ Check warning on line 683 in apps/bots/__tests__/whatsapp/adapter.test.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+This assertion is unnecessary since the receiver accepts the original type of the expression.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUjCjYKQVvvkLeVH&open=AZ5gdUjCjYKQVvvkLeVH&pullRequest=688
+ Check warning on line 517 in apps/bots/__tests__/slack/adapter.test.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Complete the task associated to this "TODO" comment.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUiRjYKQVvvkLeVE&open=AZ5gdUiRjYKQVvvkLeVE&pullRequest=688
+ Check warning on line 220 in libs/shared/ts/src/bots/utils/formatters.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Remove duplicates in this character class.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUkMjYKQVvvkLeVQ&open=AZ5gdUkMjYKQVvvkLeVQ&pullRequest=688
+ Check warning on line 167 in apps/bots/__tests__/shared/mocks/gaiaSharedBase.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `String#replaceAll()` over `String#replace()`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUQ6jYKQVvvkLeU3&open=AZ5gdUQ6jYKQVvvkLeU3&pullRequest=688
+ Check warning on line 161 in libs/shared/ts/src/bots/utils/formatters.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `String#replaceAll()` over `String#replace()`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUkMjYKQVvvkLeVL&open=AZ5gdUkMjYKQVvvkLeVL&pullRequest=688
+ Check warning on line 94 in apps/bots/__tests__/telegram/adapter.test.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `String#replaceAll()` over `String#replace()`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUh7jYKQVvvkLeU9&open=AZ5gdUh7jYKQVvvkLeU9&pullRequest=688
+ Check warning on line 166 in apps/bots/__tests__/shared/mocks/gaiaSharedBase.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Prefer `String#replaceAll()` over `String#replace()`.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUQ6jYKQVvvkLeU2&open=AZ5gdUQ6jYKQVvvkLeU2&pullRequest=688
+ Check warning on line 33 in libs/shared/ts/src/bots/utils/text.ts 
+
+@sonarqubecloud
+sonarqubecloud
+/ SonarCloud Code Analysis
+Complete the task associated to this "TODO" comment.
+
+See more on https://sonarcloud.io/project/issues?id=theexperiencecompany_gaia&issues=AZ5gdUkdjYKQVvvkLeVS&open=AZ5gdUkdjYKQVvvkLeVS&pullRequest=688
+View more details on SonarQubeCloud
+Footer
+© 2026 GitHub, Inc.
+Footer navigation
+Terms
+Privacy
+Security
+Status
+Community
+Docs
+Contact
+Manage cookies
+Do not share my personal information
+ please create tasks for every single of sonarqube warnings and errors
+
+---
+
+yeah you explore yourself please
+
+---
+
+then help me how would we fix the jscpd shit
+
+---
+
+what do u mean by just copy paste checks?
+
+---
+
+alirght sure then what do we need to do
