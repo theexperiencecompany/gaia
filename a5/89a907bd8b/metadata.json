@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "a589a907bd8b",
+  "strategy": "manual-commit",
+  "branch": "feat/whatsapp-media-support",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/a5/89a907bd8b/0/metadata.json",
+      "transcript": "/a5/89a907bd8b/0/full.jsonl",
+      "content_hash": "/a5/89a907bd8b/0/content_hash.txt",
+      "prompt": "/a5/89a907bd8b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 62633,
+    "cache_creation_tokens": 4081095,
+    "cache_read_tokens": 118646574,
+    "output_tokens": 545733,
+    "api_call_count": 275
+  }
+}

@@ -1,0 +1,154 @@
+You've reached your file upload limit for now. Please try again later, or upgrade your plan for higher limits. why does this not show the url anymore?? like wheres the url to upgrade?
+
+---
+
+please first figure out the cleanest architecture of surfacing any errors and the pricing rate limited edxceed shit. please explore deeply and tell ne
+
+---
+
+alos how will this fix the actual errors like apart from 429 rate limited shit?
+
+---
+
+fuck it just fix the 429 rate limited shit
+
+---
+
+no like is this proper architectural wise? wha tabout any other 429 errors
+
+---
+
+so what do we need to fix?
+
+---
+
+what other places need to be fixed? please create a proper plan
+
+---
+
+so the entire error handling might need to be revamped please explore deeply and understand and help me
+
+---
+
+nah i'm gonna merge this branch. but before, when rate limit hits on the frontend,  
+error @ intercept-console-error.ts:42Understand this error
+intercept-console-error.ts:42 Error uploading files: AxiosError: Request failed with status code 429
+    at settle (settle.js:20:7)
+    at XMLHttpRequest.onloadend (xhr.js:62:15)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async FileUpload.tsx:196:28
+    at async Promise.all (:3000/index 0)
+    at async uploadFiles (FileUpload.tsx:227:23)
+error @ intercept-console-error.ts:42Understand this error
+forward-logs-shared.ts:95 [Fast Refresh] rebuilding
+forward-logs-shared.ts:95 [Fast Refresh] done in 155ms
+:8000/api/v1/upload:1  Failed to load resource: the server responded with a status of 429 (Too Many Requests)Understand this error
+intercept-console-error.ts:42 POST /upload failed: AxiosError: Request failed with status code 429
+    at settle (settle.js:20:7)
+    at XMLHttpRequest.onloadend (xhr.js:62:15)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async FileUpload.tsx:196:28
+    at async Promise.all (:3000/index 0)
+    at async uploadFiles (FileUpload.tsx:227:23)
+error @ intercept-console-error.ts:42Understand this error
+intercept-console-error.ts:42 Error uploading file twitter_header.webp: AxiosError: Request failed with status code 429
+    at settle (settle.js:20:7)
+    at XMLHttpRequest.onloadend (xhr.js:62:15)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async FileUpload.tsx:196:28
+    at async Promise.all (:3000/index 0)
+    at async uploadFiles (FileUpload.tsx:227:23)
+error @ intercept-console-error.ts:42Understand this error
+intercept-console-error.ts:42 Error uploading files: AxiosError: Request failed with status code 429
+    at settle (settle.js:20:7)
+    at XMLHttpRequest.onloadend (xhr.js:62:15)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async FileUpload.tsx:196:28
+    at async Promise.all (:3000/index 0)
+    at async uploadFiles (FileUpload.tsx:227:23)
+error @ intercept-console-error.ts:42Understand this error it just shows toast but nothing else. how to fix this? should we modify our axios interceptor to handle 429's? did we used to do that? check git histoyr ig
+
+---
+
+nah let's fold it into the same pr fix it
+
+---
+
+server responded with a status of 429 (Too Many Requests)Understand this error
+intercept-console-error.ts:42 POST /upload failed: AxiosError: Request failed with status code 429
+    at settle (settle.js:20:7)
+    at XMLHttpRequest.onloadend (xhr.js:62:15)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async FileUpload.tsx:196:28
+    at async Promise.all (:3000/index 0)
+    at async uploadFiles (FileUpload.tsx:227:23)
+error @ intercept-console-error.ts:42Understand this error
+intercept-console-error.ts:42 Error uploading file twitter_header.webp: AxiosError: Request failed with status code 429
+    at settle (settle.js:20:7)
+    at XMLHttpRequest.onloadend (xhr.js:62:15)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async FileUpload.tsx:196:28
+    at async Promise.all (:3000/index 0)
+    at async uploadFiles (FileUpload.tsx:227:23)
+error @ intercept-console-error.ts:42Understand this error
+intercept-console-error.ts:42 Error uploading files: AxiosError: Request failed with status code 429
+    at settle (settle.js:20:7)
+    at XMLHttpRequest.onloadend (xhr.js:62:15)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async FileUpload.tsx:196:28
+    at async Promise.all (:3000/index 0)
+    at async uploadFiles (FileUpload.tsx:227:23)
+error @ intercept-console-error.ts:42Understand this error
+forward-logs-shared.ts:95 [Vercel Web Analytics] Debug mode is enabled by default in development. No requests will be sent to the server.
+forward-logs-shared.ts:95 [Vercel Web Analytics] Running queued event pageview Object
+forward-logs-shared.ts:95 [Vercel Web Analytics] Running queued event pageview Object
+forward-logs-shared.ts:95 [Vercel Web Analytics] [view] http://localhost:3000/c Object /_vercel/insights/view
+forward-logs-shared.ts:95 [Vercel Web Analytics] [view] http://localhost:3000/c Object /_vercel/insights/view
+forward-logs-shared.ts:95 [Vercel Speed Insights] Debug mode is enabled by default in development. No requests will be sent to the server. same thing happens rn where it says error uploading files please try again. it should show the actual 429 error and with button for pricing.
+
+---
+
+in all the places i guess the 429 should show precendence. how to do this in the app overall instead of just this 1 place of file uploads?
+
+---
+
+in all the places i guess the 429 should show precendence. how to do this in the app overall instead of just this 1 place of file uploads?
+
+---
+
+but what happens if i remove the timeout lol
+
+---
+
+there has got to be a better approach please tell me.
+
+---
+
+i dont want to create bullshit functions like this. how many changs do we need? whats the best architectural approach?
+
+---
+
+i dont want to create bullshit functions like this. how many changs do we need? whats the best architectural approach? like what if i dont want the set either? i wouldnt honestly mind updating inside the service but why not have the handled approach or the claim error toast approach inside the service instead of the timeout shit? how would we do this?
+
+---
+
+please commit and push current changes. and replace all gemini 3.1 flash lite preview mentions to be just gemini 3.1 flash lite
+
+---
+
+39s
+1s
+Run echo "::group::syncpack lint"
+syncpack lint
+  = All deps must agree across packages ==========================================
+     2x @grammyjs/types
+        ✘ ^3.0.0 → ^3.23.0 in apps/bots/telegram/package.json at .dependencies (DiffersToHighestOrLowestSemver)
+  ✗ Issues found
+  Error: Process completed with exit code 1.
