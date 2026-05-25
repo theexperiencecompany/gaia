@@ -136,3 +136,7 @@ i dont want to create bullshit functions like this. how many changs do we need? 
 ---
 
 i dont want to create bullshit functions like this. how many changs do we need? whats the best architectural approach? like what if i dont want the set either? i wouldnt honestly mind updating inside the service but why not have the handled approach or the claim error toast approach inside the service instead of the timeout shit? how would we do this?
+
+---
+
+please commit and push current changes. and replace all gemini 3.1 flash lite preview mentions to be just gemini 3.1 flash lite
