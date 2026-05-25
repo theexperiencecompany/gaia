@@ -88,6 +88,20 @@ export function friendlyMediaError(kind: MediaKind, err: unknown): string {
   return "Something went wrong while processing your attachment. Please try again in a moment.";
 }
 
+/**
+ * Maps a MIME type to a {@link MediaKind}. Adapters that learn the kind from a
+ * content type (Discord attachments, Slack files) use this; platforms that
+ * carry an explicit kind (Telegram, Kapso) set it directly. Never returns
+ * "sticker" — stickers are detected from platform-specific fields, not MIME.
+ */
+export function mediaKindFromMime(mimeType: string): MediaKind {
+  const mime = mimeType.split(";")[0].trim().toLowerCase();
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime.startsWith("video/")) return "video";
+  return "document";
+}
+
 /** Returns a leading-dot file extension for a known mime type, or `fallback`. */
 export function extensionForMime(mimeType: string, fallback: string): string {
   const mime = mimeType.split(";")[0].trim().toLowerCase();

@@ -164,7 +164,7 @@ The decision for any inbound media is identical across platforms and lives ONCE 
 - **image / document** → `gaia.uploadFile` → referenced on the chat request via `fileIds`/`fileData`.
 - Size caps: 10 MB files, 25 MB audio (`BOT_MEDIA_LIMITS`); upload/transcribe failures map to friendly replies via `friendlyMediaError`.
 
-Each adapter supplies only the platform glue: detect the media type → build an `IncomingMedia` descriptor → pass a lazy `download` thunk → act on the returned `MediaOutcome` (`reply` vs `chat`). WhatsApp extracts from the Kapso webhook (`extractMedia`) and downloads via the Kapso SDK; Telegram maps the grammY message (`extractTelegramMedia`) and downloads via `getFile`.
+Each adapter supplies only the platform glue: detect the media type → build an `IncomingMedia` descriptor → pass a lazy `download` thunk → act on the returned `MediaOutcome` (`reply` vs `chat`). WhatsApp extracts from the Kapso webhook (`extractMedia`) and downloads via the Kapso SDK; Telegram maps the grammY message (`extractTelegramMedia`) and downloads via `getFile`; Discord maps `message.attachments` (`extractDiscordMedia`, kind via `mediaKindFromMime`) and downloads from the public CDN URL. Slack is text-only for now.
 
 ### Auth / welcome messaging
 
@@ -187,6 +187,7 @@ The "link your account" prompt is ONE shared string — `buildAuthLinkMessage(au
 - Rotating presence statuses cycle every 3 minutes (`ROTATING_STATUSES` array).
 - DM welcome embed is sent once per user per process lifetime, gated by the shared `BaseBotAdapter.shouldSendWelcome`.
 - Context menu commands ("Summarize with GAIA", "Add as Todo") use `MessageContextMenuCommandInteraction` and always reply ephemeral.
+- Media: images, documents, voice notes, and audio attachments are handled via the shared `resolveIncomingMedia` pipeline. `extractDiscordMedia` maps `message.attachments` / `message.stickers` to `IncomingMedia` (kind from MIME via `mediaKindFromMime`, voice notes via the `IsVoiceMessage` flag); bytes download from the public attachment CDN URL (no auth). Works in both DMs and @mentions; video/stickers get a polite reply. Requires the `MessageContent` intent (already set).
 - Required env vars: `DISCORD_BOT_TOKEN`, `DISCORD_CLIENT_ID`
 
 ### Slack (`slack/`)
@@ -658,7 +659,7 @@ nx test bots-e2e
 | Parse mode | none (native) | none (mrkdwn) | **HTML** | none |
 | Max message length | 2000 | 4000 | 4096 | 4096 |
 | Welcome message | DM embed + buttons | None | None | Text markdown |
-| Media support | Text only | Text only | image / doc / voice / audio | image / doc / voice / audio |
+| Media support | image / doc / voice / audio | Text only | image / doc / voice / audio | image / doc / voice / audio |
 | Auth flow | Link token + web | Link token + web | Link token + web | Link token + web |
 | Webhook routing | No | No | No | nginx → bot:3203 |
 

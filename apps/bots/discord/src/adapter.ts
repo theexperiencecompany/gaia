@@ -23,7 +23,11 @@ import {
   buildAuthLinkMessage,
   createBotLogger,
   formatBotError,
+  friendlyMediaError,
   handleStreamingChat,
+  type IncomingMedia,
+  type MediaOutcome,
+  mediaKindFromMime,
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
@@ -159,6 +163,55 @@ const ROTATING_STATUSES: { type: ActivityType; name: string }[] = [
 ];
 
 const STATUS_ROTATION_INTERVAL_MS = 3 * 60 * 1000;
+
+/** A Discord attachment/sticker normalised for the shared media pipeline. */
+interface DiscordExtractedMedia {
+  /** Public CDN URL for the bytes; empty for stickers (never downloaded). */
+  url: string;
+  media: Omit<IncomingMedia, "caption">;
+}
+
+/**
+ * Maps a Discord message's first attachment (or sticker) onto the shared
+ * {@link IncomingMedia} shape, or null when the message carries no media.
+ * Optional chaining keeps it safe against partial test mocks that omit the
+ * `attachments` / `stickers` collections.
+ */
+function extractDiscordMedia(message: Message): DiscordExtractedMedia | null {
+  const attachment = message.attachments?.first?.();
+  if (attachment) {
+    const mimeType = attachment.contentType ?? "application/octet-stream";
+    const kind = mediaKindFromMime(mimeType);
+    return {
+      url: attachment.url,
+      media: {
+        kind,
+        isVoiceNote: message.flags?.has(MessageFlags.IsVoiceMessage) ?? false,
+        mimeType,
+        filename: kind === "document" ? attachment.name : undefined,
+      },
+    };
+  }
+  if ((message.stickers?.size ?? 0) > 0) {
+    return {
+      url: "",
+      media: { kind: "sticker", isVoiceNote: false, mimeType: "image/png" },
+    };
+  }
+  return null;
+}
+
+/** Downloads a Discord attachment from its public CDN URL. */
+async function downloadDiscordAttachment(url: string): Promise<Uint8Array> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw Object.assign(
+      new Error(`Discord attachment download failed (${res.status})`),
+      { status: res.status },
+    );
+  }
+  return new Uint8Array(await res.arrayBuffer());
+}
 
 /**
  * Discord-specific implementation of the GAIA bot adapter.
@@ -561,6 +614,48 @@ export class DiscordAdapter extends BaseBotAdapter {
    *
    * Sends a welcome embed to first-time users before processing their message.
    */
+  /**
+   * Resolves any inbound media on a Discord message to a {@link MediaOutcome}
+   * via the shared pipeline, or null when the message carries no media.
+   * Download/upload/transcribe failures are caught and surfaced as a reply.
+   */
+  private async resolveDiscordMedia(
+    message: Message,
+    caption: string,
+    userId: string,
+  ): Promise<MediaOutcome | null> {
+    const extracted = extractDiscordMedia(message);
+    if (!extracted) return null;
+
+    const media: IncomingMedia = {
+      ...extracted.media,
+      caption: caption || undefined,
+    };
+
+    this.adapterLogger.info("media_message_received", {
+      user_id: userId,
+      channel_id: message.channelId,
+      media_kind: media.kind,
+      is_voice_note: media.isVoiceNote,
+    });
+
+    try {
+      return await this.resolveIncomingMedia(
+        media,
+        () => downloadDiscordAttachment(extracted.url),
+        userId,
+        message.channelId,
+      );
+    } catch (err) {
+      this.adapterLogger.error(
+        "media_message_failed",
+        { channel_id: message.channelId, media_kind: media.kind },
+        err,
+      );
+      return { action: "reply", text: friendlyMediaError(media.kind, err) };
+    }
+  }
+
   private async handleDMMessage(message: Message): Promise<void> {
     const userId = message.author.id;
 
@@ -568,16 +663,22 @@ export class DiscordAdapter extends BaseBotAdapter {
       await this.sendDMWelcome(message);
     }
 
-    const content = message.content.trim();
-    if (!content) {
-      await (message.channel as { send: (t: string) => Promise<Message> }).send(
-        "How can I help you?",
-      );
-      return;
-    }
-
     const send = (text: string) =>
       (message.channel as { send: (t: string) => Promise<Message> }).send(text);
+
+    const caption = message.content.trim();
+    const media = await this.resolveDiscordMedia(message, caption, userId);
+    if (media?.action === "reply") {
+      await send(media.text);
+      return;
+    }
+    const content = media ? media.text : caption;
+    const attachments = media ? media.attachments : [];
+
+    if (!content && attachments.length === 0) {
+      await send("How can I help you?");
+      return;
+    }
 
     try {
       const hasTyping = "sendTyping" in message.channel;
@@ -600,6 +701,12 @@ export class DiscordAdapter extends BaseBotAdapter {
           platform: "discord",
           platformUserId: userId,
           channelId: message.channelId,
+          ...(attachments.length > 0
+            ? {
+                fileIds: attachments.map((a) => a.fileId),
+                fileData: attachments,
+              }
+            : {}),
         },
         async (content: string) => {
           stopTyping();
@@ -731,14 +838,9 @@ export class DiscordAdapter extends BaseBotAdapter {
     message: Message,
     botId: string,
   ): Promise<void> {
-    const content = message.content
+    const caption = message.content
       .replace(new RegExp(`<@!?${botId}>`, "g"), "")
       .trim();
-
-    if (!content) {
-      await message.reply("How can I help you?");
-      return;
-    }
 
     const isDM = !message.guild;
     const send = isDM
@@ -747,6 +849,23 @@ export class DiscordAdapter extends BaseBotAdapter {
             text,
           )
       : (text: string) => message.reply(text);
+
+    const media = await this.resolveDiscordMedia(
+      message,
+      caption,
+      message.author.id,
+    );
+    if (media?.action === "reply") {
+      await send(media.text);
+      return;
+    }
+    const content = media ? media.text : caption;
+    const attachments = media ? media.attachments : [];
+
+    if (!content && attachments.length === 0) {
+      await message.reply("How can I help you?");
+      return;
+    }
 
     try {
       const hasTyping = "sendTyping" in message.channel;
@@ -778,6 +897,12 @@ export class DiscordAdapter extends BaseBotAdapter {
           platform: "discord",
           platformUserId: message.author.id,
           channelId: message.channelId,
+          ...(attachments.length > 0
+            ? {
+                fileIds: attachments.map((a) => a.fileId),
+                fileData: attachments,
+              }
+            : {}),
         },
         sendOrEdit,
         async (content: string) => {
