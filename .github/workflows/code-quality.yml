@@ -174,13 +174,16 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
-      - name: Duplicate code detection (threshold in .jscpd.json)
+      - name: Copy-paste detection (jscpd, fails over 3% on changed lines)
         run: |
-          echo "::group::jscpd scan"
+          echo "::group::jscpd"
+          git fetch --no-tags origin "$GITHUB_BASE_REF"
           pnpm run quality:dupe
           echo "::endgroup::"
-          echo "Duplicates: OK (under threshold)"
+          echo "Duplicates: OK (<= 3% on changed lines)"
 
   # --- Type coverage ------------------------------------------------------
   type-coverage:

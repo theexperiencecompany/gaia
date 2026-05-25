@@ -8,7 +8,7 @@
     "quality:dead:strict": "bash scripts/dead-code-check.sh --strict",
     "quality:deps": "syncpack lint && manypkg check",
     "quality:deps:fix": "syncpack fix && manypkg fix",
-    "quality:dupe": "jscpd --silent",
+    "quality:dupe": "node scripts/ci/check-duplication.mjs",
     "quality:format": "biome format --write",
     "quality:lint": "biome check",
     "quality:lint:fix": "biome check --write",
