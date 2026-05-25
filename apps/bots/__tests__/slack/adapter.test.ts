@@ -51,7 +51,7 @@ vi.mock("@gaia/shared", async () => {
     defaultRichMarkdown: "## Rich Title\nBody text",
   });
   // The Slack adapter lifts the first token of subcommand-style commands
-  // (todo, workflow) into args.subcommand; every other command gets `{}`.
+  // into args.subcommand; every other command gets `{}`.
   // Mirror the real extractSubcommandArgs so dispatched args match production.
   const SUBCOMMAND_COMMANDS = new Set(["todo", "workflow"]);
   return {
@@ -514,7 +514,7 @@ describe("SlackAdapter - ACK timing in registerCommands", () => {
     // Slack's 3-second rule: ack() fires before any other work.
     expect(ack).toHaveBeenCalledOnce();
 
-    // The first token of a subcommand command (todo) becomes args.subcommand,
+    // The first token of a subcommand command becomes args.subcommand,
     // and the raw text is forwarded so the command can parse the remainder.
     expect(dispatchSpy).toHaveBeenCalledWith(
       "todo",
@@ -632,8 +632,26 @@ describe("SlackAdapter - /gaia command with no message", () => {
 // registerEvents — app_mention strips bot mention, skips empty content
 // ---------------------------------------------------------------------------
 
+// Boots a SlackAdapter with a mock gaia + app and runs registerEvents so the
+// event/message handlers are registered. Shared by the app_mention and DM
+// describes, which differ only in which handler they pull off the mock.
+async function bootSlackWithEvents() {
+  vi.clearAllMocks();
+  const adapter = new SlackAdapter();
+  // boot() is not called in tests; inject a mock gaia so this.gaia !== undefined
+  (adapter as unknown as { gaia: object }).gaia = {};
+
+  const appMock = { ...mockApp, event: vi.fn(), message: vi.fn() };
+  (adapter as unknown as { app: typeof appMock }).app = appMock;
+
+  await (
+    adapter as unknown as { registerEvents: () => Promise<void> }
+  ).registerEvents();
+
+  return { adapter, appMock };
+}
+
 describe("SlackAdapter - app_mention event handling", () => {
-  let adapter: SlackAdapter;
   let mentionHandler: (args: {
     event: { text: string; user: string; channel: string };
     client: ReturnType<typeof makeSlackClient>;
@@ -641,20 +659,9 @@ describe("SlackAdapter - app_mention event handling", () => {
   }) => Promise<void>;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
-    adapter = new SlackAdapter();
-    // boot() is not called in tests; inject a mock gaia so this.gaia !== undefined
-    (adapter as unknown as { gaia: object }).gaia = {};
-
-    const appMock = { ...mockApp, event: vi.fn(), message: vi.fn() };
-    (adapter as unknown as { app: typeof appMock }).app = appMock;
-
-    await (
-      adapter as unknown as { registerEvents: () => Promise<void> }
-    ).registerEvents();
-
+    const booted = await bootSlackWithEvents();
     // The first event() call registers app_mention
-    mentionHandler = vi.mocked(appMock.event).mock
+    mentionHandler = vi.mocked(booted.appMock.event).mock
       .calls[0][1] as typeof mentionHandler;
   });
 
@@ -725,7 +732,6 @@ describe("SlackAdapter - app_mention event handling", () => {
 // ---------------------------------------------------------------------------
 
 describe("SlackAdapter - DM message event handling", () => {
-  let adapter: SlackAdapter;
   let dmHandler: (args: {
     message: {
       text?: string;
@@ -738,20 +744,10 @@ describe("SlackAdapter - DM message event handling", () => {
   }) => Promise<void>;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
-    adapter = new SlackAdapter();
-    // boot() is not called in tests; inject a mock gaia so this.gaia !== undefined
-    (adapter as unknown as { gaia: object }).gaia = {};
-
-    const appMock = { ...mockApp, event: vi.fn(), message: vi.fn() };
-    (adapter as unknown as { app: typeof appMock }).app = appMock;
-
-    await (
-      adapter as unknown as { registerEvents: () => Promise<void> }
-    ).registerEvents();
-
+    const booted = await bootSlackWithEvents();
     // The message() call registers the DM handler
-    dmHandler = vi.mocked(appMock.message).mock.calls[0][0] as typeof dmHandler;
+    dmHandler = vi.mocked(booted.appMock.message).mock
+      .calls[0][0] as typeof dmHandler;
   });
 
   it("streams for valid IM message", async () => {

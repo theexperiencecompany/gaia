@@ -130,9 +130,9 @@ function applyOutsideCodeBlocks(
  */
 export function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replaceAll(/&/g, "&amp;")
+    .replaceAll(/</g, "&lt;")
+    .replaceAll(/>/g, "&gt;");
 }
 
 /**
@@ -141,7 +141,7 @@ export function escapeHtml(text: string): string {
  * attribute.
  */
 export function escapeHtmlAttr(text: string): string {
-  return escapeHtml(text).replace(/"/g, "&quot;");
+  return escapeHtml(text).replaceAll(/"/g, "&quot;");
 }
 
 /**
@@ -154,11 +154,11 @@ export function escapeHtmlAttr(text: string): string {
  */
 export function htmlToPlainText(html: string): string {
   return html
-    .replace(/<[^>]+>/g, "")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, "&");
+    .replaceAll(/<[^>]+>/g, "")
+    .replaceAll(/&lt;/g, "<")
+    .replaceAll(/&gt;/g, ">")
+    .replaceAll(/&quot;/g, '"')
+    .replaceAll(/&amp;/g, "&");
 }
 
 /**
@@ -187,7 +187,7 @@ export function convertToTelegramHtml(text: string): string {
 
   let out = text
     // Fenced code: ```lang\n…``` → <pre>[<code class="language-…">]…</pre>
-    .replace(/```([\w+-]+)?[ \t]*\r?\n?([\s\S]*?)```/g, (_m, lang, code) => {
+    .replaceAll(/```([\w+-]+)?[ \t]*\r?\n?([\s\S]*?)```/g, (_m, lang, code) => {
       const body = escapeHtml((code as string).replace(/\n$/, ""));
       return hold(
         lang
@@ -196,11 +196,11 @@ export function convertToTelegramHtml(text: string): string {
       );
     })
     // Inline code: `…`
-    .replace(/`([^`\n]+)`/g, (_m, code) =>
+    .replaceAll(/`([^`\n]+)`/g, (_m, code) =>
       hold(`<code>${escapeHtml(code as string)}</code>`),
     )
     // Masked links: [label](url) → <a href="url">label</a>
-    .replace(/\[([^\]\n]{1,500})\]\(([^)\s]{1,2048})\)/g, (_m, label, url) =>
+    .replaceAll(/\[([^\]\n]{1,500})\]\(([^)\s]{1,2048})\)/g, (_m, label, url) =>
       hold(
         `<a href="${escapeHtmlAttr(url as string)}">${escapeHtml(label as string)}</a>`,
       ),
@@ -208,19 +208,19 @@ export function convertToTelegramHtml(text: string): string {
 
   out = escapeHtml(out)
     // Block structure (line-anchored). `>` is `&gt;` now, after escaping.
-    .replace(/^(\s*)[-*+][ \t]+/gm, "$1• ") // bullets → •
-    .replace(/^#{1,6}[ \t]+(.+)$/gm, "<b>$1</b>") // headings → bold
-    .replace(/^&gt;[ \t]?/gm, "") // blockquote → strip marker
-    .replace(/^[-_]{3,}$/gm, "") // horizontal rule → remove
+    .replaceAll(/^(\s*)[-*+][ \t]+/gm, "$1• ") // bullets → •
+    .replaceAll(/^#{1,6}[ \t]+(.+)$/gm, "<b>$1</b>") // headings → bold
+    .replaceAll(/^&gt;[ \t]?/gm, "") // blockquote → strip marker
+    .replaceAll(/^[-_]{3,}$/gm, "") // horizontal rule → remove
     // Inline emphasis. Bold before italic so `**` is consumed first.
-    .replace(/\*\*\*([^*\n]+?)\*\*\*/g, "<b><i>$1</i></b>") // ***x***
-    .replace(/\*\*([^*\n]+?)\*\*/g, "<b>$1</b>") // **x**
-    .replace(/__([^_\n]+?)__/g, "<b>$1</b>") // __x__
-    .replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, "<i>$1</i>") // *x*
-    .replace(/(?<![\w_])_([^_\n]+?)_(?![\w_])/g, "<i>$1</i>") // _x_ (skips snake_case)
-    .replace(/~~([^~\n]+?)~~/g, "<s>$1</s>"); // ~~x~~
+    .replaceAll(/\*\*\*([^*\n]+?)\*\*\*/g, "<b><i>$1</i></b>") // ***x***
+    .replaceAll(/\*\*([^*\n]+?)\*\*/g, "<b>$1</b>") // **x**
+    .replaceAll(/__([^_\n]+?)__/g, "<b>$1</b>") // __x__
+    .replaceAll(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, "<i>$1</i>") // *x*
+    .replaceAll(/(?<!\w)_([^_\n]+?)_(?!\w)/g, "<i>$1</i>") // _x_ (skips snake_case)
+    .replaceAll(/~~([^~\n]+?)~~/g, "<s>$1</s>"); // ~~x~~
 
-  return out.replace(/\uE000(\d+)\uE000/g, (_m, i) => stash[Number(i)]);
+  return out.replaceAll(/\uE000(\d+)\uE000/g, (_m, i) => stash[Number(i)]);
 }
 
 /**
@@ -251,17 +251,18 @@ export function convertToSlackMrkdwn(text: string): string {
     const converted = segment
       // Masked links → <url|label>. Only the label (display text) is escaped;
       // the URL is left verbatim, as Slack expects inside the angle brackets.
-      .replace(/\[([^\]\n]{1,500})\]\(([^)\s]{1,2048})\)/g, (_m, label, url) =>
-        hold(`<${url}|${escapeHtml(label as string)}>`),
+      .replaceAll(
+        /\[([^\]\n]{1,500})\]\(([^)\s]{1,2048})\)/g,
+        (_m, label, url) => hold(`<${url}|${escapeHtml(label as string)}>`),
       )
-      .replace(/\*\*\*([^*\n]+?)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
-      .replace(/\*\*([^*\n]+?)\*\*/g, "*$1*") // **bold** → *bold*
-      .replace(/~~([^~\n]+?)~~/g, "~$1~") // ~~strike~~ → ~strike~
-      .replace(/^#{1,6}[ \t]+(.+)$/gm, "*$1*") // # Heading → *Heading*
-      .replace(/^>[ \t]*/gm, "") // > quote → strip prefix (before escaping)
-      .replace(/^[-_]{3,}$/gm, ""); // --- / ___ → remove
+      .replaceAll(/\*\*\*([^*\n]+?)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
+      .replaceAll(/\*\*([^*\n]+?)\*\*/g, "*$1*") // **bold** → *bold*
+      .replaceAll(/~~([^~\n]+?)~~/g, "~$1~") // ~~strike~~ → ~strike~
+      .replaceAll(/^#{1,6}[ \t]+(.+)$/gm, "*$1*") // # Heading → *Heading*
+      .replaceAll(/^>[ \t]*/gm, "") // > quote → strip prefix (before escaping)
+      .replaceAll(/^[-_]{3,}$/gm, ""); // --- / ___ → remove
     // Escape Slack control chars in surviving narrative, then restore links.
-    return escapeHtml(converted).replace(
+    return escapeHtml(converted).replaceAll(
       /\uE000(\d+)\uE000/g,
       (_m, i) => stash[Number(i)],
     );

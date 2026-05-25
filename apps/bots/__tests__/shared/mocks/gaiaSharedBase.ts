@@ -89,7 +89,7 @@ export function makeGaiaSharedMock(
     // behavior so adapter tests exercise the adapter's own wiring; the real
     // implementations are covered by shared tests (media.test.ts, base behavior).
 
-    private _welcomed = new Set<string>();
+    private readonly _welcomed = new Set<string>();
     protected shouldSendWelcome(userId: string): boolean {
       if (this._welcomed.has(userId)) return false;
       this._welcomed.add(userId);
@@ -162,10 +162,10 @@ export function makeGaiaSharedMock(
     ),
     htmlToPlainText: vi.fn((html: string) =>
       html
-        .replace(/<[^>]+>/g, "")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&amp;/g, "&"),
+        .replaceAll(/<[^>]+>/g, "")
+        .replaceAll(/&lt;/g, "<")
+        .replaceAll(/&gt;/g, ">")
+        .replaceAll(/&amp;/g, "&"),
     ),
     friendlyMediaError: vi.fn(
       (kind: string) => `Couldn't process that ${kind}.`,

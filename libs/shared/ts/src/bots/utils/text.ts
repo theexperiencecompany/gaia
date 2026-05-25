@@ -30,7 +30,7 @@ const SUBCOMMAND_COMMANDS = new Set(["todo", "workflow"]);
 /**
  * Builds the args object for a text-platform command dispatch.
  *
- * For commands that take a subcommand (`todo`, `workflow`) it lifts the first
+ * For commands that take a subcommand it lifts the first
  * token of `rawText` into `args.subcommand`; every other command gets an empty
  * args object. Shared by the Slack, Telegram and WhatsApp adapters so the
  * subcommand rule lives in one place instead of an inline `if` in each.

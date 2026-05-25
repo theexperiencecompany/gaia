@@ -719,6 +719,25 @@ export class TelegramAdapter extends BaseBotAdapter {
         ? { username: ctx.from?.username, displayName }
         : undefined;
 
+    // Builds the SentMessage handle returned by send/sendEphemeral/sendRich:
+    // the message id plus an HTML-aware edit closure bound to the chat it
+    // landed in. Shared so the three senders don't each repeat it.
+    const buildSent = (targetChat: number, messageId: number): SentMessage => ({
+      id: messageId.toString(),
+      edit: (t: string) =>
+        this.editHtml(
+          (edited, opts) =>
+            api.editMessageText(targetChat, messageId, edited, opts),
+          renderForPlatform(t, "telegram"),
+          (e) =>
+            this.adapterLogger.error(
+              "edit_message_text_failed",
+              { chat_id: targetChat, message_id: messageId },
+              e,
+            ),
+        ),
+    });
+
     return {
       platform: "telegram",
       userId,
@@ -731,21 +750,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           (t, opts) => api.sendMessage(chatId, t, opts),
           renderForPlatform(text, "telegram"),
         );
-        return {
-          id: msg.message_id.toString(),
-          edit: (t: string) =>
-            this.editHtml(
-              (edited, opts) =>
-                api.editMessageText(chatId, msg.message_id, edited, opts),
-              renderForPlatform(t, "telegram"),
-              (e) =>
-                this.adapterLogger.error(
-                  "edit_message_text_failed",
-                  { chat_id: chatId, message_id: msg.message_id },
-                  e,
-                ),
-            ),
-        };
+        return buildSent(chatId, msg.message_id);
       },
 
       sendEphemeral: async (text: string): Promise<SentMessage> => {
@@ -759,21 +764,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         if (isGroup) {
           await api.sendMessage(chatId, "I sent you a DM with the details.");
         }
-        return {
-          id: msg.message_id.toString(),
-          edit: (t: string) =>
-            this.editHtml(
-              (edited, opts) =>
-                api.editMessageText(targetChat, msg.message_id, edited, opts),
-              renderForPlatform(t, "telegram"),
-              (e) =>
-                this.adapterLogger.error(
-                  "edit_message_text_failed",
-                  { chat_id: targetChat, message_id: msg.message_id },
-                  e,
-                ),
-            ),
-        };
+        return buildSent(targetChat, msg.message_id);
       },
 
       sendRich: async (richMsg: RichMessage): Promise<SentMessage> => {
@@ -793,21 +784,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         if (isGroup) {
           await api.sendMessage(chatId, "I sent you a DM with the details.");
         }
-        return {
-          id: msg.message_id.toString(),
-          edit: (t: string) =>
-            this.editHtml(
-              (edited, opts) =>
-                api.editMessageText(targetChat, msg.message_id, edited, opts),
-              renderForPlatform(t, "telegram"),
-              (e) =>
-                this.adapterLogger.error(
-                  "edit_message_text_failed",
-                  { chat_id: targetChat, message_id: msg.message_id },
-                  e,
-                ),
-            ),
-        };
+        return buildSent(targetChat, msg.message_id);
       },
 
       startTyping: async () => {

@@ -383,7 +383,7 @@ function kapsoEvent(over: {
       id: "wamid.unsupported",
       timestamp: String(Math.floor(Date.now() / 1000)),
       type: over.type,
-      ...(over.body ?? {}),
+      ...over.body,
     },
     conversation: {
       id: "conv-1",

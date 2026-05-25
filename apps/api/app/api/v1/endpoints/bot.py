@@ -490,7 +490,7 @@ async def unlink_account(request: Request) -> dict:
 async def transcribe_bot_audio(
     request: Request,
     file: Annotated[UploadFile, File(...)],
-    user: dict = Depends(get_current_user),
+    user: Annotated[dict, Depends(get_current_user)],
     content_length: Annotated[int | None, Header(alias="content-length")] = None,
 ) -> dict:
     """Convert audio bytes into a transcript for bot adapters."""

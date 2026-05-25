@@ -152,7 +152,7 @@ vi.mock("@gaia/shared", () => {
 
     // Real once-per-user welcome gate (mirrors BaseBotAdapter): returns true the
     // first time a userId is seen, false on every subsequent call.
-    private _welcomed = new Set<string>();
+    private readonly _welcomed = new Set<string>();
     protected shouldSendWelcome(userId: string): boolean {
       if (this._welcomed.has(userId)) return false;
       this._welcomed.add(userId);
@@ -902,15 +902,10 @@ describe("DiscordAdapter - context menu interaction", () => {
     expect(handleStreamingChat).not.toHaveBeenCalled();
   });
 
-  it("calls handleStreamingChat for 'Summarize with GAIA' with non-empty content", async () => {
-    vi.clearAllMocks();
-    const adapter = new DiscordAdapter();
-
-    const interaction = {
-      commandName: "Summarize with GAIA",
-      targetMessage: {
-        content: "This is a long message that needs summarizing.",
-      },
+  function makeContextMenuInteraction(commandName: string, content: string) {
+    return {
+      commandName,
+      targetMessage: { content },
       user: { id: "user-ctx" },
       channelId: "channel-ctx",
       replied: false,
@@ -920,6 +915,16 @@ describe("DiscordAdapter - context menu interaction", () => {
       isChatInputCommand: () => false,
       isMessageContextMenuCommand: () => true,
     };
+  }
+
+  it("calls handleStreamingChat for 'Summarize with GAIA' with non-empty content", async () => {
+    vi.clearAllMocks();
+    const adapter = new DiscordAdapter();
+
+    const interaction = makeContextMenuInteraction(
+      "Summarize with GAIA",
+      "This is a long message that needs summarizing.",
+    );
 
     await (
       adapter as unknown as {
@@ -946,18 +951,10 @@ describe("DiscordAdapter - context menu interaction", () => {
     vi.clearAllMocks();
     const adapter = new DiscordAdapter();
 
-    const interaction = {
-      commandName: "Add as Todo",
-      targetMessage: { content: "Call the dentist on Friday" },
-      user: { id: "user-ctx" },
-      channelId: "channel-ctx",
-      replied: false,
-      deferred: false,
-      deferReply: vi.fn().mockResolvedValue(undefined),
-      editReply: vi.fn().mockResolvedValue(undefined),
-      isChatInputCommand: () => false,
-      isMessageContextMenuCommand: () => true,
-    };
+    const interaction = makeContextMenuInteraction(
+      "Add as Todo",
+      "Call the dentist on Friday",
+    );
 
     await (
       adapter as unknown as {

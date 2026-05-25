@@ -16,7 +16,7 @@
  * 4. createCtxTarget.sendRich — formats rich message via richMessageToMarkdown
  * 5. handleTelegramStreaming — sends "Thinking..." then delegates to handleStreamingChat
  * 6. HTML fallback — edits/sends retry as plain text when Telegram rejects HTML
- * 7. registerCommands — /todo command dispatches with the parsed subcommand args
+ * 7. registerCommands — a slash command dispatches with the parsed subcommand args
  * 8. dispatchCommand — unknown command sends ephemeral error
  * 9. registerGaiaCommand — empty /gaia message sends usage hint
  * 10. extractTelegramMedia — pure mapping of grammY messages to media descriptors
@@ -89,11 +89,11 @@ vi.mock("@gaia/shared", async () => {
       // meaningful (tags removed, entities decoded).
       htmlToPlainText: vi.fn((html: string) =>
         html
-          .replace(/<[^>]+>/g, "")
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .replace(/&quot;/g, '"')
-          .replace(/&amp;/g, "&"),
+          .replaceAll(/<[^>]+>/g, "")
+          .replaceAll(/&lt;/g, "<")
+          .replaceAll(/&gt;/g, ">")
+          .replaceAll(/&quot;/g, '"')
+          .replaceAll(/&amp;/g, "&"),
       ),
       extractSubcommandArgs: vi.fn(
         (commandName: string, rawText: string | undefined) =>
@@ -592,6 +592,40 @@ describe("TelegramAdapter - HTML fallback retry (editMessage callback)", () => {
     adapter = makeAdapter();
   });
 
+  // Drives one streaming turn through handleTelegramStreaming and returns the
+  // edit callback it handed to handleStreamingChat. Shared by the HTML-fallback
+  // tests, which differ only in the editMessageText mock and the message text.
+  async function streamAndCaptureEdit(
+    a: TelegramAdapter,
+    editMessageTextFn: ReturnType<typeof vi.fn>,
+    message: string,
+  ): Promise<(text: string) => Promise<void>> {
+    const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
+    const ctx = makeCtx({ chatId: 100, replyFn, editMessageTextFn });
+
+    let capturedEditCallback: ((text: string) => Promise<void>) | undefined;
+    vi.mocked(handleStreamingChat).mockImplementationOnce(
+      async (_gaia, _req, editMessage) => {
+        capturedEditCallback = editMessage;
+      },
+    );
+
+    await (
+      a as unknown as {
+        handleTelegramStreaming: (
+          ctx: ReturnType<typeof makeCtx>,
+          userId: string,
+          message: string,
+        ) => Promise<void>;
+      }
+    ).handleTelegramStreaming(ctx, "999", message);
+
+    if (!capturedEditCallback) {
+      throw new Error("edit callback was not captured");
+    }
+    return capturedEditCallback;
+  }
+
   it("retries editMessageText as stripped plain text when Telegram rejects HTML", async () => {
     const editMessageTextFn = vi
       .fn()
@@ -600,31 +634,14 @@ describe("TelegramAdapter - HTML fallback retry (editMessage callback)", () => {
       )
       .mockResolvedValueOnce({});
 
-    const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
-    const ctx = makeCtx({ chatId: 100, replyFn, editMessageTextFn });
-
-    let capturedEditCallback: ((text: string) => Promise<void>) | undefined;
-
-    vi.mocked(handleStreamingChat).mockImplementationOnce(
-      async (_gaia, _req, editMessage) => {
-        capturedEditCallback = editMessage;
-      },
+    const editCb = await streamAndCaptureEdit(
+      adapter,
+      editMessageTextFn,
+      "stream me something",
     );
 
-    await (
-      adapter as unknown as {
-        handleTelegramStreaming: (
-          ctx: typeof ctx,
-          userId: string,
-          message: string,
-        ) => Promise<void>;
-      }
-    ).handleTelegramStreaming(ctx, "999", "stream me something");
-
-    expect(capturedEditCallback).toBeDefined();
-
     // Simulate a streaming update with markup Telegram rejects.
-    await capturedEditCallback!("a <b>bold</b> & risky chunk");
+    await editCb("a <b>bold</b> & risky chunk");
 
     // First attempt: with parse_mode: "HTML". Conversion happens inside
     // handleStreamingChat (mocked here), so the adapter callback forwards the
@@ -653,28 +670,13 @@ describe("TelegramAdapter - HTML fallback retry (editMessage callback)", () => {
       .fn()
       .mockRejectedValueOnce(new Error("Bad Request: message is not modified"));
 
-    const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
-    const ctx = makeCtx({ chatId: 100, replyFn, editMessageTextFn });
-
-    let capturedEditCallback: ((text: string) => Promise<void>) | undefined;
-
-    vi.mocked(handleStreamingChat).mockImplementationOnce(
-      async (_gaia, _req, editMessage) => {
-        capturedEditCallback = editMessage;
-      },
+    const editCb = await streamAndCaptureEdit(
+      adapter,
+      editMessageTextFn,
+      "same content twice",
     );
 
-    await (
-      adapter as unknown as {
-        handleTelegramStreaming: (
-          ctx: typeof ctx,
-          userId: string,
-          message: string,
-        ) => Promise<void>;
-      }
-    ).handleTelegramStreaming(ctx, "999", "same content twice");
-
-    await capturedEditCallback!("unchanged content");
+    await editCb("unchanged content");
 
     // Only one attempt — must not retry for "not modified"
     expect(editMessageTextFn).toHaveBeenCalledTimes(1);
@@ -777,7 +779,7 @@ describe("TelegramAdapter - registerCommands command routing", () => {
       ctx: ReturnType<typeof makeCtx>,
     ) => Promise<void>;
 
-    // grammY's ctx.match is the text after "/todo ", i.e. the subcommand.
+    // grammY's ctx.match is the text after the command, i.e. the subcommand.
     const ctx = makeCtx({ match: "list" });
     await todoHandler(ctx);
 
@@ -1254,41 +1256,41 @@ describe("extractTelegramMedia", () => {
 // Media routing — the adapter extracts, resolves, then dispatches the outcome
 // ---------------------------------------------------------------------------
 
+/** Builds a grammY-like ctx carrying a private-chat photo message. */
+function makePhotoCtx(
+  overrides: {
+    caption?: string;
+    chatType?: "private" | "group" | "supergroup";
+    replyFn?: ReturnType<typeof vi.fn>;
+  } = {},
+) {
+  const {
+    caption,
+    chatType = "private",
+    replyFn = vi.fn().mockResolvedValue({ message_id: 42 }),
+  } = overrides;
+  return {
+    chat: { id: 123456, type: chatType },
+    from: { id: 999, first_name: "Alice", username: "aliceuser" },
+    message: {
+      message_id: 10,
+      caption,
+      photo: [
+        { file_id: "small", width: 90, height: 90 },
+        { file_id: "large", width: 1280, height: 1280 },
+      ],
+    },
+    reply: replyFn,
+    api: {
+      editMessageText: vi.fn().mockResolvedValue({}),
+      sendMessage: vi.fn().mockResolvedValue({ message_id: 55 }),
+      sendChatAction: vi.fn().mockResolvedValue({}),
+    },
+  };
+}
+
 describe("TelegramAdapter - media message routing", () => {
   let adapter: TelegramAdapter;
-
-  /** Builds a grammY-like ctx carrying a private-chat photo message. */
-  function makePhotoCtx(
-    overrides: {
-      caption?: string;
-      chatType?: "private" | "group" | "supergroup";
-      replyFn?: ReturnType<typeof vi.fn>;
-    } = {},
-  ) {
-    const {
-      caption,
-      chatType = "private",
-      replyFn = vi.fn().mockResolvedValue({ message_id: 42 }),
-    } = overrides;
-    return {
-      chat: { id: 123456, type: chatType },
-      from: { id: 999, first_name: "Alice", username: "aliceuser" },
-      message: {
-        message_id: 10,
-        caption,
-        photo: [
-          { file_id: "small", width: 90, height: 90 },
-          { file_id: "large", width: 1280, height: 1280 },
-        ],
-      },
-      reply: replyFn,
-      api: {
-        editMessageText: vi.fn().mockResolvedValue({}),
-        sendMessage: vi.fn().mockResolvedValue({ message_id: 55 }),
-        sendChatAction: vi.fn().mockResolvedValue({}),
-      },
-    };
-  }
 
   /** Overrides the per-test media resolution outcome on the adapter. */
   function setResolveOutcome(outcome: unknown): void {

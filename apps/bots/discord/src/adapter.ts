@@ -20,6 +20,7 @@
 import {
   BaseBotAdapter,
   type BotCommand,
+  type BotFileData,
   buildAuthLinkMessage,
   createBotLogger,
   formatBotError,
@@ -493,116 +494,86 @@ export class DiscordAdapter extends BaseBotAdapter {
     }
 
     if (name === "Summarize with GAIA") {
-      let replied = false;
-      await handleStreamingChat(
-        this.gaia,
-        {
-          message: `Summarize the following message in 2-3 concise sentences:\n\n"${content.slice(0, 1000)}"`,
-          platform: "discord",
-          platformUserId: userId,
-          channelId,
-        },
-        async (text: string) => {
-          await interaction.editReply({
-            content: `**Summary**\n${text}`,
-          });
-          replied = true;
-        },
-        async (text: string) => {
-          replied = true;
-          await interaction.editReply({
-            content: `**Summary**\n${text}`,
-          });
-          return async (updated: string) => {
-            await interaction.editReply({
-              content: `**Summary**\n${updated}`,
-            });
-          };
-        },
-        async (authUrl: string) => {
-          try {
-            await interaction.editReply({
-              content: renderForPlatform(
-                buildAuthLinkMessage(authUrl),
-                "discord",
-              ),
-            });
-            replied = true;
-          } catch {
-            try {
-              await interaction.user.send(
-                renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
-              );
-              replied = true;
-            } catch {
-              // both deliveries failed — leave replied false so error callback can run
-            }
-          }
-        },
-        async (err: string) => {
-          if (!replied) await interaction.editReply({ content: err });
-        },
-        STREAMING_DEFAULTS.discord,
-        this.analytics,
+      await this.streamContextMenuReply(
+        interaction,
+        userId,
+        channelId,
+        `Summarize the following message in 2-3 concise sentences:\n\n"${content.slice(0, 1000)}"`,
+        "Summary",
       );
       return;
     }
 
     if (name === "Add as Todo") {
-      const title = content.slice(0, 200).replace(/\n/g, " ").trim();
-      let replied = false;
-      await handleStreamingChat(
-        this.gaia,
-        {
-          message: `Add this as a todo item: "${title}"`,
-          platform: "discord",
-          platformUserId: userId,
-          channelId,
-        },
-        async (text: string) => {
-          await interaction.editReply({
-            content: `**Todo Added**\n${text}`,
-          });
-          replied = true;
-        },
-        async (text: string) => {
-          replied = true;
-          await interaction.editReply({
-            content: `**Todo Added**\n${text}`,
-          });
-          return async (updated: string) => {
-            await interaction.editReply({
-              content: `**Todo Added**\n${updated}`,
-            });
-          };
-        },
-        async (authUrl: string) => {
-          try {
-            await interaction.editReply({
-              content: renderForPlatform(
-                buildAuthLinkMessage(authUrl),
-                "discord",
-              ),
-            });
-            replied = true;
-          } catch {
-            try {
-              await interaction.user.send(
-                renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
-              );
-              replied = true;
-            } catch {
-              // both deliveries failed — leave replied false so error callback can run
-            }
-          }
-        },
-        async (err: string) => {
-          if (!replied) await interaction.editReply({ content: err });
-        },
-        STREAMING_DEFAULTS.discord,
-        this.analytics,
+      const title = content.slice(0, 200).replaceAll(/\n/g, " ").trim();
+      await this.streamContextMenuReply(
+        interaction,
+        userId,
+        channelId,
+        `Add this as a todo item: "${title}"`,
+        "Todo Added",
       );
     }
+  }
+
+  /**
+   * Streams a context-menu action's reply (Summarize, Add as Todo). Both
+   * actions share the same streaming + auth-fallback wiring; only the prompt
+   * sent to GAIA and the bold header on the reply differ.
+   */
+  private async streamContextMenuReply(
+    interaction: MessageContextMenuCommandInteraction,
+    userId: string,
+    channelId: string,
+    message: string,
+    header: string,
+  ): Promise<void> {
+    let replied = false;
+    await handleStreamingChat(
+      this.gaia,
+      {
+        message,
+        platform: "discord",
+        platformUserId: userId,
+        channelId,
+      },
+      async (text: string) => {
+        await interaction.editReply({ content: `**${header}**\n${text}` });
+        replied = true;
+      },
+      async (text: string) => {
+        replied = true;
+        await interaction.editReply({ content: `**${header}**\n${text}` });
+        return async (updated: string) => {
+          await interaction.editReply({ content: `**${header}**\n${updated}` });
+        };
+      },
+      async (authUrl: string) => {
+        try {
+          await interaction.editReply({
+            content: renderForPlatform(
+              buildAuthLinkMessage(authUrl),
+              "discord",
+            ),
+          });
+          replied = true;
+        } catch {
+          try {
+            await interaction.user.send(
+              renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
+            );
+            replied = true;
+          } catch {
+            // both deliveries failed — leave replied false so error callback can run
+          }
+        }
+      },
+      async (err: string) => {
+        if (!replied) await interaction.editReply({ content: err });
+      },
+      STREAMING_DEFAULTS.discord,
+      this.analytics,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -845,13 +816,7 @@ export class DiscordAdapter extends BaseBotAdapter {
       .replace(new RegExp(`<@!?${botId}>`, "g"), "")
       .trim();
 
-    const isDM = !message.guild;
-    const send = isDM
-      ? (text: string) =>
-          (message.channel as { send: (t: string) => Promise<Message> }).send(
-            text,
-          )
-      : (text: string) => message.reply(text);
+    const send = this.createMentionSender(message);
 
     const media = await this.resolveDiscordMedia(
       message,
@@ -862,6 +827,7 @@ export class DiscordAdapter extends BaseBotAdapter {
       await send(media.text);
       return;
     }
+
     const content = media ? media.text : caption;
     const attachments = media ? media.attachments : [];
 
@@ -870,26 +836,83 @@ export class DiscordAdapter extends BaseBotAdapter {
       return;
     }
 
-    try {
-      const hasTyping = "sendTyping" in message.channel;
-      const stopTyping = hasTyping
-        ? this.startTypingIndicator(
-            () =>
-              (
-                message.channel as { sendTyping: () => Promise<void> }
-              ).sendTyping(),
-            8000,
-          )
-        : () => {};
+    await this.streamMentionReply(message, send, content, attachments);
+  }
 
+  /**
+   * Builds the reply sender for a mention: DMs send to the channel directly,
+   * guild channels reply to the triggering message.
+   */
+  private createMentionSender(
+    message: Message,
+  ): (text: string) => Promise<Message> {
+    const isDM = !message.guild;
+    return isDM
+      ? (text: string) =>
+          (message.channel as { send: (t: string) => Promise<Message> }).send(
+            text,
+          )
+      : (text: string) => message.reply(text);
+  }
+
+  /**
+   * Starts the typing indicator when the channel supports it, returning a
+   * stop function (a no-op when typing is unavailable).
+   */
+  private startMentionTyping(message: Message): () => void {
+    if (!("sendTyping" in message.channel)) return () => {};
+    return this.startTypingIndicator(
+      () =>
+        (message.channel as { sendTyping: () => Promise<void> }).sendTyping(),
+      8000,
+    );
+  }
+
+  /**
+   * Sends the "link your account" prompt for a mention: DM-first, with a
+   * public fallback when the user's DMs are closed.
+   */
+  private async sendMentionAuthPrompt(
+    message: Message,
+    send: (text: string) => Promise<Message>,
+    authUrl: string,
+  ): Promise<void> {
+    let dmSent = false;
+    try {
+      await message.author.send(
+        renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
+      );
+      dmSent = true;
+    } catch {
+      // DM failed — public message below will instruct the user
+    }
+    await send(
+      dmSent
+        ? "To use GAIA here, please link your account — check your DMs for the link."
+        : "To use GAIA here, please link your account. Enable DMs from server members and try again, or use /auth in a private message.",
+    );
+  }
+
+  /**
+   * Streams a GAIA chat turn back to a Discord mention/DM, managing the
+   * typing indicator and incremental message edits.
+   */
+  private async streamMentionReply(
+    message: Message,
+    send: (text: string) => Promise<Message>,
+    content: string,
+    attachments: BotFileData[],
+  ): Promise<void> {
+    try {
+      const stopTyping = this.startMentionTyping(message);
       let currentMsg: Message | null = null;
 
-      const sendOrEdit = async (content: string) => {
+      const sendOrEdit = async (text: string) => {
         stopTyping();
-        if (!currentMsg) {
-          currentMsg = await send(content);
+        if (currentMsg) {
+          await currentMsg.edit(text);
         } else {
-          await currentMsg.edit(content);
+          currentMsg = await send(text);
         }
       };
 
@@ -908,29 +931,16 @@ export class DiscordAdapter extends BaseBotAdapter {
             : {}),
         },
         sendOrEdit,
-        async (content: string) => {
+        async (text: string) => {
           stopTyping();
-          currentMsg = await send(content);
+          currentMsg = await send(text);
           return async (updatedText: string) => {
             await currentMsg?.edit(updatedText);
           };
         },
         async (authUrl: string) => {
           stopTyping();
-          let dmSent = false;
-          try {
-            await message.author.send(
-              renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
-            );
-            dmSent = true;
-          } catch {
-            // DM failed — public message below will instruct the user
-          }
-          await send(
-            dmSent
-              ? "To use GAIA here, please link your account — check your DMs for the link."
-              : "To use GAIA here, please link your account. Enable DMs from server members and try again, or use /auth in a private message.",
-          );
+          await this.sendMentionAuthPrompt(message, send, authUrl);
         },
         async (errMsg: string) => {
           stopTyping();

@@ -57,12 +57,11 @@ export type MediaOutcome =
 
 /** Reply shown for media kinds GAIA does not process yet (video, sticker, …). */
 export function unsupportedMediaMessage(kind: string): string {
-  const label =
-    kind === "video"
-      ? "videos"
-      : kind === "sticker"
-        ? "stickers"
-        : `${kind} messages`;
+  const labels: Record<string, string> = {
+    video: "videos",
+    sticker: "stickers",
+  };
+  const label = labels[kind] ?? `${kind} messages`;
   return `I can't process ${label} yet — please send your message as text, an image, a document, or a voice note. Type /help for available commands.`;
 }
 
