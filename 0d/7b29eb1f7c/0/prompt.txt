@@ -1,0 +1,1 @@
+how about let's do discord then since slack is hard. and then tell me how to add it to a server and message it and add it based on the client id and information given to you already in .env files maybe
