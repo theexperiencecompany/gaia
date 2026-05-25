@@ -1,0 +1,45 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "5dc609718571",
+  "strategy": "manual-commit",
+  "branch": "feat/whatsapp-media-support",
+  "checkpoints_count": 3,
+  "files_touched": [
+    ".vscode/settings.json",
+    "apps/bots/CLAUDE.md",
+    "apps/bots/__tests__/discord/adapter.test.ts",
+    "apps/bots/__tests__/shared/adapter/rich-renderer.test.ts",
+    "apps/bots/__tests__/shared/mocks/gaiaSharedBase.ts",
+    "apps/bots/__tests__/shared/utils/formatters.test.ts",
+    "apps/bots/__tests__/slack/adapter.test.ts",
+    "apps/bots/__tests__/telegram/adapter.test.ts",
+    "apps/bots/__tests__/telegram/mention.test.ts",
+    "apps/bots/__tests__/whatsapp/adapter.test.ts",
+    "apps/bots/__tests__/whatsapp/media-flow.test.ts",
+    "apps/bots/discord/src/adapter.ts",
+    "apps/bots/slack/src/adapter.ts",
+    "apps/bots/telegram/src/adapter.ts",
+    "apps/bots/whatsapp/src/adapter.ts",
+    "libs/shared/ts/src/bots/adapter/base.ts",
+    "libs/shared/ts/src/bots/adapter/rich-renderer.ts",
+    "libs/shared/ts/src/bots/commands/auth.ts",
+    "libs/shared/ts/src/bots/utils/formatters.ts",
+    "libs/shared/ts/src/bots/utils/index.ts",
+    "libs/shared/ts/src/bots/utils/text.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/5d/c609718571/0/metadata.json",
+      "transcript": "/5d/c609718571/0/full.jsonl",
+      "content_hash": "/5d/c609718571/0/content_hash.txt",
+      "prompt": "/5d/c609718571/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 53237,
+    "cache_creation_tokens": 920343,
+    "cache_read_tokens": 24911067,
+    "output_tokens": 192322,
+    "api_call_count": 118
+  }
+}

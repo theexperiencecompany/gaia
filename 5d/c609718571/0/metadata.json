@@ -1,0 +1,92 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "5dc609718571",
+  "session_id": "96006666-18a5-4a34-8f7c-769655d767ee",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-25T18:41:47.677919Z",
+  "branch": "feat/whatsapp-media-support",
+  "checkpoints_count": 3,
+  "files_touched": [
+    ".vscode/settings.json",
+    "apps/bots/CLAUDE.md",
+    "apps/bots/__tests__/discord/adapter.test.ts",
+    "apps/bots/__tests__/shared/adapter/rich-renderer.test.ts",
+    "apps/bots/__tests__/shared/mocks/gaiaSharedBase.ts",
+    "apps/bots/__tests__/shared/utils/formatters.test.ts",
+    "apps/bots/__tests__/slack/adapter.test.ts",
+    "apps/bots/__tests__/telegram/adapter.test.ts",
+    "apps/bots/__tests__/telegram/mention.test.ts",
+    "apps/bots/__tests__/whatsapp/adapter.test.ts",
+    "apps/bots/__tests__/whatsapp/media-flow.test.ts",
+    "apps/bots/discord/src/adapter.ts",
+    "apps/bots/slack/src/adapter.ts",
+    "apps/bots/telegram/src/adapter.ts",
+    "apps/bots/whatsapp/src/adapter.ts",
+    "libs/shared/ts/src/bots/adapter/base.ts",
+    "libs/shared/ts/src/bots/adapter/rich-renderer.ts",
+    "libs/shared/ts/src/bots/commands/auth.ts",
+    "libs/shared/ts/src/bots/utils/formatters.ts",
+    "libs/shared/ts/src/bots/utils/index.ts",
+    "libs/shared/ts/src/bots/utils/text.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "ca8be01a2706",
+  "token_usage": {
+    "input_tokens": 53237,
+    "cache_creation_tokens": 920343,
+    "cache_read_tokens": 24911067,
+    "output_tokens": 192322,
+    "api_call_count": 118
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-25T18:41:47.638217Z",
+    "agent_lines": 1884,
+    "agent_removed": 1089,
+    "human_added": 1467,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 3351,
+    "total_lines_changed": 4440,
+    "agent_percentage": 66.95945945945945,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 489,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1884,
+      "agent_lines_removed": 1089,
+      "user_added_per_file": {
+        "apps/bots/__tests__/shared/utils/media.test.ts": 279,
+        "libs/shared/ts/src/bots/utils/media.ts": 210
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 489,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1884,
+      "agent_lines_removed": 1089,
+      "user_added_per_file": {
+        "apps/bots/__tests__/shared/utils/media.test.ts": 279,
+        "libs/shared/ts/src/bots/utils/media.ts": 210
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 489,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1884,
+      "agent_lines_removed": 1089,
+      "user_added_per_file": {
+        "apps/bots/__tests__/shared/utils/media.test.ts": 279,
+        "libs/shared/ts/src/bots/utils/media.ts": 210
+      }
+    }
+  ]
+}
