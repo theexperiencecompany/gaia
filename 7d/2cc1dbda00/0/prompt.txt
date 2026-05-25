@@ -1,0 +1,1 @@
+how can we update the discord and slack bots with media support? first explore and tell me what we'd need to add bcz idk how those bots and shit work
