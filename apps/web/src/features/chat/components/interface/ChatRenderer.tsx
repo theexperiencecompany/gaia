@@ -271,7 +271,7 @@ export default function ChatRenderer({
                   isFollowedByBot ? undefined : messageProps.follow_up_actions
                 }
                 date={isFollowedByBot ? undefined : messageProps.date}
-                hideAvatar={isFollowedByBot}
+                isGroupedWithNext={isFollowedByBot}
                 isGroupedWithPrev={isPrecededByBot}
               />
             );
