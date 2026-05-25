@@ -1,0 +1,9 @@
+You've reached your file upload limit for now. Please try again later, or upgrade your plan for higher limits. why does this not show the url anymore?? like wheres the url to upgrade?
+
+---
+
+please first figure out the cleanest architecture of surfacing any errors and the pricing rate limited edxceed shit. please explore deeply and tell ne
+
+---
+
+alos how will this fix the actual errors like apart from 429 rate limited shit?

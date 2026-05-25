@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "bdd434aacb18",
+  "strategy": "manual-commit",
+  "branch": "feat/whatsapp-media-support",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/bots/discord/src/adapter.ts",
+    "apps/bots/telegram/src/adapter.ts",
+    "apps/bots/whatsapp/src/adapter.ts",
+    "libs/shared/ts/src/bots/api/index.ts",
+    "libs/shared/ts/src/bots/utils/media.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/bd/d434aacb18/0/metadata.json",
+      "transcript": "/bd/d434aacb18/0/full.jsonl",
+      "content_hash": "/bd/d434aacb18/0/content_hash.txt",
+      "prompt": "/bd/d434aacb18/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 771,
+    "cache_creation_tokens": 557269,
+    "cache_read_tokens": 15078984,
+    "output_tokens": 79535,
+    "api_call_count": 29
+  }
+}
