@@ -652,7 +652,10 @@ export class DiscordAdapter extends BaseBotAdapter {
         { channel_id: message.channelId, media_kind: media.kind },
         err,
       );
-      return { action: "reply", text: friendlyMediaError(media.kind, err) };
+      return {
+        action: "reply",
+        text: friendlyMediaError(media.kind, err, this.gaia.getPricingUrl()),
+      };
     }
   }
 

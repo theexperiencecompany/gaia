@@ -658,7 +658,10 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         ...sanitizeErrorForLog(err),
       });
       try {
-        await this.sendWhatsAppText(waId, friendlyMediaError(media.kind, err));
+        await this.sendWhatsAppText(
+          waId,
+          friendlyMediaError(media.kind, err, this.gaia.getPricingUrl()),
+        );
       } catch (sendErr) {
         this.adapterLogger.error("media_error_message_send_failed", {
           wa_hash: waIdHash,

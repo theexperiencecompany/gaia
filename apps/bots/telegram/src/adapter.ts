@@ -666,7 +666,9 @@ export class TelegramAdapter extends BaseBotAdapter {
         err,
       );
       try {
-        await ctx.reply(friendlyMediaError(media.kind, err));
+        await ctx.reply(
+          friendlyMediaError(media.kind, err, this.gaia.getPricingUrl()),
+        );
       } catch {}
     }
   }

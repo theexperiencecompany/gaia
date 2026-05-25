@@ -66,8 +66,16 @@ export function unsupportedMediaMessage(kind: string): string {
   return `I can't process ${label} yet — please send your message as text, an image, a document, or a voice note. Type /help for available commands.`;
 }
 
-/** Maps an upload/transcribe failure to a user-facing reply. */
-export function friendlyMediaError(kind: MediaKind, err: unknown): string {
+/**
+ * Maps an upload/transcribe failure to a user-facing reply. Pass `pricingUrl`
+ * so the rate-limit (429) reply can point users at the upgrade page, matching
+ * the chat-stream rate-limit notice.
+ */
+export function friendlyMediaError(
+  kind: MediaKind,
+  err: unknown,
+  pricingUrl?: string,
+): string {
   const status = (err as { status?: number })?.status;
   const responseStatus = (err as { response?: { status?: number } })?.response
     ?.status;
@@ -83,7 +91,9 @@ export function friendlyMediaError(kind: MediaKind, err: unknown): string {
     return `I can't read this kind of ${kind} yet. Try a common format like JPG, PNG, PDF, or an OGG voice note.`;
   }
   if (code === 429) {
-    return "You've reached your file upload limit for now. Please try again later, or upgrade your plan for higher limits.";
+    const what = kind === "audio" ? "voice transcription" : "file upload";
+    const base = `You've reached your ${what} limit for now. Please try again later, or upgrade your plan for higher limits.`;
+    return pricingUrl ? `${base}\n${pricingUrl}` : base;
   }
   return "Something went wrong while processing your attachment. Please try again in a moment.";
 }

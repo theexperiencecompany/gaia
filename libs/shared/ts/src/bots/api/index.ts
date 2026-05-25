@@ -762,6 +762,11 @@ export class GaiaClient {
     return `${this.frontendUrl}/c/${conversationId}`;
   }
 
+  /** Upgrade/pricing page, surfaced in rate-limit replies for free users. */
+  getPricingUrl(): string {
+    return `${this.frontendUrl}/pricing`;
+  }
+
   getBaseUrl(): string {
     return this.baseUrl;
   }

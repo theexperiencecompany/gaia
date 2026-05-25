@@ -47,7 +47,7 @@ export function makeGaiaSharedMock(
 
   const BaseBotAdapter = class {
     platform = platform;
-    gaia = {};
+    gaia = { getPricingUrl: () => "https://gaia.test/pricing" };
     config = {};
     commands = new Map();
     analytics = undefined;
