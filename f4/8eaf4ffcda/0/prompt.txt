@@ -23,3 +23,55 @@ so what do we need to fix?
 ---
 
 what other places need to be fixed? please create a proper plan
+
+---
+
+so the entire error handling might need to be revamped please explore deeply and understand and help me
+
+---
+
+nah i'm gonna merge this branch. but before, when rate limit hits on the frontend,  
+error @ intercept-console-error.ts:42Understand this error
+intercept-console-error.ts:42 Error uploading files: AxiosError: Request failed with status code 429
+    at settle (settle.js:20:7)
+    at XMLHttpRequest.onloadend (xhr.js:62:15)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async FileUpload.tsx:196:28
+    at async Promise.all (:3000/index 0)
+    at async uploadFiles (FileUpload.tsx:227:23)
+error @ intercept-console-error.ts:42Understand this error
+forward-logs-shared.ts:95 [Fast Refresh] rebuilding
+forward-logs-shared.ts:95 [Fast Refresh] done in 155ms
+:8000/api/v1/upload:1  Failed to load resource: the server responded with a status of 429 (Too Many Requests)Understand this error
+intercept-console-error.ts:42 POST /upload failed: AxiosError: Request failed with status code 429
+    at settle (settle.js:20:7)
+    at XMLHttpRequest.onloadend (xhr.js:62:15)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async FileUpload.tsx:196:28
+    at async Promise.all (:3000/index 0)
+    at async uploadFiles (FileUpload.tsx:227:23)
+error @ intercept-console-error.ts:42Understand this error
+intercept-console-error.ts:42 Error uploading file twitter_header.webp: AxiosError: Request failed with status code 429
+    at settle (settle.js:20:7)
+    at XMLHttpRequest.onloadend (xhr.js:62:15)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async FileUpload.tsx:196:28
+    at async Promise.all (:3000/index 0)
+    at async uploadFiles (FileUpload.tsx:227:23)
+error @ intercept-console-error.ts:42Understand this error
+intercept-console-error.ts:42 Error uploading files: AxiosError: Request failed with status code 429
+    at settle (settle.js:20:7)
+    at XMLHttpRequest.onloadend (xhr.js:62:15)
+    at Axios.request (Axios.js:46:41)
+    at async request (service.ts:27:22)
+    at async FileUpload.tsx:196:28
+    at async Promise.all (:3000/index 0)
+    at async uploadFiles (FileUpload.tsx:227:23)
+error @ intercept-console-error.ts:42Understand this error it just shows toast but nothing else. how to fix this? should we modify our axios interceptor to handle 429's? did we used to do that? check git histoyr ig
+
+---
+
+nah let's fold it into the same pr fix it

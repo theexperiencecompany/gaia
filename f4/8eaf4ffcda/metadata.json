@@ -3,7 +3,7 @@
   "checkpoint_id": "f48eaf4ffcda",
   "strategy": "manual-commit",
   "branch": "feat/whatsapp-media-support",
-  "checkpoints_count": 2,
+  "checkpoints_count": 1,
   "files_touched": null,
   "sessions": [
     {
@@ -14,10 +14,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 60773,
-    "cache_creation_tokens": 2339413,
-    "cache_read_tokens": 75403561,
-    "output_tokens": 425656,
-    "api_call_count": 218
+    "input_tokens": 60963,
+    "cache_creation_tokens": 2341846,
+    "cache_read_tokens": 76824977,
+    "output_tokens": 427428,
+    "api_call_count": 220
   }
 }
