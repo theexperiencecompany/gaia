@@ -47,11 +47,10 @@ async function request<T = unknown>(
       message?: string;
     };
 
-    // 401/403/429/5xx already get a toast from the global interceptor
-    // (processAxiosError) — don't double-toast them here.
-    const status = err.response?.status ?? 0;
+    // The global interceptor (processAxiosError) marks errors it already
+    // toasted (401/403/429/5xx). Don't double-toast those.
     const handledByInterceptor =
-      status === 401 || status === 403 || status === 429 || status >= 500;
+      (error as { handled?: boolean }).handled === true;
 
     // Track API errors in PostHog
     trackEvent(ANALYTICS_EVENTS.API_ERROR, {
