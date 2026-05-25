@@ -1,0 +1,91 @@
+[Image #3] in both telegram and discord. please see file logs wherever you can and tell me what we've fucked up                                                                    ┌  ●  bot-telegram:dev  Press <tab> to focus output────────────────────────────────────────────────────────────────────────────  ↑
+ NX    Running 7 dev, worker tasks, and 1 other  Cache   Duration  │                                                                                                                                ║
+ │                                                                 │  component":"adapter","event":"message_received","user_hash":"h_4a473c3f69c8533e","chat_hash":"h_4a473c3f69c8533e","chat_typ   ║
+ │⠸    api:dev                                     ...   79225.5s  │  e":"private","is_private":true}                                                                                               ║
+ │⠸    api:worker                                  ...   79225.5s  │  {"time":"2026-05-25T17:47:49.441Z","level":"INFO","env":"development","service":"gaia-bot-telegram","platform":"telegram","   ║
+ │⠸    bot-discord:dev                             ...   79225.5s  │  component":"adapter","event":"streaming_started","user_hash":"h_4a473c3f69c8533e","chat_hash":"h_4a473c3f69c8533e","message   ║
+ │⠸    bot-slack:dev                               ...   79225.5s  │  _length":2}                                                                                                                   ║
+ │⠸    bot-telegram:dev [1]                        ...   79225.5s  │  {"time":"2026-05-25T17:49:18.507Z","level":"INFO","env":"development","service":"gaia-bot-telegram","platform":"telegram","   ║
+ │⠸    bot-whatsapp:dev [2]                        ...   79225.5s  │  component":"adapter","event":"message_received","user_hash":"h_4a473c3f69c8533e","chat_hash":"h_4a473c3f69c8533e","chat_typ   ║
+ │⠸    voice-agent:dev                             ...   79225.5s  │  e":"private","is_private":true}                                                                                               ║
+ │·    Waiting for task...                                         │  {"time":"2026-05-25T17:49:18.508Z","level":"INFO","env":"development","service":"gaia-bot-telegram","platform":"telegram","   ║
+ └                                                                 │  component":"adapter","event":"streaming_started","user_hash":"h_4a473c3f69c8533e","chat_hash":"h_4a473c3f69c8533e","message   ║
+> ✖    web:dev                                       -     642.4s  │  _length":38}                                                                                                                  ║
+                                                                   │  Unhandled bot error: Error: Error calling model 'gemini-3.1-flash-lite-preview' (Not Found): 404 Not Found. {'message': '{\   ║
+                                                                   │  n  "error": {\n    "code": 404,\n    "message": "This model models/gemini-3.1-flash-lite-preview is no longer available. Pl   ║
+                                                                   │  ease update your code to use a newer model for the latest features and improvements.",\n    "status": "NOT_FOUND"\n  }\n}\n   ║
+                                                                   │  ', 'status': 'Not Found'}                                                                                                     █
+                                                                   │      at IncomingMessage.<anonymous> (/Users/aryan/Projects/GAIA/gaia-feat-whatsapp-media-support/libs/shared/ts/src/bots/api   █
+                                                                   │  /index.ts:333:33)                                                                                                             █
+                                                                   │      at IncomingMessage.emit (node:events:519:28)                                                                              █
+                                                                   │      at addChunk (node:internal/streams/readable:561:12)                                                                       █
+                                                                   │      at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)                                                    █
+                                                                   │      at Readable.push (node:internal/streams/readable:392:5)                                                                   █
+                                                                   │      at HTTPParser.parserOnBody (node:_http_common:134:24)                                                                     █
+                                                                   │      at Socket.socketOnData (node:_http_client:614:22)                                                                         █
+                                                                   │      at Socket.emit (node:events:519:28)                                                                                       █
+                                                                   │      at addChunk (node:internal/streams/readable:561:12)                                                                       █
+                                                                   │      at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)                                                    █
+                                                                   │  █                                                                                                                             █
+                                                                   │                                                                                                                                █
+                                                                   └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────  ↓
+                                                                   ┌  ●  bot-whatsapp:dev  ───────────────────────────────────────────────────────────────────────────────────────────────────────  ↑
+                                                                   │                                                                                                                                ║
+                                                                   │  {"time":"2026-05-25T17:49:22.677Z","level":"INFO","env":"development","service":"gaia-bot-whatsapp","platform":"whatsapp","   ║
+                                                                   │  component":"adapter","event":"webhook_message_received","wa_hash":"h_d3c15b508f804fd7","message_type":"text","has_text":tru   ║
+                                                                   │  e}                                                                                                                            ║
+                                                                   │  {"time":"2026-05-25T17:49:22.678Z","level":"INFO","env":"development","service":"gaia-bot-whatsapp","platform":"whatsapp","   ║
+                                                                   │  component":"adapter","event":"incoming_message_started","wa_hash":"h_d3c15b508f804fd7","message_id":"wamid.HBgMOTE4OTgwMTEy   ║
+                                                                   │  MDAwFQIAEhgUM0I5QUM5MTFENTUxNEMyNDU0QzQA","text_length":38,"is_command":false}                                                ║
+                                                                   │  Unhandled bot error: Error: Error calling model 'gemini-3.1-flash-lite-preview' (Not Found): 404 Not Found. {'message': '{\   ║
+                                                                   │  n  "error": {\n    "code": 404,\n    "message": "This model models/gemini-3.1-flash-lite-preview is no longer available. Pl   ║
+                                                                   │  ease update your code to use a newer model for the latest features and improvements.",\n    "status": "NOT_FOUND"\n  }\n}\n   ║
+                                                                   │  ', 'status': 'Not Found'}                                                                                                     ║
+                                                                   │      at IncomingMessage.<anonymous> (/Users/aryan/Projects/GAIA/gaia-feat-whatsapp-media-support/libs/shared/ts/src/bots/api   ║
+                                                                   │  /index.ts:333:33)                                                                                                             ║
+                                                                   │      at IncomingMessage.emit (node:events:519:28)                                                                              ║
+                                                                   │      at addChunk (node:internal/streams/readable:561:12)                                                                       ║
+                                                                   │      at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)                                                    ║
+                                                                   │      at Readable.push (node:internal/streams/readable:392:5)                                                                   █
+                                                                   │      at HTTPParser.parserOnBody (node:_http_common:134:24)                                                                     █
+                                                                   │      at Socket.socketOnData (node:_http_client:614:22)                                                                         █
+                                                                   │      at Socket.emit (node:events:519:28)                                                                                       █
+                                                                   │      at addChunk (node:internal/streams/readable:561:12)                                                                       █
+                                                                   │      at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)                                                    █
+                                                                   │  {"time":"2026-05-25T17:49:25.505Z","level":"DEBUG","env":"development","service":"gaia-bot-whatsapp","platform":"whatsapp",   █
+                                                                   │  "component":"adapter","event":"webhook_event_ignored","event_type":"whatsapp.message.sent"}                                   █
+                                                                   │  {"time":"2026-05-25T17:49:26.784Z","level":"DEBUG","env":"development","service":"gaia-bot-whatsapp","platform":"whatsap  i think this is the issue. where do we define the model? where to change??
+
+---
+
+yeah restart the api and please reseed my local mongodb. and now tell me the command to ssh into my server and run the script again.
+
+---
+
+why have you overcomplicated shit? we can just run the script in docker can't we? also whatsapp ngrok is it up?
+
+---
+
+continue exploring fix for the model shit
+
+---
+
+So image understanding rides on the same default Gemini model — meaning the dead gemini-3.1-flash-lite-preview was breaking image uploads too, not just chat. (Minor: the file_utils.py docstring
+  says "LlamaCloud's vision model" for images, but the code actually uses Gemini — stale comment.)
+ then fix the fucking stale comment. remove it if i needed and please commit and is the transcription and upload api's properly rate limited? for usage based for the different subscriptions along with normal
+
+---
+
+yes please add audoi transcription usage based and normal limits too please. along with this, please tell me, when did we change audio uploads transcription to use gemini instead of llamacloud parse?
+
+---
+
+yes please add audoi transcription usage based and normal limits too please. along with this, please tell me, when did we change file uploads and image understanding to use gemini instead of llamacloud parse?
+
+---
+
+stop creating new functions. rate limiting setup already exists. can u stop writing shit cod eplease
+
+---
+
+215 +async def enforce_tiered_limit(user_id: str, feature_key: str) -> None:          stop creating new functions. rate limiting setup already exists. can u stop writing shit cod eplease

@@ -1,0 +1,143 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "096a2cc69bf9",
+  "session_id": "96006666-18a5-4a34-8f7c-769655d767ee",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-25T18:29:53.807788Z",
+  "branch": "feat/whatsapp-media-support",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "apps/api/app/api/v1/endpoints/bot.py",
+    "apps/api/app/api/v1/endpoints/models.py",
+    "apps/api/app/config/rate_limits.py",
+    "apps/api/app/constants/llm.py",
+    "apps/api/app/utils/file_utils.py",
+    "apps/api/scripts/seed_models.py",
+    "apps/api/tests/unit/api/test_bot_endpoint.py"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "b0c9ab2f1a2b",
+  "token_usage": {
+    "input_tokens": 32324,
+    "cache_creation_tokens": 864021,
+    "cache_read_tokens": 18602220,
+    "output_tokens": 161291,
+    "api_call_count": 99
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-25T18:29:53.76912Z",
+    "agent_lines": 4,
+    "agent_removed": 17,
+    "human_added": 5,
+    "human_modified": 17,
+    "human_removed": 0,
+    "total_committed": 18,
+    "total_lines_changed": 43,
+    "agent_percentage": 48.837209302325576,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 2373,
+      "user_lines_removed": 1089,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".vscode/settings.json": 22,
+        "apps/bots/CLAUDE.md": 50,
+        "apps/bots/__tests__/discord/adapter.test.ts": 39,
+        "apps/bots/__tests__/shared/adapter/rich-renderer.test.ts": 5,
+        "apps/bots/__tests__/shared/mocks/gaiaSharedBase.ts": 52,
+        "apps/bots/__tests__/shared/utils/formatters.test.ts": 132,
+        "apps/bots/__tests__/shared/utils/media.test.ts": 279,
+        "apps/bots/__tests__/slack/adapter.test.ts": 97,
+        "apps/bots/__tests__/telegram/adapter.test.ts": 392,
+        "apps/bots/__tests__/telegram/mention.test.ts": 104,
+        "apps/bots/__tests__/whatsapp/adapter.test.ts": 25,
+        "apps/bots/__tests__/whatsapp/media-flow.test.ts": 229,
+        "apps/bots/discord/src/adapter.ts": 48,
+        "apps/bots/slack/src/adapter.ts": 4,
+        "apps/bots/telegram/src/adapter.ts": 378,
+        "apps/bots/whatsapp/src/adapter.ts": 53,
+        "libs/shared/ts/src/bots/adapter/base.ts": 66,
+        "libs/shared/ts/src/bots/adapter/rich-renderer.ts": 7,
+        "libs/shared/ts/src/bots/commands/auth.ts": 2,
+        "libs/shared/ts/src/bots/utils/formatters.ts": 159,
+        "libs/shared/ts/src/bots/utils/index.ts": 1,
+        "libs/shared/ts/src/bots/utils/media.ts": 210,
+        "libs/shared/ts/src/bots/utils/text.ts": 19
+      },
+      "user_removed_per_file": {
+        ".vscode/settings.json": 3,
+        "apps/bots/CLAUDE.md": 15,
+        "apps/bots/__tests__/discord/adapter.test.ts": 12,
+        "apps/bots/__tests__/shared/adapter/rich-renderer.test.ts": 7,
+        "apps/bots/__tests__/shared/utils/formatters.test.ts": 55,
+        "apps/bots/__tests__/slack/adapter.test.ts": 5,
+        "apps/bots/__tests__/telegram/adapter.test.ts": 126,
+        "apps/bots/__tests__/telegram/mention.test.ts": 51,
+        "apps/bots/__tests__/whatsapp/adapter.test.ts": 69,
+        "apps/bots/__tests__/whatsapp/media-flow.test.ts": 209,
+        "apps/bots/discord/src/adapter.ts": 57,
+        "apps/bots/slack/src/adapter.ts": 13,
+        "apps/bots/telegram/src/adapter.ts": 175,
+        "apps/bots/whatsapp/src/adapter.ts": 230,
+        "libs/shared/ts/src/bots/adapter/rich-renderer.ts": 3,
+        "libs/shared/ts/src/bots/commands/auth.ts": 9,
+        "libs/shared/ts/src/bots/utils/formatters.ts": 50
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2378,
+      "agent_lines_removed": 1094
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2378,
+      "agent_lines_removed": 1094
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2378,
+      "agent_lines_removed": 1094
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 40,
+      "user_lines_removed": 17,
+      "agent_lines_added": 2383,
+      "agent_lines_removed": 1099,
+      "user_added_per_file": {
+        "apps/api/app/api/v1/endpoints/bot.py": 6,
+        "apps/api/app/config/rate_limits.py": 10,
+        "apps/api/app/decorators/__init__.py": 2,
+        "apps/api/app/decorators/rate_limiting.py": 17,
+        "apps/api/app/utils/file_utils.py": 5
+      },
+      "user_removed_per_file": {
+        "apps/api/app/api/v1/endpoints/bot.py": 2,
+        "apps/api/app/decorators/rate_limiting.py": 10,
+        "apps/api/app/utils/file_utils.py": 5
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2407,
+      "agent_lines_removed": 1113
+    }
+  ]
+}
