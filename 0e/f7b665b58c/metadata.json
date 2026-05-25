@@ -5,9 +5,7 @@
   "branch": "feat/whatsapp-media-support",
   "checkpoints_count": 0,
   "files_touched": [
-    ".github/workflows/code-quality.yml",
-    "package.json",
-    "scripts/ci/check-duplication.mjs"
+    "knip.config.ts"
   ],
   "sessions": [
     {
@@ -18,10 +16,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 1489,
-    "cache_creation_tokens": 36146,
-    "cache_read_tokens": 6259943,
-    "output_tokens": 32807,
-    "api_call_count": 12
+    "input_tokens": 10,
+    "cache_creation_tokens": 10747,
+    "cache_read_tokens": 2741714,
+    "output_tokens": 5750,
+    "api_call_count": 5
   }
 }

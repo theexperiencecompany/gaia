@@ -3,39 +3,37 @@
   "checkpoint_id": "0ef7b665b58c",
   "session_id": "4e9aed05-5bbf-4c2d-9990-e1d9ecb66e46",
   "strategy": "manual-commit",
-  "created_at": "2026-05-25T22:10:16.767044Z",
+  "created_at": "2026-05-25T22:17:25.884749Z",
   "branch": "feat/whatsapp-media-support",
   "checkpoints_count": 0,
   "files_touched": [
-    "scripts/ci/check-duplication.mjs",
-    "package.json",
-    ".github/workflows/code-quality.yml"
+    "knip.config.ts"
   ],
   "agent": "Claude Code",
   "model": "",
-  "turn_id": "1d0d98e81b45",
-  "checkpoint_transcript_start": 902,
-  "transcript_lines_at_start": 902,
+  "turn_id": "daa2681046d1",
+  "checkpoint_transcript_start": 996,
+  "transcript_lines_at_start": 996,
   "token_usage": {
-    "input_tokens": 1489,
-    "cache_creation_tokens": 36146,
-    "cache_read_tokens": 6259943,
-    "output_tokens": 32807,
-    "api_call_count": 12
+    "input_tokens": 10,
+    "cache_creation_tokens": 10747,
+    "cache_read_tokens": 2741714,
+    "output_tokens": 5750,
+    "api_call_count": 5
   },
   "session_metrics": {
-    "turn_count": 5
+    "turn_count": 6
   },
   "initial_attribution": {
-    "calculated_at": "2026-05-25T22:10:16.725242Z",
-    "agent_lines": 140,
-    "agent_removed": 12,
-    "human_added": 4,
+    "calculated_at": "2026-05-25T22:17:25.843402Z",
+    "agent_lines": 3,
+    "agent_removed": 0,
+    "human_added": 146,
     "human_modified": 0,
     "human_removed": 0,
-    "total_committed": 144,
-    "total_lines_changed": 162,
-    "agent_percentage": 93.82716049382715,
+    "total_committed": 149,
+    "total_lines_changed": 159,
+    "agent_percentage": 1.8867924528301887,
     "metric_version": 2
   },
   "prompt_attributions": [

@@ -1,5 +1,30 @@
-i dont want the fucking "new" shit. i want to just update the existing jscpd step.
-
----
-
-i dont want the fucking "new" shit. i want to just update the existing jscpd step. and it should always be there in ci so no bullshit flags please.
+dead code scan: 0s
+12s
+Run echo "::group::dead-code scan"
+dead-code scan
+  
+  Dead Code Report
+  ════════════════════════════════════════════════════════
+  
+  
+  Python (vulture)
+  ────────────────────────────────────────────────────────
+  
+    No unused code found.
+  
+  
+  TypeScript (knip)
+  ────────────────────────────────────────────────────────
+  
+      Unused devDependencies (1)
+      jscpd  package.json:47:6
+  
+  
+    Codebase Health
+  
+    ██████████████████████████████████████████████████ 100%
+    (0 dead code items found)
+  
+  ════════════════════════════════════════════════════════
+  Dead code found. Fix the issues above or update whitelists.
+  Error: Process completed with exit code 1.
