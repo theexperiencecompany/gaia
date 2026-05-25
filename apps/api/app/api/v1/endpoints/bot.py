@@ -5,13 +5,15 @@ import secrets
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
+from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX, PLATFORM_LINK_TOKEN_TTL
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
+from app.decorators import tiered_rate_limit
 from app.models.bot_models import (
     BotAuthStatusResponse,
     BotChatRequest,
@@ -484,25 +486,16 @@ async def unlink_account(request: Request) -> dict:
         502: {"description": "Transcription provider failed."},
     },
 )
+@tiered_rate_limit("audio_transcription")
 async def transcribe_bot_audio(
     request: Request,
     file: Annotated[UploadFile, File(...)],
+    user: dict = Depends(get_current_user),
     content_length: Annotated[int | None, Header(alias="content-length")] = None,
 ) -> dict:
-    """Convert audio bytes into a transcript.
-
-    Bots forward inbound voice notes here so the agent receives a plain-text
-    user message instead of a binary attachment. We rely on the
-    BotAuthMiddleware to resolve the linked user before the route runs.
-    """
+    """Convert audio bytes into a transcript for bot adapters."""
     await require_bot_api_key(request)
-    log.set(operation="bot_transcribe_audio")
-
-    if not getattr(request.state, "authenticated", False):
-        raise HTTPException(
-            status_code=401,
-            detail="Account not linked — transcription requires a linked GAIA user.",
-        )
+    log.set(operation="bot_transcribe_audio", user={"id": user.get("user_id")})
 
     if content_length is not None and content_length > MAX_AUDIO_BYTES:
         raise HTTPException(

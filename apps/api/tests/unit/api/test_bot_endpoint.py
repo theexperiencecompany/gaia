@@ -436,14 +436,14 @@ class TestBotTranscribe:
         assert response.status_code == 401
 
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
-    async def test_transcribe_unauthenticated_user(self, mock_auth: AsyncMock, client: AsyncClient):
-        # Auth middleware accepts the API key but the platform user isn't linked.
-        response = await client.post(
+    async def test_transcribe_unauthenticated_user(
+        self, mock_auth: AsyncMock, unauthed_client: AsyncClient
+    ):
+        response = await unauthed_client.post(
             f"{BOT_BASE}/transcribe",
             files={"file": ("voice.ogg", b"fake-audio-bytes", "audio/ogg")},
         )
         assert response.status_code == 401
-        assert "not linked" in response.json()["detail"].lower()
 
     # NOTE: The deeper transcribe path (mime allowlist, Whisper invocation) is
     # tested directly in tests/unit/services/test_audio_transcription_service.py.
