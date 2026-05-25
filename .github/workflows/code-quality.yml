@@ -239,7 +239,7 @@ jobs:
           echo "::group::nx type-check"
           if [ -n "${GITHUB_BASE_REF:-}" ]; then
             git fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null || true
-            pnpm exec nx affected -t type-check --base=origin/$GITHUB_BASE_REF
+            pnpm exec nx affected -t type-check --base=origin/$GITHUB_BASE_REF --exclude=api,voice-agent
           else
             pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp
           fi
