@@ -15,10 +15,6 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import StructuredTool as BaseStructuredTool
 import pydantic
 
-from app.services.composio.desync_handler import (
-    looks_like_disconnect,
-    mark_disconnected_sync,
-)
 from shared.py.wide_events import log
 
 _python_reserved = {"for", "async", "from", "import", "as", "pass", "continue"}
@@ -141,18 +137,6 @@ class LangchainProvider(
                     )
             except Exception as obs_err:  # noqa: BLE001 - observability must not break tool
                 log.debug(f"composio invocation log skipped for {tool}: {obs_err}")
-
-            # Flip MongoDB status on upstream-account-dead signal (1810 etc).
-            try:
-                if user_id and toolkit and looks_like_disconnect(result):
-                    log.warning(
-                        f"composio tool {tool} carried disconnect signal "
-                        f"(code 1810) for user={user_id} toolkit={toolkit}; "
-                        f"flipping MongoDB status to 'created'"
-                    )
-                    mark_disconnected_sync(user_id, toolkit)
-            except Exception as desync_err:  # noqa: BLE001 - side-effect must not break tool
-                log.debug(f"desync detection skipped for {tool}: {desync_err}")
 
             return result
 

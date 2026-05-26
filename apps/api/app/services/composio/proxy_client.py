@@ -19,7 +19,6 @@ import time
 from typing import Any, Literal
 
 from app.config.oauth_config import get_composio_social_configs
-from app.services.composio.desync_handler import mark_disconnected_sync
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -122,11 +121,8 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
         ]
         log.warning(
             f"composio: no ACTIVE account for user={user_id} toolkit={toolkit} "
-            f"(total_accounts={total_accounts}, sample={account_summary}). "
-            f"Flipping MongoDB status to 'created'."
+            f"(total_accounts={total_accounts}, sample={account_summary})"
         )
-        # Flip MongoDB status so UI shows disconnected instead of lying.
-        mark_disconnected_sync(user_id, toolkit)
         raise AppError(
             message=f"No active {toolkit} connection",
             why=f"User {user_id} has no active connected account for {toolkit}",
@@ -228,7 +224,6 @@ def _proxy_call(
         # 401 = Composio's stored token is rejected and refresh already failed.
         if status == 401:
             invalidate_connected_account_cache(user_id=user_id, toolkit=toolkit)
-            mark_disconnected_sync(user_id, toolkit)
         raise AppError(
             message=f"{toolkit} API error ({status})",
             why=f"Provider returned non-2xx for {method} {endpoint}",
