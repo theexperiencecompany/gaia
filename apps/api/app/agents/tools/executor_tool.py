@@ -12,7 +12,6 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
-from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.decorators.rate_limiting import LangChainRateLimitException
 from shared.py.wide_events import log
@@ -35,18 +34,11 @@ async def call_executor(
     try:
         log.set(tool={"name": "call_executor", "action": "delegate"})
         configurable = config.get("configurable", {})
-        user_id = configurable.get("user_id")
         stream_id = configurable.get("stream_id")  # Extract stream_id for cancellation
 
-        # Load user's MCP tools if they have any connected
-        if user_id:
-            try:
-                tool_registry = await get_tool_registry()
-                loaded = await tool_registry.load_user_mcp_tools(user_id)
-                if loaded:
-                    log.info(f"Loaded MCP tools for user {user_id}: {list(loaded.keys())}")
-            except Exception as e:
-                log.warning(f"Failed to load user MCP tools: {e}")
+        # MCP tools are loaded lazily by each subagent on first use, not eagerly
+        # here. The eager "Connecting N MCP integrations in parallel" warmup
+        # used to fire on every executor call and dominated cold-start latency.
 
         # Parse user time
         user_time_str = configurable.get("user_time", "")

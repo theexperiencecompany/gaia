@@ -527,6 +527,24 @@ def get_retrieve_tools_function(
         # BINDING MODE: Validate and bind exact tool names
         if exact_tool_names:
             available_tool_names_set = set(available_tool_names)
+
+            # MCP tools live in MCPClient._tools, not in the global registry,
+            # so the registry's get_tool_names() doesn't include them. Build a
+            # per-user MCP name set by reading the user's live MCPClient.
+            mcp_tool_names_set: set[str] = set()
+            if user_id:
+                try:
+                    from app.services.mcp.mcp_client import get_mcp_client
+
+                    mcp_client = await get_mcp_client(user_id=str(user_id))
+                    for integration_tools in mcp_client._tools.values():
+                        mcp_tool_names_set.update(t.name for t in integration_tools)
+                except Exception as e:
+                    log.warning(
+                        f"retrieve_tools: failed to read MCPClient tool names for "
+                        f"user {user_id}: {type(e).__name__}: {e}"
+                    )
+
             validated_tool_names: list[str] = []
             unknown_tool_names: list[str] = []
             for tool_name in exact_tool_names:
@@ -541,7 +559,7 @@ def get_retrieve_tools_function(
                         validated_tool_names.append(tool_name)
                     else:
                         unknown_tool_names.append(tool_name)
-                elif tool_name in available_tool_names_set:
+                elif tool_name in available_tool_names_set or tool_name in mcp_tool_names_set:
                     validated_tool_names.append(tool_name)
                 else:
                     unknown_tool_names.append(tool_name)

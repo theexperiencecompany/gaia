@@ -83,12 +83,12 @@ export default function IntegrationsPage() {
 
     const handleDisconnect = async (id: string) => {
       await disconnectIntegration(id);
-      setTimeout(() => closeRightSidebar(), 500);
+      closeRightSidebar();
     };
 
     const handleDelete = async (id: string) => {
       await deleteCustomIntegration(id);
-      setTimeout(() => closeRightSidebar(), 500);
+      closeRightSidebar();
     };
 
     const handlePublish = async (id: string) => {

@@ -61,6 +61,7 @@ class SubAgentFactory:
         disable_retrieve_tools: bool = False,
         auto_bind_tools: list[str] | None = None,
         include_finish_task: bool = True,
+        mcp_tools: list[BaseTool] | None = None,
     ) -> CompiledStateGraph:
         """
         Creates a specialized sub-agent graph for a specific provider with tool registry.
@@ -95,16 +96,24 @@ class SubAgentFactory:
         store, tool_registry = await asyncio.gather(get_tools_store(), get_tool_registry())
 
         # Build scoped tool_dict containing only tools for this subagent's tool_space
-        # This ensures subagents can only access their own integration's tools
+        # so the agent can only reach its own integration's tools.
         scoped_tool_dict: dict = {}
         initial_tool_ids: list[str] = []
 
-        # Get category by tool_space (handles dynamic category names like mcp_{integration}_{user_id})
-        category = tool_registry.get_category_by_space(tool_space)
-        if category is not None:
-            for t in category.tools:
-                scoped_tool_dict[t.name] = t.tool
-                initial_tool_ids.append(t.name)
+        if mcp_tools is not None:
+            # Live MCP tools passed in by provider_subagents — source of truth is
+            # MCPClient, not the global registry. Used for per-user MCP integrations.
+            for tool in mcp_tools:
+                scoped_tool_dict[tool.name] = tool
+                initial_tool_ids.append(tool.name)
+        else:
+            # Fallback path for non-MCP subagents (Composio, shared/_system MCPs):
+            # look up the registry category that matches this tool_space.
+            category = tool_registry.get_category_by_space(tool_space)
+            if category is not None:
+                for t in category.tools:
+                    scoped_tool_dict[t.name] = t.tool
+                    initial_tool_ids.append(t.name)
 
         # Add search_memory to scoped_tool_dict so subagents can access user memories
         scoped_tool_dict[search_memory.name] = search_memory

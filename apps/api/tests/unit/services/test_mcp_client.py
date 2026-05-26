@@ -840,19 +840,9 @@ class TestDCRNotSupportedException:
 
 
 @pytest.mark.unit
-class TestPooledClient:
-    def test_touch_updates_timestamp(self):
-        pooled = PooledClient(client=MagicMock())
-        # Force a visible time delta
-        pooled.last_used = datetime(2020, 1, 1, tzinfo=UTC)
-        pooled.touch()
-        assert pooled.last_used > datetime(2020, 1, 1, tzinfo=UTC)
-
-
-@pytest.mark.unit
 class TestMCPClientPoolGet:
     async def test_creates_new_client(self):
-        pool = MCPClientPool(max_clients=10, ttl_seconds=60)
+        pool = MCPClientPool(max_clients=10)
         with patch("app.services.mcp.mcp_client.MCPClient") as mock_cls:
             mock_instance = MagicMock()
             mock_cls.return_value = mock_instance
@@ -861,7 +851,7 @@ class TestMCPClientPoolGet:
             assert pool.size == 1
 
     async def test_reuses_existing_client(self):
-        pool = MCPClientPool(max_clients=10, ttl_seconds=60)
+        pool = MCPClientPool(max_clients=10)
         mock_client = MagicMock()
         pool._clients["user1"] = PooledClient(client=mock_client)
         result = await pool.get("user1")
@@ -869,7 +859,7 @@ class TestMCPClientPoolGet:
         assert pool.size == 1
 
     async def test_evicts_oldest_at_capacity(self):
-        pool = MCPClientPool(max_clients=2, ttl_seconds=60)
+        pool = MCPClientPool(max_clients=2)
         old_client = MagicMock()
         old_client.close_all_client_sessions = AsyncMock()
         pool._clients["old_user"] = PooledClient(client=old_client)
@@ -884,7 +874,7 @@ class TestMCPClientPoolGet:
         old_client.close_all_client_sessions.assert_awaited_once()
 
     async def test_moves_to_end_on_reuse(self):
-        pool = MCPClientPool(max_clients=10, ttl_seconds=60)
+        pool = MCPClientPool(max_clients=10)
         pool._clients["a"] = PooledClient(client=MagicMock())
         pool._clients["b"] = PooledClient(client=MagicMock())
         await pool.get("a")
@@ -908,19 +898,9 @@ class TestMCPClientPoolEvict:
         await pool._evict("nonexistent")
 
 
-@pytest.mark.unit
-class TestMCPClientPoolCleanupStale:
-    async def test_removes_stale_clients(self):
-        pool = MCPClientPool(ttl_seconds=1)
-        mock_client = MagicMock()
-        mock_client.close_all_client_sessions = AsyncMock()
-        past = datetime.now(UTC) - timedelta(seconds=10)
-        pool._clients["stale"] = PooledClient(client=mock_client, last_used=past)
-        pool._clients["fresh"] = PooledClient(client=MagicMock())
-        await pool.cleanup_stale()
-        assert "stale" not in pool._clients
-        assert "fresh" in pool._clients
-        mock_client.close_all_client_sessions.assert_awaited_once()
+# TestMCPClientPoolCleanupStale and TestPooledClient.test_touch_updates_timestamp
+# were deleted with the TTL-based cleanup. Sessions now persist for the worker's
+# lifetime; eviction only fires at the max_clients cap (LRU).
 
 
 @pytest.mark.unit
