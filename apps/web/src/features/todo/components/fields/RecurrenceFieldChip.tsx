@@ -28,7 +28,7 @@ export default function RecurrenceFieldChip({
   value,
   onChange,
   className,
-}: RecurrenceFieldChipProps) {
+}: Readonly<RecurrenceFieldChipProps>) {
   const displayValue = value ? (RECURRENCE_LABELS[value] ?? value) : undefined;
 
   return (

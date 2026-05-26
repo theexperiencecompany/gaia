@@ -167,8 +167,8 @@ export const createConversationInitHandlers = (
     useChatStore.getState().clearOptimisticMessage();
     // Don't rewrite the URL when the user isn't on a /c route (e.g. the
     // onboarding flow) — only sync it when already viewing a conversation.
-    if (/^\/c(\/|$)/.test(window.location.pathname)) {
-      window.history.replaceState({}, "", `/c/${conversation_id}`);
+    if (/^\/c(\/|$)/.test(globalThis.location.pathname)) {
+      globalThis.history.replaceState({}, "", `/c/${conversation_id}`);
     }
     useChatStore.getState().setActiveConversationId(conversation_id);
     useChatStore.getState().setStreamingConversationId(conversation_id);

@@ -24,7 +24,7 @@ export const useSubagentSynthesis = (
     const subagentGroups: SubagentGroupData[] = [];
 
     tool_data?.forEach((entry) => {
-      const toolName = entry.tool_name as ToolName;
+      const toolName = entry.tool_name;
 
       // tool_calls_data is handled separately via UnifiedToolThread — excluded from GROUPED_TOOLS and TOOL_RENDERERS
       if (toolName === "tool_calls_data") {
@@ -154,7 +154,7 @@ export const useSubagentSynthesis = (
           if (!hasSpawnCall || spawnIdx >= rootSpawned.length) continue;
           // Move the next unmatched spawned subagent into this group
           const spawned = rootSpawned[spawnIdx++];
-          g.nested_subagents.push(spawned as EnrichedSubagentGroup);
+          g.nested_subagents.push(spawned);
         }
         // Remove nested spawned groups from the root list
         const nestedIds = new Set(
@@ -191,7 +191,7 @@ export const useSubagentSynthesis = (
             currentGroup = null;
           }
           // Extract name from "Handing off to {Name}"
-          const nameMatch = (tc.message || "").match(/handing off to (.+)/i);
+          const nameMatch = /handing off to (.+)/i.exec(tc.message || "");
           const name = nameMatch ? nameMatch[1] : "Subagent";
           const task =
             tc.inputs && typeof tc.inputs === "object"

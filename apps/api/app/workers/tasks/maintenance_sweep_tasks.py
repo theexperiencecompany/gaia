@@ -32,9 +32,10 @@ NOTIFICATION_COOLDOWN_SECONDS = 86400  # 24 hours
 MAX_HEALTH_CHECKS_PER_USER = 10  # Max agent health-check calls per user per sweep
 
 BLOCKING_LABELS = {"waiting-for-reply", "waiting-for-approval", "blocked"}
+UNTITLED_TODO_TITLE = "Untitled Todo"
 
 
-async def maintenance_sweep_tracked_todos(ctx: dict) -> str:
+async def maintenance_sweep_tracked_todos(_ctx: dict) -> str:
     """
     Cron task: scan active tracked todos and apply tiered staleness handling.
 
@@ -200,7 +201,7 @@ async def _health_check_expired(doc: dict, pool: Any) -> str:
     """
     todo_id = str(doc["_id"])
     user_id: str = doc.get("user_id", "")
-    title: str = doc.get("title", "Untitled Todo")
+    title: str = doc.get("title", UNTITLED_TODO_TITLE)
 
     canvas = await _read_canvas(doc)
 
@@ -246,7 +247,7 @@ async def _health_check_dormant(doc: dict, pool: Any) -> str:
     """
     todo_id = str(doc["_id"])
     user_id: str = doc.get("user_id", "")
-    title: str = doc.get("title", "Untitled Todo")
+    title: str = doc.get("title", UNTITLED_TODO_TITLE)
     updated_at: datetime | None = doc.get("updated_at")
     now = datetime.now(UTC)
 
@@ -294,7 +295,7 @@ async def _notify_overdue(doc: dict, pool: Any) -> None:
     """Send an individual notification for an overdue todo and label it needs-follow-up."""
     todo_id = str(doc["_id"])
     user_id: str = doc.get("user_id", "")
-    title: str = doc.get("title", "Untitled Todo")
+    title: str = doc.get("title", UNTITLED_TODO_TITLE)
     due_date: datetime | None = doc.get("due_date")
     now = datetime.now(UTC)
 
@@ -342,7 +343,7 @@ async def _send_dormant_digest(todos: list[dict]) -> None:
     for user_id, user_todos in by_user.items():
         lines: list[str] = []
         for doc in user_todos:
-            title: str = doc.get("title", "Untitled Todo")
+            title: str = doc.get("title", UNTITLED_TODO_TITLE)
             updated_at: datetime | None = doc.get("updated_at")
             idle_days = (now - updated_at).days if updated_at else DORMANT_DAYS
             lines.append(f"- {title} (idle {idle_days}d)")

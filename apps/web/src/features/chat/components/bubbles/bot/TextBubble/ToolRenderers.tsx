@@ -25,8 +25,6 @@ import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
   CalendarFetchData,
-  CalendarListFetchData,
-  CalendarOptions,
 } from "@/types/features/calendarTypes";
 import type {
   ContactData,
@@ -34,7 +32,6 @@ import type {
   EmailFetchData,
   EmailSentData,
   EmailThreadData,
-  PeopleSearchData,
 } from "@/types/features/mailTypes";
 import type { NotificationRecord } from "@/types/features/notificationTypes";
 import type {
@@ -49,22 +46,17 @@ import type {
   DeepResearchResults,
   SearchResults,
 } from "@/types/features/searchTypes";
-import type { SupportTicketData } from "@/types/features/supportTypes";
-import type { TodoToolData } from "@/types/features/todoToolTypes";
 import type {
   ArtifactData,
-  CodeData,
   DocumentData,
   GoalDataMessageType,
   GoogleDocsData,
-  WorkflowCreatedData,
   WorkflowDraftData,
 } from "@/types/features/toolDataTypes";
 import type {
   TwitterSearchData,
   TwitterUserData,
 } from "@/types/features/twitterTypes";
-import type { WeatherData } from "@/types/features/weatherTypes";
 import { CalendarDeleteSection } from "../CalendarDeleteSection";
 import { CalendarEditSection } from "../CalendarEditSection";
 import CalendarEventSection from "../CalendarEventSection";
@@ -147,10 +139,7 @@ export const TOOL_RENDERERS: Partial<RendererMap> = {
 
   // Weather
   weather_data: (data, index) => (
-    <WeatherCard
-      key={`tool-weather-${index}`}
-      weatherData={data as WeatherData}
-    />
+    <WeatherCard key={`tool-weather-${index}`} weatherData={data} />
   ),
 
   // Email
@@ -200,9 +189,7 @@ export const TOOL_RENDERERS: Partial<RendererMap> = {
   people_search_data: (data, index) => (
     <PeopleSearchSection
       key={`tool-people-search-${index}`}
-      people_search_data={
-        (Array.isArray(data) ? data : [data]) as PeopleSearchData[]
-      }
+      people_search_data={Array.isArray(data) ? data : [data]}
     />
   ),
 
@@ -211,7 +198,7 @@ export const TOOL_RENDERERS: Partial<RendererMap> = {
     return (
       <CalendarEventSection
         key={`tool-cal-options-${index}`}
-        calendar_options={data as CalendarOptions[]}
+        calendar_options={data}
       />
     );
   },
@@ -240,9 +227,7 @@ export const TOOL_RENDERERS: Partial<RendererMap> = {
   calendar_list_fetch_data: (data, index) => (
     <CalendarListFetchCard
       key={`tool-cal-list-${index}`}
-      calendars={
-        (Array.isArray(data) ? data : [data]) as CalendarListFetchData[]
-      }
+      calendars={Array.isArray(data) ? data : [data]}
     />
   ),
 
@@ -250,7 +235,7 @@ export const TOOL_RENDERERS: Partial<RendererMap> = {
   support_ticket_data: (data, index) => (
     <SupportTicketSection
       key={`tool-support-${index}`}
-      support_ticket_data={data as SupportTicketData[]}
+      support_ticket_data={data}
     />
   ),
 
@@ -268,10 +253,7 @@ export const TOOL_RENDERERS: Partial<RendererMap> = {
     />
   ),
   code_data: (data, index) => (
-    <CodeExecutionSection
-      key={`tool-code-${index}`}
-      code_data={data as CodeData}
-    />
+    <CodeExecutionSection key={`tool-code-${index}`} code_data={data} />
   ),
   artifact_data: (data, index) => (
     <FileArtifactSection
@@ -280,19 +262,16 @@ export const TOOL_RENDERERS: Partial<RendererMap> = {
     />
   ),
 
-  todo_data: (data, index) => {
-    const t = data as TodoToolData;
-    return (
-      <TodoSection
-        key={`tool-todo-${index}`}
-        todos={t.todos}
-        projects={t.projects}
-        stats={t.stats}
-        action={t.action}
-        message={t.message}
-      />
-    );
-  },
+  todo_data: (data, index) => (
+    <TodoSection
+      key={`tool-todo-${index}`}
+      todos={data.todos}
+      projects={data.projects}
+      stats={data.stats}
+      action={data.action}
+      message={data.message}
+    />
+  ),
   goal_data: (data, index) => {
     const g = data as GoalDataMessageType;
     return (
@@ -442,7 +421,7 @@ export const TOOL_RENDERERS: Partial<RendererMap> = {
   workflow_created: (data, index) => (
     <WorkflowCreatedCard
       key={`tool-workflow-created-${index}`}
-      workflow={data as WorkflowCreatedData}
+      workflow={data}
     />
   ),
 

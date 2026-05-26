@@ -26,12 +26,12 @@ export function ToolCallRow({
   isLast,
   getIconUrl,
   getIntegrationName,
-}: {
+}: Readonly<{
   call: ToolCallEntry;
   isLast: boolean;
   getIconUrl: (c: ToolCallEntry) => string | undefined;
   getIntegrationName: (c: ToolCallEntry) => string | undefined;
-}) {
+}>) {
   const [expanded, setExpanded] = useState(false);
 
   const hasCategoryText =
@@ -88,7 +88,7 @@ export function ToolCallRow({
             <p className="text-[11px] text-default-400 capitalize leading-tight">
               {getIntegrationName(call) ||
                 call.tool_category
-                  .replace(/_/g, " ")
+                  .replaceAll("_", " ")
                   .split(" ")
                   .map(
                     (word) =>
@@ -142,12 +142,12 @@ export function SubagentRow({
   isLast,
   getIconUrl,
   getIntegrationName,
-}: {
+}: Readonly<{
   group: EnrichedSubagentGroup;
   isLast: boolean;
   getIconUrl: (c: ToolCallEntry) => string | undefined;
   getIntegrationName: (c: ToolCallEntry) => string | undefined;
-}) {
+}>) {
   // Start expanded while running so live tool calls are visible by default
   const [expanded, setExpanded] = useState(() => group.completed_at === null);
   const isRunning = group.completed_at === null;
@@ -247,7 +247,7 @@ export function SubagentRow({
           <p className="text-[11px] text-zinc-600 leading-tight">
             Subagent
             {visibleToolCalls.length > 0 &&
-              ` · ${visibleToolCalls.length} tool${visibleToolCalls.length !== 1 ? "s" : ""}`}
+              ` · ${visibleToolCalls.length} tool${visibleToolCalls.length === 1 ? "" : "s"}`}
           </p>
         </div>
 

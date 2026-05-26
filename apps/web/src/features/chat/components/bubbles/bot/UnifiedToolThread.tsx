@@ -42,7 +42,7 @@ const SHOW_ICONS = 10;
 export default function UnifiedToolThread({
   tool_calls,
   subagent_groups,
-}: UnifiedToolThreadProps) {
+}: Readonly<UnifiedToolThreadProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { integrations } = useIntegrations();
 

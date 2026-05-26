@@ -80,12 +80,12 @@ async def execute_tracked_todo(ctx: dict, todo_id: str) -> str:
             return f"skipped:{todo_id} (lock held)"
 
         try:
-            return await _execute_todo_with_retry(ctx, todo_id, pool)
+            return await _execute_todo_with_retry(todo_id, pool)
         finally:
             await pool.delete(lock_key)
 
 
-async def _execute_todo_with_retry(ctx: dict, todo_id: str, pool: Any) -> str:
+async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
     """
     Fetch the todo document, run the appropriate execution path, and
     handle retry / recurrence logic on the result.
@@ -488,7 +488,7 @@ def _compute_next_run(
         return None
 
 
-async def safety_net_check_orphaned_todos(ctx: dict) -> str:
+async def safety_net_check_orphaned_todos(_ctx: dict) -> str:
     """
     Cron safety net: find scheduled tracked todos that should have run but
     were never picked up (e.g. worker was down, job was lost).

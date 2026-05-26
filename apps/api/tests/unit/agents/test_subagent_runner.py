@@ -519,7 +519,7 @@ class TestExecuteSubagentStream:
 
         call_count = 0
 
-        async def _extract_side_effect(**kwargs):
+        def _extract_side_effect(**kwargs):
             nonlocal call_count
             call_count += 1
             return [("tc-1", tool_entry)]

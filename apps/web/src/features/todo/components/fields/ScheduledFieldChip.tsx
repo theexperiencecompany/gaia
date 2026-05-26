@@ -16,7 +16,7 @@ export default function ScheduledFieldChip({
   onChange,
   className,
   timezone,
-}: ScheduledFieldChipProps) {
+}: Readonly<ScheduledFieldChipProps>) {
   // Use user's preferred timezone or fallback to browser timezone
   const userTimezone =
     timezone && timezone.trim() !== ""

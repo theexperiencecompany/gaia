@@ -7,7 +7,7 @@ import {
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
-import type { ToolDataEntry, ToolName } from "@/config/registries/toolRegistry";
+import type { ToolName } from "@/config/registries/toolRegistry";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
@@ -110,7 +110,7 @@ export default function TextBubble({
 
       {processedTools.map((entry, index) => {
         const toolName = entry.tool_name as ToolName;
-        const keyId = (entry as ToolDataEntry).timestamp || index;
+        const keyId = entry.timestamp || index;
 
         if (toolName === "todo_progress") {
           const data = getTypedData(entry as ToolDataUnion, "todo_progress");
@@ -199,13 +199,14 @@ export default function TextBubble({
 
                   // Single message shows tail (last styling); otherwise first =
                   // no tail, middle = no tail, last = show tail.
-                  let groupedClasses = isSingle
-                    ? "imessage-grouped-last"
-                    : isFirst
-                      ? "imessage-grouped-first mb-1.5"
-                      : isLast
-                        ? "imessage-grouped-last"
-                        : "imessage-grouped-middle mb-1.5";
+                  let groupedClasses: string;
+                  if (isSingle || isLast) {
+                    groupedClasses = "imessage-grouped-last";
+                  } else if (isFirst) {
+                    groupedClasses = "imessage-grouped-first mb-1.5";
+                  } else {
+                    groupedClasses = "imessage-grouped-middle mb-1.5";
+                  }
                   let bubbleClassName = "imessage-bubble imessage-from-them";
                   let textClass = "";
 

@@ -358,7 +358,7 @@ class TrackedTodoService:
                     if canvas:
                         # Extract Key Details section
                         match = re.search(
-                            r"## Key Details\n(.*?)(?=\n## |\Z)",
+                            r"## Key Details\n(.*?)(?:\n## |\Z)",
                             canvas,
                             re.DOTALL,
                         )
