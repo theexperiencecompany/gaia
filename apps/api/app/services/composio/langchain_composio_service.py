@@ -15,6 +15,12 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import StructuredTool as BaseStructuredTool
 import pydantic
 
+from app.services.composio.desync_handler import (
+    looks_like_disconnect,
+    mark_disconnected_sync,
+)
+from shared.py.wide_events import log
+
 _python_reserved = {"for", "async", "from", "import", "as", "pass", "continue"}
 _obj_marker = "-_object_-"
 
@@ -90,6 +96,7 @@ class LangchainProvider(
         schema_params: dict,
         execute_tool: AgenticProviderExecuteFn,
         keywords: dict,
+        toolkit: str | None = None,
     ):
         def function(**kwargs: t.Any) -> dict:
             """Wrapper function for composio action."""
@@ -97,15 +104,28 @@ class LangchainProvider(
             # Discarding other data except metadata from __runnable_config__
             # Use 'or {}' to handle None case when called directly without LangChain
             runnable_config = kwargs.get("__runnable_config__") or {}
+            metadata = (
+                runnable_config.get("metadata", {}) if isinstance(runnable_config, dict) else {}
+            )
+            user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
 
             kwargs = _reinstate_reserved_python_keywords(
                 request=kwargs,
                 keywords=keywords,
             )
 
-            kwargs["__runnable_config__"] = {"metadata": runnable_config.get("metadata", {})}
+            kwargs["__runnable_config__"] = {"metadata": metadata}
 
-            return execute_tool(tool, kwargs)
+            result = execute_tool(tool, kwargs)
+
+            # Flip MongoDB status on upstream-account-dead signal (1810 etc).
+            try:
+                if user_id and toolkit and looks_like_disconnect(result):
+                    mark_disconnected_sync(user_id, toolkit)
+            except Exception as desync_err:  # noqa: BLE001 - side-effect must not break tool
+                log.debug(f"desync detection skipped for {tool}: {desync_err}")
+
+            return result
 
         parameters = get_signature_format_from_schema_params(schema_params=schema_params)
 
@@ -152,6 +172,7 @@ class LangchainProvider(
                     schema_params=schema_params,
                     execute_tool=execute_tool,
                     keywords=keywords,
+                    toolkit=getattr(getattr(tool, "toolkit", None), "slug", None),
                 ),
                 handle_tool_error=True,
                 handle_validation_error=True,
