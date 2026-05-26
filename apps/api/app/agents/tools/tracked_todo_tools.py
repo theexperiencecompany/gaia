@@ -16,7 +16,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.db.mongodb.collections import todos_collection
-from app.models.todo_models import Priority
+from app.models.todo_models import Priority, TodoResponse
 from app.services.tracked_todo_service import GAIA_TRACKED_LABEL, tracked_todo_service
 from app.services.user_service import get_user_by_id
 from app.services.vfs.mongo_vfs import MongoVFS
@@ -383,7 +383,7 @@ def _patch_canvas_section(current: str, section: str, content: str) -> str:
 
 
 def _format_create_output(
-    result,  # noqa: ANN001 — TrackedTodoResult; importing the type would cycle
+    result: TodoResponse,
     parsed_scheduled_at: datetime | None,
     user_tz_name: str | None,
     notes: list[str],
@@ -722,17 +722,23 @@ async def update_tracked_todo(
     update_fields: dict[str, object] = {}
     notes: list[str] = []
 
-    field_errors = [
-        _build_labels_update(labels, update_fields),
-        _build_clearable_datetime_update(due_date, "due_date", update_fields),
-        _build_priority_update(priority, update_fields),
-        _build_scheduled_at_update(scheduled_at, update_fields),
-        await _build_recurrence_update(recurrence, scheduled_at, user_id, update_fields, notes),
-        _build_clearable_datetime_update(expires_at, "expires_at", update_fields),
-    ]
-    for error in field_errors:
-        if error:
-            return error
+    # Validate each field sequentially with short-circuit so we don't keep doing
+    # work (in particular the async _get_user_tz Mongo lookup inside the
+    # recurrence validator) after an earlier field has already failed.
+    if error := _build_labels_update(labels, update_fields):
+        return error
+    if error := _build_clearable_datetime_update(due_date, "due_date", update_fields):
+        return error
+    if error := _build_priority_update(priority, update_fields):
+        return error
+    if error := _build_scheduled_at_update(scheduled_at, update_fields):
+        return error
+    if error := await _build_recurrence_update(
+        recurrence, scheduled_at, user_id, update_fields, notes
+    ):
+        return error
+    if error := _build_clearable_datetime_update(expires_at, "expires_at", update_fields):
+        return error
 
     if not update_fields:
         return "No fields to update. Provide at least one field to change."

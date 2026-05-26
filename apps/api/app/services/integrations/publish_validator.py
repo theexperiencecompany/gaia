@@ -19,10 +19,12 @@ class PublishIntegrationValidator:
         tools: list,
     ) -> list[str]:
         """Validate integration content for publishing. Returns error messages (empty if valid)."""
+        # Order matches the pre-refactor sequence so any caller that surfaces
+        # errors positionally keeps the same first / second / … messages.
         return [
             *cls._validate_name(name),
-            *cls._validate_description(description),
             *cls._validate_profanity(name, description),
+            *cls._validate_description(description),
             *cls._validate_tools(tools),
         ]
 
