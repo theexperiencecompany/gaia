@@ -127,7 +127,11 @@ def wrap_tool_with_null_filter(
                     f"request. This is typically a bug in the MCP server implementation. "
                     f"Error: {error_msg}"
                 )
-            if "timeout" in error_lower:
+            # Match real network/asyncio timeout exceptions (e.g. TimeoutError,
+            # ReadTimeout, asyncio.TimeoutError) by type rather than a string
+            # substring — "timeout" inside a tool error message would otherwise
+            # get rebranded as an MCP server timeout.
+            if isinstance(e, TimeoutError) or "timeouterror" in type(e).__name__.lower():
                 return f"The MCP server timed out. Please try again. Error: {error_msg}"
             return f"MCP tool error: {error_msg}"
 

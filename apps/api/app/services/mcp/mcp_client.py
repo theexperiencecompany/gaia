@@ -154,6 +154,40 @@ def _is_terminal_auth_failure(exception: Exception, refresh_attempted: bool = Fa
     return False
 
 
+# Strong references for fire-and-forget background tasks.
+# asyncio.create_task only holds a weak reference internally — if the
+# returned Task object is unreferenced, the GC can collect it mid-execution
+# and the work silently disappears. Tasks remove themselves from this set
+# via add_done_callback so the set stays bounded.
+_BG_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn_background(coro: Any, label: str) -> asyncio.Task | None:
+    """Spawn a fire-and-forget task that survives until completion.
+
+    Returns None if there is no running event loop (e.g., test contexts where
+    the caller will await inline instead).
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return None
+
+    task = loop.create_task(coro, name=f"mcp:{label}")
+    _BG_TASKS.add(task)
+
+    def _on_done(t: asyncio.Task) -> None:
+        _BG_TASKS.discard(t)
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None:
+            log.warning(f"background mcp task '{label}' raised: {type(exc).__name__}: {exc}")
+
+    task.add_done_callback(_on_done)
+    return task
+
+
 class MCPClient:
     """
     MCP client wrapper implementing MCP OAuth 2.1 spec.
@@ -361,18 +395,56 @@ class MCPClient:
         Invoked by the tool wrapper when a call hits a dead connector — the
         user sees latency, never the underlying error. Telemetry tracks how
         often this fires (spikes flag something else killing sessions).
+
+        Concurrency: if another connect or reconnect is already in flight for
+        this integration, we wait for it and reuse its result rather than
+        racing. Without that guard, popping `_clients`/`_tools` while another
+        coroutine holds `_connecting[iid]` would make that coroutine raise
+        "Concurrent connect failed" when it checks `_tools` post-wait.
         """
         start = time.monotonic()
         log.warning(f"[{integration_id}] transparent reconnect requested for tool '{tool_name}'")
 
-        # Force re-_do_connect by clearing both caches under the connecting lock.
-        # `connect()` will dedupe concurrent reconnect attempts via self._connecting.
-        self._clients.pop(integration_id, None)
-        self._tools.pop(integration_id, None)
+        # If another caller (warmup, sibling reconnect) is already connecting,
+        # wait on their event and reuse the result they produce.
+        in_flight_event = self._connecting.get(integration_id)
+        if in_flight_event is not None:
+            log.info(f"[{integration_id}] transparent reconnect waiting on in-flight connect")
+            try:
+                await in_flight_event.wait()
+            except Exception as wait_err:
+                log.warning(f"[{integration_id}] in-flight connect wait raised: {wait_err}")
 
-        try:
-            fresh_tools = await self.connect(integration_id)
-        except Exception as e:
+        # Take the connecting lock ourselves before clearing caches so any
+        # concurrent caller after this point waits on us instead of racing.
+        if integration_id not in self._connecting:
+            our_event = asyncio.Event()
+            self._connecting[integration_id] = our_event
+            try:
+                # Drop stale references and force a fresh _do_connect.
+                self._clients.pop(integration_id, None)
+                self._tools.pop(integration_id, None)
+                try:
+                    await self._do_connect(integration_id)
+                except Exception as e:
+                    latency_ms = int((time.monotonic() - start) * 1000)
+                    log.set(
+                        mcp_reconnect={
+                            "integration_id": integration_id,
+                            "user_id": self.user_id,
+                            "tool_name": tool_name,
+                            "latency_ms": latency_ms,
+                            "outcome": "reconnect_failed",
+                            "error_type": type(e).__name__,
+                        }
+                    )
+                    raise
+            finally:
+                our_event.set()
+                self._connecting.pop(integration_id, None)
+
+        fresh_tools = self._tools.get(integration_id, [])
+        if not fresh_tools:
             latency_ms = int((time.monotonic() - start) * 1000)
             log.set(
                 mcp_reconnect={
@@ -380,11 +452,10 @@ class MCPClient:
                     "user_id": self.user_id,
                     "tool_name": tool_name,
                     "latency_ms": latency_ms,
-                    "outcome": "reconnect_failed",
-                    "error_type": type(e).__name__,
+                    "outcome": "no_tools_after_reconnect",
                 }
             )
-            raise
+            raise RuntimeError(f"No tools available for {integration_id} after reconnect")
 
         fresh_tool = next((t for t in fresh_tools if t.name == tool_name), None)
         if fresh_tool is None:
@@ -529,11 +600,10 @@ class MCPClient:
                     stale_client = self._clients.pop(iid, None)
                     self._tools.pop(iid, None)
                     if stale_client:
-                        try:
-                            loop = asyncio.get_running_loop()
-                            loop.create_task(self._safe_close_client(stale_client))
-                        except RuntimeError:
-                            pass  # No running loop — skip async cleanup
+                        _spawn_background(
+                            self._safe_close_client(stale_client),
+                            f"evict_close_{iid}",
+                        )
                     log.info(f"[{iid}] Evicted stale session after connection error")
 
                 return _evict
@@ -716,16 +786,28 @@ class MCPClient:
     async def _index_platform_mcp_tools(self, integration_id: str, tools: list[BaseTool]) -> None:
         """Index platform MCP tools (e.g. posthog, deepwiki) to ChromaDB.
 
-        Namespace = integration's tool_space when defined, else the integration_id.
-        index_tools_to_store dedupes across users via its own Redis cache.
+        Uses the integration's declared `subagent_config.tool_space` as the
+        namespace. If the platform integration lacks a subagent_config we skip
+        indexing rather than fall back to integration_id — a bare integration_id
+        can collide with custom-MCP namespaces (which are URL-derived but could
+        happen to match), and indexing under the wrong namespace silently
+        corrupts retrieve_tools for the other integration via the
+        chroma:indexed:{namespace} cache.
         """
         from app.config.oauth_config import get_integration_by_id
 
         integration = get_integration_by_id(integration_id)
-        if integration and integration.subagent_config:
-            namespace = integration.subagent_config.tool_space
-        else:
-            namespace = integration_id
+        namespace = (
+            integration.subagent_config.tool_space
+            if integration and integration.subagent_config
+            else None
+        )
+        if not namespace:
+            log.warning(
+                f"[{integration_id}] platform integration has no subagent_config.tool_space; "
+                f"skipping Chroma indexing to avoid namespace collisions"
+            )
+            return
 
         try:
             tools_with_space = [(tool, namespace) for tool in tools]
@@ -1258,11 +1340,10 @@ class MCPClient:
                 if terminal:
                     await self._reset_to_disconnected(integration_id)
 
-        try:
-            asyncio.get_running_loop().create_task(_bg_connect_after_oauth())
-        except RuntimeError:
-            # No running loop (shouldn't happen inside FastAPI) — fall back to
-            # awaiting inline so we don't silently lose the connect.
+        bg_task = _spawn_background(_bg_connect_after_oauth(), f"oauth_bg_connect_{integration_id}")
+        if bg_task is None:
+            # No running loop (test contexts) — fall back to awaiting inline so
+            # we don't silently lose the connect.
             await _bg_connect_after_oauth()
 
         return []
@@ -1283,9 +1364,10 @@ class MCPClient:
         """
         # Fire-and-forget the upstream OAuth revoke — the user has already
         # been disconnected locally; provider-side revocation is best-effort.
-        try:
-            asyncio.get_running_loop().create_task(self._revoke_tokens(integration_id))
-        except RuntimeError:
+        if (
+            _spawn_background(self._revoke_tokens(integration_id), f"revoke_{integration_id}")
+            is None
+        ):
             # Tests or non-asyncio contexts — fall back to awaiting.
             await self._revoke_tokens(integration_id)
 
