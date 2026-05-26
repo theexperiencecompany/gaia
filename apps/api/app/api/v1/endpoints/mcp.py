@@ -194,6 +194,18 @@ async def mcp_oauth_callback(
     resolved = await IntegrationResolver.resolve(integration_id)
     integration_name = resolved.name if resolved else integration_id
 
+    log.set(
+        mcp_oauth_callback={
+            "integration_id": integration_id,
+            "integration_name": integration_name,
+            "user_id": user_id,
+            "redirect_path": redirect_path,
+        }
+    )
+    log.info(
+        f"mcp_oauth_callback: starting handle_oauth_callback for "
+        f"integration={integration_id} user={user_id}"
+    )
     try:
         tools = await client.handle_oauth_callback(
             integration_id=integration_id,
@@ -205,17 +217,30 @@ async def mcp_oauth_callback(
         # handle_oauth_callback() already calls connect() internally
         # and returns tools, so we don't need to call connect() again
         if tools:
-            log.info(f"Connected with {len(tools)} tools for {integration_id} after OAuth")
+            log.info(
+                f"mcp_oauth_callback: connected with {len(tools)} tools for "
+                f"{integration_id} user={user_id}, now loading into tool_registry"
+            )
 
             tool_registry = await get_tool_registry()
             await tool_registry.load_user_mcp_tools(str(user_id))
-            log.info(f"Indexed MCP tools from {integration_id} to ChromaDB")
+            log.info(
+                f"mcp_oauth_callback: load_user_mcp_tools completed for "
+                f"{integration_id} user={user_id}"
+            )
 
             try:
                 await delete_cache("api:get_available_tools:*")
                 log.info("Invalidated tools list cache after MCP connection")
             except Exception as cache_err:
-                log.warning(f"Failed to invalidate tools cache: {cache_err}")
+                log.warning(
+                    f"Failed to invalidate tools cache: {type(cache_err).__name__}: {cache_err}"
+                )
+        else:
+            log.warning(
+                f"mcp_oauth_callback: handle_oauth_callback returned no tools for "
+                f"{integration_id} user={user_id} (empty list)"
+            )
 
         await invalidate_mcp_status_cache(str(user_id))
 
@@ -229,8 +254,19 @@ async def mcp_oauth_callback(
         )
 
     except Exception as e:
-        log.set(outcome="failed")
-        log.error(f"OAuth callback failed for {integration_id}: {e}")
+        log.set(
+            outcome="failed",
+            mcp_oauth_callback_error={
+                "integration_id": integration_id,
+                "user_id": user_id,
+                "error_type": type(e).__name__,
+                "error_message": str(e)[:500],
+            },
+        )
+        log.error(
+            f"mcp_oauth_callback FAILED for integration={integration_id} user={user_id}: "
+            f"{type(e).__name__}: {e}"
+        )
         frontend_url = get_frontend_url()
         # Sanitize error - use generic codes instead of raw exception messages
         error_code = "connection_failed"

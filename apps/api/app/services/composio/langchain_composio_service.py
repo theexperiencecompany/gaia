@@ -15,6 +15,8 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import StructuredTool as BaseStructuredTool
 import pydantic
 
+from shared.py.wide_events import log
+
 _python_reserved = {"for", "async", "from", "import", "as", "pass", "continue"}
 _obj_marker = "-_object_-"
 
@@ -90,6 +92,7 @@ class LangchainProvider(
         schema_params: dict,
         execute_tool: AgenticProviderExecuteFn,
         keywords: dict,
+        toolkit: str | None = None,
     ):
         def function(**kwargs: t.Any) -> dict:
             """Wrapper function for composio action."""
@@ -97,15 +100,57 @@ class LangchainProvider(
             # Discarding other data except metadata from __runnable_config__
             # Use 'or {}' to handle None case when called directly without LangChain
             runnable_config = kwargs.get("__runnable_config__") or {}
+            metadata = (
+                runnable_config.get("metadata", {}) if isinstance(runnable_config, dict) else {}
+            )
+            user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
 
             kwargs = _reinstate_reserved_python_keywords(
                 request=kwargs,
                 keywords=keywords,
             )
 
-            kwargs["__runnable_config__"] = {"metadata": runnable_config.get("metadata", {})}
+            kwargs["__runnable_config__"] = {"metadata": metadata}
 
-            return execute_tool(tool, kwargs)
+            result = execute_tool(tool, kwargs)
+
+            # Surface tool invocation outcome for observability.
+            try:
+                succeeded = result.get("successful") if isinstance(result, dict) else None
+                err_preview = (
+                    str(result.get("error"))[:200]
+                    if isinstance(result, dict) and not succeeded
+                    else None
+                )
+                log.set(
+                    composio_tool_invocation={
+                        "tool": tool,
+                        "toolkit": toolkit,
+                        "user_id": user_id,
+                        "successful": succeeded,
+                    }
+                )
+                if succeeded is False:
+                    err_lower = (err_preview or "").lower()
+                    looks_like_dead_account = (
+                        "1810" in err_lower
+                        or "no active connected account" in err_lower
+                        or "no connected account" in err_lower
+                    )
+                    if looks_like_dead_account:
+                        log.warning(
+                            f"composio tool {tool} (toolkit={toolkit}) likely "
+                            f"dead account for user={user_id}: error={err_preview!r}"
+                        )
+                    else:
+                        log.info(
+                            f"composio tool {tool} (toolkit={toolkit}) returned "
+                            f"successful=False for user={user_id}: error={err_preview!r}"
+                        )
+            except Exception as obs_err:  # noqa: BLE001 - observability must not break tool
+                log.debug(f"composio invocation log skipped for {tool}: {obs_err}")
+
+            return result
 
         parameters = get_signature_format_from_schema_params(schema_params=schema_params)
 
@@ -152,6 +197,7 @@ class LangchainProvider(
                     schema_params=schema_params,
                     execute_tool=execute_tool,
                     keywords=keywords,
+                    toolkit=getattr(getattr(tool, "toolkit", None), "slug", None),
                 ),
                 handle_tool_error=True,
                 handle_validation_error=True,

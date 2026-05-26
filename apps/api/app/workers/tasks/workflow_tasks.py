@@ -507,15 +507,18 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
         return execution_messages
 
     except Exception as e:
-        log.error(f"Failed to execute workflow {workflow.id} as chat: {e!s}")
-        # Return error message
-        error_message = MessageModel(
-            type="bot",
-            response=f"❌ **Workflow Execution Failed**\n\nWorkflow: {workflow.title}\nError: {e!s}",
-            date=datetime.now(UTC).isoformat(),
-            message_id=str(uuid4()),
+        # Re-raise so caller marks execution as failed instead of fake-success.
+        log.error(
+            "workflow_chat_execution_failed",
+            workflow_id=workflow.id,
+            workflow_title=getattr(workflow, "title", None),
+            user_id=user.get("user_id") if isinstance(user, dict) else None,
+            error_type=type(e).__name__,
+            error=str(e)[:500],
+            outcome="agent_error",
+            exc_info=True,
         )
-        return [error_message]
+        raise
 
 
 async def regenerate_workflow_steps(

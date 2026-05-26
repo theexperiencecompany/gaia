@@ -26,7 +26,7 @@ import {
 } from "../../utils/messageBreakUtils";
 import type { GaiaClient } from "../api";
 import type { ChatRequest } from "../types";
-import { formatBotError } from "./formatters";
+import { formatBotError, PLATFORM_MARKDOWN } from "./formatters";
 import { chunkResponse, truncateResponse } from "./text";
 
 export interface StreamingOptions {
@@ -83,11 +83,23 @@ async function _handleStream(
 ): Promise<void> {
   const { editIntervalMs, streaming, platform } = options;
 
+  // Centralized markdown conversion: every outbound string is run through the
+  // platform converter HERE, at the single chokepoint, so adapters receive
+  // already-converted text and never call convertTo<Platform>Markdown inline.
+  const render = PLATFORM_MARKDOWN[platform];
+  const wrappedEditMessage: MessageEditor = (text) => editMessage(render(text));
+  const wrappedSendNewMessage: NewMessageSender | null = sendNewMessage
+    ? async (text) => {
+        const editor = await sendNewMessage(render(text));
+        return (updatedText) => editor(render(updatedText));
+      }
+    : null;
+
   let lastEditTime = 0;
   let editTimer: ReturnType<typeof setTimeout> | null = null;
   let fullText = "";
   let streamDone = false;
-  let currentEditor = editMessage;
+  let currentEditor = wrappedEditMessage;
   let sentText = "";
 
   // Serialization queue to prevent concurrent Telegram API calls
@@ -113,7 +125,7 @@ async function _handleStream(
   };
 
   const handleNewMessageBreak = async () => {
-    if (!sendNewMessage) return;
+    if (!wrappedSendNewMessage) return;
 
     while (fullText.includes(NEW_MESSAGE_BREAK_TOKEN)) {
       const breakIndex = fullText.indexOf(NEW_MESSAGE_BREAK_TOKEN);
@@ -133,7 +145,7 @@ async function _handleStream(
         return;
       }
 
-      currentEditor = await sendNewMessage(
+      currentEditor = await wrappedSendNewMessage(
         afterTrimmed.replaceAll(NEW_MESSAGE_BREAK_TOKEN, "").trim() || "...",
       );
       fullText = afterTrimmed;
@@ -143,8 +155,8 @@ async function _handleStream(
   };
 
   const deliverOverflowChunk = async (chunk: string): Promise<void> => {
-    if (sendNewMessage) {
-      currentEditor = await sendNewMessage(chunk);
+    if (wrappedSendNewMessage) {
+      currentEditor = await wrappedSendNewMessage(chunk);
       sentText = chunk;
     } else {
       // Adapter cannot post additional bubbles — best-effort fallback that

@@ -28,6 +28,8 @@ from tqdm import tqdm
 HF_DATASET = "openslr/librispeech_asr"
 HF_CONFIG = "clean"
 HF_SPLIT = "train.100"  # train-clean-100: ~28k examples, ~100 hours, 251 speakers
+# Pin the dataset revision for reproducible, tamper-evident downloads.
+HF_REVISION = "71cacbfb7e2354c4226d01e70d77d5fca3d04ba1"  # pragma: allowlist secret
 
 
 def main() -> None:
@@ -49,6 +51,7 @@ def main() -> None:
         HF_DATASET,
         HF_CONFIG,
         split=HF_SPLIT,
+        revision=HF_REVISION,
         streaming=True,
         trust_remote_code=True,
     )

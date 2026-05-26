@@ -35,6 +35,9 @@ async def create_conversation_service(conversation: ConversationModel, user: dic
         "system_purpose": conversation.system_purpose,
         "is_unread": conversation.is_unread or False,
         "is_onboarding_demo": conversation.is_onboarding_demo,
+        # Persist the originating source (e.g. bot platform) as a string so it
+        # matches the literals used by the web list query's $nin source filter.
+        "source": conversation.source.value if conversation.source else None,
         "messages": [],
         "createdAt": created_at,
     }

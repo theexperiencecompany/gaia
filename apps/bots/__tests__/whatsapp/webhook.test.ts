@@ -30,6 +30,7 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  extractMedia,
   extractTextBody,
   extractWaId,
   type KapsoMessageEvent,
@@ -196,5 +197,143 @@ describe("extractTextBody - additional cases", () => {
       text: { body: "Message with context" },
     });
     expect(extractTextBody(event)).toBe("Message with context");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractMedia
+// ---------------------------------------------------------------------------
+
+describe("extractMedia", () => {
+  it("returns null for text messages", () => {
+    const event = buildEvent({ type: "text", text: { body: "hi" } });
+    expect(extractMedia(event)).toBeNull();
+  });
+
+  it("extracts image media with caption + mime", () => {
+    const event = buildEvent({
+      type: "image",
+      text: undefined,
+      image: {
+        id: "media-img-1",
+        mime_type: "image/jpeg",
+        caption: "look at this",
+      },
+    });
+    const media = extractMedia(event);
+    expect(media).not.toBeNull();
+    expect(media!.kind).toBe("image");
+    expect(media!.mediaId).toBe("media-img-1");
+    expect(media!.mimeType).toBe("image/jpeg");
+    expect(media!.caption).toBe("look at this");
+    expect(media!.isVoiceNote).toBe(false);
+  });
+
+  it("falls back to a default mime type when one is not supplied", () => {
+    const event = buildEvent({
+      type: "image",
+      text: undefined,
+      image: { id: "x" },
+    });
+    expect(extractMedia(event)!.mimeType).toBe("image/jpeg");
+  });
+
+  it("flags type==voice as a voice note (folded into the audio kind)", () => {
+    const event = buildEvent({
+      type: "voice",
+      text: undefined,
+      voice: { id: "media-voice-1", mime_type: "audio/ogg" },
+    });
+    const media = extractMedia(event);
+    expect(media!.kind).toBe("audio");
+    expect(media!.isVoiceNote).toBe(true);
+  });
+
+  it("flags audio with voice:true as a voice note", () => {
+    const event = buildEvent({
+      type: "audio",
+      text: undefined,
+      audio: { id: "media-audio-1", mime_type: "audio/ogg", voice: true },
+    });
+    expect(extractMedia(event)!.isVoiceNote).toBe(true);
+  });
+
+  it("treats audio without voice:true as a plain audio file", () => {
+    const event = buildEvent({
+      type: "audio",
+      text: undefined,
+      audio: { id: "media-audio-2", mime_type: "audio/mpeg" },
+    });
+    const media = extractMedia(event);
+    expect(media!.kind).toBe("audio");
+    expect(media!.isVoiceNote).toBe(false);
+    expect(media!.mimeType).toBe("audio/mpeg");
+  });
+
+  it("extracts document filename + caption", () => {
+    const event = buildEvent({
+      type: "document",
+      text: undefined,
+      document: {
+        id: "media-doc-1",
+        mime_type: "application/pdf",
+        filename: "spec.pdf",
+        caption: "review pls",
+      },
+    });
+    const media = extractMedia(event);
+    expect(media!.kind).toBe("document");
+    expect(media!.filename).toBe("spec.pdf");
+    expect(media!.caption).toBe("review pls");
+    expect(media!.mimeType).toBe("application/pdf");
+  });
+
+  it("preserves video and sticker kinds so the adapter can reject them gracefully", () => {
+    const videoEvent = buildEvent({
+      type: "video",
+      text: undefined,
+      video: { id: "media-vid-1", mime_type: "video/mp4" },
+    });
+    expect(extractMedia(videoEvent)!.kind).toBe("video");
+
+    const stickerEvent = buildEvent({
+      type: "sticker",
+      text: undefined,
+      sticker: { id: "media-sticker-1", mime_type: "image/webp" },
+    });
+    expect(extractMedia(stickerEvent)!.kind).toBe("sticker");
+  });
+
+  it("returns null when the media payload is missing its id", () => {
+    const event = buildEvent({
+      type: "image",
+      text: undefined,
+      image: { mime_type: "image/jpeg" },
+    });
+    expect(extractMedia(event)).toBeNull();
+  });
+
+  it("returns null for unsupported message types", () => {
+    const event = buildEvent({ type: "interactive", text: undefined });
+    expect(extractMedia(event)).toBeNull();
+  });
+
+  it("picks up the Kapso pre-resolved media URL when present", () => {
+    const event = buildEvent({
+      type: "image",
+      text: undefined,
+      image: { id: "media-img-2", mime_type: "image/png" },
+      kapso: {
+        direction: "in",
+        status: "received",
+        processing_status: "processed",
+        origin: "whatsapp",
+        has_media: true,
+        media_url: "https://kapso-cdn.example/media-img-2.png",
+      },
+    });
+    expect(extractMedia(event)!.prefetchedUrl).toBe(
+      "https://kapso-cdn.example/media-img-2.png",
+    );
   });
 });

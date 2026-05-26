@@ -1,6 +1,7 @@
 """
-Document summarization system using LlamaIndex for PDF/DOCX and LlamaCloud for images/text.
-This module integrates with ChromaDB for vector storage and retrieval.
+Document processing and summarization. LlamaParse extracts text from PDF/DOCX;
+the default LLM summarizes images, text, and parsed document pages. Summaries
+are embedded into ChromaDB for retrieval.
 """
 
 import base64
@@ -65,11 +66,10 @@ class DocumentProcessor:
 
     async def process_image(self, image_data: bytes) -> str:
         """
-        Process and summarize an image using LlamaCloud's vision model.
+        Process and summarize an image using the default vision-capable LLM.
 
         Args:
             image_data: Raw image bytes
-            image_url: URL of the image
 
         Returns:
             Summary of the image content
@@ -208,7 +208,7 @@ class DocumentProcessor:
             raise e
 
     async def _generate_text_summary(self, text: str) -> str:
-        """Generate a summary for text content using LlamaCloud."""
+        """Generate a summary for text content using the default LLM."""
         try:
             response = await self.llm.ainvoke(
                 input=[

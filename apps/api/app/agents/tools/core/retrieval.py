@@ -647,13 +647,23 @@ def get_retrieve_tools_function(
             tool_retrieval=dict(
                 mode="discovery",
                 query=query,
-                namespaces_searched=list(user_namespaces),
+                tool_space=tool_space,
+                user_id=user_id,
+                namespaces_searched=sorted(user_namespaces),
                 tools_discovered=len(final_tools),
                 chroma_hits=chroma_hits,
                 public_hits=public_hits,
+                per_namespace_hits=per_namespace_hits,
                 candidates_after_filter=len(all_results),
+                chroma_preview=chroma_preview,
             )
         )
+        if chroma_hits == 0 and tool_space != "general":
+            log.warning(
+                f"retrieve_tools: 0 ChromaDB hits for tool_space='{tool_space}' "
+                f"user={user_id} query={query!r}. Check that index_tools_to_store "
+                f"actually wrote docs for this namespace."
+            )
 
         return RetrieveToolsResult(
             tools_to_bind=[],

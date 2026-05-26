@@ -87,6 +87,85 @@ Pre-model hooks in `app/agents/core/nodes/`:
 - Raise `AppError` (from `app/utils/errors.py`) for domain errors — it serializes to a structured JSON response automatically.
 - Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields, `log.info(...)` / `log.error(...)` to emit.
 
+### Tooling and the autofix hook
+
+After every `.py` edit, a PostToolUse hook runs `uvx ruff format` then `uvx ruff check --fix` on the file. Formatting, import order/grouping, `Optional[X]` → `X | None`, `Union[X, Y]` → `X | Y`, lowercase generics, unused imports, mutable default args, bare `except`, and `print` are corrected automatically — do not hand-fix them.
+
+What the hook does NOT fix, you handle:
+
+- **Type errors** — `nx type-check api` (mypy strict). Add the missing annotation or correct the type. Use `Any` only for genuinely untyped third-party code.
+- **Lint warnings ruff can't auto-resolve** — `nx lint api`, read the rule, fix the cause.
+
+Python 3.11+: use modern syntax (`X | Y` unions, `match` statements).
+
+## File & Structural Organization
+
+One domain per file. Never let a file span multiple domains.
+
+- `app/models/` — SQLAlchemy / MongoDB document models, one file per domain (`todo_models.py`).
+- `app/schemas/` — Pydantic request/response schemas, one file per domain. Separate `CreateRequest`, `UpdateRequest`, `Response`.
+- `app/services/` — business logic, one file per domain. No route handling.
+- `app/api/v1/endpoints/` — route handlers, one file per domain. No business logic.
+- `app/db/` — DB client setup and connection utilities only.
+- `app/constants/` — constants by domain (`cache.py`, `llm.py`, `auth.py`). Never hardcode values.
+
+## Pydantic Models
+
+- `BaseModel` for all schemas; `model_config = ConfigDict(from_attributes=True)` on ORM-mapped models.
+- `Field(description="...")` on fields that appear in API docs; constraints inline (`Field(min_length=1, max_length=255)`).
+- Naming: `CreateTodoRequest`, `UpdateTodoRequest`, `TodoResponse`, `TodoModel`.
+
+## FastAPI — Route Handlers
+
+One `APIRouter` per domain with `prefix` and `tags`. Every handler follows the same 3-step contract:
+
+1. `log.set()` with everything known at the start (user, operation, IDs).
+2. Delegate all work to a service function.
+3. `log.set()` again with result IDs, then return `JSONResponse`.
+
+```python
+@router.post("/todos", response_model=TodoResponse, status_code=201)
+async def create_todo(
+    payload: CreateTodoRequest,
+    user: dict = Depends(get_current_user),
+) -> JSONResponse:
+    log.set(user={"id": user["user_id"]}, todo={"operation": "create"})
+    result = await create_todo_service(payload, user)
+    log.set(todo={"id": result["_id"]})
+    return JSONResponse(content=result)
+```
+
+- Always set `response_model=` on the decorator; use correct status codes (`201` create, `204` delete, `404` not found).
+- Never return raw dicts — always `JSONResponse` or a Pydantic response model.
+
+## Service Layer
+
+Services are async module-level functions, not classes.
+
+- No service classes with `__init__`, instance methods, or injected dependencies. If grouping is needed, use a class with `@staticmethod` methods only — never `self`.
+- Services access MongoDB collections directly via `app.db.mongodb.collections` — no repository layer.
+- Keep one-off query logic in the service function where it is used; return domain models, not raw DB documents.
+
+```python
+# wrong
+class TodoService:
+    def __init__(self, db):
+        self.db = db
+    async def get_todo(self, todo_id: str): ...
+
+# correct
+async def get_todo(todo_id: str, user_id: str) -> TodoModel | None:
+    return await todos_collection.find_one({"_id": todo_id, "user_id": user_id})
+```
+
+## Anti-Patterns
+
+- No sync DB/HTTP calls in async endpoints — all I/O must be `async`.
+- No `time.sleep()` — use `asyncio.sleep()`; use `asyncio.gather()` for concurrent independent ops.
+- No global mutable state — pass dependencies explicitly.
+- No monolithic service files spanning multiple domains.
+- No copying logic from `gaia-shared` into app code — import it.
+
 ## Database
 
 | Store          | Used for                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |

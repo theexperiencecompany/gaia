@@ -20,12 +20,19 @@
 import {
   BaseBotAdapter,
   type BotCommand,
+  type BotFileData,
+  buildAuthLinkMessage,
   createBotLogger,
   formatBotError,
+  friendlyMediaError,
   handleStreamingChat,
+  type IncomingMedia,
+  type MediaOutcome,
+  mediaKindFromMime,
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
+  renderForPlatform,
   type SentMessage,
   STREAMING_DEFAULTS,
 } from "@gaia/shared";
@@ -158,6 +165,55 @@ const ROTATING_STATUSES: { type: ActivityType; name: string }[] = [
 
 const STATUS_ROTATION_INTERVAL_MS = 3 * 60 * 1000;
 
+/** A Discord attachment/sticker normalised for the shared media pipeline. */
+interface DiscordExtractedMedia {
+  /** Public CDN URL for the bytes; empty for stickers (never downloaded). */
+  url: string;
+  media: Omit<IncomingMedia, "caption">;
+}
+
+/**
+ * Maps a Discord message's first attachment (or sticker) onto the shared
+ * {@link IncomingMedia} shape, or null when the message carries no media.
+ * Optional chaining keeps it safe against partial test mocks that omit the
+ * `attachments` / `stickers` collections.
+ */
+function extractDiscordMedia(message: Message): DiscordExtractedMedia | null {
+  const attachment = message.attachments?.first?.();
+  if (attachment) {
+    const mimeType = attachment.contentType ?? "application/octet-stream";
+    const kind = mediaKindFromMime(mimeType);
+    return {
+      url: attachment.url,
+      media: {
+        kind,
+        isVoiceNote: message.flags?.has(MessageFlags.IsVoiceMessage) ?? false,
+        mimeType,
+        filename: kind === "document" ? attachment.name : undefined,
+      },
+    };
+  }
+  if ((message.stickers?.size ?? 0) > 0) {
+    return {
+      url: "",
+      media: { kind: "sticker", isVoiceNote: false, mimeType: "image/png" },
+    };
+  }
+  return null;
+}
+
+/** Downloads a Discord attachment from its public CDN URL. */
+async function downloadDiscordAttachment(url: string): Promise<Uint8Array> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw Object.assign(
+      new Error(`Discord attachment download failed (${res.status})`),
+      { status: res.status },
+    );
+  }
+  return new Uint8Array(await res.arrayBuffer());
+}
+
 /**
  * Discord-specific implementation of the GAIA bot adapter.
  *
@@ -169,7 +225,6 @@ export class DiscordAdapter extends BaseBotAdapter {
   protected readonly defaultServerPort = 3200;
   private client!: Client;
   private token!: string;
-  private dmWelcomeSent = new Set<string>();
   private statusRotationTimer: ReturnType<typeof setInterval> | null = null;
   private statusIndex = Math.floor(Math.random() * ROTATING_STATUSES.length);
   private readonly adapterLogger = createBotLogger("discord", "adapter");
@@ -357,15 +412,15 @@ export class DiscordAdapter extends BaseBotAdapter {
     await handleStreamingChat(
       this.gaia,
       { message, platform: "discord", platformUserId: userId, channelId },
-      async (text: string) => {
+      async (content: string) => {
         if (isFirstMessage) {
-          await interaction.editReply({ content: text });
+          await interaction.editReply({ content });
         } else if (lastFollowUp) {
-          await lastFollowUp.edit({ content: text });
+          await lastFollowUp.edit({ content });
         }
       },
-      async (text: string) => {
-        lastFollowUp = await interaction.followUp({ content: text });
+      async (content: string) => {
+        lastFollowUp = await interaction.followUp({ content });
         isFirstMessage = false;
         return async (updatedText: string) => {
           if (lastFollowUp) {
@@ -380,7 +435,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           "To use GAIA, please authenticate first — an ephemeral link has been sent above.";
         try {
           await interaction.user.send(
-            `Please authenticate with GAIA: ${authUrl}`,
+            renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
           );
           if (isFirstMessage) {
             await interaction.editReply({ content: publicContent });
@@ -389,7 +444,10 @@ export class DiscordAdapter extends BaseBotAdapter {
           }
         } catch {
           await interaction.followUp({
-            content: `Please authenticate with GAIA: ${authUrl}`,
+            content: renderForPlatform(
+              buildAuthLinkMessage(authUrl),
+              "discord",
+            ),
             ephemeral: true,
           });
           if (isFirstMessage) {
@@ -436,100 +494,86 @@ export class DiscordAdapter extends BaseBotAdapter {
     }
 
     if (name === "Summarize with GAIA") {
-      let replied = false;
-      await handleStreamingChat(
-        this.gaia,
-        {
-          message: `Summarize the following message in 2-3 concise sentences:\n\n"${content.slice(0, 1000)}"`,
-          platform: "discord",
-          platformUserId: userId,
-          channelId,
-        },
-        async (text: string) => {
-          await interaction.editReply({ content: `**Summary**\n${text}` });
-          replied = true;
-        },
-        async (text: string) => {
-          replied = true;
-          await interaction.editReply({ content: `**Summary**\n${text}` });
-          return async (updated: string) => {
-            await interaction.editReply({ content: `**Summary**\n${updated}` });
-          };
-        },
-        async (authUrl: string) => {
-          try {
-            await interaction.editReply({
-              content: `Please link your GAIA account first: ${authUrl}`,
-            });
-            replied = true;
-          } catch {
-            try {
-              await interaction.user.send(
-                `Please link your GAIA account to use GAIA: ${authUrl}`,
-              );
-              replied = true;
-            } catch {
-              // both deliveries failed — leave replied false so error callback can run
-            }
-          }
-        },
-        async (err: string) => {
-          if (!replied) await interaction.editReply({ content: err });
-        },
-        STREAMING_DEFAULTS.discord,
-        this.analytics,
+      await this.streamContextMenuReply(
+        interaction,
+        userId,
+        channelId,
+        `Summarize the following message in 2-3 concise sentences:\n\n"${content.slice(0, 1000)}"`,
+        "Summary",
       );
       return;
     }
 
     if (name === "Add as Todo") {
-      const title = content.slice(0, 200).replace(/\n/g, " ").trim();
-      let replied = false;
-      await handleStreamingChat(
-        this.gaia,
-        {
-          message: `Add this as a todo item: "${title}"`,
-          platform: "discord",
-          platformUserId: userId,
-          channelId,
-        },
-        async (text: string) => {
-          await interaction.editReply({ content: `**Todo Added**\n${text}` });
-          replied = true;
-        },
-        async (text: string) => {
-          replied = true;
-          await interaction.editReply({ content: `**Todo Added**\n${text}` });
-          return async (updated: string) => {
-            await interaction.editReply({
-              content: `**Todo Added**\n${updated}`,
-            });
-          };
-        },
-        async (authUrl: string) => {
-          try {
-            await interaction.editReply({
-              content: `Please link your GAIA account first: ${authUrl}`,
-            });
-            replied = true;
-          } catch {
-            try {
-              await interaction.user.send(
-                `Please link your GAIA account to use GAIA: ${authUrl}`,
-              );
-              replied = true;
-            } catch {
-              // both deliveries failed — leave replied false so error callback can run
-            }
-          }
-        },
-        async (err: string) => {
-          if (!replied) await interaction.editReply({ content: err });
-        },
-        STREAMING_DEFAULTS.discord,
-        this.analytics,
+      const title = content.slice(0, 200).replaceAll(/\n/g, " ").trim();
+      await this.streamContextMenuReply(
+        interaction,
+        userId,
+        channelId,
+        `Add this as a todo item: "${title}"`,
+        "Todo Added",
       );
     }
+  }
+
+  /**
+   * Streams a context-menu action's reply (Summarize, Add as Todo). Both
+   * actions share the same streaming + auth-fallback wiring; only the prompt
+   * sent to GAIA and the bold header on the reply differ.
+   */
+  private async streamContextMenuReply(
+    interaction: MessageContextMenuCommandInteraction,
+    userId: string,
+    channelId: string,
+    message: string,
+    header: string,
+  ): Promise<void> {
+    let replied = false;
+    await handleStreamingChat(
+      this.gaia,
+      {
+        message,
+        platform: "discord",
+        platformUserId: userId,
+        channelId,
+      },
+      async (text: string) => {
+        await interaction.editReply({ content: `**${header}**\n${text}` });
+        replied = true;
+      },
+      async (text: string) => {
+        replied = true;
+        await interaction.editReply({ content: `**${header}**\n${text}` });
+        return async (updated: string) => {
+          await interaction.editReply({ content: `**${header}**\n${updated}` });
+        };
+      },
+      async (authUrl: string) => {
+        try {
+          await interaction.editReply({
+            content: renderForPlatform(
+              buildAuthLinkMessage(authUrl),
+              "discord",
+            ),
+          });
+          replied = true;
+        } catch {
+          try {
+            await interaction.user.send(
+              renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
+            );
+            replied = true;
+          } catch {
+            // both deliveries failed — leave replied false so error callback can run
+          }
+        }
+      },
+      async (err: string) => {
+        if (!replied) await interaction.editReply({ content: err });
+      },
+      STREAMING_DEFAULTS.discord,
+      this.analytics,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -541,45 +585,86 @@ export class DiscordAdapter extends BaseBotAdapter {
    *
    * Sends a welcome embed to first-time users before processing their message.
    */
+  /**
+   * Resolves any inbound media on a Discord message to a {@link MediaOutcome}
+   * via the shared pipeline, or null when the message carries no media.
+   * Download/upload/transcribe failures are caught and surfaced as a reply.
+   */
+  private async resolveDiscordMedia(
+    message: Message,
+    caption: string,
+    userId: string,
+  ): Promise<MediaOutcome | null> {
+    const extracted = extractDiscordMedia(message);
+    if (!extracted) return null;
+
+    const media: IncomingMedia = {
+      ...extracted.media,
+      caption: caption || undefined,
+    };
+
+    this.adapterLogger.info("media_message_received", {
+      user_id: userId,
+      channel_id: message.channelId,
+      media_kind: media.kind,
+      is_voice_note: media.isVoiceNote,
+    });
+
+    try {
+      return await this.resolveIncomingMedia(
+        media,
+        () => downloadDiscordAttachment(extracted.url),
+        userId,
+        message.channelId,
+      );
+    } catch (err) {
+      this.adapterLogger.error(
+        "media_message_failed",
+        { channel_id: message.channelId, media_kind: media.kind },
+        err,
+      );
+      return {
+        action: "reply",
+        text: friendlyMediaError(media.kind, err, this.gaia.getPricingUrl()),
+      };
+    }
+  }
+
   private async handleDMMessage(message: Message): Promise<void> {
     const userId = message.author.id;
 
-    if (!this.dmWelcomeSent.has(userId)) {
-      this.dmWelcomeSent.add(userId);
+    if (this.shouldSendWelcome(userId)) {
       await this.sendDMWelcome(message);
-    }
-
-    const content = message.content.trim();
-    if (!content) {
-      await (message.channel as { send: (t: string) => Promise<Message> }).send(
-        "How can I help you?",
-      );
-      return;
     }
 
     const send = (text: string) =>
       (message.channel as { send: (t: string) => Promise<Message> }).send(text);
 
+    const caption = message.content.trim();
+    const media = await this.resolveDiscordMedia(message, caption, userId);
+    if (media?.action === "reply") {
+      await send(media.text);
+      return;
+    }
+    const content = media ? media.text : caption;
+    const attachments = media ? media.attachments : [];
+
+    if (!content && attachments.length === 0) {
+      await send("How can I help you?");
+      return;
+    }
+
     try {
       const hasTyping = "sendTyping" in message.channel;
-      if (hasTyping) await message.channel.sendTyping();
-
-      let typingInterval: ReturnType<typeof setInterval> | null = hasTyping
-        ? setInterval(async () => {
-            try {
-              await (
+      const stopTyping = hasTyping
+        ? this.startTypingIndicator(
+            () =>
+              (
                 message.channel as { sendTyping: () => Promise<void> }
-              ).sendTyping();
-            } catch {}
-          }, 8000)
-        : null;
-
-      const clearTyping = () => {
-        if (typingInterval) {
-          clearInterval(typingInterval);
-          typingInterval = null;
-        }
-      };
+              ).sendTyping(),
+            8000,
+          )
+        : () => {};
 
       let currentMsg: Message | null = null;
 
@@ -590,25 +675,34 @@ export class DiscordAdapter extends BaseBotAdapter {
           platform: "discord",
           platformUserId: userId,
           channelId: message.channelId,
+          ...(attachments.length > 0
+            ? {
+                fileIds: attachments.map((a) => a.fileId),
+                fileData: attachments,
+              }
+            : {}),
         },
-        async (text: string) => {
-          clearTyping();
+        async (content: string) => {
+          stopTyping();
           if (!currentMsg) {
-            currentMsg = await send(text);
+            currentMsg = await send(content);
           } else {
-            await currentMsg.edit(text);
+            await currentMsg.edit(content);
           }
         },
-        async (text: string) => {
-          clearTyping();
-          currentMsg = await send(text);
+        async (content: string) => {
+          stopTyping();
+          currentMsg = await send(content);
           return async (updatedText: string) => {
             await currentMsg?.edit(updatedText);
           };
         },
         async (authUrl: string) => {
-          clearTyping();
-          const msg = `Please authenticate first: ${authUrl}`;
+          stopTyping();
+          const msg = renderForPlatform(
+            buildAuthLinkMessage(authUrl),
+            "discord",
+          );
           if (!currentMsg) {
             currentMsg = await send(msg);
           } else {
@@ -616,7 +710,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           }
         },
         async (errMsg: string) => {
-          clearTyping();
+          stopTyping();
           if (!currentMsg) {
             currentMsg = await send(errMsg);
           } else {
@@ -627,7 +721,7 @@ export class DiscordAdapter extends BaseBotAdapter {
         this.analytics,
       );
 
-      clearTyping();
+      stopTyping();
     } catch (error) {
       this.adapterLogger.error(
         "dm_message_processing_failed",
@@ -718,54 +812,107 @@ export class DiscordAdapter extends BaseBotAdapter {
     message: Message,
     botId: string,
   ): Promise<void> {
-    const content = message.content
+    const caption = message.content
       .replace(new RegExp(`<@!?${botId}>`, "g"), "")
       .trim();
 
-    if (!content) {
+    const send = this.createMentionSender(message);
+
+    const media = await this.resolveDiscordMedia(
+      message,
+      caption,
+      message.author.id,
+    );
+    if (media?.action === "reply") {
+      await send(media.text);
+      return;
+    }
+
+    const content = media ? media.text : caption;
+    const attachments = media ? media.attachments : [];
+
+    if (!content && attachments.length === 0) {
       await message.reply("How can I help you?");
       return;
     }
 
+    await this.streamMentionReply(message, send, content, attachments);
+  }
+
+  /**
+   * Builds the reply sender for a mention: DMs send to the channel directly,
+   * guild channels reply to the triggering message.
+   */
+  private createMentionSender(
+    message: Message,
+  ): (text: string) => Promise<Message> {
     const isDM = !message.guild;
-    const send = isDM
+    return isDM
       ? (text: string) =>
           (message.channel as { send: (t: string) => Promise<Message> }).send(
             text,
           )
       : (text: string) => message.reply(text);
+  }
 
+  /**
+   * Starts the typing indicator when the channel supports it, returning a
+   * stop function (a no-op when typing is unavailable).
+   */
+  private startMentionTyping(message: Message): () => void {
+    if (!("sendTyping" in message.channel)) return () => {};
+    return this.startTypingIndicator(
+      () =>
+        (message.channel as { sendTyping: () => Promise<void> }).sendTyping(),
+      8000,
+    );
+  }
+
+  /**
+   * Sends the "link your account" prompt for a mention: DM-first, with a
+   * public fallback when the user's DMs are closed.
+   */
+  private async sendMentionAuthPrompt(
+    message: Message,
+    send: (text: string) => Promise<Message>,
+    authUrl: string,
+  ): Promise<void> {
+    let dmSent = false;
     try {
-      const hasTyping = "sendTyping" in message.channel;
-      if (hasTyping) {
-        await message.channel.sendTyping();
-      }
+      await message.author.send(
+        renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
+      );
+      dmSent = true;
+    } catch {
+      // DM failed — public message below will instruct the user
+    }
+    await send(
+      dmSent
+        ? "To use GAIA here, please link your account — check your DMs for the link."
+        : "To use GAIA here, please link your account. Enable DMs from server members and try again, or use /auth in a private message.",
+    );
+  }
 
-      let typingInterval: ReturnType<typeof setInterval> | null = hasTyping
-        ? setInterval(async () => {
-            try {
-              await (
-                message.channel as { sendTyping: () => Promise<void> }
-              ).sendTyping();
-            } catch {}
-          }, 8000)
-        : null;
-
-      const clearTyping = () => {
-        if (typingInterval) {
-          clearInterval(typingInterval);
-          typingInterval = null;
-        }
-      };
-
+  /**
+   * Streams a GAIA chat turn back to a Discord mention/DM, managing the
+   * typing indicator and incremental message edits.
+   */
+  private async streamMentionReply(
+    message: Message,
+    send: (text: string) => Promise<Message>,
+    content: string,
+    attachments: BotFileData[],
+  ): Promise<void> {
+    try {
+      const stopTyping = this.startMentionTyping(message);
       let currentMsg: Message | null = null;
 
       const sendOrEdit = async (text: string) => {
-        clearTyping();
-        if (!currentMsg) {
-          currentMsg = await send(text);
-        } else {
+        stopTyping();
+        if (currentMsg) {
           await currentMsg.edit(text);
+        } else {
+          currentMsg = await send(text);
         }
       };
 
@@ -776,41 +923,34 @@ export class DiscordAdapter extends BaseBotAdapter {
           platform: "discord",
           platformUserId: message.author.id,
           channelId: message.channelId,
+          ...(attachments.length > 0
+            ? {
+                fileIds: attachments.map((a) => a.fileId),
+                fileData: attachments,
+              }
+            : {}),
         },
         sendOrEdit,
         async (text: string) => {
-          clearTyping();
+          stopTyping();
           currentMsg = await send(text);
           return async (updatedText: string) => {
             await currentMsg?.edit(updatedText);
           };
         },
         async (authUrl: string) => {
-          clearTyping();
-          let dmSent = false;
-          try {
-            await message.author.send(
-              `Please link your GAIA account to use me here: ${authUrl}`,
-            );
-            dmSent = true;
-          } catch {
-            // DM failed — public message below will instruct the user
-          }
-          await send(
-            dmSent
-              ? "To use GAIA here, please link your account — check your DMs for the link."
-              : "To use GAIA here, please link your account. Enable DMs from server members and try again, or use /auth in a private message.",
-          );
+          stopTyping();
+          await this.sendMentionAuthPrompt(message, send, authUrl);
         },
         async (errMsg: string) => {
-          clearTyping();
+          stopTyping();
           await sendOrEdit(errMsg);
         },
         STREAMING_DEFAULTS.discord,
         this.analytics,
       );
 
-      clearTyping();
+      stopTyping();
     } catch (error) {
       this.adapterLogger.error(
         "mention_message_processing_failed",
@@ -861,22 +1001,30 @@ export class DiscordAdapter extends BaseBotAdapter {
 
       send: async (text: string): Promise<SentMessage> => {
         await deferIfNeeded(false);
-        await interaction.editReply({ content: text });
+        await interaction.editReply({
+          content: renderForPlatform(text, "discord"),
+        });
         return {
           id: interaction.id,
           edit: async (t: string) => {
-            await interaction.editReply({ content: t });
+            await interaction.editReply({
+              content: renderForPlatform(t, "discord"),
+            });
           },
         };
       },
 
       sendEphemeral: async (text: string): Promise<SentMessage> => {
         await deferIfNeeded(true);
-        await interaction.editReply({ content: text });
+        await interaction.editReply({
+          content: renderForPlatform(text, "discord"),
+        });
         return {
           id: interaction.id,
           edit: async (t: string) => {
-            await interaction.editReply({ content: t });
+            await interaction.editReply({
+              content: renderForPlatform(t, "discord"),
+            });
           },
         };
       },
@@ -888,7 +1036,10 @@ export class DiscordAdapter extends BaseBotAdapter {
         return {
           id: interaction.id,
           edit: async (t: string) => {
-            await interaction.editReply({ content: t, embeds: [] });
+            await interaction.editReply({
+              content: renderForPlatform(t, "discord"),
+              embeds: [],
+            });
           },
         };
       },

@@ -146,7 +146,16 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
         log.info(f"Added {len(custom_tools)} tools from custom MCP {integration_id}")
         seen_integrations.add(integration_id)
 
-    if global_mcp_tools:
+    # SECURITY: global_mcp_tools is keyed by integration_id only — it holds
+    # the tool metadata that ANY user has ever discovered for that MCP server.
+    # Merging the whole dict into an authenticated user's response leaks
+    # integrations (and their tools) that the current user has not connected
+    # — e.g. User A connects DodoPayments and User B sees DodoPayments tools
+    # in their slash-command dropdown. Only expose the global list to
+    # anonymous/marketplace callers (user_id is None). For authenticated
+    # users, tools are already restricted to their connected integrations
+    # via the custom_integrations loop above.
+    if global_mcp_tools and user_id is None:
         for integration_id, data in global_mcp_tools.items():
             if integration_id in seen_integrations:
                 continue

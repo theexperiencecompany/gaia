@@ -333,7 +333,12 @@ class TriggerHandler(ABC):
         workflows = await self.find_workflows(event_type, trigger_id or "", data)
 
         if not workflows:
-            log.info(f"No matching workflows for event: {event_type}")
+            log.info(
+                "trigger_no_matching_workflows",
+                outcome="no_match",
+                event_type=event_type,
+                trigger_id=trigger_id,
+            )
             return {"status": "success", "message": "No matching workflows"}
 
         # Queue execution for each matching workflow.
@@ -345,7 +350,11 @@ class TriggerHandler(ABC):
         for workflow in workflows:
             try:
                 if workflow.id is None:
-                    log.error("Workflow has no id, skipping")
+                    log.error(
+                        "trigger_workflow_missing_id",
+                        event_type=event_type,
+                        trigger_id=trigger_id,
+                    )
                     continue
                 # Enrich context with tracked todos for signal matching
                 context: dict[str, Any] = {"trigger_data": data}
@@ -371,9 +380,24 @@ class TriggerHandler(ABC):
                     context=context,
                 )
                 queued_count += 1
-                log.info(f"Queued workflow {workflow.id} for event {event_type}")
+                log.info(
+                    "trigger_workflow_queued",
+                    workflow_id=workflow.id,
+                    user_id=workflow.user_id,
+                    event_type=event_type,
+                    trigger_id=trigger_id,
+                )
             except Exception as e:
-                log.error(f"Failed to queue workflow {workflow.id}: {e}")
+                log.error(
+                    "trigger_workflow_queue_failed",
+                    workflow_id=workflow.id,
+                    user_id=workflow.user_id,
+                    event_type=event_type,
+                    trigger_id=trigger_id,
+                    error_type=type(e).__name__,
+                    error=str(e),
+                    exc_info=True,
+                )
 
         return {
             "status": "success",

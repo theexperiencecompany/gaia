@@ -486,25 +486,52 @@ class ChromaStore(BaseStore):
     ) -> None:
         """Apply put operations to ChromaDB in parallel."""
         tasks = []
+        doc_ids: list[str] = []
 
         for (namespace, key), op in put_ops.items():
             doc_id = self._namespace_to_id(namespace, key)
+            doc_ids.append(doc_id)
 
             if op.value is None:
                 tasks.append(self._delete_item(doc_id, collection))
             else:
                 tasks.append(self._upsert_item(doc_id, op, collection))
 
-        # Execute all operations in parallel
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        if not tasks:
+            return
+
+        # return_exceptions=True keeps one bad doc from killing the batch, but
+        # silently swallows every failure. Surface them so we don't end up with
+        # an indexing pass that "succeeded" yet wrote zero rows (the PostHog
+        # case — 336 tools "indexed", 0 in ChromaDB, no errors anywhere).
+        results: list[None | BaseException] = await asyncio.gather(*tasks, return_exceptions=True)
+        failures: list[tuple[str, BaseException]] = [
+            (d, r) for d, r in zip(doc_ids, results) if isinstance(r, BaseException)
+        ]
+        succeeded = len(results) - len(failures)
+        log.info(
+            f"_apply_put_ops completed: total={len(results)} succeeded={succeeded} "
+            f"failed={len(failures)}"
+        )
+        if failures:
+            # Show up to 3 distinct exception classes to make patterns obvious.
+            sample = failures[: min(3, len(failures))]
+            for d, exc in sample:
+                log.error(f"_apply_put_ops failure doc_id={d}: {type(exc).__name__}: {exc}")
 
     async def _delete_item(self, doc_id: str, collection: AsyncCollection) -> None:
-        """Delete a single item."""
+        """Delete a single item.
+
+        Re-raises so the caller's asyncio.gather(return_exceptions=True) can
+        count the failure. Previously this swallowed the exception and made
+        _apply_put_ops's failure tally meaningless (succeeded count == total
+        regardless of actual ChromaDB rejections).
+        """
         try:
             await collection.delete(ids=[doc_id])
         except Exception as e:
-            log.error(f"Error deleting item {doc_id}: {e}")
+            log.error(f"Error deleting item {doc_id}: {type(e).__name__}: {e}")
+            raise
 
     async def _upsert_item(self, doc_id: str, op: PutOp, collection: AsyncCollection) -> None:
         """Upsert a single item."""
@@ -544,7 +571,15 @@ class ChromaStore(BaseStore):
                 if field_texts:
                     texts.extend(field_texts)
             if texts:
-                embedding = await self.embeddings.aembed_query(" ".join(texts))
+                try:
+                    embedding = await self.embeddings.aembed_query(" ".join(texts))
+                except Exception as embed_err:
+                    log.error(
+                        f"_upsert_item embedding failed for doc_id={doc_id} "
+                        f"ns={namespace_str} text_len={sum(len(t) for t in texts)}: "
+                        f"{type(embed_err).__name__}: {embed_err}"
+                    )
+                    raise
 
         try:
             await collection.upsert(
@@ -554,7 +589,11 @@ class ChromaStore(BaseStore):
                 documents=[document],
             )
         except Exception as e:
-            log.error(f"Error upserting item {doc_id}: {e}")
+            # Re-raise so _apply_put_ops's failure count is accurate.
+            log.error(
+                f"Error upserting item {doc_id} (ns={namespace_str}): {type(e).__name__}: {e}"
+            )
+            raise
 
     async def _handle_list_namespaces(
         self, op: ListNamespacesOp, collection: AsyncCollection

@@ -126,6 +126,9 @@ importers:
         specifier: workspace:*
         version: link:../../libs/shared/ts
     devDependencies:
+      '@grammyjs/types':
+        specifier: ^3.23.0
+        version: 3.23.0
       vite:
         specifier: ^7.3.2
         version: 7.3.3(@types/node@25.2.2)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.30.2)(sass-embedded@1.96.0)(sass@1.96.0)(terser@5.44.1)(tsx@4.22.3)(yaml@2.8.2)
@@ -186,7 +189,7 @@ importers:
         specifier: workspace:*
         version: link:../../../libs/shared/ts
       '@grammyjs/types':
-        specifier: ^3.0.0
+        specifier: ^3.23.0
         version: 3.23.0
       grammy:
         specifier: ^1.30.0
@@ -16589,6 +16592,7 @@ packages:
   recharts@2.15.4:
     resolution: {integrity: sha512-UT/q6fwS3c1dHbXv2uFgYJ9BMFHu3fwnd7AYZaEQhXuYQ4hgsxLvsUXzGdKeZrW5xopzDCvuA2N41WJ88I7zIw==}
     engines: {node: '>=14'}
+    deprecated: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
     peerDependencies:
       react: 19.1.0
       react-dom: 19.1.0

@@ -44,22 +44,33 @@ vi.mock("@slack/bolt", () => ({
 
 vi.mock("@gaia/shared", async () => {
   const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
-  return makeGaiaSharedMock("slack", {
+  const base = makeGaiaSharedMock("slack", {
     streamingDefaults: {
       slack: { editIntervalMs: 1500, streaming: true, platform: "slack" },
     },
-    converters: {
-      convertToSlackMrkdwn: vi.fn((text: string) => text),
-    },
     defaultRichMarkdown: "## Rich Title\nBody text",
   });
+  // The Slack adapter lifts the first token of subcommand-style commands
+  // into args.subcommand; every other command gets `{}`.
+  // Mirror the real extractSubcommandArgs so dispatched args match production.
+  const SUBCOMMAND_COMMANDS = new Set(["todo", "workflow"]);
+  return {
+    ...base,
+    extractSubcommandArgs: vi.fn(
+      (commandName: string, rawText: string | undefined) => {
+        if (!SUBCOMMAND_COMMANDS.has(commandName)) return {};
+        const subcommand = (rawText ?? "").trim().split(/\s+/)[0] || "list";
+        return { subcommand };
+      },
+    ),
+  };
 });
 
 // ---------------------------------------------------------------------------
 // Import adapter after mocks are in place
 // ---------------------------------------------------------------------------
 
-import { convertToSlackMrkdwn, handleStreamingChat } from "@gaia/shared";
+import { handleStreamingChat } from "@gaia/shared";
 import { SlackAdapter } from "../../slack/src/adapter";
 
 // ---------------------------------------------------------------------------
@@ -135,9 +146,11 @@ describe("SlackAdapter - createCommandTarget.send", () => {
 
     const sent = await target.send("Hello world");
 
+    // renderForPlatform is mocked as identity, so the adapter forwards raw text.
+    // The real Slack conversion is covered by the shared formatters tests.
     expect(client.chat.postMessage).toHaveBeenCalledWith({
       channel: "C456",
-      text: convertToSlackMrkdwn("Hello world"),
+      text: "Hello world",
     });
     expect(sent.id).toBe("ts-abc");
 
@@ -146,7 +159,7 @@ describe("SlackAdapter - createCommandTarget.send", () => {
     expect(client.chat.update).toHaveBeenCalledWith({
       channel: "C456",
       ts: "ts-abc",
-      text: convertToSlackMrkdwn("Updated text"),
+      text: "Updated text",
     });
   });
 
@@ -195,8 +208,9 @@ describe("SlackAdapter - createCommandTarget.sendEphemeral", () => {
 
     const sent = await target.sendEphemeral("Only you can see this");
 
+    // renderForPlatform mocked as identity → adapter forwards raw text.
     expect(respond).toHaveBeenCalledWith({
-      text: convertToSlackMrkdwn("Only you can see this"),
+      text: "Only you can see this",
       response_type: "ephemeral",
     });
     expect(sent.id).toBe("ephemeral");
@@ -390,7 +404,7 @@ describe("SlackAdapter - handleSlackStreaming", () => {
 // ---------------------------------------------------------------------------
 
 describe("SlackAdapter - handleSlackStreaming streaming callbacks", () => {
-  it("the editMessage callback calls client.chat.update with converted text", async () => {
+  it("the editMessage callback calls client.chat.update with the text it receives", async () => {
     vi.clearAllMocks();
     const adapter = new SlackAdapter();
     const client = makeSlackClient("ts-edit");
@@ -417,12 +431,14 @@ describe("SlackAdapter - handleSlackStreaming streaming callbacks", () => {
 
     expect(capturedEditMessage).toBeDefined();
 
+    // Conversion now happens inside handleStreamingChat (mocked here), so the
+    // adapter callback forwards whatever text it is given straight to chat.update.
     await capturedEditMessage!("Streamed response text");
 
     expect(client.chat.update).toHaveBeenCalledWith({
       channel: "C789",
       ts: "ts-edit",
-      text: convertToSlackMrkdwn("Streamed response text"),
+      text: "Streamed response text",
     });
   });
 });
@@ -432,20 +448,28 @@ describe("SlackAdapter - handleSlackStreaming streaming callbacks", () => {
 // ---------------------------------------------------------------------------
 
 describe("SlackAdapter - ACK timing in registerCommands", () => {
-  it("registers a Bolt command handler that acks before doing any work", async () => {
+  it("acks immediately and dispatches the command with subcommand args", async () => {
     vi.clearAllMocks();
     const adapter = new SlackAdapter();
 
     // Give adapter a mock app
     (adapter as unknown as { app: typeof mockApp }).app = { ...mockApp };
 
-    const executeMock = vi.fn().mockResolvedValue(undefined);
+    // Spy on the base dispatch so we can assert the args object that the
+    // adapter derives from the raw slash-command text reaches it.
+    const dispatchSpy = vi
+      .spyOn(
+        adapter as unknown as { dispatchCommand: () => Promise<void> },
+        "dispatchCommand",
+      )
+      .mockResolvedValue(undefined);
+
     const commands = [
       {
         name: "todo",
         description: "Manage todos",
         options: [],
-        execute: executeMock,
+        execute: vi.fn().mockResolvedValue(undefined),
       },
     ];
 
@@ -479,7 +503,7 @@ describe("SlackAdapter - ACK timing in registerCommands", () => {
       command: {
         user_id: "U1",
         channel_id: "C1",
-        text: "list",
+        text: "add buy milk",
         user_name: "alice",
       },
       ack,
@@ -487,7 +511,77 @@ describe("SlackAdapter - ACK timing in registerCommands", () => {
       client,
     });
 
+    // Slack's 3-second rule: ack() fires before any other work.
     expect(ack).toHaveBeenCalledOnce();
+
+    // The first token of a subcommand command becomes args.subcommand,
+    // and the raw text is forwarded so the command can parse the remainder.
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      "todo",
+      expect.objectContaining({ platform: "slack", userId: "U1" }),
+      { subcommand: "add" },
+      "add buy milk",
+    );
+  });
+
+  it("dispatches a non-subcommand command with an empty args object", async () => {
+    vi.clearAllMocks();
+    const adapter = new SlackAdapter();
+    (adapter as unknown as { app: typeof mockApp }).app = { ...mockApp };
+
+    const dispatchSpy = vi
+      .spyOn(
+        adapter as unknown as { dispatchCommand: () => Promise<void> },
+        "dispatchCommand",
+      )
+      .mockResolvedValue(undefined);
+
+    const commands = [
+      {
+        name: "help",
+        description: "Show help",
+        options: [],
+        execute: vi.fn().mockResolvedValue(undefined),
+      },
+    ];
+
+    await (
+      adapter as unknown as {
+        registerCommands: (cmds: typeof commands) => Promise<void>;
+      }
+    ).registerCommands(commands);
+
+    const handlerFn = vi.mocked(mockApp.command).mock.calls[0][1] as (args: {
+      command: {
+        user_id: string;
+        channel_id: string;
+        text: string;
+        user_name: string;
+      };
+      ack: () => Promise<void>;
+      respond: () => Promise<void>;
+      client: ReturnType<typeof makeSlackClient>;
+    }) => Promise<void>;
+
+    await handlerFn({
+      command: {
+        user_id: "U1",
+        channel_id: "C1",
+        text: "",
+        user_name: "alice",
+      },
+      ack: vi.fn().mockResolvedValue(undefined),
+      respond: makeRespondFn(),
+      client: makeSlackClient(),
+    });
+
+    // `help` is not a subcommand command, so it dispatches with empty args.
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      "help",
+      expect.objectContaining({ platform: "slack", userId: "U1" }),
+      {},
+      undefined,
+    );
   });
 });
 
@@ -538,8 +632,26 @@ describe("SlackAdapter - /gaia command with no message", () => {
 // registerEvents — app_mention strips bot mention, skips empty content
 // ---------------------------------------------------------------------------
 
+// Boots a SlackAdapter with a mock gaia + app and runs registerEvents so the
+// event/message handlers are registered. Shared by the app_mention and DM
+// describes, which differ only in which handler they pull off the mock.
+async function bootSlackWithEvents() {
+  vi.clearAllMocks();
+  const adapter = new SlackAdapter();
+  // boot() is not called in tests; inject a mock gaia so this.gaia !== undefined
+  (adapter as unknown as { gaia: object }).gaia = {};
+
+  const appMock = { ...mockApp, event: vi.fn(), message: vi.fn() };
+  (adapter as unknown as { app: typeof appMock }).app = appMock;
+
+  await (
+    adapter as unknown as { registerEvents: () => Promise<void> }
+  ).registerEvents();
+
+  return { adapter, appMock };
+}
+
 describe("SlackAdapter - app_mention event handling", () => {
-  let adapter: SlackAdapter;
   let mentionHandler: (args: {
     event: { text: string; user: string; channel: string };
     client: ReturnType<typeof makeSlackClient>;
@@ -547,20 +659,9 @@ describe("SlackAdapter - app_mention event handling", () => {
   }) => Promise<void>;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
-    adapter = new SlackAdapter();
-    // boot() is not called in tests; inject a mock gaia so this.gaia !== undefined
-    (adapter as unknown as { gaia: object }).gaia = {};
-
-    const appMock = { ...mockApp, event: vi.fn(), message: vi.fn() };
-    (adapter as unknown as { app: typeof appMock }).app = appMock;
-
-    await (
-      adapter as unknown as { registerEvents: () => Promise<void> }
-    ).registerEvents();
-
+    const booted = await bootSlackWithEvents();
     // The first event() call registers app_mention
-    mentionHandler = vi.mocked(appMock.event).mock
+    mentionHandler = vi.mocked(booted.appMock.event).mock
       .calls[0][1] as typeof mentionHandler;
   });
 
@@ -631,7 +732,6 @@ describe("SlackAdapter - app_mention event handling", () => {
 // ---------------------------------------------------------------------------
 
 describe("SlackAdapter - DM message event handling", () => {
-  let adapter: SlackAdapter;
   let dmHandler: (args: {
     message: {
       text?: string;
@@ -644,20 +744,10 @@ describe("SlackAdapter - DM message event handling", () => {
   }) => Promise<void>;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
-    adapter = new SlackAdapter();
-    // boot() is not called in tests; inject a mock gaia so this.gaia !== undefined
-    (adapter as unknown as { gaia: object }).gaia = {};
-
-    const appMock = { ...mockApp, event: vi.fn(), message: vi.fn() };
-    (adapter as unknown as { app: typeof appMock }).app = appMock;
-
-    await (
-      adapter as unknown as { registerEvents: () => Promise<void> }
-    ).registerEvents();
-
+    const booted = await bootSlackWithEvents();
     // The message() call registers the DM handler
-    dmHandler = vi.mocked(appMock.message).mock.calls[0][0] as typeof dmHandler;
+    dmHandler = vi.mocked(booted.appMock.message).mock
+      .calls[0][0] as typeof dmHandler;
   });
 
   it("streams for valid IM message", async () => {

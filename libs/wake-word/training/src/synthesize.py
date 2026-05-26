@@ -353,7 +353,8 @@ def _load_audio_pool(directory: Path | None) -> list[np.ndarray]:
             if sr != TARGET_SR:
                 samples = librosa.resample(samples, orig_sr=sr, target_sr=TARGET_SR)
             pool.append(samples.astype(np.float32))
-        except Exception:
+        except Exception as exc:
+            print(f"  skip {path.name}: {exc}")
             continue
     return pool
 

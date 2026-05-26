@@ -187,7 +187,8 @@ async def call_executor(
         log.warning("Rate limit exceeded for executor task", feature=feature)
         return (
             f"Rate limit exceeded for {feature or 'this feature'}. "
-            "The user has been shown an upgrade prompt."
+            "The user has already been notified of this limit; "
+            "acknowledge briefly without repeating the limit details."
         )
     except Exception as e:  # noqa: BLE001
         log.error("Error dispatching executor", error=str(e))

@@ -139,7 +139,13 @@ class RedisCache:
                 return deserialize_any(value, model)
             return None
         except Exception as e:
-            log.error(f"Error accessing Redis for key {key}: {e}")
+            log.error(
+                "redis_op_failed",
+                op="get",
+                key=key,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
             return None
 
     async def set(self, key: str, value: Any, ttl: int = 3600, model: type | None = None):
@@ -169,7 +175,14 @@ class RedisCache:
             json_str = serialize_any(value, model)
             await self.redis.setex(key, ttl, json_str)
         except Exception as e:
-            log.error(f"Error setting Redis key {key}: {e}")
+            log.error(
+                "redis_op_failed",
+                op="set",
+                key=key,
+                ttl=ttl,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
 
     async def delete(self, key: str):
         """
@@ -183,7 +196,13 @@ class RedisCache:
             await self.redis.delete(key)
             log.info(f"Cache deleted for key: {key}")
         except Exception as e:
-            log.error(f"Error deleting Redis key {key}: {e}")
+            log.error(
+                "redis_op_failed",
+                op="delete",
+                key=key,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
 
     @property
     def client(self):

@@ -225,20 +225,43 @@ async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledSta
         # Fast path: connect ONLY the needed integration instead of all
         if subagent.id in mcp_client._tools:
             tools = mcp_client._tools[subagent.id]
+            log.info(
+                f"_build_user_subagent: integration={integration_id} user={user_id} "
+                f"using cached in-memory tools ({len(tools)})"
+            )
         else:
             try:
                 tools = await mcp_client.connect(subagent.id)
+                log.info(
+                    f"_build_user_subagent: integration={integration_id} user={user_id} "
+                    f"connected MCP, got {len(tools)} tools"
+                )
             except Exception as e:
-                log.error(f"Failed to get MCP tools for {integration_id}: {e}")
+                log.error(
+                    f"_build_user_subagent: integration={integration_id} user={user_id} "
+                    f"connect FAILED: {type(e).__name__}: {e}"
+                )
                 return None
 
         if not tools:
-            log.error(f"No tools available for {integration_id}")
+            log.error(
+                f"_build_user_subagent: integration={integration_id} user={user_id} "
+                f"got 0 tools — cannot create subagent"
+            )
             return None
 
         # Background: warm up other integrations for future handoffs
         asyncio.create_task(mcp_client.get_all_connected_tools())
 
+        log.set(
+            subagent_register={
+                "integration_id": integration_id,
+                "user_id": user_id,
+                "category_name": category_name,
+                "tool_space": config.tool_space,
+                "tools_count": len(tools),
+            }
+        )
         tool_registry._add_category(
             name=category_name,
             tools=tools,
@@ -246,7 +269,11 @@ async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledSta
             integration_name=subagent.id,
         )
         await tool_registry._index_category_tools(category_name)
-        log.info(f"Registered {len(tools)} user-specific MCP tools for {integration_id}")
+        log.info(
+            f"_build_user_subagent: registered {len(tools)} user-specific MCP tools "
+            f"for {integration_id} user={user_id} category={category_name} "
+            f"space={config.tool_space}"
+        )
 
     llm = init_llm()
 

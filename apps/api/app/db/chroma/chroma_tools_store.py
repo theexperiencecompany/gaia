@@ -270,14 +270,42 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
     Args:
         tools_with_space: List of (tool, space_name) tuples to index
     """
+    input_count = len(tools_with_space)
+    namespace = tools_with_space[0][1] if tools_with_space else None
+
+    log.set(
+        chroma_index={
+            "phase": "entry",
+            "namespace": namespace,
+            "input_tool_count": input_count,
+        }
+    )
+    log.info(f"index_tools_to_store called: namespace='{namespace}' input_tools={input_count}")
 
     if not tools_with_space:
+        log.warning(
+            "index_tools_to_store called with EMPTY tools_with_space — caller "
+            "passed [], no indexing will occur. Verify category.tools is populated."
+        )
         return
 
-    namespace = tools_with_space[0][1]
+    # Function assumes a homogeneous namespace (used as the cache key and for
+    # diff scoping). Mixed namespaces would silently corrupt indexing for all
+    # but the first one. Reject and surface the caller bug.
+    distinct_namespaces = {space for _, space in tools_with_space}
+    if len(distinct_namespaces) > 1:
+        log.error(
+            f"index_tools_to_store: mixed namespaces in single call "
+            f"({sorted(distinct_namespaces)}); aborting to prevent partial indexing. "
+            f"Caller must batch per-namespace."
+        )
+        return
 
     if not namespace or len(namespace) > 512 or "::" in namespace:
-        log.error(f"Invalid namespace: '{namespace}' (empty, too long, or contains ::)")
+        log.error(
+            f"index_tools_to_store: invalid namespace '{namespace}' "
+            f"(empty/too-long/contains-::), aborting"
+        )
         return
 
     # Compute hash of incoming tools for cache check
@@ -285,18 +313,25 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
         f"{t.name}:{getattr(t, 'description', '')[:200]}" for t, _ in tools_with_space
     )
     tools_hash = hashlib.sha256(tools_signature.encode()).hexdigest()[:16]
+    log.set(chroma_index={"tools_hash": tools_hash})
 
     # Check Redis cache BEFORE expensive ChromaDB operations
     # Single source of truth for cache keys: always namespace-based
     cache_key = f"chroma:indexed:{namespace}"
     cached_hash = await get_cache(cache_key)
     if cached_hash == tools_hash:
-        log.debug(f"Namespace '{namespace}' unchanged (Redis cache hit)")
+        log.info(
+            f"index_tools_to_store: namespace '{namespace}' Redis cache HIT "
+            f"(hash={tools_hash}), skipping reindex of {input_count} tools"
+        )
         return
 
     store = await providers.aget("chroma_tools_store")
     if store is None:
-        log.warning("ChromaDB store not available, skipping tool indexing")
+        log.warning(
+            f"index_tools_to_store: chroma_tools_store provider returned None "
+            f"for namespace '{namespace}', skipping {input_count} tools"
+        )
         return
 
     collection = await store._get_collection()
@@ -310,20 +345,31 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
             "namespace": space,
             "tool": tool,
         }
+    log.info(
+        f"index_tools_to_store: built current_tools dict for '{namespace}': "
+        f"{len(current_tools)} unique composite keys from {input_count} inputs"
+    )
 
     existing_tools = await _get_existing_tools_from_chroma(collection, {namespace})
+    log.info(
+        f"index_tools_to_store: fetched {len(existing_tools)} existing docs "
+        f"for namespace '{namespace}'"
+    )
 
     tools_to_upsert, tools_to_delete = _compute_tool_diff(current_tools, existing_tools)
 
     if not tools_to_upsert and not tools_to_delete:
-        log.info(f"Namespace '{namespace}' is up-to-date, no changes needed")
+        log.info(
+            f"index_tools_to_store: namespace '{namespace}' is up-to-date "
+            f"({len(current_tools)} tools, no diff)"
+        )
         # Cache the hash even if no changes (first time seeing this namespace)
         await set_cache(cache_key, tools_hash, ttl=86400)
         return
 
     log.info(
-        f"Updating namespace '{namespace}': {len(tools_to_upsert)} to upsert, "
-        f"{len(tools_to_delete)} to delete"
+        f"index_tools_to_store: Updating namespace '{namespace}': "
+        f"{len(tools_to_upsert)} to upsert, {len(tools_to_delete)} to delete"
     )
 
     put_ops = _build_put_operations(tools_to_upsert, tools_to_delete)
@@ -331,6 +377,7 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
 
     # Cache the hash after successful indexing (24 hour TTL)
     await set_cache(cache_key, tools_hash, ttl=86400)
+    log.info(f"index_tools_to_store: completed namespace '{namespace}', cache key set")
 
 
 async def delete_tools_by_namespace(namespace: str) -> int:

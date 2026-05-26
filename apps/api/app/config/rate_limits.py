@@ -65,6 +65,14 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         pro=RateLimitConfig(day=150, month=4500),  # +50%
         info=FeatureInfo(title="File Analysis", description="Analyze and process uploaded files"),
     ),
+    "audio_transcription": TieredRateLimits(
+        free=RateLimitConfig(day=5, month=20),
+        pro=RateLimitConfig(day=200, month=6000),
+        info=FeatureInfo(
+            title="Audio Transcription",
+            description="Transcribe voice notes and audio clips to text",
+        ),
+    ),
     # SKILLS
     "skill_operations": TieredRateLimits(
         free=RateLimitConfig(day=5, month=20),
