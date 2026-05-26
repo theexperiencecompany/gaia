@@ -461,15 +461,13 @@ def register_subagent_providers(integration_ids: list[str] | None = None) -> int
         # mypy can't solve TypeVar T on the Union loader signature
         # against a concrete async function; cast keeps the loader's
         # actual return type while satisfying the registry overload.
+        # Subagents are always built lazily on first handoff so we never
+        # materialize the whole ~1.6k-tool Composio catalog into memory at
+        # startup; a process only ever holds the providers it actually uses.
         providers.register(
             name=agent_name,
             loader_func=_make_subagent_loader(subagent),  # type: ignore[arg-type]
             required_keys=[],
-            # Build lazily on first handoff. Warming a subagent materializes its
-            # provider's Composio tools (a Pydantic StructuredTool per tool); the
-            # eager warmup of all subagents is what kept the whole ~1.6k-tool
-            # catalog resident. A process only needs the providers it actually uses.
-            warmup=False,
         )
         registered_count += 1
 

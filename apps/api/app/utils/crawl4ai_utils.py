@@ -1,44 +1,18 @@
 import asyncio
 from collections import defaultdict, deque
 from collections.abc import Sequence
-import os
 from urllib.parse import urlsplit, urlunsplit
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
 
+from app.config.settings import settings
 from app.constants.search import CRAWL4AI_WAIT_UNTIL
 from shared.py.wide_events import log
 
-# Process-wide cap on concurrent headless-browser instances.
-#
-# crawl4ai launches a Chromium per ``AsyncWebCrawler`` context; with the worker
-# running up to ``max_jobs`` crawl jobs (and each profile crawl opening its own
-# crawler per URL), unbounded concurrency means dozens of Chromium processes at
-# 150-400MB each — the dominant worker memory spike. This single gate bounds the
-# number of live browsers across the whole process regardless of caller count.
-_DEFAULT_MAX_CONCURRENT_BROWSERS = 2
-
-
-def _parse_max_browsers() -> int:
-    """Parse ``CRAWL4AI_MAX_BROWSERS`` safely.
-
-    A bad value must not crash import, and ``0``/negative must not deadlock all
-    crawler access — clamp to a minimum of 1.
-    """
-    raw = os.getenv("CRAWL4AI_MAX_BROWSERS")
-    if raw is None:
-        return _DEFAULT_MAX_CONCURRENT_BROWSERS
-    try:
-        return max(1, int(raw))
-    except ValueError:
-        log.warning(
-            f"Invalid CRAWL4AI_MAX_BROWSERS={raw!r}; "
-            f"falling back to {_DEFAULT_MAX_CONCURRENT_BROWSERS}"
-        )
-        return _DEFAULT_MAX_CONCURRENT_BROWSERS
-
-
-_MAX_CONCURRENT_BROWSERS = _parse_max_browsers()
+# Shared semaphore binding for the process-wide browser concurrency cap. The
+# limit itself is sourced from ``settings.CRAWL4AI_MAX_BROWSERS`` (env-driven,
+# already clamped to a safe minimum); see ``constants/search.py`` for context
+# on why the cap exists.
 _browser_semaphore: asyncio.Semaphore | None = None
 _browser_semaphore_loop: asyncio.AbstractEventLoop | None = None
 
@@ -54,7 +28,7 @@ def get_browser_semaphore() -> asyncio.Semaphore:
     global _browser_semaphore, _browser_semaphore_loop
     loop = asyncio.get_running_loop()
     if _browser_semaphore is None or _browser_semaphore_loop is not loop:
-        _browser_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_BROWSERS)
+        _browser_semaphore = asyncio.Semaphore(settings.CRAWL4AI_MAX_BROWSERS)
         _browser_semaphore_loop = loop
     return _browser_semaphore
 

@@ -69,7 +69,6 @@ class LazyLoader(Generic[T]):
         is_global_context: bool = False,
         auto_initialize: bool = False,
         dependencies: list[str] | None = None,
-        warmup: bool = True,
     ):
         """
         Initialize lazy loader.
@@ -93,10 +92,6 @@ class LazyLoader(Generic[T]):
         self.is_global_context = is_global_context
         self.auto_initialize = auto_initialize
         self.dependencies = dependencies or []
-        # When False, warmup_all() skips this provider so it is only ever built
-        # lazily on first aget(). Used for heavy per-provider subagents whose
-        # eager warmup would materialize the whole Composio catalog.
-        self.warmup = warmup
 
         # Check if the loader function is async
         self.is_async = inspect.iscoroutinefunction(loader_func)
@@ -448,14 +443,8 @@ class ProviderRegistry:
         is_global_context: bool = False,
         auto_initialize: bool = False,
         dependencies: list[str] | None = None,
-        warmup: bool = True,
     ) -> LazyLoader[T]:
-        """Register a new provider.
-
-        Set ``warmup=False`` to exclude a provider from ``warmup_all()`` so it is
-        only built lazily on first ``aget()`` (e.g. per-provider subagents that
-        would otherwise materialize the whole Composio catalog at startup).
-        """
+        """Register a new provider."""
         with self._lock:
             if name in self._providers:
                 log.warning(f"Provider '{name}' is being re-registered")
@@ -470,7 +459,6 @@ class ProviderRegistry:
                 is_global_context=is_global_context,
                 auto_initialize=auto_initialize,
                 dependencies=dependencies,
-                warmup=warmup,
             )
 
             if auto_initialize:
@@ -564,13 +552,7 @@ class ProviderRegistry:
 
         warmup_names: list[str] = []
         skipped_unavailable = 0
-        skipped_no_warmup = 0
         for name, loader in snapshot:
-            if not loader.warmup:
-                # Explicitly excluded from warmup (e.g. subagents) — built lazily
-                # on first aget() so we don't materialize their tools at startup.
-                skipped_no_warmup += 1
-                continue
             if loader.is_available():
                 warmup_names.append(name)
             else:
@@ -605,14 +587,12 @@ class ProviderRegistry:
         if errors:
             log.warning(
                 f"Provider warmup completed with {len(errors)} errors "
-                f"({skipped_unavailable} unavailable, "
-                f"{skipped_no_warmup} no-warmup providers skipped)"
+                f"({skipped_unavailable} unavailable providers skipped)"
             )
         else:
             log.info(
                 f"Provider warmup completed for {len(warmup_names)} providers "
-                f"({skipped_unavailable} unavailable, "
-                f"{skipped_no_warmup} no-warmup providers skipped)"
+                f"({skipped_unavailable} unavailable providers skipped)"
             )
 
         if strict and errors:

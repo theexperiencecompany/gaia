@@ -12,7 +12,7 @@ class PublishIntegrationValidator:
     MIN_TOOLS = 1
 
     @classmethod
-    def validate_for_publish(
+    async def validate_for_publish(
         cls,
         name: str,
         description: str | None,
@@ -37,9 +37,8 @@ class PublishIntegrationValidator:
         elif len(name) > cls.MAX_NAME_LENGTH:
             errors.append(f"Name must be at most {cls.MAX_NAME_LENGTH} characters")
 
-        # Lightweight, dependency-free profanity check (replaces the old
-        # scikit-learn model that dragged in scipy/pandas/numpy).
-        if contains_profanity(name) or contains_profanity(description):
+        # One LLM call covers all user-facing fields.
+        if await contains_profanity(name=name, description=description):
             errors.append("Content contains profanity")
 
         # Description length
