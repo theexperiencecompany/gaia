@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.19.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.18.0...web-v0.19.0) (2026-05-26)
+
+
+### Features
+
+* add integration-aware chips to workflow modal ([#664](https://github.com/theexperiencecompany/gaia/issues/664)) ([b47d0e1](https://github.com/theexperiencecompany/gaia/commit/b47d0e1ccffa3d5946404d222c1c8bc81509bbf9))
+* Add What's New to Sidebar & update SettingsMenu & Release notes ([#612](https://github.com/theexperiencecompany/gaia/issues/612)) ([8abddbf](https://github.com/theexperiencecompany/gaia/commit/8abddbf0e77b9ce9b17f687eed0d4ca0a5ebf9ef))
+* **api:** add GAIA self-knowledge subagent ([#661](https://github.com/theexperiencecompany/gaia/issues/661)) ([8e456e5](https://github.com/theexperiencecompany/gaia/commit/8e456e5aae33d3b58d2afaa97ad5d10330c44848))
+* **bots:** WhatsApp + Telegram media & voice support, with cross-cutting bot and API fixes ([#688](https://github.com/theexperiencecompany/gaia/issues/688)) ([80c67cc](https://github.com/theexperiencecompany/gaia/commit/80c67cc388403860b457674b7519c29903bc151c))
+* iPhone chat demo for platforms section in landing page ([#680](https://github.com/theexperiencecompany/gaia/issues/680)) ([67d45fc](https://github.com/theexperiencecompany/gaia/commit/67d45fc37af53ed16146340e07ecc3245f4e4bbd))
+* **landing:** update pricing, contact, navbar, and bots showcase ([#641](https://github.com/theexperiencecompany/gaia/issues/641)) ([9b12528](https://github.com/theexperiencecompany/gaia/commit/9b12528ea5d8a7245a6c25cdde1c02853c4a8185))
+* **navbar:** refactor context menu items and list items component ([#632](https://github.com/theexperiencecompany/gaia/issues/632)) ([00ef252](https://github.com/theexperiencecompany/gaia/commit/00ef252df628a4931982a13616eee1cb4b63c6d4))
+* **onboarding:** revamp flow with backend intelligence pipeline and card reveal sequence ([#580](https://github.com/theexperiencecompany/gaia/issues/580)) ([23ed293](https://github.com/theexperiencecompany/gaia/commit/23ed2935e956070d9f7eb77423386e264502a349))
+* **openui:** add TextDocument component with HeroUI integration ([#634](https://github.com/theexperiencecompany/gaia/issues/634)) ([e8ef248](https://github.com/theexperiencecompany/gaia/commit/e8ef248ee01ae7cd2fd83fbe810e9b47d1bea3cb))
+* **openui:** extend component library, add MapBlock, fix action wiring and rendering ([#653](https://github.com/theexperiencecompany/gaia/issues/653)) ([c181998](https://github.com/theexperiencecompany/gaia/commit/c181998eea5f44fd1365f3ab0583f361f466a69f))
+* Redesign chat UI, remove clutter, and enhance performance ([#678](https://github.com/theexperiencecompany/gaia/issues/678)) ([af70ebf](https://github.com/theexperiencecompany/gaia/commit/af70ebfdccc2e85230e6cb84c4ca3270b048d381))
+* show related workflows on integration pages ([#665](https://github.com/theexperiencecompany/gaia/issues/665)) ([5c2fdf0](https://github.com/theexperiencecompany/gaia/commit/5c2fdf088b433be67bfae9f6de6ef35865b2089f))
+* **wake-word:** cross-platform 'Hey GAIA' on-device detection ([#689](https://github.com/theexperiencecompany/gaia/issues/689)) ([413a39b](https://github.com/theexperiencecompany/gaia/commit/413a39b03db2fd63c6d296a3e9ecbe23f7dd9d32))
+* **web:** add llms.txt via next-llms-txt ([#648](https://github.com/theexperiencecompany/gaia/issues/648)) ([1378420](https://github.com/theexperiencecompany/gaia/commit/13784204912b7ed6d95c4623d93647678c6e7096))
+* **web:** add runtime API URL injection for Docker preview environments ([141fbf9](https://github.com/theexperiencecompany/gaia/commit/141fbf9126663ff9683840634140dd0f7d6c5e51))
+* **web:** add What's New feature with RSS-powered sidebar card and settings timeline ([1fcd722](https://github.com/theexperiencecompany/gaia/commit/1fcd72281692e86e6c98d56de7f774d7a8cc8b5d))
+* **web:** consume @heygaia/chat-ui from apps/web + lockfile sync ([6921cfe](https://github.com/theexperiencecompany/gaia/commit/6921cfeefea1148eba0aad73b22b87d87f94d56e))
+* **web:** landing page copy, navbar, and comparison grid overhaul ([#674](https://github.com/theexperiencecompany/gaia/issues/674)) ([7e2062d](https://github.com/theexperiencecompany/gaia/commit/7e2062da2ba0f5c9a3fc082bf8abc061c8348f36))
+* **web:** migrate to Cloudflare Workers via @opennextjs/cloudflare ([ffa2112](https://github.com/theexperiencecompany/gaia/commit/ffa211288cce1093dfced7062d3dc97e83885c10))
+* **web:** more bundle cuts — tiptap split, Sentry tracing pruned, LazyMotion strict ([8259808](https://github.com/theexperiencecompany/gaia/commit/8259808b152558370f307befa7235163ea572fc7))
+* **web:** redesign What's New timeline with shadcn-style layout ([9c69bcf](https://github.com/theexperiencecompany/gaia/commit/9c69bcf9842f779bc829e171e18992dcf74a1a45))
+* **web:** show link previews with favicons in todo titles ([#659](https://github.com/theexperiencecompany/gaia/issues/659)) ([7faac3d](https://github.com/theexperiencecompany/gaia/commit/7faac3de979093d5cfcb34109030068a46ae9743))
+* **web:** voice gradient demo + auth UI & dev-route refactors ([#685](https://github.com/theexperiencecompany/gaia/issues/685)) ([0e370c1](https://github.com/theexperiencecompany/gaia/commit/0e370c170625c338c9b5eb37ca82963c5e16ba35))
+
+
+### Bug Fixes
+
+* address CodeRabbit review — XSS, timeout, lint rules, config ([939df16](https://github.com/theexperiencecompany/gaia/commit/939df1658a7f93d3f3fb968c07e9b9961af8845b))
+* **api:** defensive guard on creator lookup for non-OID created_by ([5c2fdf0](https://github.com/theexperiencecompany/gaia/commit/5c2fdf088b433be67bfae9f6de6ef35865b2089f))
+* Broken streaming race condition & grafana config ([#618](https://github.com/theexperiencecompany/gaia/issues/618)) ([8d02304](https://github.com/theexperiencecompany/gaia/commit/8d02304944b68c2db895be097140c946f69a836c))
+* onboarding redirect loop and align 409 error handling ([#631](https://github.com/theexperiencecompany/gaia/issues/631)) ([53fbd76](https://github.com/theexperiencecompany/gaia/commit/53fbd76973cf915f1d8d0e23d990b292a2c632e0))
+* **onboarding:** align 409 error shape and sync query cache on conflict ([224a07a](https://github.com/theexperiencecompany/gaia/commit/224a07a8e5cd7e6981262c9870724efcfbef86a3))
+* **onboarding:** prevent post-completion redirect loop ([d050448](https://github.com/theexperiencecompany/gaia/commit/d0504488e4c28ecfb3c769225d55ab62d3723e3c))
+* **onboarding:** prevent post-completion redirect loop ([#630](https://github.com/theexperiencecompany/gaia/issues/630)) ([a085792](https://github.com/theexperiencecompany/gaia/commit/a0857921a98466f5d3e5958a3beb96d44a26f671))
+* platform-aware markdown formatting and OpenUI gating ([#647](https://github.com/theexperiencecompany/gaia/issues/647)) ([82de0e2](https://github.com/theexperiencecompany/gaia/commit/82de0e205b466784d3d4d20de4f1715a7ecc7f02))
+* resolve PR [#618](https://github.com/theexperiencecompany/gaia/issues/618) review comments ([#619](https://github.com/theexperiencecompany/gaia/issues/619)) ([04d07e9](https://github.com/theexperiencecompany/gaia/commit/04d07e998e9ff76a4f2b89b485b6c5dca7002c9f))
+* resolve streaming race condition and missing UI messages ([#617](https://github.com/theexperiencecompany/gaia/issues/617)) ([72c26e0](https://github.com/theexperiencecompany/gaia/commit/72c26e0ecfc2880404f561ac99b4934b74e6bcb9))
+* **security:** patch 6 high-confidence vulnerabilities from audit ([#656](https://github.com/theexperiencecompany/gaia/issues/656)) ([a24cf7d](https://github.com/theexperiencecompany/gaia/commit/a24cf7d1d0c8d037f23457da23450e76916ca11b))
+* **sitemap:** replace workflowApi with direct fetch to fix 405 on child sitemaps ([#616](https://github.com/theexperiencecompany/gaia/issues/616)) ([8e46df1](https://github.com/theexperiencecompany/gaia/commit/8e46df1ddba31fde8281822d5c6615a4b22a5ab8))
+* **web:** address CodeRabbit review on What's New feature ([#613](https://github.com/theexperiencecompany/gaia/issues/613)) ([8f4dc4d](https://github.com/theexperiencecompany/gaia/commit/8f4dc4d8915ffce46dd06e49b6cb018e96dd542a))
+* **web:** alias node: built-ins in Turbopack to fix Windows standalone build ([#645](https://github.com/theexperiencecompany/gaia/issues/645)) ([837e0f4](https://github.com/theexperiencecompany/gaia/commit/837e0f40e35c8faebe4cfba458e72a5a5694769f))
+* **web:** bump Turbopack root for worktrunk worktrees ([9e5f0a5](https://github.com/theexperiencecompany/gaia/commit/9e5f0a5cb6584c31c991f571df0efaa2cf3e5681))
+* **web:** fix What's New card dismiss not working ([8ef8938](https://github.com/theexperiencecompany/gaia/commit/8ef89383555eb14c5be0fe43cd5b7c46c6055e6c))
+* **web:** increase Recent updates label size and tighten timeline spacing ([c2a7141](https://github.com/theexperiencecompany/gaia/commit/c2a71411d51ec6381486372a4903b4f542f3b30a))
+* **web:** pin @opennextjs/cloudflare to 1.17.1 and sync lockfile ([fc24839](https://github.com/theexperiencecompany/gaia/commit/fc24839173d330a1aaa4aa39b2ef520010f849d4))
+* **web:** resolve download URLs to latest desktop release ([#684](https://github.com/theexperiencecompany/gaia/issues/684)) ([d9f44de](https://github.com/theexperiencecompany/gaia/commit/d9f44de23fd36a015c26aa0af9d8e98735ecb75d))
+* **web:** show user timezone in workflow card schedule chips ([#660](https://github.com/theexperiencecompany/gaia/issues/660)) ([11f7fea](https://github.com/theexperiencecompany/gaia/commit/11f7feae11f6d371f2d7d0267dd6a87c3a9bf2af))
+* **web:** skip use-case workflows with non-string slug in generateStaticParams ([708b127](https://github.com/theexperiencecompany/gaia/commit/708b127d4e9df59fc267c27d33f579ba1b7bb67a))
+* **web:** unblock Cloudflare deploy + enable static prerendering ([#675](https://github.com/theexperiencecompany/gaia/issues/675)) ([5a014a4](https://github.com/theexperiencecompany/gaia/commit/5a014a479f43501291092c2a01c781afccd076e1))
+* **web:** use [@chat-ui](https://github.com/chat-ui) tsconfig path alias instead of @heygaia/chat-ui name ([f01380f](https://github.com/theexperiencecompany/gaia/commit/f01380fdca78e4b78cf00817e95027eeac49f2aa))
+* **workflows:** consistent creator avatar across cards and detail pages ([5c2fdf0](https://github.com/theexperiencecompany/gaia/commit/5c2fdf088b433be67bfae9f6de6ef35865b2089f))
+* **workflows:** make slug the canonical identifier for public workflows ([5c2fdf0](https://github.com/theexperiencecompany/gaia/commit/5c2fdf088b433be67bfae9f6de6ef35865b2089f))
+
+
+### Performance Improvements
+
+* **landing:** improve performance of DemoSidebar and demo animations ([#640](https://github.com/theexperiencecompany/gaia/issues/640)) ([cfbaa61](https://github.com/theexperiencecompany/gaia/commit/cfbaa61447934a725fce56b99d582aa77ba477f0))
+* Optimise landing page, reduce memory & workers, added more Evals & TextContent in OpenUI ([#638](https://github.com/theexperiencecompany/gaia/issues/638)) ([dbcecde](https://github.com/theexperiencecompany/gaia/commit/dbcecde79e0c6909a5d255a803f5337f0446cd3c))
+* **web:** shrink landing critical path and defer non-essential scripts ([#635](https://github.com/theexperiencecompany/gaia/issues/635)) ([d1e1e65](https://github.com/theexperiencecompany/gaia/commit/d1e1e6589cd7ad092e1c0d2b528831b31c9e16d6))
+
 ## [0.18.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.17.0...web-v0.18.0) (2026-04-05)
 
 
