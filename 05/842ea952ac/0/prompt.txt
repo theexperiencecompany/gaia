@@ -1,0 +1,9 @@
+https://gaia-home-server.taila76294.ts.net/previews so this is on my home lab server and in some repo ownedby theexperiencecompany org. so i want to improve the homepage at that link. so basicallhy want to click on it to open the existing pr. i want to see the pr title too instead of just the branch and number, i want to switch from cards to a comprehensive detailed table layout. how can u do this and then reload the url? u can ssh btw
+
+---
+
+the pr title isn't accurate. then add another column for the user who created the pr, their profile photo.
+
+---
+
+in staging when i try to login it redirects me to this: http://preview.placeholder.buildtime/api/v1/oauth/login/workos what are we doing wrong.
