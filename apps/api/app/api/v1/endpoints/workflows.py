@@ -583,12 +583,32 @@ async def get_public_workflow(request: Request, workflow_ref: str):
         else:
             match = {"slug": workflow_ref, "is_public": True}
 
+        # $toObjectId raises "Failed to parse objectId" when created_by is a
+        # non-ObjectId string (e.g. 'system' for seeded/system-authored
+        # workflows), which 500s the whole endpoint. $convert with onError=null
+        # makes the $eq false instead of throwing.
         creator_lookup = {
             "$lookup": {
                 "from": "users",
                 "let": {"creator_id": "$created_by"},
                 "pipeline": [
-                    {"$match": {"$expr": {"$eq": ["$_id", {"$toObjectId": "$$creator_id"}]}}},
+                    {
+                        "$match": {
+                            "$expr": {
+                                "$eq": [
+                                    "$_id",
+                                    {
+                                        "$convert": {
+                                            "input": "$$creator_id",
+                                            "to": "objectId",
+                                            "onError": None,
+                                            "onNull": None,
+                                        }
+                                    },
+                                ]
+                            }
+                        }
+                    },
                     {"$project": {"name": 1, "picture": 1, "_id": 0}},
                 ],
                 "as": "creator_info",

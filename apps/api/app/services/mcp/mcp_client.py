@@ -100,6 +100,39 @@ class StepUpAuthRequired(Exception):
         super().__init__(f"Step-up authorization required for {integration_id}: {required_scopes}")
 
 
+def _is_terminal_auth_failure(exception: Exception, refresh_attempted: bool = False) -> bool:
+    """Decide whether an MCP connection error means credentials are dead.
+
+    Returning True forces the user back through the OAuth flow (clearing their
+    PostgreSQL tokens and flipping their MongoDB integration status to
+    'created'). Returning False keeps the connection considered connected so
+    the next attempt retries with the same tokens.
+
+    The previous behaviour treated EVERY connection exception as terminal,
+    which wiped users' integrations on transient errors (5xx, network blip,
+    transport-mismatch, PostHog/Postman returning 400/405). Be conservative:
+    only treat as terminal when we have strong evidence credentials must be
+    re-issued.
+    """
+    msg = str(exception).lower()
+
+    # Authorization server explicitly told us the grant is dead.
+    if "invalid_grant" in msg or "invalid_token" in msg:
+        return True
+
+    # 401 with refresh already attempted means the refresh_token itself is
+    # no longer accepted — user must re-authorize. 401 without refresh is
+    # handled by the retry-with-refresh path and should not reach this
+    # decision point.
+    if refresh_attempted and "401" in str(exception):
+        return True
+
+    # Everything else — 4xx that wasn't a clear auth rejection, 5xx,
+    # connection-closed, content-type mismatch, network/timeout — is
+    # treated as transient. Tokens stay; user retries; next call reconnects.
+    return False
+
+
 class MCPClient:
     """
     MCP client wrapper implementing MCP OAuth 2.1 spec.
@@ -337,15 +370,18 @@ class MCPClient:
             # Pops from dicts AND schedules async session close via fire-and-forget task.
             def _make_evict_callback(iid: str):
                 def _evict():
+                    # Evict in-memory client/tool cache so the next call
+                    # forces a fresh _do_connect. Do NOT flip MongoDB status
+                    # here — a tool-call hiccup is usually transient (server
+                    # 5xx, connection drop) and the user's tokens are fine.
+                    # _do_connect's exception path will reset status only if
+                    # the re-connect proves the credentials are dead.
                     stale_client = self._clients.pop(iid, None)
                     self._tools.pop(iid, None)
                     if stale_client:
                         try:
                             loop = asyncio.get_running_loop()
                             loop.create_task(self._safe_close_client(stale_client))
-                            loop.create_task(
-                                update_user_integration_status(self.user_id, iid, "created")
-                            )
                         except RuntimeError:
                             pass  # No running loop — skip async cleanup
                     log.info(f"[{iid}] Evicted stale session after connection error")
@@ -442,12 +478,14 @@ class MCPClient:
                 or "method not allowed" in error_str
             )
             retry_flag = f"_retry_{integration_id}"
-            if is_auth_error and mcp_config.requires_auth and not getattr(self, retry_flag, False):
+            refresh_attempted = getattr(self, retry_flag, False)
+            if is_auth_error and mcp_config.requires_auth and not refresh_attempted:
                 log.info(
                     f"[{integration_id}] Auth-related connection failure, "
                     "attempting token refresh and retry"
                 )
                 setattr(self, retry_flag, True)
+                refresh_attempted = True
                 try:
                     refreshed = await self._try_refresh_token(integration_id, mcp_config)
                     if refreshed:
@@ -463,20 +501,30 @@ class MCPClient:
                         pass
 
             log.error(f"Failed to connect to MCP {integration_id}: {e}")
-            # Reset MongoDB status so frontend shows re-auth flow
-            try:
-                await update_user_integration_status(self.user_id, integration_id, "created")
-            except Exception:
-                log.warning(f"[{integration_id}] Failed to reset status after connection failure")
-            # If auth-related, clear cached OAuth discovery so next attempt
-            # does fresh discovery instead of reusing stale endpoints
-            if is_auth_error:
+
+            # Only reset MongoDB status when the failure proves credentials
+            # are dead. Wiping status on every exception (5xx, transport
+            # mismatch, network blip, PostHog/Postman returning 400/405)
+            # forces users through a fresh OAuth flow even though their
+            # refresh_token is still valid — that's the "Gmail expires after
+            # a while" bug. See _is_terminal_auth_failure for the criteria.
+            if _is_terminal_auth_failure(e, refresh_attempted=refresh_attempted):
+                try:
+                    await update_user_integration_status(self.user_id, integration_id, "created")
+                except Exception:
+                    log.warning(f"[{integration_id}] Failed to reset status after auth failure")
                 try:
                     await delete_cache(f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}")
                 except Exception as cache_err:  # nosec B110
                     log.debug(
                         f"[{integration_id}] Failed to clear OAuth discovery cache: {cache_err}"
                     )
+            else:
+                log.warning(
+                    f"[{integration_id}] Transient connection failure — keeping "
+                    f"connected status so next attempt retries with current tokens. "
+                    f"Error: {type(e).__name__}: {e}"
+                )
             raise
 
     async def _handle_custom_integration_connect(
@@ -947,21 +995,31 @@ class MCPClient:
             return tools
         except Exception as e:
             is_auth_error = "401" in str(e) or "authentication" in str(e).lower()
+            terminal = _is_terminal_auth_failure(e, refresh_attempted=False) or is_auth_error
             log.error(
                 f"[{integration_id}] Connection failed after token storage:\n"
                 f"  Error type: {type(e).__name__}\n"
                 f"  Error message: {e!s}\n"
                 f"  Error repr: {e!r}\n"
                 f"  Is auth error: {is_auth_error}\n"
-                f"  This may indicate mcp-use is ignoring our stored token.\n"
-                f"  Rolling back tokens to prevent stuck state.\n"
+                f"  Treat as terminal: {terminal}\n"
                 f"  Traceback:\n{traceback.format_exc()}"
             )
-            # Delete the tokens and DCR registration we just stored since
-            # connection failed — if the DCR client_id is revoked/invalid,
-            # keeping it would trap the user in a re-auth loop
-            await self.token_store.delete_credentials(integration_id)
-            await self.token_store.delete_dcr_client(integration_id)
+            # Only roll back the freshly-stored tokens when the failure proves
+            # those credentials are unusable (e.g. 401, invalid_grant, DCR
+            # client_id revoked). Transient failures — e.g. PostHog returning
+            # 400 because of transport-format quirks, server 5xx, network blip
+            # — leave the tokens intact so the user can retry without going
+            # back through OAuth. Otherwise mcp-use's first-connect attempt
+            # becomes a death sentence for every minor server hiccup.
+            if terminal:
+                await self.token_store.delete_credentials(integration_id)
+                await self.token_store.delete_dcr_client(integration_id)
+            else:
+                log.warning(
+                    f"[{integration_id}] Preserving stored tokens after non-auth "
+                    "connection failure; user can retry without re-OAuth."
+                )
             raise
 
     async def disconnect(self, integration_id: str) -> None:
@@ -1098,15 +1156,17 @@ class MCPClient:
         return doc is not None
 
     async def _safe_connect(self, integration_id: str) -> list[BaseTool] | None:
-        """Connect with error handling for parallel execution."""
+        """Connect with error handling for parallel execution.
+
+        _do_connect already classifies failures and resets status only when the
+        credentials are demonstrably dead. Do not double-reset here on every
+        exception — that's how a transient batch-connect blip used to wipe an
+        integration the user still has valid credentials for.
+        """
         try:
             return await self.connect(integration_id)
         except Exception as e:
             log.warning(f"Failed to connect MCP {integration_id}: {e}")
-            try:
-                await update_user_integration_status(self.user_id, integration_id, "created")
-            except Exception as status_err:  # nosec B110
-                log.debug(f"Failed to reset status for {integration_id}: {status_err}")
             return None
 
     async def get_all_connected_tools(self) -> dict[str, list[BaseTool]]:
