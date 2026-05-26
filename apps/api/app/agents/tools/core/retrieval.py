@@ -35,6 +35,31 @@ from shared.py.wide_events import log
 WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name, deep_research.name]
 
 
+async def _user_mcp_tool_names(user_id: str | None) -> set[str]:
+    """Tool names exposed by the user's live MCPClient.
+
+    The resilience rewrite moved per-user MCP tool storage out of the global
+    ToolRegistry, so `retrieve_tools` can't rely on `get_tool_names()` alone
+    for discovery filtering or binding validation. This helper supplies the
+    missing slice — read straight from the MCPClient that owns the live
+    connectors for `user_id`. Returns an empty set on any failure so the
+    surrounding logic degrades cleanly.
+    """
+    if not user_id:
+        return set()
+    try:
+        from app.services.mcp.mcp_client import get_mcp_client
+
+        mcp_client = await get_mcp_client(user_id=str(user_id))
+        names: set[str] = set()
+        for integration_tools in mcp_client._tools.values():
+            names.update(t.name for t in integration_tools)
+        return names
+    except Exception as e:
+        log.warning(f"_user_mcp_tool_names: failed for user {user_id}: {type(e).__name__}: {e}")
+        return set()
+
+
 def _is_platform_tool_space(tool_space: str) -> bool:
     """True if `tool_space` belongs to a hardcoded platform integration.
 
@@ -528,22 +553,7 @@ def get_retrieve_tools_function(
         if exact_tool_names:
             available_tool_names_set = set(available_tool_names)
 
-            # MCP tools live in MCPClient._tools, not in the global registry,
-            # so the registry's get_tool_names() doesn't include them. Build a
-            # per-user MCP name set by reading the user's live MCPClient.
-            mcp_tool_names_set: set[str] = set()
-            if user_id:
-                try:
-                    from app.services.mcp.mcp_client import get_mcp_client
-
-                    mcp_client = await get_mcp_client(user_id=str(user_id))
-                    for integration_tools in mcp_client._tools.values():
-                        mcp_tool_names_set.update(t.name for t in integration_tools)
-                except Exception as e:
-                    log.warning(
-                        f"retrieve_tools: failed to read MCPClient tool names for "
-                        f"user {user_id}: {type(e).__name__}: {e}"
-                    )
+            mcp_tool_names_set = await _user_mcp_tool_names(user_id)
 
             validated_tool_names: list[str] = []
             unknown_tool_names: list[str] = []
@@ -602,7 +612,11 @@ def get_retrieve_tools_function(
 
         results = await asyncio.gather(*search_tasks, return_exceptions=True)
 
-        available_tool_names_set = set(available_tool_names)
+        # MCP tool names don't live in the global registry anymore (resilience
+        # rewrite removed the per-user mcp_{iid}_{user_id} categories). Union
+        # the registry names with the user's live MCPClient tool names so the
+        # discovery-mode filter doesn't drop every PostHog/Notion/etc. hit.
+        available_tool_names_set = set(available_tool_names) | await _user_mcp_tool_names(user_id)
 
         chroma_hits = 0
         public_hits = 0
