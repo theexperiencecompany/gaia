@@ -82,6 +82,10 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
     except AppError:
         raise
     except Exception as e:
+        log.error(
+            f"composio.connected_accounts.list FAILED for user={user_id} "
+            f"toolkit={toolkit}: {type(e).__name__}: {e}"
+        )
         raise AppError(
             message=f"Composio connected_accounts.list failed: {e}",
             why="SDK or transport error while resolving the connected account",
@@ -89,6 +93,7 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
             meta={"toolkit": toolkit, "user_id": user_id, "exception": str(e)},
         ) from e
 
+    total_accounts = len(accounts.items)
     active = next(
         (
             acc
@@ -98,6 +103,22 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
         None,
     )
     if active is None:
+        # Surface what Composio actually told us: how many accounts exist and
+        # why none qualified (status / disabled). Critical for diagnosing
+        # "Gmail expired" UX without guessing.
+        account_summary = [
+            {
+                "id": getattr(acc, "id", "?"),
+                "status": getattr(acc, "status", "?"),
+                "is_disabled": getattr(getattr(acc, "auth_config", None), "is_disabled", "?"),
+            }
+            for acc in accounts.items[:5]
+        ]
+        log.warning(
+            f"composio: no ACTIVE account for user={user_id} toolkit={toolkit} "
+            f"(total_accounts={total_accounts}, sample={account_summary}). "
+            f"Flipping MongoDB status to 'created'."
+        )
         # Flip MongoDB status so UI shows disconnected instead of lying.
         mark_disconnected_sync(user_id, toolkit)
         raise AppError(
@@ -108,6 +129,10 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
             meta={"toolkit": toolkit, "user_id": user_id},
         )
 
+    log.info(
+        f"composio: resolved connected_account_id for user={user_id} toolkit={toolkit} "
+        f"-> {active.id} (cached for {_CONNECTED_ACCOUNT_CACHE_TTL_SECONDS}s)"
+    )
     with _cache_lock:
         _connected_account_cache[cache_key] = (
             active.id,
@@ -176,6 +201,10 @@ def _proxy_call(
     except AppError:
         raise
     except Exception as e:
+        log.error(
+            f"composio.tools.proxy raised for user={user_id} toolkit={toolkit} "
+            f"{method} {endpoint}: {type(e).__name__}: {e}"
+        )
         raise AppError(
             message=f"Composio tools.proxy failed: {e}",
             why="SDK or transport error while calling the provider",

@@ -118,9 +118,38 @@ class LangchainProvider(
 
             result = execute_tool(tool, kwargs)
 
+            # Surface tool invocation outcome for observability.
+            try:
+                succeeded = result.get("successful") if isinstance(result, dict) else None
+                err_preview = (
+                    str(result.get("error"))[:200]
+                    if isinstance(result, dict) and not succeeded
+                    else None
+                )
+                log.set(
+                    composio_tool_invocation={
+                        "tool": tool,
+                        "toolkit": toolkit,
+                        "user_id": user_id,
+                        "successful": succeeded,
+                    }
+                )
+                if succeeded is False:
+                    log.warning(
+                        f"composio tool {tool} (toolkit={toolkit}) returned "
+                        f"successful=False for user={user_id}: error={err_preview!r}"
+                    )
+            except Exception as obs_err:  # noqa: BLE001 - observability must not break tool
+                log.debug(f"composio invocation log skipped for {tool}: {obs_err}")
+
             # Flip MongoDB status on upstream-account-dead signal (1810 etc).
             try:
                 if user_id and toolkit and looks_like_disconnect(result):
+                    log.warning(
+                        f"composio tool {tool} carried disconnect signal "
+                        f"(code 1810) for user={user_id} toolkit={toolkit}; "
+                        f"flipping MongoDB status to 'created'"
+                    )
                     mark_disconnected_sync(user_id, toolkit)
             except Exception as desync_err:  # noqa: BLE001 - side-effect must not break tool
                 log.debug(f"desync detection skipped for {tool}: {desync_err}")

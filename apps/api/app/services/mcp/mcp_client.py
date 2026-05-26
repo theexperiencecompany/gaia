@@ -259,6 +259,15 @@ class MCPClient:
             token_source = "oauth"  # nosec B105
 
         if stored_token:
+            log.set(
+                mcp_config_build={
+                    "integration_id": integration_id,
+                    "user_id": self.user_id,
+                    "token_source": token_source,
+                    "token_length": len(stored_token),
+                    "transport": server_config.get("transport"),
+                }
+            )
             log.info(
                 f"[{integration_id}] Retrieved stored {token_source} token (length={len(stored_token)})"
             )
@@ -275,12 +284,20 @@ class MCPClient:
             # .well-known/oauth-authorization-server endpoints)
             server_config["headers"] = {"Authorization": f"Bearer {raw_token}"}
         elif mcp_config.requires_auth:
+            log.warning(
+                f"[{integration_id}] _build_config: no stored token, but "
+                f"requires_auth=True for user {self.user_id} — raising "
+                f"'OAuth authorization required'"
+            )
             raise ValueError(
                 f"No valid token for {integration_id}. "
                 "OAuth authorization required - user must complete the OAuth flow."
             )
         else:
             # No auth required and no bearer token - set auth to None
+            log.info(
+                f"[{integration_id}] _build_config: no auth required, connecting unauthenticated"
+            )
             server_config["auth"] = None
 
         return {"mcpServers": {integration_id: server_config}}
@@ -453,16 +470,37 @@ class MCPClient:
             )
 
             # Execute all post-connection tasks concurrently
+            post_task_labels = (
+                (["store_unauthenticated"] if not mcp_config.requires_auth else [])
+                + ["store_tools_mongo"]
+                + (["index_custom_chroma"] if is_custom else [])
+                + ["update_status_connected"]
+            )
             results = await asyncio.gather(*post_tasks, return_exceptions=True)
-            for i, result in enumerate(results):
+            for label, result in zip(post_task_labels, results):
                 if isinstance(result, Exception):
-                    log.warning(f"[{integration_id}] Post-connection task {i} failed: {result}")
+                    log.warning(
+                        f"[{integration_id}] post-connect task '{label}' failed: "
+                        f"{type(result).__name__}: {result}"
+                    )
+                else:
+                    log.info(f"[{integration_id}] post-connect task '{label}' ok")
 
             return tools
 
         except Exception as e:
             error_str = str(e).lower()
 
+            log.set(
+                mcp_connect_error={
+                    "integration_id": integration_id,
+                    "user_id": self.user_id,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)[:500],
+                    "requires_auth": mcp_config.requires_auth,
+                    "is_custom": is_custom,
+                }
+            )
             # Log comprehensive error details for debugging
             log.error(
                 f"[{integration_id}] Connection failed with exception:\n"
@@ -552,6 +590,19 @@ class MCPClient:
     ) -> None:
         """Handle custom integration: index tools and register as subagent."""
         namespace = derive_integration_namespace(integration_id, server_url, is_custom=True)
+        log.set(
+            custom_mcp_connect={
+                "integration_id": integration_id,
+                "user_id": self.user_id,
+                "namespace": namespace,
+                "tools_count": len(tools),
+                "server_url": server_url,
+            }
+        )
+        log.info(
+            f"[{integration_id}] _handle_custom_integration_connect: namespace='{namespace}' "
+            f"tools={len(tools)}"
+        )
 
         # Index tools in ChromaDB for semantic discovery.
         # index_tools_to_store() manages its own Redis cache (chroma:indexed:{namespace})
@@ -560,7 +611,10 @@ class MCPClient:
             tools_with_space = [(tool, namespace) for tool in tools]
             await index_tools_to_store(tools_with_space)
         except Exception as e:
-            log.error(f"Failed to index tools in ChromaDB for {integration_id}: {e}")
+            log.error(
+                f"[{integration_id}] index_tools_to_store failed for namespace "
+                f"'{namespace}': {type(e).__name__}: {e}"
+            )
 
         # Index as subagent for discovery via retrieve_tools
         try:
@@ -588,9 +642,24 @@ class MCPClient:
                         description=resolved_description or "",
                         server_url=server_url,
                     )
-                    log.info(f"Indexed custom MCP {integration_id} as subagent")
+                    log.info(
+                        f"Indexed custom MCP {integration_id} ({resolved_name}) "
+                        f"as subagent in namespace ('subagents',)"
+                    )
+                else:
+                    log.warning(
+                        f"[{integration_id}] no resolved_name; skipping subagent index "
+                        f"(name will not be discoverable via retrieve_tools)"
+                    )
+            else:
+                log.warning(
+                    f"[{integration_id}] chroma_tools_store provider unavailable; "
+                    f"cannot index as subagent"
+                )
         except Exception as e:
-            log.warning(f"Failed to index custom MCP as subagent: {e}")
+            log.warning(
+                f"[{integration_id}] index_custom_mcp_as_subagent failed: {type(e).__name__}: {e}"
+            )
 
     async def _try_refresh_token(self, integration_id: str, mcp_config: MCPConfig) -> bool:
         """Attempt to refresh OAuth token using stored refresh_token."""
@@ -1184,7 +1253,10 @@ class MCPClient:
         try:
             return await self.connect(integration_id)
         except Exception as e:
-            log.warning(f"Failed to connect MCP {integration_id}: {e}")
+            log.warning(
+                f"_safe_connect: integration={integration_id} user={self.user_id} "
+                f"failed silently for batch-connect: {type(e).__name__}: {e}"
+            )
             return None
 
     async def get_all_connected_tools(self) -> dict[str, list[BaseTool]]:
@@ -1291,12 +1363,36 @@ class MCPClient:
 
         # Check if token is expiring soon
         if await self.token_store.is_token_expiring_soon(integration_id):
-            log.info(f"Token expiring soon for {integration_id}, proactively refreshing")
+            log.set(
+                token_refresh={
+                    "integration_id": integration_id,
+                    "user_id": self.user_id,
+                    "trigger": "ensure_token_valid_proactive",
+                }
+            )
+            log.info(
+                f"ensure_token_valid: token expiring soon for {integration_id} "
+                f"user={self.user_id}, refreshing proactively"
+            )
             resolved = await IntegrationResolver.resolve(integration_id)
             if resolved and resolved.mcp_config:
                 refreshed = await self._try_refresh_token(integration_id, resolved.mcp_config)
                 if not refreshed:
-                    log.warning(f"Proactive token refresh failed for {integration_id}")
+                    log.warning(
+                        f"ensure_token_valid: proactive refresh FAILED for "
+                        f"{integration_id} user={self.user_id} — next tool call "
+                        f"will likely 401"
+                    )
+                else:
+                    log.info(
+                        f"ensure_token_valid: proactive refresh succeeded for "
+                        f"{integration_id} user={self.user_id}"
+                    )
+            else:
+                log.warning(
+                    f"ensure_token_valid: cannot refresh — IntegrationResolver "
+                    f"returned no mcp_config for {integration_id}"
+                )
 
     async def try_token_refresh(self, integration_id: str) -> bool:
         """Attempt to refresh OAuth token.
