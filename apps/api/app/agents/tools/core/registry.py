@@ -65,11 +65,13 @@ class DynamicToolDict(Mapping[str, BaseTool]):
         return all_tools.values()
 
     def keys(self) -> KeysView[str]:
+        """Return all tool names (registry + extras) as a KeysView."""
         all_tools = dict(self._registry._get_tool_dict_internal())
         all_tools.update(self._extra_tools)
         return all_tools.keys()
 
     def items(self):
+        """Return all (name, tool) pairs from the registry plus extras."""
         all_tools = dict(self._registry._get_tool_dict_internal())
         all_tools.update(self._extra_tools)
         return all_tools.items()

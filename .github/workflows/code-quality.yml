@@ -42,7 +42,14 @@ jobs:
       - name: Lint and format check across all TS/JS/JSON/CSS files
         run: |
           echo "::group::Biome check"
-          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx json jsonc css)
+          # Drop top-level paths that biome.json explicitly excludes via `!!`
+          # negation (apps/api, apps/voice-agent, apps/web/public, infra, docs,
+          # .github, etc.). Biome errors out with exit 1 when every input path
+          # is excluded by config, so the lane must not feed it those paths
+          # in the first place. Keep this list in sync with biome.json
+          # `files.includes` negations.
+          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx json jsonc css \
+            | grep -Ev '^(apps/api|apps/voice-agent|apps/web/public|infra|docs|\.github|\.claude|\.agents|\.husky|\.yarn|\.vscode|\.idea|\.mise|\.opencode|\.worktrees|\.jscpd-report)/' || true)
           if [ "$FILES" = "__FULL__" ]; then
             pnpm run quality:lint
           elif [ -z "$FILES" ]; then
