@@ -280,12 +280,14 @@ jobs:
 
       - name: Determine image tag
         id: tag
+        env:
+          GIT_REF: ${{ github.ref }}
+          GIT_SHA: ${{ github.sha }}
         run: |
-          if [ "${{ github.ref }}" = "refs/heads/master" ]; then
-            echo "tag=latest" >> $GITHUB_OUTPUT
+          if [ "$GIT_REF" = "refs/heads/master" ]; then
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
           else
-            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-            echo "tag=dev-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            echo "tag=dev-$(printf '%s' "$GIT_SHA" | cut -c1-7)" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build and push Grafana image
