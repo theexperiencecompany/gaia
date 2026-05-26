@@ -401,7 +401,22 @@ class MCPClient:
             self._clients[integration_id] = client
             self._tools[integration_id] = tools
 
-            log.info(f"[{integration_id}] Connected to MCP, got {len(tools)} tools")
+            tool_names_sample = [t.name for t in tools[:5]]
+            log.set(
+                mcp_connect={
+                    "integration_id": integration_id,
+                    "user_id": self.user_id,
+                    "tools_count": len(tools),
+                    "is_custom": is_custom,
+                    "requires_auth": mcp_config.requires_auth,
+                    "tool_names_sample": tool_names_sample,
+                }
+            )
+            log.info(
+                f"[{integration_id}] Connected to MCP, got {len(tools)} tools "
+                f"for user {self.user_id} (is_custom={is_custom}, "
+                f"sample_names={tool_names_sample})"
+            )
 
             # Run post-connection DB operations in parallel (all independent)
             post_tasks: list[Any] = []
@@ -1233,9 +1248,16 @@ class MCPClient:
 
         log.set(
             mcp=dict(
+                user_id=self.user_id,
                 servers_connected=len(all_tools),
                 tools_loaded=sum(len(t) for t in all_tools.values()),
+                per_integration={iid: len(t) for iid, t in all_tools.items()},
             )
+        )
+        log.info(
+            f"get_all_connected_tools: user={self.user_id} returning "
+            f"{len(all_tools)} integrations with tools: "
+            f"{ {iid: len(t) for iid, t in all_tools.items()} }"
         )
         return all_tools
 

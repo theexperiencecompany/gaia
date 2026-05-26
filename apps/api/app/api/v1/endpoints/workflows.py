@@ -578,11 +578,17 @@ async def get_public_workflows(
 @limiter.limit("5000/hour")
 async def get_public_workflow(request: Request, workflow_ref: str):
     """Get a public workflow by ID (wf_xxx) or slug."""
+    lookup_mode = "id" if workflow_ref.startswith("wf_") else "slug"
+    log.set(
+        workflow=WorkflowContext(operation="get_public"),
+        public_workflow={"ref": workflow_ref, "lookup_mode": lookup_mode},
+    )
     try:
-        if workflow_ref.startswith("wf_"):
-            match: dict = {"_id": workflow_ref, "is_public": True}
-        else:
-            match = {"slug": workflow_ref, "is_public": True}
+        match: dict = (
+            {"_id": workflow_ref, "is_public": True}
+            if lookup_mode == "id"
+            else {"slug": workflow_ref, "is_public": True}
+        )
 
         workflow_doc = None
         async for doc in workflows_collection.aggregate(
@@ -592,6 +598,7 @@ async def get_public_workflow(request: Request, workflow_ref: str):
             break
 
         if not workflow_doc:
+            log.info(f"get_public_workflow: no public workflow for ref={workflow_ref}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Public workflow not found",
@@ -606,6 +613,15 @@ async def get_public_workflow(request: Request, workflow_ref: str):
         workflow = Workflow(**transformed_doc)
         workflow.creator = creator
 
+        log.set(
+            public_workflow={
+                "id": workflow_doc.get("_id"),
+                "slug": workflow_doc.get("slug"),
+                "creator_id": workflow_doc.get("created_by"),
+                "creator_name": creator.get("name") if isinstance(creator, dict) else None,
+                "step_count": len(workflow.steps) if getattr(workflow, "steps", None) else 0,
+            }
+        )
         return WorkflowResponse(workflow=workflow, message="Workflow retrieved successfully")
     except HTTPException:
         raise

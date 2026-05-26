@@ -505,17 +505,17 @@ class ChromaStore(BaseStore):
         # an indexing pass that "succeeded" yet wrote zero rows (the PostHog
         # case — 336 tools "indexed", 0 in ChromaDB, no errors anywhere).
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        failures = sum(1 for r in results if isinstance(r, Exception))
+        failures = [(d, r) for d, r in zip(doc_ids, results) if isinstance(r, Exception)]
+        succeeded = len(results) - len(failures)
+        log.info(
+            f"_apply_put_ops completed: total={len(results)} succeeded={succeeded} "
+            f"failed={len(failures)}"
+        )
         if failures:
-            first = next(r for r in results if isinstance(r, Exception))
-            first_id = next(
-                (d for d, r in zip(doc_ids, results) if isinstance(r, Exception)),
-                "?",
-            )
-            log.error(
-                f"ChromaDB batch put: {failures}/{len(results)} operations failed. "
-                f"First failure on doc_id={first_id}: {type(first).__name__}: {first}"
-            )
+            # Show up to 3 distinct exception classes to make patterns obvious.
+            sample = failures[: min(3, len(failures))]
+            for d, exc in sample:
+                log.error(f"_apply_put_ops failure doc_id={d}: {type(exc).__name__}: {exc}")
 
     async def _delete_item(self, doc_id: str, collection: AsyncCollection) -> None:
         """Delete a single item."""
@@ -562,7 +562,15 @@ class ChromaStore(BaseStore):
                 if field_texts:
                     texts.extend(field_texts)
             if texts:
-                embedding = await self.embeddings.aembed_query(" ".join(texts))
+                try:
+                    embedding = await self.embeddings.aembed_query(" ".join(texts))
+                except Exception as embed_err:
+                    log.error(
+                        f"_upsert_item embedding failed for doc_id={doc_id} "
+                        f"ns={namespace_str} text_len={sum(len(t) for t in texts)}: "
+                        f"{type(embed_err).__name__}: {embed_err}"
+                    )
+                    raise
 
         try:
             await collection.upsert(

@@ -154,6 +154,8 @@ class ToolRegistry:
         is_delegated: bool = False,
     ):
         """Helper to create and register a category."""
+        replacing = name in self._categories
+        prior_tools_count = len(self._categories[name].tools) if replacing else 0
         category = ToolCategory(
             name=name,
             space=space,
@@ -166,6 +168,23 @@ class ToolRegistry:
         if tools:
             category.add_tools(tools)
         self._categories[name] = category
+        log.set(
+            tool_category={
+                "name": name,
+                "space": space,
+                "tools_in": len(tools) if tools else 0,
+                "core_tools_in": len(core_tools) if core_tools else 0,
+                "final_count": len(category.tools),
+                "replacing": replacing,
+                "prior_tools_count": prior_tools_count,
+            }
+        )
+        log.info(
+            f"_add_category: '{name}' space='{space}' tools_in="
+            f"{len(tools) if tools else 0} core_in="
+            f"{len(core_tools) if core_tools else 0} final="
+            f"{len(category.tools)} replacing={replacing} (was {prior_tools_count})"
+        )
 
     def _initialize_categories(self):
         """Initialize core tool categories. Provider tools are loaded lazily."""
@@ -348,9 +367,34 @@ class ToolRegistry:
 
         category = self._categories.get(category_name)
         if not category:
+            log.warning(
+                f"_index_category_tools: category '{category_name}' not in registry, "
+                f"known={sorted(self._categories.keys())[:20]}..."
+            )
             return
 
+        category_tools_count = len(category.tools)
+        log.set(
+            tool_index={
+                "category": category_name,
+                "space": category.space,
+                "category_tools_count": category_tools_count,
+            }
+        )
+        log.info(
+            f"_index_category_tools: '{category_name}' space='{category.space}' "
+            f"category.tools count={category_tools_count}"
+        )
+
         tools_with_space = [(tool.tool, category.space) for tool in category.tools]
+        if not tools_with_space:
+            log.warning(
+                f"_index_category_tools: category '{category_name}' has 0 tools "
+                f"(space='{category.space}'), nothing to index — caller likely passed "
+                f"empty tools to _add_category"
+            )
+            return
+
         await index_tools_to_store(tools_with_space)
 
     def get_category(self, name: str) -> ToolCategory | None:
@@ -396,10 +440,27 @@ class ToolRegistry:
         mcp_client = await get_mcp_client(user_id=user_id)
         all_tools = await mcp_client.get_all_connected_tools()
 
+        log.set(
+            load_user_mcp_tools={
+                "user_id": user_id,
+                "integration_count": len(all_tools),
+                "integrations": list(all_tools.keys()),
+                "tool_counts": {iid: len(t) for iid, t in all_tools.items()},
+            }
+        )
+        log.info(
+            f"load_user_mcp_tools: user={user_id} got {len(all_tools)} integrations "
+            f"with counts={ {iid: len(t) for iid, t in all_tools.items()} }"
+        )
+
         loaded: dict[str, list[BaseTool]] = {}
 
         for integration_id, tools in all_tools.items():
             if not tools:
+                log.warning(
+                    f"load_user_mcp_tools: integration_id={integration_id} has empty "
+                    f"tools list, skipping"
+                )
                 continue
 
             # Category name: mcp_{integration_id} (no user_id suffix)
@@ -410,6 +471,12 @@ class ToolRegistry:
 
             # Skip if already loaded (category already exists)
             if category_name in self._categories:
+                existing_count = len(self._categories[category_name].tools)
+                log.info(
+                    f"load_user_mcp_tools: '{category_name}' already in registry "
+                    f"(category.tools={existing_count} from earlier load), "
+                    f"skipping re-add for user {user_id}"
+                )
                 loaded[integration_id] = tools
                 continue
 
