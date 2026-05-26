@@ -289,6 +289,18 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
         )
         return
 
+    # Function assumes a homogeneous namespace (used as the cache key and for
+    # diff scoping). Mixed namespaces would silently corrupt indexing for all
+    # but the first one. Reject and surface the caller bug.
+    distinct_namespaces = {space for _, space in tools_with_space}
+    if len(distinct_namespaces) > 1:
+        log.error(
+            f"index_tools_to_store: mixed namespaces in single call "
+            f"({sorted(distinct_namespaces)}); aborting to prevent partial indexing. "
+            f"Caller must batch per-namespace."
+        )
+        return
+
     if not namespace or len(namespace) > 512 or "::" in namespace:
         log.error(
             f"index_tools_to_store: invalid namespace '{namespace}' "
