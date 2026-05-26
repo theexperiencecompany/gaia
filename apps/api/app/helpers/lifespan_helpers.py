@@ -160,6 +160,18 @@ async def close_mcp_client_pool():
         log.error(f"Error closing MCP client pool: {e}")
 
 
+async def close_user_subagent_graph_cache():
+    """Cancel the cleanup loop on the user-subagent graph cache."""
+    try:
+        if providers.is_initialized("user_subagent_graph_cache"):
+            cache = await providers.aget("user_subagent_graph_cache")
+            if cache:
+                await cache.shutdown()
+                log.info("User subagent graph cache closed")
+    except Exception as e:
+        log.error(f"Error closing user subagent graph cache: {e}")
+
+
 def _process_results(results, service_names):
     failed_services = []
     for i, result in enumerate(results):

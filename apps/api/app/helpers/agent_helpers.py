@@ -19,7 +19,6 @@ from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
 from shared.py.wide_events import log
-from app.config.settings import settings
 from app.constants.cache import (
     CUSTOM_INT_METADATA_CACHE_PREFIX,
     CUSTOM_INT_METADATA_TTL,
@@ -267,26 +266,6 @@ def build_agent_config(
 
     callbacks: list[BaseCallbackHandler] = []
 
-    # Add OpikTracer in production, or in development only if configured.
-    # Import is deferred to avoid paying the cost when Opik is unused and to
-    # sidestep import-time litellm shadowing (crawl4ai installs unclecode-litellm
-    # which conflicts with the real litellm at module load time).
-    is_opik_configured = settings.OPIK_API_KEY and settings.OPIK_WORKSPACE
-    if settings.ENV == "production" or is_opik_configured:
-        from opik.integrations.langchain import OpikTracer  # noqa: PLC0415
-
-        callbacks.append(
-            OpikTracer(
-                tags=["langchain", settings.ENV],
-                thread_id=conversation_id,
-                metadata={
-                    "user_id": user.get("user_id"),
-                    "conversation_id": conversation_id,
-                    "agent_name": agent_name,
-                },
-                project_name="GAIA",
-            )
-        )
     posthog_client = (
         providers.get("posthog") if providers.is_available("posthog") else None
     )

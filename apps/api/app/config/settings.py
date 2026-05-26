@@ -295,8 +295,6 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     SENTRY_DSN: str
     POSTHOG_API_KEY: str
-    OPIK_API_KEY: str
-    OPIK_WORKSPACE: str
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -309,7 +307,7 @@ class ProductionSettings(CommonSettings):
     FIGMA_MCP_CLIENT_SECRET: str
 
     # ----------------------------------------------
-    # Opik Evaluation Config
+    # Eval / Skills Test Config (used by tests/skills via tests/conftest.py)
     # ----------------------------------------------
     EVAL_USER_ID: Optional[str] = None
     EVAL_USER_EMAIL: Optional[str] = None
@@ -477,8 +475,6 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     SENTRY_DSN: Optional[str] = None
     POSTHOG_API_KEY: Optional[str] = None
-    OPIK_API_KEY: Optional[str] = None
-    OPIK_WORKSPACE: Optional[str] = None
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -491,7 +487,7 @@ class DevelopmentSettings(CommonSettings):
     FIGMA_MCP_CLIENT_SECRET: Optional[str] = None
 
     # ----------------------------------------------
-    # Opik Evaluation Config
+    # Eval / Skills Test Config (used by tests/skills via tests/conftest.py)
     # ----------------------------------------------
     EVAL_USER_ID: Optional[str] = None
     EVAL_USER_EMAIL: Optional[str] = None

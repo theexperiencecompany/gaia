@@ -13,6 +13,7 @@ Tools are registered on-demand when subagent is first created.
 import asyncio
 from typing import Any, Awaitable, Callable, Optional
 
+from app.agents.core.subagents.cache import get_user_subagent_graph_cache
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.llm.client import init_llm
 from app.agents.tools.core.registry import get_tool_registry
@@ -27,34 +28,25 @@ from shared.py.wide_events import log
 
 from .base_subagent import SubAgentFactory
 
-# In-memory cache for per-user subagent graphs.
-#
-# **Why in-memory (not Redis)?** Values are compiled LangGraph objects that
-# embed ``functools.partial`` closures, bound-method references, and live
-# Pydantic models. These are NOT pickleable. Process-local memo is the only
-# viable option.
-#
-# Keyed by ``(integration_id, user_id)``. Invalidated on process restart,
-# explicit calls to ``invalidate_user_subagent_cache()``, or MCP config
-# change (callers must invalidate explicitly).
-_USER_SUBAGENT_CACHE: dict[tuple[str, str], CompiledStateGraph] = {}
+# Per-user compiled-graph memo lives in `cache.py` as a bounded LRU+TTL.
+# This lock only serializes the expensive build step (MCP-connect +
+# ChromaDB-indexing) so concurrent first-handoffs for the same key don't
+# duplicate the work; the cache itself has its own internal lock.
 _USER_SUBAGENT_LOCK = asyncio.Lock()
 
 
-def invalidate_user_subagent_cache(
+async def invalidate_user_subagent_cache(
     integration_id: str, user_id: Optional[str] = None
 ) -> None:
     """Drop cached subagent graphs for a given integration.
 
-    If user_id is None, invalidates every user's graph for that integration
-    (useful when an MCP config changes globally).
+    If ``user_id`` is None, invalidates every user's graph for that
+    integration (useful when an MCP config changes globally). Async because
+    the underlying cache evicts the user-scoped MCP tool category alongside
+    the graph.
     """
-    if user_id is not None:
-        _USER_SUBAGENT_CACHE.pop((integration_id, user_id), None)
-        return
-    for key in list(_USER_SUBAGENT_CACHE.keys()):
-        if key[0] == integration_id:
-            _USER_SUBAGENT_CACHE.pop(key, None)
+    cache = await get_user_subagent_graph_cache()
+    await cache.invalidate(integration_id, user_id=user_id)
 
 
 async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
@@ -151,17 +143,18 @@ async def create_subagent_for_user(
     integration_id: str, user_id: str
 ) -> CompiledStateGraph | None:
     """
-    Create (or retrieve from in-memory cache) a per-user subagent graph.
+    Create or retrieve from the bounded LRU+TTL cache a per-user subagent graph.
 
     The compiled graph is memoised in-process keyed by
     ``(integration_id, user_id)`` so repeat handoffs skip the expensive
-    MCP-connect + ChromaDB-indexing rebuild. Invalidation happens on:
-      - process restart
-      - ``invalidate_user_subagent_cache(integration_id, user_id=?)``
-      - MCP config change (callers must invalidate explicitly)
+    MCP-connect + ChromaDB-indexing rebuild. The cache is bounded
+    (size + TTL); evicted entries also drop their MCP tool category from the
+    registry. Explicit invalidation happens on MCP config change via
+    :func:`invalidate_user_subagent_cache`.
     """
-    cache_key = (integration_id, user_id)
-    cached = _USER_SUBAGENT_CACHE.get(cache_key)
+    cache = await get_user_subagent_graph_cache()
+
+    cached = await cache.get(integration_id, user_id)
     if cached is not None:
         log.set(
             subagent_graph_cache={
@@ -174,7 +167,7 @@ async def create_subagent_for_user(
 
     async with _USER_SUBAGENT_LOCK:
         # Double-check: another task may have populated while we waited.
-        cached = _USER_SUBAGENT_CACHE.get(cache_key)
+        cached = await cache.get(integration_id, user_id)
         if cached is not None:
             log.set(
                 subagent_graph_cache={
@@ -187,7 +180,7 @@ async def create_subagent_for_user(
 
         graph = await _build_user_subagent(integration_id, user_id)
         if graph is not None:
-            _USER_SUBAGENT_CACHE[cache_key] = graph
+            await cache.put(integration_id, user_id, graph)
         log.set(
             subagent_graph_cache={
                 "integration_id": integration_id,

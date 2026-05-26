@@ -12,19 +12,23 @@ from app.models.subagent_models import Subagent
 
 @pytest.fixture(autouse=True)
 def _clear_user_subagent_cache():
-    """Reset the in-memory per-user subagent graph cache between tests.
+    """Give each test an isolated, fresh subagent graph cache.
 
-    ``create_subagent_for_user`` memoises compiled graphs in a module-level
-    dict keyed by ``(integration_id, user_id)`` so repeat handoffs skip the
-    expensive rebuild. Tests deliberately simulate failure/success modes for
-    the same key, so the cache must be wiped between tests or the second
-    test would read the first test's cached MagicMock.
+    ``create_subagent_for_user`` memoises compiled graphs in a bounded
+    LRU+TTL cache (see ``cache.py``). Tests deliberately simulate
+    failure/success modes for the same key, so the cache must be wiped
+    between tests or the second test would read the first test's cached
+    MagicMock. We patch the resolver to return a fresh cache instance
+    (no background cleanup loop) per test.
     """
-    from app.agents.core.subagents import provider_subagents as _ps
+    from app.agents.core.subagents.cache import UserSubagentGraphCache
 
-    _ps._USER_SUBAGENT_CACHE.clear()
-    yield
-    _ps._USER_SUBAGENT_CACHE.clear()
+    cache = UserSubagentGraphCache()
+    with patch(
+        "app.agents.core.subagents.provider_subagents.get_user_subagent_graph_cache",
+        AsyncMock(return_value=cache),
+    ):
+        yield
 
 
 # ---------------------------------------------------------------------------
