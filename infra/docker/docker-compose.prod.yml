@@ -707,7 +707,10 @@ services:
       GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/gaia_grafana_admin_password
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
-      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
+      # Public URL Grafana uses to build every generated link (alert "View"
+      # links in Slack, share links, dashboard URLs). Without this the default
+      # resolves to localhost:4000 and Slack alerts link nowhere.
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://logs.heygaia.io}
     secrets:
       - gaia_grafana_admin_password
       - gaia_grafana_slack_webhook
