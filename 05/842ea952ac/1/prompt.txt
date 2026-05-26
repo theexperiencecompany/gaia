@@ -1,0 +1,738 @@
+review each file in this pr. anything we've messed up? any bad code?
+
+---
+
+<task-notification>
+<task-id>a14f3303bd0a8d453</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-aryan-Projects-GAIA-gaia-develop/907d5a5d-780f-44f7-be5c-7db692affa9c/tasks/a14f3303bd0a8d453.output</output-file>
+<status>completed</status>
+<summary>Agent "Review MCP resilience chunk" completed</summary>
+<result>Excellent! Now I have enough information to make the review. Let me create a comprehensive analysis:
+
+## Code Review: PR #716 - MCP Integration Resilience and Leak Fixes
+
+Based on my analysis of the three files and the changes in the `fix/mcp-integration-resilience-and-leak` branch, here are my findings:
+
+---
+
+### **BLOCKING**
+
+**1. `token_management.py` line 118: Terminal endpoint URL logged without sanitization**
+
+```python
+log.warning(
+    f"try_refresh_token: token endpoint returned "
+    f"{response.status_code} for {integration_id} "
+    f"(oauth_error={error_code!r}, desc={error_description!r}) "
+    f"endpoint={token_endpoint}"  # &lt;-- EXPOSED
+)
+```
+
+**Issue:** The `endpoint` URL may contain provider-specific PII, service discovery endpoints, or internal network details. OAuth servers vary in what they embed in error responses. The URL itself can leak infrastructure information.
+
+**Fix:** Remove the endpoint URL from the log or redact it to the scheme+domain only.
+
+---
+
+**2. `mcp_client.py` line 563-574: Inconsistent post-task cleanup on terminal auth failure**
+
+```python
+if _is_terminal_auth_failure(e, refresh_attempted=refresh_attempted):
+    try:
+        await update_user_integration_status(...)
+    except Exception:
+        log.warning(...)
+    try:
+        await delete_cache(...)  # &lt;-- Redis only
+    except Exception:
+        ...
+```
+
+**Issue:** On terminal auth failure, the code clears MongoDB status and Redis OAuth discovery cache, but does NOT delete credentials from PostgreSQL (token_store). The `handle_oauth_callback` method (line 1100) DOES delete credentials on terminal failure, but `_do_connect` does not. This creates asymmetry:
+- OAuth callback clears: MongoDB + PostgreSQL + DCR client
+- `_do_connect` clears: MongoDB + Redis only
+
+If a user's token becomes invalid mid-session, `_do_connect` marks it as "created" but leaves the dead token in PostgreSQL, silently preventing reconnection until the user manually triggers a new OAuth flow. Subsequent `connect()` calls will keep hitting the same dead token.
+
+**Fix:** Add `await self.token_store.delete_credentials(integration_id)` and `await self.token_store.delete_dcr_client(integration_id)` after the MongoDB status reset in the terminal branch.
+
+---
+
+### **HIGH**
+
+**3. `mcp_client.py` line 103-130: `_is_terminal_auth_failure()` may miss legitimate dead-token scenarios**
+
+```python
+def _is_terminal_auth_failure(exception: Exception, refresh_attempted: bool = False) -&gt; bool:
+    msg = str(exception).lower()
+    
+    if "invalid_grant" in msg or "invalid_token" in msg:
+        return True
+    if refresh_attempted and "401" in str(exception):
+        return True
+    return False
+```
+
+**Issue:** The function only matches string patterns in the exception message. Real-world OAuth servers may return:
+- **HTTP status code 403 (not 401) for invalid tokens** — some servers distinguish "forbidden" (invalid token format) from "unauthorized" (valid format, expired).
+- **Custom error codes** in the JSON body (e.g., `error="revoked_token"`, `"expired_token"`) that won't appear in the string representation if the exception only stringifies the HTTP body or status.
+- **Provider-specific wording** like "grant_revoked" vs. "invalid_grant".
+
+The pattern matching is fragile because it depends on the exact exception string representation. If mcp-use wraps the response in a custom exception class that doesn't include the OAuth error body in `str(e)`, the check fails silently.
+
+**Fix:** Enhance the matching to:
+1. Check `response.status_code` directly (not just string repr) for 401/403.
+2. If available, parse the OAuth error code from the response JSON (e.g., if a `HTTPException` stores `response` or structured data).
+3. Log a warning if the refresh was attempted but the response couldn't be parsed to advise operators.
+
+---
+
+**4. `endpoints/mcp.py` line 263-275: Missing `code` value check before calling callback**
+
+```python
+if not code:
+    log.error(f"OAuth callback missing code for {integration_id}")
+    return RedirectResponse(...)
+
+client = await get_mcp_client(...)
+tools = await client.handle_oauth_callback(
+    code=code,  # &lt;-- code is None if error=True and code was omitted
+    ...
+)
+```
+
+**Issue:** The `code` query parameter is optional per spec (may be omitted if `error=` is present), but the check happens AFTER the error handler. If an OAuth server returns both `error=` AND `code=` (non-standard but possible), the handler returns early. However, if the error handler is skipped but `code` is still `None` (due to being truly omitted), the `handle_oauth_callback()` call at line 268 receives `code=None`. The signature accepts `code: str` (not optional), so this will raise a type error or be passed silently to the token exchange, causing a cryptic failure. The flow is correct but the comment/safety could be clearer.
+
+**Fix:** Add an explicit assertion or type check: `assert code is not None and code, "Code must be present after error check"` right before the `client.handle_oauth_callback()` call to make intent clear.
+
+---
+
+### **MEDIUM**
+
+**5. `mcp_client.py` line 527-552: `_safe_connect` swallows all exceptions but leaves MongoDB status inconsistent**
+
+```python
+async def _safe_connect(self, integration_id: str) -&gt; list[BaseTool] | None:
+    try:
+        return await self.connect(integration_id)
+    except Exception as e:
+        log.warning(...)
+        return None
+```
+
+**Issue:** `_safe_connect` is called from `get_all_connected_tools()` for batch reconnection. It silently swallows all exceptions (both transient and terminal). This is correct for not crashing the batch, but the docstring says "_do_connect already classifies failures and resets status only when the credentials are demonstrably dead." However, `_safe_connect` doesn't distinguish between:
+- Transient errors (keep status, retry later) — `_do_connect` left status as-is and re-raised.
+- Terminal errors (reset status) — `_do_connect` reset status to "created" and re-raised.
+
+The caller doesn't know which happened. On the next call, if `_do_connect` reset the status to "created", a retry won't find the integration in `user_integrations` with status "connected", so `ensure_connected()` will fail. This is by design (force re-auth), but `_safe_connect` silently hiding the distinction means the user experiences a silent failure in a background batch operation, then the next foreground operation fails with a confusing error.
+
+**Fix:** Document in the docstring that callers should NOT assume the status is unchanged; they should check MongoDB status explicitly if they need to distinguish transient from terminal. Or, return a tuple `(tools | None, status_action: Literal["terminal", "transient"])` to give callers visibility.
+
+---
+
+### **LOW / NIT**
+
+**6. `token_management.py` line 67: Partial logging on refresh failure**
+
+```python
+log.warning(
+    f"try_refresh_token: token endpoint returned "
+    f"{response.status_code} for {integration_id} "
+    ...
+)
+return False
+```
+
+**Issue:** The log message is slightly cryptic — "returned 200 OK but no access_token" (line 125) is clear, but "returned 403" without the OAuth error code is unclear. The code does parse `error` and `error_description` on lines 110-118, but when the parse fails (ValueError), the warning doesn't include them. The guard `if error_code or error_description` means both must be None to skip the detail, but a parse failure leaves both None. The condition should be more explicit.
+
+**Fix:** Change line 108 guard to: `details = f" (oauth_error={error_code!r}, desc={error_description!r})" if (error_code is not None or error_description is not None) else ""` to clarify that empty values are included, or log separately: `if error_code: log.debug(f"OAuth error: {error_code}...")`.
+
+---
+
+**7. `mcp_client.py` line 564-569: Transient failure logging does not emit telemetry**
+
+```python
+log.warning(
+    f"[{integration_id}] Transient connection failure — keeping "
+    f"connected status so next attempt retries with current tokens. "
+    f"Error: {type(e).__name__}: {e}"
+)
+raise
+```
+
+**Issue:** The message is logged, but no `log.set(...)` is called to attach structured telemetry. Compare to the terminal branch (line 559-562) which sets `log.error(...)`. For observability, transient failures should also emit a structured event so operators can see the failure reason, error type, and frequency without parsing unstructured logs.
+
+**Fix:** Add `log.set(mcp_transient_error={"error_type": type(e).__name__, ...})` before the warning.
+
+---
+
+**8. `endpoints/mcp.py` line 233: No structured error logging on exception**
+
+```python
+except Exception as e:
+    log.set(outcome="failed", mcp_oauth_callback_error={...})
+    log.error(...)
+```
+
+**Issue:** The error message includes `str(e)[:500]`, which is good for limiting size, but `type(e).__name__` is already in the structured log. The error message should not be logged twice (once in `log.set()`, once in `log.error()`). The structured log is sufficient; the additional `log.error()` call creates redundancy.
+
+**Fix:** Keep only `log.set()` with the full error details, or combine them: `log.error(f"...", mcp_oauth_callback_error={...})`.
+
+---
+
+**Summary:** The PR correctly introduces `_is_terminal_auth_failure()` to distinguish dead credentials from transient errors, fixing the "Gmail expires after a while" bug. However, **BLOCKING issue #2** (inconsistent PostgreSQL cleanup) must be fixed before merge, and **HIGH issues #1 and #3** should be addressed to prevent future data leaks and silent retries on dead tokens.</result>
+<usage><total_tokens>130516</total_tokens><tool_uses>26</tool_uses><duration_ms>130090</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a7f6a527aee1e7af3</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-aryan-Projects-GAIA-gaia-develop/907d5a5d-780f-44f7-be5c-7db692affa9c/tasks/a7f6a527aee1e7af3.output</output-file>
+<status>completed</status>
+<summary>Agent "Review security + tools registry chunk" completed</summary>
+<result>Good. The only authenticated endpoint (`/api/v1/tools`) calls `get_available_tools` with the user's `user_id`. Now I have the complete picture. Let me create my review:
+
+---
+
+## PR #716 Security &amp; Observability Review
+
+### 1. **tools_service.py** — SECURITY FIX
+
+**✓ CLEAN** with strong verification:
+
+- **Gate is correct**: Line 149 `if global_mcp_tools and user_id is None:` gates the global merge to anonymous callers only.
+- **Caller flow verified**: 
+  - Only entry point is `GET /api/v1/tools` (line 65 in endpoints/tools.py), which requires `Depends(get_current_user)`.
+  - Authenticated users always have `user_id` set (never `None`), so they skip the global merge.
+  - Warmup path explicitly calls with `user_id=None` (tools_warmup.py:36) — correct for seeding the cache.
+- **User-specific tools still included**: Custom integrations loop (lines 114–147) runs for all users and is not gated, so authenticated users get their own tools before the global gate.
+- **`_fetch_user_mcp_integrations` verification**: Confirmed user-filters via `{"$match": {"user_id": user_id, ...}}` (line 44) — cannot leak to other users.
+
+**Result**: The leak is fixed. No scenario exists where an authenticated user sees another user's MCP tools.
+
+---
+
+### 2. **registry.py** (+67/-0) — Observability
+
+**✓ CLEAN** — pure logging adds with no PII/token leaks:
+
+- **`_add_category()` observability** (lines 156–185): Logs `name`, `space`, tool counts (not contents). Safe.
+- **`_index_category_tools()` observability** (lines 371–399): Logs `category_name`, `space`, counts. Safe; bounds warning for empty categories.
+- **`load_user_mcp_tools()` observability** (lines 443–472): 
+  - Logs `user_id`, `integration_count`, `integrations` list (keys only), tool counts per integration. 
+  - **No credentials, API keys, or tool descriptions logged** — only metadata.
+  - Includes helpful warning on re-adds to the same user (line 476).
+
+**No performance regressions**: All additions are post-computation logging; no new enumerations or computations.
+
+**Result**: Observability adds are safe and valuable.
+
+---
+
+### 3. **retrieval.py** (+11/-1) — Observability
+
+**✓ CLEAN** — bounded and safe:
+
+- **`chroma_preview` bounds verified** (lines 605–621): Hardcoded limit of 10 items via `if len(chroma_preview) &gt;= 10: break`. Correct.
+- **Preview content verified**: Logs only `namespace::tool_key` pairs (line 617), NOT tool descriptions, arguments, or contents. Safe.
+- **`per_namespace_hits` addition** (line 603): Counts per namespace, no content. Safe.
+- **Zero-hit warning** (lines 658–662): When `chroma_hits == 0` for non-general spaces, warns to check indexing. Correct and helpful.
+
+**Result**: Observability is bounded and safe.
+
+---
+
+### 4. **provisioner.py** (+7/-1) — Observability
+
+**✓ CLEAN** — tiny diff:
+
+- Line 110–115: Reformat error logging from f-string to structured fields:
+  - Logs `system_workflow_key`, `user_id`, `integration_display_name`, `error_type`, `error` (truncated to 500 chars).
+  - No secrets or PII beyond user_id (which is already in context).
+
+**Result**: Observation improvement only.
+
+---
+
+## Summary
+
+| File | Status | Finding |
+|------|--------|---------|
+| `tools_service.py` | ✓ PASS | Security gate (`user_id is None`) is correct and cannot be bypassed. Leak is fixed. |
+| `registry.py` | ✓ PASS | 67 lines of pure logging; no PII/secrets; no perf regressions. |
+| `retrieval.py` | ✓ PASS | `chroma_preview` bounded to 10 items; logs keys only, not contents. |
+| `provisioner.py` | ✓ PASS | Minor logging restructure; safe. |
+
+**No blocking issues. No HIGH issues. PR is ready.**</result>
+<usage><total_tokens>125136</total_tokens><tool_uses>29</tool_uses><duration_ms>121883</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a79f723eb8e00f6f0</task-id>
+<tool-use-id>toolu_01EMdqzrsYaMTaEjtVqqJhMt</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-aryan-Projects-GAIA-gaia-develop/907d5a5d-780f-44f7-be5c-7db692affa9c/tasks/a79f723eb8e00f6f0.output</output-file>
+<status>completed</status>
+<summary>Agent "Review observability-only changes" completed</summary>
+<result>Perfect. Now I have comprehensive visibility. Let me write the review:
+
+---
+
+## PR #716 Code Review: 8 Files
+
+All 8 files reviewed. **Verdict: CLEAN** — all changes are pure observability adds with structured logging. No correctness bugs, no PII leaks, no behavior changes, no exception swallowing.
+
+### File-by-File Summary
+
+**1. `db/redis.py` (+22 / -3)** — Pure observability
+   - Replaced inline f-string error logs with structured `log.error()` calls that include operation type (`op`), key, error type, and error message.
+   - No connection-pool / serialization / TTL changes. No behavior impact.
+   - ✅ Clean
+
+**2. `api/v1/middleware/auth.py` (+8 / -1)** — Pure observability, no PII leak
+   - Replaced single f-string error log with structured fields: `auth_failure`, `path`, `method`, `session_present`, `error`.
+   - Does NOT log raw JWT, bearer token, refresh token, or user email — only `type(e).__name__` and `str(e)` (exception message).
+   - `path` and `method` are request metadata, not user data.
+   - ✅ Clean
+
+**3. `services/triggers/base.py` (+28 / -4)** — Pure observability
+   - Four error paths converted to structured logging: `trigger_no_matching_workflows`, `trigger_workflow_missing_id`, `trigger_workflow_queued`, `trigger_workflow_queue_failed`.
+   - All adds include `trigger_id`, `event_type`, `workflow_id`, `user_id`, exception type/message.
+   - No behavior change: still `return` after error cases, still `continue` on skip.
+   - ✅ Clean
+
+**4. `core/app_factory.py` (+14 / -2)** — Minor semantic change, justified
+   - Changed from `wide_log.set(error=exc.to_dict())` (context only) to `wide_log.error(...)` (explicit error log).
+   - **Not a correctness bug** — it's a logging-level fix: explicitly emitting ERROR so Loki filters like `level="ERROR"` catch it. Comment explains this clearly.
+   - Still returns the same JSON response. No exception handling change.
+   - ✅ Clean
+
+**5. `services/chat_service.py` (+17 / -2)** — Pure observability
+   - Two error paths: `background_stream_error` and `token_usage_processing_failed`.
+   - Includes `stream_id`, `user_id`, `conversation_id`, `error_type`, `error`, `models_in_metadata`.
+   - Does NOT log full user prompts or assistant content (only metadata keys). No PII leak.
+   - ✅ Clean
+
+**6. `agents/core/graph_builder/build_graph.py` (+12 / -2)** — Pure observability
+   - `log.debug()` → `log.info()` / `log.warning()` for checkpointer status: `graph_compiled_postgres`, `graph_compiled_in_memory`, `checkpointer_fallback_to_memory`.
+   - Added comment explaining why fallback is WARNING: "users silently lose conversation memory."
+   - No behavior change: conditional logic on `in_memory_checkpointer` controls the message, not the flow.
+   - ✅ Clean
+
+**7. `agents/core/subagents/handoff_tools.py` (+8 / -1)** — Pure observability
+   - Error log in handoff exception path: `handoff_failed` with `subagent_id`, `user_id`, `error_type`, truncated error message (`[:500]`).
+   - ✅ Clean
+
+**8. `agents/core/subagents/provider_subagents.py` (+30 / -3)** — Pure observability
+   - Added `log.info()` calls for cache hit, MCP connect, and successful tool registration.
+   - Added `log.error()` calls with context (integration_id, user_id, error type).
+   - **Key point**: `log.set(subagent_register={...})` before `tool_registry._add_category()` — this is context attachment, not a side effect. The fields are metadata, not a behavior trigger.
+   - No behavior change: still `return None` on error, still `len(tools)` check, still `await mcp_client.connect(...)`.
+   - ✅ Clean
+
+---
+
+## No Blocking Issues
+
+- ✅ No exception swallowing (all errors still logged, flow uninterrupted)
+- ✅ No PII exposure (no raw tokens, bearer tokens, OAuth codes, full emails, JWTs, session cookies)
+- ✅ No hidden behavior changes (log.set/info/error calls are observability-only)
+- ✅ No async/import side effects in log payloads (all fields are scalars, lists, dicts of strings/ints)
+- ✅ No hot-path performance issues (no large enumerations into log payloads)
+- ✅ No mismatched log messages (all logs align with surrounding code branch)
+
+**Status: APPROVE** ✅</result>
+<usage><total_tokens>109535</total_tokens><tool_uses>12</tool_uses><duration_ms>62636</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a1947727ae4682d40</task-id>
+<tool-use-id>toolu_017ATgHPqZ62AVbfZxV1xNHE</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-aryan-Projects-GAIA-gaia-develop/907d5a5d-780f-44f7-be5c-7db692affa9c/tasks/a1947727ae4682d40.output</output-file>
+<status>completed</status>
+<summary>Agent "Review workflows + Chroma chunk" completed</summary>
+<result>Great! The warning at line 387-391 correctly warns about empty categories, but it's ONLY when the category actually exists and has zero tools. This is good — it won't warn for legitimately uninstalled providers since their categories won't be in the registry at all. Perfect!
+
+Now let me compile the full review:
+
+---
+
+## PR #716 Code Review Summary
+
+**Focus**: `workflows.py`, `chroma_store.py`, `chroma_tools_store.py`, `workflow_tasks.py`
+
+---
+
+### **BLOCKING ISSUES**
+
+**None detected.**
+
+---
+
+### **HIGH**
+
+**1. `chroma_store.py:547` — Embedding error log includes actual text metadata**
+- **Location**: `apps/api/app/db/chroma/chroma_store.py`, lines 571-579
+- **Issue**: Line 573 logs `text_len={sum(len(t) for t in texts)}`, which is safe (byte count). However, the `texts` variable at line 540-545 is populated from `get_text_at_path(op.value, field)` without filtering. If `op.value` contains user-generated content (e.g., tool description with user's private info), the embedding failure might cascade from that data.
+  - **Actually Fine**: The log only emits `text_len` (aggregate), never the actual text. No PII risk. ✓
+
+**2. `chroma_tools_store.py:285` — Cache-hit log should be consistent**
+- **Location**: `apps/api/app/db/chroma/chroma_tools_store.py`, line 323
+- **Issue**: New log says `"Redis cache HIT (hash={tools_hash}), skipping reindex..."` but the old code at line 294 said `"Namespace '...' unchanged (Redis cache hit)"`. Frontend or monitoring might expect the old format.
+  - **Assessment**: New format is more explicit and observability is improved. No breaking change; old monitors might miss it but new ones will catch it. **MEDIUM** concern only if there are downstream alerting rules.
+
+---
+
+### **MEDIUM**
+
+**1. `workflows.py:599-604` — Creator lookup shape consistency**
+- **Location**: `apps/api/app/api/v1/endpoints/workflows.py`, lines 599-604
+- **Issue**: Old code: `creator_lookup` stage output was `creator_info` (array). New code uses `creator_lookup_stage()` which defaults to `output_field="creator_info"` (same). Then `format_creator(workflow_doc)` extracts the array and picks first element. Response shape at line 618 (`workflow.creator = creator`) assigns a dict with `id`, `name`, `avatar` (same keys as old code). ✓
+- **But**: Frontend expects `creator.avatar`—old code mapped `picture` → `avatar`. New code in `creator.py:79` maps `picture` → `avatar`. ✓
+- **No issue detected.**
+
+**2. `chroma_store.py:490-515` — `doc_ids` and `results` zip alignment**
+- **Location**: `apps/api/app/db/chroma/chroma_store.py`, lines 490-516
+- **Issue**: Line 510 zips `doc_ids` with `results`. Both are built from the same loop (lines 490-496), so order is guaranteed. Lengths must match: `len(doc_ids) == len(results)` because every task in `tasks` appends to `doc_ids` beforehand. ✓
+- **No issue detected.**
+
+**3. `chroma_tools_store.py:274-296` — Early return on empty input**
+- **Location**: `apps/api/app/db/chroma/chroma_tools_store.py`, lines 274-296
+- **Issue**: Lines 274-276 return early if `tools_with_space` is empty, but line 277 still tries to access `tools_with_space[0][1]` for `namespace`. This looks like a bug—`namespace` gets set to `None` at line 277 if empty, AFTER the early return check on line 275.
+  - **Actually Fine**: Line 277 has the guard: `namespace = tools_with_space[0][1] if tools_with_space else None`. So `namespace` is `None` if empty. The `log.set()` call at line 278 includes `namespace=None`, which is valid. ✓
+
+---
+
+### **MEDIUM (Observability Confirmation)**
+
+**1. `registry.py:154-186` — Smoking-gun field logged correctly**
+- **Location**: `apps/api/app/agents/tools/core/registry.py`, lines 154-186
+- **Check**: Does `final_count` vs `tools_in` vs `prior_tools_count` log correctly?
+  - Line 156: `replacing = name in self._categories` (True if overwriting)
+  - Line 157: `prior_tools_count = len(self._categories[name].tools) if replacing else 0` ✓
+  - Lines 163-166: `category.add_tools(core_tools, is_core=True)` then `category.add_tools(tools)` 
+  - Line 168: Log shows `tools_in=len(tools)` (input), `core_tools_in=len(core_tools)`, `final_count=len(category.tools)` (sum of all)
+  - **Correct**: `final_count` = core + regular. Off-by-one risk? No—`add_tools()` appends, so final_count is correct. ✓
+
+**2. `chroma_tools_store.py:387` — Empty-tools warning**
+- **Location**: `apps/api/app/agents/tools/core/registry.py`, lines 387-391
+- **Check**: Does it warn for legitimately empty categories?
+  - Only warns if `category_name` exists in registry but has 0 tools.
+  - Uninstalled providers never register a category, so no spurious warnings. ✓
+  - Intentionally-empty categories (e.g., placeholder) will trigger the warning, which is correct. ✓
+
+---
+
+### **NIT**
+
+**1. `chroma_store.py:502` — Docstring mentions re-raise behavior**
+- **Location**: `apps/api/app/db/chroma/chroma_store.py`, lines 502-510
+- **Note**: Docstring at line 502-510 correctly states `_delete_item` re-raises so failure count is accurate. Good explanation of why exceptions must propagate.
+
+**2. `workflows.py:580-602` — `lookup_mode` not used in error handling**
+- **Location**: `apps/api/app/api/v1/endpoints/workflows.py`, lines 580-606
+- **Note**: `lookup_mode` is set at line 580 and logged at line 581-584 but never used again in exception handling. Could improve error messages if used, but not a bug—observability is still adequate.
+
+**3. `workflow_tasks.py` — No new PII risks**
+- All new logs in workflow_tasks.py are safe: `user_id`, `todo_id`, `workflow_id`, step counts, error types (no secrets or content).
+
+---
+
+## Summary
+
+✅ **All four files are safe to merge.**
+- `workflows.py`: Creator lookup correctly uses `creator_lookup_stage()` + `format_creator()` to handle system/malformed IDs.
+- `chroma_store.py`: Failure surfacing is bounded (first 3 exceptions), counts are accurate, `doc_id` is not PII (deterministic hash), and embedding errors log text length only.
+- `chroma_tools_store.py`: Observability is comprehensive with early-phase logs, cache-hit feedback, and empty-tools warnings are correctly scoped.
+- `workflow_tasks.py`: No behavioral changes, all new logs are non-sensitive.</result>
+<usage><total_tokens>114180</total_tokens><tool_uses>24</tool_uses><duration_ms>90809</duration_ms></usage>
+</task-notification>
+
+---
+
+3. MEDIUM — _is_terminal_auth_failure is fragile string matching (mcp_client.py:103)
+
+  if "invalid_grant" in msg or "invalid_token" in msg: return True
+  if refresh_attempted and "401" in str(exception): return True
+
+  - Substring match on str(e) depends entirely on how mcp-use stringifies exceptions. If a future SDK version wraps the OAuth body differently, every failure becomes "transient" and you're
+   back to dead-tokens-never-resetting (the inverse of the original bug).
+  - "401" in str(exception) also matches "401k", "4011", error message text mentioning HTTP/1.1 401, etc. Cheap to harden: check response.status_code == 401 when the exception carries a
+  response, or use a stricter regex like \b401\b.
+  - Doesn't handle 403 (some providers return 403 for revoked tokens) or provider-specific codes like revoked_token / expired_token. Probably fine for now since you can iterate as you
+  observe new shapes in Loki — but worth a TODO comment so future-you knows the matrix.
+
+  4. MEDIUM — proxy_client.py account_summary logs acc.id (apps/api/app/services/composio/proxy_client.py:110-115)
+
+  {"id": getattr(acc, "id", "?"), "status": ..., "is_disabled": ...}
+
+  If Composio's connected_account.id is an opaque resource ID — fine. If it ever contains, or starts containing, OAuth tokens / provider account identifiers / anything sensitive — it lands
+   in Loki. Worth a 30-second sanity check against Composio's SDK type, or hashing it before logging.
+
+  5. LOW — langchain_composio_service.py warns on every successful=False
+
+  After the desync_handler revert, the wrapper still emits "successful=False for user=..." warnings on any unsuccessful tool result (bad args, network blip, downstream 5xx, account dead —
+  all the same). This will be noisy in Loki and won't help triage. Either narrow to "looks like auth" (status 401/error code 1810) or drop the noise level to INFO. Not a blocker, just
+  future cleanup.
+
+  6. LOW — Token-endpoint URL in OAuth refresh log (token_management.py:118)
+
+  log.warning(... endpoint={token_endpoint}) — endpoint URLs aren't secrets, but if any provider ever puts a client_id/discovery-token in the path, it ends up in Loki. Low priority; flag
+  only. why cna't we have a single common code that we reuse everywhere since it's supposed to be identical? why to fragment 3 different places?   3. MEDIUM — _is_terminal_auth_failure is fragile string matching (mcp_client.py:103)
+
+  if "invalid_grant" in msg or "invalid_token" in msg: return True
+  if refresh_attempted and "401" in str(exception): return True
+
+  - Substring match on str(e) depends entirely on how mcp-use stringifies exceptions. If a future SDK version wraps the OAuth body differently, every failure becomes "transient" and you're
+   back to dead-tokens-never-resetting (the inverse of the original bug).
+  - "401" in str(exception) also matches "401k", "4011", error message text mentioning HTTP/1.1 401, etc. Cheap to harden: check response.status_code == 401 when the exception carries a
+  response, or use a stricter regex like \b401\b.
+  - Doesn't handle 403 (some providers return 403 for revoked tokens) or provider-specific codes like revoked_token / expired_token. Probably fine for now since you can iterate as you
+  observe new shapes in Loki — but worth a TODO comment so future-you knows the matrix.
+
+  4. MEDIUM — proxy_client.py account_summary logs acc.id (apps/api/app/services/composio/proxy_client.py:110-115)
+
+  {"id": getattr(acc, "id", "?"), "status": ..., "is_disabled": ...}
+
+  If Composio's connected_account.id is an opaque resource ID — fine. If it ever contains, or starts containing, OAuth tokens / provider account identifiers / anything sensitive — it lands
+   in Loki. Worth a 30-second sanity check against Composio's SDK type, or hashing it before logging.
+
+  5. LOW — langchain_composio_service.py warns on every successful=False
+
+  After the desync_handler revert, the wrapper still emits "successful=False for user=..." warnings on any unsuccessful tool result (bad args, network blip, downstream 5xx, account dead —
+  all the same). This will be noisy in Loki and won't help triage. Either narrow to "looks like auth" (status 401/error code 1810) or drop the noise level to INFO. Not a blocker, just
+  future cleanup.
+
+  6. LOW — Token-endpoint URL in OAuth refresh log (token_management.py:118)
+
+  log.warning(... endpoint={token_endpoint}) — endpoint URLs aren't secrets, but if any provider ever puts a client_id/discovery-token in the path, it ends up in Loki. Low priority; flag
+  only. then how can we fix these issues can u tell me please
+
+---
+
+is this even cleanc ode?
+
+---
+
+sure yeah let's do all of these.
+
+---
+
+please update the pr
+
+---
+
+whats the folder name
+
+---
+
+so i merged this branch. and after reconnecting posthog. it suddenly works?? what the fuck?
+
+---
+
+wait no fuck me it disconnected again!!!! please check the logs what happened. see production grafana and loki  {
+  "error": "RuntimeError",
+  "details": "MCP client is not connected",
+  "stack": "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.12/site-packages/mcp_use/agents/adapters/langchain_adapter.py\", line 103, in _arun\n    tool_result: CallToolResult = await self.tool_connector.call_tool(self.name, kwargs)\n                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.12/site-packages/mcp_use/client/connectors/base.py\", line 465, in call_tool\n    await self._ensure_connected()\n  File \"/usr/local/lib/python3.12/site-packages/mcp_use/client/connectors/base.py\", line 428, in _ensure_connected\n    raise RuntimeError(\"MCP client is not connected\")\nRuntimeError: MCP client is not connected\n",
+  "code": "UNKNOWN",
+  "tool": "execute-sql"
+} explore logs deeply figure out what's fucked up now!
+
+---
+
+i dont think this is the appropriate fix. please explore deeply. see the logs. see the code. explore the logs extremely deeply. remove this bullshit you've written rn.
+
+---
+
+i dont think this is the appropriate fix. please explore deeply. see the logs. see the code. explore the logs extremely deeply. remove this bullshit you've written rn. ❯ wait no fuck me it disconnected again!!!! please check the logs what happened. see production grafana and loki  {
+    "error": "RuntimeError",
+    "details": "MCP client is not connected",
+    "stack": "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.12/site-packages/mcp_use/agents/adapters/langchain_adapter.py\", line 103, in _arun\n    tool_result:
+  CallToolResult = await self.tool_connector.call_tool(self.name, kwargs)\n                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File
+  \"/usr/local/lib/python3.12/site-packages/mcp_use/client/connectors/base.py\", line 465, in call_tool\n    await self._ensure_connected()\n  File
+  \"/usr/local/lib/python3.12/site-packages/mcp_use/client/connectors/base.py\", line 428, in _ensure_connected\n    raise RuntimeError(\"MCP client is not connected\")\nRuntimeError: MCP
+   client is not connected\n",
+    "code": "UNKNOWN",
+    "tool": "execute-sql"
+  } explore logs deeply figure out what's fucked up now! so basically when i reconnected, it started working. but once i sent another message, it got disconnected somehow. what are we doing wrong. we just setup a shitton of logs right? so can u please explore using grafana mcp, if it doesn't work then, sshing into gaia prod and querying loki directly or grafana from prod. please find me a root cause analysis and how we can fix this reconnection bullshit. explore code but our source of truth is logs not the code because code you can't verify, logs you can verify exactly what happened at eachs tage. explore extremely deeply please.
+
+---
+
+i feel like the issue is that it's so overcomplicated that is the root cause. don't you think so? should we be simplifying this? what the fuck are the 3 cache layers it feels like code smell and tech debt. don't you think so?
+
+---
+
+nah mate idgaf about bullshit patches. i want to fix things properly once without any ech debt. please explain the approach you are saying. and how it affects like user cross data integrations and shit. explain in depth and with easy language how it would work and what the issue is. explore the code deeply
+
+---
+
+continue
+
+---
+
+evaluate what you're saying properly. like, what's the best approach? how can we make tools persist over sessions? and long lasting authentication too? how is it usually done? why is it so fucked up rn? and is cross user integrations  even bad? like when we retrieve, it's always user scope right? so even if the posthog mcp for 1 user is same as another user's posthog mcp, this should be itended don't you think?  also you're explaining things way too overcomplicated with function names and shit like it's really overwhelmingg .
+
+---
+
+you've just jumping on the first thing that comes to your mind. please think of multiple different approaches. tell me the best one. please don't just assume things. i think your assumption that mcp use was designed mainly for stdio mcp's like it doesn't make much sense. please first explore. there has gotta be a way to make it work. maybe it was working previously too. your assumptions are just false too. please tell me about the actual root cause by exploring the code and tell me the best way to fix it. ripping out the library and rewriting so much shit is NOT an option at all.
+
+---
+
+alright let's keep in mind that we gotta remove all the bullshit caching, we should remove the killing sessions approach too. so create 2 tasks for this. but now tell me, let's say we cap lru cache to 100. and users come, what the fuck happens after it gets evicted? the same issue happens then doesn't it?
+
+---
+
+this doesn't fix it tho. we just shift the issue. like evicting in 5 minutes and evicting when 100 users is literally the same thing. i want ot make it possible so that it never gets evicted. like how to make the user's auth last effectively forever? like please explore and help me do this with the best approach possible. like its unacceptable these bullshit fixes.
+
+---
+
+so look i'm fine with the network blip okay. i'm just not okay with fucking erroring like it does right now that mcp client isn't connected
+
+---
+
+no so then tell me accodringly like what to do, how will this work???
+
+---
+
+write all of this in a plan. and a long with a couple of issues we're facing today. 1. why does it take 7 seconds to load these tools? why do we connect every single integration at the same time once shit disconnects? what are we doing wrong? 2. when i disconnect integraiton on frontend, it disconnects and shows toast, but for the modal to close and the loading to stop, it lags a bit and closes after a few seconds so whats happening there? 3. when i connect something like posthog for example, when posthog redirects to us, it takes time for them to index things in chromadb like on our end, so it doesn't redirect on frontend until after a couple seconds which is noticeable. maybe something to do with indexing or other integrations too? please write the plan for the above things you've mentioned what all we need to do. and then explore our logs with grafana (or ssh gaia prod and see loki logs) to understand the process of what's going on when connecting integrations (use an agent to explore logs to not pollute context please) and explore code too to see each flow i've mentioned and to verify and help me fix. this should exist in this same plan
+
+---
+
+<task-notification>
+<task-id>a7abbe76a57ed5923</task-id>
+<tool-use-id>toolu_01PpArEvopmR681Gb2ewe64F</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-aryan-Projects-GAIA-gaia-develop/2273bd8a-b5b4-4d86-af9b-25b3e42901b1/tasks/a7abbe76a57ed5923.output</output-file>
+<status>completed</status>
+<summary>Agent "Trace frontend disconnect flow" completed</summary>
+<result>I have everything needed. Here's the trace:
+
+---
+
+## Trace Report — Disconnect Lag
+
+### 1. Frontend disconnect handler
+
+**Disconnect button** lives in the right-side `IntegrationSidebar` (the "modal" the user sees). The click handler shows a confirmation dialog, then calls `confirmDisconnect`:
+
+`apps/web/src/components/layout/sidebar/right-variants/IntegrationSidebar.tsx:189-198`
+```ts
+const confirmDisconnect = async () =&gt; {
+  if (!onDisconnect) return;
+  setIsDisconnecting(true);
+  try {
+    await onDisconnect(integration.id);
+  } finally {
+    setIsDisconnecting(false);
+    setShowDisconnectDialog(false);
+  }
+};
+```
+
+`onDisconnect` is wired in `apps/web/src/app/[locale]/(main)/integrations/page.tsx:84-87`:
+```ts
+const handleDisconnect = async (id: string) =&gt; {
+  await disconnectIntegration(id);
+  setTimeout(() =&gt; closeRightSidebar(), 500);  // &lt;-- artificial 500ms delay
+};
+```
+
+`disconnectIntegration` in `apps/web/src/features/integrations/hooks/useIntegrations.ts:221-243`:
+```ts
+const disconnectIntegration = useCallback(
+  async (integrationId: string): Promise&lt;void&gt; =&gt; {
+    try {
+      await integrationsApi.disconnectIntegration(integrationId);  // (a)
+      trackEvent(...);
+      toast.success("Integration disconnected");                    // (b) toast fires
+      await queryClient.refetchQueries({ queryKey: ["integrations"] }); // (c) refetch
+    } ...
+```
+
+Note: `toast.success` is fired BEFORE the refetch, and the API client `apps/web/src/features/integrations/api/integrationsApi.ts:150-163` also passes `successMessage: "Integration disconnected successfully"` to `apiService.delete`, which likely fires a SECOND toast. That's a separate issue, but worth noting.
+
+### 2. Backend disconnect endpoint
+
+`DELETE /integrations/{integration_id}` in `apps/api/app/api/v1/endpoints/integrations/config.py:63-87` calls `disconnect_integration` in `apps/api/app/services/integrations/integration_connection_service.py:314-362`.
+
+For an MCP integration, it awaits `mcp_client.disconnect(integration_id)` (`mcp_client.py:1141-1193`), which runs sequentially:
+
+1. **`_revoke_tokens`** (`mcp_client.py:1195-1207`) → `revoke_tokens` in `token_management.py:172-215` — opens an `httpx.AsyncClient`, then in a loop issues **two HTTP POSTs** to the OAuth provider's `revocation_endpoint` (one for refresh token, one for access token), each with a **10-second timeout** (`timeout=10`, line 213). These calls hit an external network (e.g., Google/Notion/GitHub).
+2. **`close_all_sessions`** on the in-memory MCP client (line 1157) — closes the MCP stream/SSE connection to the remote server.
+3. **Mongo `$unset tools`** on `integrations_collection` (line 1167-1170).
+4. **Redis `delete_cache(MCP_TOOLS_CACHE_KEY)`** (line 1172).
+5. **ChromaDB cache invalidate** (line 1177-1187) — `IntegrationResolver.resolve` + `delete_cache` on chroma namespace.
+6. **`_reset_to_disconnected`** (line 358-385) — four more awaited ops: Mongo status update, PG credential delete, PG DCR client delete, Redis OAuth discovery cache delete.
+
+Then back in `disconnect_integration` (service line 349): `await _invalidate_caches(...)` runs more Mongo + Redis ops, including another `remove_user_integration` Mongo write for platform integrations.
+
+**Total**: the response cannot return until **all** of the above complete, and the dominant cost is step 1 — two synchronous external HTTP POSTs each capped at 10s. On a slow/unresponsive OAuth provider this alone can take 1-20 seconds.
+
+### 3. Refetch after disconnect
+
+After the API resolves, `useIntegrations.ts:230` runs:
+```ts
+await queryClient.refetchQueries({ queryKey: ["integrations"] });
+```
+This `await`s ALL three queries keyed under `["integrations"]` defined at lines 67-88: `["integrations", "config"]`, `["integrations", "user"]`, `["integrations", "status"]`. `status` calls `GET /integrations/status` → `get_all_integrations_status(user_id)` (`oauth_service.py:137`) which checks every integration. `user` calls `GET /integrations/users/...` → `get_user_integrations`. These add a second round-trip on top of the disconnect call.
+
+### 4. Blocking timeline
+
+1. User clicks Disconnect → confirmation dialog appears.
+2. User confirms → `confirmDisconnect` sets `isDisconnecting=true`, button shows loading spinner.
+3. `disconnectIntegration` → `DELETE /integrations/{id}` fires.
+4. Backend runs `mcp_client.disconnect`:
+   - **a. RFC 7009 token revocation: TWO sequential HTTPS POSTs to OAuth provider, each `timeout=10s`** ← **dominant cost, the few seconds the user perceives.**
+   - b. Close in-memory MCP session.
+   - c. Mongo `$unset tools`, Redis cache deletes, Chroma cache delete.
+   - d. `_reset_to_disconnected`: Mongo + PG + Redis teardown (4 awaits).
+   - e. `_invalidate_caches`: more Mongo/Redis writes.
+5. DELETE returns 200.
+6. Frontend fires `toast.success("Integration disconnected")` (plus the `successMessage` toast from `apiService.delete` — likely a duplicate).
+7. Frontend `await queryClient.refetchQueries(["integrations"])` → triggers `config` + `user` + `status` GETs in parallel; `await`ed before continuing.
+8. `confirmDisconnect`'s `finally` runs: `setIsDisconnecting(false)`, `setShowDisconnectDialog(false)`.
+9. Back in `handleDisconnect`: **`setTimeout(() =&gt; closeRightSidebar(), 500)`** waits 500ms then closes the sidebar.
+
+### Where the lag comes from
+
+The toast fires at step 6, but the sidebar doesn't close until step 9. Two compounding sources of the perceived delay:
+
+- **The toast appears at step 6, but step 7 (`await` on 3 refetched queries) and step 9 (hard-coded `setTimeout(..., 500)` in `page.tsx:86`) both run after the toast.** The 500ms timeout is unconditional and adds visible lag on top of network refetch time.
+- The backend disconnect itself is also slow (step 4a — up to 20s on a hanging OAuth revocation endpoint), but that occurs *before* the toast, so it manifests as latency-before-toast rather than the post-toast lag the user complained about.
+
+The "modal stays around for a few extra seconds after the toast" is dominated by: **(a) `await queryClient.refetchQueries(["integrations"])` in `useIntegrations.ts:230` waiting on the three integration queries, then (b) the explicit `setTimeout(() =&gt; closeRightSidebar(), 500)` in `page.tsx:86`.**
+
+### Key file:line references for the plan
+
+- `apps/web/src/app/[locale]/(main)/integrations/page.tsx:84-87` — `handleDisconnect` with `setTimeout(..., 500)`.
+- `apps/web/src/components/layout/sidebar/right-variants/IntegrationSidebar.tsx:189-198` — `confirmDisconnect`, closes dialog only after `await`.
+- `apps/web/src/features/integrations/hooks/useIntegrations.ts:221-243` — toast before awaited refetch; `refetchQueries` blocks on three queries.
+- `apps/web/src/features/integrations/api/integrationsApi.ts:150-163` — `apiService.delete` carries its own `successMessage` (potential duplicate toast).
+- `apps/api/app/api/v1/endpoints/integrations/config.py:63-87` — DELETE endpoint, all work synchronous before response.
+- `apps/api/app/services/integrations/integration_connection_service.py:314-362` — orchestrates disconnect; `_invalidate_caches` at line 349.
+- `apps/api/app/services/mcp/mcp_client.py:1141-1193` — `MCPClient.disconnect`, sequential teardown.
+- `apps/api/app/services/mcp/token_management.py:172-215` — `revoke_tokens`, two sequential 10s-timeout HTTP POSTs to external OAuth provider.
+- `apps/api/app/services/mcp/mcp_client.py:358-385` — `_reset_to_disconnected`, four awaited teardown ops.</result>
+<usage><total_tokens>74794</total_tokens><tool_uses>30</tool_uses><duration_ms>137107</duration_ms></usage>
+</task-notification>
+
+---
+
+explore deeply what else do we need to do surrounding this stuff to complete our tasks properly.
+
+---
+
+hey why can't we cache in redis like if posthog mcp tool fetching takes 7 seconds?
+
+---
+
+Want me to also add a "what the user perceives in each scenario" walkthrough section to the plan, or is that already clear enough from the gaps section? also yes please.
+
+---
+
+/goal yes please let's proceed with every single task. create tasks and don't stop until the entire plan is executed and that you can test things yourself to ensure they're working. and thatyou find and fix any regressions if any. if you need you can spin up local mcp's to test the current flow, ensuring it breaks as it does rn, and then fixing it with the changes you make rn. ensure everything works 100% perfectly. and at the end please consolidate and do code cleanup and then commit and push and open a pr -> develop too.
