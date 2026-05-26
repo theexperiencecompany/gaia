@@ -16,6 +16,11 @@ from app.workers.tasks import (
     regenerate_workflow_steps,
     store_memories_batch,
 )
+from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
+from app.workers.tasks.tracked_todo_tasks import (
+    execute_tracked_todo,
+    safety_net_check_orphaned_todos,
+)
 
 # Wrap every task with the Prometheus histogram instrumentation so arq-worker.json
 # can show real p50/p95/p99 latency per task name. Cron jobs reference the same
@@ -31,6 +36,9 @@ _process_gmail_emails_to_memory = instrument_task(process_gmail_emails_to_memory
 _process_onboarding_intelligence_task = instrument_task(process_onboarding_intelligence_task)
 _store_memories_batch = instrument_task(store_memories_batch)
 _cleanup_stuck_personalization = instrument_task(cleanup_stuck_personalization)
+_execute_tracked_todo = instrument_task(execute_tracked_todo)
+_safety_net_check_orphaned_todos = instrument_task(safety_net_check_orphaned_todos)
+_maintenance_sweep_tracked_todos = instrument_task(maintenance_sweep_tracked_todos)
 
 WorkerSettings.functions = [
     _process_reminder,
@@ -44,6 +52,7 @@ WorkerSettings.functions = [
     _process_onboarding_intelligence_task,
     _store_memories_batch,
     _cleanup_stuck_personalization,
+    _execute_tracked_todo,
 ]
 
 WorkerSettings.cron_jobs = [
@@ -62,6 +71,13 @@ WorkerSettings.cron_jobs = [
     cron(
         _cleanup_stuck_personalization,
         minute={0, 30},  # Every 30 minutes
+        second=0,
+    ),
+    cron(_safety_net_check_orphaned_todos, minute={0, 30}, second=0),
+    cron(
+        _maintenance_sweep_tracked_todos,
+        hour={0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22},
+        minute=15,
         second=0,
     ),
 ]

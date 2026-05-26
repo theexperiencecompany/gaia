@@ -16,6 +16,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from datetime import datetime
 import json
+from typing import Literal, cast
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
@@ -70,6 +71,16 @@ async def _core_agent_logic(
     """
     user_id = user.get("user_id")
 
+    # Extract active todo binding + execution mode from trigger_context (scheduled
+    # runs set these; interactive turns leave them unset / "interactive").
+    active_todo_id: str | None = None
+    execution_mode: Literal["interactive", "background"] = "interactive"
+    if trigger_context:
+        active_todo_id = trigger_context.get("active_todo_id") or trigger_context.get("todo_id")
+        mode = trigger_context.get("execution_mode")
+        if mode in ("interactive", "background"):
+            execution_mode = cast(Literal["interactive", "background"], mode)
+
     # Build langchain messages and get graph concurrently
     history, graph = await asyncio.gather(
         construct_langchain_messages(
@@ -86,6 +97,8 @@ async def _core_agent_logic(
             selected_calendar_event=request.selectedCalendarEvent,
             reply_to_message=request.replyToMessage,
             trigger_context=trigger_context,
+            active_todo_id=active_todo_id,
+            execution_mode=execution_mode,
             conversation_id=conversation_id,
             source=source,
         ),
@@ -113,6 +126,8 @@ async def _core_agent_logic(
         agent_name="comms_agent",
         selected_tool=request.selectedTool,
         tool_category=request.toolCategory,
+        active_todo_id=active_todo_id,
+        execution_mode=execution_mode,
     )
 
     log.set(
@@ -137,6 +152,7 @@ async def call_agent(
     user_model_config: ModelConfig | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     stream_id: str | None = None,
+    user_message_id: str | None = None,
     source: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
@@ -145,6 +161,8 @@ async def call_agent(
     Args:
         stream_id: Optional stream ID for Redis-based cancellation checking.
                    When provided, streaming can be cancelled via stream_manager.
+        user_message_id: Optional user message ID for reply-to linking in
+                         background notifications.
 
     Returns an AsyncGenerator that yields SSE-formatted streaming data.
     """
@@ -162,6 +180,10 @@ async def call_agent(
         # Add stream_id to config for cancellation checking
         if stream_id:
             config["configurable"]["stream_id"] = stream_id
+
+        # Add user_message_id so executor can link notifications back
+        if user_message_id:
+            config["configurable"]["user_message_id"] = user_message_id
 
         return execute_graph_streaming(graph, initial_state, config)
 

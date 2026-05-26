@@ -14,7 +14,6 @@ from app.helpers.message_helpers import (
     format_reply_context,
     format_tool_selection_message,
     format_workflow_execution_message,
-    get_memory_message,
 )
 from app.models.message_models import (
     FileData,
@@ -168,114 +167,6 @@ class TestGetGaiaKnowledgeSection:
             result = await _get_gaia_knowledge_section("q")
 
         assert result == ""
-
-
-# ---------------------------------------------------------------------------
-# get_memory_message
-# ---------------------------------------------------------------------------
-
-
-class TestGetMemoryMessage:
-    @pytest.mark.asyncio
-    async def test_full_context(self) -> None:
-        with (
-            patch(
-                "app.helpers.message_helpers._get_user_memories_section",
-                new_callable=AsyncMock,
-                return_value="\nMemory section",
-            ),
-            patch(
-                "app.helpers.message_helpers._get_gaia_knowledge_section",
-                new_callable=AsyncMock,
-                return_value="\nKnowledge section",
-            ),
-            patch(
-                "app.helpers.message_helpers.format_user_preferences_for_agent",
-                return_value="Profession: Engineer",
-            ),
-        ):
-            msg = await get_memory_message(
-                user_id="u1",
-                query="hello",
-                user_name="Alice",
-                user_timezone="America/New_York",
-                user_preferences={"profession": "engineer"},
-            )
-
-        assert isinstance(msg, SystemMessage)
-        assert "Alice" in msg.content
-        assert "Profession: Engineer" in msg.content
-        assert "America/New_York" in msg.content
-        assert "Memory section" in msg.content
-        assert "Knowledge section" in msg.content
-
-    @pytest.mark.asyncio
-    async def test_no_optional_fields(self) -> None:
-        """With no user name/timezone/preferences and no memories, the
-        dynamic context is empty. The clock lives in a separate
-        HumanMessage (see ``build_current_time_message``) — not here.
-        """
-        with (
-            patch(
-                "app.helpers.message_helpers._get_user_memories_section",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-            patch(
-                "app.helpers.message_helpers._get_gaia_knowledge_section",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-        ):
-            msg = await get_memory_message(
-                user_id="u1",
-                query="hi",
-            )
-
-        assert isinstance(msg, SystemMessage)
-        # Clock is NOT in this message any more.
-        assert "UTC" not in msg.content
-
-    @pytest.mark.asyncio
-    async def test_invalid_timezone(self) -> None:
-        with (
-            patch(
-                "app.helpers.message_helpers._get_user_memories_section",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-            patch(
-                "app.helpers.message_helpers._get_gaia_knowledge_section",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-        ):
-            msg = await get_memory_message(
-                user_id="u1",
-                query="hi",
-                user_timezone="Invalid/TZ",
-            )
-
-        # Should still return a message (warning is logged, timezone skipped)
-        assert isinstance(msg, SystemMessage)
-
-    @pytest.mark.asyncio
-    async def test_error_returns_minimal_context(self) -> None:
-        """On error, the fallback path still produces a SystemMessage — the
-        clock minimum content is there as a rough sanity check, since the
-        fallback branch still builds one even though the happy path doesn't.
-        """
-        with patch(
-            "app.helpers.message_helpers.format_user_preferences_for_agent",
-            side_effect=RuntimeError("boom"),
-        ):
-            msg = await get_memory_message(
-                user_id="u1",
-                query="hi",
-                user_preferences={"x": "y"},
-            )
-
-        assert isinstance(msg, SystemMessage)
 
 
 # ---------------------------------------------------------------------------

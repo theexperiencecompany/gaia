@@ -284,6 +284,34 @@ Available Tools:
 {tools}"""
 
 
+SIGNAL_MATCHING_INSTRUCTIONS = """TRACKED TODOS (Working Memory)
+{tracked_todos_context}
+
+SIGNAL MATCHING (CRITICAL — do this BEFORE executing the workflow):
+Check if the incoming signal (email, calendar event, slack message, etc.) relates to
+any tracked todo listed above. Match by:
+- Email address or sender name appearing in a todo's Key Details
+- Thread ID, event ID, or issue ID matching a todo's Key Details
+- Subject or content that clearly relates to a todo's title or description
+- Same person, project, or topic as an active todo
+
+If a match is found, you MUST:
+1. Read the todo's canvas first: vfs_read(path="<vfs_path_from_above>/canvas.md")
+2. Update the canvas with the new signal information
+3. Write the updated canvas: vfs_write(path="<vfs_path_from_above>/canvas.md", content="<full_updated_canvas>")
+
+When updating canvas, be verbose — this is GAIA's working memory:
+- Include email addresses, thread IDs, event IDs, timestamps
+- Quote relevant content from the signal (key sentences, not entire emails)
+- Update the "Current State" section to reflect the new reality
+- Add to "Timeline" section: "- {date}: {what happened}"
+- If the signal changes what should happen next, update Current State accordingly
+
+After updating the canvas, proceed with normal workflow execution.
+If no tracked todo matches, proceed with normal workflow execution directly.
+"""
+
+
 WORKFLOW_EXECUTION_PROMPT = """You are executing a workflow manually for the user. 
 
 **INTELLIGENT WORKFLOW EXECUTION:**
@@ -349,6 +377,8 @@ Description: {workflow_description}
 
 **Steps to Execute:**
 {workflow_steps}
+
+{signal_matching_section}
 
 **User's Request:**
 {user_message}
@@ -470,11 +500,6 @@ For each workflow step:
 6. If a step fails, use your reasoning to determine the best path forward
 7. Remember the email context throughout - this workflow was triggered for a reason
 
-**Your Task:**
-Execute the workflow steps using handoff tools for provider-specific operations while maintaining email context awareness.
-
-Begin executing the workflow steps now, starting with step 1.
-
 **EMAIL TRIGGER DETAILS:**
 - From: {email_sender}
 - Subject: {email_subject}
@@ -487,4 +512,9 @@ Description: {workflow_description}
 
 **Steps to Execute:**
 {workflow_steps}
+
+{signal_matching_section}
+
+**Your Task:**
+Execute the workflow steps using handoff tools for provider-specific operations while maintaining email context awareness. Begin executing the workflow steps now, starting with step 1.
 """

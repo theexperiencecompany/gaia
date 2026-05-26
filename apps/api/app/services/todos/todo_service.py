@@ -42,6 +42,8 @@ from app.models.todo_models import (
 from app.services.todos.sync_service import (
     sync_subtask_to_goal_completion,
 )
+from app.services.vfs.mongo_vfs import MongoVFS
+from app.utils.canvas_vector_utils import delete_canvas_embedding
 from app.utils.todo_vector_utils import (
     bulk_index_todos,
     delete_todo_embedding,
@@ -142,7 +144,7 @@ class TodoService:
             if project_id:
                 await delete_cache(f"projects:{user_id}")
         except Exception as e:
-            log.warning(f"Cache invalidation failed: {e!s}")
+            log.warning("todo.cache_invalidation_failed", error=str(e))
 
     @staticmethod
     async def _get_or_create_inbox(user_id: str) -> str:
@@ -359,16 +361,20 @@ class TodoService:
             )
             _background_tasks.add(_task)
             _task.add_done_callback(_background_tasks.discard)
-            log.info(f"Queued workflow generation for todo '{todo.title}' (ID: {todo_id_str})")
+            log.info(
+                "todo.workflow_generation_queued",
+                todo_id=todo_id_str,
+                title=todo.title,
+            )
         except Exception as e:
-            log.warning(f"Failed to queue workflow for todo '{todo.title}': {e!s}")
+            log.warning("todo.workflow_queue_failed", title=todo.title, error=str(e))
 
         # Index for search
         try:
             if created_todo:
                 await store_todo_embedding(str(result.inserted_id), created_todo, user_id)
         except Exception as e:
-            log.warning(f"Failed to index todo: {e!s}")
+            log.warning("todo.index_failed", error=str(e))
 
         await cls._invalidate_cache(user_id, todo.project_id, str(result.inserted_id), "create")
 
@@ -544,6 +550,43 @@ class TodoService:
 
         update_dict["updated_at"] = datetime.now(UTC)
 
+        # Completing a tracked todo (one with a VFS canvas) must run the
+        # tracked-todo lifecycle FIRST. complete_tracked_todo sets completed,
+        # archives the canvas, and marks ChromaDB. If we set completed in the
+        # parent $set first, its internal guard (`if doc.get("completed")`)
+        # trips and skips the archive. So: route completion through the service
+        # before this update, and strip completed fields from the $set so we
+        # don't clobber the archived state.
+        completing_tracked = False
+        if update_dict.get("completed") is True:
+            tracked_doc = await todos_collection.find_one(
+                {
+                    "_id": ObjectId(todo_id),
+                    "user_id": user_id,
+                    "vfs_path": {"$exists": True, "$ne": None},
+                },
+                {"_id": 1},
+            )
+            if tracked_doc:
+                completing_tracked = True
+                try:
+                    # Deferred import to avoid circular dependency:
+                    # tracked_todo_service -> TodoService -> tracked_todo_service
+                    from app.services.tracked_todo_service import (
+                        tracked_todo_service,
+                    )
+
+                    await tracked_todo_service.complete_tracked_todo(
+                        todo_id, user_id, summary="Completed via UI"
+                    )
+                except Exception as e:
+                    log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
+                # The service already persisted completed/completed_at/vfs_path.
+                # Drop them from the $set so this update can't overwrite the
+                # archived path or re-trip the completion guard.
+                update_dict.pop("completed", None)
+                update_dict.pop("completed_at", None)
+
         # Update and return - this also verifies ownership atomically
         updated = await todos_collection.find_one_and_update(
             {"_id": ObjectId(todo_id), "user_id": user_id},
@@ -559,7 +602,7 @@ class TodoService:
         try:
             await update_todo_embedding(todo_id, updated, user_id)
         except Exception as e:
-            log.warning(f"Failed to update index: {e!s}")
+            log.warning("todo.index_update_failed", todo_id=todo_id, error=str(e))
 
         # Sync subtask changes back to goals if this is a goal-related todo
         if "subtasks" in update_dict:
@@ -578,10 +621,12 @@ class TodoService:
                         todo_id, new_subtask_id, new_completed, user_id
                     )
             except Exception as e:
-                log.warning(f"Failed to sync subtask completion to goal: {e!s}")
+                log.warning("todo.subtask_goal_sync_failed", todo_id=todo_id, error=str(e))
 
-        # Determine if this update affects list visibility
-        affects_visibility = any(
+        # Determine if this update affects list visibility. completing_tracked
+        # always does (completion was applied by the tracked-todo service and
+        # popped from update_dict above).
+        affects_visibility = completing_tracked or any(
             [
                 "completed" in update_dict,
                 "project_id" in update_dict,
@@ -609,7 +654,24 @@ class TodoService:
             user_id=user_id,
             todo_id=todo_id,
         )
-        # Single atomic delete with ownership verification
+        # Fetch the document before deleting to check for tracked todo assets
+        doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
+        if not doc:
+            raise ValueError(f"Todo {todo_id} not found")
+
+        # Clean up tracked todo assets if present
+        if doc.get("vfs_path"):
+            try:
+                await delete_canvas_embedding(todo_id)
+            except Exception as e:
+                log.warning("todo.canvas_embedding_delete_failed", todo_id=todo_id, error=str(e))
+            try:
+                vfs = MongoVFS()
+                await vfs.delete(path=doc["vfs_path"], user_id=user_id, recursive=True)
+            except Exception as e:
+                log.warning("todo.vfs_delete_failed", todo_id=todo_id, error=str(e))
+
+        # Delete the document with ownership verification
         result = await todos_collection.delete_one({"_id": ObjectId(todo_id), "user_id": user_id})
 
         if result.deleted_count == 0:
@@ -619,7 +681,7 @@ class TodoService:
         try:
             await delete_todo_embedding(todo_id)
         except Exception as e:
-            log.warning(f"Failed to remove from index: {e!s}")
+            log.warning("todo.index_remove_failed", todo_id=todo_id, error=str(e))
 
         # Invalidate cache broadly since we don't know the project_id
         await cls._invalidate_cache(user_id, None, todo_id, "delete")
@@ -686,7 +748,7 @@ class TodoService:
                 ]
                 await asyncio.gather(*tasks, return_exceptions=True)
             except Exception as e:
-                log.warning(f"Failed to update search index: {e!s}")
+                log.warning("todo.bulk_index_update_failed", error=str(e))
 
         await cls._invalidate_cache(user_id, operation="bulk_update")
 
@@ -723,9 +785,13 @@ class TodoService:
                     try:
                         await delete_todo_embedding(str(todo["_id"]))
                     except Exception as e:
-                        log.warning(f"Failed to remove todo {todo['_id']} from index: {e!s}")
+                        log.warning(
+                            "todo.index_remove_failed",
+                            todo_id=str(todo["_id"]),
+                            error=str(e),
+                        )
             except Exception as e:
-                log.warning(f"Failed to cleanup search index: {e!s}")
+                log.warning("todo.bulk_index_cleanup_failed", error=str(e))
 
         await cls._invalidate_cache(user_id, operation="bulk_delete")
 

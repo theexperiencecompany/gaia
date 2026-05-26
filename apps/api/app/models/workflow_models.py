@@ -249,7 +249,6 @@ class Workflow(BaseScheduledTask):
         default=None,
         description="ID of the source todo if is_todo_workflow=True",
     )
-
     # System workflow flags (for auto-provisioned workflows created on integration connect)
     is_system_workflow: bool = Field(
         default=False,

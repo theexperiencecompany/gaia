@@ -1193,6 +1193,9 @@ class TestDeleteTodo:
     async def test_success(self, mock_todos_collection, mock_cache, mock_vector_utils):
         mock_result = MagicMock()
         mock_result.deleted_count = 1
+        mock_todos_collection.find_one = AsyncMock(
+            return_value={"_id": FAKE_TODO_ID, "user_id": FAKE_USER_ID}
+        )
         mock_todos_collection.delete_one = AsyncMock(return_value=mock_result)
 
         await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
@@ -1213,6 +1216,9 @@ class TestDeleteTodo:
     async def test_vector_delete_failure_does_not_raise(self, mock_todos_collection, mock_cache):
         mock_result = MagicMock()
         mock_result.deleted_count = 1
+        mock_todos_collection.find_one = AsyncMock(
+            return_value={"_id": FAKE_TODO_ID, "user_id": FAKE_USER_ID}
+        )
         mock_todos_collection.delete_one = AsyncMock(return_value=mock_result)
 
         with patch(

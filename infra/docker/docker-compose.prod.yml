@@ -17,6 +17,8 @@ secrets:
     external: true
   gaia_grafana_admin_password:
     external: true
+  gaia_grafana_slack_webhook:
+    external: true
   gaia_postgres_password:
     external: true
     name: gaia_postgres_password_v2
@@ -667,10 +669,17 @@ services:
     networks:
       - gaia-prod-shared
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:9080/ready || exit 1"]
+      # The promtail image has no wget/curl/nc, so check that the HTTP server is
+      # listening on 9080 (hex 2378) via /proc/net/tcp{,6} with awk instead.
+      # Promtail image has no wget/curl/nc. Match the listener on port 9080
+      # (hex 2378) in /proc/net/tcp{,6} — pattern ":2378 0" anchors against the
+      # space+start of the remote-addr column. No $ chars so compose interpolation
+      # cannot mangle it.
+      test: ["CMD-SHELL", "grep -q ':2378 0' /proc/net/tcp /proc/net/tcp6"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
+      start_period: 20s
     deploy:
       mode: global
       restart_policy:
@@ -698,11 +707,13 @@ services:
       GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/gaia_grafana_admin_password
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
-      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
-      SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL}
-      SLACK_ALERT_CHANNEL: ${SLACK_ALERT_CHANNEL:-#alerts}
+      # Public URL Grafana uses to build every generated link (alert "View"
+      # links in Slack, share links, dashboard URLs). Without this the default
+      # resolves to localhost:4000 and Slack alerts link nowhere.
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://logs.heygaia.io}
     secrets:
       - gaia_grafana_admin_password
+      - gaia_grafana_slack_webhook
     networks:
       - gaia-prod-shared
     healthcheck:

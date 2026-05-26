@@ -1,10 +1,6 @@
 """
 Chat service with Redis-backed background streaming.
 
-This module provides two streaming modes:
-1. run_chat_stream_background() - Background execution with Redis pub/sub (new)
-2. chat_stream() - Legacy direct streaming (kept for backwards compatibility)
-
 Background streaming decouples LangGraph execution from HTTP request lifecycle,
 ensuring conversations are always saved even if client disconnects.
 """
@@ -18,22 +14,40 @@ from uuid import uuid4
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 from app.agents.core.agent import call_agent
+from app.agents.core.background.inbox import (
+    deregister_bg_subagent_results,
+    deregister_executor_done_event,
+    deregister_executor_spawned,
+    deregister_pending_subagents,
+    deregister_tool_event_collector,
+    get_tool_event_collector,
+    register_executor_done_event,
+    register_tool_event_collector,
+    was_executor_spawned,
+)
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.model_pricing import calculate_token_cost
 from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import conversations_collection
-from app.models.chat_models import (
-    MessageModel,
-    ToolDataEntry,
-    UpdateMessagesRequest,
-    tool_fields,
-)
+from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
 from app.services.conversation_service import update_messages
 from app.services.payments.payment_service import payment_service
 from app.utils.chat_utils import create_conversation, generate_and_update_description
-from shared.py.wide_events import ChatContext, log, wide_task
+from app.utils.stream_utils import (
+    absorb_collector_event,
+    aggregate_usage_metadata,
+    apply_outputs_to_tool_data,
+    inject_todo_progress,
+    merge_tool_outputs,
+    process_data_chunk,
+    publish_description_if_ready,
+    reconstruct_subagent_groups,
+    recover_stream_state,
+    set_stream_log_context,
+)
+from shared.py.wide_events import log, wide_task
 
 
 async def run_chat_stream_background(
@@ -50,13 +64,6 @@ async def run_chat_stream_background(
 
     This function runs independently of the HTTP request lifecycle.
     Progress is saved to MongoDB on completion, even if client disconnects.
-
-    Args:
-        stream_id: Unique stream identifier for Redis pub/sub
-        body: Message request with history
-        user: User information dict
-        user_time: User's local time
-        conversation_id: Conversation ID (may be new or existing)
     """
     async with wide_task(
         "chat_stream",
@@ -72,33 +79,6 @@ async def run_chat_stream_background(
             source=source,
             start_event=start_event,
         )
-
-
-def _set_stream_log_context(
-    body: MessageRequestWithHistory,
-    user_id: str | None,
-    conversation_id: str,
-    stream_id: str,
-    is_new_conversation: bool,
-) -> None:
-    """Attach structured log context for the stream."""
-    log.set(
-        user={"id": str(user_id)} if user_id else {},
-        chat=ChatContext(
-            conversation_id=conversation_id,
-            stream_id=stream_id,
-            is_new_conversation=is_new_conversation,
-            message_count=len(body.messages) if body.messages else None,
-            has_files=bool(body.fileIds or body.fileData),
-            file_count=len(body.fileIds or []) + len(body.fileData or []),
-            tool_category=body.toolCategory,
-            has_reply=bool(body.replyToMessage),
-            has_calendar_event=bool(body.selectedCalendarEvent),
-            selected_workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else None,
-        ),
-        user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
-        selected_tool=body.selectedTool,
-    )
 
 
 def _start_description_task(
@@ -120,193 +100,6 @@ def _start_description_task(
             body.selectedWorkflow if body.selectedWorkflow else None,
         )
     )
-
-
-async def _publish_description_if_ready(
-    stream_id: str,
-    description_task: asyncio.Task | None,
-) -> asyncio.Task | None:
-    """Publish conversation description chunk if the task has completed. Returns None to clear it."""
-    if not description_task or not description_task.done():
-        return description_task
-    try:
-        description = description_task.result()
-        await stream_manager.publish_chunk(
-            stream_id,
-            f"""data: {json.dumps({"conversation_description": description})}\n\n""",
-        )
-    except Exception as e:
-        log.error(f"Failed to get conversation description: {e}")
-    return None  # Clear to prevent duplicate sends
-
-
-async def _process_data_chunk(
-    stream_id: str,
-    chunk: str,
-    tool_data: dict[str, Any],
-    tool_outputs: dict[str, str],
-    todo_progress_accumulated: dict[str, Any],
-    follow_up_actions: list[str],
-) -> tuple[list[str], bool]:
-    """
-    Process a 'data: ' prefixed agent chunk.
-
-    Extracts tool data, follow-up actions, todo progress, and tool outputs,
-    publishes appropriate sub-chunks to Redis, and updates stream progress.
-
-    Returns (follow_up_actions, published) where published indicates whether
-    the chunk was already sent (True) or should be sent as-is (False).
-    """
-    chunk_payload = chunk[6:]
-
-    chunk_json: dict[str, Any] | None = None
-    try:
-        chunk_json = json.loads(chunk_payload)
-    except json.JSONDecodeError:
-        chunk_json = None
-
-    if chunk_json and "todo_progress" in chunk_json:
-        snapshot = chunk_json["todo_progress"]
-        source = snapshot.get("source", "executor")
-        todo_progress_accumulated[source] = snapshot
-
-    new_data = extract_tool_data(chunk_payload)
-    if new_data:
-        if "other_data" in new_data:
-            other_data_dict = new_data["other_data"]
-            if "follow_up_actions" in other_data_dict:
-                follow_up_actions = other_data_dict["follow_up_actions"]
-                await stream_manager.publish_chunk(
-                    stream_id,
-                    f"data: {json.dumps({'follow_up_actions': follow_up_actions})}\n\n",
-                )
-
-        if "tool_data" in new_data:
-            for tool_entry in new_data["tool_data"]:
-                tool_data["tool_data"].append(tool_entry)
-                await stream_manager.publish_chunk(
-                    stream_id,
-                    f"data: {json.dumps({'tool_data': tool_entry})}\n\n",
-                )
-
-        # Capture tool_output events for merging before save
-        # AND stream to frontend for real-time UI updates
-        if "tool_output" in new_data:
-            output_data = new_data["tool_output"]
-            tool_call_id = output_data.get("tool_call_id")
-            output = output_data.get("output")
-            if tool_call_id and output:
-                tool_outputs[tool_call_id] = output
-            await stream_manager.publish_chunk(
-                stream_id,
-                f"data: {json.dumps({'tool_output': output_data})}\n\n",
-            )
-
-        if chunk_json and "todo_progress" in chunk_json:
-            await stream_manager.publish_chunk(
-                stream_id,
-                f"data: {json.dumps({'todo_progress': chunk_json['todo_progress']})}\n\n",
-            )
-
-        response_text = _extract_response_text(chunk)
-        if response_text or new_data:
-            await stream_manager.update_progress(
-                stream_id,
-                message_chunk=response_text,
-                tool_data=new_data,
-            )
-        return follow_up_actions, True
-
-    # No tool data — pass through as-is
-    await stream_manager.publish_chunk(stream_id, chunk)
-    response_text = _extract_response_text(chunk)
-    if response_text:
-        await stream_manager.update_progress(
-            stream_id,
-            message_chunk=response_text,
-            tool_data=None,
-        )
-    return follow_up_actions, True
-
-
-def _aggregate_usage_metadata(
-    usage_metadata: dict[str, Any],
-) -> tuple[int, int, int]:
-    """Sum input, output, and cache_read tokens across all model entries.
-
-    Returns (total_input, total_output, total_cached). ``cache_read`` lives in
-    each entry's ``input_token_details`` (LangChain canonical shape). Some
-    provider SDK versions surface it under different keys, hence the fallbacks.
-    """
-    total_input = 0
-    total_output = 0
-    total_cached = 0
-    for v in usage_metadata.values():
-        if not isinstance(v, dict):
-            continue
-        total_input += int(v.get("input_tokens") or 0)
-        total_output += int(v.get("output_tokens") or 0)
-        details = v.get("input_token_details") or {}
-        cached = details.get("cache_read") or v.get("cached_content_token_count") or 0
-        total_cached += int(cached or 0)
-    return total_input, total_output, total_cached
-
-
-async def _recover_stream_state(
-    stream_id: str,
-    complete_message: str,
-    tool_data: dict[str, Any],
-) -> tuple[str, dict[str, Any]]:
-    """
-    Recover complete_message and tool_data from Redis progress when the nostream
-    marker was never delivered (e.g. on cancellation).
-    """
-    if complete_message:
-        return complete_message, tool_data
-
-    progress = await stream_manager.get_progress(stream_id)
-    if not progress:
-        return complete_message, tool_data
-
-    complete_message = progress.get("complete_message", "")
-    progress_tool_data = progress.get("tool_data")
-    if (
-        isinstance(progress_tool_data, dict)
-        and progress_tool_data.get("tool_data")
-        and not tool_data.get("tool_data")
-    ):
-        tool_data = progress_tool_data
-    log.debug(f"Recovered {len(complete_message)} chars from Redis progress")
-    return complete_message, tool_data
-
-
-def _merge_tool_outputs(
-    tool_data: dict[str, Any],
-    tool_outputs: dict[str, str],
-) -> None:
-    """Merge captured tool outputs into the tool_data entries before saving."""
-    for entry in tool_data.get("tool_data", []):
-        if entry.get("tool_name") == "tool_calls_data":
-            data = entry.get("data", {})
-            if isinstance(data, dict):
-                tool_call_id = data.get("tool_call_id")
-                if tool_call_id and tool_call_id in tool_outputs:
-                    data["output"] = tool_outputs[tool_call_id]
-
-
-def _inject_todo_progress(
-    tool_data: dict[str, Any],
-    todo_progress_accumulated: dict[str, Any],
-) -> None:
-    """Inject accumulated todo_progress snapshots as a single tool_data entry."""
-    if todo_progress_accumulated:
-        tool_data["tool_data"].append(
-            {
-                "tool_name": "todo_progress",
-                "data": todo_progress_accumulated,
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-        )
 
 
 async def _wait_for_http_subscriber(
@@ -349,18 +142,23 @@ async def _run_chat_stream(
     usage_metadata: dict[str, Any] = {}
     follow_up_actions: list[str] = []
     is_cancelled = False
+    _saved = False  # tracks whether _save_conversation_async already ran
+
+    # Register the executor-done event so we can keep the SSE stream open
+    # while the background executor produces tool events, then publish [DONE]
+    # once it finishes. Comms re-narration + WS push of the user-facing
+    # message happens independently in the executor's finally block.
+    executor_done = register_executor_done_event(stream_id)
+    # Register the tool event collector so make_redis_stream_writer can
+    # append executor tool events. After executor finishes we drain this
+    # list and attach it to the comms ack message's tool_data.
+    register_tool_event_collector(stream_id)
 
     try:
         description_task = _start_description_task(is_new_conversation, body, conversation_id, user)
 
         user_id = user.get("user_id")
-        _set_stream_log_context(
-            body,
-            user_id,
-            conversation_id,
-            stream_id,
-            is_new_conversation,
-        )
+        set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
 
         usage_metadata_callback = UsageMetadataCallbackHandler()
 
@@ -375,6 +173,14 @@ async def _run_chat_stream(
                 stream_id=stream_id,
             )
         else:
+            # For existing conversations there is no async setup before publishing
+            # the init chunk. uvicorn does an asyncio.sleep(0) drain after sending
+            # HTTP response headers, during which this background task can run and
+            # reach publish_chunk before the HTTP subscriber has called
+            # pubsub.subscribe(). Without this sleep the PUBLISH races the SUBSCRIBE
+            # and the init chunk is silently dropped. New conversations avoid this
+            # race via the MongoDB round-trips inside _initialize_new_conversation.
+            await asyncio.sleep(0.05)
             init_data = f"data: {json.dumps({'user_message_id': user_message_id, 'bot_message_id': bot_message_id, 'stream_id': stream_id})}\n\n"
 
         await _wait_for_http_subscriber(start_event, stream_id)
@@ -386,6 +192,7 @@ async def _run_chat_stream(
             user_time=user_time,
             usage_metadata_callback=usage_metadata_callback,
             stream_id=stream_id,
+            user_message_id=user_message_id,
             source=source,
         ):
             if await stream_manager.is_cancelled(stream_id):
@@ -397,7 +204,7 @@ async def _run_chat_stream(
             if chunk == "data: [DONE]\n\n":
                 continue
 
-            description_task = await _publish_description_if_ready(stream_id, description_task)
+            description_task = await publish_description_if_ready(stream_id, description_task)
 
             # Process complete message marker (internal, not sent to client)
             if chunk.startswith("nostream: "):
@@ -410,7 +217,7 @@ async def _run_chat_stream(
 
             if chunk.startswith("data: "):
                 try:
-                    follow_up_actions, _ = await _process_data_chunk(
+                    follow_up_actions, _ = await process_data_chunk(
                         stream_id,
                         chunk,
                         tool_data,
@@ -425,7 +232,7 @@ async def _run_chat_stream(
                 await stream_manager.publish_chunk(stream_id, chunk)
 
         usage_metadata = usage_metadata_callback.usage_metadata or {}
-        total_input, total_output, total_cached = _aggregate_usage_metadata(usage_metadata)
+        total_input, total_output, total_cached = aggregate_usage_metadata(usage_metadata)
         # Read cache_read out of the LangChain UsageMetadataCallback rather
         # than the wide-event ContextVar. ``LLMAccountingMiddleware`` writes
         # ``cached_tokens`` per-step into the wide event from inside a
@@ -450,6 +257,60 @@ async def _run_chat_stream(
             follow_up_actions_count=len(follow_up_actions),
             is_cancelled=is_cancelled,
         )
+
+        # ── Early save: guarantee ordering before waiting for executor ──
+        # Save the comms ack IMMEDIATELY after the comms streaming loop.
+        # This ensures this message's array position in MongoDB is correct
+        # even if a concurrent stream for a second user message completes
+        # while we wait for the executor below.
+        complete_message, tool_data = await recover_stream_state(
+            stream_id, complete_message, tool_data
+        )
+        merge_tool_outputs(tool_data, tool_outputs)
+        inject_todo_progress(tool_data, todo_progress_accumulated)
+        reconstruct_subagent_groups(tool_data)
+
+        await _save_conversation_async(
+            body=body,
+            user=user,
+            conversation_id=conversation_id,
+            complete_message=complete_message,
+            tool_data=tool_data,
+            metadata=usage_metadata,
+            user_message_id=user_message_id,
+            bot_message_id=bot_message_id,
+        )
+        _saved = True
+
+        # ── Wait for the executor to finish ───────────────────────────────
+        # The SSE stream stays open while the background executor produces
+        # tool events so the frontend renders them live. Once the executor
+        # signals done, drain its tool events into the comms ack message's
+        # tool_data, then close the SSE. Comms re-narration runs separately
+        # in the executor's finally block and is delivered via WebSocket.
+        if not is_cancelled and was_executor_spawned(stream_id):
+            log.info(f"Waiting for executor completion for stream {stream_id}")
+            try:
+                await asyncio.wait_for(executor_done.wait(), timeout=1800)
+            except TimeoutError:
+                log.warning(
+                    f"Timed out waiting for executor on stream {stream_id} — "
+                    "publishing [DONE] anyway"
+                )
+
+            executor_td = _accumulate_executor_tool_data(stream_id)
+            if executor_td:
+                try:
+                    await conversations_collection.update_one(
+                        {
+                            "user_id": user.get("user_id"),
+                            "conversation_id": conversation_id,
+                            "messages.message_id": bot_message_id,
+                        },
+                        {"$push": {"messages.$.tool_data": {"$each": executor_td}}},
+                    )
+                except Exception as e:
+                    log.error(f"Failed to update bot message tool_data: {e}")
 
         # Await description task if still pending
         if description_task:
@@ -483,27 +344,34 @@ async def _run_chat_stream(
         await stream_manager.publish_chunk(stream_id, f"data: {json.dumps({'error': str(e)})}\n\n")
         await stream_manager.set_error(stream_id, str(e))
     finally:
-        # On cancellation, complete_message may be empty because nostream: marker
-        # never arrives. Recover from Redis progress which tracks accumulated text.
-        complete_message, tool_data = await _recover_stream_state(
-            stream_id, complete_message, tool_data
-        )
+        deregister_executor_done_event(stream_id)
+        deregister_tool_event_collector(stream_id)
+        deregister_pending_subagents(stream_id)
+        deregister_executor_spawned(stream_id)
+        deregister_bg_subagent_results(stream_id)
 
-        # Merge tool outputs into tool_data entries and inject todo_progress before saving
-        _merge_tool_outputs(tool_data, tool_outputs)
-        _inject_todo_progress(tool_data, todo_progress_accumulated)
-
-        # Always save conversation to MongoDB
-        await _save_conversation_async(
-            body=body,
-            user=user,
-            conversation_id=conversation_id,
-            complete_message=complete_message,
-            tool_data=tool_data,
-            metadata=usage_metadata,
-            user_message_id=user_message_id,
-            bot_message_id=bot_message_id,
-        )
+        if not _saved:
+            # Error path: save as fallback. recover_stream_state / merge /
+            # inject are safe to call even if partially run in try block.
+            try:
+                complete_message, tool_data = await recover_stream_state(
+                    stream_id, complete_message, tool_data
+                )
+                merge_tool_outputs(tool_data, tool_outputs)
+                inject_todo_progress(tool_data, todo_progress_accumulated)
+                reconstruct_subagent_groups(tool_data)
+                await _save_conversation_async(
+                    body=body,
+                    user=user,
+                    conversation_id=conversation_id,
+                    complete_message=complete_message,
+                    tool_data=tool_data,
+                    metadata=usage_metadata,
+                    user_message_id=user_message_id,
+                    bot_message_id=bot_message_id,
+                )
+            except Exception as save_err:
+                log.error(f"Fallback save failed for stream {stream_id}: {save_err}")
 
         # Cleanup Redis
         await stream_manager.cleanup(stream_id)
@@ -541,24 +409,13 @@ async def _initialize_new_conversation(
 
     init_data = {
         "conversation_id": conversation_id,
-        "conversation_description": conversation.get("description"),
+        "conversation_description": conversation.get("conversation_description"),
         "user_message_id": user_message_id,
         "bot_message_id": bot_message_id,
-        "stream_id": stream_id,  # Include for frontend cancellation
+        "stream_id": stream_id,
     }
 
     return f"data: {json.dumps(init_data)}\n\n"
-
-
-def _extract_response_text(chunk: str) -> str:
-    """Extract response text from a data chunk."""
-    try:
-        chunk = chunk.removeprefix("data: ")
-        data = json.loads(chunk)
-        return data.get("response", "")
-    except (json.JSONDecodeError, KeyError):
-        pass
-    return ""
 
 
 async def _save_conversation_async(
@@ -634,72 +491,24 @@ async def _save_conversation_async(
     )
 
 
-def extract_tool_data(json_str: str) -> dict[str, Any]:
+def _accumulate_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
+    """Drain the executor tool event collector into a flat tool_data list.
+
+    Mirrors the comms-graph accumulation path: tool_calls_data outputs are
+    merged in, subagent start/end pairs are grouped via reconstruct_subagent_groups.
+    Only tool_calls_data entries get their output backfilled (the comms ack
+    message only owns tool_calls_data; other entries belong to the executor).
     """
-    Parse and extract structured tool output from an agent's JSON response chunk.
-
-    Converts individual tool fields (e.g., calendar_options, search_results, etc.)
-    into unified ToolDataEntry array format for consistent frontend handling.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing:
-            - "tool_data": Array of ToolDataEntry objects (if any tool data found)
-            - "other_data": Dict with non-tool fields like follow_up_actions
-
-    Notes:
-        - This function converts legacy individual tool fields into the unified tool_data array structure
-        - If the JSON is malformed or does not match known tool structures, an empty dict is returned
-        - This function is tolerant to missing keys and safe for runtime use in an async stream
-    """
-    try:
-        data = json.loads(json_str)
-        timestamp = datetime.now(UTC).isoformat()
-
-        # Step 1: Extract non-tool data (e.g., follow_up_actions)
-        other_data: dict[str, Any] = {}
-        if data.get("follow_up_actions") is not None:
-            other_data["follow_up_actions"] = data["follow_up_actions"]
-
-        # Step 2: Extract tool_data from one of two sources (in priority order)
-        tool_data_entries: list[ToolDataEntry] = []
-
-        # Source A: Already in unified format (from backend tool_data emission)
-        if "tool_data" in data:
-            # Single entry or list
-            td = data["tool_data"]
-            if isinstance(td, list):
-                tool_data_entries = td
-            else:
-                tool_data_entries = [td]
-
-        # Source B: Legacy individual tool fields
-        else:
-            for field_name in tool_fields:
-                if data.get(field_name) is not None:
-                    tool_data_entries.append(
-                        {
-                            "tool_name": field_name,
-                            "data": data[field_name],
-                            "timestamp": timestamp,
-                        }
-                    )
-
-        # Step 3: Build result from collected data
-        result: dict[str, Any] = {}
-
-        if tool_data_entries:
-            result["tool_data"] = tool_data_entries
-        if other_data:
-            result["other_data"] = other_data
-
-        # Step 4: Extract tool_output events (for merging into tool_data before save)
-        if "tool_output" in data:
-            result["tool_output"] = data["tool_output"]
-
-        return result
-
-    except json.JSONDecodeError:
-        return {}
+    collector = get_tool_event_collector(stream_id)
+    if not collector:
+        return []
+    accumulated: dict[str, Any] = {"tool_data": []}
+    outputs: dict[str, str] = {}
+    for evt in collector:
+        absorb_collector_event(evt, accumulated, outputs)
+    apply_outputs_to_tool_data(accumulated["tool_data"], outputs, only_tool_name="tool_calls_data")
+    reconstruct_subagent_groups(accumulated)
+    return accumulated.get("tool_data", [])
 
 
 async def _process_token_usage_and_cost(user_id: str, metadata: dict[str, Any]) -> None:

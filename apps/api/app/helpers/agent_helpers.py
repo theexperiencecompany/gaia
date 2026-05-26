@@ -225,6 +225,117 @@ def _extract_timezone_offset(user_time: datetime) -> str:
     return f"{sign}{hours:02d}:{minutes:02d}"
 
 
+def _build_agent_callbacks(
+    conversation_id: str,
+    user: dict,
+    agent_name: str,
+    usage_metadata_callback: UsageMetadataCallbackHandler | None,
+) -> list[BaseCallbackHandler]:
+    """Assemble the LangChain callback list for an agent run (Opik, PostHog, usage)."""
+    callbacks: list[BaseCallbackHandler] = []
+
+    # Add OpikTracer in production, or in development only if configured.
+    # Import is deferred to avoid paying the cost when Opik is unused and to
+    # sidestep import-time litellm shadowing (crawl4ai installs unclecode-litellm
+    # which conflicts with the real litellm at module load time).
+    is_opik_configured = settings.OPIK_API_KEY and settings.OPIK_WORKSPACE
+    if settings.ENV == "production" or is_opik_configured:
+        from opik.integrations.langchain import OpikTracer  # noqa: PLC0415
+
+        callbacks.append(
+            OpikTracer(
+                tags=["langchain", settings.ENV],
+                thread_id=conversation_id,
+                metadata={
+                    "user_id": user.get("user_id"),
+                    "conversation_id": conversation_id,
+                    "agent_name": agent_name,
+                },
+                project_name="GAIA",
+            )
+        )
+
+    posthog_client = providers.get("posthog") if providers.is_available("posthog") else None
+    if posthog_client is not None:
+        callbacks.append(
+            PostHogCallbackHandler(
+                client=posthog_client,
+                distinct_id=user.get("user_id"),
+                properties={
+                    "conversation_id": conversation_id,
+                    "agent_name": agent_name,
+                },
+                privacy_mode=False,
+            ),
+        )
+
+    if usage_metadata_callback:
+        callbacks.append(usage_metadata_callback)
+
+    return callbacks
+
+
+def _resolve_model_config(
+    user_model_config: ModelConfig | None,
+) -> tuple[str, str, int]:
+    """Pick the model triple (name, provider, max_tokens) from user choice or defaults."""
+    if user_model_config:
+        log.set(model_config_source="user_selected")
+        return (
+            user_model_config.provider_model_name,
+            user_model_config.inference_provider.value,
+            user_model_config.max_tokens,
+        )
+    log.set(model_config_source="default")
+    return DEFAULT_MODEL_NAME, DEFAULT_LLM_PROVIDER, DEFAULT_MAX_TOKENS
+
+
+# Fields that fall back to the parent only when the current call left them blank.
+_PARENT_FALLBACK_FIELDS: tuple[tuple[str, str], ...] = (
+    ("selected_tool", "selected_tool"),
+    ("tool_category", "tool_category"),
+    ("subagent_id", "subagent_id"),
+    ("vfs_session_id", "vfs_session_id"),
+    ("active_todo_id", "active_todo_id"),
+    ("execution_mode", "execution_mode"),
+    ("source", "conversation_source"),
+)
+
+
+def _inherit_from_parent_configurable(
+    base_configurable: dict | None,
+    current: dict,
+) -> dict:
+    """Merge `current` with optional inheritance from a parent agent's configurable.
+
+    - Model fields (provider/max_tokens/model_name): parent overrides child.
+    - Fallback fields (tool / subagent / vfs / todo / mode / source): child wins; parent
+      only fills in blanks.
+    - Pass-through (stream_id, pinned memories/skills): always come from parent.
+    """
+    merged = dict(current)
+    merged["stream_id"] = None
+    merged["pinned_memories"] = None
+    merged["pinned_skills"] = None
+
+    if not base_configurable:
+        return merged
+
+    merged["provider_name"] = base_configurable.get("provider", merged["provider_name"])
+    merged["max_tokens"] = base_configurable.get("max_tokens", merged["max_tokens"])
+    merged["model_name"] = base_configurable.get("model_name", merged["model_name"])
+
+    for local_key, parent_key in _PARENT_FALLBACK_FIELDS:
+        if not merged.get(local_key):
+            merged[local_key] = base_configurable.get(parent_key)
+
+    # Pre-fetched memory/skills sections avoid repeat ChromaDB lookups on the subagent.
+    merged["stream_id"] = base_configurable.get("stream_id")
+    merged["pinned_memories"] = base_configurable.get("__pinned_memories__")
+    merged["pinned_skills"] = base_configurable.get("__pinned_skills__")
+    return merged
+
+
 def build_agent_config(
     conversation_id: str,
     user: dict,
@@ -238,6 +349,8 @@ def build_agent_config(
     tool_category: str | None = None,
     subagent_id: str | None = None,
     vfs_session_id: str | None = None,
+    active_todo_id: str | None = None,
+    execution_mode: str | None = None,
     source: str | None = None,
 ) -> dict:
     """Build configuration for graph execution with optional authentication tokens.
@@ -264,76 +377,24 @@ def build_agent_config(
         Configuration dictionary formatted for LangGraph execution with configurable
         parameters, metadata, and recursion limits
     """
+    callbacks = _build_agent_callbacks(conversation_id, user, agent_name, usage_metadata_callback)
+    model_name, provider_name, max_tokens = _resolve_model_config(user_model_config)
 
-    callbacks: list[BaseCallbackHandler] = []
-
-    # Add OpikTracer in production, or in development only if configured.
-    # Import is deferred to avoid paying the cost when Opik is unused and to
-    # sidestep import-time litellm shadowing (crawl4ai installs unclecode-litellm
-    # which conflicts with the real litellm at module load time).
-    is_opik_configured = settings.OPIK_API_KEY and settings.OPIK_WORKSPACE
-    if settings.ENV == "production" or is_opik_configured:
-        from opik.integrations.langchain import OpikTracer  # noqa: PLC0415
-
-        callbacks.append(
-            OpikTracer(
-                tags=["langchain", settings.ENV],
-                thread_id=conversation_id,
-                metadata={
-                    "user_id": user.get("user_id"),
-                    "conversation_id": conversation_id,
-                    "agent_name": agent_name,
-                },
-                project_name="GAIA",
-            )
-        )
-    posthog_client = providers.get("posthog") if providers.is_available("posthog") else None
-
-    if posthog_client is not None:
-        callbacks.append(
-            PostHogCallbackHandler(
-                client=posthog_client,
-                distinct_id=user.get("user_id"),
-                properties={
-                    "conversation_id": conversation_id,
-                    "agent_name": agent_name,
-                },
-                privacy_mode=False,
-            ),
-        )
-
-    if usage_metadata_callback:
-        callbacks.append(usage_metadata_callback)
-
-    if user_model_config:
-        model_name = user_model_config.provider_model_name
-        provider_name = user_model_config.inference_provider.value
-        max_tokens = user_model_config.max_tokens
-        log.set(model_config_source="user_selected")
-    else:
-        model_name = DEFAULT_MODEL_NAME
-        provider_name = DEFAULT_LLM_PROVIDER
-        max_tokens = DEFAULT_MAX_TOKENS
-        log.set(model_config_source="default")
-
-    # Cherry-pick specific keys from base_configurable if provided
-    # Only inherit model config and user context, not LangChain internal state
-    pinned_memories = None
-    pinned_skills = None
-    if base_configurable:
-        # Inherit model config from parent if not overridden
-        provider_name = base_configurable.get("provider", provider_name)
-        max_tokens = base_configurable.get("max_tokens", max_tokens)
-        model_name = base_configurable.get("model_name", model_name)
-        selected_tool = selected_tool or base_configurable.get("selected_tool")
-        tool_category = tool_category or base_configurable.get("tool_category")
-        subagent_id = subagent_id or base_configurable.get("subagent_id")
-        vfs_session_id = vfs_session_id or base_configurable.get("vfs_session_id")
-        source = source or base_configurable.get("conversation_source")
-        # Pass pre-fetched memory/skills sections through to avoid repeat
-        # ChromaDB lookups on the subagent side.
-        pinned_memories = base_configurable.get("__pinned_memories__")
-        pinned_skills = base_configurable.get("__pinned_skills__")
+    resolved = _inherit_from_parent_configurable(
+        base_configurable,
+        {
+            "provider_name": provider_name,
+            "max_tokens": max_tokens,
+            "model_name": model_name,
+            "selected_tool": selected_tool,
+            "tool_category": tool_category,
+            "subagent_id": subagent_id,
+            "vfs_session_id": vfs_session_id,
+            "active_todo_id": active_todo_id,
+            "execution_mode": execution_mode,
+            "source": source,
+        },
+    )
 
     configurable = {
         "thread_id": thread_id or conversation_id,
@@ -342,28 +403,29 @@ def build_agent_config(
         "user_name": user.get("name", ""),
         "user_time": user_time.isoformat(),
         "user_timezone": _extract_timezone_offset(user_time),
-        "provider": provider_name,
-        "max_tokens": max_tokens,
-        "model_name": model_name,
-        "model": model_name,
-        "selected_tool": selected_tool,
-        "tool_category": tool_category,
-        "subagent_id": subagent_id,
-        "vfs_session_id": vfs_session_id,
-        "conversation_source": source,
-        "__pinned_memories__": pinned_memories,
-        "__pinned_skills__": pinned_skills,
+        "provider": resolved["provider_name"],
+        "max_tokens": resolved["max_tokens"],
+        "model_name": resolved["model_name"],
+        "model": resolved["model_name"],
+        "selected_tool": resolved["selected_tool"],
+        "tool_category": resolved["tool_category"],
+        "subagent_id": resolved["subagent_id"],
+        "vfs_session_id": resolved["vfs_session_id"],
+        "stream_id": resolved["stream_id"],
+        "active_todo_id": resolved["active_todo_id"],
+        "execution_mode": resolved["execution_mode"] or "interactive",
+        "conversation_source": resolved["source"],
+        "__pinned_memories__": resolved["pinned_memories"],
+        "__pinned_skills__": resolved["pinned_skills"],
     }
 
-    config = {
+    return {
         "configurable": configurable,
         "recursion_limit": AGENT_RECURSION_LIMIT,
         "metadata": {"user_id": user.get("user_id")},
         "callbacks": callbacks,
         "agent_name": agent_name,
     }
-
-    return config
 
 
 def build_initial_state(
@@ -405,6 +467,15 @@ def build_initial_state(
 
     if trigger_context:
         state["trigger_context"] = trigger_context
+        # Bind active todo + execution mode so banners and tools default
+        # to the firing todo. Scheduled runs always set these; comms-driven
+        # turns may set them when delegating todo-bound work.
+        if active_todo_id := trigger_context.get("active_todo_id") or trigger_context.get(
+            "todo_id"
+        ):
+            state["active_todo_id"] = active_todo_id
+        if execution_mode := trigger_context.get("execution_mode"):
+            state["execution_mode"] = execution_mode
 
     return state
 
@@ -455,6 +526,10 @@ async def execute_graph_silent(
         # Process "updates" events - same logic as execute_graph_streaming
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
+                # Only collect tool_data from the LLM node — pre-model hooks
+                # produce updates containing historical messages with old tool_calls.
+                if node_name != "agent":
+                    continue
                 if isinstance(state_update, dict) and "messages" in state_update:
                     for msg in state_update["messages"]:
                         if not hasattr(msg, "tool_calls") or not msg.tool_calls:
@@ -503,7 +578,7 @@ async def execute_graph_silent(
 
             if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
                 content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
-                if content and metadata.get("agent_name") == "comms_agent":
+                if content and config.get("agent_name") == "comms_agent":
                     complete_message += content
 
         elif stream_mode == "custom":
@@ -612,6 +687,14 @@ async def execute_graph_streaming(
 
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
+                # Only emit tool_data from the LLM ("agent") node.
+                # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
+                # etc.) also produce "updates" events that include historical
+                # AIMessages with tool_calls from previous turns — emitting those
+                # would replay stale tool cards into the current SSE stream.
+                if node_name != "agent":
+                    continue
+
                 # Process tool entries with metadata lookup
                 if isinstance(state_update, dict) and "messages" in state_update:
                     for msg in state_update["messages"]:
@@ -675,7 +758,7 @@ async def execute_graph_streaming(
             # Stream AI response content (only from comms_agent to avoid duplication)
             if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
                 content = chunk.text
-                if content and metadata.get("agent_name") == "comms_agent":
+                if content and config.get("agent_name") == "comms_agent":
                     yield format_sse_response(content)
                     complete_message += content
 
@@ -692,8 +775,9 @@ async def execute_graph_streaming(
                 try:
                     json.dumps(tool_result_payload)
                 except TypeError:
-                    if hasattr(tool_result_payload, "model_dump"):
-                        tool_result_payload = tool_result_payload.model_dump()
+                    model_dump = getattr(tool_result_payload, "model_dump", None)
+                    if callable(model_dump):
+                        tool_result_payload = model_dump()
                     elif hasattr(tool_result_payload, "__dict__"):
                         tool_result_payload = dict(tool_result_payload.__dict__)
                     else:

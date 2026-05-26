@@ -474,7 +474,7 @@ class TestExecuteSubagentStream:
         stream_writer = MagicMock()
 
         async def _fake_astream(*args, **kwargs):
-            yield ("updates", {"node1": {"messages": []}})
+            yield ("updates", {"agent": {"messages": []}})
 
         mock_graph = MagicMock()
         mock_graph.astream = _fake_astream
@@ -490,6 +490,52 @@ class TestExecuteSubagentStream:
         ):
             await execute_subagent_stream(ctx, stream_writer=stream_writer)
 
+        stream_writer.assert_called_once()
+        call_data = stream_writer.call_args[0][0]
+        assert call_data["tool_data"] == tool_entry
+
+    @pytest.mark.asyncio
+    async def test_non_agent_node_updates_skipped(self):
+        """Updates from non-agent nodes (pre-model hooks) must not emit tool_data.
+
+        When a subagent runs a second time with the same checkpoint, LangGraph
+        replays historical AIMessages via filter_messages_node / manage_system_prompts_node
+        "updates" events. Without the guard these stale tool_calls get re-emitted,
+        causing cumulative duplication in the UI (e.g. "13 tools" instead of 3).
+        """
+        tool_entry = {"name": "web_search", "args": {"q": "test"}}
+        stream_writer = MagicMock()
+
+        async def _fake_astream(*args, **kwargs):
+            # Simulate pre-model hook nodes replaying historical messages
+            yield ("updates", {"filter_messages_node": {"messages": []}})
+            yield ("updates", {"manage_system_prompts_node": {"messages": []}})
+            # Only the "agent" node should produce tool_data
+            yield ("updates", {"agent": {"messages": []}})
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph)
+
+        call_count = 0
+
+        def _extract_side_effect(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            return [("tc-1", tool_entry)]
+
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            patch(
+                "app.agents.core.subagents.subagent_runner.extract_tool_entries_from_update",
+                new_callable=AsyncMock,
+                side_effect=_extract_side_effect,
+            ),
+        ):
+            await execute_subagent_stream(ctx, stream_writer=stream_writer)
+
+        # extract_tool_entries_from_update should only be called once (for "agent" node)
+        assert call_count == 1
         stream_writer.assert_called_once()
         call_data = stream_writer.call_args[0][0]
         assert call_data["tool_data"] == tool_entry
@@ -581,7 +627,7 @@ class TestExecuteSubagentStream:
         metadata = {"icon_url": "https://icon.png", "name": "Custom MCP"}
 
         async def _fake_astream(*args, **kwargs):
-            yield ("updates", {"node": {"messages": []}})
+            yield ("updates", {"agent": {"messages": []}})
 
         mock_graph = MagicMock()
         mock_graph.astream = _fake_astream
@@ -1057,7 +1103,7 @@ class TestCallSubagent:
         tool_entry = {"name": "search", "args": {}}
 
         async def _fake_astream(*args, **kwargs):
-            yield ("updates", {"node": {"messages": []}})
+            yield ("updates", {"agent": {"messages": []}})
 
         mock_graph = MagicMock()
         mock_graph.astream = _fake_astream

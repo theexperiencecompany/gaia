@@ -72,6 +72,14 @@ def wrap_tool_with_null_filter(
     so the reconnect path can bypass this wrapper when invoking the fresh tool
     (otherwise a second failure would recurse).
     """
+    # mcp_use's McpToLangChainAdapter sets handle_tool_error=True by default,
+    # which swallows exceptions and returns a formatted error string. That
+    # hides connection-loss errors from our wrapper — we'd never see the
+    # exception, just a result string we couldn't react to. Flip it off so
+    # the inner _arun re-raises and we can run the reconnect path.
+    if hasattr(tool, "handle_tool_error"):
+        tool.handle_tool_error = False
+
     original_arun = tool._arun
 
     @wraps(original_arun)

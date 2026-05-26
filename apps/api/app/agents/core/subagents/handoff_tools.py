@@ -10,15 +10,20 @@ Subagent identity/metadata comes from agents/core/subagents/registry.py
 (unified view of OAuth-derived + builtin subagents).
 """
 
+import asyncio
 from datetime import datetime
 import re
+import time
 from typing import Annotated
+from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore, PutOp
 
+from app.agents.core.background.inbox import increment_pending_subagents
+from app.agents.core.background.subagent_runner import run_subagent_background
 from app.agents.core.subagents.provider_subagents import create_subagent_for_user
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.core.subagents.subagent_helpers import (
@@ -41,7 +46,12 @@ from app.services.oauth.oauth_service import (
     check_integration_status,
 )
 from app.services.provider_metadata_service import get_provider_metadata
-from app.utils.agent_utils import parse_subagent_id
+from app.utils.agent_utils import (
+    IntegrationMetadata,
+    format_subagent_end_event,
+    format_subagent_start_event,
+    parse_subagent_id,
+)
 from shared.py.wide_events import log
 
 SUBAGENTS_NAMESPACE = ("subagents",)
@@ -356,6 +366,90 @@ async def _resolve_subagent(
     return subagent_graph, agent_name, int_id, False
 
 
+_background_subagent_tasks: set[asyncio.Task[None]] = set()
+
+
+async def _build_integration_metadata(is_custom: bool, int_id: str) -> IntegrationMetadata | None:
+    """Build display metadata for a resolved subagent integration."""
+    if is_custom:
+        integration = await _get_subagent_by_id(int_id)
+        if isinstance(integration, dict):
+            return IntegrationMetadata(
+                icon_url=integration.get("icon_url"),
+                integration_id=int_id,
+                name=str(integration.get("name") or int_id),
+            )
+        return None
+    platform_integ = get_subagent_by_id(int_id)
+    if platform_integ:
+        return IntegrationMetadata(
+            icon_url=getattr(platform_integ, "icon_url", None),
+            integration_id=int_id,
+            name=platform_integ.name,
+        )
+    return None
+
+
+def _resolve_display_metadata(
+    metadata: IntegrationMetadata | None,
+    fallback_name: str,
+    fallback_category: str,
+) -> tuple[str, str | None, str]:
+    """Extract display name, icon URL, and tool category from integration metadata."""
+    if not metadata:
+        return fallback_name, None, fallback_category
+    return (
+        str(metadata.get("name") or fallback_name),
+        metadata.get("icon_url"),
+        str(metadata.get("integration_id") or fallback_category),
+    )
+
+
+async def _run_blocking_handoff(
+    ctx: SubagentExecutionContext,
+    metadata: IntegrationMetadata | None,
+    agent_name: str,
+    int_id: str,
+) -> str:
+    """Run a handoff subagent synchronously, emitting lifecycle SSE events."""
+    writer = get_stream_writer()
+    sa_id = str(uuid4())
+    display, icon_url, tool_category = _resolve_display_metadata(metadata, agent_name, int_id)
+
+    # Propagate this subagent's UUID into config so nested spawned subagents
+    # can reference it as parent_subagent_id.
+    ctx.configurable["subagent_id"] = sa_id
+    ctx.config.setdefault("configurable", {})["subagent_id"] = sa_id
+
+    writer(
+        {
+            "subagent_start": format_subagent_start_event(
+                subagent_name=display,
+                agent_type="handoff",
+                subagent_id=sa_id,
+                icon_url=icon_url,
+                tool_category=tool_category,
+            )
+        }
+    )
+    start_time = time.monotonic()
+    result = await execute_subagent_stream(
+        ctx=ctx,
+        stream_writer=writer,
+        integration_metadata=metadata,
+        subagent_id=sa_id,
+    )
+    writer(
+        {
+            "subagent_end": format_subagent_end_event(
+                subagent_id=sa_id,
+                duration_ms=int((time.monotonic() - start_time) * 1000),
+            )
+        }
+    )
+    return result
+
+
 @tool
 async def handoff(
     subagent_id: Annotated[
@@ -368,6 +462,12 @@ async def handoff(
         "Detailed description of the task for the subagent, including all relevant context.",
     ],
     config: RunnableConfig,
+    background: Annotated[
+        bool,
+        "If True, run the subagent in the background and return immediately. "
+        "Use for parallel subagent dispatch — call wait_for_subagents() after "
+        "all background handoffs to collect results. Default False (blocking).",
+    ] = False,
 ) -> str:
     """Delegate a task to a specialized subagent.
 
@@ -378,9 +478,13 @@ async def handoff(
     1. Process the task using its specialized tools
     2. Return the result of the completed task
 
+    For parallel execution, set background=True on multiple handoff calls, then
+    call wait_for_subagents() to collect all results once.
+
     Args:
         subagent_id: ID of the subagent from retrieve_tools (e.g., 'subagent:gmail', 'gmail')
         task: Complete task description with all necessary context
+        background: If True, run non-blocking and return immediately
     """
     try:
         configurable = config.get("configurable", {})
@@ -407,7 +511,6 @@ async def handoff(
         if subagent_graph is None or resolved_agent_name is None or int_id_or_error is None:
             return int_id_or_error or "Unknown error resolving subagent"
 
-        # Type assertion after null check - these are guaranteed to be str at this point
         agent_name: str = resolved_agent_name
         int_id: str = int_id_or_error
         log.set(
@@ -494,33 +597,54 @@ async def handoff(
             stream_id=stream_id,
         )
 
-        writer = get_stream_writer()
+        integration_metadata = await _build_integration_metadata(is_custom, int_id)
 
-        integration_metadata = None
-        if is_custom:
-            custom_meta = await _get_subagent_by_id(int_id)
-            if isinstance(custom_meta, dict):
-                integration_metadata = {
-                    "icon_url": custom_meta.get("icon_url"),
-                    "integration_id": int_id,
-                    "name": str(custom_meta.get("name", int_id)),
-                }
-        else:
-            platform_subagent = get_subagent_by_id(int_id)
-            if platform_subagent:
-                integration_metadata = {
-                    "icon_url": None,
-                    "integration_id": int_id,
-                    "name": platform_subagent.name,
-                }
+        # Background mode: spawn subagent as asyncio task and return immediately.
+        # Caller must use wait_for_subagents() to collect results.
+        #
+        # Requires stream_id to be propagated into the executor configurable so
+        # the result can be routed back via _bg_subagent_results[stream_id].
+        if background:
+            if not stream_id:
+                log.warning(
+                    "handoff background=True but stream_id is missing — "
+                    "falling back to blocking execution"
+                )
+                blocking_result = await _run_blocking_handoff(
+                    ctx, integration_metadata, agent_name, int_id
+                )
+                return (
+                    "[WARNING: background handoff fell back to blocking — "
+                    "stream_id not propagated into executor configurable] "
+                    f"{blocking_result}"
+                )
+            sid: str = str(stream_id)
+            bg_sa_id = str(uuid4())
+            bg_display, bg_icon, bg_cat = _resolve_display_metadata(
+                integration_metadata, agent_name, int_id
+            )
+            increment_pending_subagents(sid)
+            bg_task = asyncio.create_task(
+                run_subagent_background(
+                    ctx=ctx,
+                    stream_id=sid,
+                    integration_metadata=integration_metadata,
+                    subagent_id=bg_sa_id,
+                    display_name=bg_display,
+                    tool_category=bg_cat,
+                    icon_url=bg_icon,
+                )
+            )
+            _background_subagent_tasks.add(bg_task)
+            bg_task.add_done_callback(_background_subagent_tasks.discard)
+            log.info(f"Subagent {agent_name} dispatched to background for stream {sid}")
+            return (
+                f"Subagent {agent_name} started in background. "
+                "Call wait_for_subagents() when ready to collect results."
+            )
 
-        # Execute using shared streaming function
-        # Note: handoff tool_data is emitted by parent graph's updates stream
-        return await execute_subagent_stream(
-            ctx=ctx,
-            stream_writer=writer,
-            integration_metadata=integration_metadata,
-        )
+        # Blocking (default): execute synchronously and return result.
+        return await _run_blocking_handoff(ctx, integration_metadata, agent_name, int_id)
 
     except Exception as e:
         log.error(

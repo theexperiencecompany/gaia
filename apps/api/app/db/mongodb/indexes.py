@@ -240,6 +240,19 @@ async def create_todo_indexes():
                 [("user_id", 1), ("project_id", 1), ("due_date", 1)],
                 name="user_project_due",
             ),
+            # For tracked-todo cron sweeps (safety-net + maintenance). Both
+            # scan by gaia-tracked label + completion, then range on
+            # scheduled_at / gaia_retry_count. ESR ordering: equality fields
+            # first (labels, completed), then range fields.
+            todos_collection.create_index(
+                [
+                    ("labels", 1),
+                    ("completed", 1),
+                    ("scheduled_at", 1),
+                    ("gaia_retry_count", 1),
+                ],
+                name="tracked_sweep",
+            ),
         )
 
     except Exception as e:

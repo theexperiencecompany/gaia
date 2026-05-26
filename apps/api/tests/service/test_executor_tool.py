@@ -1,9 +1,8 @@
 """Service tests for executor_tool.call_executor.
 
 Tests call the real call_executor production function with mocked boundaries
-(prepare_executor_execution, execute_subagent_stream, get_stream_writer). The
-old eager-MCP-tool-load patch was removed when load_user_mcp_tools was deleted —
-MCP tools now connect lazily inside each subagent build.
+(prepare_executor_execution, execute_subagent_stream, get_stream_writer, and
+MCP tool loading). No reimplementation of production logic.
 """
 
 from __future__ import annotations
@@ -54,6 +53,11 @@ def _base_patches(
             "app.agents.tools.executor_tool.get_stream_writer",
             return_value=lambda _: None,
         ),
+        patch(
+            "app.agents.tools.executor_tool.get_tool_registry",
+            new_callable=AsyncMock,
+            return_value=MagicMock(load_user_mcp_tools=AsyncMock(return_value={})),
+        ),
     ]
 
 
@@ -89,7 +93,7 @@ class TestCallExecutorTool:
             prepare_return=(fake_ctx, None), execute_return="Created todo successfully"
         )
 
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             result = await call_executor.ainvoke(
                 {"task": "Create a todo: buy milk", "config": _make_config()}
             )
@@ -102,7 +106,7 @@ class TestCallExecutorTool:
         """When prepare returns (None, error_msg), call_executor returns 'Error: <msg>' string."""
         patches = _base_patches(prepare_return=(None, "Executor agent not available"))
 
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             result = await call_executor.ainvoke({"task": "do something", "config": _make_config()})
 
         assert isinstance(result, str)
@@ -113,7 +117,7 @@ class TestCallExecutorTool:
         """When prepare returns (None, None), call_executor returns a fallback error string."""
         patches = _base_patches(prepare_return=(None, None))
 
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             result = await call_executor.ainvoke({"task": "do something", "config": _make_config()})
 
         assert isinstance(result, str)
@@ -123,7 +127,7 @@ class TestCallExecutorTool:
         """When prepare returns (None, error), result must NOT be empty or a crash."""
         patches = _base_patches(prepare_return=(None, "DB unreachable"))
 
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             result = await call_executor.ainvoke({"task": "fetch emails", "config": _make_config()})
 
         assert isinstance(result, str)
@@ -133,10 +137,17 @@ class TestCallExecutorTool:
 
     async def test_cancelled_error_propagates(self) -> None:
         """asyncio.CancelledError must be re-raised, not swallowed."""
-        with patch(
-            "app.agents.tools.executor_tool.prepare_executor_execution",
-            new_callable=AsyncMock,
-            side_effect=asyncio.CancelledError(),
+        with (
+            patch(
+                "app.agents.tools.executor_tool.prepare_executor_execution",
+                new_callable=AsyncMock,
+                side_effect=asyncio.CancelledError(),
+            ),
+            patch(
+                "app.agents.tools.executor_tool.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=MagicMock(load_user_mcp_tools=AsyncMock(return_value={})),
+            ),
         ):
             with pytest.raises(asyncio.CancelledError):
                 await call_executor.ainvoke({"task": "cancel me", "config": _make_config()})
@@ -147,10 +158,17 @@ class TestCallExecutorTool:
         """LangChainRateLimitException must produce a rate-limit message, not a crash."""
         exc = LangChainRateLimitException(feature="gpt-4o")
 
-        with patch(
-            "app.agents.tools.executor_tool.prepare_executor_execution",
-            new_callable=AsyncMock,
-            side_effect=exc,
+        with (
+            patch(
+                "app.agents.tools.executor_tool.prepare_executor_execution",
+                new_callable=AsyncMock,
+                side_effect=exc,
+            ),
+            patch(
+                "app.agents.tools.executor_tool.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=MagicMock(load_user_mcp_tools=AsyncMock(return_value={})),
+            ),
         ):
             result = await call_executor.ainvoke({"task": "send email", "config": _make_config()})
 
@@ -162,10 +180,17 @@ class TestCallExecutorTool:
         """RateLimitExceededException must produce a rate-limit message, not a crash."""
         exc = RateLimitExceededException(feature="email_send")
 
-        with patch(
-            "app.agents.tools.executor_tool.prepare_executor_execution",
-            new_callable=AsyncMock,
-            side_effect=exc,
+        with (
+            patch(
+                "app.agents.tools.executor_tool.prepare_executor_execution",
+                new_callable=AsyncMock,
+                side_effect=exc,
+            ),
+            patch(
+                "app.agents.tools.executor_tool.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=MagicMock(load_user_mcp_tools=AsyncMock(return_value={})),
+            ),
         ):
             result = await call_executor.ainvoke({"task": "send email", "config": _make_config()})
 
@@ -177,10 +202,17 @@ class TestCallExecutorTool:
         """RateLimitExceededException without a plan_required still returns graceful message."""
         exc = RateLimitExceededException(feature="web_search")
 
-        with patch(
-            "app.agents.tools.executor_tool.prepare_executor_execution",
-            new_callable=AsyncMock,
-            side_effect=exc,
+        with (
+            patch(
+                "app.agents.tools.executor_tool.prepare_executor_execution",
+                new_callable=AsyncMock,
+                side_effect=exc,
+            ),
+            patch(
+                "app.agents.tools.executor_tool.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=MagicMock(load_user_mcp_tools=AsyncMock(return_value={})),
+            ),
         ):
             result = await call_executor.ainvoke({"task": "search web", "config": _make_config()})
 
@@ -191,10 +223,17 @@ class TestCallExecutorTool:
 
     async def test_generic_exception_returns_error_string(self) -> None:
         """Unexpected exceptions must be caught and returned as a readable string."""
-        with patch(
-            "app.agents.tools.executor_tool.prepare_executor_execution",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("internal failure"),
+        with (
+            patch(
+                "app.agents.tools.executor_tool.prepare_executor_execution",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("internal failure"),
+            ),
+            patch(
+                "app.agents.tools.executor_tool.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=MagicMock(load_user_mcp_tools=AsyncMock(return_value={})),
+            ),
         ):
             result = await call_executor.ainvoke({"task": "crash me", "config": _make_config()})
 
@@ -202,7 +241,73 @@ class TestCallExecutorTool:
         assert "Error executing task" in result
         assert "internal failure" in result
 
-    # MCP tool loading is no longer eager in call_executor; previously this
-    # block also covered `test_mcp_load_failure_is_non_fatal` and
-    # `test_no_user_id_skips_mcp_loading`. Per-subagent lazy connect now
-    # handles that path — coverage lives in tests/integration/agents/.
+    # --- MCP tool loading failure ------------------------------------------
+
+    async def test_mcp_load_failure_is_non_fatal(self) -> None:
+        """A failure to load MCP tools must not abort the executor call."""
+        fake_ctx = MagicMock()
+        tool_registry_mock = MagicMock()
+        tool_registry_mock.load_user_mcp_tools = AsyncMock(
+            side_effect=Exception("MCP registry unavailable")
+        )
+
+        with (
+            patch(
+                "app.agents.tools.executor_tool.prepare_executor_execution",
+                new_callable=AsyncMock,
+                return_value=(fake_ctx, None),
+            ),
+            patch(
+                "app.agents.tools.executor_tool.execute_subagent_stream",
+                new_callable=AsyncMock,
+                return_value="task completed despite MCP failure",
+            ),
+            patch(
+                "app.agents.tools.executor_tool.get_stream_writer",
+                return_value=lambda _: None,
+            ),
+            patch(
+                "app.agents.tools.executor_tool.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=tool_registry_mock,
+            ),
+        ):
+            result = await call_executor.ainvoke({"task": "list todos", "config": _make_config()})
+
+        assert result == "task completed despite MCP failure"
+
+    # --- config without user_id --------------------------------------------
+
+    async def test_no_user_id_skips_mcp_loading(self) -> None:
+        """When user_id is absent from config, MCP tools are not loaded."""
+        config_without_user = RunnableConfig(configurable={"thread_id": "t1"})
+        fake_ctx = MagicMock()
+        registry_mock = MagicMock(load_user_mcp_tools=AsyncMock(return_value={}))
+
+        with (
+            patch(
+                "app.agents.tools.executor_tool.prepare_executor_execution",
+                new_callable=AsyncMock,
+                return_value=(fake_ctx, None),
+            ),
+            patch(
+                "app.agents.tools.executor_tool.execute_subagent_stream",
+                new_callable=AsyncMock,
+                return_value="ok",
+            ),
+            patch(
+                "app.agents.tools.executor_tool.get_stream_writer",
+                return_value=lambda _: None,
+            ),
+            patch(
+                "app.agents.tools.executor_tool.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=registry_mock,
+            ),
+        ):
+            result = await call_executor.ainvoke(
+                {"task": "some task", "config": config_without_user}
+            )
+
+        assert result == "ok"
+        registry_mock.load_user_mcp_tools.assert_not_called()

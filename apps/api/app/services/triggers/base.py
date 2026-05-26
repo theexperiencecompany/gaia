@@ -13,6 +13,7 @@ from typing import Any
 from app.db.mongodb.collections import workflows_collection
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import log
@@ -340,8 +341,12 @@ class TriggerHandler(ABC):
             )
             return {"status": "success", "message": "No matching workflows"}
 
-        # Queue execution for each matching workflow
+        # Queue execution for each matching workflow.
+        # Tracked-todo signal context is identical for a given user, so compute
+        # it once per user_id and reuse — avoids repeated Mongo + VFS reads when
+        # multiple workflows for the same user match one event.
         queued_count = 0
+        signal_context_by_user: dict[str, str] = {}
         for workflow in workflows:
             try:
                 if workflow.id is None:
@@ -351,10 +356,28 @@ class TriggerHandler(ABC):
                         trigger_id=trigger_id,
                     )
                     continue
+                # Enrich context with tracked todos for signal matching
+                context: dict[str, Any] = {"trigger_data": data}
+                if workflow.user_id not in signal_context_by_user:
+                    try:
+                        signal_context_by_user[
+                            workflow.user_id
+                        ] = await tracked_todo_service.get_signal_matching_context(workflow.user_id)
+                    except Exception as e:
+                        log.warning(
+                            "trigger.signal_context_fetch_failed",
+                            user_id=workflow.user_id,
+                            error=str(e),
+                        )
+                        signal_context_by_user[workflow.user_id] = ""
+                todos_context = signal_context_by_user[workflow.user_id]
+                if todos_context:
+                    context["tracked_todos_context"] = todos_context
+
                 await WorkflowQueueService.queue_workflow_execution(
                     workflow.id,
                     workflow.user_id,
-                    context={"trigger_data": data},
+                    context=context,
                 )
                 queued_count += 1
                 log.info(
