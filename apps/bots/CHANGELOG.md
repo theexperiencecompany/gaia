@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.4.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.3.0...bots-v1.4.0) (2026-05-26)
+
+
+### Features
+
+* **bots:** add structured lifecycle and event logging ([#625](https://github.com/theexperiencecompany/gaia/issues/625)) ([7b76163](https://github.com/theexperiencecompany/gaia/commit/7b76163bd8a8a78b83a77ade8a77fd59ee25f9a4))
+* **bots:** add structured lifecycle and event logging ([#625](https://github.com/theexperiencecompany/gaia/issues/625)) ([#626](https://github.com/theexperiencecompany/gaia/issues/626)) ([8b417b4](https://github.com/theexperiencecompany/gaia/commit/8b417b462f35cc0a95d6848118961afc79329c72))
+* **bots:** direct bot endpoints with shared BotServer ([#627](https://github.com/theexperiencecompany/gaia/issues/627)) ([357ad28](https://github.com/theexperiencecompany/gaia/commit/357ad289a9d05c19ed63e3a3dc8dc6c48e6b318c))
+* **bots:** WhatsApp + Telegram media & voice support, with cross-cutting bot and API fixes ([#688](https://github.com/theexperiencecompany/gaia/issues/688)) ([80c67cc](https://github.com/theexperiencecompany/gaia/commit/80c67cc388403860b457674b7519c29903bc151c))
+* **web:** landing page copy, navbar, and comparison grid overhaul ([#674](https://github.com/theexperiencecompany/gaia/issues/674)) ([7e2062d](https://github.com/theexperiencecompany/gaia/commit/7e2062da2ba0f5c9a3fc082bf8abc061c8348f36))
+
+
+### Bug Fixes
+
+* **bots:** address CodeRabbit review comments ([7599de7](https://github.com/theexperiencecompany/gaia/commit/7599de753168257777bf117421a99ae86ffd0f63))
+* platform-aware markdown formatting and OpenUI gating ([#647](https://github.com/theexperiencecompany/gaia/issues/647)) ([82de0e2](https://github.com/theexperiencecompany/gaia/commit/82de0e205b466784d3d4d20de4f1715a7ecc7f02))
+* **security:** patch 6 high-confidence vulnerabilities from audit ([#656](https://github.com/theexperiencecompany/gaia/issues/656)) ([a24cf7d](https://github.com/theexperiencecompany/gaia/commit/a24cf7d1d0c8d037f23457da23450e76916ca11b))
+* **whatsapp:** deterministic typing indicator and welcome message ([#643](https://github.com/theexperiencecompany/gaia/issues/643)) ([83f42c3](https://github.com/theexperiencecompany/gaia/commit/83f42c395d1dd2f8584b625d5cbb72484d29e5e1))
+
 ## [1.3.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.2.0...bots-v1.3.0) (2026-04-05)
 
 
