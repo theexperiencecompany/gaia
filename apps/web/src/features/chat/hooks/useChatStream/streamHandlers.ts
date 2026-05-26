@@ -44,6 +44,23 @@ export interface StreamHandlerDeps {
   ) => Promise<void>;
 }
 
+// The discriminated-union element type that parseChatStreamEvent yields.
+type ParsedStreamEvent = ReturnType<typeof parseChatStreamEvent>[number];
+
+// Log and shape a catch-block error into the user-facing stream-error string.
+// Lives at module scope so it doesn't inflate handleStreamEvent's cognitive
+// complexity with the inline ternaries it used to carry.
+function formatStreamError(error: unknown, eventData: string): string {
+  console.error("[useChatStream] Error handling stream event:", {
+    error,
+    errorMessage: error instanceof Error ? error.message : "Unknown error",
+    stack: error instanceof Error ? error.stack : undefined,
+    eventData,
+  });
+  const errorMessage = error instanceof Error ? error.message : "Unknown error";
+  return `Error processing stream data: ${errorMessage}`;
+}
+
 // Pull the loading-indicator hints out of a tool_data event's payload (returns null if none).
 function readToolDataLoadingHints(data: unknown): {
   message: string;
@@ -414,84 +431,81 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
         : chunk;
   };
 
+  // Route a single parsed event to the right handler. Returns a string only for
+  // the `error` event — caller treats that as a signal to halt the for-loop and
+  // bubble the error back out of handleStreamEvent.
+  const dispatchStreamEvent = async (
+    parsed: ParsedStreamEvent,
+    streamingData: Record<string, unknown>,
+  ): Promise<string | undefined> => {
+    switch (parsed.type) {
+      case "done":
+      case "keepalive":
+        return undefined;
+      case "error":
+        toast.error(parsed.error);
+        return parsed.error;
+      case "main_response_complete":
+        console.log("[handleStreamEvent] Received main_response_complete");
+        handleMainResponseComplete();
+        return undefined;
+      case "tool_data":
+        handleToolData(parsed.entry as ToolDataEntry);
+        return undefined;
+      case "tool_output":
+        handleToolOutput(parsed.output);
+        return undefined;
+      case "subagent_start":
+        handleSubagentStart(parsed.payload);
+        return undefined;
+      case "subagent_end":
+        handleSubagentEnd(parsed.payload);
+        return undefined;
+      case "todo_progress":
+        handleTodoProgress(parsed.snapshot as TodoProgressSnapshot);
+        return undefined;
+      case "progress":
+        handleProgressEvent(parsed);
+        return undefined;
+      case "response":
+        handleResponseChunk(parsed.chunk, streamingData);
+        return undefined;
+      case "follow_up_actions":
+        streamingData.follow_up_actions = parsed.actions;
+        return undefined;
+      case "conversation_initialized":
+        console.log("[useChatStream] conversation_initialized event:", parsed);
+        await handleConversationInitialized(parsed);
+        return undefined;
+      case "conversation_description":
+        handleConversationDescriptionEvent(parsed.description);
+        return undefined;
+      case "unknown":
+        Object.assign(streamingData, parsed.payload);
+        return undefined;
+    }
+    return undefined;
+  };
+
   const handleStreamEvent = async (
     event: EventSourceMessage,
   ): Promise<undefined | string> => {
-    if (!streamInProgressRef.current) {
-      return "Stream was aborted";
-    }
+    if (!streamInProgressRef.current) return "Stream was aborted";
     if (!event.data) return; // Skip empty events (@microsoft/fetch-event-source dispatches these for SSE comments)
 
     try {
       const parsedEvents = parseChatStreamEvent(event.data);
       const streamingData: Record<string, unknown> = {};
-
       for (const parsed of parsedEvents) {
-        switch (parsed.type) {
-          case "done":
-          case "keepalive":
-            continue;
-          case "error":
-            toast.error(parsed.error);
-            return parsed.error;
-          case "main_response_complete":
-            console.log("[handleStreamEvent] Received main_response_complete");
-            handleMainResponseComplete();
-            continue;
-          case "tool_data":
-            handleToolData(parsed.entry as ToolDataEntry);
-            continue;
-          case "tool_output":
-            handleToolOutput(parsed.output);
-            continue;
-          case "subagent_start":
-            handleSubagentStart(parsed.payload);
-            continue;
-          case "subagent_end":
-            handleSubagentEnd(parsed.payload);
-            continue;
-          case "todo_progress":
-            handleTodoProgress(parsed.snapshot as TodoProgressSnapshot);
-            continue;
-          case "progress":
-            handleProgressEvent(parsed);
-            continue;
-          case "response":
-            handleResponseChunk(parsed.chunk, streamingData);
-            continue;
-          case "follow_up_actions":
-            streamingData.follow_up_actions = parsed.actions;
-            continue;
-          case "conversation_initialized":
-            console.log(
-              "[useChatStream] conversation_initialized event:",
-              parsed,
-            );
-            await handleConversationInitialized(parsed);
-            continue;
-          case "conversation_description":
-            handleConversationDescriptionEvent(parsed.description);
-            continue;
-          case "unknown":
-            Object.assign(streamingData, parsed.payload);
-            continue;
-        }
+        const haltError = await dispatchStreamEvent(parsed, streamingData);
+        if (haltError !== undefined) return haltError;
       }
-
       if (Object.keys(streamingData).length === 0) return;
       if (handleImageGeneration(streamingData)) return;
       await handleStreamingContent(streamingData);
       return undefined;
     } catch (error) {
-      console.error("[useChatStream] Error handling stream event:", {
-        error,
-        errorMessage: error instanceof Error ? error.message : "Unknown error",
-        stack: error instanceof Error ? error.stack : undefined,
-        eventData: event.data,
-      });
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      return `Error processing stream data: ${errorMessage}`;
+      return formatStreamError(error, event.data);
     }
   };
 

@@ -46,7 +46,11 @@ from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import ReplyToMessageData
 from app.services.conversation_service import update_messages
-from app.utils.stream_utils import reconstruct_subagent_groups
+from app.utils.stream_utils import (
+    absorb_collector_event,
+    apply_outputs_to_tool_data,
+    reconstruct_subagent_groups,
+)
 from shared.py.wide_events import log
 
 # Prevent GC of background tasks spawned from the queue
@@ -115,41 +119,6 @@ async def _lookup_user_message_content(
     return ""
 
 
-def _absorb_collector_event(
-    evt: dict[str, Any],
-    accumulated: dict[str, Any],
-    tool_outputs: dict[str, str],
-) -> None:
-    """Route a single collector event into the appropriate accumulator bucket."""
-    if "tool_data" in evt:
-        accumulated["tool_data"].append(evt["tool_data"])
-    if "tool_output" in evt:
-        out = evt["tool_output"]
-        tid, val = out.get("tool_call_id"), out.get("output")
-        if tid and val:
-            tool_outputs[tid] = val
-    if "subagent_start" in evt:
-        sid = evt["subagent_start"]["subagent_id"]
-        accumulated.setdefault("subagent_starts", {})[sid] = evt["subagent_start"]
-    if "subagent_end" in evt:
-        sid = evt["subagent_end"]["subagent_id"]
-        accumulated.setdefault("subagent_ends", {})[sid] = evt["subagent_end"]
-
-
-def _apply_outputs_to_tool_data(
-    tool_data: list[dict[str, Any]],
-    tool_outputs: dict[str, str],
-) -> None:
-    """Backfill each tool_data entry's `output` field from the collected tool_outputs map."""
-    for entry in tool_data:
-        data = entry.get("data", {})
-        if not isinstance(data, dict):
-            continue
-        tc_id = data.get("tool_call_id")
-        if tc_id and tc_id in tool_outputs:
-            data["output"] = tool_outputs[tc_id]
-
-
 def _collect_queued_tool_events(
     stream_id: str,
 ) -> list[dict[str, Any]] | None:
@@ -164,8 +133,8 @@ def _collect_queued_tool_events(
     accumulated: dict[str, Any] = {"tool_data": []}
     tool_outputs: dict[str, str] = {}
     for evt in collector:
-        _absorb_collector_event(evt, accumulated, tool_outputs)
-    _apply_outputs_to_tool_data(accumulated["tool_data"], tool_outputs)
+        absorb_collector_event(evt, accumulated, tool_outputs)
+    apply_outputs_to_tool_data(accumulated["tool_data"], tool_outputs)
     reconstruct_subagent_groups(accumulated)
     return accumulated.get("tool_data") or None
 

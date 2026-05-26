@@ -403,6 +403,55 @@ async def publish_description_if_ready(
     return None  # Clear to prevent duplicate sends
 
 
+def absorb_collector_event(
+    evt: dict[str, Any],
+    accumulated: dict[str, Any],
+    tool_outputs: dict[str, str],
+) -> None:
+    """Route a single tool-event-collector event into the right bucket.
+
+    Used by both the live-streaming path (chat_service) and the queued executor
+    path (executor_runner) to drain the per-stream collector into a tool_data
+    list with associated outputs and subagent start/end pairs.
+    """
+    if "tool_data" in evt:
+        accumulated["tool_data"].append(evt["tool_data"])
+    if "tool_output" in evt:
+        out = evt["tool_output"]
+        tid, val = out.get("tool_call_id"), out.get("output")
+        if tid and val:
+            tool_outputs[tid] = val
+    if "subagent_start" in evt:
+        sid = evt["subagent_start"]["subagent_id"]
+        accumulated.setdefault("subagent_starts", {})[sid] = evt["subagent_start"]
+    if "subagent_end" in evt:
+        sid = evt["subagent_end"]["subagent_id"]
+        accumulated.setdefault("subagent_ends", {})[sid] = evt["subagent_end"]
+
+
+def apply_outputs_to_tool_data(
+    entries: list[dict[str, Any]],
+    tool_outputs: dict[str, str],
+    *,
+    only_tool_name: str | None = None,
+) -> None:
+    """Backfill each tool_data entry's `data.output` from the collected outputs map.
+
+    Pass `only_tool_name` to restrict the update to entries with that
+    `tool_name` (e.g. `"tool_calls_data"` for the chat_service path, which only
+    enriches tool_calls_data entries; the executor_runner path applies to all).
+    """
+    for entry in entries:
+        if only_tool_name is not None and entry.get("tool_name") != only_tool_name:
+            continue
+        data = entry.get("data", {})
+        if not isinstance(data, dict):
+            continue
+        tc_id = data.get("tool_call_id")
+        if tc_id and tc_id in tool_outputs:
+            data["output"] = tool_outputs[tc_id]
+
+
 def reconstruct_subagent_groups(tool_data: dict[str, Any]) -> None:
     """Group flat tool_data entries tagged with subagent_id into subagent_group
     entries for MongoDB persistence. Mutates tool_data in place.
