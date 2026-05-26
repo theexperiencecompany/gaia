@@ -49,6 +49,7 @@ def _toolkit_to_auth_config_id(toolkit: str) -> str | None:
 
 def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
     if not user_id:
+        log.error("composio_proxy_missing_user_id", toolkit=toolkit)
         raise AppError(
             message="Missing user_id for Composio proxy request",
             why="proxy_request requires a user_id to resolve the connected account",
@@ -65,6 +66,11 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
 
     auth_config_id = _toolkit_to_auth_config_id(toolkit)
     if not auth_config_id:
+        log.error(
+            "composio_proxy_unknown_toolkit",
+            toolkit=toolkit,
+            user_id=user_id,
+        )
         raise AppError(
             message=f"Unknown Composio toolkit: {toolkit}",
             why="No registered auth config matches this toolkit slug",

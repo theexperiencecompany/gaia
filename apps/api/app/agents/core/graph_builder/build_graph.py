@@ -109,13 +109,23 @@ async def build_executor_graph(
     if in_memory_checkpointer or not checkpointer_manager:
         in_memory_checkpointer_instance = InMemorySaver()
         graph = builder.compile(checkpointer=in_memory_checkpointer_instance, store=store)
-        log.debug("Graph compiled with in-memory checkpointer")
+        # Surface fallback at WARNING — users silently lose conversation memory
+        # when Postgres checkpointer is unavailable.
+        if not in_memory_checkpointer:
+            log.warning(
+                "checkpointer_fallback_to_memory",
+                graph="comms",
+                reason="checkpointer_manager_unavailable",
+                model=model_name,
+            )
+        else:
+            log.info("graph_compiled_in_memory", graph="comms", model=model_name)
         log.set(agent={"model": model_name})
         yield graph
     else:
         postgres_checkpointer = checkpointer_manager.get_checkpointer()
         graph = builder.compile(checkpointer=postgres_checkpointer, store=store)
-        log.debug("Graph compiled with PostgreSQL checkpointer")
+        log.info("graph_compiled_postgres", graph="comms", model=model_name)
         log.set(agent={"model": model_name})
         yield graph
 

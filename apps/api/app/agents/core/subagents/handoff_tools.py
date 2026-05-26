@@ -523,5 +523,12 @@ async def handoff(
         )
 
     except Exception as e:
-        log.error(f"Error in handoff to {subagent_id}: {e}", exc_info=True)
+        log.error(
+            "handoff_failed",
+            subagent_id=subagent_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e)[:500],
+            exc_info=True,
+        )
         return f"Error executing task: {e!s}"

@@ -71,8 +71,20 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
-        """Convert AppError into a structured JSON response with wide event context."""
-        wide_log.set(error=exc.to_dict())
+        """Convert AppError into a structured JSON response with wide event context.
+
+        Emits an explicit error log so the wide-event final_level flips to ERROR
+        and downstream LogQL filters (e.g. `errors!="[]"`, `level="ERROR"`) catch
+        it. Without this the AppError only showed up in Sentry and was invisible
+        to Loki searches that look for application errors by level.
+        """
+        wide_log.error(
+            "app_error",
+            error=exc.to_dict(),
+            status_code=exc.status_code,
+            path=request.url.path,
+            method=request.method,
+        )
         return JSONResponse(
             status_code=exc.status_code,
             content=exc.to_dict(),

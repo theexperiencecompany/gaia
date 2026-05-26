@@ -467,7 +467,15 @@ async def _run_chat_stream(
         await stream_manager.complete_stream(stream_id)
 
     except Exception as e:
-        log.error(f"Background stream error for {stream_id}: {e}")
+        log.error(
+            "background_stream_error",
+            stream_id=stream_id,
+            user_id=user.get("user_id") if isinstance(user, dict) else None,
+            conversation_id=conversation_id,
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
         await _wait_for_http_subscriber(start_event, stream_id)
         # IMPORTANT: Publish error chunk FIRST, before calling set_error()
         # set_error() publishes STREAM_ERROR_SIGNAL which breaks the subscriber loop
@@ -571,7 +579,14 @@ async def _save_conversation_async(
         try:
             await _process_token_usage_and_cost(user_id, metadata)
         except Exception as e:
-            log.error(f"Failed to process token usage: {e}")
+            log.error(
+                "token_usage_processing_failed",
+                user_id=user_id,
+                error_type=type(e).__name__,
+                error=str(e),
+                models_in_metadata=list(metadata.keys()) if isinstance(metadata, dict) else [],
+                exc_info=True,
+            )
 
     # Get timestamps
     bot_timestamp = datetime.now(UTC)
