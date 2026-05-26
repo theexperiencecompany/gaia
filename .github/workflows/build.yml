@@ -259,7 +259,7 @@ jobs:
   # tiny COPY layer over the upstream image, and the prod stack always references
   # gaia-grafana:latest.
   docker-grafana:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -275,8 +275,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Determine image tag
         id: tag
@@ -289,7 +289,7 @@ jobs:
           fi
 
       - name: Build and push Grafana image
-        uses: useblacksmith/build-push-action@v2
+        uses: docker/build-push-action@v6
         with:
           context: infra/docker/observability/grafana
           file: infra/docker/observability/grafana/Dockerfile
