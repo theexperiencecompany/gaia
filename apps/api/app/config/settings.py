@@ -259,6 +259,9 @@ class ProductionSettings(CommonSettings):
     POSTHOG_API_KEY: str
     OPIK_API_KEY: str
     OPIK_WORKSPACE: str
+    LANGFUSE_PUBLIC_KEY: str | None = None
+    LANGFUSE_SECRET_KEY: str | None = None
+    LANGFUSE_HOST: str | None = None
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -413,6 +416,9 @@ class DevelopmentSettings(CommonSettings):
     POSTHOG_API_KEY: str | None = None
     OPIK_API_KEY: str | None = None
     OPIK_WORKSPACE: str | None = None
+    LANGFUSE_PUBLIC_KEY: str | None = None
+    LANGFUSE_SECRET_KEY: str | None = None
+    LANGFUSE_HOST: str | None = None
 
     # ----------------------------------------------
     # MCP OAuth Credentials

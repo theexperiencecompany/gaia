@@ -18,6 +18,7 @@ from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
+from app.config.langfuse import build_langfuse_callback
 from app.config.settings import settings
 from app.constants.cache import (
     CUSTOM_INT_METADATA_CACHE_PREFIX,
@@ -268,6 +269,10 @@ def _build_agent_callbacks(
                 privacy_mode=False,
             ),
         )
+
+    langfuse_callback = build_langfuse_callback()
+    if langfuse_callback is not None:
+        callbacks.append(langfuse_callback)
 
     if usage_metadata_callback:
         callbacks.append(usage_metadata_callback)
