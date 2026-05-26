@@ -2,7 +2,8 @@
 
 import { Spinner } from "@heroui/spinner";
 import { ToolsIcon } from "@icons";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import { useState } from "react";
 import { ChevronDown } from "@/components/shared/icons";
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";

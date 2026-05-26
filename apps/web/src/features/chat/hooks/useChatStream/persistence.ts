@@ -6,7 +6,6 @@ import type { StreamContext } from "./types";
 
 export const createPersistenceHelpers = (
   ctx: StreamContext,
-  updateBotMessage: (overrides: Partial<MessageType>) => void,
   updateBotMessageInStore: (conversationId: string) => void,
 ) => {
   const schedulePersist = (conversationId: string) => {

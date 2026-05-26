@@ -67,7 +67,7 @@ export const useChatStream = () => {
     createMessageHelpers(ctx);
 
   const { schedulePersist, persistBotMessage, resolveConversationId } =
-    createPersistenceHelpers(ctx, updateBotMessage, updateBotMessageInStore);
+    createPersistenceHelpers(ctx, updateBotMessageInStore);
 
   const {
     handleConversationCreation: _handleConversationCreation,
