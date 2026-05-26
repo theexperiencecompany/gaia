@@ -44,6 +44,30 @@ export interface StreamHandlerDeps {
   ) => Promise<void>;
 }
 
+// Pull the loading-indicator hints out of a tool_data event's payload (returns null if none).
+function readToolDataLoadingHints(data: unknown): {
+  message: string;
+  toolName?: string;
+  toolCategory?: string;
+  integrationName?: string;
+  iconUrl?: string;
+  showCategory: boolean;
+} | null {
+  if (typeof data !== "object" || data === null) return null;
+  const d = data as Record<string, unknown>;
+  if (typeof d.message !== "string" || d.message.length === 0) return null;
+  return {
+    message: d.message,
+    toolName: typeof d.tool_name === "string" ? d.tool_name : undefined,
+    toolCategory:
+      typeof d.tool_category === "string" ? d.tool_category : undefined,
+    integrationName:
+      typeof d.integration_name === "string" ? d.integration_name : undefined,
+    iconUrl: typeof d.icon_url === "string" ? d.icon_url : undefined,
+    showCategory: (d.show_category as boolean) ?? true,
+  };
+}
+
 export const createStreamHandlers = (deps: StreamHandlerDeps) => {
   const {
     ctx,
@@ -63,82 +87,52 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
     resetLoadingText,
   } = ctx;
 
-  const handleToolData = (
-    toolData: ToolDataEntry & { subagent_id?: string },
-  ) => {
-    // Route tool_calls_data entries into the matching subagent group by event's own subagent_id.
-    if (toolData.subagent_id && toolData.tool_name === "tool_calls_data") {
-      const targetSubagentId = toolData.subagent_id;
-      const existingToolData = refs.current.botMessage?.tool_data ?? [];
-      const updatedToolData = updateSubagentInToolData(
-        existingToolData,
-        targetSubagentId,
-        (g) => ({
-          ...g,
-          tool_calls: [...g.tool_calls, toolData.data as ToolCallEntry],
-        }),
-      );
-      updateBotMessage({ tool_data: updatedToolData });
-
-      // Still show the loading indicator for the active tool call
-      if (typeof toolData.data === "object" && toolData.data !== null) {
-        const d = toolData.data as Record<string, unknown>;
-        if (typeof d.message === "string" && d.message.length > 0) {
-          setLoadingText(d.message, {
-            toolName: typeof d.tool_name === "string" ? d.tool_name : undefined,
-            toolCategory:
-              typeof d.tool_category === "string" ? d.tool_category : undefined,
-            integrationName:
-              typeof d.integration_name === "string"
-                ? d.integration_name
-                : undefined,
-            iconUrl: typeof d.icon_url === "string" ? d.icon_url : undefined,
-            showCategory: (d.show_category as boolean) ?? true,
-          });
-        }
-      }
-
-      const conversationId =
-        refs.current.newConversation.id ||
-        useChatStore.getState().activeConversationId;
-      if (refs.current.botMessage?.message_id && conversationId) {
-        schedulePersist(conversationId);
-      }
-      return;
-    }
-
-    // Root-level tool_data entry — not associated with a subagent
-    // Append tool_data entry to botMessage.tool_data
-    const existingToolData = refs.current.botMessage?.tool_data ?? [];
-    updateBotMessage({
-      tool_data: [...existingToolData, toolData],
-    });
-
-    // Extract loading text from tool_data.data.message for UI indicator
-    if (
-      toolData.tool_name === "tool_calls_data" &&
-      typeof toolData.data === "object" &&
-      toolData.data !== null
-    ) {
-      const data = toolData.data as Record<string, unknown>;
-      if (data.message && typeof data.message === "string") {
-        setLoadingText(data.message, {
-          toolName: data.tool_name as string | undefined,
-          toolCategory: data.tool_category as string | undefined,
-          integrationName: data.integration_name as string | undefined,
-          iconUrl: data.icon_url as string | undefined,
-          showCategory: (data.show_category as boolean) ?? true,
-        });
-      }
-    }
-
-    // Sync to store for persistence
+  // Trigger an IndexedDB persist for the current bot message if we have an
+  // active conversation + message_id. Used as a tail step on every handler.
+  const persistIfReady = (): void => {
     const conversationId =
       refs.current.newConversation.id ||
       useChatStore.getState().activeConversationId;
     if (refs.current.botMessage?.message_id && conversationId) {
       schedulePersist(conversationId);
     }
+  };
+
+  const applyToolDataLoadingHints = (data: unknown): void => {
+    const hints = readToolDataLoadingHints(data);
+    if (!hints) return;
+    const { message, ...options } = hints;
+    setLoadingText(message, options);
+  };
+
+  const handleToolData = (
+    toolData: ToolDataEntry & { subagent_id?: string },
+  ) => {
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+
+    // Route tool_calls_data entries into the matching subagent group by event's own subagent_id.
+    if (toolData.subagent_id && toolData.tool_name === "tool_calls_data") {
+      const updatedToolData = updateSubagentInToolData(
+        existingToolData,
+        toolData.subagent_id,
+        (g) => ({
+          ...g,
+          tool_calls: [...g.tool_calls, toolData.data as ToolCallEntry],
+        }),
+      );
+      updateBotMessage({ tool_data: updatedToolData });
+      applyToolDataLoadingHints(toolData.data);
+      persistIfReady();
+      return;
+    }
+
+    // Root-level tool_data entry — append and (only for tool_calls_data) surface
+    // the loading indicator.
+    updateBotMessage({ tool_data: [...existingToolData, toolData] });
+    if (toolData.tool_name === "tool_calls_data") {
+      applyToolDataLoadingHints(toolData.data);
+    }
+    persistIfReady();
   };
 
   const handleToolOutput = (toolOutput: {
@@ -349,143 +343,138 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
     }
   };
 
+  // Re-show the spinner when an earlier main_response_complete hid it but a
+  // later event (executor progress or executor result) means we're still
+  // working.
+  const ensureSpinnerOn = (): void => {
+    if (useLoadingStore.getState().isLoading) return;
+    setIsLoading(true);
+    updateBotMessage({ loading: true });
+  };
+
+  const handleConversationInitialized = async (parsed: {
+    conversation_id?: string;
+    conversation_description?: string | null;
+    bot_message_id?: string;
+    user_message_id?: string;
+    stream_id?: string;
+  }): Promise<void> => {
+    if (parsed.conversation_id) {
+      await handleNewConversation({
+        conversation_id: parsed.conversation_id,
+        conversation_description: parsed.conversation_description ?? null,
+        bot_message_id: parsed.bot_message_id,
+        user_message_id: parsed.user_message_id,
+        stream_id: parsed.stream_id,
+      });
+      return;
+    }
+    if (
+      parsed.user_message_id &&
+      parsed.bot_message_id &&
+      !refs.current.newConversation.id
+    ) {
+      await handleExistingConversationMessages({
+        user_message_id: parsed.user_message_id,
+        bot_message_id: parsed.bot_message_id,
+        stream_id: parsed.stream_id,
+      });
+    }
+  };
+
+  const handleConversationDescriptionEvent = (description: string): void => {
+    if (!refs.current.newConversation.id) return;
+    refs.current.newConversation.description = description;
+    handleConversationDescriptionUpdate(
+      refs.current.newConversation.id,
+      description,
+    );
+  };
+
+  const handleProgressEvent = (parsed: {
+    message: string;
+    tool_name?: string;
+    tool_category?: string;
+  }): void => {
+    ensureSpinnerOn();
+    setLoadingText(parsed.message, {
+      toolName: parsed.tool_name,
+      toolCategory: parsed.tool_category,
+    });
+  };
+
+  const handleResponseChunk = (
+    chunk: string,
+    streamingData: Record<string, unknown>,
+  ): void => {
+    ensureSpinnerOn();
+    streamingData.response =
+      typeof streamingData.response === "string"
+        ? `${streamingData.response}${chunk}`
+        : chunk;
+  };
+
   const handleStreamEvent = async (
     event: EventSourceMessage,
   ): Promise<undefined | string> => {
     if (!streamInProgressRef.current) {
       return "Stream was aborted";
     }
+    if (!event.data) return; // Skip empty events (@microsoft/fetch-event-source dispatches these for SSE comments)
 
     try {
-      if (!event.data) return; // Skip empty events (@microsoft/fetch-event-source dispatches these for SSE comments)
       const parsedEvents = parseChatStreamEvent(event.data);
       const streamingData: Record<string, unknown> = {};
 
       for (const parsed of parsedEvents) {
-        if (parsed.type === "done" || parsed.type === "keepalive") {
-          continue;
-        }
-
-        if (parsed.type === "error") {
-          toast.error(parsed.error);
-          return parsed.error;
-        }
-
-        if (parsed.type === "main_response_complete") {
-          console.log("[handleStreamEvent] Received main_response_complete");
-          handleMainResponseComplete();
-          continue;
-        }
-
-        if (parsed.type === "tool_data") {
-          handleToolData(parsed.entry as ToolDataEntry);
-          continue;
-        }
-
-        if (parsed.type === "tool_output") {
-          handleToolOutput(parsed.output);
-          continue;
-        }
-
-        if (parsed.type === "subagent_start") {
-          handleSubagentStart(parsed.payload);
-          continue;
-        }
-
-        if (parsed.type === "subagent_end") {
-          handleSubagentEnd(parsed.payload);
-          continue;
-        }
-
-        if (parsed.type === "todo_progress") {
-          handleTodoProgress(parsed.snapshot as TodoProgressSnapshot);
-          continue;
-        }
-
-        if (parsed.type === "progress") {
-          // Re-show spinner if it was hidden by an earlier main_response_complete
-          // (executor sending progress after comms ack "I'm on it")
-          if (!useLoadingStore.getState().isLoading) {
-            setIsLoading(true);
-            updateBotMessage({ loading: true });
-          }
-          setLoadingText(parsed.message, {
-            toolName: parsed.tool_name,
-            toolCategory: parsed.tool_category,
-          });
-          continue;
-        }
-
-        if (parsed.type === "response") {
-          // Re-show spinner if it was hidden by an earlier main_response_complete
-          // (executor result arriving after comms ack "I'm on it")
-          if (!useLoadingStore.getState().isLoading) {
-            setIsLoading(true);
-            updateBotMessage({ loading: true });
-          }
-          streamingData.response =
-            typeof streamingData.response === "string"
-              ? `${streamingData.response}${parsed.chunk}`
-              : parsed.chunk;
-          continue;
-        }
-
-        if (parsed.type === "follow_up_actions") {
-          streamingData.follow_up_actions = parsed.actions;
-          continue;
-        }
-
-        if (parsed.type === "conversation_initialized") {
-          console.log(
-            "[useChatStream] conversation_initialized event:",
-            parsed,
-          );
-          const data = {
-            conversation_id: parsed.conversation_id,
-            conversation_description: parsed.conversation_description ?? null,
-            bot_message_id: parsed.bot_message_id,
-            user_message_id: parsed.user_message_id,
-            stream_id: parsed.stream_id,
-          };
-
-          if (data.conversation_id) {
-            await handleNewConversation({
-              conversation_id: data.conversation_id,
-              conversation_description: data.conversation_description,
-              bot_message_id: data.bot_message_id,
-              user_message_id: data.user_message_id,
-              stream_id: data.stream_id,
-            });
+        switch (parsed.type) {
+          case "done":
+          case "keepalive":
             continue;
-          }
-
-          if (
-            data.user_message_id &&
-            data.bot_message_id &&
-            !refs.current.newConversation.id
-          ) {
-            await handleExistingConversationMessages({
-              user_message_id: data.user_message_id,
-              bot_message_id: data.bot_message_id,
-              stream_id: data.stream_id,
-            });
-          }
-          continue;
-        }
-
-        if (parsed.type === "conversation_description") {
-          if (refs.current.newConversation.id) {
-            refs.current.newConversation.description = parsed.description;
-            handleConversationDescriptionUpdate(
-              refs.current.newConversation.id,
-              parsed.description,
+          case "error":
+            toast.error(parsed.error);
+            return parsed.error;
+          case "main_response_complete":
+            console.log("[handleStreamEvent] Received main_response_complete");
+            handleMainResponseComplete();
+            continue;
+          case "tool_data":
+            handleToolData(parsed.entry as ToolDataEntry);
+            continue;
+          case "tool_output":
+            handleToolOutput(parsed.output);
+            continue;
+          case "subagent_start":
+            handleSubagentStart(parsed.payload);
+            continue;
+          case "subagent_end":
+            handleSubagentEnd(parsed.payload);
+            continue;
+          case "todo_progress":
+            handleTodoProgress(parsed.snapshot as TodoProgressSnapshot);
+            continue;
+          case "progress":
+            handleProgressEvent(parsed);
+            continue;
+          case "response":
+            handleResponseChunk(parsed.chunk, streamingData);
+            continue;
+          case "follow_up_actions":
+            streamingData.follow_up_actions = parsed.actions;
+            continue;
+          case "conversation_initialized":
+            console.log(
+              "[useChatStream] conversation_initialized event:",
+              parsed,
             );
-          }
-          continue;
-        }
-
-        if (parsed.type === "unknown") {
-          Object.assign(streamingData, parsed.payload);
+            await handleConversationInitialized(parsed);
+            continue;
+          case "conversation_description":
+            handleConversationDescriptionEvent(parsed.description);
+            continue;
+          case "unknown":
+            Object.assign(streamingData, parsed.payload);
+            continue;
         }
       }
 

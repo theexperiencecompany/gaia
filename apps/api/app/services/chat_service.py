@@ -474,6 +474,44 @@ async def _save_conversation_async(
     )
 
 
+def _dispatch_collector_event(
+    evt: dict[str, Any],
+    accumulated: dict[str, Any],
+    outputs: dict[str, str],
+) -> None:
+    """Route a collector event into the right bucket (tool_data, outputs, subagent boundaries)."""
+    if "tool_data" in evt:
+        accumulated["tool_data"].append(evt["tool_data"])
+    if "tool_output" in evt:
+        out = evt["tool_output"]
+        tid = out.get("tool_call_id")
+        val = out.get("output")
+        if tid and val:
+            outputs[tid] = val
+    if "subagent_start" in evt:
+        sid = evt["subagent_start"]["subagent_id"]
+        accumulated.setdefault("subagent_starts", {})[sid] = evt["subagent_start"]
+    if "subagent_end" in evt:
+        sid = evt["subagent_end"]["subagent_id"]
+        accumulated.setdefault("subagent_ends", {})[sid] = evt["subagent_end"]
+
+
+def _apply_outputs_to_tool_calls_data(
+    entries: list[dict[str, Any]],
+    outputs: dict[str, str],
+) -> None:
+    """Backfill each tool_calls_data entry's `output` from the collected outputs map."""
+    for entry in entries:
+        if entry.get("tool_name") != "tool_calls_data":
+            continue
+        data = entry.get("data", {})
+        if not isinstance(data, dict):
+            continue
+        tcid = data.get("tool_call_id")
+        if tcid and tcid in outputs:
+            data["output"] = outputs[tcid]
+
+
 def _accumulate_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
     """Drain the executor tool event collector into a flat tool_data list.
 
@@ -486,29 +524,8 @@ def _accumulate_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
     accumulated: dict[str, Any] = {"tool_data": []}
     outputs: dict[str, str] = {}
     for evt in collector:
-        if "tool_data" in evt:
-            accumulated["tool_data"].append(evt["tool_data"])
-        if "tool_output" in evt:
-            out = evt["tool_output"]
-            tid = out.get("tool_call_id")
-            val = out.get("output")
-            if tid and val:
-                outputs[tid] = val
-        if "subagent_start" in evt:
-            accumulated.setdefault("subagent_starts", {})[evt["subagent_start"]["subagent_id"]] = (
-                evt["subagent_start"]
-            )
-        if "subagent_end" in evt:
-            accumulated.setdefault("subagent_ends", {})[evt["subagent_end"]["subagent_id"]] = evt[
-                "subagent_end"
-            ]
-    for entry in accumulated["tool_data"]:
-        if entry.get("tool_name") == "tool_calls_data":
-            data = entry.get("data", {})
-            if isinstance(data, dict):
-                tcid = data.get("tool_call_id")
-                if tcid and tcid in outputs:
-                    data["output"] = outputs[tcid]
+        _dispatch_collector_event(evt, accumulated, outputs)
+    _apply_outputs_to_tool_calls_data(accumulated["tool_data"], outputs)
     reconstruct_subagent_groups(accumulated)
     return accumulated.get("tool_data", [])
 

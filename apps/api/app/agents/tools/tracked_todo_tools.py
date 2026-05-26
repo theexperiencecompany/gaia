@@ -72,6 +72,337 @@ def _fire_and_forget(coro) -> None:
     task.add_done_callback(_background_tasks.discard)
 
 
+def _parse_iso_future_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
+    """Parse an ISO datetime; require it to be in the future. Returns (parsed, error)."""
+    try:
+        parsed = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    except ValueError:
+        return None, f"Error: invalid {field_name} format '{iso_str}'."
+    if parsed <= datetime.now(UTC):
+        return None, f"Error: {field_name} must be in the future."
+    return parsed, None
+
+
+def _resolve_cron_first_fire(
+    recurrence: str, scheduled_at: str | None, user_tz_name: str | None
+) -> tuple[datetime | None, list[str], str | None]:
+    """Validate a cron recurrence and compute first fire in the user's timezone."""
+    notes: list[str] = []
+    try:
+        _croniter(recurrence)
+    except (ValueError, KeyError):
+        return (
+            None,
+            [],
+            (
+                f"Error: invalid recurrence '{recurrence}'. "
+                f"Use one of: {', '.join(sorted(_RECURRENCE_SHORTCUTS))}, "
+                "or a valid 5-field cron expression."
+            ),
+        )
+    # Cron is the source of truth; an explicit scheduled_at would be redundant.
+    if scheduled_at:
+        notes.append(
+            "scheduled_at was ignored — for a cron recurrence the first fire "
+            "is computed from the cron in the user's timezone."
+        )
+    try:
+        parsed = _compute_first_fire_from_cron(recurrence, user_tz_name or "UTC")
+    except Exception as e:
+        return None, notes, (f"Error: could not compute first fire from cron '{recurrence}': {e}")
+    return parsed, notes, None
+
+
+def _resolve_first_fire(
+    recurrence: str | None,
+    scheduled_at: str | None,
+    user_tz_name: str | None,
+) -> tuple[datetime | None, list[str], str | None]:
+    """Decide the first-fire datetime from recurrence + scheduled_at inputs."""
+    if recurrence:
+        if _is_cron_expression(recurrence):
+            return _resolve_cron_first_fire(recurrence, scheduled_at, user_tz_name)
+        # Shortcut recurrence ('daily', 'weekly', …) needs a first-fire anchor.
+        if not scheduled_at:
+            return (
+                None,
+                [],
+                (
+                    f"Error: recurrence '{recurrence}' is a shortcut and requires "
+                    "scheduled_at as the first-fire anchor. Either provide scheduled_at "
+                    "or use a cron expression that fully specifies when to fire."
+                ),
+            )
+        parsed, error = _parse_iso_future_datetime(scheduled_at, "scheduled_at")
+        return parsed, [], error
+    if scheduled_at:
+        parsed, error = _parse_iso_future_datetime(scheduled_at, "scheduled_at")
+        return parsed, [], error
+    return None, [], None
+
+
+async def _persist_scheduling_fields(
+    todo_id: str,
+    parsed_scheduled_at: datetime | None,
+    recurrence: str | None,
+    expires_at: str | None,
+) -> str | None:
+    """Save scheduled_at / recurrence / expires_at onto a freshly-created todo doc."""
+    if not (parsed_scheduled_at or recurrence or expires_at):
+        return None
+    update_fields: dict[str, object] = {}
+    if parsed_scheduled_at:
+        update_fields["scheduled_at"] = parsed_scheduled_at
+    if recurrence:
+        update_fields["recurrence"] = recurrence
+    if expires_at:
+        try:
+            update_fields["expires_at"] = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        except ValueError:
+            return f"Error: invalid expires_at format '{expires_at}'."
+    await todos_collection.update_one(
+        {"_id": ObjectId(todo_id)},
+        {"$set": update_fields},
+    )
+    return None
+
+
+async def _schedule_execution_after_create(
+    todo_id: str, parsed_scheduled_at: datetime
+) -> str | None:
+    """Hand the new todo to the scheduler; translate any failure into user-facing text."""
+    try:
+        success = await tracked_todo_service.schedule_execution(todo_id, parsed_scheduled_at)
+    except Exception as e:
+        log.warning(
+            "tracked_todo.schedule_after_create_failed",
+            todo_id=todo_id,
+            error=str(e),
+        )
+        return (
+            f"Tracked todo created (ID: {todo_id}) but scheduling failed: {e}. "
+            f"The todo exists but will NOT execute automatically."
+        )
+    if not success:
+        return (
+            f"Tracked todo created (ID: {todo_id}) but scheduling failed. "
+            f"The todo exists but will NOT execute automatically."
+        )
+    return None
+
+
+def _format_first_fire_note(parsed_scheduled_at: datetime, user_tz_name: str | None) -> str:
+    """Append a human-readable note about the first fire, timezone-aware when possible."""
+    if user_tz_name:
+        try:
+            local_fire = parsed_scheduled_at.astimezone(ZoneInfo(user_tz_name))
+        except Exception:
+            return f"\nFirst fire (UTC): {parsed_scheduled_at.isoformat()}"
+        return (
+            f"\nNote: scheduled in your timezone ({user_tz_name}). "
+            f"First fire: {local_fire.strftime('%a %Y-%m-%d %H:%M %Z')}. "
+            "If this isn't what you wanted, call update_tracked_todo with "
+            "the corrected recurrence (or scheduled_at for one-shots)."
+        )
+    return (
+        f"\nNote: first fire (UTC): {parsed_scheduled_at.isoformat()}. "
+        "If this isn't what you wanted, call update_tracked_todo to correct it."
+    )
+
+
+def _build_labels_update(labels: list[str] | None, update_fields: dict[str, object]) -> str | None:
+    """Apply a labels update, ensuring GAIA_TRACKED_LABEL is present."""
+    if labels is None:
+        return None
+    if GAIA_TRACKED_LABEL not in labels:
+        labels = [*labels, GAIA_TRACKED_LABEL]
+    update_fields["labels"] = labels
+    return None
+
+
+def _build_clearable_datetime_update(
+    value: str | None, field_name: str, update_fields: dict[str, object]
+) -> str | None:
+    """Set, clear (""), or skip (None) a datetime field; returns user-facing error on bad format."""
+    if value is None:
+        return None
+    if value == "":
+        update_fields[field_name] = None
+        return None
+    try:
+        update_fields[field_name] = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return f"Error: invalid {field_name} format '{value}'."
+    return None
+
+
+def _build_priority_update(priority: str | None, update_fields: dict[str, object]) -> str | None:
+    """Validate + apply a priority update."""
+    if priority is None:
+        return None
+    try:
+        update_fields["priority"] = Priority(priority).value
+    except ValueError:
+        return f"Error: invalid priority '{priority}'. Use one of: high, medium, low, none"
+    return None
+
+
+def _build_scheduled_at_update(
+    scheduled_at: str | None, update_fields: dict[str, object]
+) -> str | None:
+    """Apply a scheduled_at update (must be in the future) or clear it."""
+    if scheduled_at is None:
+        return None
+    if scheduled_at == "":
+        update_fields["scheduled_at"] = None
+        return None
+    try:
+        parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+    except ValueError:
+        return f"Error: invalid scheduled_at format '{scheduled_at}'."
+    if parsed_at <= datetime.now(UTC):
+        return "Error: scheduled_at must be in the future."
+    update_fields["scheduled_at"] = parsed_at
+    return None
+
+
+def _validate_recurrence_format(recurrence: str) -> str | None:
+    """Return a user-facing error if `recurrence` is neither a valid cron nor a known shortcut."""
+    if _is_cron_expression(recurrence):
+        try:
+            _croniter(recurrence)
+        except (ValueError, KeyError):
+            return f"Error: invalid recurrence '{recurrence}'."
+        return None
+    if recurrence not in _RECURRENCE_SHORTCUTS:
+        return (
+            f"Error: invalid recurrence '{recurrence}'. "
+            f"Use one of: {', '.join(sorted(_RECURRENCE_SHORTCUTS))}, or a cron expression."
+        )
+    return None
+
+
+async def _apply_cron_first_fire(
+    recurrence: str,
+    scheduled_at: str | None,
+    user_id: str,
+    update_fields: dict[str, object],
+    notes: list[str],
+) -> str | None:
+    """For a cron recurrence, derive first fire in the user's tz and override scheduled_at."""
+    if scheduled_at:
+        notes.append(
+            "scheduled_at was ignored — for a cron recurrence the first fire "
+            "is computed from the cron in your timezone."
+        )
+    try:
+        user_tz_name = await _get_user_tz(user_id)
+        update_fields["scheduled_at"] = _compute_first_fire_from_cron(recurrence, user_tz_name)
+    except Exception as e:
+        return f"Error: could not compute first fire from cron: {e}"
+    return None
+
+
+async def _build_recurrence_update(
+    recurrence: str | None,
+    scheduled_at: str | None,
+    user_id: str,
+    update_fields: dict[str, object],
+    notes: list[str],
+) -> str | None:
+    """Validate + apply a recurrence update; for cron, also recompute first-fire."""
+    if recurrence is None:
+        return None
+    if recurrence == "":
+        update_fields["recurrence"] = None
+        return None
+    format_error = _validate_recurrence_format(recurrence)
+    if format_error:
+        return format_error
+    update_fields["recurrence"] = recurrence
+    if _is_cron_expression(recurrence):
+        return await _apply_cron_first_fire(recurrence, scheduled_at, user_id, update_fields, notes)
+    return None
+
+
+def _build_list_detail_parts(doc: dict, now: datetime) -> list[str]:
+    """Build the pipe-separated detail fragments shown on the second line of each todo."""
+    parts: list[str] = []
+    if due_date := doc.get("due_date"):
+        days_until = (due_date - now).days
+        parts.append(f"Due: OVERDUE {-days_until}d" if days_until < 0 else f"Due: {days_until}d")
+    if scheduled := doc.get("scheduled_at"):
+        parts.append(f"Scheduled: {scheduled.isoformat()}")
+    if recurrence := doc.get("recurrence"):
+        parts.append(f"Recurrence: {recurrence}")
+    if expires := doc.get("expires_at"):
+        expires_days = (expires - now).days
+        parts.append(
+            f"Expires: EXPIRED {-expires_days}d ago"
+            if expires_days < 0
+            else f"Expires: in {expires_days}d"
+        )
+    if doc.get("gaia_retry_count", 0) > 0:
+        parts.append(f"Retries: {doc['gaia_retry_count']}")
+    return parts
+
+
+def _format_tracked_todo_full(doc: dict, now: datetime) -> str:
+    """Format one tracked-todo doc as the multi-line block used by list_tracked_todos."""
+    todo_id = str(doc["_id"])
+    title = doc.get("title", "Untitled")
+    labels = [lbl for lbl in doc.get("labels", []) if lbl != "gaia-tracked"]
+    labels_str = f" [{', '.join(labels)}]" if labels else ""
+    priority = doc.get("priority", "none")
+    age_days = (now - doc.get("created_at", now)).days
+    last_update = (now - doc.get("updated_at", now)).days
+
+    parts = [
+        f'- "{title}"{labels_str} (ID: {todo_id})',
+        f"  Priority: {priority} | Age: {age_days}d | Last updated: {last_update}d ago",
+    ]
+    detail_parts = _build_list_detail_parts(doc, now)
+    if detail_parts:
+        parts.append(f"  {' | '.join(detail_parts)}")
+    parts.append(f"  VFS: {doc.get('vfs_path', 'none')}")
+    return "\n".join(parts)
+
+
+def _patch_canvas_section(current: str, section: str, content: str) -> str:
+    """Replace (or append) a `## {section}` block within a canvas markdown string."""
+    heading = f"## {section}"
+    heading_pos = current.find(f"\n{heading}")
+    if heading_pos == -1:
+        # Section does not exist — append it as a fresh trailing block.
+        return current.rstrip() + f"\n\n{heading}\n{content}"
+    head_end = heading_pos + len(f"\n{heading}")
+    next_section = current.find("\n## ", head_end + 1)
+    if next_section == -1:
+        return current[:head_end] + "\n" + content
+    return current[:head_end] + "\n" + content.rstrip() + "\n" + current[next_section:]
+
+
+def _format_create_output(
+    result,  # noqa: ANN001 — TrackedTodoResult; importing the type would cycle
+    parsed_scheduled_at: datetime | None,
+    user_tz_name: str | None,
+    notes: list[str],
+) -> str:
+    """Assemble the user-facing summary returned by create_tracked_todo."""
+    out = (
+        f"Tracked todo created: {result.id}\n"
+        f"Title: {result.title}\n"
+        f"VFS: {result.vfs_path}\n"
+        f"Canvas: {result.vfs_path}/canvas.md\n"
+        f"Log: {result.vfs_path}/log.md"
+    )
+    if parsed_scheduled_at:
+        out += _format_first_fire_note(parsed_scheduled_at, user_tz_name)
+    if notes:
+        out += "\nDetails:\n  - " + "\n  - ".join(notes)
+    return out
+
+
 @tool
 async def create_tracked_todo(
     config: RunnableConfig,
@@ -156,56 +487,9 @@ async def create_tracked_todo(
     # surface a user-readable note in the return value.
     user_tz_name = await _get_user_tz(user_id) if recurrence else None
 
-    notes: list[str] = []
-    parsed_scheduled_at: datetime | None = None
-
-    # Validate recurrence format
-    if recurrence:
-        if _is_cron_expression(recurrence):
-            try:
-                _croniter(recurrence)
-            except (ValueError, KeyError):
-                return (
-                    f"Error: invalid recurrence '{recurrence}'. "
-                    f"Use one of: {', '.join(sorted(_RECURRENCE_SHORTCUTS))}, "
-                    "or a valid 5-field cron expression."
-                )
-            # Cron: compute first fire from the cron itself in the user's tz.
-            # If the agent also passed scheduled_at, ignore it — the cron is
-            # the source of truth and passing both is redundant/error-prone.
-            if scheduled_at:
-                notes.append(
-                    "scheduled_at was ignored — for a cron recurrence the first fire "
-                    "is computed from the cron in the user's timezone."
-                )
-            try:
-                parsed_scheduled_at = _compute_first_fire_from_cron(
-                    recurrence, user_tz_name or "UTC"
-                )
-            except Exception as e:
-                return f"Error: could not compute first fire from cron '{recurrence}': {e}"
-        else:
-            # Shortcut recurrence — needs a first-fire anchor (scheduled_at).
-            if not scheduled_at:
-                return (
-                    f"Error: recurrence '{recurrence}' is a shortcut and requires "
-                    "scheduled_at as the first-fire anchor. Either provide scheduled_at "
-                    "or use a cron expression that fully specifies when to fire."
-                )
-            try:
-                parsed_scheduled_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
-            except ValueError:
-                return f"Error: invalid scheduled_at format '{scheduled_at}'."
-            if parsed_scheduled_at <= datetime.now(UTC):
-                return "Error: scheduled_at must be in the future."
-    elif scheduled_at:
-        # One-shot scheduled execution (no recurrence).
-        try:
-            parsed_scheduled_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
-        except ValueError:
-            return f"Error: invalid scheduled_at format '{scheduled_at}'."
-        if parsed_scheduled_at <= datetime.now(UTC):
-            return "Error: scheduled_at must be in the future."
+    parsed_scheduled_at, notes, error = _resolve_first_fire(recurrence, scheduled_at, user_tz_name)
+    if error:
+        return error
 
     try:
         parsed_priority = Priority(priority)
@@ -221,71 +505,18 @@ async def create_tracked_todo(
         priority=parsed_priority,
     )
 
-    # Persist scheduling fields
-    if parsed_scheduled_at or recurrence or expires_at:
-        update_fields: dict[str, object] = {}
-        if parsed_scheduled_at:
-            update_fields["scheduled_at"] = parsed_scheduled_at
-        if recurrence:
-            update_fields["recurrence"] = recurrence
-        if expires_at:
-            try:
-                update_fields["expires_at"] = datetime.fromisoformat(
-                    expires_at.replace("Z", "+00:00")
-                )
-            except ValueError:
-                return f"Error: invalid expires_at format '{expires_at}'."
-        await todos_collection.update_one(
-            {"_id": ObjectId(result.id)},
-            {"$set": update_fields},
-        )
-
-    # Schedule execution
-    if parsed_scheduled_at:
-        try:
-            success = await tracked_todo_service.schedule_execution(result.id, parsed_scheduled_at)
-            if not success:
-                return (
-                    f"Tracked todo created (ID: {result.id}) but scheduling failed. "
-                    f"The todo exists but will NOT execute automatically."
-                )
-        except Exception as e:
-            log.warning(
-                "tracked_todo.schedule_after_create_failed",
-                todo_id=result.id,
-                error=str(e),
-            )
-            return (
-                f"Tracked todo created (ID: {result.id}) but scheduling failed: {e}. "
-                f"The todo exists but will NOT execute automatically."
-            )
-
-    out = (
-        f"Tracked todo created: {result.id}\n"
-        f"Title: {result.title}\n"
-        f"VFS: {result.vfs_path}\n"
-        f"Canvas: {result.vfs_path}/canvas.md\n"
-        f"Log: {result.vfs_path}/log.md"
+    persist_error = await _persist_scheduling_fields(
+        result.id, parsed_scheduled_at, recurrence, expires_at
     )
-    if parsed_scheduled_at and user_tz_name:
-        try:
-            local_fire = parsed_scheduled_at.astimezone(ZoneInfo(user_tz_name))
-            out += (
-                f"\nNote: scheduled in your timezone ({user_tz_name}). "
-                f"First fire: {local_fire.strftime('%a %Y-%m-%d %H:%M %Z')}. "
-                "If this isn't what you wanted, call update_tracked_todo with "
-                "the corrected recurrence (or scheduled_at for one-shots)."
-            )
-        except Exception:
-            out += f"\nFirst fire (UTC): {parsed_scheduled_at.isoformat()}"
-    elif parsed_scheduled_at:
-        out += (
-            f"\nNote: first fire (UTC): {parsed_scheduled_at.isoformat()}. "
-            "If this isn't what you wanted, call update_tracked_todo to correct it."
-        )
-    if notes:
-        out += "\nDetails:\n  - " + "\n  - ".join(notes)
-    return out
+    if persist_error:
+        return persist_error
+
+    if parsed_scheduled_at:
+        schedule_error = await _schedule_execution_after_create(result.id, parsed_scheduled_at)
+        if schedule_error:
+            return schedule_error
+
+    return _format_create_output(result, parsed_scheduled_at, user_tz_name, notes)
 
 
 @tool
@@ -384,44 +615,23 @@ async def update_tracked_todo_canvas(
 
     if mode == "replace":
         await vfs.write(path=canvas_path, content=content, user_id=user_id)
-
     elif mode == "append":
         suffix = content if content.startswith("\n") else f"\n{content}"
         await vfs.append(path=canvas_path, content=suffix, user_id=user_id)
-
     else:  # section
         current = await vfs.read(path=canvas_path, user_id=user_id) or ""
-        heading = f"## {section}"
-        heading_pos = current.find(f"\n{heading}")
-        if heading_pos == -1:
-            # Section does not exist — append it
-            new_canvas = current.rstrip() + f"\n\n{heading}\n{content}"
-        else:
-            # Find where the section body starts and where the next ## heading begins
-            body_start = heading_pos + len(f"\n{heading}") + 1
-            next_section = current.find("\n## ", body_start)
-            if next_section == -1:
-                new_canvas = current[: heading_pos + len(f"\n{heading}")] + "\n" + content
-            else:
-                new_canvas = (
-                    current[: heading_pos + len(f"\n{heading}")]
-                    + "\n"
-                    + content.rstrip()
-                    + "\n"
-                    + current[next_section:]
-                )
+        new_canvas = _patch_canvas_section(current, section or "", content)
         await vfs.write(path=canvas_path, content=new_canvas, user_id=user_id)
 
     _fire_and_forget(tracked_todo_service.reindex_canvas(todo_id=todo_id, user_id=user_id))
+    section_suffix = f", section={section}" if section else ""
     await tracked_todo_service.system_log(
         todo_id=todo_id,
         user_id=user_id,
         event_type="CANVAS_UPDATED",
-        details=f"Agent updated canvas (mode={mode}"
-        + (f", section={section}" if section else "")
-        + ")",
+        details=f"Agent updated canvas (mode={mode}{section_suffix})",
     )
-    return f"Canvas updated (mode={mode}" + (f", section={section}" if section else "") + ")."
+    return f"Canvas updated (mode={mode}{section_suffix})."
 
 
 @tool
@@ -510,99 +720,33 @@ async def update_tracked_todo(
         return "Error: user_id not found in config"
 
     update_fields: dict[str, object] = {}
-
-    if labels is not None:
-        # Copy instead of mutating the caller's list.
-        if GAIA_TRACKED_LABEL not in labels:
-            labels = [*labels, GAIA_TRACKED_LABEL]
-        update_fields["labels"] = labels
-
-    if due_date is not None:
-        if due_date == "":
-            update_fields["due_date"] = None
-        else:
-            try:
-                update_fields["due_date"] = datetime.fromisoformat(due_date.replace("Z", "+00:00"))
-            except ValueError:
-                return f"Error: invalid due_date format '{due_date}'."
-
-    if priority is not None:
-        try:
-            update_fields["priority"] = Priority(priority).value
-        except ValueError:
-            return f"Error: invalid priority '{priority}'. Use one of: high, medium, low, none"
-
-    if scheduled_at is not None:
-        if scheduled_at == "":
-            update_fields["scheduled_at"] = None
-        else:
-            try:
-                parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
-            except ValueError:
-                return f"Error: invalid scheduled_at format '{scheduled_at}'."
-            if parsed_at <= datetime.now(UTC):
-                return "Error: scheduled_at must be in the future."
-            update_fields["scheduled_at"] = parsed_at
-
     notes: list[str] = []
 
-    if recurrence is not None:
-        if recurrence == "":
-            update_fields["recurrence"] = None
-        else:
-            if _is_cron_expression(recurrence):
-                try:
-                    _croniter(recurrence)
-                except (ValueError, KeyError):
-                    return f"Error: invalid recurrence '{recurrence}'."
-            elif recurrence not in _RECURRENCE_SHORTCUTS:
-                return (
-                    f"Error: invalid recurrence '{recurrence}'. "
-                    f"Use one of: {', '.join(sorted(_RECURRENCE_SHORTCUTS))}, or a cron expression."
-                )
-            update_fields["recurrence"] = recurrence
-            # For cron: if scheduled_at was also passed, drop it — first fire
-            # is computed from the cron in the user's stored timezone.
-            if _is_cron_expression(recurrence):
-                if scheduled_at:
-                    notes.append(
-                        "scheduled_at was ignored — for a cron recurrence the first fire "
-                        "is computed from the cron in your timezone."
-                    )
-                try:
-                    user_tz_name = await _get_user_tz(user_id)
-                    first_fire = _compute_first_fire_from_cron(recurrence, user_tz_name)
-                    update_fields["scheduled_at"] = first_fire
-                except Exception as e:
-                    return f"Error: could not compute first fire from cron: {e}"
-
-    if expires_at is not None:
-        if expires_at == "":
-            update_fields["expires_at"] = None
-        else:
-            try:
-                update_fields["expires_at"] = datetime.fromisoformat(
-                    expires_at.replace("Z", "+00:00")
-                )
-            except ValueError:
-                return f"Error: invalid expires_at format '{expires_at}'."
+    field_errors = [
+        _build_labels_update(labels, update_fields),
+        _build_clearable_datetime_update(due_date, "due_date", update_fields),
+        _build_priority_update(priority, update_fields),
+        _build_scheduled_at_update(scheduled_at, update_fields),
+        await _build_recurrence_update(recurrence, scheduled_at, user_id, update_fields, notes),
+        _build_clearable_datetime_update(expires_at, "expires_at", update_fields),
+    ]
+    for error in field_errors:
+        if error:
+            return error
 
     if not update_fields:
         return "No fields to update. Provide at least one field to change."
 
-    # Fetch existing doc to validate the resulting state after applying these updates.
-    # The in-call guard alone is insufficient — the DB may already have recurrence/scheduled_at
-    # set from a previous call, which this call could silently corrupt.
+    # Validate the resulting state against the existing doc — the in-call guards
+    # alone can't catch corruption when the DB already has scheduling fields set.
     existing = await todos_collection.find_one(
         {"_id": ObjectId(todo_id), "user_id": user_id, "vfs_path": {"$exists": True}}
     )
     if not existing:
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
 
-    # Compute the effective post-update values for scheduling fields
     effective_scheduled_at = update_fields.get("scheduled_at", existing.get("scheduled_at"))
     effective_recurrence = update_fields.get("recurrence", existing.get("recurrence"))
-
     if effective_recurrence and not effective_scheduled_at:
         return (
             "Error: cannot have recurrence without scheduled_at. "
@@ -610,23 +754,20 @@ async def update_tracked_todo(
         )
 
     update_fields["updated_at"] = datetime.now(UTC)
-
     result = await todos_collection.update_one(
         {"_id": ObjectId(todo_id), "user_id": user_id},
         {"$set": update_fields},
     )
-
     if result.matched_count == 0:
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
 
-    # If scheduled_at landed in update_fields with a real datetime (either the
-    # agent passed one, or we computed it from a cron), reschedule the ARQ job.
+    # If scheduled_at landed in update_fields with a real datetime (agent-passed or
+    # cron-derived), reschedule the ARQ job.
     new_scheduled_at = update_fields.get("scheduled_at")
     if isinstance(new_scheduled_at, datetime):
         await tracked_todo_service.reschedule_execution(todo_id, new_scheduled_at)
 
     updated_keys = [k for k in update_fields if k != "updated_at"]
-
     if references is not None:
         await todos_collection.update_one(
             {"_id": ObjectId(todo_id), "user_id": user_id},
@@ -672,46 +813,7 @@ async def list_tracked_todos(
         return "No active tracked todos."
 
     now = datetime.now(UTC)
-    lines: list[str] = []
-
-    for doc in docs:
-        todo_id = str(doc["_id"])
-        title = doc.get("title", "Untitled")
-        labels = [lbl for lbl in doc.get("labels", []) if lbl != "gaia-tracked"]
-        labels_str = f" [{', '.join(labels)}]" if labels else ""
-        priority = doc.get("priority", "none")
-        age_days = (now - doc.get("created_at", now)).days
-        last_update = (now - doc.get("updated_at", now)).days
-
-        parts = [f'- "{title}"{labels_str} (ID: {todo_id})']
-        parts.append(
-            f"  Priority: {priority} | Age: {age_days}d | Last updated: {last_update}d ago"
-        )
-
-        detail_parts: list[str] = []
-        if doc.get("due_date"):
-            days_until = (doc["due_date"] - now).days
-            detail_parts.append(
-                f"Due: {'OVERDUE ' + str(-days_until) + 'd' if days_until < 0 else str(days_until) + 'd'}"
-            )
-        if doc.get("scheduled_at"):
-            detail_parts.append(f"Scheduled: {doc['scheduled_at'].isoformat()}")
-        if doc.get("recurrence"):
-            detail_parts.append(f"Recurrence: {doc['recurrence']}")
-        if doc.get("expires_at"):
-            expires_days = (doc["expires_at"] - now).days
-            detail_parts.append(
-                f"Expires: {'EXPIRED ' + str(-expires_days) + 'd ago' if expires_days < 0 else 'in ' + str(expires_days) + 'd'}"
-            )
-        if doc.get("gaia_retry_count", 0) > 0:
-            detail_parts.append(f"Retries: {doc['gaia_retry_count']}")
-
-        if detail_parts:
-            parts.append(f"  {' | '.join(detail_parts)}")
-
-        parts.append(f"  VFS: {doc.get('vfs_path', 'none')}")
-        lines.append("\n".join(parts))
-
+    lines = [_format_tracked_todo_full(doc, now) for doc in docs]
     return f"Active tracked todos ({len(docs)}):\n\n" + "\n\n".join(lines)
 
 

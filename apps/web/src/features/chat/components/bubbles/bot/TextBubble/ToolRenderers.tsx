@@ -99,35 +99,45 @@ export function getTypedData<K extends ToolName>(
 type RendererMap = {
   [K in ToolName]: (data: ToolDataMap[K], index: number) => React.ReactNode;
 };
+
+// Push items into `target` only if their key hasn't been seen yet (shared dedupe set).
+function dedupePush<T>(
+  items: readonly T[],
+  seen: Set<string>,
+  getKey: (item: T) => string,
+  target: T[],
+): void {
+  for (const item of items) {
+    const key = getKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    target.push(item);
+  }
+}
+
+// When the search_results tool was grouped (LLM emitted it multiple times in one
+// turn), merge the batches into a single result set, deduping by URL across web /
+// images / news.
+function mergeSearchResults(items: readonly SearchResults[]): SearchResults {
+  const seenUrls = new Set<string>();
+  const merged: SearchResults = { web: [], images: [], news: [] };
+  for (const item of items) {
+    dedupePush(item.web ?? [], seenUrls, (r) => r.url, merged.web!);
+    dedupePush(item.images ?? [], seenUrls, (img) => img, merged.images!);
+    dedupePush(item.news ?? [], seenUrls, (n) => n.url, merged.news!);
+  }
+  return merged;
+}
+
 export const TOOL_RENDERERS: Partial<RendererMap> = {
   // Search
   search_results: (data, index) => {
-    // When grouped, data is SearchResults[] — merge and dedup
     const items = (Array.isArray(data) ? data : [data]) as SearchResults[];
-    const seenUrls = new Set<string>();
-    const merged: SearchResults = { web: [], images: [], news: [] };
-    for (const item of items) {
-      for (const r of item.web ?? []) {
-        if (!seenUrls.has(r.url)) {
-          seenUrls.add(r.url);
-          merged.web!.push(r);
-        }
-      }
-      for (const img of item.images ?? []) {
-        if (!seenUrls.has(img)) {
-          seenUrls.add(img);
-          merged.images!.push(img);
-        }
-      }
-      for (const n of item.news ?? []) {
-        if (!seenUrls.has(n.url)) {
-          seenUrls.add(n.url);
-          merged.news!.push(n);
-        }
-      }
-    }
     return (
-      <SearchResultsTabs key={`tool-search-${index}`} search_results={merged} />
+      <SearchResultsTabs
+        key={`tool-search-${index}`}
+        search_results={mergeSearchResults(items)}
+      />
     );
   },
   deep_research_results: (data, index) => (

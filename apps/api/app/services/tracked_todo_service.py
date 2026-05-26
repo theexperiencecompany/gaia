@@ -49,6 +49,79 @@ CANVAS_TEMPLATE = """# {title}
 GAIA_TRACKED_LABEL = "gaia-tracked"
 
 
+def _pin_active_todo(docs: list[dict], active_todo_id: str | None) -> None:
+    """Move the matching todo to the front of `docs` in-place (no-op if not found)."""
+    if not active_todo_id:
+        return
+    for i, d in enumerate(docs):
+        if str(d["_id"]) == active_todo_id and i > 0:
+            docs.insert(0, docs.pop(i))
+            return
+
+
+def _format_due_string(due_date: datetime | None, now: datetime) -> str:
+    """Render the due-date suffix: ` due(Nd)`, ` OVERDUE(Nd)`, or empty."""
+    if not due_date:
+        return ""
+    days_until = (due_date - now).days
+    if days_until < 0:
+        return f" OVERDUE({-days_until}d)"
+    return f" due({days_until}d)"
+
+
+_KEY_DETAILS_RE = re.compile(r"## Key Details\n(.*?)(?:\n## |\Z)", re.DOTALL)
+_KEY_DETAILS_MAX_LINES = 5
+
+
+async def _extract_canvas_key_details(vfs: MongoVFS, doc: dict, user_id: str) -> str:
+    """Pull the Key Details section text from a tracked todo's canvas.md (empty on miss)."""
+    vfs_path = doc.get("vfs_path", "")
+    if not vfs_path:
+        return ""
+    try:
+        canvas = await vfs.read(path=f"{vfs_path}/canvas.md", user_id=user_id)
+    except Exception as e:
+        log.warning(
+            "tracked_todo.canvas_read_failed",
+            todo_id=str(doc["_id"]),
+            error=str(e),
+        )
+        return ""
+    if not canvas:
+        return ""
+    match = _KEY_DETAILS_RE.search(canvas)
+    return match.group(1).strip() if match else ""
+
+
+def _format_signal_entry(doc: dict, key_details: str) -> str:
+    """Render one tracked todo as a signal-matching context bullet (+ indented key details)."""
+    labels = [lbl for lbl in doc.get("labels", []) if lbl != GAIA_TRACKED_LABEL]
+    labels_str = f" [{', '.join(labels)}]" if labels else ""
+    entry = (
+        f'- "{doc.get("title", "")}"{labels_str} '
+        f"(ID: {doc['_id']!s}, vfs: {doc.get('vfs_path', '')})"
+    )
+    if key_details:
+        for dl in key_details.split("\n")[:_KEY_DETAILS_MAX_LINES]:
+            entry += f"\n    {dl.strip()}"
+    return entry
+
+
+def _format_tracked_todo_line(doc: dict, now: datetime, active_todo_id: str | None) -> str:
+    """Format one tracked-todo doc as a context-injection summary line."""
+    age_days = (now - doc.get("created_at", now)).days
+    last_update = (now - doc.get("updated_at", now)).days
+    labels = [lbl for lbl in doc.get("labels", []) if lbl != GAIA_TRACKED_LABEL]
+    labels_str = f" [{', '.join(labels)}]" if labels else ""
+    todo_id = str(doc["_id"])
+    prefix = "⭐ ACTIVE " if todo_id == active_todo_id else ""
+    return (
+        f'  {prefix}"{doc["title"]}"{labels_str}{_format_due_string(doc.get("due_date"), now)}'
+        f" — {age_days}d old, updated {last_update}d ago"
+        f" | ID: {todo_id} | VFS: {doc.get('vfs_path', 'none')}"
+    )
+
+
 class TrackedTodoService:
     """Manages VFS lifecycle for tracked (GAIA working memory) todos.
 
@@ -222,40 +295,11 @@ class TrackedTodoService:
         if not docs:
             return ""
 
-        # Move the pinned todo to the front if present in the list.
-        if active_todo_id:
-            pinned_idx: int | None = None
-            for i, d in enumerate(docs):
-                if str(d["_id"]) == active_todo_id:
-                    pinned_idx = i
-                    break
-            if pinned_idx is not None and pinned_idx > 0:
-                docs.insert(0, docs.pop(pinned_idx))
+        _pin_active_todo(docs, active_todo_id)
 
         now = datetime.now(UTC)
         lines = ["ACTIVE TRACKED TODOS:"]
-
-        for doc in docs:
-            age_days = (now - doc.get("created_at", now)).days
-            last_update = (now - doc.get("updated_at", now)).days
-            labels = [lbl for lbl in doc.get("labels", []) if lbl != GAIA_TRACKED_LABEL]
-            labels_str = f" [{', '.join(labels)}]" if labels else ""
-            due_str = ""
-            if doc.get("due_date"):
-                days_until = (doc["due_date"] - now).days
-                if days_until < 0:
-                    due_str = f" OVERDUE({-days_until}d)"
-                else:
-                    due_str = f" due({days_until}d)"
-
-            todo_id = str(doc["_id"])
-            prefix = "⭐ ACTIVE " if todo_id == active_todo_id else ""
-            lines.append(
-                f'  {prefix}"{doc["title"]}"{labels_str}{due_str}'
-                f" — {age_days}d old, updated {last_update}d ago"
-                f" | ID: {todo_id} | VFS: {doc.get('vfs_path', 'none')}"
-            )
-
+        lines.extend(_format_tracked_todo_line(doc, now, active_todo_id) for doc in docs)
         return "\n".join(lines)
 
     @staticmethod
@@ -342,45 +386,10 @@ class TrackedTodoService:
             return ""
 
         vfs = MongoVFS()
-        lines = []
-
-        for doc in docs:
-            todo_id = str(doc["_id"])
-            title = doc.get("title", "")
-            labels = [lbl for lbl in doc.get("labels", []) if lbl != GAIA_TRACKED_LABEL]
-            vfs_path = doc.get("vfs_path", "")
-
-            # Try to extract Key Details section from canvas for IDs
-            key_details = ""
-            if vfs_path:
-                try:
-                    canvas = await vfs.read(path=f"{vfs_path}/canvas.md", user_id=user_id)
-                    if canvas:
-                        # Extract Key Details section
-                        match = re.search(
-                            r"## Key Details\n(.*?)(?:\n## |\Z)",
-                            canvas,
-                            re.DOTALL,
-                        )
-                        if match:
-                            key_details = match.group(1).strip()
-                except Exception as e:
-                    log.warning(
-                        "tracked_todo.canvas_read_failed",
-                        todo_id=str(doc["_id"]),
-                        error=str(e),
-                    )
-
-            labels_str = f" [{', '.join(labels)}]" if labels else ""
-            entry = f'- "{title}"{labels_str} (ID: {todo_id}, vfs: {vfs_path})'
-            if key_details:
-                # Indent key details under the todo
-                detail_lines = key_details.split("\n")
-                for dl in detail_lines[:5]:  # Max 5 detail lines per todo
-                    entry += f"\n    {dl.strip()}"
-
-            lines.append(entry)
-
+        lines = [
+            _format_signal_entry(doc, await _extract_canvas_key_details(vfs, doc, user_id))
+            for doc in docs
+        ]
         return "ACTIVE TRACKED TODOS (check if incoming signal relates to any):\n" + "\n".join(
             lines
         )

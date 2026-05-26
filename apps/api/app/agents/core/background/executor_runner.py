@@ -115,6 +115,41 @@ async def _lookup_user_message_content(
     return ""
 
 
+def _absorb_collector_event(
+    evt: dict[str, Any],
+    accumulated: dict[str, Any],
+    tool_outputs: dict[str, str],
+) -> None:
+    """Route a single collector event into the appropriate accumulator bucket."""
+    if "tool_data" in evt:
+        accumulated["tool_data"].append(evt["tool_data"])
+    if "tool_output" in evt:
+        out = evt["tool_output"]
+        tid, val = out.get("tool_call_id"), out.get("output")
+        if tid and val:
+            tool_outputs[tid] = val
+    if "subagent_start" in evt:
+        sid = evt["subagent_start"]["subagent_id"]
+        accumulated.setdefault("subagent_starts", {})[sid] = evt["subagent_start"]
+    if "subagent_end" in evt:
+        sid = evt["subagent_end"]["subagent_id"]
+        accumulated.setdefault("subagent_ends", {})[sid] = evt["subagent_end"]
+
+
+def _apply_outputs_to_tool_data(
+    tool_data: list[dict[str, Any]],
+    tool_outputs: dict[str, str],
+) -> None:
+    """Backfill each tool_data entry's `output` field from the collected tool_outputs map."""
+    for entry in tool_data:
+        data = entry.get("data", {})
+        if not isinstance(data, dict):
+            continue
+        tc_id = data.get("tool_call_id")
+        if tc_id and tc_id in tool_outputs:
+            data["output"] = tool_outputs[tc_id]
+
+
 def _collect_queued_tool_events(
     stream_id: str,
 ) -> list[dict[str, Any]] | None:
@@ -129,27 +164,8 @@ def _collect_queued_tool_events(
     accumulated: dict[str, Any] = {"tool_data": []}
     tool_outputs: dict[str, str] = {}
     for evt in collector:
-        if "tool_data" in evt:
-            accumulated["tool_data"].append(evt["tool_data"])
-        if "tool_output" in evt:
-            out = evt["tool_output"]
-            tid, val = out.get("tool_call_id"), out.get("output")
-            if tid and val:
-                tool_outputs[tid] = val
-        if "subagent_start" in evt:
-            accumulated.setdefault("subagent_starts", {})[evt["subagent_start"]["subagent_id"]] = (
-                evt["subagent_start"]
-            )
-        if "subagent_end" in evt:
-            accumulated.setdefault("subagent_ends", {})[evt["subagent_end"]["subagent_id"]] = evt[
-                "subagent_end"
-            ]
-    for entry in accumulated["tool_data"]:
-        data = entry.get("data", {})
-        if isinstance(data, dict):
-            tc_id = data.get("tool_call_id")
-            if tc_id and tc_id in tool_outputs:
-                data["output"] = tool_outputs[tc_id]
+        _absorb_collector_event(evt, accumulated, tool_outputs)
+    _apply_outputs_to_tool_data(accumulated["tool_data"], tool_outputs)
     reconstruct_subagent_groups(accumulated)
     return accumulated.get("tool_data") or None
 
@@ -268,6 +284,110 @@ async def _deliver_bg_notification(
     )
 
 
+def _user_from_configurable(configurable: dict[str, Any]) -> dict:
+    """Shape a comms-friendly user dict from the executor's configurable."""
+    return {
+        "user_id": configurable.get("user_id", ""),
+        "email": configurable.get("email", ""),
+        "name": configurable.get("user_name", ""),
+    }
+
+
+def _cleanup_queued_stream_state(stream_id: str) -> None:
+    """Tear down per-stream orchestration state that chat_service would normally clean.
+
+    Queued streams have no chat_service finally block, so this mirror is needed.
+    """
+    deregister_executor_done_event(stream_id)
+    deregister_tool_event_collector(stream_id)
+    deregister_pending_subagents(stream_id)
+    deregister_executor_spawned(stream_id)
+    deregister_bg_subagent_results(stream_id)
+
+
+async def _dispatch_executor_result(
+    *,
+    result_text: str,
+    result_type: str,
+    conversation_id: str,
+    user: dict,
+    task_id: str | None,
+    user_message_id: str | None,
+    stream_id: str,
+    is_queued: bool,
+) -> None:
+    """Hand the executor's terminal text to comms and surface the message to the user.
+
+    Live tasks have tool_data attached to the comms ack message by chat_service.
+    Queued tasks have no live SSE consumer, so we attach tool_data here instead.
+    """
+    queued_tool_data = _collect_queued_tool_events(stream_id) if is_queued else None
+    try:
+        await _deliver_bg_notification(
+            result_text=result_text,
+            msg_type=result_type,
+            conversation_id=conversation_id,
+            user=user,
+            task_id=task_id,
+            user_message_id=user_message_id,
+            tool_data=queued_tool_data,
+        )
+    except Exception as e:
+        log.error("Background notification delivery failed", error=str(e))
+
+
+async def _finalize_executor_run(
+    *,
+    stream_id: str,
+    conversation_id: str,
+    user: dict,
+    result_text: str,
+    result_type: str,
+    task_id: str | None,
+    user_message_id: str | None,
+) -> None:
+    """The full post-run cleanup: signal done, notify, tear down state, hand off lock."""
+    was_cancelled = bool(stream_id) and await StreamManager.is_cancelled(stream_id)
+    is_queued = stream_id.startswith("queued_")
+
+    # Signal SSE consumer that tool events are done so it can drain the collector
+    # into the comms ack and publish [DONE]. Comms re-narration runs in parallel.
+    done_event = get_executor_done_event(stream_id)
+    if done_event is not None:
+        done_event.set()
+
+    if was_cancelled:
+        log.info(
+            "Skipping notification for cancelled executor",
+            task_id=task_id,
+            stream_id=stream_id,
+        )
+    elif result_text:
+        await _dispatch_executor_result(
+            result_text=result_text,
+            result_type=result_type,
+            conversation_id=conversation_id,
+            user=user,
+            task_id=task_id,
+            user_message_id=user_message_id,
+            stream_id=stream_id,
+            is_queued=is_queued,
+        )
+
+    if is_queued:
+        _cleanup_queued_stream_state(stream_id)
+        if not was_cancelled:
+            await StreamManager.publish_chunk(stream_id, "data: [DONE]\n\n")
+            await StreamManager.complete_stream(stream_id)
+
+    # Atomic lock handoff: _process_next_queued_task overwrites the lock before
+    # spawning, so a concurrent call_executor cannot grab it via SET NX in a
+    # delete→re-set gap. Only release the lock when nothing was handed off.
+    spawned_next = await _process_next_queued_task(conversation_id) if not was_cancelled else False
+    if not spawned_next:
+        await redis_cache.delete(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
+
+
 @traceable(name="executor_background", run_type="chain")
 async def run_executor_background(
     task: str,
@@ -290,15 +410,9 @@ async def run_executor_background(
       2. _deliver_bg_notification invokes comms with the executor result
          as internal context and posts the user-facing message via WS.
     """
-    lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
+    user = _user_from_configurable(configurable)
     result_text = ""
     result_type = "final"
-
-    user: dict = {
-        "user_id": configurable.get("user_id", ""),
-        "email": configurable.get("email", ""),
-        "name": configurable.get("user_name", ""),
-    }
 
     try:
         ctx, error = await prepare_executor_execution(
@@ -307,91 +421,32 @@ async def run_executor_background(
             user_time=user_time,
             stream_id=stream_id,
         )
-
         if error or ctx is None:
             result_text = error or "Executor agent not available"
             result_type = "error"
             log.error("Background executor prep failed", error=result_text)
-            return
-
-        writer = make_redis_stream_writer(stream_id)
-        result_text = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
-
-        log.info(
-            "Background executor completed",
-            task_id=task_id,
-            stream_id=stream_id,
-        )
-
-    except Exception as e:
-        log.error(
-            "Background executor failed",
-            stream_id=stream_id,
-            error=str(e),
-        )
-        result_text = str(e)
-        result_type = "error"
-    finally:
-        was_cancelled = bool(stream_id) and await StreamManager.is_cancelled(stream_id)
-        is_queued = stream_id.startswith("queued_")
-
-        # Signal SSE consumer that tool events are done so it can drain the
-        # collector into the comms ack and publish [DONE]. Comms re-narration
-        # runs below in parallel — it doesn't touch the SSE stream.
-        done_event = get_executor_done_event(stream_id)
-        if done_event is not None:
-            done_event.set()
-
-        if was_cancelled:
+        else:
+            writer = make_redis_stream_writer(stream_id)
+            result_text = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
             log.info(
-                "Skipping notification for cancelled executor",
+                "Background executor completed",
                 task_id=task_id,
                 stream_id=stream_id,
             )
-
-        if result_text and not was_cancelled:
-            # Live tasks: tool_data lives on the comms ack message (attached
-            # by chat_service after executor_done.set()). Queued tasks have
-            # no live SSE consumer, so we attach tool_data to the comms-
-            # generated message instead.
-            queued_tool_data = _collect_queued_tool_events(stream_id) if is_queued else None
-            try:
-                await _deliver_bg_notification(
-                    result_text=result_text,
-                    msg_type=result_type,
-                    conversation_id=conversation_id,
-                    user=user,
-                    task_id=task_id,
-                    user_message_id=user_message_id,
-                    tool_data=queued_tool_data,
-                )
-            except Exception as e:
-                log.error("Background notification delivery failed", error=str(e))
-
-        # Queued streams never reach chat_service's finally block, so the
-        # in-process per-stream orchestration state they registered would
-        # leak. Mirror chat_service's cleanup here for queued streams.
-        if is_queued:
-            deregister_executor_done_event(stream_id)
-            deregister_tool_event_collector(stream_id)
-            deregister_pending_subagents(stream_id)
-            deregister_executor_spawned(stream_id)
-            deregister_bg_subagent_results(stream_id)
-
-        if is_queued and not was_cancelled:
-            await StreamManager.publish_chunk(stream_id, "data: [DONE]\n\n")
-            await StreamManager.complete_stream(stream_id)
-
-        # Hand the busy lock to the next queued task atomically: _process_next_
-        # queued_task overwrites the lock value (no intervening delete) before
-        # spawning, so a concurrent call_executor cannot grab it via SET NX in
-        # a delete→re-set gap. Only release the lock when nothing was handed off
-        # (cancelled, or the queue is empty).
-        spawned_next = False
-        if not was_cancelled:
-            spawned_next = await _process_next_queued_task(conversation_id)
-        if not spawned_next:
-            await redis_cache.delete(lock_key)
+    except Exception as e:
+        log.error("Background executor failed", stream_id=stream_id, error=str(e))
+        result_text = str(e)
+        result_type = "error"
+    finally:
+        await _finalize_executor_run(
+            stream_id=stream_id,
+            conversation_id=conversation_id,
+            user=user,
+            result_text=result_text,
+            result_type=result_type,
+            task_id=task_id,
+            user_message_id=user_message_id,
+        )
 
 
 async def _process_next_queued_task(conversation_id: str) -> bool:

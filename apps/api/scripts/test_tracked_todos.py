@@ -289,6 +289,48 @@ SCENARIOS: list[TestScenario] = [
 # ── API helpers ────────────────────────────────────────────────────────────────
 
 
+def _parse_sse_line(line: str) -> dict | None:
+    """Parse a single `data: ...` SSE line into an event dict; return None to skip."""
+    if not line.startswith("data: "):
+        return None
+    raw = line[6:]
+    if raw in ("", "[DONE]"):
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+def _accumulate_text(event: dict, text_chunks: list[str]) -> None:
+    if "response" in event:
+        text_chunks.append(event["response"])
+
+
+def _accumulate_tool_calls(event: dict, tool_calls: list[dict]) -> None:
+    td = event.get("tool_data")
+    if not td:
+        return
+    tool_name = td.get("tool_name", td.get("name", ""))
+    if not tool_name:
+        return
+    tool_calls.append(
+        {
+            "name": tool_name,
+            "input": td.get("tool_input", td.get("input", {})),
+        }
+    )
+
+
+def _extract_event_error(event: dict) -> str | None:
+    if "error" not in event and "[STREAM_ERROR]" not in str(event):
+        return None
+    err_val = event.get("error", str(event))
+    if err_val and err_val != "null":
+        return str(err_val)
+    return None
+
+
 async def send_chat_message(
     client: httpx.AsyncClient,
     token: str,
@@ -302,8 +344,8 @@ async def send_chat_message(
     text_chunks: list[str] = []
     error: str | None = None
 
-    # The `messages` array must include the current user message as the last item.
-    # The history contains previous turns; we append the current message here.
+    # `messages` must include the current user message as the last item; history
+    # holds previous turns.
     full_messages = [*history, {"role": "user", "content": message}]
 
     try:
@@ -331,42 +373,16 @@ async def send_chat_message(
                     raw_events=[],
                     error=f"HTTP {response.status_code}: {body.decode()[:500]}",
                 )
-
             async for line in response.aiter_lines():
-                if not line.startswith("data: "):
+                event = _parse_sse_line(line)
+                if event is None:
                     continue
-                raw = line[6:]
-                if raw in ("", "[DONE]"):
-                    continue
-                try:
-                    event = json.loads(raw)
-                except json.JSONDecodeError:
-                    continue
-
                 events.append(event)
-
-                # Response text (GAIA uses {"response": "..."} chunks)
-                if "response" in event:
-                    text_chunks.append(event["response"])
-
-                # Tool calls appear as {"tool_data": {"tool_name": ..., "tool_call_id": ...}}
-                if "tool_data" in event:
-                    td = event["tool_data"]
-                    tool_name = td.get("tool_name", td.get("name", ""))
-                    if tool_name:
-                        tool_calls.append(
-                            {
-                                "name": tool_name,
-                                "input": td.get("tool_input", td.get("input", {})),
-                            }
-                        )
-
-                # Error
-                if "error" in event or "[STREAM_ERROR]" in str(event):
-                    err_val = event.get("error", str(event))
-                    if err_val and err_val != "null":
-                        error = str(err_val)
-
+                _accumulate_text(event, text_chunks)
+                _accumulate_tool_calls(event, tool_calls)
+                event_error = _extract_event_error(event)
+                if event_error:
+                    error = event_error
     except Exception as e:
         error = str(e)
 
