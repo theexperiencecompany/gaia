@@ -51,15 +51,19 @@ services:
       - gaia_infisical_project_id
       - gaia_metrics_token
     ports:
-      # Published on the host so the host's Nginx can proxy api.heygaia.io here.
-      # NOTE: Swarm `mode: host` does NOT enforce `host_ip` (see moby/moby#32299),
-      # so this binds to 0.0.0.0:8000. The Hetzner Cloud Firewall only allows
-      # 22/80/443 from the public internet, so 8000 is only reachable from
-      # localhost (Nginx) in practice. Do not remove the firewall rule.
+      # Published via the swarm routing mesh (ingress) so the host's Nginx can
+      # proxy api.heygaia.io here. ingress (not host) makes rolling updates
+      # zero-downtime: the routing mesh keeps serving the old task until the new
+      # one is healthy, then drains it. host mode cannot do this — only one
+      # container may bind the host port, so start-first updates fail with
+      # "address already in use" and Swarm rolls back.
+      # Exposure is unchanged: ingress also binds 0.0.0.0:8000. The Hetzner Cloud
+      # Firewall only allows 22/80/443 from the public internet, so 8000 is only
+      # reachable from localhost (Nginx) in practice. Do not remove the firewall rule.
       - target: 80
         published: 8000
         protocol: tcp
-        mode: host
+        mode: ingress
     networks:
       gaia-prod-shared:
         aliases:
@@ -160,10 +164,12 @@ services:
       - gaia_infisical_project_id
     ports:
       # Nginx proxies /bots/discord/* from the public internet.
+      # ingress (not host) so rolling updates are zero-downtime; the Hetzner
+      # firewall keeps the port localhost-only. Do not remove the firewall rule.
       - target: 3200
         published: 3200
         protocol: tcp
-        mode: host
+        mode: ingress
     networks:
       gaia-prod-shared:
         aliases:
@@ -204,10 +210,12 @@ services:
       - gaia_infisical_project_id
     ports:
       # Nginx proxies /bots/slack/* from the public internet.
+      # ingress (not host) so rolling updates are zero-downtime; the Hetzner
+      # firewall keeps the port localhost-only. Do not remove the firewall rule.
       - target: 3201
         published: 3201
         protocol: tcp
-        mode: host
+        mode: ingress
     networks:
       gaia-prod-shared:
         aliases:
@@ -248,10 +256,12 @@ services:
       - gaia_infisical_project_id
     ports:
       # Nginx proxies /bots/telegram/* from the public internet.
+      # ingress (not host) so rolling updates are zero-downtime; the Hetzner
+      # firewall keeps the port localhost-only. Do not remove the firewall rule.
       - target: 3202
         published: 3202
         protocol: tcp
-        mode: host
+        mode: ingress
     networks:
       gaia-prod-shared:
         aliases:
@@ -292,10 +302,12 @@ services:
       - gaia_infisical_project_id
     ports:
       # Nginx proxies /api/v1/webhook/whatsapp + /bots/whatsapp/*.
+      # ingress (not host) so rolling updates are zero-downtime; the Hetzner
+      # firewall keeps the port localhost-only. Do not remove the firewall rule.
       - target: 3203
         published: 3203
         protocol: tcp
-        mode: host
+        mode: ingress
     networks:
       gaia-prod-shared:
         aliases:
@@ -427,7 +439,9 @@ services:
     # disaster recovery / fresh volume bootstrapping — see docs/deployment/secrets.mdx.
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
-      - ./observability/rabbitmq-enabled-plugins:/etc/rabbitmq/enabled_plugins:ro
+    configs:
+      - source: rabbitmq_enabled_plugins
+        target: /etc/rabbitmq/enabled_plugins
     networks:
       gaia-prod-shared:
         aliases:
@@ -553,8 +567,9 @@ services:
 
   blackbox_exporter:
     image: prom/blackbox-exporter:v0.25.0
-    volumes:
-      - ./observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    configs:
+      - source: blackbox_yml
+        target: /etc/blackbox_exporter/config.yml
     networks:
       - gaia-prod-shared
     deploy:
@@ -570,9 +585,11 @@ services:
     image: prom/prometheus:v3.1.0
     user: root  # needed to read /var/run/docker.sock for Swarm SD
     volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    configs:
+      - source: prometheus_yml
+        target: /etc/prometheus/prometheus.yml
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=30d"
@@ -607,8 +624,10 @@ services:
     # Grafana and Promtail reach it at `loki:3100` via the overlay network.
     image: grafana/loki:3.3.2
     volumes:
-      - ./observability/loki-config.yaml:/etc/loki/local-config.yaml
       - loki_data:/loki
+    configs:
+      - source: loki_config
+        target: /etc/loki/local-config.yaml
     command: -config.file=/etc/loki/local-config.yaml
     networks:
       gaia-prod-shared:
@@ -637,9 +656,11 @@ services:
     # mode: global — runs one instance per swarm node to collect all container logs
     user: root
     volumes:
-      - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
       - promtail_positions:/tmp
+    configs:
+      - source: promtail_config
+        target: /etc/promtail/config.yaml
     command: -config.file=/etc/promtail/config.yaml -config.expand-env=true
     environment:
       LOKI_PUSH_URL: ${LOKI_PUSH_URL:-http://loki:3100/loki/api/v1/push}
@@ -661,7 +682,10 @@ services:
           cpus: "0.25"
 
   grafana:
-    image: grafana/grafana:11.4.0
+    # Provisioning (datasources, dashboards, alerting) is baked into this image
+    # — see infra/docker/observability/grafana/Dockerfile — so prod needs no host
+    # bind mount and the stack deploys cleanly from CI via a remote context.
+    image: ghcr.io/theexperiencecompany/gaia-grafana:latest
     ports:
       # Loopback only — Nginx on the host proxies logs.heygaia.io to this.
       - target: 3000
@@ -670,7 +694,6 @@ services:
         mode: host
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./observability/grafana/provisioning:/etc/grafana/provisioning
     environment:
       GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/gaia_grafana_admin_password
       GF_USERS_ALLOW_SIGN_UP: "false"
@@ -730,6 +753,28 @@ services:
       placement:
         constraints:
           - node.role == manager
+
+configs:
+  # Single-file observability configs live in the Swarm raft instead of host
+  # bind mounts, so the stack deploys from CI (remote context) with no config
+  # files on the VM. Swarm configs are immutable, so each name carries a content
+  # hash (OBS_CFG_HASH, computed by the deploy workflow) — a changed file
+  # produces a new config object that services roll onto.
+  prometheus_yml:
+    name: prometheus_yml_${OBS_CFG_HASH:-dev}
+    file: ./observability/prometheus.yml
+  loki_config:
+    name: loki_config_${OBS_CFG_HASH:-dev}
+    file: ./observability/loki-config.yaml
+  promtail_config:
+    name: promtail_config_${OBS_CFG_HASH:-dev}
+    file: ./observability/promtail-config.yaml
+  blackbox_yml:
+    name: blackbox_yml_${OBS_CFG_HASH:-dev}
+    file: ./observability/blackbox.yml
+  rabbitmq_enabled_plugins:
+    name: rabbitmq_enabled_plugins_${OBS_CFG_HASH:-dev}
+    file: ./observability/rabbitmq-enabled-plugins
 
 volumes:
   chroma_data:

@@ -48,6 +48,8 @@ jobs:
     environment: production
     permissions:
       contents: read
+      # Pull the private gaia-grafana image on the swarm nodes via --with-registry-auth.
+      packages: read
 
     steps:
       - name: Checkout repository
@@ -69,6 +71,20 @@ jobs:
 
       - name: Deploy stack
         run: |
+          set -euo pipefail
+          # Observability configs ship as Swarm configs (stored in the cluster),
+          # not host bind mounts, so this deploys cleanly via the remote context
+          # with no files on the VM. Swarm configs are immutable, so their names
+          # carry a content hash: a changed config file produces a new config
+          # object that services roll onto. Compute it over all config files.
+          OBS_CFG_HASH=$(cat \
+            infra/docker/observability/prometheus.yml \
+            infra/docker/observability/loki-config.yaml \
+            infra/docker/observability/promtail-config.yaml \
+            infra/docker/observability/blackbox.yml \
+            infra/docker/observability/rabbitmq-enabled-plugins \
+            | sha256sum | cut -c1-12)
+          export OBS_CFG_HASH
           docker --context prod stack deploy \
             --with-registry-auth \
             -c infra/docker/docker-compose.prod.yml \
