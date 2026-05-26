@@ -7,12 +7,21 @@ Handles token refresh, revocation, and client credential resolution.
 import base64
 from datetime import UTC, datetime, timedelta
 import os
+from urllib.parse import urlparse
 
 import httpx
 
 from app.models.mcp_config import MCPConfig
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from shared.py.wide_events import log
+
+
+def _endpoint_host(url: str | None) -> str | None:
+    """Return `scheme://host` of an endpoint URL for safe logging."""
+    if not url:
+        return None
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else None
 
 
 def resolve_client_credentials(
@@ -116,7 +125,7 @@ async def try_refresh_token(
                     f"{response.status_code} for {integration_id} "
                     f"user={token_store.user_id} "
                     f"(oauth_error={error_code!r}, desc={error_description!r}) "
-                    f"endpoint={token_endpoint}"
+                    f"endpoint={_endpoint_host(token_endpoint)}"
                 )
                 return False
 

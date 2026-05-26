@@ -100,36 +100,57 @@ class StepUpAuthRequired(Exception):
         super().__init__(f"Step-up authorization required for {integration_id}: {required_scopes}")
 
 
-def _is_terminal_auth_failure(exception: Exception, refresh_attempted: bool = False) -> bool:
-    """Decide whether an MCP connection error means credentials are dead.
+# OAuth 2.0 error codes (RFC 6749 §5.2) that mean the grant is permanently dead.
+_TERMINAL_OAUTH_ERROR_CODES: frozenset[str] = frozenset(
+    {"invalid_grant", "invalid_token", "revoked_token", "expired_token"}
+)
 
-    Returning True forces the user back through the OAuth flow (clearing their
-    PostgreSQL tokens and flipping their MongoDB integration status to
-    'created'). Returning False keeps the connection considered connected so
-    the next attempt retries with the same tokens.
 
-    The previous behaviour treated EVERY connection exception as terminal,
-    which wiped users' integrations on transient errors (5xx, network blip,
-    transport-mismatch, PostHog/Postman returning 400/405). Be conservative:
-    only treat as terminal when we have strong evidence credentials must be
-    re-issued.
+def _extract_response_signal(exception: Exception) -> tuple[int | None, str | None]:
+    """Return (status_code, oauth_error_code) from an exception with an HTTP response.
+
+    (None, None) for network-layer errors that don't carry a response.
     """
-    msg = str(exception).lower()
+    response = getattr(exception, "response", None)
+    if response is None:
+        return None, None
 
-    # Authorization server explicitly told us the grant is dead.
-    if "invalid_grant" in msg or "invalid_token" in msg:
+    status = getattr(response, "status_code", None)
+    error_code: str | None = None
+    try:
+        body = response.json() if callable(getattr(response, "json", None)) else None
+        if isinstance(body, dict):
+            raw = body.get("error")
+            if isinstance(raw, str):
+                error_code = raw.lower()
+    except Exception as parse_err:
+        log.debug(f"_extract_response_signal: body parse skipped ({parse_err!r})")
+    return status, error_code
+
+
+def _is_terminal_auth_failure(exception: Exception, refresh_attempted: bool = False) -> bool:
+    """Return True only when credentials are demonstrably dead.
+
+    Treating every exception as terminal wipes integrations on transient
+    errors (5xx, network blip, transport mismatch). Be conservative: require
+    a spec'd OAuth error code, or a 401/403 after a refresh attempt.
+    """
+    status, error_code = _extract_response_signal(exception)
+
+    if error_code in _TERMINAL_OAUTH_ERROR_CODES:
         return True
 
-    # 401 with refresh already attempted means the refresh_token itself is
-    # no longer accepted — user must re-authorize. 401 without refresh is
-    # handled by the retry-with-refresh path and should not reach this
-    # decision point.
-    if refresh_attempted and "401" in str(exception):
+    if refresh_attempted and status in (401, 403):
         return True
 
-    # Everything else — 4xx that wasn't a clear auth rejection, 5xx,
-    # connection-closed, content-type mismatch, network/timeout — is
-    # treated as transient. Tokens stay; user retries; next call reconnects.
+    # No response attached (network-layer error): word-boundary string match
+    # avoids false positives like "401k" or "invalid_grants_table".
+    if getattr(exception, "response", None) is None:
+        msg = str(exception).lower()
+        for code in _TERMINAL_OAUTH_ERROR_CODES:
+            if re.search(rf"\b{re.escape(code)}\b", msg):
+                return True
+
     return False
 
 
@@ -333,6 +354,35 @@ class MCPClient:
             event = self._connecting.pop(integration_id, None)
             if event:
                 event.set()
+
+    async def _reset_to_disconnected(self, integration_id: str) -> None:
+        """Tear down a dead integration: Mongo status, PG creds, DCR client, Redis cache.
+
+        Each step is swallowed so one failure doesn't block the rest.
+        """
+
+        async def _swallow(coro: Any, what: str) -> None:
+            try:
+                await coro
+            except Exception as e:
+                log.warning(f"[{integration_id}] {what} failed during teardown: {e}")
+
+        await _swallow(
+            update_user_integration_status(self.user_id, integration_id, "created"),
+            "mongo status reset",
+        )
+        await _swallow(
+            self.token_store.delete_credentials(integration_id),
+            "credential delete",
+        )
+        await _swallow(
+            self.token_store.delete_dcr_client(integration_id),
+            "dcr client delete",
+        )
+        await _swallow(
+            delete_cache(f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"),
+            "oauth discovery cache clear",
+        )
 
     async def _do_connect(self, integration_id: str) -> list[BaseTool]:
         """Internal connect implementation.
@@ -555,23 +605,10 @@ class MCPClient:
 
             log.error(f"Failed to connect to MCP {integration_id}: {e}")
 
-            # Only reset MongoDB status when the failure proves credentials
-            # are dead. Wiping status on every exception (5xx, transport
-            # mismatch, network blip, PostHog/Postman returning 400/405)
-            # forces users through a fresh OAuth flow even though their
-            # refresh_token is still valid — that's the "Gmail expires after
-            # a while" bug. See _is_terminal_auth_failure for the criteria.
+            # Only reset on demonstrably dead credentials — transient errors
+            # (5xx, network blip, transport mismatch) keep the existing tokens.
             if _is_terminal_auth_failure(e, refresh_attempted=refresh_attempted):
-                try:
-                    await update_user_integration_status(self.user_id, integration_id, "created")
-                except Exception:
-                    log.warning(f"[{integration_id}] Failed to reset status after auth failure")
-                try:
-                    await delete_cache(f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}")
-                except Exception as cache_err:  # nosec B110
-                    log.debug(
-                        f"[{integration_id}] Failed to clear OAuth discovery cache: {cache_err}"
-                    )
+                await self._reset_to_disconnected(integration_id)
             else:
                 log.warning(
                     f"[{integration_id}] Transient connection failure — keeping "
@@ -1093,15 +1130,7 @@ class MCPClient:
             # DCR client_id revoked). Transient failures keep tokens so the
             # user can retry without re-OAuth.
             if terminal:
-                # Keep MongoDB status consistent with the wiped tokens.
-                try:
-                    await update_user_integration_status(self.user_id, integration_id, "created")
-                except Exception:
-                    log.warning(
-                        f"[{integration_id}] Failed to reset status after OAuth callback auth failure"
-                    )
-                await self.token_store.delete_credentials(integration_id)
-                await self.token_store.delete_dcr_client(integration_id)
+                await self._reset_to_disconnected(integration_id)
             else:
                 log.warning(
                     f"[{integration_id}] Preserving stored tokens after non-auth "
@@ -1133,12 +1162,6 @@ class MCPClient:
         if integration_id in self._tools:
             del self._tools[integration_id]
 
-        # Clear OAuth discovery cache
-        try:
-            await delete_cache(f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}")
-        except Exception as e:
-            log.warning(f"Failed to clear OAuth discovery cache: {e}")
-
         # Remove tool metadata from MongoDB so ghost tools don't appear
         try:
             await integrations_collection.update_one(
@@ -1163,14 +1186,9 @@ class MCPClient:
         except Exception as e:
             log.warning(f"Failed to invalidate ChromaDB cache: {e}")
 
-        # Delete credentials from PostgreSQL (for both authenticated and unauthenticated MCPs)
-        await self.token_store.delete_credentials(integration_id)
-
-        # Update MongoDB status so frontend reflects disconnected state
-        try:
-            await update_user_integration_status(self.user_id, integration_id, "created")
-        except Exception as e:
-            log.warning(f"[{integration_id}] Failed to reset MongoDB status on disconnect: {e}")
+        # Wipe persistent auth artifacts (Mongo status, PG creds, DCR client,
+        # Redis OAuth cache) via the shared teardown helper.
+        await self._reset_to_disconnected(integration_id)
 
         log.info(f"Disconnected MCP {integration_id}")
 

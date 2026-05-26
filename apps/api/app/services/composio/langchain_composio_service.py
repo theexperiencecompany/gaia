@@ -131,10 +131,22 @@ class LangchainProvider(
                     }
                 )
                 if succeeded is False:
-                    log.warning(
-                        f"composio tool {tool} (toolkit={toolkit}) returned "
-                        f"successful=False for user={user_id}: error={err_preview!r}"
+                    err_lower = (err_preview or "").lower()
+                    looks_like_dead_account = (
+                        "1810" in err_lower
+                        or "no active connected account" in err_lower
+                        or "no connected account" in err_lower
                     )
+                    if looks_like_dead_account:
+                        log.warning(
+                            f"composio tool {tool} (toolkit={toolkit}) likely "
+                            f"dead account for user={user_id}: error={err_preview!r}"
+                        )
+                    else:
+                        log.info(
+                            f"composio tool {tool} (toolkit={toolkit}) returned "
+                            f"successful=False for user={user_id}: error={err_preview!r}"
+                        )
             except Exception as obs_err:  # noqa: BLE001 - observability must not break tool
                 log.debug(f"composio invocation log skipped for {tool}: {obs_err}")
 
