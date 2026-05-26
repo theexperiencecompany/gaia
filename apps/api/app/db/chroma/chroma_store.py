@@ -486,18 +486,36 @@ class ChromaStore(BaseStore):
     ) -> None:
         """Apply put operations to ChromaDB in parallel."""
         tasks = []
+        doc_ids: list[str] = []
 
         for (namespace, key), op in put_ops.items():
             doc_id = self._namespace_to_id(namespace, key)
+            doc_ids.append(doc_id)
 
             if op.value is None:
                 tasks.append(self._delete_item(doc_id, collection))
             else:
                 tasks.append(self._upsert_item(doc_id, op, collection))
 
-        # Execute all operations in parallel
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        if not tasks:
+            return
+
+        # return_exceptions=True keeps one bad doc from killing the batch, but
+        # silently swallows every failure. Surface them so we don't end up with
+        # an indexing pass that "succeeded" yet wrote zero rows (the PostHog
+        # case — 336 tools "indexed", 0 in ChromaDB, no errors anywhere).
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        failures = sum(1 for r in results if isinstance(r, Exception))
+        if failures:
+            first = next(r for r in results if isinstance(r, Exception))
+            first_id = next(
+                (d for d, r in zip(doc_ids, results) if isinstance(r, Exception)),
+                "?",
+            )
+            log.error(
+                f"ChromaDB batch put: {failures}/{len(results)} operations failed. "
+                f"First failure on doc_id={first_id}: {type(first).__name__}: {first}"
+            )
 
     async def _delete_item(self, doc_id: str, collection: AsyncCollection) -> None:
         """Delete a single item."""

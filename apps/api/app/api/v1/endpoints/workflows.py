@@ -43,6 +43,7 @@ from app.services.workflow.service import (
     ensure_public_workflow_slug,
     generate_unique_workflow_slug,
 )
+from app.utils.creator import creator_lookup_stage, format_creator
 from app.utils.exceptions import TriggerRegistrationError
 from app.utils.workflow_utils import transform_workflow_document
 from shared.py.wide_events import WorkflowContext, log
@@ -583,41 +584,9 @@ async def get_public_workflow(request: Request, workflow_ref: str):
         else:
             match = {"slug": workflow_ref, "is_public": True}
 
-        # $toObjectId raises "Failed to parse objectId" when created_by is a
-        # non-ObjectId string (e.g. 'system' for seeded/system-authored
-        # workflows), which 500s the whole endpoint. $convert with onError=null
-        # makes the $eq false instead of throwing.
-        creator_lookup = {
-            "$lookup": {
-                "from": "users",
-                "let": {"creator_id": "$created_by"},
-                "pipeline": [
-                    {
-                        "$match": {
-                            "$expr": {
-                                "$eq": [
-                                    "$_id",
-                                    {
-                                        "$convert": {
-                                            "input": "$$creator_id",
-                                            "to": "objectId",
-                                            "onError": None,
-                                            "onNull": None,
-                                        }
-                                    },
-                                ]
-                            }
-                        }
-                    },
-                    {"$project": {"name": 1, "picture": 1, "_id": 0}},
-                ],
-                "as": "creator_info",
-            }
-        }
-
         workflow_doc = None
         async for doc in workflows_collection.aggregate(
-            [{"$match": match}, creator_lookup, {"$limit": 1}]
+            [{"$match": match}, creator_lookup_stage(), {"$limit": 1}]
         ):
             workflow_doc = doc
             break
@@ -628,18 +597,14 @@ async def get_public_workflow(request: Request, workflow_ref: str):
                 detail="Public workflow not found",
             )
 
-        creator_info = (workflow_doc.get("creator_info") or [{}])[0]
+        creator = format_creator(workflow_doc)
         workflow_doc.pop("creator_info", None)
 
         await ensure_public_workflow_slug(workflow_doc)
 
         transformed_doc = transform_workflow_document(workflow_doc)
         workflow = Workflow(**transformed_doc)
-        workflow.creator = {
-            "id": workflow_doc.get("created_by"),
-            "name": creator_info.get("name") or "Unknown",
-            "avatar": creator_info.get("picture"),
-        }
+        workflow.creator = creator
 
         return WorkflowResponse(workflow=workflow, message="Workflow retrieved successfully")
     except HTTPException:

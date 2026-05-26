@@ -192,6 +192,7 @@ def _proxy_call(
     if status >= 400:
         # 401 = Composio's stored token is rejected and refresh already failed.
         if status == 401:
+            invalidate_connected_account_cache(user_id=user_id, toolkit=toolkit)
             mark_disconnected_sync(user_id, toolkit)
         raise AppError(
             message=f"{toolkit} API error ({status})",

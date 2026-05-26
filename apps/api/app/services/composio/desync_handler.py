@@ -17,17 +17,14 @@ from app.constants.cache import OAUTH_STATUS_KEY
 from app.db.mongodb.collections import get_sync_collection
 from shared.py.wide_events import log
 
-# Signals the upstream OAuth account is dead, not a transient hiccup.
-_DISCONNECT_PATTERNS = (
-    re.compile(r"no connected account found", re.IGNORECASE),
-    re.compile(r"\bcode\W*:?\W*1810\b", re.IGNORECASE),
-    re.compile(r"no active .+ connection", re.IGNORECASE),
-    re.compile(r"connected[_ ]account[_ ]not[_ ]found", re.IGNORECASE),
-)
+# Composio assigns stable numeric error codes; 1810 = "No connected account
+# found for user X for toolkit Y". Code-number match avoids the text-wording
+# brittleness of matching on the english message.
+_COMPOSIO_DEAD_ACCOUNT_CODE = re.compile(r"\b1810\b")
 
 
 def looks_like_disconnect(payload: Any) -> bool:
-    """True iff payload (dict / Exception / str) carries an account-dead signal."""
+    """True iff payload (dict / Exception / str) carries Composio code 1810."""
     if payload is None:
         return False
 
@@ -42,7 +39,7 @@ def looks_like_disconnect(payload: Any) -> bool:
 
     if not text:
         return False
-    return any(p.search(text) for p in _DISCONNECT_PATTERNS)
+    return bool(_COMPOSIO_DEAD_ACCOUNT_CODE.search(text))
 
 
 def _resolve_integration_id(toolkit: str | None) -> str | None:

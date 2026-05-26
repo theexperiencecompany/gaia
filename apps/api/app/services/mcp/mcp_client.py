@@ -1005,14 +1005,17 @@ class MCPClient:
                 f"  Treat as terminal: {terminal}\n"
                 f"  Traceback:\n{traceback.format_exc()}"
             )
-            # Only roll back the freshly-stored tokens when the failure proves
-            # those credentials are unusable (e.g. 401, invalid_grant, DCR
-            # client_id revoked). Transient failures — e.g. PostHog returning
-            # 400 because of transport-format quirks, server 5xx, network blip
-            # — leave the tokens intact so the user can retry without going
-            # back through OAuth. Otherwise mcp-use's first-connect attempt
-            # becomes a death sentence for every minor server hiccup.
+            # Only roll back on confirmed-dead credentials (401, invalid_grant,
+            # DCR client_id revoked). Transient failures keep tokens so the
+            # user can retry without re-OAuth.
             if terminal:
+                # Keep MongoDB status consistent with the wiped tokens.
+                try:
+                    await update_user_integration_status(self.user_id, integration_id, "created")
+                except Exception:
+                    log.warning(
+                        f"[{integration_id}] Failed to reset status after OAuth callback auth failure"
+                    )
                 await self.token_store.delete_credentials(integration_id)
                 await self.token_store.delete_dcr_client(integration_id)
             else:
