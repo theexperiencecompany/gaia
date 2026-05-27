@@ -64,9 +64,7 @@ class SanitizingLangChainAdapter(LangChainAdapter):
 
                 # Update 'required' array with renamed property names
                 if "required" in schema and isinstance(schema["required"], list):
-                    schema["required"] = [
-                        rename_map.get(name, name) for name in schema["required"]
-                    ]
+                    schema["required"] = [rename_map.get(name, name) for name in schema["required"]]
             else:
                 # Recursively apply to nested schemas
                 for key, value in schema.items():

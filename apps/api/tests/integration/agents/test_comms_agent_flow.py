@@ -16,12 +16,11 @@ breaks all tests immediately.
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+import pytest
 
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -120,9 +119,7 @@ async def comms_graph():
         patches[6],
         patches[7],
     ):
-        async with build_comms_graph(
-            chat_llm=fake_llm, in_memory_checkpointer=True
-        ) as graph:
+        async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
             yield graph
 
 
@@ -158,9 +155,7 @@ class TestCommsAgentFlow:
             patches[6],
             patches[7],
         ):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 # CompiledStateGraph exposes .nodes directly
                 node_names = set(graph.nodes.keys())
 
@@ -205,9 +200,7 @@ class TestCommsAgentFlow:
             patches[6],
             patches[7],
         ):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 config = _thread_config()
                 result = await graph.ainvoke(
                     {"messages": [HumanMessage(content="Do I prefer dark mode?")]},
@@ -244,9 +237,7 @@ class TestCommsAgentFlow:
             patches[6],
             patches[7],
         ):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 async for chunk in graph.astream(
                     {"messages": [HumanMessage(content="Stream this")]},
                     config=_thread_config(),
@@ -297,9 +288,7 @@ class TestCommsAgentFlow:
         )
         # Verify the routing path was actually exercised, not silently short-circuited.
         # The comms_graph fixture programs the fake LLM to respond with this exact string.
-        assert any(
-            "Hello! How can I help you today?" in (m.content or "") for m in ai_messages
-        ), (
+        assert any("Hello! How can I help you today?" in (m.content or "") for m in ai_messages), (
             "Expected AIMessage with content 'Hello! How can I help you today?' from the "
             "fake LLM. If this fails, the agent node may have been bypassed or gutted. "
             f"Actual AI message contents: {[m.content for m in ai_messages]}"
@@ -350,9 +339,7 @@ class TestCommsAgentFlow:
             patches[6],
             patches[7],
         ):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 config = _thread_config()
                 counts = []
 
@@ -372,9 +359,7 @@ class TestCommsAgentFlow:
         # Verify content from all turns is preserved — not just that count grew
         final_snap = await graph.aget_state(config)
         human_contents = [
-            m.content
-            for m in final_snap.values["messages"]
-            if isinstance(m, HumanMessage)
+            m.content for m in final_snap.values["messages"] if isinstance(m, HumanMessage)
         ]
         assert "Turn 1" in human_contents, (
             f"Turn 1 HumanMessage must survive into final state. Got: {human_contents}"
@@ -402,9 +387,7 @@ class TestCommsAgentFlow:
             "id": "call_add_memory_001",
             "type": "tool_call",
         }
-        fake_llm = create_fake_llm_with_tool_calls(
-            [tool_call, "Memory saved! Anything else?"]
-        )
+        fake_llm = create_fake_llm_with_tool_calls([tool_call, "Memory saved! Anything else?"])
         store_mock = _make_chroma_store_mock()
 
         # Hold a reference to memory_mock so we can assert on it after execution
@@ -420,9 +403,7 @@ class TestCommsAgentFlow:
             patches[6],
             patches[7],
         ):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 # add_memory reads user_id from config["metadata"]["user_id"], NOT
                 # config["configurable"]["user_id"].  Both keys must be present: LangGraph
                 # requires "configurable" for checkpointing while the tool requires
@@ -433,11 +414,7 @@ class TestCommsAgentFlow:
                     "metadata": {"user_id": user_id},
                 }
                 result = await graph.ainvoke(
-                    {
-                        "messages": [
-                            HumanMessage(content="Remember that I like dark mode")
-                        ]
-                    },
+                    {"messages": [HumanMessage(content="Remember that I like dark mode")]},
                     config=config,
                 )
 

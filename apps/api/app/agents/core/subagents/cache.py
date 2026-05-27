@@ -14,19 +14,20 @@ tool category in the registry can be dropped alongside the graph.
 from __future__ import annotations
 
 import asyncio
-import inspect
 from collections import OrderedDict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Awaitable, Callable
+from datetime import UTC, datetime, timedelta
+import inspect
+from typing import TYPE_CHECKING
 
-from shared.py.wide_events import log
 from app.constants.cache import (
     SUBAGENT_GRAPH_CACHE_MAX_SIZE,
     SUBAGENT_GRAPH_CACHE_TTL_SECONDS,
     SUBAGENT_GRAPH_CLEANUP_INTERVAL_SECONDS,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from shared.py.wide_events import log
 
 if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
@@ -39,10 +40,10 @@ EvictionHandler = Callable[[str, str], None | Awaitable[None]]
 @dataclass
 class _PooledGraph:
     graph: CompiledStateGraph
-    last_used: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_used: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def touch(self) -> None:
-        self.last_used = datetime.now(timezone.utc)
+        self.last_used = datetime.now(UTC)
 
 
 class UserSubagentGraphCache:
@@ -124,7 +125,7 @@ class UserSubagentGraphCache:
         """Remove entries that haven't been used within TTL."""
         stale: list[CacheKey] = []
         async with self._lock:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             for k, pooled in list(self._cache.items()):
                 if now - pooled.last_used > self._ttl:
                     del self._cache[k]

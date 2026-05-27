@@ -3,8 +3,6 @@
 Pydantic models for platform account linking and authentication.
 """
 
-from typing import Optional
-
 from pydantic import BaseModel, Field
 
 
@@ -26,12 +24,10 @@ class PlatformLinkEntry(BaseModel):
     """A single linked platform entry returned in the platform links response."""
 
     platform: str = Field(..., description="Platform name")
-    platformUserId: str = Field(
-        ..., description="User's plain string ID on the platform"
-    )
-    username: Optional[str] = Field(None, description="Username on the platform")
-    displayName: Optional[str] = Field(None, description="Display name on the platform")
-    connectedAt: Optional[str] = Field(None, description="ISO timestamp when linked")
+    platformUserId: str = Field(..., description="User's plain string ID on the platform")
+    username: str | None = Field(None, description="Username on the platform")
+    displayName: str | None = Field(None, description="Display name on the platform")
+    connectedAt: str | None = Field(None, description="ISO timestamp when linked")
 
 
 class GetPlatformLinksResponse(BaseModel):
@@ -48,8 +44,8 @@ class LinkPlatformResponse(BaseModel):
 
     status: str = Field(..., description="Link status (e.g., 'linked')")
     platform: str = Field(..., description="Platform name")
-    platform_user_id: Optional[str] = Field(None, description="Platform user ID")
-    connected_at: Optional[str] = Field(None, description="Connection timestamp")
+    platform_user_id: str | None = Field(None, description="Platform user ID")
+    connected_at: str | None = Field(None, description="Connection timestamp")
 
 
 class DisconnectPlatformResponse(BaseModel):
@@ -62,13 +58,11 @@ class DisconnectPlatformResponse(BaseModel):
 class InitiatePlatformConnectResponse(BaseModel):
     """Response model for initiating platform connection."""
 
-    auth_url: Optional[str] = Field(
-        None, description="OAuth authorization URL (if OAuth configured)"
-    )
+    auth_url: str | None = Field(None, description="OAuth authorization URL (if OAuth configured)")
     auth_type: str = Field(..., description="Authentication type ('oauth' or 'manual')")
-    instructions: Optional[str] = Field(
+    instructions: str | None = Field(
         None, description="Manual linking instructions (if manual auth)"
     )
-    action_link: Optional[str] = Field(
+    action_link: str | None = Field(
         None, description="Optional deep-link for manual auth (e.g. Telegram bot URL)"
     )

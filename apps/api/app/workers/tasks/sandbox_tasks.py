@@ -10,19 +10,19 @@ Currently:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from shared.py.wide_events import log, wide_task
 from app.config.settings import settings
 from app.db.mongodb.collections import e2b_sandboxes_collection
 from app.services.sandbox import mark_sandbox_dead
+from shared.py.wide_events import log, wide_task
 
 
 async def sweep_idle_sandboxes(ctx: dict[str, Any]) -> str:
     """Evict sandboxes whose last_used_at is older than the eviction window."""
     async with wide_task("sweep_idle_sandboxes"):
-        cutoff = datetime.now(timezone.utc) - timedelta(
+        cutoff = datetime.now(UTC) - timedelta(
             days=settings.E2B_SANDBOX_EVICT_DAYS
         )
         cursor = e2b_sandboxes_collection.find(

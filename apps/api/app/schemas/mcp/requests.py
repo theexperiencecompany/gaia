@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -19,14 +19,14 @@ class MCPProxyResourcesListRequest(BaseModel):
     """Proxy a resources/list request from an MCP App iframe."""
 
     server_url: str
-    cursor: Optional[str] = None
+    cursor: str | None = None
 
 
 class MCPProxyResourceTemplatesListRequest(BaseModel):
     """Proxy a resources/templates/list request from an MCP App iframe."""
 
     server_url: str
-    cursor: Optional[str] = None
+    cursor: str | None = None
 
 
 class MCPProxyResourceReadRequest(BaseModel):
@@ -40,4 +40,4 @@ class MCPProxyPromptsListRequest(BaseModel):
     """Proxy a prompts/list request from an MCP App iframe."""
 
     server_url: str
-    cursor: Optional[str] = None
+    cursor: str | None = None

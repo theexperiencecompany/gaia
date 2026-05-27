@@ -17,12 +17,13 @@ Usage:
     require_integration("gmail")  # Still works but function name is misleading
 """
 
+from fastapi import Depends, HTTPException, status
 import httpx
+
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.oauth_config import get_integration_by_id, get_short_name_mapping
-from shared.py.wide_events import log
 from app.services.oauth.oauth_service import check_integration_status
-from fastapi import Depends, HTTPException, status
+from shared.py.wide_events import log
 
 http_async_client = httpx.AsyncClient(timeout=10.0)
 

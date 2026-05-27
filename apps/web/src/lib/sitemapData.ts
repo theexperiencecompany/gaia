@@ -14,7 +14,7 @@ import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
  * Sitemap IDs for different content types.
  * Each ID generates a separate sitemap file, accessible at /sitemap/{id}.xml
  */
-export const SITEMAP_IDS = {
+const SITEMAP_IDS = {
   STATIC: 0,
   BLOG: 1,
   EXPLORE: 2,
@@ -73,7 +73,7 @@ const BUILD_DATE = new Date().toISOString();
 type ChangeFreq = "daily" | "weekly" | "monthly" | "yearly";
 type StaticPage = { path: string; freq: ChangeFreq; priority: number };
 
-const TRANSLATED_STATIC_PAGES: Array<StaticPage> = [
+const TRANSLATED_STATIC_PAGES: StaticPage[] = [
   { path: "/compare", freq: "weekly", priority: 0.9 },
   { path: "/alternative-to", freq: "weekly", priority: 0.9 },
   { path: "/automate", freq: "weekly", priority: 0.8 },
@@ -81,7 +81,7 @@ const TRANSLATED_STATIC_PAGES: Array<StaticPage> = [
   { path: "/learn", freq: "weekly", priority: 0.8 },
 ];
 
-const UNTRANSLATED_STATIC_PAGES: Array<StaticPage> = [
+const UNTRANSLATED_STATIC_PAGES: StaticPage[] = [
   { path: "", freq: "daily", priority: 1.0 },
   { path: "/pricing", freq: "weekly", priority: 0.9 },
   { path: "/marketplace", freq: "weekly", priority: 0.9 },

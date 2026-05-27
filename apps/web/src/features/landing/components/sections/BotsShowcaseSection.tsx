@@ -12,7 +12,7 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { Link } from "@/i18n/navigation";
 
@@ -22,6 +22,10 @@ import {
   type ChatPlatform,
 } from "../iphone/ChatDemo";
 import { IPhoneMockup } from "../iphone/IPhoneMockup";
+import {
+  cascadeDurationMs,
+  useStaggeredMessages as useStaggeredMessagesShared,
+} from "../iphone/useStaggeredMessages";
 import LargeHeader from "../shared/LargeHeader";
 
 interface ActionLink {
@@ -282,7 +286,10 @@ export default function BotsShowcaseSection() {
   const sectionRef = useRef<HTMLDivElement>(null);
   const inView = useSectionInView(sectionRef, 0.25);
 
-  const visibleMessages = useStaggeredMessages(active, inView);
+  const visibleMessages = useStaggeredMessagesShared(
+    active.demo.messages,
+    inView,
+  );
   const phoneRef = useRef<HTMLDivElement>(null);
   const isCtaFloating = useFloatingCta(phoneRef);
 
@@ -314,9 +321,7 @@ export default function BotsShowcaseSection() {
 
   useEffect(() => {
     if (!inView || !autoRotate) return;
-    const cascadeMs =
-      Math.max(0, active.demo.messages.length - 1) *
-      (TYPING_DELAY_MS + TYPING_DURATION_MS);
+    const cascadeMs = cascadeDurationMs(active.demo.messages.length);
     const dwellMs = 2500;
     const id = window.setTimeout(() => {
       setActiveId((current) => {
@@ -560,63 +565,6 @@ function useFloatingCta(
   }, [phoneRef]);
 
   return floating;
-}
-
-const TYPING_DELAY_MS = 450;
-const TYPING_DURATION_MS = 850;
-
-function useStaggeredMessages(
-  platform: Platform,
-  enabled: boolean,
-): ChatMessageItem[] {
-  const allMessages = platform.demo.messages;
-  const [visibleCount, setVisibleCount] = useState(1);
-  const [showTyping, setShowTyping] = useState(false);
-
-  useEffect(() => {
-    setVisibleCount(1);
-    setShowTyping(false);
-    if (!enabled) return;
-    if (allMessages.length <= 1) return;
-
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    let elapsed = 0;
-    for (let i = 1; i < allMessages.length; i++) {
-      elapsed += TYPING_DELAY_MS;
-      timers.push(setTimeout(() => setShowTyping(true), elapsed));
-      elapsed += TYPING_DURATION_MS;
-      timers.push(
-        setTimeout(() => {
-          setShowTyping(false);
-          setVisibleCount((c) => c + 1);
-        }, elapsed),
-      );
-    }
-
-    return () => {
-      for (const t of timers) clearTimeout(t);
-    };
-  }, [allMessages, enabled]);
-
-  return useMemo(() => {
-    const real = allMessages.slice(0, visibleCount).map((m, i) => ({
-      ...m,
-      id: m.id ?? `msg-${i}`,
-    }));
-    if (!showTyping || visibleCount >= allMessages.length) return real;
-    const next = allMessages[visibleCount];
-    return [
-      ...real,
-      {
-        id: `typing-${visibleCount}`,
-        from: next.from,
-        author: next.author,
-        avatar: next.avatar,
-        authorColor: next.authorColor,
-        typing: true,
-      },
-    ];
-  }, [allMessages, visibleCount, showTyping]);
 }
 
 function PlatformChips({

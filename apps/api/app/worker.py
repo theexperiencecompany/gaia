@@ -10,13 +10,18 @@ from app.workers.tasks import (
     execute_workflow_by_id,
     generate_workflow_steps,
     process_gmail_emails_to_memory,
-    process_personalization_task,
+    process_onboarding_intelligence_task,
     process_reminder,
     process_workflow_generation_task,
     prune_inactive_sessions,
+    regenerate_workflow_steps,
     store_memories_batch,
     sweep_idle_sandboxes,
-    regenerate_workflow_steps,
+)
+from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
+from app.workers.tasks.tracked_todo_tasks import (
+    execute_tracked_todo,
+    safety_net_check_orphaned_todos,
 )
 
 # Wrap every task with the Prometheus histogram instrumentation so arq-worker.json
@@ -30,11 +35,14 @@ _execute_workflow_by_id = instrument_task(execute_workflow_by_id)
 _regenerate_workflow_steps = instrument_task(regenerate_workflow_steps)
 _generate_workflow_steps = instrument_task(generate_workflow_steps)
 _process_gmail_emails_to_memory = instrument_task(process_gmail_emails_to_memory)
-_process_personalization_task = instrument_task(process_personalization_task)
+_process_onboarding_intelligence_task = instrument_task(process_onboarding_intelligence_task)
 _store_memories_batch = instrument_task(store_memories_batch)
 _cleanup_stuck_personalization = instrument_task(cleanup_stuck_personalization)
 _sweep_idle_sandboxes = instrument_task(sweep_idle_sandboxes)
 _prune_inactive_sessions = instrument_task(prune_inactive_sessions)
+_execute_tracked_todo = instrument_task(execute_tracked_todo)
+_safety_net_check_orphaned_todos = instrument_task(safety_net_check_orphaned_todos)
+_maintenance_sweep_tracked_todos = instrument_task(maintenance_sweep_tracked_todos)
 
 WorkerSettings.functions = [
     _process_reminder,
@@ -45,11 +53,12 @@ WorkerSettings.functions = [
     _regenerate_workflow_steps,
     _generate_workflow_steps,
     _process_gmail_emails_to_memory,
-    _process_personalization_task,
+    _process_onboarding_intelligence_task,
     _store_memories_batch,
     _cleanup_stuck_personalization,
     _sweep_idle_sandboxes,
     _prune_inactive_sessions,
+    _execute_tracked_todo,
 ]
 
 WorkerSettings.cron_jobs = [
@@ -79,6 +88,13 @@ WorkerSettings.cron_jobs = [
         _prune_inactive_sessions,
         hour=3,  # Daily at 03:00 UTC
         minute=0,
+        second=0,
+    ),
+    cron(_safety_net_check_orphaned_todos, minute={0, 30}, second=0),
+    cron(
+        _maintenance_sweep_tracked_todos,
+        hour={0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22},
+        minute=15,
         second=0,
     ),
 ]

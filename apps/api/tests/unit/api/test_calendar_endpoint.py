@@ -11,8 +11,8 @@ can reach the endpoint logic.
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 from tests.conftest import FAKE_USER
 
@@ -22,9 +22,7 @@ USER_ID = FAKE_USER["user_id"]
 # All calendar endpoints go through require_integration("calendar") which
 # calls check_integration_status.  We patch it globally for this module so
 # every request reaches the actual endpoint handler.
-INTEGRATION_PATCH = (
-    "app.api.v1.dependencies.google_scope_dependencies.check_integration_status"
-)
+INTEGRATION_PATCH = "app.api.v1.dependencies.google_scope_dependencies.check_integration_status"
 SVC_PATCH = "app.api.v1.endpoints.calendar.calendar_service"
 DELETE_PATCH = "app.api.v1.endpoints.calendar.delete_calendar_event"
 UPDATE_PATCH = "app.api.v1.endpoints.calendar.update_calendar_event"
@@ -45,9 +43,7 @@ class TestGetCalendarList:
             # token patch removed (composio proxy migration)
             patch(SVC_PATCH) as mock_svc,
         ):
-            mock_svc.list_calendars.return_value = [
-                {"id": "primary", "summary": "Main Calendar"}
-            ]
+            mock_svc.list_calendars.return_value = [{"id": "primary", "summary": "Main Calendar"}]
             resp = await client.get(f"{API}/calendar/list")
         assert resp.status_code == 200
         data = resp.json()
@@ -117,9 +113,7 @@ class TestQueryEvents:
             )
         assert resp.status_code == 200
 
-    async def test_query_events_service_error_returns_500(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_query_events_service_error_returns_500(self, client: AsyncClient) -> None:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
@@ -175,9 +169,7 @@ class TestGetEvents:
             )
         assert resp.status_code == 200
 
-    async def test_get_events_with_selected_calendars(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_get_events_with_selected_calendars(self, client: AsyncClient) -> None:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
@@ -190,9 +182,7 @@ class TestGetEvents:
             )
         assert resp.status_code == 200
 
-    async def test_get_events_service_error_returns_500(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_get_events_service_error_returns_500(self, client: AsyncClient) -> None:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
@@ -288,9 +278,7 @@ class TestCreateEvent:
         assert resp.status_code == 200
         assert resp.json()["id"] == "ev-new"
 
-    async def test_create_event_service_error_returns_500(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_create_event_service_error_returns_500(self, client: AsyncClient) -> None:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
@@ -341,9 +329,7 @@ class TestDeleteEvent:
             )
         assert resp.status_code == 200
 
-    async def test_delete_event_service_error_returns_500(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_delete_event_service_error_returns_500(self, client: AsyncClient) -> None:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
@@ -387,9 +373,7 @@ class TestUpdateEvent:
         assert resp.status_code == 200
         assert resp.json()["summary"] == "Updated"
 
-    async def test_update_event_service_error_returns_500(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_update_event_service_error_returns_500(self, client: AsyncClient) -> None:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
@@ -430,9 +414,7 @@ class TestGetCalendarPreferences:
         assert resp.status_code == 200
         assert resp.json()["selected_calendars"] == ["primary"]
 
-    async def test_get_preferences_service_error_returns_500(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_get_preferences_service_error_returns_500(self, client: AsyncClient) -> None:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             patch(SVC_PATCH) as mock_svc,
@@ -469,16 +451,12 @@ class TestUpdateCalendarPreferences:
             )
         assert resp.status_code == 200
 
-    async def test_update_preferences_service_error_returns_500(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_update_preferences_service_error_returns_500(self, client: AsyncClient) -> None:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             patch(SVC_PATCH) as mock_svc,
         ):
-            mock_svc.update_user_calendar_preferences.side_effect = Exception(
-                "DB error"
-            )
+            mock_svc.update_user_calendar_preferences.side_effect = Exception("DB error")
             resp = await client.put(
                 f"{API}/calendar/preferences",
                 json={"selected_calendars": ["primary"]},
@@ -559,9 +537,7 @@ class TestBatchCreateEvents:
         assert len(data["successful"]) == 1
         assert len(data["failed"]) == 1
 
-    async def test_batch_create_per_event_failure_does_not_500(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_batch_create_per_event_failure_does_not_500(self, client: AsyncClient) -> None:
         # Per-event failures are recorded in results["failed"] and the endpoint
         # still returns 200. The outer 500 path is only reachable when the
         # per-event loop setup fails — no longer testable now that token

@@ -17,7 +17,7 @@ from app.services.storage.juicefs import (
     write_skill_file,
 )
 from app.services.storage.metrics import (
-    FS_OPS,
+    FsOps,
     add_fs_bytes,
     flush_fs_metrics,
     fs_timer,
@@ -42,7 +42,7 @@ from app.services.storage.sessions import (
 
 __all__ = [
     "ArtifactInfo",
-    "FS_OPS",
+    "FsOps",
     "JuiceFSUnavailable",
     "SAFE_PATH_ID_PATTERN",
     "add_fs_bytes",

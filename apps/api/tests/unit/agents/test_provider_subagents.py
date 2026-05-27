@@ -114,9 +114,7 @@ def _make_subagent(
 
 # Shared mock patches
 _BASE_PATCHES = {
-    "app.agents.core.subagents.provider_subagents.init_llm": MagicMock(
-        return_value=MagicMock()
-    ),
+    "app.agents.core.subagents.provider_subagents.init_llm": MagicMock(return_value=MagicMock()),
 }
 
 
@@ -867,9 +865,7 @@ class TestRegisterSubagentProviders:
                 "app.agents.core.subagents.provider_subagents.all_subagents",
                 return_value=(subagent,),
             ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.providers"
-            ) as mock_providers,
+            patch("app.agents.core.subagents.provider_subagents.providers") as mock_providers,
         ):
             count = register_subagent_providers()
 
@@ -905,15 +901,11 @@ class TestRegisterSubagentProviders:
 
         sa1 = _make_subagent(
             integration_id="int1",
-            subagent_config=_make_subagent_config(
-                has_subagent=True, agent_name="agent_1"
-            ),
+            subagent_config=_make_subagent_config(has_subagent=True, agent_name="agent_1"),
         )
         sa2 = _make_subagent(
             integration_id="int2",
-            subagent_config=_make_subagent_config(
-                has_subagent=True, agent_name="agent_2"
-            ),
+            subagent_config=_make_subagent_config(has_subagent=True, agent_name="agent_2"),
         )
 
         with (

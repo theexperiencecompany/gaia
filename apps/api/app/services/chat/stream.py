@@ -12,8 +12,8 @@ on completion, even if the client disconnects mid-stream.
 
 import asyncio
 import contextlib
-import json
 from datetime import datetime
+import json
 from typing import Any
 from uuid import uuid4
 
@@ -82,15 +82,15 @@ class _StreamState:
     """
 
     __slots__ = (
+        "bot_message_id",
         "complete_message",
+        "follow_up_actions",
+        "is_cancelled",
+        "todo_progress_accumulated",
         "tool_data",
         "tool_outputs",
-        "todo_progress_accumulated",
-        "follow_up_actions",
         "usage_metadata",
-        "is_cancelled",
         "user_message_id",
-        "bot_message_id",
     )
 
     def __init__(self) -> None:
@@ -250,7 +250,7 @@ async def _wait_for_http_subscriber(
         return
     try:
         await asyncio.wait_for(start_event.wait(), timeout=5.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         log.warning(f"Stream {stream_id} HTTP subscriber timeout, proceeding anyway")
 
 

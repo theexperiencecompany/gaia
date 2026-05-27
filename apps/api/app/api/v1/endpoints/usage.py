@@ -2,10 +2,11 @@
 Usage tracking API endpoints.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
-from shared.py.wide_events import log
+from fastapi import APIRouter, Depends, HTTPException, Query
+
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.rate_limits import (
     FEATURE_LIMITS,
@@ -18,14 +19,14 @@ from app.decorators.rate_limiting import tiered_limiter
 from app.models.payment_models import PlanType
 from app.services.payments.payment_service import payment_service
 from app.services.usage_service import UsageService
-from fastapi import APIRouter, Depends, HTTPException, Query
+from shared.py.wide_events import log
 
 router = APIRouter(prefix="/usage", tags=["usage"])
 usage_service = UsageService()
 
 
 @router.get("/summary")
-async def get_usage_summary(user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str, Any]:
     """Get real-time usage summary for the current user."""
     log.set(operation="get_usage_summary")
     user_id = user.get("user_id")
@@ -44,25 +45,21 @@ async def get_usage_summary(user: dict = Depends(get_current_user)) -> Dict[str,
         log.set(outcome="success")
         return {
             "user_id": user_id,
-            "plan_type": user_plan.value
-            if hasattr(user_plan, "value")
-            else str(user_plan),
+            "plan_type": user_plan.value if hasattr(user_plan, "value") else str(user_plan),
             "features": features_formatted,
-            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "last_updated": datetime.now(UTC).isoformat(),
         }
     except Exception as e:
-        log.error(f"Error getting usage summary: {str(e)}")
+        log.error(f"Error getting usage summary: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to get usage summary")
 
 
 @router.get("/history")
 async def get_usage_history(
     days: int = Query(default=7, ge=1, le=90, description="Number of days to retrieve"),
-    feature_key: Optional[str] = Query(
-        default=None, description="Specific feature to filter by"
-    ),
+    feature_key: str | None = Query(default=None, description="Specific feature to filter by"),
     user: dict = Depends(get_current_user),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Get usage history for the current user."""
     log.set(operation="get_usage_history", period=f"{days}d")
     user_id = user.get("user_id")
@@ -78,7 +75,7 @@ async def get_usage_history(
 
         formatted_history = []
         for snapshot in history:
-            features_formatted: Dict[str, Dict[str, Any]] = {}
+            features_formatted: dict[str, dict[str, Any]] = {}
             for feature in snapshot.features:
                 key = feature.feature_key
                 if key not in features_formatted:
@@ -108,13 +105,13 @@ async def get_usage_history(
         log.set(outcome="success")
         return formatted_history
     except Exception as e:
-        log.error(f"Error getting usage history: {str(e)}")
+        log.error(f"Error getting usage history: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to get usage history")
 
 
-async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> Dict[str, Any]:
+async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, Any]:
     """Get real-time usage data directly from Redis for all features."""
-    features_formatted: Dict[str, Dict[str, Any]] = {}
+    features_formatted: dict[str, dict[str, Any]] = {}
 
     for feature_key in FEATURE_LIMITS:
         feature_info = get_feature_info(feature_key)

@@ -1,7 +1,8 @@
 """User workspace integration routes."""
 
+from fastapi import APIRouter, Depends, HTTPException
+
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
-from shared.py.wide_events import log
 from app.models.integration_models import (
     UserIntegrationsListResponse as UserIntegrationsListResponseModel,
 )
@@ -12,13 +13,11 @@ from app.schemas.integrations.responses import (
     UserIntegrationsListResponse,
 )
 from app.services.integrations.user_integrations import (
+    add_user_integration as add_user_integration_service,
     get_user_integrations,
     remove_user_integration,
 )
-from app.services.integrations.user_integrations import (
-    add_user_integration as add_user_integration_service,
-)
-from fastapi import APIRouter, Depends, HTTPException
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -30,11 +29,7 @@ async def list_user_integrations(
     try:
         log.set(operation="list_user_integrations", user={"id": user_id})
         result = await get_user_integrations(user_id)
-        log.set(
-            result_count=len(result.integrations)
-            if hasattr(result, "integrations")
-            else 0
-        )
+        log.set(result_count=len(result.integrations) if hasattr(result, "integrations") else 0)
         log.set(outcome="success")
         return result
     except Exception as e:
@@ -53,9 +48,7 @@ async def add_integration_to_workspace(
             integration_id=request.integration_id,
             user={"id": user_id},
         )
-        user_integration = await add_user_integration_service(
-            user_id, request.integration_id
-        )
+        user_integration = await add_user_integration_service(user_id, request.integration_id)
         log.set(outcome="success")
         return AddUserIntegrationResponse(
             message="Integration added to workspace",
@@ -83,9 +76,7 @@ async def remove_integration_from_workspace(
         )
         removed = await remove_user_integration(user_id, integration_id)
         if not removed:
-            raise HTTPException(
-                status_code=404, detail="Integration not found in workspace"
-            )
+            raise HTTPException(status_code=404, detail="Integration not found in workspace")
         log.set(outcome="success")
         return IntegrationSuccessResponse(
             message="Integration removed from workspace",

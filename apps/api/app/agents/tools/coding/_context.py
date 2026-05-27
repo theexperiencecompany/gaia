@@ -12,7 +12,9 @@ from __future__ import annotations
 import posixpath
 from typing import Any
 
-from shared.py.wide_events import log
+from langchain_core.runnables import RunnableConfig
+from langgraph.config import get_stream_writer
+
 from app.agents.workspace.paths import (
     WORKSPACE_ROOT,
     MountRole,
@@ -21,8 +23,7 @@ from app.agents.workspace.paths import (
     is_under_workspace,
     session_dir,
 )
-from langchain_core.runnables import RunnableConfig
-from langgraph.config import get_stream_writer
+from shared.py.wide_events import log
 
 _SESSION_EVENT_KEYS = ("bash_data", "file_data", "artifact_data")
 

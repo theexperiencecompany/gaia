@@ -10,9 +10,9 @@ as flat fields on the Skill document.
 """
 
 import re
-from typing import List, Optional, Tuple
 
 import httpx
+
 from app.agents.skills.models import Skill, SkillSource
 from app.agents.skills.parser import (
     generate_skill_md,
@@ -21,13 +21,13 @@ from app.agents.skills.parser import (
 )
 from app.agents.skills.registry import get_skill, install_skill, uninstall_skill
 from app.agents.skills.utils import GITHUB_API_BASE, get_github_headers
-from shared.py.wide_events import log
 from app.services.storage import (
     JuiceFSUnavailable,
     delete_user_skill,
     ensure_user_skills_dir,
     write_skill_file,
 )
+from shared.py.wide_events import log
 
 
 def _skill_storage_path(user_id: str, name: str) -> str:
@@ -35,7 +35,7 @@ def _skill_storage_path(user_id: str, name: str) -> str:
     return f"/skills/{user_id}/{name}"
 
 
-def _parse_github_url(url: str) -> Tuple[str, str, Optional[str]]:
+def _parse_github_url(url: str) -> tuple[str, str, str | None]:
     """Parse a GitHub URL or shorthand into owner, repo, and optional path.
 
     Accepts:
@@ -79,7 +79,7 @@ async def _fetch_github_contents(
     path: str,
     client: httpx.AsyncClient,
     branch: str = "main",
-) -> List[dict]:
+) -> list[dict]:
     """Fetch directory contents from GitHub API.
 
     Returns list of file info dicts with 'name', 'path', 'type', 'download_url'.
@@ -91,9 +91,7 @@ async def _fetch_github_contents(
 
     if resp.status_code == 404:
         if branch == "main":
-            return await _fetch_github_contents(
-                owner, repo, path, client=client, branch="master"
-            )
+            return await _fetch_github_contents(owner, repo, path, client=client, branch="master")
         raise ValueError(f"Path not found: {owner}/{repo}/{path}")
 
     if resp.status_code == 403:
@@ -120,8 +118,8 @@ async def _fetch_file_content(download_url: str, client: httpx.AsyncClient) -> s
 async def install_from_github(
     user_id: str,
     repo_url: str,
-    skill_path: Optional[str] = None,
-    target_override: Optional[str] = None,
+    skill_path: str | None = None,
+    target_override: str | None = None,
 ) -> Skill:
     """Install a skill from a GitHub repository.
 
@@ -183,9 +181,7 @@ async def install_from_github(
             )
 
         # Download SKILL.md
-        skill_md_content = await _fetch_file_content(
-            skill_md_entry["download_url"], client=client
-        )
+        skill_md_content = await _fetch_file_content(skill_md_entry["download_url"], client=client)
 
         # Validate
         errors = validate_skill_content(skill_md_content)
@@ -202,7 +198,7 @@ async def install_from_github(
         storage_path = _skill_storage_path(user_id, metadata.name)
 
         await ensure_user_skills_dir(user_id)
-        file_list: List[str] = []
+        file_list: list[str] = []
 
         # Write body-only SKILL.md to JuiceFS (metadata lives in MongoDB)
         await write_skill_file(user_id, metadata.name, "SKILL.md", body)
@@ -250,8 +246,8 @@ async def _download_github_dir(
     owner: str,
     repo: str,
     remote_path: str,
-    contents: List[dict],
-    file_list: List[str],
+    contents: list[dict],
+    file_list: list[str],
     client: httpx.AsyncClient,
 ) -> None:
     """Recursively download GitHub directory contents into the user's skill dir."""
@@ -269,9 +265,7 @@ async def _download_github_dir(
             file_list.append(relative_path)
 
         elif entry_type == "dir":
-            sub_contents = await _fetch_github_contents(
-                owner, repo, entry["path"], client=client
-            )
+            sub_contents = await _fetch_github_contents(owner, repo, entry["path"], client=client)
             await _download_github_dir(
                 user_id=user_id,
                 skill_name=skill_name,
@@ -290,7 +284,7 @@ async def install_from_inline(
     description: str,
     instructions: str,
     target: str = "executor",
-    extra_metadata: Optional[dict[str, str]] = None,
+    extra_metadata: dict[str, str] | None = None,
 ) -> Skill:
     """Create and install a skill from inline components.
 

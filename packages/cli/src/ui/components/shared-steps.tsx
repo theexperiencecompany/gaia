@@ -5,7 +5,7 @@ import type { PortCheckResult } from "../../lib/prerequisites.js";
 import { THEME_COLOR } from "../constants.js";
 
 export const SystemChecksStep: React.FC<{
-  checks: { git: string; docker: string; mise: string };
+  checks: { git: string; docker: string; mise?: string };
 }> = ({ checks }) => (
   <Box
     flexDirection="column"
@@ -23,10 +23,12 @@ export const SystemChecksStep: React.FC<{
         label="Docker"
         status={checks.docker as "pending" | "success" | "error" | "missing"}
       />
-      <CheckItem
-        label="Mise"
-        status={checks.mise as "pending" | "success" | "error" | "missing"}
-      />
+      {checks.mise && (
+        <CheckItem
+          label="Mise"
+          status={checks.mise as "pending" | "success" | "error" | "missing"}
+        />
+      )}
     </Box>
   </Box>
 );

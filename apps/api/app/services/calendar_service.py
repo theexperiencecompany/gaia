@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Union
 
-from shared.py.wide_events import log
+from fastapi import HTTPException
+
 from app.db.mongodb.collections import get_sync_collection
 from app.models.calendar_models import (
     EventCreateRequest,
@@ -11,7 +12,7 @@ from app.models.calendar_models import (
 )
 from app.services.composio.proxy_client import proxy_request_sync
 from app.utils.errors import AppError
-from fastapi import HTTPException
+from shared.py.wide_events import log
 
 CALENDAR_TOOLKIT = "GOOGLECALENDAR"
 CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
@@ -25,8 +26,8 @@ def _proxy(
     *,
     endpoint: str,
     method: str,
-    body: Optional[Dict[str, Any]] = None,
-    query: Optional[Dict[str, Any]] = None,
+    body: dict[str, Any] | None = None,
+    query: dict[str, Any] | None = None,
 ) -> Any:
     """Wrapper that converts Composio proxy errors to FastAPI HTTPException.
 
@@ -74,7 +75,7 @@ def fetch_calendar_list(user_id: str, short: bool = False) -> Any:
     return data
 
 
-def filter_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def filter_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Filter out birthdays and events missing a valid start time."""
     return [
         event
@@ -88,13 +89,13 @@ def filter_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def fetch_calendar_events(
     calendar_id: str,
     user_id: str,
-    page_token: Optional[str] = None,
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
+    page_token: str | None = None,
+    time_min: str | None = None,
+    time_max: str | None = None,
     max_results: int = 20,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Fetch events for a specific calendar."""
-    query: Dict[str, Any] = {
+    query: dict[str, Any] = {
         "maxResults": max_results,
         "singleEvents": "true",
         "orderBy": "startTime",
@@ -117,13 +118,13 @@ def fetch_calendar_events(
 def fetch_all_calendar_events(
     calendar_id: str,
     user_id: str,
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
+    time_min: str | None = None,
+    time_max: str | None = None,
     max_per_page: int = 250,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Fetch all events from a calendar within a date range, handling pagination."""
-    all_items: List[Dict[str, Any]] = []
-    next_page_token: Optional[str] = None
+    all_items: list[dict[str, Any]] = []
+    next_page_token: str | None = None
     page_count = 0
     max_pages = 20
 
@@ -166,7 +167,7 @@ def fetch_all_calendar_events(
 
 def list_calendars(
     user_id: str, short: bool = False
-) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+) -> Union[list[dict[str, Any]], dict[str, Any]]:
     """Retrieve the user's calendar list."""
     return fetch_calendar_list(user_id, short)
 
@@ -176,9 +177,7 @@ def initialize_calendar_preferences(user_id: str) -> None:
     try:
         existing_preferences = calendars_collection.find_one({"user_id": user_id})
         if existing_preferences and existing_preferences.get("selected_calendars"):
-            log.info(
-                f"User {user_id} already has calendar preferences, skipping initialization"
-            )
+            log.info(f"User {user_id} already has calendar preferences, skipping initialization")
             return
 
         calendar_data = fetch_calendar_list(user_id)
@@ -210,12 +209,12 @@ def initialize_calendar_preferences(user_id: str) -> None:
 
 def get_calendar_metadata_map(
     user_id: str,
-) -> tuple[Dict[str, str], Dict[str, str]]:
+) -> tuple[dict[str, str], dict[str, str]]:
     """Fetch calendar list and return color/name mappings."""
     calendars = list_calendars(user_id=user_id, short=True)
 
-    color_map: Dict[str, str] = {}
-    name_map: Dict[str, str] = {}
+    color_map: dict[str, str] = {}
+    name_map: dict[str, str] = {}
 
     if calendars and isinstance(calendars, list):
         for cal in calendars:
@@ -229,10 +228,10 @@ def get_calendar_metadata_map(
 
 
 def format_event_for_frontend(
-    event: Dict[str, Any],
-    calendar_color_map: Dict[str, str],
-    calendar_name_map: Dict[str, str],
-) -> Dict[str, Any]:
+    event: dict[str, Any],
+    calendar_color_map: dict[str, str],
+    calendar_name_map: dict[str, str],
+) -> dict[str, Any]:
     """Format a calendar event for frontend display."""
     start_time = ""
     end_time = ""
@@ -260,9 +259,9 @@ def format_event_for_frontend(
     }
 
 
-def extract_unique_dates(calendar_options: List[Dict[str, Any]]) -> Dict[str, str]:
+def extract_unique_dates(calendar_options: list[dict[str, Any]]) -> dict[str, str]:
     """Extract unique dates with timezone offsets from calendar options."""
-    event_dates_info: Dict[str, str] = {}
+    event_dates_info: dict[str, str] = {}
     for option in calendar_options:
         start_time = option.get("start", "")
         if start_time:
@@ -281,11 +280,11 @@ def extract_unique_dates(calendar_options: List[Dict[str, Any]]) -> Dict[str, st
 
 
 def fetch_same_day_events(
-    event_dates_info: Dict[str, str],
+    event_dates_info: dict[str, str],
     user_id: str,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Fetch events for each unique date."""
-    same_day_events: List[Dict[str, Any]] = []
+    same_day_events: list[dict[str, Any]] = []
     for event_date, tz_offset in event_dates_info.items():
         time_min = f"{event_date}T00:00:00{tz_offset}"
         time_max = f"{event_date}T23:59:59{tz_offset}"
@@ -304,9 +303,9 @@ def fetch_same_day_events(
 
 
 def enrich_calendar_options_with_metadata(
-    calendar_options: List[Dict[str, Any]],
+    calendar_options: list[dict[str, Any]],
     user_id: str,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Add calendar colors, names, and same-day events to calendar options."""
     color_map, name_map = get_calendar_metadata_map(user_id)
 
@@ -330,18 +329,18 @@ def enrich_calendar_options_with_metadata(
 
 def get_calendar_events(
     user_id: str,
-    page_token: Optional[str] = None,
-    selected_calendars: Optional[List[str]] = None,
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
-    max_results: Optional[int] = 20,
+    page_token: str | None = None,
+    selected_calendars: list[str] | None = None,
+    time_min: str | None = None,
+    time_max: str | None = None,
+    max_results: int | None = 20,
     fetch_all: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get events from the user's selected calendars with date-based pagination."""
     calendar_data = fetch_calendar_list(user_id)
     calendars = calendar_data.get("items", [])
 
-    user_selected_calendars: List[str] = []
+    user_selected_calendars: list[str] = []
     if selected_calendars is not None:
         user_selected_calendars = selected_calendars
         calendars_collection.update_one(
@@ -361,23 +360,17 @@ def get_calendar_events(
                 upsert=True,
             )
 
-    selected_cal_objs = [
-        cal for cal in calendars if cal["id"] in user_selected_calendars
-    ]
+    selected_cal_objs = [cal for cal in calendars if cal["id"] in user_selected_calendars]
 
-    all_events: List[Dict[str, Any]] = []
+    all_events: list[dict[str, Any]] = []
     seen_event_ids: set = set()
-    calendars_truncated: List[str] = []
+    calendars_truncated: list[str] = []
 
     if fetch_all or not max_results:
-        log.info(
-            f"Fetching ALL events for {len(selected_cal_objs)} calendars in date range"
-        )
+        log.info(f"Fetching ALL events for {len(selected_cal_objs)} calendars in date range")
         for cal in selected_cal_objs:
             try:
-                result = fetch_all_calendar_events(
-                    cal["id"], user_id, time_min, time_max
-                )
+                result = fetch_all_calendar_events(cal["id"], user_id, time_min, time_max)
                 events = result.get("items", [])
 
                 if result.get("truncated", False):
@@ -418,9 +411,7 @@ def get_calendar_events(
                 log.error(f"Error fetching events for calendar {cal['id']}: {e}")
 
     all_events.sort(
-        key=lambda e: (
-            e.get("start", {}).get("dateTime") or e.get("start", {}).get("date") or ""
-        )
+        key=lambda e: e.get("start", {}).get("dateTime") or e.get("start", {}).get("date") or ""
     )
 
     log.set(
@@ -431,9 +422,7 @@ def get_calendar_events(
             "calendars_truncated": len(calendars_truncated),
         }
     )
-    log.info(
-        f"Fetched {len(all_events)} total events from {len(selected_cal_objs)} calendars"
-    )
+    log.info(f"Fetched {len(all_events)} total events from {len(selected_cal_objs)} calendars")
 
     return {
         "events": all_events,
@@ -446,14 +435,12 @@ def get_calendar_events(
 def get_calendar_events_by_id(
     calendar_id: str,
     user_id: str,
-    page_token: Optional[str] = None,
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
-) -> Dict[str, Any]:
+    page_token: str | None = None,
+    time_min: str | None = None,
+    time_max: str | None = None,
+) -> dict[str, Any]:
     """Fetch events for a specific calendar by its ID."""
-    events_data = fetch_calendar_events(
-        calendar_id, user_id, page_token, time_min, time_max
-    )
+    events_data = fetch_calendar_events(calendar_id, user_id, page_token, time_min, time_max)
 
     events = filter_events(events_data.get("items", []))
     return {
@@ -465,7 +452,7 @@ def get_calendar_events_by_id(
 def find_event_for_action(
     user_id: str,
     event_lookup_data: EventLookupRequest,
-) -> Optional[dict]:
+) -> dict | None:
     """Find a specific event by query or by (calendar_id, event_id)."""
     if event_lookup_data.query:
         search_results = search_calendar_events_native(
@@ -495,25 +482,21 @@ def find_event_for_action(
 def create_calendar_event(
     event: EventCreateRequest,
     user_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create a new calendar event using the Google Calendar API."""
     calendar_id = event.calendar_id or "primary"
 
-    event_payload: Dict[str, Any] = {
+    event_payload: dict[str, Any] = {
         "summary": event.summary,
         "description": event.description,
     }
 
     if event.is_all_day:
         if event.start and event.end:
-            start_date = (
-                event.start.split("T")[0] if "T" in event.start else event.start
-            )
+            start_date = event.start.split("T")[0] if "T" in event.start else event.start
             end_date = event.end.split("T")[0] if "T" in event.end else event.end
         elif event.start:
-            start_date = (
-                event.start.split("T")[0] if "T" in event.start else event.start
-            )
+            start_date = event.start.split("T")[0] if "T" in event.start else event.start
             start_dt = datetime.strptime(start_date, "%Y-%m-%d")
             end_date = (start_dt + timedelta(days=1)).strftime("%Y-%m-%d")
         else:
@@ -555,9 +538,7 @@ def create_calendar_event(
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid datetime format: {str(e)}"
-            )
+            raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}")
 
     if event.recurrence:
         try:
@@ -572,14 +553,12 @@ def create_calendar_event(
                     event_payload["end"]["timeZone"] = timezone
 
         except Exception as e:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid recurrence rule format: {str(e)}"
-            )
+            raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
 
     if event.attendees:
         event_payload["attendees"] = [{"email": e} for e in event.attendees]
 
-    query_params: Dict[str, Any] = {"sendUpdates": "all"} if event.attendees else {}
+    query_params: dict[str, Any] = {"sendUpdates": "all"} if event.attendees else {}
     if event.create_meeting_room:
         event_payload["conferenceData"] = {
             "createRequest": {
@@ -608,7 +587,7 @@ def create_calendar_event(
     return response_data
 
 
-def get_user_calendar_preferences(user_id: str) -> Dict[str, List[str]]:
+def get_user_calendar_preferences(user_id: str) -> dict[str, list[str]]:
     """Retrieve the user's selected calendar preferences from the database."""
     preferences = calendars_collection.find_one({"user_id": user_id})
     if preferences and "selected_calendars" in preferences:
@@ -616,9 +595,7 @@ def get_user_calendar_preferences(user_id: str) -> Dict[str, List[str]]:
     raise HTTPException(status_code=404, detail="Calendar preferences not found")
 
 
-def update_user_calendar_preferences(
-    user_id: str, selected_calendars: List[str]
-) -> Dict[str, str]:
+def update_user_calendar_preferences(user_id: str, selected_calendars: list[str]) -> dict[str, str]:
     """Update the user's selected calendar preferences in the database."""
     result = calendars_collection.update_one(
         {"user_id": user_id},
@@ -633,14 +610,14 @@ def update_user_calendar_preferences(
 def search_calendar_events_native(
     query: str,
     user_id: str,
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
-) -> Dict[str, Any]:
+    time_min: str | None = None,
+    time_max: str | None = None,
+) -> dict[str, Any]:
     """Search calendar events using Google Calendar API's native search."""
     calendar_list_data = fetch_calendar_list(user_id)
     calendars = calendar_list_data.get("items", [])
 
-    user_selected_calendars: List[str] = []
+    user_selected_calendars: list[str] = []
     preferences = calendars_collection.find_one({"user_id": user_id})
     if preferences and preferences.get("selected_calendars"):
         user_selected_calendars = preferences["selected_calendars"]
@@ -651,9 +628,7 @@ def search_calendar_events_native(
             f"No preferences found, defaulting to all calendars: {len(user_selected_calendars)} calendars"
         )
 
-    selected_cal_objs = [
-        cal for cal in calendars if cal["id"] in user_selected_calendars
-    ]
+    selected_cal_objs = [cal for cal in calendars if cal["id"] in user_selected_calendars]
 
     log.info(
         f"Searching in {len(selected_cal_objs)} calendars: {[cal['summary'] for cal in selected_cal_objs]}"
@@ -663,18 +638,14 @@ def search_calendar_events_native(
         log.info("No selected calendars found, searching all available calendars")
         selected_cal_objs = calendars
 
-    all_matching_events: List[Dict[str, Any]] = []
+    all_matching_events: list[dict[str, Any]] = []
     total_events_searched = 0
 
     for cal in selected_cal_objs:
         try:
-            result = search_events_in_calendar(
-                cal["id"], query, user_id, time_min, time_max
-            )
+            result = search_events_in_calendar(cal["id"], query, user_id, time_min, time_max)
             events = result.get("items", [])
-            log.info(
-                f"Found {len(events)} events in calendar '{cal.get('summary', cal['id'])}'"
-            )
+            log.info(f"Found {len(events)} events in calendar '{cal.get('summary', cal['id'])}'")
 
             for event in events:
                 event["calendarId"] = cal["id"]
@@ -697,9 +668,7 @@ def search_calendar_events_native(
 
         for cal in calendars:
             try:
-                result = search_events_in_calendar(
-                    cal["id"], query, user_id, time_min, time_max
-                )
+                result = search_events_in_calendar(cal["id"], query, user_id, time_min, time_max)
                 events = result.get("items", [])
 
                 if events:
@@ -730,11 +699,11 @@ def search_events_in_calendar(
     calendar_id: str,
     query: str,
     user_id: str,
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
-) -> Dict[str, Any]:
+    time_min: str | None = None,
+    time_max: str | None = None,
+) -> dict[str, Any]:
     """Search events in a specific calendar using Google Calendar API's native search."""
-    params: Dict[str, Any] = {
+    params: dict[str, Any] = {
         "q": query,
         "maxResults": 50,
         "singleEvents": "true",
@@ -745,9 +714,7 @@ def search_events_in_calendar(
     if time_max:
         params["timeMax"] = time_max
 
-    log.info(
-        f"Searching calendar {calendar_id} with query '{query}' and params: {params}"
-    )
+    log.info(f"Searching calendar {calendar_id} with query '{query}' and params: {params}")
     result = _proxy(
         user_id,
         endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
@@ -762,7 +729,7 @@ def search_events_in_calendar(
 def delete_calendar_event(
     event: EventDeleteRequest,
     user_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Delete a calendar event using the Google Calendar API."""
     calendar_id = event.calendar_id or "primary"
 
@@ -775,16 +742,14 @@ def delete_calendar_event(
         return {"success": True, "message": "Event deleted successfully"}
     except HTTPException as exc:
         if exc.status_code == 404:
-            raise HTTPException(
-                status_code=404, detail="Event not found or already deleted"
-            )
+            raise HTTPException(status_code=404, detail="Event not found or already deleted")
         raise
 
 
 def update_calendar_event(
     event: EventUpdateRequest,
     user_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Update a calendar event using the Google Calendar API."""
     calendar_id = event.calendar_id or "primary"
     endpoint = f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events/{event.event_id}"
@@ -793,16 +758,12 @@ def update_calendar_event(
         existing_event = _proxy(user_id, endpoint=endpoint, method="GET")
     except HTTPException as exc:
         if exc.status_code == 404:
-            raise HTTPException(
-                status_code=404, detail="Event not found or access denied"
-            )
+            raise HTTPException(status_code=404, detail="Event not found or access denied")
         raise
 
-    event_payload: Dict[str, Any] = {
+    event_payload: dict[str, Any] = {
         "summary": (
-            event.summary
-            if event.summary is not None
-            else existing_event.get("summary", "")
+            event.summary if event.summary is not None else existing_event.get("summary", "")
         ),
         "description": (
             event.description
@@ -817,9 +778,7 @@ def update_calendar_event(
             event_payload["recurrence"] = recurrence_rules
         except Exception as e:
             log.error(f"Error processing recurrence rules: {e}")
-            raise HTTPException(
-                status_code=400, detail=f"Invalid recurrence rule format: {str(e)}"
-            )
+            raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
     elif "recurrence" in existing_event:
         event_payload["recurrence"] = existing_event.get("recurrence", [])
 
@@ -832,9 +791,7 @@ def update_calendar_event(
 
         if is_all_day:
             if event.start is not None:
-                start_date = (
-                    event.start.split("T")[0] if "T" in event.start else event.start
-                )
+                start_date = event.start.split("T")[0] if "T" in event.start else event.start
             else:
                 start_date = existing_event.get("start", {}).get("date", "")
 
@@ -857,7 +814,7 @@ def update_calendar_event(
                 else:
                     end_time = existing_event.get("end", {}).get("dateTime", "")
 
-                timezone: Optional[str] = None
+                timezone: str | None = None
                 if event.timezone:
                     timezone = event.timezone
                 elif hasattr(event, "timezone_offset") and event.timezone_offset:
@@ -880,8 +837,8 @@ def update_calendar_event(
                 ):
                     end_time = end_time + "Z"
 
-                start_payload: Dict[str, str] = {"dateTime": start_time}
-                end_payload: Dict[str, str] = {"dateTime": end_time}
+                start_payload: dict[str, str] = {"dateTime": start_time}
+                end_payload: dict[str, str] = {"dateTime": end_time}
 
                 if timezone:
                     start_payload["timeZone"] = timezone
@@ -890,22 +847,16 @@ def update_calendar_event(
                 event_payload["start"] = start_payload
                 event_payload["end"] = end_payload
             except Exception as e:
-                raise HTTPException(
-                    status_code=400, detail=f"Invalid datetime format: {str(e)}"
-                )
+                raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}")
     else:
         event_payload["start"] = existing_event.get("start", {})
         event_payload["end"] = existing_event.get("end", {})
 
     try:
-        updated_event = _proxy(
-            user_id, endpoint=endpoint, method="PUT", body=event_payload
-        )
+        updated_event = _proxy(user_id, endpoint=endpoint, method="PUT", body=event_payload)
     except HTTPException as exc:
         if exc.status_code == 404:
-            raise HTTPException(
-                status_code=404, detail="Event not found or access denied"
-            )
+            raise HTTPException(status_code=404, detail="Event not found or access denied")
         raise
 
     if isinstance(updated_event, dict):

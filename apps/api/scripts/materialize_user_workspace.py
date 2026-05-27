@@ -33,8 +33,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from collections.abc import Iterable
 import sys
-from typing import Iterable
 
 from app.agents.workspace.skill_loader import (
     integration_subagent_ids,

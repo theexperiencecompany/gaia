@@ -7,11 +7,12 @@ while preserving all other message types in their original order.
 
 from typing import TypeVar
 
-from shared.py.wide_events import log
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import MessagesState
 from langgraph.store.base import BaseStore
+
+from shared.py.wide_events import log
 
 T = TypeVar("T", bound=MessagesState)
 
@@ -49,9 +50,7 @@ def filter_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> 
             if isinstance(msg, AIMessage) and msg.tool_calls:
                 # Filter tool_calls to only include those with responses
                 answered_tool_calls = [
-                    tc
-                    for tc in msg.tool_calls
-                    if tc.get("id") in answered_tool_call_ids
+                    tc for tc in msg.tool_calls if tc.get("id") in answered_tool_call_ids
                 ]
 
                 # Create a new AI message with filtered tool calls

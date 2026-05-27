@@ -1,7 +1,7 @@
 """Unit tests for app.agents.tools.todo_tool."""
 
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,12 +30,12 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.todo_tool"
 
 
-def _make_config(user_id: str = FAKE_USER_ID) -> Dict[str, Any]:
+def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
     """Return a minimal RunnableConfig-like dict with metadata.user_id."""
     return {"metadata": {"user_id": user_id}}
 
 
-def _make_config_no_user() -> Dict[str, Any]:
+def _make_config_no_user() -> dict[str, Any]:
     """Config with no user_id to trigger auth errors."""
     return {"metadata": {}}
 
@@ -57,8 +57,8 @@ def _make_todo_response(**overrides: Any) -> MagicMock:
         "subtasks": [],
         "workflow_id": None,
         "workflow_categories": [],
-        "created_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
     }
     defaults.update(overrides)
     mock = MagicMock()
@@ -76,8 +76,8 @@ def _make_project_response(**overrides: Any) -> MagicMock:
         "name": "My Project",
         "description": "A project",
         "color": "#FF5733",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
     }
     defaults.update(overrides)
     mock = MagicMock()
@@ -1303,7 +1303,7 @@ class TestGetTodosSummary:
         mock_writer_factory: MagicMock,
     ) -> None:
         mock_writer_factory.return_value = _writer_mock()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         todo = _make_todo_response(
             due_date=now,
             completed=False,

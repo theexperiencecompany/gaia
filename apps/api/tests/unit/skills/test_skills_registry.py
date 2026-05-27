@@ -1,17 +1,17 @@
 """Unit tests for the skills registry CRUD operations."""
 
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic import ValidationError
+import pytest
 
 from app.agents.skills.models import (
     Skill,
     SkillMetadata,
     SkillSource,
-    _validate_skill_name,
     _validate_skill_description,
+    _validate_skill_name,
 )
 from app.agents.skills.registry import (
     _doc_to_skill,
@@ -38,7 +38,7 @@ def sample_skill():
         vfs_path="/skills/my-skill",
         source=SkillSource.GITHUB,
         enabled=True,
-        installed_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        installed_at=datetime(2024, 1, 1, tzinfo=UTC),
     )
 
 
@@ -108,10 +108,7 @@ class TestSkillNameValidation:
 @pytest.mark.unit
 class TestSkillDescriptionValidation:
     def test_valid_description(self):
-        assert (
-            _validate_skill_description("Does something useful")
-            == "Does something useful"
-        )
+        assert _validate_skill_description("Does something useful") == "Does something useful"
 
     def test_rejects_empty(self):
         with pytest.raises(ValueError, match="must not be empty"):
@@ -247,7 +244,7 @@ class TestDocToSkill:
             "vfs_path": "/p",
             "source": "inline",
             "enabled": True,
-            "installed_at": datetime(2024, 6, 1, tzinfo=timezone.utc),
+            "installed_at": datetime(2024, 6, 1, tzinfo=UTC),
             "updated_at": None,
             "license": None,
             "compatibility": None,
@@ -468,9 +465,7 @@ class TestGetSkillsForAgent:
         ):
             yield
 
-    def _make_doc(
-        self, skill_id: str, user_id: str, enabled: bool, agent_name: str
-    ) -> dict:
+    def _make_doc(self, skill_id: str, user_id: str, enabled: bool, agent_name: str) -> dict:
         return {
             "_id": skill_id,
             "user_id": user_id,

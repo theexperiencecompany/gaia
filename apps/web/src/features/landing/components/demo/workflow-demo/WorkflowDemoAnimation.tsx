@@ -234,12 +234,7 @@ export default function WorkflowDemoAnimation() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.3, ease: wfEase }}
-                style={
-                  {
-                    backgroundColor: "#111111",
-                    "--color-primary-bg": "#111111",
-                  } as React.CSSProperties
-                }
+                style={{ backgroundColor: "#111111" }}
                 className="mx-auto flex h-[calc(75%)] w-full max-w-xl flex-col rounded-3xl my-4 scale-120"
               >
                 {/* Scrollable messages area */}

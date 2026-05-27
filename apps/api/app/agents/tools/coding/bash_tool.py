@@ -6,12 +6,13 @@ import asyncio
 import base64
 import contextlib
 import time
-import uuid
 from typing import Annotated
+import uuid
 
+from langchain_core.runnables.config import RunnableConfig
+from langchain_core.tools import tool
 from prometheus_client import Counter
-from shared.py.logging import get_contextual_logger
-from shared.py.wide_events import log
+
 from app.agents.tools.coding._context import (
     get_session_id,
     get_user_id,
@@ -31,12 +32,12 @@ from app.agents.workspace.paths import (
 from app.decorators import with_doc, with_rate_limiting
 from app.services.artifact_events import publish_artifact_event, upsert_event
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
-from app.services.storage import FS_OPS, ArtifactInfo, fs_timer
+from app.services.storage import ArtifactInfo, FsOps, fs_timer
 from app.services.storage.metrics import _register_once
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
-from langchain_core.runnables.config import RunnableConfig
-from langchain_core.tools import tool
+from shared.py.logging import get_contextual_logger
+from shared.py.wide_events import log
 
 MAX_TIMEOUT_SECONDS = 600
 DEFAULT_TIMEOUT_SECONDS = 120
@@ -151,7 +152,7 @@ async def bash(
     )
 
     try:
-        async with fs_timer(FS_OPS.TOOL_BASH), acquire_sandbox(user_id) as sbx:
+        async with fs_timer(FsOps.TOOL_BASH), acquire_sandbox(user_id) as sbx:
             if use_session_cwd:
                 # Session scratch is created host-side at chat start, but
                 # silent/background runs may reach here first — make it cheap
@@ -170,7 +171,7 @@ async def bash(
             # them in real time; the chat forwarder relays them as SSE during
             # this turn. De-duped downstream by (session_id, path).
             if session_id:
-                async with fs_timer(FS_OPS.TOOL_BASH_PUBLISH):
+                async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
                     await _publish_artifacts(sbx, user_id, session_id)
             return result
     except SandboxAcquisitionError as e:
@@ -354,7 +355,7 @@ async def _run_foreground(
             on_stdout=_on_stdout,
             on_stderr=_on_stderr,
         )
-    except (asyncio.TimeoutError, asyncio.CancelledError):
+    except (TimeoutError, asyncio.CancelledError):
         _record_bash_exit_code(None, timed_out=True)
         raise
     except Exception as e:

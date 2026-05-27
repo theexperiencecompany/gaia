@@ -8,17 +8,18 @@ with the `read` tool.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import json
-from datetime import datetime, timezone
 from typing import Any
 
-from shared.py.wide_events import log
-from app.services.storage import JuiceFSUnavailable, write_session_file
 from langchain.agents.middleware import SummarizationMiddleware
 from langchain.agents.middleware.types import AgentState
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage
 from langgraph.runtime import Runtime
+
+from app.services.storage import JuiceFSUnavailable, write_session_file
+from shared.py.wide_events import log
 
 
 class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
@@ -103,7 +104,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
                 "archive requires 'vfs_session_id' or 'thread_id' in configurable"
             )
 
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         relative_path = f"archives/pre_summary_{timestamp}.json"
         history = self._serialize_messages(messages)
 

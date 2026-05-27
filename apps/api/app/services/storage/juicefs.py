@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 import re
 import shutil
-from pathlib import Path
 
-from shared.py.wide_events import log
 from app.config.settings import settings
-from app.services.storage.metrics import FS_OPS, add_fs_bytes, fs_timer
+from app.services.storage.metrics import FsOps, add_fs_bytes, fs_timer
+from shared.py.wide_events import log
 
 
 class JuiceFSUnavailable(Exception):
@@ -122,9 +122,9 @@ async def write_skill_file(
             target.write_bytes(content)
         return target
 
-    async with fs_timer(FS_OPS.WRITE_SKILL_FILE):
+    async with fs_timer(FsOps.WRITE_SKILL_FILE):
         path = await asyncio.to_thread(_write)
-    add_fs_bytes(FS_OPS.WRITE_SKILL_FILE, _content_size(content))
+    add_fs_bytes(FsOps.WRITE_SKILL_FILE, _content_size(content))
     return path
 
 
@@ -148,9 +148,9 @@ async def write_session_file(
         sandbox_view = f"/workspace/sessions/{conversation_id}/{relative_path}"
         return target, sandbox_view
 
-    async with fs_timer(FS_OPS.WRITE_SESSION_FILE):
+    async with fs_timer(FsOps.WRITE_SESSION_FILE):
         result = await asyncio.to_thread(_write)
-    add_fs_bytes(FS_OPS.WRITE_SESSION_FILE, _content_size(content))
+    add_fs_bytes(FsOps.WRITE_SESSION_FILE, _content_size(content))
     return result
 
 

@@ -8,8 +8,8 @@ future migration can detect old payloads without scanning every key.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 
 SESSION_META_FILENAME = ".meta.json"
@@ -18,7 +18,7 @@ SESSION_META_SCHEMA_VERSION = 1
 
 def now_iso() -> str:
     """ISO-8601 timestamp in UTC. Stable shape for the session meta files."""
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def read_session_meta(meta: Path) -> dict[str, object]:
@@ -59,5 +59,5 @@ def parse_last_active(meta: Path) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed

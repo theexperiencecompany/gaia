@@ -2,7 +2,7 @@
 Reminder-related ARQ tasks.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.services.reminder_service import reminder_scheduler
 from shared.py.wide_events import log, wide_task
@@ -41,7 +41,7 @@ async def cleanup_expired_reminders(ctx: dict) -> str:
         from app.db.mongodb.collections import reminders_collection
 
         log.info("Running cleanup of expired reminders")
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=30)
+        cutoff_date = datetime.now(UTC) - timedelta(days=30)
 
         result = await reminders_collection.delete_many(
             {

@@ -9,7 +9,6 @@ from app.services.workflow.context_extractor import (
     WorkflowContextExtractor,
 )
 
-
 # ---------------------------------------------------------------------------
 # ExtractedContext dataclass
 # ---------------------------------------------------------------------------
@@ -56,9 +55,7 @@ class TestInferCategory:
     @patch("app.services.workflow.context_extractor.get_toolkit_to_integration_map")
     def test_from_tool_prefix(self, mock_map: MagicMock) -> None:
         mock_map.return_value = {"GMAIL": "gmail", "SLACK": "slack"}
-        result = WorkflowContextExtractor._infer_category(
-            "executor", "GMAIL_SEND_EMAIL"
-        )
+        result = WorkflowContextExtractor._infer_category("executor", "GMAIL_SEND_EMAIL")
         assert result == "gmail"
 
     @patch("app.services.workflow.context_extractor.get_toolkit_to_integration_map")
@@ -124,9 +121,7 @@ class TestBuildDescription:
         assert "Message sent successfully" in result
 
     def test_truncates_long_args(self) -> None:
-        result = WorkflowContextExtractor._build_description(
-            "my_tool", {"body": "A" * 50}, ""
-        )
+        result = WorkflowContextExtractor._build_description("my_tool", {"body": "A" * 50}, "")
         assert "..." in result
 
     def test_truncates_long_output(self) -> None:
@@ -378,9 +373,7 @@ class TestExtractFromThread:
                 tool_calls=[{"name": "my_tool", "args": {}, "id": "tc1"}],
             ),
         ]
-        result = await WorkflowContextExtractor.extract_from_thread(
-            "thread1", max_output_chars=10
-        )
+        result = await WorkflowContextExtractor.extract_from_thread("thread1", max_output_chars=10)
         assert result is not None
         # The tool output in description should be truncated
         desc = result.workflow_steps[0]["description"]
@@ -394,14 +387,10 @@ class TestExtractFromThread:
 
 @pytest.mark.asyncio
 class TestFetchMessages:
-    @patch(
-        "app.agents.core.graph_builder.checkpointer_manager.get_checkpointer_manager"
-    )
+    @patch("app.agents.core.graph_builder.checkpointer_manager.get_checkpointer_manager")
     async def test_returns_messages_from_state(self, mock_get_mgr: AsyncMock) -> None:
         mock_cp = AsyncMock()
-        mock_cp.aget = AsyncMock(
-            return_value={"channel_values": {"messages": ["msg1", "msg2"]}}
-        )
+        mock_cp.aget = AsyncMock(return_value={"channel_values": {"messages": ["msg1", "msg2"]}})
         mock_mgr = AsyncMock()
         mock_mgr.get_checkpointer = MagicMock(return_value=mock_cp)
         mock_get_mgr.return_value = mock_mgr
@@ -409,9 +398,7 @@ class TestFetchMessages:
         result = await WorkflowContextExtractor._fetch_messages("thread1")
         assert result == ["msg1", "msg2"]
 
-    @patch(
-        "app.agents.core.graph_builder.checkpointer_manager.get_checkpointer_manager"
-    )
+    @patch("app.agents.core.graph_builder.checkpointer_manager.get_checkpointer_manager")
     async def test_returns_empty_on_no_state(self, mock_get_mgr: AsyncMock) -> None:
         mock_cp = AsyncMock()
         mock_cp.aget = AsyncMock(return_value=None)
@@ -422,12 +409,8 @@ class TestFetchMessages:
         result = await WorkflowContextExtractor._fetch_messages("thread1")
         assert result == []
 
-    @patch(
-        "app.agents.core.graph_builder.checkpointer_manager.get_checkpointer_manager"
-    )
-    async def test_returns_empty_on_no_channel_values(
-        self, mock_get_mgr: AsyncMock
-    ) -> None:
+    @patch("app.agents.core.graph_builder.checkpointer_manager.get_checkpointer_manager")
+    async def test_returns_empty_on_no_channel_values(self, mock_get_mgr: AsyncMock) -> None:
         mock_cp = AsyncMock()
         mock_cp.aget = AsyncMock(return_value={"other": "data"})
         mock_mgr = AsyncMock()

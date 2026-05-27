@@ -8,8 +8,8 @@ parsers reused by both the dispatcher and the legacy ``call_agent_silent`` path
 in ``agent_utils``.
 """
 
+from datetime import UTC, datetime
 import json
-from datetime import datetime, timezone
 from typing import Any
 
 from app.core.stream_manager import stream_manager
@@ -108,8 +108,7 @@ async def process_data_chunk(
 def extract_response_text(chunk: str) -> str:
     """Extract the ``response`` field from a ``data:`` chunk, or empty string."""
     try:
-        if chunk.startswith("data: "):
-            chunk = chunk[6:]
+        chunk = chunk.removeprefix("data: ")
         data = json.loads(chunk)
         return data.get("response", "")
     except (json.JSONDecodeError, KeyError):
@@ -135,7 +134,7 @@ def extract_tool_data(json_str: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
 
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(UTC).isoformat()
 
     other_data: dict[str, Any] = {}
     if data.get("follow_up_actions") is not None:

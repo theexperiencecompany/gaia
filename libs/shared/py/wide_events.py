@@ -23,8 +23,8 @@ log.get() into the final emitted event. For worker tasks use wide_task().
 import contextlib
 import contextvars
 import time
-import uuid
 from typing import Any, TypedDict
+import uuid
 
 from loguru import logger as _loguru
 
@@ -42,9 +42,7 @@ _wide_event: contextvars.ContextVar[dict[str, Any] | None] = contextvars.Context
 _max_level: contextvars.ContextVar[str] = contextvars.ContextVar(
     "wide_event_max_level", default="INFO"
 )
-_trace_id: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "wide_event_trace_id", default=""
-)
+_trace_id: contextvars.ContextVar[str] = contextvars.ContextVar("wide_event_trace_id", default="")
 
 
 def _generate_trace_id() -> str:

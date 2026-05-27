@@ -10,7 +10,6 @@ from app.services.mcp.mcp_tools_store import (
     get_mcp_tools_store,
 )
 
-
 # ---------------------------------------------------------------------------
 # _format_tools
 # ---------------------------------------------------------------------------
@@ -109,9 +108,7 @@ class TestStoreTools:
         "app.services.mcp.mcp_tools_store.integrations_collection",
         new_callable=MagicMock,
     )
-    async def test_store_tools_raises_on_db_error(
-        self, mock_coll: MagicMock, mock_del: AsyncMock
-    ):
+    async def test_store_tools_raises_on_db_error(self, mock_coll: MagicMock, mock_del: AsyncMock):
         mock_coll.update_one = AsyncMock(side_effect=RuntimeError("db error"))
         store = MCPToolsStore()
 
@@ -142,9 +139,7 @@ class TestStoreToolsBatch:
         "app.services.mcp.mcp_tools_store.integrations_collection",
         new_callable=MagicMock,
     )
-    async def test_batch_writes_and_invalidates(
-        self, mock_coll: MagicMock, mock_del: AsyncMock
-    ):
+    async def test_batch_writes_and_invalidates(self, mock_coll: MagicMock, mock_del: AsyncMock):
         mock_coll.bulk_write = AsyncMock()
         store = MCPToolsStore()
         store._refresh_cache = AsyncMock()  # type: ignore[method-assign]
@@ -165,25 +160,19 @@ class TestStoreToolsBatch:
         "app.services.mcp.mcp_tools_store.integrations_collection",
         new_callable=MagicMock,
     )
-    async def test_batch_raises_on_db_error(
-        self, mock_coll: MagicMock, mock_del: AsyncMock
-    ):
+    async def test_batch_raises_on_db_error(self, mock_coll: MagicMock, mock_del: AsyncMock):
         mock_coll.bulk_write = AsyncMock(side_effect=RuntimeError("bulk error"))
         store = MCPToolsStore()
 
         with pytest.raises(RuntimeError, match="bulk error"):
-            await store.store_tools_batch(
-                [("int-1", [{"name": "t", "description": "d"}])]
-            )
+            await store.store_tools_batch([("int-1", [{"name": "t", "description": "d"}])])
 
     @patch("app.services.mcp.mcp_tools_store.delete_cache", new_callable=AsyncMock)
     @patch(
         "app.services.mcp.mcp_tools_store.integrations_collection",
         new_callable=MagicMock,
     )
-    async def test_batch_skips_empty_formatted(
-        self, mock_coll: MagicMock, mock_del: AsyncMock
-    ):
+    async def test_batch_skips_empty_formatted(self, mock_coll: MagicMock, mock_del: AsyncMock):
         mock_coll.bulk_write = AsyncMock()
         store = MCPToolsStore()
         store._refresh_cache = AsyncMock()  # type: ignore[method-assign]
@@ -251,9 +240,7 @@ class TestGetAllMcpTools:
     async def test_returns_cached(
         self, mock_coll: MagicMock, mock_get_cache: AsyncMock, mock_set_cache: AsyncMock
     ):
-        cached_data = {
-            "int-1": {"tools": [{"name": "t"}], "name": "n", "icon_url": "u"}
-        }
+        cached_data = {"int-1": {"tools": [{"name": "t"}], "name": "n", "icon_url": "u"}}
         mock_get_cache.return_value = cached_data
         store = MCPToolsStore()
         result = await store.get_all_mcp_tools()

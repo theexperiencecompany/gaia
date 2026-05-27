@@ -52,10 +52,3 @@ export type {
 
 // Message type using the base conversation message structure
 export type MessageType = ConversationMessage;
-
-// Define the structure for a single conversation
-// This type represents an individual conversation, with a description and an array of messages.
-export type ConversationType = {
-  description: string; // A description or title of the conversation
-  messages: MessageType[]; // An array of MessageType, representing the messages exchanged in the conversation
-};

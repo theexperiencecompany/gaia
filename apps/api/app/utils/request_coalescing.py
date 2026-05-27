@@ -13,20 +13,19 @@ Usage:
 """
 
 import asyncio
-from typing import Any, Coroutine, Callable, Dict, TypeVar
+from collections.abc import Callable, Coroutine
+from typing import Any, TypeVar
 
 from shared.py.wide_events import log
 
 T = TypeVar("T")
 
 # In-flight requests: maps key -> task
-_pending_requests: Dict[str, asyncio.Task[Any]] = {}
+_pending_requests: dict[str, asyncio.Task[Any]] = {}
 _lock = asyncio.Lock()
 
 
-async def coalesce_request(
-    key: str, factory: Callable[[], Coroutine[Any, Any, T]]
-) -> T:
+async def coalesce_request(key: str, factory: Callable[[], Coroutine[Any, Any, T]]) -> T:
     """
     Coalesce concurrent requests for the same key.
 

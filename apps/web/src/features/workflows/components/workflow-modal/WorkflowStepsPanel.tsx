@@ -43,6 +43,7 @@ interface WorkflowStepsPanelProps {
   onRegenerateWithReason: (reasonKey: string) => void;
   onInitialGeneration: () => void;
   onClearError: () => void;
+  isPreview?: boolean;
 }
 
 export default function WorkflowStepsPanel({
@@ -53,7 +54,23 @@ export default function WorkflowStepsPanel({
   onRegenerateWithReason,
   onInitialGeneration,
   onClearError,
+  isPreview = false,
 }: WorkflowStepsPanelProps) {
+  if (isPreview) {
+    if (!workflow?.steps || workflow.steps.length === 0) {
+      return (
+        <div className="py-6 text-center text-sm text-zinc-500">
+          Steps will be generated when this workflow runs.
+        </div>
+      );
+    }
+    return (
+      <div className="overflow-y-auto">
+        <WorkflowSteps steps={workflow.steps} />
+      </div>
+    );
+  }
+
   if (regenerationError) {
     return (
       <div className="space-y-4">

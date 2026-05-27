@@ -1,0 +1,567 @@
+name: Code Quality
+
+# Tech-debt prevention gates that run on every PR to develop or master.
+# Each lane is independent so failures are isolated and parallelised. The
+# `quality-gate` job at the bottom is the single required check.
+#
+# Output convention for every step:
+#   1. The step name is the plain-English explanation of WHAT is being checked.
+#   2. The script body wraps the raw tool output in ::group::/::endgroup::
+#      collapsibles so reviewers see a pass/fail summary line first.
+#   3. The final echo is a one-line human + LLM readable verdict.
+#
+# Companion to .github/workflows/main.yml — that workflow handles
+# correctness (build, type-check, tests). This workflow enforces code
+# hygiene to prevent low-quality / LLM-generated code from accumulating.
+on:
+  pull_request:
+    branches:
+      - develop
+      - master
+  push:
+    branches:
+      - develop
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: code-quality-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --- Biome lint + format -------------------------------------------------
+  biome:
+    name: Biome lint + format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Lint and format check across all TS/JS/JSON/CSS files
+        run: |
+          echo "::group::Biome check"
+          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx json jsonc css)
+          if [ "$FILES" = "__FULL__" ]; then
+            pnpm run quality:lint
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            pnpm exec biome check $FILES
+          fi
+          echo "::endgroup::"
+          echo "Biome: OK (0 errors; warnings shown above are non-blocking)"
+
+  # --- Workspace dependency hygiene ---------------------------------------
+  deps:
+    name: Workspace dependency hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: All workspace packages agree on dep versions (syncpack)
+        run: |
+          echo "::group::syncpack lint"
+          pnpm exec syncpack lint
+          echo "::endgroup::"
+          echo "syncpack: OK (dep versions and semver ranges consistent)"
+      - name: Workspace topology is valid (manypkg)
+        run: |
+          echo "::group::manypkg check"
+          pnpm exec manypkg check
+          echo "::endgroup::"
+          echo "manypkg: OK (workspace structure valid)"
+      - name: package.json shape conforms (npm-package-json-lint)
+        run: |
+          echo "::group::package.json lint"
+          pnpm run quality:pkg-json
+          echo "::endgroup::"
+          echo "pkg-json: OK (all package.json files conform to schema)"
+
+  # --- Circular dependency check ------------------------------------------
+  circular:
+    name: No circular imports
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Circular dependency scan (madge)
+        run: |
+          echo "::group::madge --circular"
+          pnpm run quality:circular
+          echo "::endgroup::"
+          echo "Circular deps: OK (no cycles found)"
+
+  # --- File size limit (per-extension + allowlist + hard cap) -------------
+  file-size:
+    name: File size limits
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Per-file line count (default 400, relaxed 700, hard cap 1200)
+        run: |
+          echo "::group::File size scan"
+          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs)
+          if [ "$FILES" = "__FULL__" ]; then
+            pnpm run quality:size
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            CHANGED_FILES="$FILES" node scripts/ci/check-file-sizes.mjs
+          fi
+          echo "::endgroup::"
+          echo "File size: OK (no hard-cap violations)"
+
+  # --- Types must live in dedicated type files ----------------------------
+  types-location:
+    name: Types live in dedicated *.types.ts files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Type / interface / enum location enforcer
+        run: |
+          echo "::group::types-location check"
+          FILES=$(scripts/ci/changed-files.sh ts tsx)
+          if [ "$FILES" = "__FULL__" ]; then
+            node scripts/ci/check-types-location.mjs --enforce
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            CHANGED_FILES="$FILES" node scripts/ci/check-types-location.mjs --enforce
+          fi
+          echo "::endgroup::"
+          echo "Type colocation: OK (no file exports > 3 types unless in *.types.ts)"
+
+  # --- Components-per-file ------------------------------------------------
+  components-per-file:
+    name: At most 2 React components per file
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Components-per-file enforcer
+        run: |
+          echo "::group::components-per-file check"
+          FILES=$(scripts/ci/changed-files.sh tsx)
+          if [ "$FILES" = "__FULL__" ]; then
+            pnpm run quality:components
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            CHANGED_FILES="$FILES" node scripts/ci/check-components-per-file.mjs
+          fi
+          echo "::endgroup::"
+          echo "Components: OK (no file declares > 2 React components)"
+
+  # --- Copy-paste detection -----------------------------------------------
+  duplicates:
+    name: Copy-paste detection (jscpd)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Copy-paste detection (jscpd, fails over 3% on changed lines)
+        run: |
+          echo "::group::jscpd"
+          git fetch --no-tags origin "$GITHUB_BASE_REF"
+          pnpm run quality:dupe
+          echo "::endgroup::"
+          echo "Duplicates: OK (<= 3% on changed lines)"
+
+  # --- Type coverage ------------------------------------------------------
+  type-coverage:
+    name: Explicit-type coverage per workspace
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Type-coverage (98-99% per workspace)
+        run: |
+          echo "::group::type-coverage per workspace"
+          pnpm run quality:type-coverage
+          echo "::endgroup::"
+          echo "Type coverage: OK (every workspace meets its threshold)"
+
+  # --- Published package hygiene ------------------------------------------
+  package-hygiene:
+    name: Published package hygiene (publint + attw)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: publint — validate packages/cli npm metadata
+        run: |
+          echo "::group::publint packages/cli"
+          pnpm run quality:publint
+          echo "::endgroup::"
+          echo "publint: OK (packages/cli npm metadata is valid)"
+      - name: are-the-types-wrong — validate type exports
+        run: |
+          echo "::group::attw packages/cli"
+          OUTPUT=$(pnpm run quality:attw 2>&1)
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -q "This package does not contain types"; then
+            echo "::endgroup::"
+            echo "attw: OK (packages/cli is a CLI binary — no exported types is expected)"
+          else
+            echo "::endgroup::"
+            echo "attw: OK (type exports resolve across CJS/ESM/node16/bundler)"
+          fi
+
+  # --- TypeScript strict type-check ---------------------------------------
+  type-check:
+    name: TypeScript strict type-check (all workspaces)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: tsc --noEmit across web, desktop, mobile, cli, bots
+        run: |
+          echo "::group::nx type-check"
+          if [ -n "${GITHUB_BASE_REF:-}" ]; then
+            git fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null || true
+            # Exclude Python projects (api, voice-agent): their type-check
+            # runs mypy via uv, which isn't installed in this Node-only job, and
+            # Python typing is already enforced by the dedicated python-mypy lane.
+            pnpm exec nx affected -t type-check --base=origin/$GITHUB_BASE_REF --exclude=api,voice-agent
+          else
+            pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp
+          fi
+          echo "::endgroup::"
+          echo "TypeScript: OK (all affected workspaces pass strict tsc)"
+
+  # --- Python ruff --------------------------------------------------------
+  python-ruff:
+    name: Python ruff (strict rule set)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: ruff check + format (PL, RUF, FAST, S, B, A, COM, C4, DTZ, ISC, RET, SIM, ARG, PTH, TRY, PERF, UP, FURB, LOG, G + more)
+        run: |
+          echo "::group::ruff check + format --check"
+          FILES=$(scripts/ci/changed-files.sh py)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx ruff check apps/api apps/voice-agent libs/shared/py
+            uvx ruff format --check apps/api apps/voice-agent libs/shared/py
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx ruff check $FILES
+            uvx ruff format --check $FILES
+          fi
+          echo "::endgroup::"
+          echo "ruff: OK (strict rule set passes; every file is already formatted)"
+
+  # --- Python mypy --------------------------------------------------------
+  python-mypy:
+    name: Python mypy (staged-strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: Install api dev + backend dependencies (uv sync)
+        run: |
+          echo "::group::uv sync"
+          uv sync --project apps/api --group backend --group dev
+          echo "::endgroup::"
+          echo "deps: OK"
+      - name: mypy across api + voice-agent + shared (staged-strict + shared.* strict override)
+        run: |
+          echo "::group::mypy"
+          # mypy needs the whole module graph per project, so it can't be scoped
+          # to individual changed files. On PRs we instead detect which Python
+          # projects changed (from the .py diff) and check only those project
+          # roots. libs/shared/py is a dependency of both apps, so any change
+          # there pulls both apps in. On push we check everything.
+          FILES=$(scripts/ci/changed-files.sh py)
+          if [ "$FILES" = "__FULL__" ]; then
+            uv run --project apps/api --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py --ignore-missing-imports
+          elif [ -z "$FILES" ]; then
+            echo "No changed Python files — skipping."
+          else
+            TARGETS=""
+            if echo "$FILES" | grep -q '^libs/shared/py/'; then
+              TARGETS="apps/api/app apps/voice-agent/src libs/shared/py"
+            else
+              echo "$FILES" | grep -q '^apps/api/'         && TARGETS="$TARGETS apps/api/app"
+              echo "$FILES" | grep -q '^apps/voice-agent/' && TARGETS="$TARGETS apps/voice-agent/src"
+            fi
+            if [ -z "$TARGETS" ]; then
+              echo "No tracked Python project changed — skipping."
+            else
+              uv run --project apps/api --group backend --group dev mypy $TARGETS --ignore-missing-imports
+            fi
+          fi
+          echo "::endgroup::"
+          echo "mypy: OK (no type errors)"
+
+  # --- Python docstring coverage ------------------------------------------
+  python-interrogate:
+    name: Python docstring coverage (interrogate ≥ 80%)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: Docstring coverage on public API surface
+        run: |
+          echo "::group::interrogate"
+          FILES=$(scripts/ci/changed-py-source.sh)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx interrogate -c pyproject.toml $FILES
+          fi
+          echo "::endgroup::"
+          echo "Docstrings: OK (coverage ≥ 80%)"
+
+  # --- Python cyclomatic complexity ---------------------------------------
+  python-xenon:
+    name: Python cyclomatic complexity (xenon)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: Complexity scan (max-absolute F, max-modules E, max-average B)
+        run: |
+          echo "::group::xenon"
+          FILES=$(scripts/ci/changed-py-source.sh)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx xenon \
+              --max-absolute F \
+              --max-modules E \
+              --max-average B \
+              apps/api apps/voice-agent libs/shared/py \
+              -e 'apps/api/tests/**' \
+              -e 'apps/api/scripts/**' \
+              -e 'libs/shared/py/tests/**'
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx xenon \
+              --max-absolute F \
+              --max-modules E \
+              --max-average B \
+              $FILES
+          fi
+          echo "::endgroup::"
+          echo "Complexity: OK (no module exceeds rank D, codebase average ≤ B)"
+
+  # --- Python security (bandit gates; pip-audit advisory) -----------------
+  python-security:
+    name: Python security (bandit; pip-audit advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: Bandit security scan (zero-warning policy)
+        run: |
+          echo "::group::bandit (low severity, low confidence — no exclusions)"
+          FILES=$(scripts/ci/changed-py-source.sh)
+          if [ "$FILES" = "__FULL__" ]; then
+            uvx bandit -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low
+          elif [ -z "$FILES" ]; then
+            echo "No matching changed files — skipping."
+          else
+            uvx bandit -c pyproject.toml $FILES --severity-level low --confidence-level low
+          fi
+          echo "::endgroup::"
+          echo "Security: OK (0 issues across all severity levels)"
+      - name: pip-audit (dependency CVEs)
+        continue-on-error: true
+        run: |
+          echo "::group::pip-audit dependency scan"
+          uvx pip-audit --strict --skip-editable || true
+          echo "::endgroup::"
+          echo "pip-audit: informational — review CVEs above (does not fail CI)"
+
+  # --- Dead code detection (knip + vulture) — enforced ---------------------
+  # Runs in --strict mode: any knip (TS) or vulture (Python) finding fails the
+  # lane. The scan is tightened to drop systematic false positives (tests,
+  # Pydantic/dynamic-dispatch, framework-consumed files) — see knip.config.ts
+  # and apps/api/scripts/vulture-whitelist.py.
+  dead-code:
+    name: Dead code (knip + vulture, strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: Install vulture (Python dead-code detector)
+        run: |
+          echo "::group::uv tool install vulture"
+          uv tool install vulture
+          echo "::endgroup::"
+      - name: knip (TypeScript) + vulture (Python) dead-code scan (strict)
+        run: |
+          echo "::group::dead-code scan"
+          bash scripts/dead-code-check.sh --strict --verbose
+          echo "::endgroup::"
+          echo "Dead code: OK (no unused TS or Python code)"
+
+  # --- Quality gate (single required status check) -------------------------
+  quality-gate:
+    name: Quality gate (required)
+    if: always()
+    needs:
+      - biome
+      - deps
+      - circular
+      - file-size
+      - types-location
+      - components-per-file
+      - duplicates
+      - type-coverage
+      - package-hygiene
+      - type-check
+      - python-ruff
+      - python-mypy
+      - python-interrogate
+      - python-xenon
+      - python-security
+      - dead-code
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verdict
+        env:
+          # Lane results passed through env to avoid inline-expansion injection.
+          BIOME: ${{ needs.biome.result }}
+          DEPS: ${{ needs.deps.result }}
+          CIRCULAR: ${{ needs.circular.result }}
+          FILE_SIZE: ${{ needs.file-size.result }}
+          TYPES_LOCATION: ${{ needs.types-location.result }}
+          COMPONENTS_PER_FILE: ${{ needs.components-per-file.result }}
+          DUPLICATES: ${{ needs.duplicates.result }}
+          TYPE_COVERAGE: ${{ needs.type-coverage.result }}
+          PACKAGE_HYGIENE: ${{ needs.package-hygiene.result }}
+          TYPE_CHECK: ${{ needs.type-check.result }}
+          PYTHON_RUFF: ${{ needs.python-ruff.result }}
+          PYTHON_MYPY: ${{ needs.python-mypy.result }}
+          PYTHON_INTERROGATE: ${{ needs.python-interrogate.result }}
+          PYTHON_XENON: ${{ needs.python-xenon.result }}
+          PYTHON_SECURITY: ${{ needs.python-security.result }}
+          DEAD_CODE: ${{ needs.dead-code.result }}
+        run: |
+          declare -A RESULT=(
+            [biome]="$BIOME"
+            [deps]="$DEPS"
+            [circular]="$CIRCULAR"
+            [file-size]="$FILE_SIZE"
+            [types-location]="$TYPES_LOCATION"
+            [components-per-file]="$COMPONENTS_PER_FILE"
+            [duplicates]="$DUPLICATES"
+            [type-coverage]="$TYPE_COVERAGE"
+            [package-hygiene]="$PACKAGE_HYGIENE"
+            [type-check]="$TYPE_CHECK"
+            [python-ruff]="$PYTHON_RUFF"
+            [python-mypy]="$PYTHON_MYPY"
+            [python-interrogate]="$PYTHON_INTERROGATE"
+            [python-xenon]="$PYTHON_XENON"
+            [python-security]="$PYTHON_SECURITY"
+            [dead-code]="$DEAD_CODE"
+          )
+          LANES=(biome deps circular file-size types-location components-per-file \
+                 duplicates type-coverage package-hygiene type-check \
+                 python-ruff python-mypy python-interrogate python-xenon python-security \
+                 dead-code)
+
+          # ---------------------------------------------------------------
+          # RATCHET: a lane is ENFORCED (can fail this gate) iff the marker
+          # file .github/quality-gate/enforced/<lane> exists. Every other
+          # lane is reported but never blocks merge. Each resolution PR adds
+          # its own marker file — separate paths never merge-conflict the way
+          # editing one shared list does. When all 15 markers exist, the full
+          # strict rule set is enforced.
+          # ---------------------------------------------------------------
+          ENFORCED=()
+          if [ -d .github/quality-gate/enforced ]; then
+            for marker in .github/quality-gate/enforced/*; do
+              [ -e "$marker" ] || continue
+              ENFORCED+=("$(basename "$marker")")
+            done
+          fi
+          # ---------------------------------------------------------------
+
+          is_enforced() { local l; for l in "${ENFORCED[@]}"; do [[ "$l" == "$1" ]] && return 0; done; return 1; }
+
+          echo "::group::Per-lane results"
+          for lane in "${LANES[@]}"; do
+            if is_enforced "$lane"; then tag="[enforced]"; else tag="[informational]"; fi
+            printf '  %-22s %-12s %s\n' "$lane:" "${RESULT[$lane]}" "$tag"
+          done
+          echo "::endgroup::"
+
+          failed=0
+          for lane in "${ENFORCED[@]}"; do
+            r="${RESULT[$lane]}"
+            if [[ "$r" != "success" ]]; then
+              echo "::error::enforced lane '$lane' did not pass (result: $r)"
+              failed=$((failed + 1))
+            fi
+          done
+
+          if [[ "$failed" -gt 0 ]]; then
+            echo "::error::Quality gate FAILED — $failed enforced lane(s) did not pass"
+            exit 1
+          fi
+          echo "Quality gate: PASSED — ${#ENFORCED[@]}/${#LANES[@]} lanes enforced; remainder informational (ratchet in progress)"

@@ -1,16 +1,5 @@
 """File upload, update, and delete endpoints."""
 
-from shared.py.wide_events import log
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.db.mongodb.collections import conversations_collection
-from app.decorators import tiered_rate_limit
-from app.models.message_models import FileData
-from app.services.file_service import (
-    delete_file_service,
-    update_file_service,
-    upload_file_service,
-)
-from app.services.storage import SAFE_PATH_ID_PATTERN
 from fastapi import (
     APIRouter,
     Body,
@@ -22,6 +11,18 @@ from fastapi import (
     UploadFile,
     status,
 )
+
+from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.db.mongodb.collections import conversations_collection
+from app.decorators import tiered_rate_limit
+from app.models.message_models import FileData
+from app.services.file_service import (
+    delete_file_service,
+    update_file_service,
+    upload_file_service,
+)
+from app.services.storage import SAFE_PATH_ID_PATTERN
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -35,7 +36,7 @@ async def upload_file_endpoint(
     user: dict = Depends(get_current_user),
 ):
     """Upload a file, persist metadata, and generate embeddings for images."""
-    user_id = user.get("user_id", None)
+    user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required."
@@ -82,7 +83,7 @@ async def upload_file_endpoint(
         # Preserve 4xx from the upload service (413 oversize, 415 bad type, …).
         raise
     except Exception as e:
-        log.error(f"Error uploading file: {str(e)}")
+        log.error(f"Error uploading file: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to upload file",
@@ -96,7 +97,7 @@ async def update_file_endpoint(
     user: dict = Depends(get_current_user),
 ):
     """Update file metadata; regenerates the embedding when the description changes."""
-    user_id = user.get("user_id", None)
+    user_id = user.get("user_id")
     if not user_id:
         return {"error": "User ID is required"}
 
@@ -107,12 +108,10 @@ async def update_file_endpoint(
             update_data=update_data,
         )
 
-        log.set(
-            user={"id": user_id}, operation="update", file_id=file_id, outcome="success"
-        )
+        log.set(user={"id": user_id}, operation="update", file_id=file_id, outcome="success")
         return result
     except Exception as e:
-        log.error(f"Error updating file {file_id}: {str(e)}")
+        log.error(f"Error updating file {file_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update file",
@@ -128,7 +127,7 @@ async def delete_file_endpoint(
     try:
         result = await delete_file_service(
             file_id=file_id,
-            user_id=user.get("user_id", None),
+            user_id=user.get("user_id"),
         )
 
         log.set(
@@ -139,7 +138,7 @@ async def delete_file_endpoint(
         )
         return result
     except Exception as e:
-        log.error(f"Error deleting file {file_id}: {str(e)}")
+        log.error(f"Error deleting file {file_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete file",

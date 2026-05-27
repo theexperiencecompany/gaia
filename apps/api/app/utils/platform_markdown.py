@@ -13,8 +13,8 @@ change to the bot converters should be mirrored here and vice versa.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import re
-from typing import Callable
 
 _FENCED_CODE_RE = re.compile(r"```[\s\S]*?```")
 

@@ -13,8 +13,8 @@ so the card persists with the conversation on server reload.
 
 import asyncio
 import contextlib
+from datetime import UTC, datetime
 import json
-from datetime import datetime, timezone
 from typing import Any
 
 from app.core.stream_manager import stream_manager
@@ -105,7 +105,7 @@ async def forward_artifact_events(
             entry = {
                 "tool_name": "artifact_data",
                 "data": payload,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "tool_category": "artifact",
             }
             # Persist with the conversation (re-renders on server reload)…

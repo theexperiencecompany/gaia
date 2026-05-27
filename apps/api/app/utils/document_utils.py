@@ -3,17 +3,17 @@ Document generation utilities with temporary file management.
 """
 
 import asyncio
+from contextlib import asynccontextmanager
 import os
 import tempfile
-from contextlib import asynccontextmanager
-from typing import Any, Dict, Literal, Optional
-from typing_extensions import TypedDict
+from typing import Any, Literal
 from uuid import uuid4
 
 import pypandoc
+from typing_extensions import TypedDict
 
-from shared.py.wide_events import log
 from app.services.upload_service import upload_file_to_cloudinary
+from shared.py.wide_events import log
 
 
 # Simplified PDF configuration
@@ -38,10 +38,10 @@ class DocumentProcessor:
         format: str,
         is_plain_text: bool = True,
         upload_to_cloudinary: bool = False,
-        title: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        font_size: Optional[int] = None,
-        pdf_config: Optional[PDFConfig] = None,
+        title: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        font_size: int | None = None,
+        pdf_config: PDFConfig | None = None,
     ):
         self.filename = filename
         self.format = format
@@ -53,8 +53,8 @@ class DocumentProcessor:
         self.pdf_config = pdf_config
 
         self.output_filename = f"{filename}.{format}"
-        self.temp_path: Optional[str] = None
-        self.cloudinary_url: Optional[str] = None
+        self.temp_path: str | None = None
+        self.cloudinary_url: str | None = None
 
     @asynccontextmanager
     async def create_temp_file(self):
@@ -73,11 +73,9 @@ class DocumentProcessor:
                     os.remove(self.temp_path)
                     log.info(f"Cleaned up temporary file: {self.temp_path}")
                 except Exception as e:
-                    log.warning(
-                        f"Failed to clean up temporary file {self.temp_path}: {e}"
-                    )
+                    log.warning(f"Failed to clean up temporary file {self.temp_path}: {e}")
 
-    async def generate_document(self, content: str) -> Dict[str, Any]:
+    async def generate_document(self, content: str) -> dict[str, Any]:
         """
         Generate document with the provided content.
 
@@ -175,21 +173,15 @@ class DocumentProcessor:
         # Apply pdf_config if provided
         if self.pdf_config:
             if "margins" in self.pdf_config:
-                extra_args.extend(
-                    ["-V", f"geometry:margin={self.pdf_config['margins']}"]
-                )
+                extra_args.extend(["-V", f"geometry:margin={self.pdf_config['margins']}"])
             if "font_family" in self.pdf_config:
                 extra_args.extend(["-V", f"mainfont={self.pdf_config['font_family']}"])
             if "line_spacing" in self.pdf_config:
-                extra_args.extend(
-                    ["-V", f"linestretch={self.pdf_config['line_spacing']}"]
-                )
+                extra_args.extend(["-V", f"linestretch={self.pdf_config['line_spacing']}"])
             if "paper_size" in self.pdf_config:
                 extra_args.extend(["-V", f"papersize={self.pdf_config['paper_size']}"])
             if "document_class" in self.pdf_config:
-                extra_args.extend(
-                    ["-V", f"documentclass={self.pdf_config['document_class']}"]
-                )
+                extra_args.extend(["-V", f"documentclass={self.pdf_config['document_class']}"])
 
             # Handle boolean configurations
             if self.pdf_config.get("table_of_contents", False):
@@ -226,7 +218,7 @@ async def generate_plain_text_document(
     format: str,
     content: str,
     upload_to_cloudinary: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Generate a plain text document."""
     processor = DocumentProcessor(
         filename=filename,
@@ -242,11 +234,11 @@ async def generate_formatted_document(
     format: str,
     content: str,
     upload_to_cloudinary: bool = False,
-    title: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None,
-    font_size: Optional[int] = None,
-    pdf_config: Optional[PDFConfig] = None,
-) -> Dict[str, Any]:
+    title: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    font_size: int | None = None,
+    pdf_config: PDFConfig | None = None,
+) -> dict[str, Any]:
     """Generate a formatted document."""
     processor = DocumentProcessor(
         filename=filename,
@@ -262,7 +254,7 @@ async def generate_formatted_document(
 
 
 @asynccontextmanager
-async def create_temp_docx_file(filename: str, title: Optional[str] = None):
+async def create_temp_docx_file(filename: str, title: str | None = None):
     """
     Context manager for creating temporary DOCX files from markdown content.
     Handles file creation, conversion, and cleanup automatically.

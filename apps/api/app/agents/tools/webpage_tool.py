@@ -1,19 +1,21 @@
 import asyncio
+from collections.abc import Sequence
 import re
 import time
-from typing import Annotated, Any, Dict, List, Sequence, Union
+from typing import Annotated, Any, Union
+
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
 
 from app.agents.templates.fetch_template import FETCH_TEMPLATE
-from shared.py.wide_events import log
 from app.decorators import with_doc, with_rate_limiting
 from app.templates.docstrings.search_tool_docs import (
     WEB_SEARCH_TOOL,
 )
 from app.templates.docstrings.webpage_tool_docs import FETCH_WEBPAGES
 from app.utils.search_utils import fetch_with_firecrawl, perform_search
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
+from shared.py.wide_events import log
 
 _NO_URLS_RETRIEVED_MSG = (
     "Search failed — no URLs were retrieved. Do NOT fabricate any URLs or results."
@@ -25,15 +27,15 @@ _NO_URLS_RETRIEVED_MSG = (
 @with_doc(FETCH_WEBPAGES)
 async def fetch_webpages(
     config: RunnableConfig,
-    urls: Annotated[List[str], "List of URLs to fetch content from"],
+    urls: Annotated[list[str], "List of URLs to fetch content from"],
     # state: Annotated[dict, InjectedState],
-) -> Dict[str, Union[str, Sequence[str]]]:
+) -> dict[str, Union[str, Sequence[str]]]:
     try:
         log.set(tool={"name": "fetch_webpages", "action": "fetch"})
         if not urls:
             return {"error": "No URLs were provided for fetching."}
 
-        processed_urls: List[str] = []
+        processed_urls: list[str] = []
         combined_content = ""
         writer = get_stream_writer()
 
@@ -50,11 +52,7 @@ async def fetch_webpages(
 
         for i, page_content in enumerate(fetched_pages):
             if isinstance(page_content, Exception):
-                writer(
-                    {
-                        "progress": f"Error processing {processed_urls[i]}: {str(page_content)}"
-                    }
-                )
+                writer({"progress": f"Error processing {processed_urls[i]}: {page_content!s}"})
                 continue
 
             combined_content += FETCH_TEMPLATE.format(
@@ -73,7 +71,7 @@ async def fetch_webpages(
         return data
 
     except Exception as e:
-        return {"error": f"An error occurred while fetching webpages: {str(e)}"}
+        return {"error": f"An error occurred while fetching webpages: {e!s}"}
 
 
 @tool
@@ -85,7 +83,7 @@ async def web_search_tool(
         "The search query to look up on the web. Be specific and concise for better results.",
     ],
     config: RunnableConfig,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     log.set(tool={"name": "web_search_tool", "action": "search"})
     start_time = time.time()
 
@@ -153,7 +151,7 @@ async def web_search_tool(
             ),
         }
 
-    except (asyncio.TimeoutError, ConnectionError) as e:
+    except (TimeoutError, ConnectionError) as e:
         log.error(f"Network error in web search: {e}", exc_info=True)
         return {
             "formatted_text": "\n\nConnection timed out during web search. Please try again later.",

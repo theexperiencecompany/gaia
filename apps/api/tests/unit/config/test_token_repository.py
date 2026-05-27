@@ -10,15 +10,14 @@ Tests cover:
 - Edge cases: missing refresh tokens, expired tokens, malformed data
 """
 
+from datetime import UTC, datetime, timedelta
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from authlib.oauth2.rfc6749 import OAuth2Token
 from fastapi import HTTPException
-
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -30,11 +29,11 @@ def _make_token_record(
     user_id: str = "user_1",
     provider: str = "google",
     access_token: str = "access_123",
-    refresh_token: Optional[str] = "refresh_456",
-    token_data: Optional[str] = None,
-    scopes: Optional[str] = "openid email",
-    expires_at: Optional[datetime] = None,
-    updated_at: Optional[datetime] = None,
+    refresh_token: str | None = "refresh_456",
+    token_data: str | None = None,
+    scopes: str | None = "openid email",
+    expires_at: datetime | None = None,
+    updated_at: datetime | None = None,
     id: int = 1,
 ) -> MagicMock:
     """Create a mock OAuthToken database record."""
@@ -45,8 +44,8 @@ def _make_token_record(
     record.access_token = access_token
     record.refresh_token = refresh_token
     record.scopes = scopes
-    record.expires_at = expires_at or (datetime.now(timezone.utc) + timedelta(hours=1))
-    record.updated_at = updated_at or datetime.now(timezone.utc)
+    record.expires_at = expires_at or (datetime.now(UTC) + timedelta(hours=1))
+    record.updated_at = updated_at or datetime.now(UTC)
     if token_data is None:
         token_data = json.dumps(
             {
@@ -63,7 +62,7 @@ def _make_token_record(
 def _make_expired_record(**kwargs: Any) -> MagicMock:
     """Create a mock OAuthToken that is already expired."""
     return _make_token_record(
-        expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        expires_at=datetime.now(UTC) - timedelta(hours=1),
         **kwargs,
     )
 
@@ -111,8 +110,7 @@ class TestTokenRepositoryInit:
         assert call_kwargs[1]["name"] == "google"
         assert call_kwargs[1]["client_id"] == "client_id"
         assert (
-            call_kwargs[1]["client_secret"]
-            == "client_secret"  # pragma: allowlist secret
+            call_kwargs[1]["client_secret"] == "client_secret"  # pragma: allowlist secret
         )
         assert repo.oauth is mock_oauth_instance
 
@@ -217,7 +215,7 @@ class TestGetTokenExpiration:
         assert expected_min <= result <= expected_max
 
     def test_invalid_expires_at_and_invalid_expires_in_uses_default(self) -> None:
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         result = self.repo._get_token_expiration(
             {
                 "expires_at": "bad",
@@ -265,7 +263,7 @@ class TestStoreToken:
 
     async def test_store_new_token(self) -> None:
         session = _mock_db_session(scalar_one_or_none_return=None)
-        token_data: Dict[str, Any] = {
+        token_data: dict[str, Any] = {
             "access_token": "new_access",
             "refresh_token": "new_refresh",
             "token_type": "Bearer",
@@ -289,7 +287,7 @@ class TestStoreToken:
     async def test_store_updates_existing_token(self) -> None:
         existing = _make_token_record()
         session = _mock_db_session(scalar_one_or_none_return=existing)
-        token_data: Dict[str, Any] = {
+        token_data: dict[str, Any] = {
             "access_token": "updated_access",
             "refresh_token": "updated_refresh",
             "token_type": "Bearer",
@@ -312,7 +310,7 @@ class TestStoreToken:
     async def test_store_preserves_existing_refresh_token_when_missing(self) -> None:
         existing = _make_token_record(refresh_token="old_refresh")
         session = _mock_db_session(scalar_one_or_none_return=existing)
-        token_data: Dict[str, Any] = {
+        token_data: dict[str, Any] = {
             "access_token": "new_access",
             # No refresh_token provided
             "token_type": "Bearer",
@@ -332,7 +330,7 @@ class TestStoreToken:
 
     async def test_store_new_token_without_refresh_token(self) -> None:
         session = _mock_db_session(scalar_one_or_none_return=None)
-        token_data: Dict[str, Any] = {
+        token_data: dict[str, Any] = {
             "access_token": "new_access",
             "token_type": "Bearer",
             "expires_in": 3600,
@@ -406,9 +404,7 @@ class TestGetToken:
                 "access_token": "refreshed_access",
                 "refresh_token": "refreshed_refresh",
                 "token_type": "Bearer",
-                "expires_at": (
-                    datetime.now(timezone.utc) + timedelta(hours=1)
-                ).timestamp(),
+                "expires_at": (datetime.now(UTC) + timedelta(hours=1)).timestamp(),
             }
         )
 
@@ -421,9 +417,7 @@ class TestGetToken:
                 new_callable=AsyncMock,
                 return_value=refreshed_token,
             ):
-                result = await self.repo.get_token(
-                    "user_1", "google", renew_if_expired=True
-                )
+                result = await self.repo.get_token("user_1", "google", renew_if_expired=True)
 
         assert result["access_token"] == "refreshed_access"
 
@@ -451,9 +445,7 @@ class TestGetToken:
             mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
             mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            result = await self.repo.get_token(
-                "user_1", "google", renew_if_expired=False
-            )
+            result = await self.repo.get_token("user_1", "google", renew_if_expired=False)
 
         # Should return the token even though it is expired
         assert result["access_token"] == "access_123"
@@ -522,9 +514,7 @@ class TestRefreshGoogleToken:
         with patch("app.config.token_repository.httpx.AsyncClient") as mock_httpx:
             mock_async_client = AsyncMock()
             mock_async_client.post = AsyncMock(return_value=mock_response)
-            mock_httpx.return_value.__aenter__ = AsyncMock(
-                return_value=mock_async_client
-            )
+            mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_async_client)
             mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
 
             result = await self.repo._refresh_google_token("old_refresh")
@@ -549,9 +539,7 @@ class TestRefreshGoogleToken:
         with patch("app.config.token_repository.httpx.AsyncClient") as mock_httpx:
             mock_async_client = AsyncMock()
             mock_async_client.post = AsyncMock(return_value=mock_response)
-            mock_httpx.return_value.__aenter__ = AsyncMock(
-                return_value=mock_async_client
-            )
+            mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_async_client)
             mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
 
             result = await self.repo._refresh_google_token("old_refresh")
@@ -567,9 +555,7 @@ class TestRefreshGoogleToken:
         self.mock_settings.GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
         with patch("app.config.token_repository.httpx.AsyncClient") as mock_httpx:
-            mock_httpx.return_value.__aenter__ = AsyncMock(
-                side_effect=ConnectionError("timeout")
-            )
+            mock_httpx.return_value.__aenter__ = AsyncMock(side_effect=ConnectionError("timeout"))
 
             result = await self.repo._refresh_google_token("old_refresh")
 
@@ -610,9 +596,7 @@ class TestRefreshProviderToken:
         assert result is expected
 
     async def test_unsupported_provider_returns_none(self) -> None:
-        result = await self.repo._refresh_provider_token(
-            "unsupported_provider", "refresh_tok"
-        )
+        result = await self.repo._refresh_provider_token("unsupported_provider", "refresh_tok")
         assert result is None
 
     async def test_slack_provider_returns_none(self) -> None:
@@ -853,9 +837,7 @@ class TestGetTokenByAuthToken:
             params={
                 "access_token": "refreshed",
                 "refresh_token": "ref",
-                "expires_at": (
-                    datetime.now(timezone.utc) + timedelta(hours=1)
-                ).timestamp(),
+                "expires_at": (datetime.now(UTC) + timedelta(hours=1)).timestamp(),
             }
         )
 
@@ -885,9 +867,7 @@ class TestGetTokenByAuthToken:
                 self.repo, "refresh_token", new_callable=AsyncMock, return_value=None
             ):
                 with pytest.raises(HTTPException) as exc_info:
-                    await self.repo.get_token_by_auth_token(
-                        "access_123", renew_if_expired=True
-                    )
+                    await self.repo.get_token_by_auth_token("access_123", renew_if_expired=True)
 
         assert exc_info.value.status_code == 401
 

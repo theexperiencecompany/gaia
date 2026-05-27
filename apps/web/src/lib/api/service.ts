@@ -47,7 +47,10 @@ async function request<T = unknown>(
       message?: string;
     };
 
-    const isUnauthorized = err.response?.status === 401;
+    // The interceptor (processAxiosError) toasts and marks errors it handles
+    // (network, 401/403/429/5xx). Don't double-toast those.
+    const handledByInterceptor =
+      (error as { handled?: boolean }).handled === true;
 
     // Track API errors in PostHog
     trackEvent(ANALYTICS_EVENTS.API_ERROR, {
@@ -57,7 +60,7 @@ async function request<T = unknown>(
       error_message: err.message,
     });
 
-    if (!options.silent && !isUnauthorized) {
+    if (!options.silent && !handledByInterceptor) {
       let errorMessage = options.errorMessage;
 
       // Try to extract error message from various response formats

@@ -1,8 +1,7 @@
 """Unit tests for the contact service (app/services/contact_service.py)."""
 
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import MagicMock, patch
-
 
 from app.services.contact_service import (
     _process_message_batch,
@@ -11,21 +10,20 @@ from app.services.contact_service import (
     get_gmail_contacts,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
 def _make_message_response(
-    headers: List[Dict[str, str]],
-) -> Dict[str, Any]:
+    headers: list[dict[str, str]],
+) -> dict[str, Any]:
     """Build a minimal Gmail message response dict with given headers."""
     return {"payload": {"headers": [{"name": k, "value": v} for k, v in headers]}}
 
 
 def _make_gmail_service(
-    messages_response: Dict[str, Any] | None = None,
+    messages_response: dict[str, Any] | None = None,
     get_side_effect: Any = None,
 ) -> MagicMock:
     """
@@ -183,9 +181,7 @@ class TestProcessMessageBatch:
         batch_mock = MagicMock()
         service.new_batch_http_request.return_value = batch_mock
 
-        msg_response = _make_message_response(
-            [("From", "Alice Smith <alice@example.com>")]
-        )
+        msg_response = _make_message_response([("From", "Alice Smith <alice@example.com>")])
         callbacks = {}
 
         def _capture_add(request, callback, request_id):
@@ -268,9 +264,7 @@ class TestProcessMessageBatch:
         batch_mock = MagicMock()
         service.new_batch_http_request.return_value = batch_mock
 
-        msg_response = _make_message_response(
-            [("From", "Alice Smith <ALICE@EXAMPLE.COM>")]
-        )
+        msg_response = _make_message_response([("From", "Alice Smith <ALICE@EXAMPLE.COM>")])
         callbacks = {}
 
         def _capture_add(request, callback, request_id):
@@ -316,9 +310,7 @@ class TestProcessMessageBatch:
         batch_mock = MagicMock()
         service.new_batch_http_request.return_value = batch_mock
 
-        msg_response = _make_message_response(
-            [("Subject", "Hello"), ("Date", "2025-01-01")]
-        )
+        msg_response = _make_message_response([("Subject", "Hello"), ("Date", "2025-01-01")])
         callbacks = {}
 
         def _capture_add(request, callback, request_id):
@@ -415,9 +407,7 @@ class TestProcessMessageBatch:
         batch_mock = MagicMock()
         service.new_batch_http_request.return_value = batch_mock
 
-        msg_response = _make_message_response(
-            [("To", "a@test.com, b@test.com, c@test.com")]
-        )
+        msg_response = _make_message_response([("To", "a@test.com, b@test.com, c@test.com")])
         callbacks = {}
 
         def _capture_add(request, callback, request_id):
@@ -551,9 +541,7 @@ class TestProcessMessagesIndividually:
         """Failure on one message does not prevent processing the rest."""
         msg_ok = _make_message_response([("From", "good@example.com")])
 
-        service = _make_gmail_service(
-            get_side_effect=[Exception("fetch failed"), msg_ok]
-        )
+        service = _make_gmail_service(get_side_effect=[Exception("fetch failed"), msg_ok])
 
         result = _process_messages_individually(service, ["msg_bad", "msg_good"])
 
@@ -596,9 +584,7 @@ class TestProcessMessagesIndividually:
 
     def test_malformed_email_filtered_out(self):
         """Invalid emails are filtered during individual processing."""
-        msg_response = _make_message_response(
-            [("From", "notanemail"), ("To", "valid@test.com")]
-        )
+        msg_response = _make_message_response([("From", "notanemail"), ("To", "valid@test.com")])
         service = _make_gmail_service(get_side_effect=[msg_response])
 
         result = _process_messages_individually(service, ["msg1"])
@@ -608,9 +594,7 @@ class TestProcessMessagesIndividually:
 
     def test_missing_headers_skipped(self):
         """Messages without relevant headers produce no contacts."""
-        msg_response = _make_message_response(
-            [("Subject", "Hello"), ("Date", "2025-01-01")]
-        )
+        msg_response = _make_message_response([("Subject", "Hello"), ("Date", "2025-01-01")])
         service = _make_gmail_service(get_side_effect=[msg_response])
 
         result = _process_messages_individually(service, ["msg1"])
@@ -624,9 +608,7 @@ class TestProcessMessagesIndividually:
 
     def test_all_messages_fail(self):
         """When every individual fetch fails, returns empty dict."""
-        service = _make_gmail_service(
-            get_side_effect=[Exception("err1"), Exception("err2")]
-        )
+        service = _make_gmail_service(get_side_effect=[Exception("err1"), Exception("err2")])
 
         result = _process_messages_individually(service, ["m1", "m2"])
         assert result == {}
@@ -730,9 +712,7 @@ class TestExtractContactsFromMessagesBatch:
         service = MagicMock()
         message_ids = [f"msg{i}" for i in range(4)]
 
-        result = extract_contacts_from_messages_batch(
-            service, message_ids, batch_size=2
-        )
+        result = extract_contacts_from_messages_batch(service, message_ids, batch_size=2)
 
         # alice appears in both batches; second batch overwrites first
         assert len(result) == 2
@@ -746,9 +726,7 @@ class TestExtractContactsFromMessagesBatch:
         mock_batch.return_value = {}
         service = MagicMock()
 
-        extract_contacts_from_messages_batch(
-            service, ["msg1"], filter_query="test", batch_size=50
-        )
+        extract_contacts_from_messages_batch(service, ["msg1"], filter_query="test", batch_size=50)
 
         mock_batch.assert_called_once_with(service, ["msg1"], "test")
 
@@ -803,9 +781,7 @@ class TestGetGmailContacts:
         assert result["success"] is True
         assert result["count"] == 2
         assert len(result["contacts"]) == 2
-        mock_extract.assert_called_once_with(
-            service, ["msg1", "msg2"], filter_query="test"
-        )
+        mock_extract.assert_called_once_with(service, ["msg1", "msg2"], filter_query="test")
 
     @patch("app.services.contact_service.extract_contacts_from_messages_batch")
     def test_no_messages_returns_empty_contacts(self, mock_extract):
@@ -835,8 +811,8 @@ class TestGetGmailContacts:
     def test_search_failure_returns_success_false(self):
         """When the list() call raises, returns success=False."""
         service = _make_gmail_service()
-        service.users.return_value.messages.return_value.list.return_value.execute.side_effect = Exception(
-            "API quota exceeded"
+        service.users.return_value.messages.return_value.list.return_value.execute.side_effect = (
+            Exception("API quota exceeded")
         )
 
         result = get_gmail_contacts(service, query="test")
@@ -895,6 +871,4 @@ class TestGetGmailContacts:
 
         get_gmail_contacts(service, query="q")
 
-        mock_extract.assert_called_once_with(
-            service, ["aaa", "bbb", "ccc"], filter_query="q"
-        )
+        mock_extract.assert_called_once_with(service, ["aaa", "bbb", "ccc"], filter_query="q")

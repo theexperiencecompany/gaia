@@ -19,12 +19,12 @@ Used by:
 
 from __future__ import annotations
 
-import hashlib
-import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
+import hashlib
 from pathlib import Path
-from typing import Iterable
+import re
 
 # Skills live as siblings in source: apps/api/app/agents/skills/builtin/<slug>/SKILL.md.
 # Resolved relative to this file so prod (the docker image), tests, and the dev

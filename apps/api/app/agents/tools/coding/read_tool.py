@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from shared.py.wide_events import log
+from langchain_core.runnables.config import RunnableConfig
+from langchain_core.tools import tool
+
 from app.agents.tools.coding._context import (
     canonical_path,
     get_session_id,
@@ -14,10 +16,9 @@ from app.agents.tools.coding._context import (
 )
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
-from app.services.storage import FS_OPS, fs_timer
+from app.services.storage import FsOps, fs_timer
 from app.templates.docstrings.coding_tools_docs import READ_TOOL
-from langchain_core.runnables.config import RunnableConfig
-from langchain_core.tools import tool
+from shared.py.wide_events import log
 
 DEFAULT_LIMIT = 2000
 MAX_LIMIT = 10_000
@@ -43,12 +44,11 @@ async def read(
     except ValueError as e:
         return f"Error: {e}"
 
-    if offset < 0:
-        offset = 0
+    offset = max(offset, 0)
     limit = max(1, min(limit, MAX_LIMIT))
 
     try:
-        async with fs_timer(FS_OPS.TOOL_READ), acquire_sandbox(user_id) as sbx:
+        async with fs_timer(FsOps.TOOL_READ), acquire_sandbox(user_id) as sbx:
             return await _read_file(sbx, abs_path, offset, limit, session_id)
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"

@@ -1,10 +1,9 @@
 """ComposioLangChain class definition"""
 
+from inspect import Parameter, Signature
 import types
 import typing as t
-from inspect import Parameter, Signature
 
-import pydantic
 from composio.core.provider import AgenticProvider, AgenticProviderExecuteFn
 from composio.types import Tool
 from composio.utils.pydantic import parse_pydantic_error
@@ -14,6 +13,9 @@ from composio.utils.shared import (
 )
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import StructuredTool as BaseStructuredTool
+import pydantic
+
+from shared.py.wide_events import log
 
 _python_reserved = {"for", "async", "from", "import", "as", "pass", "continue"}
 _obj_marker = "-_object_-"
@@ -23,16 +25,16 @@ def _clean_reserved_keyword(keyword: str):
     return f"{keyword}_rs"
 
 
-def _substitute_reserved_python_keywords(schema: t.Dict) -> t.Tuple[dict, dict]:
+def _substitute_reserved_python_keywords(schema: dict) -> tuple[dict, dict]:
     if "properties" not in schema:
         return schema, {}
 
-    keywords: t.Dict[str, t.Any] = {}
+    keywords: dict[str, t.Any] = {}
     for p_name in list(schema["properties"]):
         if p_name not in _python_reserved:
             continue
 
-        _keywords: t.Dict[str, t.Any] = {}
+        _keywords: dict[str, t.Any] = {}
         p_val = schema["properties"].pop(p_name)
         if p_val.get("type") == "object":
             p_val, _keywords = _substitute_reserved_python_keywords(schema=p_val)
@@ -74,7 +76,7 @@ class StructuredTool(BaseStructuredTool):
 
 
 class LangchainProvider(
-    AgenticProvider[StructuredTool, t.List[StructuredTool]],
+    AgenticProvider[StructuredTool, list[StructuredTool]],
     name="langchain",
 ):
     """
@@ -87,31 +89,70 @@ class LangchainProvider(
         self,
         tool: str,
         description: str,
-        schema_params: t.Dict,
+        schema_params: dict,
         execute_tool: AgenticProviderExecuteFn,
         keywords: dict,
+        toolkit: str | None = None,
     ):
-        def function(**kwargs: t.Any) -> t.Dict:
+        def function(**kwargs: t.Any) -> dict:
             """Wrapper function for composio action."""
 
             # Discarding other data except metadata from __runnable_config__
             # Use 'or {}' to handle None case when called directly without LangChain
             runnable_config = kwargs.get("__runnable_config__") or {}
+            metadata = (
+                runnable_config.get("metadata", {}) if isinstance(runnable_config, dict) else {}
+            )
+            user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
 
             kwargs = _reinstate_reserved_python_keywords(
                 request=kwargs,
                 keywords=keywords,
             )
 
-            kwargs["__runnable_config__"] = {
-                "metadata": runnable_config.get("metadata", {})
-            }
+            kwargs["__runnable_config__"] = {"metadata": metadata}
 
-            return execute_tool(tool, kwargs)
+            result = execute_tool(tool, kwargs)
 
-        parameters = get_signature_format_from_schema_params(
-            schema_params=schema_params
-        )
+            # Surface tool invocation outcome for observability.
+            try:
+                succeeded = result.get("successful") if isinstance(result, dict) else None
+                err_preview = (
+                    str(result.get("error"))[:200]
+                    if isinstance(result, dict) and not succeeded
+                    else None
+                )
+                log.set(
+                    composio_tool_invocation={
+                        "tool": tool,
+                        "toolkit": toolkit,
+                        "user_id": user_id,
+                        "successful": succeeded,
+                    }
+                )
+                if succeeded is False:
+                    err_lower = (err_preview or "").lower()
+                    looks_like_dead_account = (
+                        "1810" in err_lower
+                        or "no active connected account" in err_lower
+                        or "no connected account" in err_lower
+                    )
+                    if looks_like_dead_account:
+                        log.warning(
+                            f"composio tool {tool} (toolkit={toolkit}) likely "
+                            f"dead account for user={user_id}: error={err_preview!r}"
+                        )
+                    else:
+                        log.info(
+                            f"composio tool {tool} (toolkit={toolkit}) returned "
+                            f"successful=False for user={user_id}: error={err_preview!r}"
+                        )
+            except Exception as obs_err:  # noqa: BLE001 - observability must not break tool
+                log.debug(f"composio invocation log skipped for {tool}: {obs_err}")
+
+            return result
+
+        parameters = get_signature_format_from_schema_params(schema_params=schema_params)
 
         parameters.append(
             Parameter(
@@ -136,13 +177,9 @@ class LangchainProvider(
 
         return action_func
 
-    def wrap_tool(
-        self, tool: Tool, execute_tool: AgenticProviderExecuteFn
-    ) -> StructuredTool:
+    def wrap_tool(self, tool: Tool, execute_tool: AgenticProviderExecuteFn) -> StructuredTool:
         # Replace reserved python keywords
-        schema_params, keywords = _substitute_reserved_python_keywords(
-            schema=tool.input_parameters
-        )
+        schema_params, keywords = _substitute_reserved_python_keywords(schema=tool.input_parameters)
 
         return t.cast(
             StructuredTool,
@@ -160,6 +197,7 @@ class LangchainProvider(
                     schema_params=schema_params,
                     execute_tool=execute_tool,
                     keywords=keywords,
+                    toolkit=getattr(getattr(tool, "toolkit", None), "slug", None),
                 ),
                 handle_tool_error=True,
                 handle_validation_error=True,
@@ -170,7 +208,7 @@ class LangchainProvider(
         self,
         tools: t.Sequence[Tool],
         execute_tool: AgenticProviderExecuteFn,
-    ) -> t.List[StructuredTool]:
+    ) -> list[StructuredTool]:
         """
         Get composio tools wrapped as Langchain StructuredTool objects.
         """

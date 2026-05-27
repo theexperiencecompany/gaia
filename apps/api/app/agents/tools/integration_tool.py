@@ -5,21 +5,24 @@ Tools for listing, connecting, and managing user integrations.
 """
 
 import re
-from typing import Annotated, List, Optional
+from typing import Annotated
 
-from shared.py.wide_events import log
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
+
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.integrations import (
     MAX_AVAILABLE_FOR_LLM,
     MAX_CONNECTED_FOR_LLM,
     MAX_SUGGESTED_FOR_LLM,
 )
-from app.helpers.integration_helpers import generate_integration_slug
 from app.db.mongodb.collections import (
     integrations_collection,
     user_integrations_collection,
 )
 from app.decorators import with_doc
+from app.helpers.integration_helpers import generate_integration_slug
 from app.models.integration_models import (
     IntegrationInfo,
     ListIntegrationsResult,
@@ -34,10 +37,7 @@ from app.templates.docstrings.integration_tool_docs import (
     CONNECT_INTEGRATION,
     LIST_INTEGRATIONS,
 )
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
-
+from shared.py.wide_events import log
 
 # Stopwords to filter out from search queries
 SEARCH_STOPWORDS = {
@@ -72,7 +72,7 @@ def build_search_patterns(query: str) -> list[str]:
 async def list_integrations(
     config: RunnableConfig,
     search_public_query: Annotated[
-        Optional[str],
+        str | None,
         "Search query to discover public integrations from the marketplace. "
         "Use natural language like 'API testing', 'email automation', 'project management'. "
         "Leave empty to just show user's current integrations.",
@@ -97,8 +97,8 @@ async def list_integrations(
         platform_ids = [i.id for i in OAUTH_INTEGRATIONS if i.available]
         status_map = await check_multiple_integrations_status(platform_ids, user_id)
 
-        connected_list: List[IntegrationInfo] = []
-        available_list: List[IntegrationInfo] = []
+        connected_list: list[IntegrationInfo] = []
+        available_list: list[IntegrationInfo] = []
 
         for integration in OAUTH_INTEGRATIONS:
             if not integration.available:
@@ -136,9 +136,7 @@ async def list_integrations(
                 user_doc = await user_integrations_collection.find_one(
                     {"user_id": user_id, "integration_id": integration_id}
                 )
-                is_connected = (
-                    user_doc.get("status") == "connected" if user_doc else False
-                )
+                is_connected = user_doc.get("status") == "connected" if user_doc else False
 
                 custom_info: IntegrationInfo = {
                     "id": integration_id,
@@ -154,7 +152,7 @@ async def list_integrations(
                     available_list.append(custom_info)
 
         # Search for suggested public integrations if query provided
-        suggested_list: List[SuggestedIntegration] = []
+        suggested_list: list[SuggestedIntegration] = []
 
         if search_public_query and search_public_query.strip():
             try:
@@ -261,7 +259,7 @@ async def list_integrations(
 
     except Exception as e:
         log.error(f"Error listing integrations: {e}")
-        return f"Error listing integrations: {str(e)}"
+        return f"Error listing integrations: {e!s}"
 
 
 @tool
@@ -282,16 +280,14 @@ async def suggest_integrations(
     This tool will search the marketplace and display suggested integrations
     that the user can add with one click.
     """
-    return await list_integrations.ainvoke(
-        {"search_public_query": query}, config=config
-    )
+    return await list_integrations.ainvoke({"search_public_query": query}, config=config)
 
 
 @tool
 @with_doc(CONNECT_INTEGRATION)
 async def connect_integration(
     integration_names: Annotated[
-        List[str],
+        list[str],
         "List of integration names or IDs to connect (e.g., ['gmail', 'notion', 'twitter']). Can also be a single integration.",
     ],
     config: RunnableConfig,
@@ -336,15 +332,11 @@ async def connect_integration(
                 continue
 
             if not integration.available:
-                results.append(
-                    f"⏳ {integration.name} is not available yet. Coming soon!"
-                )
+                results.append(f"⏳ {integration.name} is not available yet. Coming soon!")
                 continue
 
             # Check if already connected using unified service
-            is_connected = await check_single_integration_status(
-                integration.id, user_id
-            )
+            is_connected = await check_single_integration_status(integration.id, user_id)
             if is_connected:
                 results.append(f"✅ {integration.name} is already connected!")
                 continue
@@ -372,14 +364,14 @@ async def connect_integration(
 
     except Exception as e:
         log.error(f"Error connecting integrations {integration_names}: {e}")
-        return f"Error connecting integrations: {str(e)}"
+        return f"Error connecting integrations: {e!s}"
 
 
 @tool
 @with_doc(CHECK_INTEGRATIONS_STATUS)
 async def check_integrations_status(
     integration_names: Annotated[
-        List[str],
+        list[str],
         "List of integration names or IDs to check status for (e.g., ['gmail', 'notion'])",
     ],
     config: RunnableConfig,
@@ -411,9 +403,7 @@ async def check_integrations_status(
                 continue
 
             # Use unified status checker
-            is_connected = await check_single_integration_status(
-                integration.id, user_id
-            )
+            is_connected = await check_single_integration_status(integration.id, user_id)
             status = "✅ Connected" if is_connected else "⚪ Not Connected"
             results.append(f"{integration.name}: {status}")
 
@@ -421,7 +411,7 @@ async def check_integrations_status(
 
     except Exception as e:
         log.error(f"Error checking integration status: {e}")
-        return f"Error checking status: {str(e)}"
+        return f"Error checking status: {e!s}"
 
 
 # Export all tools

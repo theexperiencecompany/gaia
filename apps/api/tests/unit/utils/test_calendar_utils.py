@@ -1,10 +1,10 @@
 """Unit tests for calendar utility functions."""
 
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi import HTTPException
+import pytest
 
 from app.utils.calendar_utils import (
     extract_event_dates,
@@ -66,9 +66,7 @@ class TestResolveTimezone:
 @pytest.mark.unit
 class TestFetchCalendarColor:
     @patch(_LIST_CALENDARS)
-    def test_success_returns_summary_and_color(
-        self, mock_list_calendars: MagicMock
-    ) -> None:
+    def test_success_returns_summary_and_color(self, mock_list_calendars: MagicMock) -> None:
         mock_list_calendars.return_value = {
             "items": [
                 {
@@ -91,9 +89,7 @@ class TestFetchCalendarColor:
         assert color == "#00bbff"
 
     @patch(_LIST_CALENDARS)
-    def test_calendar_id_not_found_returns_defaults(
-        self, mock_list_calendars: MagicMock
-    ) -> None:
+    def test_calendar_id_not_found_returns_defaults(self, mock_list_calendars: MagicMock) -> None:
         mock_list_calendars.return_value = {
             "items": [
                 {
@@ -108,9 +104,7 @@ class TestFetchCalendarColor:
         assert color == "#00bbff"
 
     @patch(_LIST_CALENDARS)
-    def test_missing_summary_field_uses_default(
-        self, mock_list_calendars: MagicMock
-    ) -> None:
+    def test_missing_summary_field_uses_default(self, mock_list_calendars: MagicMock) -> None:
         mock_list_calendars.return_value = {
             "items": [
                 {
@@ -124,9 +118,7 @@ class TestFetchCalendarColor:
         assert color == "#ff0000"
 
     @patch(_LIST_CALENDARS)
-    def test_missing_background_color_uses_default(
-        self, mock_list_calendars: MagicMock
-    ) -> None:
+    def test_missing_background_color_uses_default(self, mock_list_calendars: MagicMock) -> None:
         mock_list_calendars.return_value = {
             "items": [
                 {
@@ -140,9 +132,7 @@ class TestFetchCalendarColor:
         assert color == "#00bbff"
 
     @patch(_LIST_CALENDARS)
-    def test_missing_both_fields_uses_defaults(
-        self, mock_list_calendars: MagicMock
-    ) -> None:
+    def test_missing_both_fields_uses_defaults(self, mock_list_calendars: MagicMock) -> None:
         mock_list_calendars.return_value = {
             "items": [
                 {
@@ -155,9 +145,7 @@ class TestFetchCalendarColor:
         assert color == "#00bbff"
 
     @patch(_LIST_CALENDARS)
-    def test_non_dict_response_returns_defaults(
-        self, mock_list_calendars: MagicMock
-    ) -> None:
+    def test_non_dict_response_returns_defaults(self, mock_list_calendars: MagicMock) -> None:
         mock_list_calendars.return_value = [{"id": "cal-123"}]
         name, color = fetch_calendar_color("cal-123", "user-1")
         assert name == "Calendar"
@@ -171,18 +159,14 @@ class TestFetchCalendarColor:
         assert color == "#00bbff"
 
     @patch(_LIST_CALENDARS)
-    def test_none_response_returns_defaults(
-        self, mock_list_calendars: MagicMock
-    ) -> None:
+    def test_none_response_returns_defaults(self, mock_list_calendars: MagicMock) -> None:
         mock_list_calendars.return_value = None
         name, color = fetch_calendar_color("cal-123", "user-1")
         assert name == "Calendar"
         assert color == "#00bbff"
 
     @patch(_LIST_CALENDARS)
-    def test_multiple_calendars_matches_correct_one(
-        self, mock_list_calendars: MagicMock
-    ) -> None:
+    def test_multiple_calendars_matches_correct_one(self, mock_list_calendars: MagicMock) -> None:
         mock_list_calendars.return_value = {
             "items": [
                 {
@@ -215,7 +199,7 @@ class TestFetchCalendarColor:
 @pytest.mark.unit
 class TestExtractEventDates:
     def test_datetime_format_with_T(self) -> None:
-        options: List[Dict[str, Any]] = [
+        options: list[dict[str, Any]] = [
             {"start": "2025-01-15T10:00:00Z"},
             {"start": "2025-01-16T14:30:00-05:00"},
         ]
@@ -223,7 +207,7 @@ class TestExtractEventDates:
         assert result == {"2025-01-15", "2025-01-16"}
 
     def test_date_format_without_T(self) -> None:
-        options: List[Dict[str, Any]] = [
+        options: list[dict[str, Any]] = [
             {"start": "2025-03-01"},
             {"start": "2025-03-02"},
         ]
@@ -235,7 +219,7 @@ class TestExtractEventDates:
         assert result == set()
 
     def test_mixed_formats(self) -> None:
-        options: List[Dict[str, Any]] = [
+        options: list[dict[str, Any]] = [
             {"start": "2025-01-15T10:00:00Z"},
             {"start": "2025-01-16"},
         ]
@@ -243,7 +227,7 @@ class TestExtractEventDates:
         assert result == {"2025-01-15", "2025-01-16"}
 
     def test_duplicate_dates_deduplicated(self) -> None:
-        options: List[Dict[str, Any]] = [
+        options: list[dict[str, Any]] = [
             {"start": "2025-01-15T09:00:00Z"},
             {"start": "2025-01-15T14:00:00Z"},
         ]
@@ -251,14 +235,14 @@ class TestExtractEventDates:
         assert result == {"2025-01-15"}
 
     def test_missing_start_key(self) -> None:
-        options: List[Dict[str, Any]] = [
+        options: list[dict[str, Any]] = [
             {"end": "2025-01-15T10:00:00Z"},
         ]
         result = extract_event_dates(options)
         assert result == set()
 
     def test_empty_start_value(self) -> None:
-        options: List[Dict[str, Any]] = [
+        options: list[dict[str, Any]] = [
             {"start": ""},
         ]
         result = extract_event_dates(options)
@@ -279,14 +263,12 @@ class TestExtractEventDates:
             "datetime-no-tz",
         ],
     )
-    def test_parametrized_start_formats(
-        self, start_value: str, expected_date: str
-    ) -> None:
+    def test_parametrized_start_formats(self, start_value: str, expected_date: str) -> None:
         result = extract_event_dates([{"start": start_value}])
         assert result == {expected_date}
 
     def test_single_event(self) -> None:
-        options: List[Dict[str, Any]] = [
+        options: list[dict[str, Any]] = [
             {"start": "2025-07-04T09:00:00Z"},
         ]
         result = extract_event_dates(options)
@@ -320,7 +302,7 @@ class TestFetchSameDayEvents:
 
     @patch(_GET_CALENDAR_EVENTS)
     def test_success_multiple_dates(self, mock_get_events: MagicMock) -> None:
-        def side_effect(**kwargs: Any) -> Dict[str, Any]:
+        def side_effect(**kwargs: Any) -> dict[str, Any]:
             if "2025-01-15" in kwargs["time_min"]:
                 return {"events": [{"id": "evt-1"}]}
             if "2025-01-16" in kwargs["time_min"]:
@@ -328,9 +310,7 @@ class TestFetchSameDayEvents:
             return {"events": []}
 
         mock_get_events.side_effect = side_effect
-        result = fetch_same_day_events(
-            {"2025-01-15", "2025-01-16"}, "user-1"
-        )
+        result = fetch_same_day_events({"2025-01-15", "2025-01-16"}, "user-1")
         assert len(result) == 3
         event_ids = {e["id"] for e in result}
         assert event_ids == {"evt-1", "evt-2", "evt-3"}
@@ -352,7 +332,7 @@ class TestFetchSameDayEvents:
         """When one date fetch fails, events for other dates are still returned."""
         call_count = 0
 
-        def side_effect(**kwargs: Any) -> Dict[str, Any]:
+        def side_effect(**kwargs: Any) -> dict[str, Any]:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -360,9 +340,7 @@ class TestFetchSameDayEvents:
             return {"events": [{"id": "evt-ok"}]}
 
         mock_get_events.side_effect = side_effect
-        result = fetch_same_day_events(
-            {"2025-01-15", "2025-01-16"}, "user-1"
-        )
+        result = fetch_same_day_events({"2025-01-15", "2025-01-16"}, "user-1")
         # One date failed, one succeeded
         assert len(result) == 1
         assert result[0]["id"] == "evt-ok"
@@ -370,9 +348,7 @@ class TestFetchSameDayEvents:
     @patch(_GET_CALENDAR_EVENTS)
     def test_all_dates_fail_returns_empty(self, mock_get_events: MagicMock) -> None:
         mock_get_events.side_effect = RuntimeError("total failure")
-        result = fetch_same_day_events(
-            {"2025-01-15", "2025-01-16"}, "user-1"
-        )
+        result = fetch_same_day_events({"2025-01-15", "2025-01-16"}, "user-1")
         assert result == []
 
     def test_empty_dates_set(self) -> None:

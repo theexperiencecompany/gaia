@@ -3,14 +3,14 @@ Service functions for handling contact-related operations.
 """
 
 from email.utils import getaddresses
-from typing import Any, Dict, List
+from typing import Any
 
 from shared.py.wide_events import log
 
 
 def _process_message_batch(
-    service, message_ids: List[str], filter_query: str | None = None
-) -> Dict[str, Dict[str, str]]:
+    service, message_ids: list[str], filter_query: str | None = None
+) -> dict[str, dict[str, str]]:
     """
     Process a batch of message IDs and extract contacts using Gmail batch API.
 
@@ -38,13 +38,12 @@ def _process_message_batch(
             try:
                 # Extract headers
                 headers = {
-                    h["name"]: h["value"]
-                    for h in response.get("payload", {}).get("headers", [])
+                    h["name"]: h["value"] for h in response.get("payload", {}).get("headers", [])
                 }
 
                 # Extract contacts from headers
                 for field in ["From", "To", "Cc", "Reply-To"]:
-                    if field in headers and headers[field]:
+                    if headers.get(field):
                         addresses = headers[field].split(",")
 
                         for address in addresses:
@@ -104,8 +103,8 @@ def _process_message_batch(
 
 
 def _process_messages_individually(
-    service, message_ids: List[str], filter_query: str | None = None
-) -> Dict[str, Dict[str, str]]:
+    service, message_ids: list[str], filter_query: str | None = None
+) -> dict[str, dict[str, str]]:
     """
     Fallback method to process messages individually if batch processing fails.
     """
@@ -113,18 +112,11 @@ def _process_messages_individually(
 
     for msg_id in message_ids[:20]:  # Limit to 20 messages for fallback
         try:
-            msg = (
-                service.users()
-                .messages()
-                .get(userId="me", id=msg_id, format="full")
-                .execute()
-            )
-            headers = {
-                h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])
-            }
+            msg = service.users().messages().get(userId="me", id=msg_id, format="full").execute()
+            headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
 
             for field in ["From", "To", "Cc", "Reply-To"]:
-                if field in headers and headers[field]:
+                if headers.get(field):
                     addresses = headers[field].split(",")
 
                     for address in addresses:
@@ -164,10 +156,10 @@ def _process_messages_individually(
 
 def extract_contacts_from_messages_batch(
     service,
-    message_ids: List[str],
+    message_ids: list[str],
     filter_query: str | None = None,
     batch_size: int = 50,
-) -> List[Dict[str, str]]:
+) -> list[dict[str, str]]:
     """
     Extract contacts from the given message IDs using batch processing for better performance.
 
@@ -223,7 +215,7 @@ def get_gmail_contacts(
     service: Any,
     query: str,
     max_results: int = 50,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Search for contacts in Gmail using a query.
 
@@ -269,30 +261,27 @@ def get_gmail_contacts(
                 "count": len(contacts),
             }
             log.set(contacts={"query": query, "contacts_extracted": len(contacts)})
-            log.info(
-                f"CONTACT_SERVICE: Returning {len(contacts)} contacts for query '{query}'"
-            )
+            log.info(f"CONTACT_SERVICE: Returning {len(contacts)} contacts for query '{query}'")
             return result
-        else:
-            log.info(f"CONTACT_SERVICE: No messages found for query '{query}'")
-            return {
-                "success": True,
-                "contacts": [],
-                "count": 0,
-                "message": f"No messages found matching query: {query}",
-            }
+        log.info(f"CONTACT_SERVICE: No messages found for query '{query}'")
+        return {
+            "success": True,
+            "contacts": [],
+            "count": 0,
+            "message": f"No messages found matching query: {query}",
+        }
 
     except Exception as e:
-        error_msg = f"CONTACT_SERVICE: Error getting Gmail contacts for query '{query}': {str(e)}"
+        error_msg = f"CONTACT_SERVICE: Error getting Gmail contacts for query '{query}': {e!s}"
         log.error(error_msg)
         log.exception("CONTACT_SERVICE: Full traceback:")
         return {"success": False, "error": error_msg, "contacts": []}
 
 
 def build_contact_index(
-    messages: List[Dict[str, Any]],
+    messages: list[dict[str, Any]],
     filter_query: str | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Extract unique contacts from already-fetched Gmail message payloads.
 
     Used by the Composio-proxy variant of GET_CONTACT_LIST: instead of relying
@@ -311,7 +300,7 @@ def build_contact_index(
     Returns:
         Dict with `success`, `contacts` (list of {name, email}), and `count`
     """
-    contact_dict: Dict[str, Dict[str, str]] = {}
+    contact_dict: dict[str, dict[str, str]] = {}
     query_lower = filter_query.lower() if filter_query else None
 
     for message in messages:
@@ -326,7 +315,9 @@ def build_contact_index(
         # email.utils.getaddresses correctly handles names with embedded
         # commas (e.g., '"Doe, John" <john@example.com>') that a naive
         # split-on-comma would mangle.
-        raw_values = [headers[field] for field in ("From", "To", "Cc", "Reply-To") if headers.get(field)]
+        raw_values = [
+            headers[field] for field in ("From", "To", "Cc", "Reply-To") if headers.get(field)
+        ]
         for name, email in getaddresses(raw_values):
             if "@" not in email or "." not in email:
                 continue
@@ -335,9 +326,7 @@ def build_contact_index(
             if email not in contact_dict or (name and not contact_dict[email]["name"]):
                 contact_dict[email] = {"name": name, "email": email}
 
-    contacts = sorted(
-        contact_dict.values(), key=lambda x: x["name"] or x["email"]
-    )
+    contacts = sorted(contact_dict.values(), key=lambda x: x["name"] or x["email"])
     return {
         "success": True,
         "contacts": contacts,

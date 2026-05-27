@@ -32,11 +32,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 import sys
-from datetime import datetime, timezone
-from typing import AsyncIterator
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import (
     e2b_sandboxes_collection,
     users_collection,
@@ -46,6 +45,7 @@ from app.services.storage import (
     JuiceFSUnavailable,
     ensure_user_workspace,
 )
+from shared.py.wide_events import log
 
 
 async def _list_user_files(user_id: str) -> list[dict]:
@@ -101,7 +101,7 @@ async def migrate_one(user_id: str, *, dry_run: bool = False) -> dict:
         {
             "$set": {
                 "legacy_imported": True,
-                "legacy_imported_at": datetime.now(timezone.utc),
+                "legacy_imported_at": datetime.now(UTC),
             }
         },
         upsert=True,

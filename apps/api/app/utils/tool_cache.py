@@ -1,13 +1,14 @@
 """Redis-backed cache decorator for CUSTOM_GATHER_CONTEXT tool results."""
 
+from collections.abc import Awaitable, Callable
 import functools
 import hashlib
 import json
-from typing import Any, Awaitable, Callable, Dict, Optional, TypeVar
+from typing import Any, TypeVar
 
 from shared.py.wide_events import log
 
-F = TypeVar("F", bound=Callable[..., Awaitable[Dict[str, Any]]])
+F = TypeVar("F", bound=Callable[..., Awaitable[dict[str, Any]]])
 
 _DEFAULT_TTL = 300  # 5 minutes
 
@@ -27,8 +28,8 @@ def cache_gather_context(ttl: int = _DEFAULT_TTL) -> Callable[[F], F]:
         async def wrapper(
             request: Any,
             execute_request: Any,
-            auth_credentials: Dict[str, Any],
-        ) -> Dict[str, Any]:
+            auth_credentials: dict[str, Any],
+        ) -> dict[str, Any]:
             log.set(
                 operation="cache_gather_context",
                 tool_func=func.__qualname__,
@@ -45,9 +46,7 @@ def cache_gather_context(ttl: int = _DEFAULT_TTL) -> Callable[[F], F]:
                 except Exception as exc:
                     log.debug(f"Cache read miss for {cache_key}: {exc}")
 
-            result: Dict[str, Any] = await func(
-                request, execute_request, auth_credentials
-            )
+            result: dict[str, Any] = await func(request, execute_request, auth_credentials)
 
             if redis_client is not None and cache_key:
                 try:
@@ -62,7 +61,7 @@ def cache_gather_context(ttl: int = _DEFAULT_TTL) -> Callable[[F], F]:
     return decorator
 
 
-def _build_cache_key(func_name: str, auth_credentials: Dict[str, Any]) -> Optional[str]:
+def _build_cache_key(func_name: str, auth_credentials: dict[str, Any]) -> str | None:
     """Build a stable cache key from the function name and user token hash."""
     token = auth_credentials.get("access_token", "")
     if not token:
@@ -71,7 +70,7 @@ def _build_cache_key(func_name: str, auth_credentials: Dict[str, Any]) -> Option
     return f"tool_cache:{func_name}:{token_hash}"
 
 
-def _get_redis_client() -> Optional[Any]:
+def _get_redis_client() -> Any | None:
     """Get the async Redis client from the app's DB layer, returning None on failure."""
     try:
         from app.db.redis import redis_cache

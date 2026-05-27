@@ -1,7 +1,7 @@
 """Unit tests for BaseSchedulerService."""
 
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,7 +13,6 @@ from app.models.scheduler_models import (
     TaskExecutionResult,
 )
 from app.services.scheduler_service import BaseSchedulerService
-
 
 # ---------------------------------------------------------------------------
 # Concrete subclass for testing
@@ -32,9 +31,7 @@ class ConcreteSchedulerService(BaseSchedulerService):
         self.mock_update_task_status = AsyncMock(return_value=True)
         self.mock_get_pending_task = AsyncMock(return_value=[])
 
-    async def get_task(
-        self, task_id: str, user_id: Optional[str] = None
-    ) -> Optional[BaseScheduledTask]:
+    async def get_task(self, task_id: str, user_id: str | None = None) -> BaseScheduledTask | None:
         return await self.mock_get_task(task_id, user_id)
 
     async def execute_task(self, task: BaseScheduledTask) -> TaskExecutionResult:
@@ -44,12 +41,12 @@ class ConcreteSchedulerService(BaseSchedulerService):
         self,
         task_id: str,
         status: ScheduledTaskStatus,
-        update_data: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
+        update_data: dict[str, Any] | None = None,
+        user_id: str | None = None,
     ) -> bool:
         return await self.mock_update_task_status(task_id, status, update_data, user_id)
 
-    async def get_pending_task(self, current_time: datetime) -> List[BaseScheduledTask]:
+    async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
         return await self.mock_get_pending_task(current_time)
 
     def get_job_name(self) -> str:
@@ -77,7 +74,7 @@ def sample_task():
     return BaseScheduledTask(
         _id="task123",
         user_id="user1",
-        scheduled_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        scheduled_at=datetime.now(UTC) + timedelta(hours=1),
         status=ScheduledTaskStatus.SCHEDULED,
         occurrence_count=0,
     )
@@ -89,7 +86,7 @@ def recurring_task():
         _id="task_recurring",
         user_id="user1",
         repeat="0 9 * * *",
-        scheduled_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        scheduled_at=datetime.now(UTC) + timedelta(hours=1),
         status=ScheduledTaskStatus.SCHEDULED,
         occurrence_count=0,
     )
@@ -101,7 +98,7 @@ def recurring_task_max_occurrences():
         _id="task_max",
         user_id="user1",
         repeat="0 9 * * *",
-        scheduled_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        scheduled_at=datetime.now(UTC) + timedelta(hours=1),
         status=ScheduledTaskStatus.SCHEDULED,
         occurrence_count=4,
         max_occurrences=5,
@@ -114,10 +111,10 @@ def recurring_task_stop_after():
         _id="task_stop",
         user_id="user1",
         repeat="0 9 * * *",
-        scheduled_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        scheduled_at=datetime.now(UTC) + timedelta(hours=1),
         status=ScheduledTaskStatus.SCHEDULED,
         occurrence_count=0,
-        stop_after=datetime.now(timezone.utc) + timedelta(hours=2),
+        stop_after=datetime.now(UTC) + timedelta(hours=2),
     )
 
 
@@ -169,7 +166,7 @@ class TestInitializeClose:
 @pytest.mark.unit
 class TestScheduleTask:
     async def test_schedule_with_scheduled_at(self, service):
-        future = datetime.now(timezone.utc) + timedelta(hours=1)
+        future = datetime.now(UTC) + timedelta(hours=1)
         config = ScheduleConfig(scheduled_at=future)
         mock_job = MagicMock(job_id="job1")
         service.arq_pool.enqueue_job = AsyncMock(return_value=mock_job)
@@ -186,7 +183,7 @@ class TestScheduleTask:
 
         with patch(
             "app.services.scheduler_service.get_next_run_time",
-            return_value=datetime.now(timezone.utc) + timedelta(hours=1),
+            return_value=datetime.now(UTC) + timedelta(hours=1),
         ):
             result = await service.schedule_task("task1", config)
 
@@ -210,7 +207,7 @@ class TestScheduleTask:
 @pytest.mark.unit
 class TestRescheduleTask:
     async def test_reschedule(self, service):
-        future = datetime.now(timezone.utc) + timedelta(hours=2)
+        future = datetime.now(UTC) + timedelta(hours=2)
         mock_job = MagicMock(job_id="job2")
         service.arq_pool.enqueue_job = AsyncMock(return_value=mock_job)
 
@@ -245,17 +242,13 @@ class TestProcessTaskExecution:
 
     async def test_one_time_task_executed_and_completed(self, service, sample_task):
         service.mock_get_task.return_value = sample_task
-        service.mock_execute_task.return_value = TaskExecutionResult(
-            success=True, message="done"
-        )
+        service.mock_execute_task.return_value = TaskExecutionResult(success=True, message="done")
 
         result = await service.process_task_execution("task123")
 
         assert result.success is True
         # Should be marked as EXECUTING then COMPLETED
-        status_calls = [
-            call[0][1] for call in service.mock_update_task_status.call_args_list
-        ]
+        status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
         assert ScheduledTaskStatus.EXECUTING in status_calls
         assert ScheduledTaskStatus.COMPLETED in status_calls
 
@@ -266,15 +259,13 @@ class TestProcessTaskExecution:
 
         with patch(
             "app.services.scheduler_service.get_next_run_time",
-            return_value=datetime.now(timezone.utc) + timedelta(days=1),
+            return_value=datetime.now(UTC) + timedelta(days=1),
         ):
             result = await service.process_task_execution("task_recurring")
 
         assert result.success is True
         # Should update status to SCHEDULED for next run
-        status_calls = [
-            call[0][1] for call in service.mock_update_task_status.call_args_list
-        ]
+        status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
         assert ScheduledTaskStatus.EXECUTING in status_calls
         assert ScheduledTaskStatus.SCHEDULED in status_calls
 
@@ -287,26 +278,22 @@ class TestProcessTaskExecution:
 
         with patch(
             "app.services.scheduler_service.get_next_run_time",
-            return_value=datetime.now(timezone.utc) + timedelta(days=1),
+            return_value=datetime.now(UTC) + timedelta(days=1),
         ):
             result = await service.process_task_execution("task_max")
 
         assert result.success is True
         # Should be marked as COMPLETED since max_occurrences reached
-        status_calls = [
-            call[0][1] for call in service.mock_update_task_status.call_args_list
-        ]
+        status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
         assert ScheduledTaskStatus.COMPLETED in status_calls
 
-    async def test_recurring_task_stop_after_reached(
-        self, service, recurring_task_stop_after
-    ):
+    async def test_recurring_task_stop_after_reached(self, service, recurring_task_stop_after):
         service.mock_get_task.return_value = recurring_task_stop_after
         mock_job = MagicMock(job_id="j")
         service.arq_pool.enqueue_job = AsyncMock(return_value=mock_job)
 
         # Return a next_run time that is beyond stop_after
-        far_future = datetime.now(timezone.utc) + timedelta(days=30)
+        far_future = datetime.now(UTC) + timedelta(days=30)
         with patch(
             "app.services.scheduler_service.get_next_run_time",
             return_value=far_future,
@@ -314,9 +301,7 @@ class TestProcessTaskExecution:
             result = await service.process_task_execution("task_stop")
 
         assert result.success is True
-        status_calls = [
-            call[0][1] for call in service.mock_update_task_status.call_args_list
-        ]
+        status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
         assert ScheduledTaskStatus.COMPLETED in status_calls
 
     async def test_execution_exception_marks_failed(self, service, sample_task):
@@ -327,9 +312,7 @@ class TestProcessTaskExecution:
 
         assert result.success is False
         assert "Execution error" in result.message
-        status_calls = [
-            call[0][1] for call in service.mock_update_task_status.call_args_list
-        ]
+        status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
         assert ScheduledTaskStatus.FAILED in status_calls
 
 
@@ -371,12 +354,12 @@ class TestScanAndSchedulePendingTasks:
             BaseScheduledTask(
                 _id="t1",
                 user_id="u1",
-                scheduled_at=datetime.now(timezone.utc) + timedelta(hours=1),
+                scheduled_at=datetime.now(UTC) + timedelta(hours=1),
             ),
             BaseScheduledTask(
                 _id="t2",
                 user_id="u1",
-                scheduled_at=datetime.now(timezone.utc) + timedelta(hours=2),
+                scheduled_at=datetime.now(UTC) + timedelta(hours=2),
             ),
         ]
         service.mock_get_pending_task.return_value = tasks
@@ -391,7 +374,7 @@ class TestScanAndSchedulePendingTasks:
         tasks = [
             BaseScheduledTask(
                 user_id="u1",
-                scheduled_at=datetime.now(timezone.utc) + timedelta(hours=1),
+                scheduled_at=datetime.now(UTC) + timedelta(hours=1),
             ),  # No _id
         ]
         service.mock_get_pending_task.return_value = tasks
@@ -436,7 +419,7 @@ class TestHandleRecurringTask:
 
         with patch(
             "app.services.scheduler_service.get_next_run_time",
-            return_value=datetime.now(timezone.utc) + timedelta(days=1),
+            return_value=datetime.now(UTC) + timedelta(days=1),
         ):
             await service._handle_recurring_task(recurring_task, 1)
 
@@ -452,7 +435,7 @@ class TestHandleRecurringTask:
 
         with patch(
             "app.services.scheduler_service.get_next_run_time",
-            return_value=datetime.now(timezone.utc) + timedelta(days=1),
+            return_value=datetime.now(UTC) + timedelta(days=1),
         ):
             await service._handle_recurring_task(recurring_task, 1)
 
@@ -465,7 +448,7 @@ class TestHandleRecurringTask:
 
         class TaskWithTriggerConfig(BaseScheduledTask):
             model_config = {"arbitrary_types_allowed": True}
-            trigger_config: Optional[MagicMock] = None
+            trigger_config: MagicMock | None = None
 
         trigger_config = MagicMock()
         trigger_config.timezone = "America/New_York"
@@ -473,7 +456,7 @@ class TestHandleRecurringTask:
             _id="task_tz",
             user_id="user1",
             repeat="0 9 * * *",
-            scheduled_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            scheduled_at=datetime.now(UTC) + timedelta(hours=1),
             status=ScheduledTaskStatus.SCHEDULED,
             trigger_config=trigger_config,
         )
@@ -482,7 +465,7 @@ class TestHandleRecurringTask:
 
         with patch(
             "app.services.scheduler_service.get_next_run_time",
-            return_value=datetime.now(timezone.utc) + timedelta(days=1),
+            return_value=datetime.now(UTC) + timedelta(days=1),
         ) as mock_next_run:
             await service._handle_recurring_task(task, 1)
 
@@ -499,7 +482,7 @@ class TestHandleRecurringTask:
 @pytest.mark.unit
 class TestEnqueueTask:
     async def test_enqueue_success(self, service):
-        future = datetime.now(timezone.utc) + timedelta(hours=1)
+        future = datetime.now(UTC) + timedelta(hours=1)
         mock_job = MagicMock(job_id="job1")
         service.arq_pool.enqueue_job = AsyncMock(return_value=mock_job)
 
@@ -513,12 +496,12 @@ class TestEnqueueTask:
     async def test_enqueue_no_pool(self, service):
         service.arq_pool = None
 
-        result = await service._enqueue_task("task1", datetime.now(timezone.utc))
+        result = await service._enqueue_task("task1", datetime.now(UTC))
 
         assert result is False
 
     async def test_enqueue_failed_returns_false(self, service):
-        future = datetime.now(timezone.utc) + timedelta(hours=1)
+        future = datetime.now(UTC) + timedelta(hours=1)
         service.arq_pool.enqueue_job = AsyncMock(return_value=None)
 
         result = await service._enqueue_task("task1", future)
@@ -526,7 +509,7 @@ class TestEnqueueTask:
         assert result is False
 
     async def test_enqueue_past_time_rescheduled(self, service):
-        past = datetime.now(timezone.utc) - timedelta(hours=1)
+        past = datetime.now(UTC) - timedelta(hours=1)
         mock_job = MagicMock(job_id="job1")
         service.arq_pool.enqueue_job = AsyncMock(return_value=mock_job)
 
@@ -536,7 +519,7 @@ class TestEnqueueTask:
         call_args = service.arq_pool.enqueue_job.call_args
         defer_until = call_args[1]["_defer_until"]
         # Should be in the future (now + 120s buffer)
-        assert defer_until > datetime.now(timezone.utc)
+        assert defer_until > datetime.now(UTC)
 
     async def test_enqueue_naive_datetime_gets_utc(self, service):
         naive_future = datetime(2099, 1, 1, 12, 0, 0)  # no tzinfo

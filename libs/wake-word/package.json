@@ -1,0 +1,64 @@
+{
+  "name": "@gaia/wake-word",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cross-platform on-device 'Hey GAIA' wake word detection (web, electron, react native) — ONNX-based, sub-200ms, no false positives",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core/index.ts",
+    "./web": "./src/web/index.ts",
+    "./native": "./src/native/index.ts",
+    "./node": "./src/node/index.ts",
+    "./types": "./src/types/index.ts",
+    "./worklet": "./src/web/worklet.ts",
+    "./models/*": "./models/*"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "loupe": "^3.1.2",
+    "onnxruntime-node": "^1.20.0",
+    "onnxruntime-react-native": "^1.20.0",
+    "onnxruntime-web": "^1.20.0",
+    "react": "19.2.4",
+    "react-native": "^0.83.2",
+    "react-native-live-audio-stream": "^1.1.1",
+    "tinybench": "^2.9.0",
+    "tinypool": "^1.0.0",
+    "tinyrainbow": "^2.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15",
+    "wavefile": "^11.0.0"
+  },
+  "peerDependencies": {
+    "onnxruntime-react-native": "^1.20.0",
+    "onnxruntime-web": "^1.20.0",
+    "react": "19.2.4",
+    "react-native": "^0.83.2",
+    "react-native-live-audio-stream": "^1.1.1"
+  },
+  "peerDependenciesMeta": {
+    "onnxruntime-web": {
+      "optional": true
+    },
+    "onnxruntime-react-native": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": true
+    },
+    "react-native-live-audio-stream": {
+      "optional": true
+    }
+  }
+}

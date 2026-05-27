@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.flowchart_tool."""
 
-from typing import Any, Dict
+from typing import Any
 
 import pytest
 
@@ -13,7 +13,7 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.flowchart_tool"
 
 
-def _make_config(user_id: str = FAKE_USER_ID) -> Dict[str, Any]:
+def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
     """Return a minimal RunnableConfig-like dict."""
     return {"metadata": {"user_id": user_id}}
 

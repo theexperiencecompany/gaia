@@ -20,13 +20,14 @@ Required env (mirrors apps/api/app/config/settings.py):
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterator
+from contextlib import contextmanager
 import os
+from pathlib import Path
 import shlex
 import subprocess
 import sys
 import tempfile
-from contextlib import contextmanager
-from typing import Iterator
 
 
 def required(name: str) -> str:
@@ -44,14 +45,15 @@ def _encryption_key_file() -> Iterator[str | None]:
         yield None
         return
     fd, path = tempfile.mkstemp(prefix="jfs-master-", suffix=".pem")
+    pem_path = Path(path)
     try:
         with os.fdopen(fd, "w") as f:
             f.write(pem if pem.endswith("\n") else pem + "\n")
-        os.chmod(path, 0o600)
+        pem_path.chmod(0o600)
         yield path
     finally:
         try:
-            os.unlink(path)
+            pem_path.unlink()
         except OSError:
             pass
 
@@ -100,9 +102,7 @@ def format_shard(shard: int, encrypt_key_path: str | None, dry_run: bool = False
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--shards", type=int, default=1, help="Number of shards to format"
-    )
+    parser.add_argument("--shards", type=int, default=1, help="Number of shards to format")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 

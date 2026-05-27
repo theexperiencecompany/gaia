@@ -65,7 +65,7 @@ async def _wait_for(
             return {"passed": False, "seen": seen, "matched": None}
         try:
             ev = await asyncio.wait_for(queue.get(), timeout=remaining)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return {"passed": False, "seen": seen, "matched": None}
         name = getattr(ev, "name", "")
         etype = _event_type_name(ev)

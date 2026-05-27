@@ -16,16 +16,14 @@ Caching: get_available_skills_text is cached in Redis (12h TTL).
 Invalidation is handled by @CacheInvalidator decorators in registry.py.
 """
 
-from typing import List
-
 from app.agents.skills.models import Skill
 from app.agents.skills.registry import get_skills_for_agent
-from shared.py.wide_events import log
 from app.constants.cache import (
     SKILLS_TEXT_CACHE_KEY,
     SKILLS_TEXT_CACHE_TTL,
 )
 from app.decorators.caching import Cacheable
+from shared.py.wide_events import log
 
 
 @Cacheable(key_pattern=SKILLS_TEXT_CACHE_KEY, ttl=SKILLS_TEXT_CACHE_TTL)
@@ -47,9 +45,7 @@ async def get_available_skills_text(
     Returns:
         Plain text string for system prompt injection, or empty string if no skills
     """
-    log.set(
-        user_id=user_id, agent_name=agent_name, skill_op="get_available_skills_text"
-    )
+    log.set(user_id=user_id, agent_name=agent_name, skill_op="get_available_skills_text")
     try:
         skills = await get_skills_for_agent(user_id, agent_name)
 
@@ -64,7 +60,7 @@ async def get_available_skills_text(
         return ""
 
 
-def _format_skills(skills: List[Skill]) -> str:
+def _format_skills(skills: list[Skill]) -> str:
     """Format skills as plain text for prompt injection."""
     lines = ["Available Skills:"]
 

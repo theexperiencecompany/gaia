@@ -7,8 +7,9 @@ based on their name, description, tools, and server URL domain.
 
 from urllib.parse import urlparse
 
-from shared.py.wide_events import log
 from openai import AsyncOpenAI
+
+from shared.py.wide_events import log
 
 # Fixed list of valid integration categories
 INTEGRATION_CATEGORIES = [
@@ -76,9 +77,7 @@ async def infer_integration_category(
         client = AsyncOpenAI()
 
         # Extract first 10 tool names for context, filtering out empty names
-        tool_names: list[str] = [
-            str(t.get("name")) for t in tools[:10] if t.get("name")
-        ]
+        tool_names: list[str] = [str(t.get("name")) for t in tools[:10] if t.get("name")]
         tools_str = ", ".join(tool_names) or "None"
 
         # Extract domain from server URL

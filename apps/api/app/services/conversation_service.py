@@ -1,37 +1,34 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from uuid import uuid4
 
-from shared.py.wide_events import log
+from bson import ObjectId
+from fastapi import HTTPException, status
+
 from app.db.mongodb.collections import conversations_collection
-from app.services.storage import JuiceFSUnavailable, delete_session_dir
 from app.models.chat_models import (
     BatchSyncRequest,
     ConversationModel,
     SystemPurpose,
     UpdateMessagesRequest,
 )
+from app.services.storage import JuiceFSUnavailable, delete_session_dir
 from app.utils.tool_data_utils import (
     convert_conversation_messages,
     convert_legacy_tool_data,
 )
-from bson import ObjectId
-from fastapi import HTTPException, status
-from uuid import uuid4
+from shared.py.wide_events import log
 
 
-async def create_conversation_service(
-    conversation: ConversationModel, user: dict
-) -> dict:
+async def create_conversation_service(conversation: ConversationModel, user: dict) -> dict:
     """
     Create a new conversation.
     """
     user_id = user.get("user_id")
     if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
 
-    created_at = datetime.now(timezone.utc).isoformat()
+    created_at = datetime.now(UTC).isoformat()
     conversation_data = {
         "user_id": user_id,
         "conversation_id": conversation.conversation_id,
@@ -39,6 +36,10 @@ async def create_conversation_service(
         "is_system_generated": conversation.is_system_generated or False,
         "system_purpose": conversation.system_purpose,
         "is_unread": conversation.is_unread or False,
+        "is_onboarding_demo": conversation.is_onboarding_demo,
+        # Persist the originating source (e.g. bot platform) as a string so it
+        # matches the literals used by the web list query's $nin source filter.
+        "source": conversation.source.value if conversation.source else None,
         "messages": [],
         "createdAt": created_at,
     }
@@ -48,7 +49,7 @@ async def create_conversation_service(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create conversation: {str(e)}",
+            detail=f"Failed to create conversation: {e!s}",
         )
 
     if not insert_result.acknowledged:
@@ -78,6 +79,7 @@ async def get_conversations(user: dict, page: int = 1, limit: int = 10) -> dict:
         "description": 1,
         "starred": 1,
         "is_system_generated": 1,
+        "is_onboarding_conversation": 1,
         "system_purpose": 1,
         "is_unread": 1,
         "source": 1,
@@ -102,9 +104,7 @@ async def get_conversations(user: dict, page: int = 1, limit: int = 10) -> dict:
         .sort("createdAt", -1)
         .to_list(None)
     )
-    non_starred_count_future = conversations_collection.count_documents(
-        non_starred_filter
-    )
+    non_starred_count_future = conversations_collection.count_documents(non_starred_filter)
     non_starred_future = (
         conversations_collection.find(non_starred_filter, projection)
         .sort("createdAt", -1)
@@ -117,18 +117,14 @@ async def get_conversations(user: dict, page: int = 1, limit: int = 10) -> dict:
         starred_conversations,
         non_starred_count,
         non_starred_conversations,
-    ) = await asyncio.gather(
-        starred_future, non_starred_count_future, non_starred_future
-    )
+    ) = await asyncio.gather(starred_future, non_starred_count_future, non_starred_future)
 
     starred_conversations = _convert_ids(starred_conversations)
     non_starred_conversations = _convert_ids(non_starred_conversations)
 
     combined_conversations = starred_conversations + non_starred_conversations
     total = len(starred_conversations) + non_starred_count
-    total_pages = (
-        ((non_starred_count + limit - 1) // limit) if non_starred_count > 0 else 1
-    )
+    total_pages = ((non_starred_count + limit - 1) // limit) if non_starred_count > 0 else 1
 
     result = {
         "conversations": combined_conversations,
@@ -173,9 +169,7 @@ async def star_conversation(conversation_id: str, starred: bool, user: dict) -> 
     )
 
     if update_result.modified_count == 0:
-        raise HTTPException(
-            status_code=404, detail="Conversation not found or update failed"
-        )
+        raise HTTPException(status_code=404, detail="Conversation not found or update failed")
 
     return {"message": "Conversation updated successfully", "starred": starred}
 
@@ -264,9 +258,7 @@ async def update_messages(request: UpdateMessagesRequest, user: dict) -> dict:
     }
 
 
-async def pin_message(
-    conversation_id: str, message_id: str, pinned: bool, user: dict
-) -> dict:
+async def pin_message(conversation_id: str, message_id: str, pinned: bool, user: dict) -> dict:
     """
     Pin or unpin a message within a conversation.
     """
@@ -279,9 +271,7 @@ async def pin_message(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     messages = conversation.get("messages", [])
-    target_message = next(
-        (msg for msg in messages if msg.get("message_id") == message_id), None
-    )
+    target_message = next((msg for msg in messages if msg.get("message_id") == message_id), None)
 
     if not target_message:
         raise HTTPException(status_code=404, detail="Message not found in conversation")
@@ -299,9 +289,7 @@ async def pin_message(
     )
 
     if update_result.modified_count == 0:
-        raise HTTPException(
-            status_code=404, detail="Message not found or update failed"
-        )
+        raise HTTPException(status_code=404, detail="Message not found or update failed")
 
     response_message = (
         f"Message with ID {message_id} pinned successfully"
@@ -352,7 +340,7 @@ async def create_system_conversation(
         dict: Created conversation data
     """
     conversation_id = str(uuid4())
-    created_at = datetime.now(timezone.utc).isoformat()
+    created_at = datetime.now(UTC).isoformat()
 
     conversation_data = ConversationModel(
         conversation_id=conversation_id,
@@ -386,7 +374,7 @@ async def create_system_conversation(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create system conversation: {str(e)}",
+            detail=f"Failed to create system conversation: {e!s}",
         )
 
 
@@ -464,9 +452,7 @@ async def mark_conversation_as_read(conversation_id: str, user: dict) -> dict:
     """
     user_id = user.get("user_id")
     if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
     await conversations_collection.update_one(
         {"user_id": user_id, "conversation_id": conversation_id},
         {"$set": {"is_unread": False}, "$currentDate": {"updatedAt": True}},
@@ -481,9 +467,7 @@ async def mark_conversation_as_unread(conversation_id: str, user: dict) -> dict:
     """Mark a conversation as unread."""
     user_id = user.get("user_id")
     if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
 
     update_result = await conversations_collection.update_one(
         {"user_id": user_id, "conversation_id": conversation_id},
@@ -524,13 +508,9 @@ async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dic
     """
     user_id = user.get("user_id")
     if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
 
-    conversation_map = {
-        item.conversation_id: item.last_updated for item in request.conversations
-    }
+    conversation_map = {item.conversation_id: item.last_updated for item in request.conversations}
 
     if not conversation_map:
         return {"conversations": []}
@@ -546,9 +526,7 @@ async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dic
         # Only include if updated after the provided timestamp
         if last_updated:
             try:
-                last_updated_dt = datetime.fromisoformat(
-                    last_updated.replace("Z", "+00:00")
-                )
+                last_updated_dt = datetime.fromisoformat(last_updated.replace("Z", "+00:00"))
                 condition["$or"] = [
                     {"updatedAt": {"$gt": last_updated_dt}},
                     {"updatedAt": {"$exists": False}},
@@ -572,6 +550,7 @@ async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dic
                 "description": 1,
                 "starred": 1,
                 "is_system_generated": 1,
+                "is_onboarding_conversation": 1,
                 "system_purpose": 1,
                 "is_unread": 1,
                 "createdAt": 1,

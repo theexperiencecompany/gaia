@@ -96,6 +96,7 @@ const ChatPage = React.memo(function MainChat() {
 
   const {
     hasMessages,
+    isWelcomeConversation,
     chatRef,
     dummySectionRef,
     inputRef,
@@ -105,6 +106,8 @@ const ChatPage = React.memo(function MainChat() {
     appendToInputRef,
     convoIdParam,
   } = useChatLayout();
+
+  const useMessagesLayout = hasMessages || isWelcomeConversation;
 
   // Set active conversation ID and mark as read when opening
   useEffect(() => {
@@ -213,7 +216,7 @@ const ChatPage = React.memo(function MainChat() {
             setVoiceModeActive(false);
           }}
         />
-      ) : hasMessages ? (
+      ) : useMessagesLayout ? (
         <>
           <ChatWithMessages
             scrollContainerRef={scrollContainerRef}

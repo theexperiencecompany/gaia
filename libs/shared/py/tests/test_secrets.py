@@ -8,7 +8,6 @@ import pytest
 
 from shared.py.secrets import InfisicalConfigError, inject_infisical_secrets
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -132,7 +131,9 @@ class TestInjectInfisicalSecretsSuccess:
         mock_sdk_class = MagicMock(return_value=mock_client)
 
         with patch.dict(os.environ, _FULL_ENV, clear=True):
-            with patch.dict("sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}):
+            with patch.dict(
+                "sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}
+            ):
                 inject_infisical_secrets()
 
             assert os.environ.get("MY_SECRET") == "s3cret"
@@ -150,7 +151,9 @@ class TestInjectInfisicalSecretsSuccess:
 
         env = {**_FULL_ENV, "EXISTING_KEY": "local_value"}
         with patch.dict(os.environ, env, clear=True):
-            with patch.dict("sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}):
+            with patch.dict(
+                "sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}
+            ):
                 inject_infisical_secrets()
 
             # Local value must be preserved
@@ -163,7 +166,9 @@ class TestInjectInfisicalSecretsSuccess:
         mock_sdk_class = MagicMock(return_value=mock_client)
 
         with patch.dict(os.environ, _FULL_ENV, clear=True):
-            with patch.dict("sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}):
+            with patch.dict(
+                "sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}
+            ):
                 inject_infisical_secrets()
 
         mock_client.auth.universal_auth.login.assert_called_once_with(
@@ -178,7 +183,9 @@ class TestInjectInfisicalSecretsSuccess:
         mock_sdk_class = MagicMock(return_value=mock_client)
 
         with patch.dict(os.environ, _FULL_ENV, clear=True):
-            with patch.dict("sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}):
+            with patch.dict(
+                "sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}
+            ):
                 inject_infisical_secrets()
 
         mock_sdk_class.assert_called_once_with(
@@ -193,7 +200,9 @@ class TestInjectInfisicalSecretsSuccess:
         mock_sdk_class = MagicMock(return_value=mock_client)
 
         with patch.dict(os.environ, _FULL_ENV, clear=True):
-            with patch.dict("sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}):
+            with patch.dict(
+                "sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}
+            ):
                 inject_infisical_secrets()
 
         mock_client.secrets.list_secrets.assert_called_once_with(
@@ -218,7 +227,9 @@ class TestInjectInfisicalSecretsSuccess:
         mock_sdk_class = MagicMock(return_value=mock_client)
 
         with patch.dict(os.environ, _FULL_ENV, clear=True):
-            with patch.dict("sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}):
+            with patch.dict(
+                "sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}
+            ):
                 inject_infisical_secrets()
 
             assert os.environ["KEY_A"] == "val_a"
@@ -239,7 +250,9 @@ class TestInjectInfisicalSecretsSDKFailure:
         mock_sdk_class = MagicMock(side_effect=ConnectionError("unreachable"))
 
         with patch.dict(os.environ, _FULL_ENV, clear=True):
-            with patch.dict("sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}):
+            with patch.dict(
+                "sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}
+            ):
                 with pytest.raises(InfisicalConfigError, match="Failed to fetch secrets"):
                     inject_infisical_secrets()
 
@@ -250,7 +263,9 @@ class TestInjectInfisicalSecretsSDKFailure:
         mock_sdk_class = MagicMock(return_value=mock_client)
 
         with patch.dict(os.environ, _FULL_ENV, clear=True):
-            with patch.dict("sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}):
+            with patch.dict(
+                "sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}
+            ):
                 with pytest.raises(InfisicalConfigError, match="auth failed"):
                     inject_infisical_secrets()
 
@@ -261,7 +276,9 @@ class TestInjectInfisicalSecretsSDKFailure:
         mock_sdk_class = MagicMock(return_value=mock_client)
 
         with patch.dict(os.environ, _FULL_ENV, clear=True):
-            with patch.dict("sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}):
+            with patch.dict(
+                "sys.modules", {"infisical_sdk": MagicMock(InfisicalSDKClient=mock_sdk_class)}
+            ):
                 with pytest.raises(InfisicalConfigError, match="timed out"):
                     inject_infisical_secrets()
 

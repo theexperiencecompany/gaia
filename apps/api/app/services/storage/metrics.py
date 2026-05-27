@@ -31,7 +31,7 @@ The wide event field is::
     }
 
 Op names are stable, lowercased, snake_cased identifiers — keep them stable
-because dashboards will pivot on them. The list lives in ``FS_OPS`` below as
+because dashboards will pivot on them. The list lives in ``FsOps`` below as
 the source of truth; adding a new op = add a constant here first.
 
 Prometheus export
@@ -76,13 +76,13 @@ Grafana panels live in
 Usage
 -----
 
-    from app.services.storage.metrics import fs_timer, FS_OPS
+    from app.services.storage.metrics import fs_timer, FsOps
 
-    async with fs_timer(FS_OPS.LIST_ARTIFACTS, conv_id=conv):
+    async with fs_timer(FsOps.LIST_ARTIFACTS, conv_id=conv):
         return await _go()
 
     # or, when the caller already has a duration:
-    record_fs_op(FS_OPS.WRITE_SESSION_FILE, duration_ms=4.2, bytes=size)
+    record_fs_op(FsOps.WRITE_SESSION_FILE, duration_ms=4.2, bytes=size)
 
 At the end of a `wide_task`, call::
 
@@ -95,13 +95,19 @@ no cross-request leakage.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Callable
 import contextlib
 import contextvars
-import time
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Callable, Final
+import time
+from typing import Any, Final
 
-from prometheus_client import REGISTRY, Counter, Gauge, Histogram  # noqa: F401  # Gauge used via lambda factories below
+from prometheus_client import (  # noqa: F401  # Gauge used via lambda factories below
+    REGISTRY,
+    Counter,
+    Gauge,
+    Histogram,
+)
 
 from shared.py.logging import get_contextual_logger
 
@@ -160,7 +166,7 @@ _FS_OP_DURATION_SECONDS = _register_once(
     "fs_op_duration_seconds",
     lambda: Histogram(
         name="fs_op_duration_seconds",
-        documentation="FS_OPS measurement duration in seconds",
+        documentation="FsOps measurement duration in seconds",
         labelnames=("operation", "mode", "status"),
         buckets=_FS_OP_BUCKETS,
     ),
@@ -170,7 +176,7 @@ _FS_OP_BYTES_TOTAL = _register_once(
     "fs_op_bytes_total",
     lambda: Counter(
         name="fs_op_bytes_total",
-        documentation="FS_OPS measurement byte volume",
+        documentation="FsOps measurement byte volume",
         labelnames=("operation",),
     ),
 )
@@ -179,7 +185,7 @@ _FS_OP_TOTAL = _register_once(
     "fs_op_total",
     lambda: Counter(
         name="fs_op_total",
-        documentation="FS_OPS lifetime total observations",
+        documentation="FsOps lifetime total observations",
         labelnames=("operation", "mode", "status"),
     ),
 )
@@ -188,7 +194,7 @@ _FS_OP_LAST_SEEN = _register_once(
     "fs_op_last_seen_unix_seconds",
     lambda: Gauge(
         name="fs_op_last_seen_unix_seconds",
-        documentation="Wall-clock time of the most recent FS_OPS observation per op",
+        documentation="Wall-clock time of the most recent FsOps observation per op",
         labelnames=("operation",),
     ),
 )
@@ -197,7 +203,7 @@ _FS_OP_IN_FLIGHT = _register_once(
     "fs_op_in_flight",
     lambda: Gauge(
         name="fs_op_in_flight",
-        documentation="FS_OPS operations currently executing per op",
+        documentation="FsOps operations currently executing per op",
         labelnames=("operation",),
     ),
 )
@@ -261,7 +267,7 @@ class _OpStats:
         return out
 
 
-class FS_OPS:
+class FsOps:
     """Stable identifiers for every FS-shaped operation we instrument.
 
     Keep names <= 32 chars and snake_case. Adding a new metric: add the
@@ -321,8 +327,8 @@ class FS_OPS:
     WATCHER_RESCAN: Final[str] = "watcher_rescan"
 
 
-_metrics_var: contextvars.ContextVar[dict[str, _OpStats] | None] = (
-    contextvars.ContextVar("fs_metrics", default=None)
+_metrics_var: contextvars.ContextVar[dict[str, _OpStats] | None] = contextvars.ContextVar(
+    "fs_metrics", default=None
 )
 
 
@@ -358,8 +364,7 @@ def record_fs_op(
     stats = _bucket().setdefault(op, _OpStats())
     stats.count += 1
     stats.total_ms += duration_ms
-    if duration_ms > stats.max_ms:
-        stats.max_ms = duration_ms
+    stats.max_ms = max(stats.max_ms, duration_ms)
     if bytes:
         stats.bytes += bytes
     if error is not None:
@@ -480,7 +485,7 @@ def peek_fs_metrics() -> dict[str, dict[str, Any]]:
 
 
 __all__ = [
-    "FS_OPS",
+    "FsOps",
     "add_fs_bytes",
     "flush_fs_metrics",
     "fs_timer",

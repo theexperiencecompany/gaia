@@ -8,6 +8,7 @@ agree on where things live.
 """
 
 from app.agents.workspace.paths import (
+    ARTIFACTS_DIRNAME,
     GAIA_RUNTIME_DIRNAME,
     PINNED_DIRNAME,
     RUNS_DIRNAME,
@@ -16,17 +17,16 @@ from app.agents.workspace.paths import (
     SETTINGS_DIRNAME,
     SKILLS_DIRNAME,
     USER_UPLOADED_DIRNAME,
-    ARTIFACTS_DIRNAME,
     WORKSPACE_ROOT,
     MountRole,
     classify,
     detect_content_type,
     is_under_workspace,
     runs_log_dir,
+    session_artifacts,
     session_dir,
     session_scratch,
     session_user_uploaded,
-    session_artifacts,
 )
 
 __all__ = [

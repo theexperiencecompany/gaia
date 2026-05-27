@@ -13,6 +13,10 @@ This module consolidates middleware creation to:
 from collections.abc import Mapping
 from typing import Any
 
+from langchain_core.language_models import BaseChatModel, LanguageModelLike
+from langchain_core.tools import BaseTool
+from langchain_google_genai import ChatGoogleGenerativeAI
+
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
@@ -20,7 +24,6 @@ from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
-from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.summarization import (
     COMPACTION_THRESHOLD,
@@ -29,9 +32,7 @@ from app.constants.summarization import (
     SUMMARIZATION_MODEL,
     SUMMARIZATION_TRIGGER_FRACTION,
 )
-from langchain_core.language_models import BaseChatModel, LanguageModelLike
-from langchain_core.tools import BaseTool
-from langchain_google_genai import ChatGoogleGenerativeAI
+from shared.py.wide_events import log
 
 # Coding tools operate on the persistent E2B workspace; their outputs are
 # already capped by the bash output limiter and the read tool's pagination,

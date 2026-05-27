@@ -19,26 +19,27 @@ The yielded object is a live `AsyncSandbox` from `e2b_code_interpreter`.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 import contextlib
-from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Optional
+from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from e2b import AsyncSandbox
 
-from shared.py.wide_events import log
 from app.config.settings import settings
 from app.db.mongodb.collections import e2b_sandboxes_collection
 from app.services.sandbox.artifact_watcher import start_watcher_for
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
 from app.services.storage import (
-    FS_OPS,
+    FsOps,
     JuiceFSUnavailable,
     ensure_user_skills_dir,
     ensure_user_workspace,
     fs_timer,
 )
+from shared.py.wide_events import log
 
 CANARY_PATH = "/workspace/.gaia/canary.txt"
 MOUNT_SCRIPT_PATH = "/etc/gaia/mount.sh"
@@ -49,7 +50,7 @@ class SandboxAcquisitionError(RuntimeError):
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _split_meta_url(url: str) -> tuple[str, str]:
@@ -129,7 +130,7 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
     # Sandbox-wide env is deliberately empty of credentials — see _mount_env
     # docstring. USER_ID is not a secret but we still scope it per-call so
     # there's no implicit reliance on sandbox-wide identity for security.
-    async with fs_timer(FS_OPS.SBX_CREATE):
+    async with fs_timer(FsOps.SBX_CREATE):
         sbx = await async_sandbox_cls.create(
             template=settings.E2B_TEMPLATE_ID,
             timeout=3600,
@@ -155,7 +156,7 @@ async def _run_mount_script(sbx: Any, mount_env: dict[str, str]) -> None:
     them from the `sudo` group), so root's ``/proc/<pid>/environ`` stays
     inaccessible.
     """
-    async with fs_timer(FS_OPS.SBX_MOUNT_SCRIPT):
+    async with fs_timer(FsOps.SBX_MOUNT_SCRIPT):
         result = await sbx.commands.run(
             MOUNT_SCRIPT_PATH,
             timeout=60,
@@ -201,7 +202,7 @@ async def _ensure_mounted(sbx: Any, mount_env: dict[str, str]) -> None:
     because the credentials are no longer sandbox-wide — every call site
     that may re-run the script must supply them (see ``_mount_env``).
     """
-    async with fs_timer(FS_OPS.SBX_ENSURE_MOUNTED):
+    async with fs_timer(FsOps.SBX_ENSURE_MOUNTED):
         exit_code, _, _ = await _run_silent(sbx, "mountpoint -q /workspace", timeout=5)
         if exit_code != 0:
             await _run_mount_script(sbx, mount_env)
@@ -218,7 +219,7 @@ async def _write_canary(sbx: Any) -> str:
     return ts
 
 
-async def _read_canary(sbx: Any) -> Optional[str]:
+async def _read_canary(sbx: Any) -> str | None:
     """Return the canary contents, or None if the file is missing/unreadable."""
     exit_code, stdout, _ = await _run_silent(sbx, f"cat {CANARY_PATH}", timeout=5)
     if exit_code != 0:
@@ -232,7 +233,7 @@ async def _verify_canary_or_die(entry: PooledSandbox) -> bool:
     Returns True if the canary is valid (proceed with the call). Returns False
     if the FS appears stale and the sandbox should be discarded + recreated.
     """
-    async with fs_timer(FS_OPS.SBX_CANARY_VERIFY):
+    async with fs_timer(FsOps.SBX_CANARY_VERIFY):
         if entry.last_canary_ts is None:
             # First use after acquire — write canary now.
             entry.last_canary_ts = await _write_canary(entry.sandbox)
@@ -241,21 +242,21 @@ async def _verify_canary_or_die(entry: PooledSandbox) -> bool:
         return actual == entry.last_canary_ts
 
 
-async def _try_connect_or_resume(sandbox_id: str) -> Optional[Any]:
+async def _try_connect_or_resume(sandbox_id: str) -> Any | None:
     """Try `connect`, then `resume`. Returns None if both fail.
 
     Each attempt is bounded to 10s so a hung E2B control-plane call doesn't
     stall the agent — we'd rather just create a fresh sandbox.
     """
     async_sandbox_cls = AsyncSandbox
-    async with fs_timer(FS_OPS.SBX_CONNECT_RESUME):
+    async with fs_timer(FsOps.SBX_CONNECT_RESUME):
         for method_name in ("connect", "resume"):
             method = getattr(async_sandbox_cls, method_name, None)
             if method is None:
                 continue
             try:
                 return await asyncio.wait_for(method(sandbox_id), timeout=10)
-            except (asyncio.TimeoutError, Exception) as e:
+            except (TimeoutError, Exception) as e:
                 log.info(
                     f"AsyncSandbox.{method_name}({sandbox_id}) failed: {e}",
                 )
@@ -264,7 +265,7 @@ async def _try_connect_or_resume(sandbox_id: str) -> Optional[Any]:
 
 async def _health_probe(sbx: Any) -> bool:
     """Return True if the sandbox responds within a short window."""
-    async with fs_timer(FS_OPS.SBX_HEALTH_PROBE):
+    async with fs_timer(FsOps.SBX_HEALTH_PROBE):
         try:
             exit_code, _, _ = await asyncio.wait_for(
                 _run_silent(sbx, "true", timeout=3),
@@ -346,7 +347,7 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
 
     doc = await e2b_sandboxes_collection.find_one({"user_id": user_id})
 
-    sbx: Optional[Any] = None
+    sbx: Any | None = None
     workspace_version = 0
 
     if doc and doc.get("sandbox_id"):
@@ -484,7 +485,7 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[Any]:
     lock = await pool.get_lock(user_id)
     await lock.acquire()
     try:
-        async with fs_timer(FS_OPS.SBX_ACQUIRE):
+        async with fs_timer(FsOps.SBX_ACQUIRE):
             entry = await _acquire_or_create(user_id)
         entry.refcount += 1
         try:

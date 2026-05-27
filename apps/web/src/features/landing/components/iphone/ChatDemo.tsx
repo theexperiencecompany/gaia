@@ -34,6 +34,7 @@ export interface ChatDemoProps {
   subtitle?: string;
   headerAvatar?: string;
   showComposer?: boolean;
+  showHeader?: boolean;
   theme?: "light" | "dark";
   className?: string;
 }
@@ -54,6 +55,7 @@ export function ChatDemo({
   subtitle,
   headerAvatar,
   showComposer = true,
+  showHeader = true,
   theme,
   className,
 }: ChatDemoProps) {
@@ -66,6 +68,7 @@ export function ChatDemo({
           subtitle={subtitle}
           headerAvatar={headerAvatar ?? DEFAULT_AVATAR}
           showComposer={showComposer}
+          showHeader={showHeader}
           className={className}
         />
       );
@@ -77,6 +80,7 @@ export function ChatDemo({
           subtitle={subtitle}
           headerAvatar={headerAvatar ?? DEFAULT_AVATAR}
           showComposer={showComposer}
+          showHeader={showHeader}
           className={className}
         />
       );
@@ -87,6 +91,7 @@ export function ChatDemo({
           title={title}
           subtitle={subtitle}
           showComposer={showComposer}
+          showHeader={showHeader}
           theme={theme ?? "light"}
           className={className}
         />
@@ -98,6 +103,7 @@ export function ChatDemo({
           title={title}
           subtitle={subtitle}
           showComposer={showComposer}
+          showHeader={showHeader}
           className={className}
         />
       );
@@ -109,6 +115,7 @@ export function ChatDemo({
           subtitle={subtitle}
           headerAvatar={headerAvatar ?? DEFAULT_AVATAR}
           showComposer={showComposer}
+          showHeader={showHeader}
           className={className}
         />
       );
@@ -240,6 +247,7 @@ function IMessageDemo({
   subtitle,
   headerAvatar,
   showComposer,
+  showHeader,
   className,
 }: {
   messages: ChatMessageItem[];
@@ -247,6 +255,7 @@ function IMessageDemo({
   subtitle?: string;
   headerAvatar?: string;
   showComposer: boolean;
+  showHeader: boolean;
   className?: string;
 }) {
   const grouped = curvedThread(messages);
@@ -255,45 +264,56 @@ function IMessageDemo({
       className={cn("flex h-full flex-col", className)}
       style={{ background: "#ffffff", fontFamily: SF_STACK, color: "#000" }}
     >
-      <div
-        className="flex shrink-0 flex-col items-center justify-center"
-        style={{ background: "#ffffff", padding: "2px 16px 10px" }}
-      >
+      {showHeader && (
         <div
-          className="overflow-hidden rounded-full"
-          style={{ width: 54, height: 54, marginBottom: 5 }}
+          className="flex shrink-0 flex-col items-center justify-center"
+          style={{ background: "#ffffff", padding: "2px 16px 10px" }}
         >
-          {/* biome-ignore lint/performance/noImgElement: tiny remote avatar */}
-          <img
-            src={headerAvatar}
-            alt=""
-            style={{ width: 54, height: 54, objectFit: "cover" }}
-          />
-        </div>
-        <div
-          className="flex items-center"
-          style={{ fontSize: 14, color: "#000", fontWeight: 600, gap: 3 }}
-        >
-          <span style={{ letterSpacing: "-0.01em" }}>{title ?? "GAIA"}</span>
-          <svg width="5" height="8" viewBox="0 0 7 11" fill="none" aria-hidden>
-            <path
-              d="M1 1l4.5 4.5L1 10"
-              stroke="rgba(60,60,67,0.28)"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-        {subtitle && (
-          <span
-            style={{ fontSize: 11, color: "rgba(60,60,67,0.55)", marginTop: 2 }}
+          <div
+            className="overflow-hidden rounded-full"
+            style={{ width: 54, height: 54, marginBottom: 5 }}
           >
-            {subtitle}
-          </span>
-        )}
-      </div>
-
+            {/* biome-ignore lint/performance/noImgElement: tiny remote avatar */}
+            <img
+              src={headerAvatar}
+              alt=""
+              style={{ width: 54, height: 54, objectFit: "cover" }}
+            />
+          </div>
+          <div
+            className="flex items-center"
+            style={{ fontSize: 14, color: "#000", fontWeight: 600, gap: 3 }}
+          >
+            <span style={{ letterSpacing: "-0.01em" }}>{title ?? "GAIA"}</span>
+            <svg
+              width="5"
+              height="8"
+              viewBox="0 0 7 11"
+              fill="none"
+              aria-hidden
+            >
+              <path
+                d="M1 1l4.5 4.5L1 10"
+                stroke="rgba(60,60,67,0.28)"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          {subtitle && (
+            <span
+              style={{
+                fontSize: 11,
+                color: "rgba(60,60,67,0.55)",
+                marginTop: 2,
+              }}
+            >
+              {subtitle}
+            </span>
+          )}
+        </div>
+      )}
       <div
         className="flex flex-1 flex-col overflow-y-auto px-3 pb-3"
         style={{ scrollbarWidth: "none", gap: 8 }}
@@ -353,7 +373,6 @@ function IMessageDemo({
           );
         })}
       </div>
-
       {showComposer && (
         <div
           className="flex shrink-0 items-end gap-2 px-2 pt-2 pb-1"
@@ -431,6 +450,7 @@ function WhatsAppDemo({
   subtitle,
   headerAvatar,
   showComposer,
+  showHeader,
   className,
 }: {
   messages: ChatMessageItem[];
@@ -438,6 +458,7 @@ function WhatsAppDemo({
   subtitle?: string;
   headerAvatar?: string;
   showComposer: boolean;
+  showHeader: boolean;
   className?: string;
 }) {
   // Palette extracted from WhatsApp Chat.svg
@@ -457,90 +478,95 @@ function WhatsAppDemo({
       style={{ background: bg, fontFamily: SF_STACK, color: textColor }}
     >
       {/* Header — iOS chrome from WhatsApp Chat.svg (#F6F6F6) */}
-      <div className="flex shrink-0 flex-col" style={{ background: chromeBg }}>
+      {showHeader && (
         <div
-          className="grid items-center"
-          style={{
-            gridTemplateColumns: "1fr auto 1fr",
-            padding: "6px 12px 8px",
-            gap: 8,
-          }}
+          className="flex shrink-0 flex-col"
+          style={{ background: chromeBg }}
         >
-          <div className="flex items-center" style={{ color: accent }}>
-            <svg
-              width="12"
-              height="20"
-              viewBox="0 0 12 20"
-              aria-hidden
-              fill="none"
-            >
-              <path
-                d="M10 2 2 10l8 8"
-                stroke={accent}
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-          <div className="flex flex-col items-center" style={{ minWidth: 0 }}>
-            <div
-              className="overflow-hidden rounded-full"
-              style={{ width: 32, height: 32 }}
-            >
-              {/* biome-ignore lint/performance/noImgElement: avatar */}
-              <img
-                src={headerAvatar}
-                alt=""
-                style={{ width: 32, height: 32, objectFit: "cover" }}
-              />
-            </div>
-            <span
-              style={{
-                fontSize: 10,
-                marginTop: 2,
-                color: textColor,
-                letterSpacing: "-0.01em",
-                maxWidth: 140,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {title ?? "GAIA"}
-            </span>
-          </div>
           <div
-            className="flex items-center justify-end"
-            style={{ color: accent }}
+            className="grid items-center"
+            style={{
+              gridTemplateColumns: "1fr auto 1fr",
+              padding: "6px 12px 8px",
+              gap: 8,
+            }}
           >
-            <svg
-              width="22"
-              height="14"
-              viewBox="0 0 22 14"
-              aria-hidden
-              fill="none"
+            <div className="flex items-center" style={{ color: accent }}>
+              <svg
+                width="12"
+                height="20"
+                viewBox="0 0 12 20"
+                aria-hidden
+                fill="none"
+              >
+                <path
+                  d="M10 2 2 10l8 8"
+                  stroke={accent}
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+            <div className="flex flex-col items-center" style={{ minWidth: 0 }}>
+              <div
+                className="overflow-hidden rounded-full"
+                style={{ width: 32, height: 32 }}
+              >
+                {/* biome-ignore lint/performance/noImgElement: avatar */}
+                <img
+                  src={headerAvatar}
+                  alt=""
+                  style={{ width: 32, height: 32, objectFit: "cover" }}
+                />
+              </div>
+              <span
+                style={{
+                  fontSize: 10,
+                  marginTop: 2,
+                  color: textColor,
+                  letterSpacing: "-0.01em",
+                  maxWidth: 140,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {title ?? "GAIA"}
+              </span>
+            </div>
+            <div
+              className="flex items-center justify-end"
+              style={{ color: accent }}
             >
-              <rect
-                x="0.5"
-                y="0.5"
-                width="15"
-                height="13"
-                rx="3"
-                stroke={accent}
-              />
-              <path
-                d="M16 4l5 -3v12l-5 -3z"
-                fill={accent}
-                stroke={accent}
-                strokeWidth="0.5"
-                strokeLinejoin="round"
-              />
-            </svg>
+              <svg
+                width="22"
+                height="14"
+                viewBox="0 0 22 14"
+                aria-hidden
+                fill="none"
+              >
+                <rect
+                  x="0.5"
+                  y="0.5"
+                  width="15"
+                  height="13"
+                  rx="3"
+                  stroke={accent}
+                />
+                <path
+                  d="M16 4l5 -3v12l-5 -3z"
+                  fill={accent}
+                  stroke={accent}
+                  strokeWidth="0.5"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
           </div>
+          <div style={{ height: 0.5, background: "rgba(60,60,67,0.18)" }} />
         </div>
-        <div style={{ height: 0.5, background: "rgba(60,60,67,0.18)" }} />
-      </div>
+      )}
 
       {/* Chat area — light gray with the WhatsApp doodle pattern */}
       <div
@@ -710,6 +736,7 @@ function TelegramDemo({
   subtitle,
   headerAvatar,
   showComposer,
+  showHeader,
   className,
 }: {
   messages: ChatMessageItem[];
@@ -717,6 +744,7 @@ function TelegramDemo({
   subtitle?: string;
   headerAvatar?: string;
   showComposer: boolean;
+  showHeader: boolean;
   className?: string;
 }) {
   // Palette extracted from Telegram Chat.svg
@@ -737,75 +765,84 @@ function TelegramDemo({
       style={{ fontFamily: SF_STACK, color: textColor, background: chromeBg }}
     >
       {/* iOS header */}
-      <div className="flex shrink-0 flex-col" style={{ background: chromeBg }}>
+      {showHeader && (
         <div
-          className="grid items-center"
-          style={{
-            gridTemplateColumns: "1fr auto 1fr",
-            padding: "6px 12px 8px",
-            gap: 8,
-          }}
+          className="flex shrink-0 flex-col"
+          style={{ background: chromeBg }}
         >
-          <div className="flex items-center" style={{ color: accent }}>
-            <svg
-              width="12"
-              height="20"
-              viewBox="0 0 12 20"
-              aria-hidden
-              fill="none"
-            >
-              <path
-                d="M10 2 2 10l8 8"
-                stroke={accent}
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span
-              style={{ fontSize: 17, marginLeft: 8, letterSpacing: "-0.01em" }}
-            >
-              Back
-            </span>
-          </div>
-          <div className="flex flex-col items-center" style={{ minWidth: 0 }}>
-            <span
-              style={{
-                fontSize: 17,
-                fontWeight: 600,
-                letterSpacing: "-0.01em",
-                color: textColor,
-                maxWidth: 160,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {title ?? "GAIA"}
-            </span>
-            <span style={{ fontSize: 12, color: metaColor, marginTop: 1 }}>
-              {subtitle ?? "last seen recently"}
-            </span>
-          </div>
           <div
-            className="flex items-center justify-end"
-            style={{ color: accent }}
+            className="grid items-center"
+            style={{
+              gridTemplateColumns: "1fr auto 1fr",
+              padding: "6px 12px 8px",
+              gap: 8,
+            }}
           >
+            <div className="flex items-center" style={{ color: accent }}>
+              <svg
+                width="12"
+                height="20"
+                viewBox="0 0 12 20"
+                aria-hidden
+                fill="none"
+              >
+                <path
+                  d="M10 2 2 10l8 8"
+                  stroke={accent}
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span
+                style={{
+                  fontSize: 17,
+                  marginLeft: 8,
+                  letterSpacing: "-0.01em",
+                }}
+              >
+                Back
+              </span>
+            </div>
+            <div className="flex flex-col items-center" style={{ minWidth: 0 }}>
+              <span
+                style={{
+                  fontSize: 17,
+                  fontWeight: 600,
+                  letterSpacing: "-0.01em",
+                  color: textColor,
+                  maxWidth: 160,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {title ?? "GAIA"}
+              </span>
+              <span style={{ fontSize: 12, color: metaColor, marginTop: 1 }}>
+                {subtitle ?? "last seen recently"}
+              </span>
+            </div>
             <div
-              className="overflow-hidden rounded-full"
-              style={{ width: 32, height: 32 }}
+              className="flex items-center justify-end"
+              style={{ color: accent }}
             >
-              {/* biome-ignore lint/performance/noImgElement: avatar */}
-              <img
-                src={headerAvatar}
-                alt=""
-                style={{ width: 32, height: 32, objectFit: "cover" }}
-              />
+              <div
+                className="overflow-hidden rounded-full"
+                style={{ width: 32, height: 32 }}
+              >
+                {/* biome-ignore lint/performance/noImgElement: avatar */}
+                <img
+                  src={headerAvatar}
+                  alt=""
+                  style={{ width: 32, height: 32, objectFit: "cover" }}
+                />
+              </div>
             </div>
           </div>
+          <div style={{ height: 0.5, background: "rgba(60,60,67,0.18)" }} />
         </div>
-        <div style={{ height: 0.5, background: "rgba(60,60,67,0.18)" }} />
-      </div>
+      )}
 
       {/* Chat area: blue overlay + Telegram doodle pattern */}
       <div
@@ -982,6 +1019,7 @@ function SlackDemo({
   title,
   subtitle,
   showComposer,
+  showHeader,
   theme,
   className,
 }: {
@@ -989,6 +1027,7 @@ function SlackDemo({
   title?: string;
   subtitle?: string;
   showComposer: boolean;
+  showHeader: boolean;
   theme: "light" | "dark";
   className?: string;
 }) {
@@ -1005,79 +1044,80 @@ function SlackDemo({
       className={cn("flex h-full flex-col", className)}
       style={{ background: bg, color: fg, fontFamily: SLACK_STACK }}
     >
-      <div
-        className="flex shrink-0 items-center justify-between border-b px-4"
-        style={{ borderColor: headerBorder, height: 56 }}
-      >
-        <div className="flex flex-col leading-tight">
-          <div
-            className="flex items-center gap-1"
-            style={{ fontWeight: 700, fontSize: 16 }}
-          >
-            <span style={{ color: muted, fontWeight: 400, marginRight: 2 }}>
-              #
+      {showHeader && (
+        <div
+          className="flex shrink-0 items-center justify-between border-b px-4"
+          style={{ borderColor: headerBorder, height: 56 }}
+        >
+          <div className="flex flex-col leading-tight">
+            <div
+              className="flex items-center gap-1"
+              style={{ fontWeight: 700, fontSize: 16 }}
+            >
+              <span style={{ color: muted, fontWeight: 400, marginRight: 2 }}>
+                #
+              </span>
+              {title ?? "general"}
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 20 20"
+                aria-hidden
+                style={{ marginLeft: 4 }}
+              >
+                <path
+                  d="M5 8l5 5 5-5"
+                  fill="none"
+                  stroke={fg}
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+            <span style={{ fontSize: 12, color: muted }}>
+              {subtitle ?? "Add a topic"}
             </span>
-            {title ?? "general"}
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 20 20"
-              aria-hidden
-              style={{ marginLeft: 4 }}
-            >
-              <path
-                d="M5 8l5 5 5-5"
-                fill="none"
-                stroke={fg}
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
           </div>
-          <span style={{ fontSize: 12, color: muted }}>
-            {subtitle ?? "Add a topic"}
-          </span>
-        </div>
-        <div className="flex items-center gap-2" style={{ color: muted }}>
-          <button
-            type="button"
-            aria-label="Activity"
-            className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
-            style={{ width: 32, height: 32 }}
-          >
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              aria-hidden
-              fill="currentColor"
+          <div className="flex items-center gap-2" style={{ color: muted }}>
+            <button
+              type="button"
+              aria-label="Activity"
+              className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
+              style={{ width: 32, height: 32 }}
             >
-              <path d="M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18Zm0-2a7 7 0 1 0 0-14 7 7 0 0 0 0 14Zm-1-10h2v4h3v2h-5V9Z" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            aria-label="Search"
-            className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
-            style={{ width: 32, height: 32 }}
-          >
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              aria-hidden
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                aria-hidden
+                fill="currentColor"
+              >
+                <path d="M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18Zm0-2a7 7 0 1 0 0-14 7 7 0 0 0 0 14Zm-1-10h2v4h3v2h-5V9Z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              aria-label="Search"
+              className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
+              style={{ width: 32, height: 32 }}
             >
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-4-4" strokeLinecap="round" />
-            </svg>
-          </button>
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                aria-hidden
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-4-4" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
         </div>
-      </div>
-
+      )}
       <div
         className="flex flex-1 flex-col overflow-y-auto py-3"
         style={{ scrollbarWidth: "none", gap: 12 }}
@@ -1168,7 +1208,6 @@ function SlackDemo({
           </div>
         ))}
       </div>
-
       {showComposer && (
         <div className="shrink-0 px-3 pt-2 pb-1.5">
           <div
@@ -1485,12 +1524,14 @@ function DiscordDemo({
   title,
   subtitle,
   showComposer,
+  showHeader,
   className,
 }: {
   messages: ChatMessageItem[];
   title?: string;
   subtitle?: string;
   showComposer: boolean;
+  showHeader: boolean;
   className?: string;
 }) {
   const bg = "#1E1F22";
@@ -1506,95 +1547,96 @@ function DiscordDemo({
       style={{ background: bg, color: fg, fontFamily: DISCORD_STACK }}
     >
       {/* Channel header */}
-      <div
-        className="flex shrink-0 items-center gap-2 px-3"
-        style={{
-          background: bg,
-          height: 48,
-          borderBottom: "1px solid rgba(0,0,0,0.4)",
-          zIndex: 2,
-        }}
-      >
-        <button
-          type="button"
-          aria-label="Back"
-          className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/[0.06]"
-          style={{ width: 28, height: 28, color: fg }}
+      {showHeader && (
+        <div
+          className="flex shrink-0 items-center gap-2 px-3"
+          style={{
+            background: bg,
+            height: 48,
+            borderBottom: "1px solid rgba(0,0,0,0.4)",
+            zIndex: 2,
+          }}
         >
+          <button
+            type="button"
+            aria-label="Back"
+            className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/[0.06]"
+            style={{ width: 28, height: 28, color: fg }}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              aria-hidden
+              fill="none"
+            >
+              <path
+                d="M14 6l-6 6 6 6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <span style={{ fontSize: 18, color: muted, marginLeft: 2 }}>#</span>
+          <span
+            style={{
+              fontSize: 17,
+              fontWeight: 700,
+              color: "#FFFFFF",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            {title ?? "general"}
+          </span>
           <svg
-            width="20"
-            height="20"
+            width="14"
+            height="14"
             viewBox="0 0 24 24"
             aria-hidden
             fill="none"
+            style={{ marginLeft: 2, color: muted }}
           >
             <path
-              d="M14 6l-6 6 6 6"
+              d="M9 6l6 6-6 6"
               stroke="currentColor"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
           </svg>
-        </button>
-        <span style={{ fontSize: 18, color: muted, marginLeft: 2 }}>#</span>
-        <span
-          style={{
-            fontSize: 17,
-            fontWeight: 700,
-            color: "#FFFFFF",
-            letterSpacing: "-0.01em",
-          }}
-        >
-          {title ?? "general"}
-        </span>
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          aria-hidden
-          fill="none"
-          style={{ marginLeft: 2, color: muted }}
-        >
-          <path
-            d="M9 6l6 6-6 6"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <div className="flex flex-1" />
-        <button
-          type="button"
-          aria-label="Search"
-          className="flex cursor-pointer items-center justify-center rounded-full transition-[filter] duration-150 hover:brightness-125 active:brightness-90"
-          style={{ width: 32, height: 32, background: iconBg, color: muted }}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            aria-hidden
-            fill="none"
+          <div className="flex flex-1" />
+          <button
+            type="button"
+            aria-label="Search"
+            className="flex cursor-pointer items-center justify-center rounded-full transition-[filter] duration-150 hover:brightness-125 active:brightness-90"
+            style={{ width: 32, height: 32, background: iconBg, color: muted }}
           >
-            <circle
-              cx="11"
-              cy="11"
-              r="7"
-              stroke="currentColor"
-              strokeWidth="2"
-            />
-            <path
-              d="m20 20-4-4"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-      </div>
-
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              aria-hidden
+              fill="none"
+            >
+              <circle
+                cx="11"
+                cy="11"
+                r="7"
+                stroke="currentColor"
+                strokeWidth="2"
+              />
+              <path
+                d="m20 20-4-4"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        </div>
+      )}
       <div
         className="flex flex-1 flex-col overflow-y-auto py-3"
         style={{ scrollbarWidth: "none", gap: 18 }}
@@ -1687,8 +1729,6 @@ function DiscordDemo({
           </div>
         ))}
       </div>
-
-      {/* Composer — 4 circular buttons + flat pill input + mic, per screenshot */}
       {showComposer && (
         <div
           className="flex shrink-0 items-center gap-2 px-3 pt-2 pb-2"

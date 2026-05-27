@@ -1,12 +1,11 @@
 """Unit tests for app.utils.stream_utils."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.utils.stream_utils import extract_tool_entries_from_update
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -14,7 +13,7 @@ from app.utils.stream_utils import extract_tool_entries_from_update
 
 
 def _make_ai_message(
-    tool_calls: Optional[List[Dict[str, Any]]] = None,
+    tool_calls: list[dict[str, Any]] | None = None,
 ) -> MagicMock:
     """Return a mock AIMessage with a .tool_calls attribute."""
     msg = MagicMock()
@@ -87,9 +86,7 @@ class TestExtractToolEntriesFromUpdate:
         "app.utils.stream_utils.format_tool_call_entry",
         new_callable=AsyncMock,
     )
-    async def test_already_emitted_ids_are_skipped(
-        self, mock_format: AsyncMock
-    ) -> None:
+    async def test_already_emitted_ids_are_skipped(self, mock_format: AsyncMock) -> None:
         tc = {"id": "tc-dup", "name": "search", "args": {}}
         msg = _make_ai_message([tc])
         emitted: set[str] = {"tc-dup"}
@@ -118,9 +115,7 @@ class TestExtractToolEntriesFromUpdate:
         "app.utils.stream_utils.format_tool_call_entry",
         new_callable=AsyncMock,
     )
-    async def test_tool_call_missing_id_key_skipped(
-        self, mock_format: AsyncMock
-    ) -> None:
+    async def test_tool_call_missing_id_key_skipped(self, mock_format: AsyncMock) -> None:
         """tc.get("id") returns None when key is absent."""
         tc = {"name": "search", "args": {}}
         msg = _make_ai_message([tc])
@@ -135,9 +130,7 @@ class TestExtractToolEntriesFromUpdate:
         "app.utils.stream_utils.format_tool_call_entry",
         new_callable=AsyncMock,
     )
-    async def test_none_entry_from_formatter_excluded(
-        self, mock_format: AsyncMock
-    ) -> None:
+    async def test_none_entry_from_formatter_excluded(self, mock_format: AsyncMock) -> None:
         mock_format.return_value = None
         tc = {"id": "tc-nil", "name": "unknown", "args": {}}
         msg = _make_ai_message([tc])
@@ -156,9 +149,7 @@ class TestExtractToolEntriesFromUpdate:
         "app.utils.stream_utils.format_tool_call_entry",
         new_callable=AsyncMock,
     )
-    async def test_multiple_messages_multiple_tool_calls(
-        self, mock_format: AsyncMock
-    ) -> None:
+    async def test_multiple_messages_multiple_tool_calls(self, mock_format: AsyncMock) -> None:
         mock_format.return_value = {"tool_name": "tool_calls_data"}
 
         msg1 = _make_ai_message(
@@ -174,9 +165,7 @@ class TestExtractToolEntriesFromUpdate:
         )
         emitted: set[str] = set()
 
-        result = await extract_tool_entries_from_update(
-            {"messages": [msg1, msg2]}, emitted
-        )
+        result = await extract_tool_entries_from_update({"messages": [msg1, msg2]}, emitted)
 
         assert len(result) == 3
         assert {r[0] for r in result} == {"a1", "a2", "a3"}
@@ -211,9 +200,7 @@ class TestExtractToolEntriesFromUpdate:
         "app.utils.stream_utils.format_tool_call_entry",
         new_callable=AsyncMock,
     )
-    async def test_no_integration_metadata_passes_none(
-        self, mock_format: AsyncMock
-    ) -> None:
+    async def test_no_integration_metadata_passes_none(self, mock_format: AsyncMock) -> None:
         mock_format.return_value = {"tool_name": "tool_calls_data"}
         tc = {"id": "tc-n", "name": "search", "args": {}}
         msg = _make_ai_message([tc])
@@ -272,7 +259,7 @@ class TestExtractToolEntriesFromUpdate:
     async def test_partial_integration_metadata(self, mock_format: AsyncMock) -> None:
         """integration_metadata with only icon_url set."""
         mock_format.return_value = {"tool_name": "tool_calls_data"}
-        metadata: Dict[str, Any] = {"icon_url": "https://icon.com/x.png"}
+        metadata: dict[str, Any] = {"icon_url": "https://icon.com/x.png"}
         tc = {"id": "tc-p", "name": "search", "args": {}}
         msg = _make_ai_message([tc])
 
@@ -291,9 +278,7 @@ class TestExtractToolEntriesFromUpdate:
         "app.utils.stream_utils.format_tool_call_entry",
         new_callable=AsyncMock,
     )
-    async def test_duplicate_id_within_same_update_deduped(
-        self, mock_format: AsyncMock
-    ) -> None:
+    async def test_duplicate_id_within_same_update_deduped(self, mock_format: AsyncMock) -> None:
         """If two tool calls in the same update share an id, only the first is emitted."""
         mock_format.return_value = {"tool_name": "tool_calls_data"}
         tc1 = {"id": "same-id", "name": "t1", "args": {}}

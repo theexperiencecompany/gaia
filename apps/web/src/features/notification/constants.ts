@@ -14,7 +14,3 @@ export const NOTIFICATION_PLATFORM_LABELS: Record<
   discord: "Discord",
   whatsapp: "WhatsApp",
 };
-
-export const NOTIFICATION_PLATFORMS_SET = new Set<string>(
-  NOTIFICATION_PLATFORMS,
-);

@@ -1,18 +1,17 @@
-from typing import Optional
-
 import aio_pika
 from aio_pika import Message
 from aio_pika.abc import AbstractChannel, AbstractRobustConnection
+
 from app.config.settings import settings
-from shared.py.wide_events import log
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from shared.py.wide_events import log
 
 
 class RabbitMQPublisher:
     def __init__(self, amqp_url: str):
         self.amqp_url = amqp_url
-        self.connection: Optional[AbstractRobustConnection] = None
-        self.channel: Optional[AbstractChannel] = None
+        self.connection: AbstractRobustConnection | None = None
+        self.channel: AbstractChannel | None = None
         self.declared_queues: set[str] = set()
 
     async def connect(self):
@@ -126,9 +125,7 @@ async def get_rabbitmq_publisher() -> RabbitMQPublisher:
     Raises:
         RuntimeError: If RabbitMQ publisher is not available
     """
-    publisher_instance: Optional[RabbitMQPublisher] = await providers.aget(
-        "rabbitmq_publisher"
-    )
+    publisher_instance: RabbitMQPublisher | None = await providers.aget("rabbitmq_publisher")
     if publisher_instance is None:
         raise RuntimeError("RabbitMQ publisher not available")
     return publisher_instance

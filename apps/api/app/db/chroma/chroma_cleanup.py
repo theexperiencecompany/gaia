@@ -1,11 +1,11 @@
 """ChromaDB cleanup utilities for integration lifecycle management."""
 
 from app.constants.cache import SUBAGENT_CACHE_PREFIX
-from shared.py.wide_events import log
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import delete_tools_by_namespace
 from app.db.redis import delete_cache
 from app.helpers.namespace_utils import derive_integration_namespace
+from shared.py.wide_events import log
 
 
 async def cleanup_integration_chroma_data(

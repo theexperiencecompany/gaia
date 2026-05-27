@@ -7,14 +7,14 @@ LangChain adapter schema sanitization, and resilient adapter retry/skip logic.
 """
 
 import asyncio
-import json
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.tools import BaseTool
+import pytest
 
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.models.mcp_config import MCPConfig
@@ -59,11 +59,11 @@ def _make_credential(**overrides: Any) -> MCPCredential:
     cred.auth_type = overrides.get("auth_type", MCPAuthType.OAUTH)
     cred.status = overrides.get("status", MCPCredentialStatus.CONNECTED)
     cred.access_token = overrides.get("access_token", "encrypted_token")
-    cred.refresh_token = overrides.get("refresh_token", None)
-    cred.token_expires_at = overrides.get("token_expires_at", None)
-    cred.client_registration = overrides.get("client_registration", None)
-    cred.connected_at = overrides.get("connected_at", None)
-    cred.error_message = overrides.get("error_message", None)
+    cred.refresh_token = overrides.get("refresh_token")
+    cred.token_expires_at = overrides.get("token_expires_at")
+    cred.client_registration = overrides.get("client_registration")
+    cred.connected_at = overrides.get("connected_at")
+    cred.error_message = overrides.get("error_message")
     return cred
 
 
@@ -80,7 +80,7 @@ def _mock_tool(name: str = "test_tool", description: str = "A test tool") -> Mag
 # ---------------------------------------------------------------------------
 
 
-def _fake_db_session(cred: Optional[MCPCredential] = None):
+def _fake_db_session(cred: MCPCredential | None = None):
     """Return an async context manager that yields a mock SQLAlchemy session."""
     mock_session = AsyncMock()
     mock_result = MagicMock()
@@ -212,9 +212,7 @@ class TestMCPClientBuildConfig:
     async def test_build_config_strips_bearer_prefix(self):
         client = MCPClient(user_id=USER_ID)
         mcp_config = _make_mcp_config()
-        client.token_store.get_bearer_token = AsyncMock(
-            return_value="Bearer actual_token"
-        )
+        client.token_store.get_bearer_token = AsyncMock(return_value="Bearer actual_token")
         config = await client._build_config(INTEGRATION_ID, mcp_config)
         srv = config["mcpServers"][INTEGRATION_ID]
         assert srv["auth"] == "actual_token"
@@ -591,9 +589,7 @@ class TestMCPClientIsConnected:
 class TestMCPClientIsConnectedDb:
     async def test_connected_in_db(self):
         client = MCPClient(user_id=USER_ID)
-        with patch(
-            "app.services.mcp.mcp_client.user_integrations_collection"
-        ) as mock_col:
+        with patch("app.services.mcp.mcp_client.user_integrations_collection") as mock_col:
             mock_col.find_one = AsyncMock(
                 return_value={"user_id": USER_ID, "integration_id": INTEGRATION_ID}
             )
@@ -601,9 +597,7 @@ class TestMCPClientIsConnectedDb:
 
     async def test_not_connected_in_db(self):
         client = MCPClient(user_id=USER_ID)
-        with patch(
-            "app.services.mcp.mcp_client.user_integrations_collection"
-        ) as mock_col:
+        with patch("app.services.mcp.mcp_client.user_integrations_collection") as mock_col:
             mock_col.find_one = AsyncMock(return_value=None)
             assert await client.is_connected_db(INTEGRATION_ID) is False
 
@@ -621,20 +615,14 @@ class TestMCPClientEnsureConnected:
         client = MCPClient(user_id=USER_ID)
         tools = [_mock_tool()]
 
-        with patch.object(
-            client, "is_connected_db", new_callable=AsyncMock, return_value=True
-        ):
-            with patch.object(
-                client, "connect", new_callable=AsyncMock, return_value=tools
-            ):
+        with patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=True):
+            with patch.object(client, "connect", new_callable=AsyncMock, return_value=tools):
                 result = await client.ensure_connected(INTEGRATION_ID)
                 assert result is tools
 
     async def test_raises_when_not_connected(self):
         client = MCPClient(user_id=USER_ID)
-        with patch.object(
-            client, "is_connected_db", new_callable=AsyncMock, return_value=False
-        ):
+        with patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=False):
             with pytest.raises(ValueError, match="not connected"):
                 await client.ensure_connected(INTEGRATION_ID)
 
@@ -744,15 +732,10 @@ class TestMCPClientGetAllConnectedTools:
 @pytest.mark.unit
 class TestMCPClientNormalizeServerUrl:
     def test_strips_trailing_slash(self):
-        assert (
-            MCPClient._normalize_server_url("https://ex.com/v1/") == "https://ex.com/v1"
-        )
+        assert MCPClient._normalize_server_url("https://ex.com/v1/") == "https://ex.com/v1"
 
     def test_lowercases_scheme_and_host(self):
-        assert (
-            MCPClient._normalize_server_url("HTTPS://EX.COM/Path")
-            == "https://ex.com/Path"
-        )
+        assert MCPClient._normalize_server_url("HTTPS://EX.COM/Path") == "https://ex.com/Path"
 
     def test_empty_string(self):
         assert MCPClient._normalize_server_url("") == ""
@@ -777,14 +760,10 @@ class TestMCPClientCallToolOnServer:
         client._tools[INTEGRATION_ID] = [_mock_tool()]
 
         # Mock _find_integration_id_by_server_url
-        client._find_integration_id_by_server_url = AsyncMock(
-            return_value=INTEGRATION_ID
-        )
+        client._find_integration_id_by_server_url = AsyncMock(return_value=INTEGRATION_ID)
         client.ensure_connected = AsyncMock(return_value=[_mock_tool()])
 
-        result = await client.call_tool_on_server(
-            SERVER_URL, "test_tool", {"arg": "val"}
-        )
+        result = await client.call_tool_on_server(SERVER_URL, "test_tool", {"arg": "val"})
         assert result["isError"] is False
 
     async def test_raises_when_no_matching_integration(self):
@@ -865,9 +844,9 @@ class TestPooledClient:
     def test_touch_updates_timestamp(self):
         pooled = PooledClient(client=MagicMock())
         # Force a visible time delta
-        pooled.last_used = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        pooled.last_used = datetime(2020, 1, 1, tzinfo=UTC)
         pooled.touch()
-        assert pooled.last_used > datetime(2020, 1, 1, tzinfo=timezone.utc)
+        assert pooled.last_used > datetime(2020, 1, 1, tzinfo=UTC)
 
 
 @pytest.mark.unit
@@ -935,7 +914,7 @@ class TestMCPClientPoolCleanupStale:
         pool = MCPClientPool(ttl_seconds=1)
         mock_client = MagicMock()
         mock_client.close_all_client_sessions = AsyncMock()
-        past = datetime.now(timezone.utc) - timedelta(seconds=10)
+        past = datetime.now(UTC) - timedelta(seconds=10)
         pool._clients["stale"] = PooledClient(client=mock_client, last_used=past)
         pool._clients["fresh"] = PooledClient(client=MagicMock())
         await pool.cleanup_stale()
@@ -1040,9 +1019,7 @@ class TestMCPTokenStoreGetBearerToken:
 
     async def test_returns_none_when_not_connected(self):
         store = MCPTokenStore(user_id=USER_ID)
-        cred = _make_credential(
-            auth_type=MCPAuthType.BEARER, status=MCPCredentialStatus.PENDING
-        )
+        cred = _make_credential(auth_type=MCPAuthType.BEARER, status=MCPCredentialStatus.PENDING)
         store.get_credential = AsyncMock(return_value=cred)
         result = await store.get_bearer_token(INTEGRATION_ID)
         assert result is None
@@ -1066,7 +1043,7 @@ class TestMCPTokenStoreGetOAuthToken:
 
     async def test_returns_none_when_expired(self):
         store = MCPTokenStore(user_id=USER_ID)
-        past = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
+        past = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1)
         cred = _make_credential(token_expires_at=past)
         store.get_credential = AsyncMock(return_value=cred)
         result = await store.get_oauth_token(INTEGRATION_ID)
@@ -1091,19 +1068,15 @@ class TestMCPTokenStoreGetOAuthToken:
 class TestMCPTokenStoreIsTokenExpiringSoon:
     async def test_true_when_expiring_soon(self):
         store = MCPTokenStore(user_id=USER_ID)
-        soon = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=60)
+        soon = datetime.now(UTC).replace(tzinfo=None) + timedelta(seconds=60)
         cred = _make_credential(token_expires_at=soon)
         store.get_credential = AsyncMock(return_value=cred)
-        result = await store.is_token_expiring_soon(
-            INTEGRATION_ID, threshold_seconds=300
-        )
+        result = await store.is_token_expiring_soon(INTEGRATION_ID, threshold_seconds=300)
         assert result is True
 
     async def test_false_when_not_expiring_soon(self):
         store = MCPTokenStore(user_id=USER_ID)
-        far_future = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(
-            hours=2
-        )
+        far_future = datetime.now(UTC).replace(tzinfo=None) + timedelta(hours=2)
         cred = _make_credential(token_expires_at=far_future)
         store.get_credential = AsyncMock(return_value=cred)
         result = await store.is_token_expiring_soon(INTEGRATION_ID)
@@ -1118,7 +1091,7 @@ class TestMCPTokenStoreIsTokenExpiringSoon:
     async def test_stale_token_without_expiry(self):
         """Token issued >1 hour ago with no expires_at should be treated as expiring."""
         store = MCPTokenStore(user_id=USER_ID)
-        old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=2)
+        old = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=2)
         cred = _make_credential(token_expires_at=None, connected_at=old)
         store.get_credential = AsyncMock(return_value=cred)
         result = await store.is_token_expiring_soon(INTEGRATION_ID)
@@ -1127,7 +1100,7 @@ class TestMCPTokenStoreIsTokenExpiringSoon:
     async def test_fresh_token_without_expiry(self):
         """Token issued <1 hour ago with no expires_at should NOT be treated as expiring."""
         store = MCPTokenStore(user_id=USER_ID)
-        recent = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=5)
+        recent = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=5)
         cred = _make_credential(token_expires_at=None, connected_at=recent)
         store.get_credential = AsyncMock(return_value=cred)
         result = await store.is_token_expiring_soon(INTEGRATION_ID)
@@ -1145,7 +1118,7 @@ class TestMCPTokenStoreStoreOAuthTokens:
                 integration_id=INTEGRATION_ID,
                 access_token="access_123",
                 refresh_token="refresh_456",
-                expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+                expires_at=datetime.now(UTC) + timedelta(hours=1),
             )
         mock_session.add.assert_called_once()
         mock_session.commit.assert_awaited_once()
@@ -1199,9 +1172,7 @@ class TestMCPTokenStoreOAuthState:
             return stored_data.pop(key, None)
 
         with (
-            patch(
-                "app.services.mcp.mcp_token_store.set_cache", side_effect=fake_set_cache
-            ),
+            patch("app.services.mcp.mcp_token_store.set_cache", side_effect=fake_set_cache),
             patch(
                 "app.services.mcp.mcp_token_store.get_and_delete_cache",
                 side_effect=fake_get_and_delete,
@@ -1211,9 +1182,7 @@ class TestMCPTokenStoreOAuthState:
             assert isinstance(state, str)
             assert len(state) > 0
 
-            is_valid, code_verifier = await store.verify_oauth_state(
-                INTEGRATION_ID, state
-            )
+            is_valid, code_verifier = await store.verify_oauth_state(INTEGRATION_ID, state)
             assert is_valid is True
             assert code_verifier == "verifier_123"
 
@@ -1439,9 +1408,7 @@ class TestMCPTokenStoreIntrospect:
     async def test_introspect_success(self):
         store = MCPTokenStore(user_id=USER_ID)
         store.get_oauth_discovery = AsyncMock(
-            return_value={
-                "introspection_endpoint": "https://auth.example.com/introspect"
-            }
+            return_value={"introspection_endpoint": "https://auth.example.com/introspect"}
         )
         store.get_oauth_token = AsyncMock(return_value="access_tok")
         with patch(
@@ -1539,9 +1506,7 @@ class TestResolveClientCredentials:
         assert csec == "csec"
 
     def test_from_env(self):
-        config = _make_mcp_config(
-            client_id_env="MY_CLIENT_ID", client_secret_env="MY_SECRET"
-        )
+        config = _make_mcp_config(client_id_env="MY_CLIENT_ID", client_secret_env="MY_SECRET")
         with patch.dict("os.environ", {"MY_CLIENT_ID": "env_id", "MY_SECRET": "env_s"}):
             cid, csec = resolve_client_credentials(config)
             assert cid == "env_id"
@@ -1568,9 +1533,7 @@ class TestTryRefreshToken:
         token_store.get_dcr_client = AsyncMock(return_value=None)
         token_store.store_oauth_tokens = AsyncMock()
 
-        mcp_config = _make_mcp_config(
-            client_id="cid", client_secret="csec", requires_auth=True
-        )
+        mcp_config = _make_mcp_config(client_id="cid", client_secret="csec", requires_auth=True)
         oauth_config = {
             "token_endpoint": "https://auth.example.com/token",
             "resource": SERVER_URL,
@@ -1590,9 +1553,7 @@ class TestTryRefreshToken:
             mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_http.return_value.__aexit__ = AsyncMock()
 
-            result = await try_refresh_token(
-                token_store, INTEGRATION_ID, mcp_config, oauth_config
-            )
+            result = await try_refresh_token(token_store, INTEGRATION_ID, mcp_config, oauth_config)
 
         assert result is True
         token_store.store_oauth_tokens.assert_awaited_once()
@@ -1613,9 +1574,7 @@ class TestTryRefreshToken:
         token_store = AsyncMock(spec=MCPTokenStore)
         token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
 
-        result = await try_refresh_token(
-            token_store, INTEGRATION_ID, _make_mcp_config(), {}
-        )
+        result = await try_refresh_token(token_store, INTEGRATION_ID, _make_mcp_config(), {})
         assert result is False
 
     async def test_no_client_id(self):
@@ -1652,9 +1611,7 @@ class TestTryRefreshToken:
             mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_http.return_value.__aexit__ = AsyncMock()
 
-            result = await try_refresh_token(
-                token_store, INTEGRATION_ID, mcp_config, oauth_config
-            )
+            result = await try_refresh_token(token_store, INTEGRATION_ID, mcp_config, oauth_config)
         assert result is False
 
     async def test_refresh_exception(self):
@@ -1666,14 +1623,10 @@ class TestTryRefreshToken:
         oauth_config = {"token_endpoint": "https://auth.example.com/token"}
 
         with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
-            mock_http.return_value.__aenter__ = AsyncMock(
-                side_effect=Exception("Network error")
-            )
+            mock_http.return_value.__aenter__ = AsyncMock(side_effect=Exception("Network error"))
             mock_http.return_value.__aexit__ = AsyncMock()
 
-            result = await try_refresh_token(
-                token_store, INTEGRATION_ID, mcp_config, oauth_config
-            )
+            result = await try_refresh_token(token_store, INTEGRATION_ID, mcp_config, oauth_config)
         assert result is False
 
     async def test_uses_dcr_client_id(self):
@@ -1703,9 +1656,7 @@ class TestTryRefreshToken:
             mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_http.return_value.__aexit__ = AsyncMock()
 
-            result = await try_refresh_token(
-                token_store, INTEGRATION_ID, mcp_config, oauth_config
-            )
+            result = await try_refresh_token(token_store, INTEGRATION_ID, mcp_config, oauth_config)
 
         assert result is True
 
@@ -1727,9 +1678,7 @@ class TestTryRefreshToken:
             mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_http.return_value.__aexit__ = AsyncMock()
 
-            result = await try_refresh_token(
-                token_store, INTEGRATION_ID, mcp_config, oauth_config
-            )
+            result = await try_refresh_token(token_store, INTEGRATION_ID, mcp_config, oauth_config)
         assert result is False
 
 
@@ -1769,9 +1718,7 @@ class TestRevokeTokens:
         oauth_config = {"revocation_endpoint": "https://auth.example.com/revoke"}
 
         with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
-            mock_http.return_value.__aenter__ = AsyncMock(
-                side_effect=Exception("Network")
-            )
+            mock_http.return_value.__aenter__ = AsyncMock(side_effect=Exception("Network"))
             mock_http.return_value.__aexit__ = AsyncMock()
 
             # Should not raise
@@ -1857,9 +1804,7 @@ class TestDiscoverOAuthConfig:
             patch("app.services.mcp.oauth_discovery.validate_https_url"),
             patch("app.services.mcp.oauth_discovery.validate_oauth_endpoints"),
         ):
-            result = await discover_oauth_config(
-                token_store, INTEGRATION_ID, mcp_config
-            )
+            result = await discover_oauth_config(token_store, INTEGRATION_ID, mcp_config)
         assert result["discovery_method"] == "rfc9728_prm"
         assert result["authorization_endpoint"] == "https://auth.example.com/authorize"
         token_store.store_oauth_discovery.assert_awaited_once()
@@ -1893,9 +1838,7 @@ class TestDiscoverOAuthConfig:
             patch("app.services.mcp.oauth_discovery.validate_https_url"),
             patch("app.services.mcp.oauth_discovery.validate_oauth_endpoints"),
         ):
-            result = await discover_oauth_config(
-                token_store, INTEGRATION_ID, mcp_config
-            )
+            result = await discover_oauth_config(token_store, INTEGRATION_ID, mcp_config)
         assert result["discovery_method"] == "direct_oauth"
 
     async def test_raises_when_all_discovery_fails(self):
@@ -2420,9 +2363,7 @@ class TestMCPClientRegisterClient:
         client = MCPClient(user_id=USER_ID)
 
         with patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http:
-            mock_http.return_value.__aenter__ = AsyncMock(
-                side_effect=Exception("Network error")
-            )
+            mock_http.return_value.__aenter__ = AsyncMock(side_effect=Exception("Network error"))
             mock_http.return_value.__aexit__ = AsyncMock()
 
             with pytest.raises(ValueError, match="Dynamic Client Registration failed"):
@@ -2469,9 +2410,7 @@ class TestMCPClientReadResourceOnServer:
         client = MCPClient(user_id=USER_ID)
         mock_session = AsyncMock()
         mock_result = MagicMock()
-        mock_result.model_dump = MagicMock(
-            return_value={"contents": [{"text": "hello"}]}
-        )
+        mock_result.model_dump = MagicMock(return_value={"contents": [{"text": "hello"}]})
         mock_session.read_resource = AsyncMock(return_value=mock_result)
         client._get_session_for_server = AsyncMock(return_value=mock_session)
 
@@ -2512,9 +2451,7 @@ class TestMCPClientReadUiResource:
 
         client._clients[INTEGRATION_ID] = mock_base
         client._tools[INTEGRATION_ID] = [_mock_tool()]
-        client._find_integration_id_by_server_url = AsyncMock(
-            return_value=INTEGRATION_ID
-        )
+        client._find_integration_id_by_server_url = AsyncMock(return_value=INTEGRATION_ID)
         client.ensure_connected = AsyncMock()
 
         result = await client.read_ui_resource_details(SERVER_URL, "ui://tool/app.html")
@@ -2531,12 +2468,10 @@ class TestMCPClientReadUiResource:
         client = MCPClient(user_id=USER_ID)
         mock_base = MagicMock()
         mock_session = AsyncMock()
-        mock_session.read_resource = AsyncMock(side_effect=asyncio.TimeoutError())
+        mock_session.read_resource = AsyncMock(side_effect=TimeoutError())
         mock_base.get_session = MagicMock(return_value=mock_session)
         client._clients[INTEGRATION_ID] = mock_base
-        client._find_integration_id_by_server_url = AsyncMock(
-            return_value=INTEGRATION_ID
-        )
+        client._find_integration_id_by_server_url = AsyncMock(return_value=INTEGRATION_ID)
         client.ensure_connected = AsyncMock()
         result = await client.read_ui_resource_details(SERVER_URL, "ui://tool/app.html")
         assert result is None
@@ -2572,9 +2507,7 @@ class TestMCPClientReadUiResource:
 
         client._clients[INTEGRATION_ID] = mock_base
         client._tools[INTEGRATION_ID] = [_mock_tool()]
-        client._find_integration_id_by_server_url = AsyncMock(
-            return_value=INTEGRATION_ID
-        )
+        client._find_integration_id_by_server_url = AsyncMock(return_value=INTEGRATION_ID)
         client.ensure_connected = AsyncMock()
 
         result = await client.read_ui_resource_details(SERVER_URL, "ui://tool/app.html")
@@ -2597,9 +2530,7 @@ class TestMCPClientReadUiResource:
         mock_base.get_session = MagicMock(return_value=mock_session)
 
         client._clients[INTEGRATION_ID] = mock_base
-        client._find_integration_id_by_server_url = AsyncMock(
-            return_value=INTEGRATION_ID
-        )
+        client._find_integration_id_by_server_url = AsyncMock(return_value=INTEGRATION_ID)
         client.ensure_connected = AsyncMock()
 
         result = await client.read_ui_resource_details(SERVER_URL, "ui://tool/app.html")
@@ -2613,9 +2544,7 @@ class TestMCPClientReadUiResource:
         mock_base.get_session = MagicMock(return_value=mock_session)
 
         client._clients[INTEGRATION_ID] = mock_base
-        client._find_integration_id_by_server_url = AsyncMock(
-            return_value=INTEGRATION_ID
-        )
+        client._find_integration_id_by_server_url = AsyncMock(return_value=INTEGRATION_ID)
         client.ensure_connected = AsyncMock()
 
         result = await client.read_ui_resource_details(SERVER_URL, "ui://tool/app.html")
@@ -2623,9 +2552,7 @@ class TestMCPClientReadUiResource:
 
     async def test_read_ui_resource_no_client(self):
         client = MCPClient(user_id=USER_ID)
-        client._find_integration_id_by_server_url = AsyncMock(
-            return_value=INTEGRATION_ID
-        )
+        client._find_integration_id_by_server_url = AsyncMock(return_value=INTEGRATION_ID)
         client.ensure_connected = AsyncMock()
         # No client in _clients
 
@@ -2686,9 +2613,7 @@ class TestMCPClientFindIntegrationIdByServerUrl:
                 return_value=[],
             ),
         ):
-            result = await client._find_integration_id_by_server_url(
-                "https://unknown.example.com"
-            )
+            result = await client._find_integration_id_by_server_url("https://unknown.example.com")
         assert result is None
 
     async def test_skips_non_connected_db_integrations(self):
@@ -2869,9 +2794,7 @@ class TestMCPClientGetSessionForServer:
         client._clients[INTEGRATION_ID] = mock_base
         client._tools[INTEGRATION_ID] = [_mock_tool()]
 
-        client._find_integration_id_by_server_url = AsyncMock(
-            return_value=INTEGRATION_ID
-        )
+        client._find_integration_id_by_server_url = AsyncMock(return_value=INTEGRATION_ID)
         client.ensure_connected = AsyncMock()
 
         result = await client._get_session_for_server(SERVER_URL)
@@ -2886,9 +2809,7 @@ class TestMCPClientGetSessionForServer:
 
     async def test_raises_when_client_not_in_memory(self):
         client = MCPClient(user_id=USER_ID)
-        client._find_integration_id_by_server_url = AsyncMock(
-            return_value=INTEGRATION_ID
-        )
+        client._find_integration_id_by_server_url = AsyncMock(return_value=INTEGRATION_ID)
         client.ensure_connected = AsyncMock()
         # No client in _clients
 
@@ -2907,9 +2828,7 @@ class TestMCPClientListResourceTemplatesOnServer:
         client = MCPClient(user_id=USER_ID)
         mock_session = AsyncMock()
         mock_result = MagicMock()
-        mock_result.model_dump = MagicMock(
-            return_value={"resourceTemplates": [{"name": "t1"}]}
-        )
+        mock_result.model_dump = MagicMock(return_value={"resourceTemplates": [{"name": "t1"}]})
         mock_session.list_resource_templates = AsyncMock(return_value=mock_result)
         client._get_session_for_server = AsyncMock(return_value=mock_session)
 
@@ -2932,9 +2851,7 @@ class TestMCPClientListResourceTemplatesOnServer:
         mock_session = AsyncMock()
 
         # dict() fallback requires the result to be iterable like a dict
-        mock_session.list_resource_templates = AsyncMock(
-            return_value={"resourceTemplates": []}
-        )
+        mock_session.list_resource_templates = AsyncMock(return_value={"resourceTemplates": []})
         client._get_session_for_server = AsyncMock(return_value=mock_session)
 
         result = await client.list_resource_templates_on_server(SERVER_URL)
@@ -2998,9 +2915,7 @@ class TestMCPClientBuildOauthAuthUrl:
         with patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver:
             mock_resolver.resolve = AsyncMock(return_value=None)
             with pytest.raises(ValueError, match="not found"):
-                await client.build_oauth_auth_url(
-                    INTEGRATION_ID, "https://callback.com"
-                )
+                await client.build_oauth_auth_url(INTEGRATION_ID, "https://callback.com")
 
     async def test_raises_when_no_client_id(self):
         client = MCPClient(user_id=USER_ID)
@@ -3025,9 +2940,7 @@ class TestMCPClientBuildOauthAuthUrl:
             client.token_store.get_dcr_client = AsyncMock(return_value=None)
 
             with pytest.raises(ValueError, match="Could not obtain client_id"):
-                await client.build_oauth_auth_url(
-                    INTEGRATION_ID, "https://callback.com"
-                )
+                await client.build_oauth_auth_url(INTEGRATION_ID, "https://callback.com")
 
     async def test_uses_dcr_client_id(self):
         client = MCPClient(user_id=USER_ID)
@@ -3057,14 +2970,10 @@ class TestMCPClientBuildOauthAuthUrl:
             ),
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
-            client.token_store.get_dcr_client = AsyncMock(
-                return_value={"client_id": "dcr_id"}
-            )
+            client.token_store.get_dcr_client = AsyncMock(return_value={"client_id": "dcr_id"})
             client.token_store.create_oauth_state = AsyncMock(return_value="state")
 
-            url = await client.build_oauth_auth_url(
-                INTEGRATION_ID, "https://callback.com"
-            )
+            url = await client.build_oauth_auth_url(INTEGRATION_ID, "https://callback.com")
 
         assert "client_id=dcr_id" in url
 
@@ -3096,9 +3005,7 @@ class TestMCPClientBuildOauthAuthUrl:
             client.token_store.create_oauth_state = AsyncMock(return_value="state")
 
             with pytest.raises(ValueError, match="No authorization_endpoint"):
-                await client.build_oauth_auth_url(
-                    INTEGRATION_ID, "https://callback.com"
-                )
+                await client.build_oauth_auth_url(INTEGRATION_ID, "https://callback.com")
 
     async def test_adds_nonce_for_openid_scope(self):
         client = MCPClient(user_id=USER_ID)
@@ -3133,9 +3040,7 @@ class TestMCPClientBuildOauthAuthUrl:
             client.token_store.create_oauth_state = AsyncMock(return_value="state")
             client.token_store.store_oauth_nonce = AsyncMock()
 
-            url = await client.build_oauth_auth_url(
-                INTEGRATION_ID, "https://callback.com"
-            )
+            url = await client.build_oauth_auth_url(INTEGRATION_ID, "https://callback.com")
 
         assert "nonce=" in url
         client.token_store.store_oauth_nonce.assert_awaited_once()
@@ -3173,9 +3078,7 @@ class TestMCPClientBuildOauthAuthUrl:
             mock_resolver.resolve = AsyncMock(return_value=resolved)
             client.token_store.create_oauth_state = AsyncMock(return_value="state")
 
-            url = await client.build_oauth_auth_url(
-                INTEGRATION_ID, "https://callback.com"
-            )
+            url = await client.build_oauth_auth_url(INTEGRATION_ID, "https://callback.com")
 
         assert "offline_access" in url
 
@@ -3198,9 +3101,7 @@ class TestMCPClientHandleOauthCallback:
 
     async def test_raises_when_integration_not_found(self):
         client = MCPClient(user_id=USER_ID)
-        client.token_store.verify_oauth_state = AsyncMock(
-            return_value=(True, "verifier")
-        )
+        client.token_store.verify_oauth_state = AsyncMock(return_value=(True, "verifier"))
 
         with patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver:
             mock_resolver.resolve = AsyncMock(return_value=None)
@@ -3211,9 +3112,7 @@ class TestMCPClientHandleOauthCallback:
 
     async def test_raises_when_no_token_endpoint(self):
         client = MCPClient(user_id=USER_ID)
-        client.token_store.verify_oauth_state = AsyncMock(
-            return_value=(True, "verifier")
-        )
+        client.token_store.verify_oauth_state = AsyncMock(return_value=(True, "verifier"))
 
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(requires_auth=True)
@@ -3235,9 +3134,7 @@ class TestMCPClientHandleOauthCallback:
 
     async def test_raises_when_no_client_id_for_exchange(self):
         client = MCPClient(user_id=USER_ID)
-        client.token_store.verify_oauth_state = AsyncMock(
-            return_value=(True, "verifier")
-        )
+        client.token_store.verify_oauth_state = AsyncMock(return_value=(True, "verifier"))
 
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(requires_auth=True)
@@ -3264,9 +3161,7 @@ class TestMCPClientHandleOauthCallback:
 
     async def test_raises_on_token_exchange_error(self):
         client = MCPClient(user_id=USER_ID)
-        client.token_store.verify_oauth_state = AsyncMock(
-            return_value=(True, "verifier")
-        )
+        client.token_store.verify_oauth_state = AsyncMock(return_value=(True, "verifier"))
 
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(requires_auth=True, client_id="cid")
@@ -3375,9 +3270,7 @@ class TestMCPClientHandleCustomIntegrationConnect:
         ):
             mock_providers.aget = AsyncMock(return_value=None)
             # Should not raise
-            await client._handle_custom_integration_connect(
-                INTEGRATION_ID, SERVER_URL, tools
-            )
+            await client._handle_custom_integration_connect(INTEGRATION_ID, SERVER_URL, tools)
 
     async def test_resolves_name_from_integration_when_not_provided(self):
         client = MCPClient(user_id=USER_ID)
@@ -3434,14 +3327,10 @@ class TestMCPClientCallToolOnServerAdditional:
         client._clients[INTEGRATION_ID] = mock_base
         client._tools[INTEGRATION_ID] = [_mock_tool()]
 
-        client._find_integration_id_by_server_url = AsyncMock(
-            return_value=INTEGRATION_ID
-        )
+        client._find_integration_id_by_server_url = AsyncMock(return_value=INTEGRATION_ID)
         client.ensure_connected = AsyncMock(return_value=[_mock_tool()])
 
-        result = await client.call_tool_on_server(
-            SERVER_URL, "test_tool", {"arg": "val"}
-        )
+        result = await client.call_tool_on_server(SERVER_URL, "test_tool", {"arg": "val"})
         assert result["isError"] is False
 
     async def test_call_tool_with_object_result(self):
@@ -3459,9 +3348,7 @@ class TestMCPClientCallToolOnServerAdditional:
         client._clients[INTEGRATION_ID] = mock_base
         client._tools[INTEGRATION_ID] = [_mock_tool()]
 
-        client._find_integration_id_by_server_url = AsyncMock(
-            return_value=INTEGRATION_ID
-        )
+        client._find_integration_id_by_server_url = AsyncMock(return_value=INTEGRATION_ID)
         client.ensure_connected = AsyncMock(return_value=[_mock_tool()])
 
         result = await client.call_tool_on_server(SERVER_URL, "test_tool", {})
@@ -3512,9 +3399,7 @@ class TestMCPToolsStoreStore:
         tools = [{"name": "tool1", "description": "desc"}]
 
         with (
-            patch(
-                "app.services.mcp.mcp_tools_store.integrations_collection"
-            ) as mock_col,
+            patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col,
             patch(
                 "app.services.mcp.mcp_tools_store.delete_cache",
                 new_callable=AsyncMock,
@@ -3526,9 +3411,7 @@ class TestMCPToolsStoreStore:
 
     async def test_store_tools_skips_empty(self):
         store = MCPToolsStore()
-        with patch(
-            "app.services.mcp.mcp_tools_store.integrations_collection"
-        ) as mock_col:
+        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col:
             mock_col.update_one = AsyncMock()
             await store.store_tools("int1", [])
             mock_col.update_one.assert_not_awaited()
@@ -3536,9 +3419,7 @@ class TestMCPToolsStoreStore:
     async def test_store_tools_skips_after_format_empty(self):
         store = MCPToolsStore()
         tools = [{"name": "", "description": "no name"}]
-        with patch(
-            "app.services.mcp.mcp_tools_store.integrations_collection"
-        ) as mock_col:
+        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col:
             mock_col.update_one = AsyncMock()
             await store.store_tools("int1", tools)
             mock_col.update_one.assert_not_awaited()
@@ -3582,9 +3463,7 @@ class TestMCPToolsStoreGetAll:
                 new_callable=AsyncMock,
                 return_value=None,
             ),
-            patch(
-                "app.services.mcp.mcp_tools_store.integrations_collection"
-            ) as mock_col,
+            patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col,
             patch(
                 "app.services.mcp.mcp_tools_store.set_cache",
                 new_callable=AsyncMock,

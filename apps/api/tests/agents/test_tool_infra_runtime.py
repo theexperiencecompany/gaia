@@ -4,7 +4,10 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.tools import BaseTool, tool
 import pytest
+
 from app.agents.core.subagents.base_subagent import SubAgentFactory
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools.core.registry import ToolRegistry
@@ -17,8 +20,6 @@ from app.agents.tools.core.tool_runtime_config import (
     build_provider_parent_tool_runtime_config,
 )
 from app.override.langgraph_bigtool.create_agent import create_agent
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.tools import BaseTool, tool
 
 
 @tool
@@ -214,9 +215,7 @@ async def _run_provider_subagent_factory(
         ),
         patch(
             "app.agents.core.subagents.base_subagent.get_checkpointer_manager",
-            new=AsyncMock(
-                return_value=SimpleNamespace(get_checkpointer=lambda: object())
-            ),
+            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=lambda: object())),
         ),
     ):
         await SubAgentFactory.create_provider_subagent(
@@ -440,9 +439,7 @@ async def test_retrieval_query_mode_excludes_subagent_results_inside_spawned_age
     retrieve_tools = get_retrieve_tools_function(
         tool_space="provider_space", include_subagents=False
     )
-    registry = _RetrieveRegistry(
-        ["normal_tool", "vfs_read", "web_search", "fetch_webpages"]
-    )
+    registry = _RetrieveRegistry(["normal_tool", "vfs_read", "web_search", "fetch_webpages"])
     store = _FakeStore(
         {
             ("provider_space",): [
@@ -460,9 +457,7 @@ async def test_retrieval_query_mode_excludes_subagent_results_inside_spawned_age
                 ),
             ],
             ("general",): [
-                SimpleNamespace(
-                    key="fetch_webpages", score=0.7, namespace=("general",), value={}
-                ),
+                SimpleNamespace(key="fetch_webpages", score=0.7, namespace=("general",), value={}),
                 SimpleNamespace(
                     key="random_general_tool",
                     score=0.6,
@@ -509,19 +504,13 @@ async def test_retrieval_query_mode_excludes_subagent_results_inside_spawned_age
 
 @pytest.mark.asyncio
 async def test_retrieval_query_mode_includes_subagents_when_enabled_and_filters_delegated():
-    retrieve_tools = get_retrieve_tools_function(
-        tool_space="general", include_subagents=True
-    )
+    retrieve_tools = get_retrieve_tools_function(tool_space="general", include_subagents=True)
     registry = _RetrieveRegistry(["normal_tool", "delegated_tool"])
     store = _FakeStore(
         {
             ("general",): [
-                SimpleNamespace(
-                    key="normal_tool", score=0.8, namespace=("general",), value={}
-                ),
-                SimpleNamespace(
-                    key="delegated_tool", score=0.9, namespace=("general",), value={}
-                ),
+                SimpleNamespace(key="normal_tool", score=0.8, namespace=("general",), value={}),
+                SimpleNamespace(key="delegated_tool", score=0.9, namespace=("general",), value={}),
             ],
             ("subagents",): [
                 SimpleNamespace(
@@ -637,9 +626,7 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
         ),
         patch(
             "app.agents.core.subagents.base_subagent.get_checkpointer_manager",
-            new=AsyncMock(
-                return_value=SimpleNamespace(get_checkpointer=lambda: object())
-            ),
+            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=lambda: object())),
         ),
     ):
         await SubAgentFactory.create_provider_subagent(

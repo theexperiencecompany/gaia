@@ -9,9 +9,9 @@ session root.
 from __future__ import annotations
 
 import asyncio
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
+import shutil
 from typing import Literal
 
 from app.agents.workspace.paths import (
@@ -20,7 +20,7 @@ from app.agents.workspace.paths import (
     detect_content_type,
 )
 from app.services.storage.juicefs import _contained, _require_mount
-from app.services.storage.metrics import FS_OPS, fs_timer
+from app.services.storage.metrics import FsOps, fs_timer
 from app.services.storage.sessions._paths import session_base
 
 SessionRole = Literal["artifacts", "uploaded"]
@@ -74,7 +74,7 @@ async def list_artifacts(user_id: str, conv_id: str) -> list[ArtifactInfo]:
     def _go() -> list[ArtifactInfo]:
         return _list_files(session_base(user_id, conv_id) / ARTIFACTS_DIRNAME)
 
-    async with fs_timer(FS_OPS.LIST_ARTIFACTS):
+    async with fs_timer(FsOps.LIST_ARTIFACTS):
         return await asyncio.to_thread(_go)
 
 
@@ -84,7 +84,7 @@ async def list_user_uploaded(user_id: str, conv_id: str) -> list[ArtifactInfo]:
     def _go() -> list[ArtifactInfo]:
         return _list_files(session_base(user_id, conv_id) / USER_UPLOADED_DIRNAME)
 
-    async with fs_timer(FS_OPS.LIST_USER_UPLOADED):
+    async with fs_timer(FsOps.LIST_USER_UPLOADED):
         return await asyncio.to_thread(_go)
 
 
@@ -106,7 +106,7 @@ async def stat_artifact(
             content_type=detect_content_type(target.name),
         )
 
-    async with fs_timer(FS_OPS.STAT_ARTIFACT):
+    async with fs_timer(FsOps.STAT_ARTIFACT):
         return await asyncio.to_thread(_stat)
 
 
@@ -124,7 +124,7 @@ async def resolve_session_path(
         base = session_base(user_id, conv_id) / _ROLE_DIRNAMES[role]
         return _contained(base, rel_path)
 
-    async with fs_timer(FS_OPS.RESOLVE_SESSION_PATH, role=role):
+    async with fs_timer(FsOps.RESOLVE_SESSION_PATH, role=role):
         return await asyncio.to_thread(_resolve)
 
 
@@ -147,5 +147,5 @@ async def pin_session_artifact(
         shutil.copy2(src, dest)
         return f"/workspace/pinned/{dest.relative_to(pinned_root.resolve())}"
 
-    async with fs_timer(FS_OPS.PIN_ARTIFACT):
+    async with fs_timer(FsOps.PIN_ARTIFACT):
         return await asyncio.to_thread(_pin)

@@ -19,7 +19,6 @@ import pytest
 
 from app.db.rabbitmq import RabbitMQPublisher
 
-
 # ---------------------------------------------------------------------------
 # Helpers / shared fixtures
 # ---------------------------------------------------------------------------
@@ -265,9 +264,7 @@ class TestPublish:
 
             await publisher.publish("auto_declared", b"data")
 
-        mock_channel.declare_queue.assert_called_once_with(
-            "auto_declared", durable=True
-        )
+        mock_channel.declare_queue.assert_called_once_with("auto_declared", durable=True)
         assert "auto_declared" in publisher.declared_queues
 
     async def test_publish_message_body_matches_input(

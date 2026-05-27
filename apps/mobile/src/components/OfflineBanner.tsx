@@ -34,6 +34,7 @@ export function OfflineBanner() {
       }, 2000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [isOnline, wasOffline, translateY]);
 
   const handleDismiss = useCallback(() => {

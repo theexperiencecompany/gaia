@@ -9,11 +9,10 @@ Covers:
 - Edge cases: Redis unavailable, exceptions, TTL handling
 """
 
-from typing import List, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from pydantic import BaseModel, ValidationError
+import pytest
 
 from app.db.redis import (
     RedisCache,
@@ -27,7 +26,6 @@ from app.db.redis import (
     set_cache,
 )
 
-
 # ---------------------------------------------------------------------------
 # Test Pydantic models for type-safe serialization
 # ---------------------------------------------------------------------------
@@ -40,8 +38,8 @@ class SampleUser(BaseModel):
 
 
 class SampleNested(BaseModel):
-    items: List[str]
-    metadata: Optional[dict] = None
+    items: list[str]
+    metadata: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -198,15 +196,11 @@ class TestRedisCacheInit:
         cache = RedisCache()
 
         assert cache.redis is mock_client
-        mock_from_url.assert_called_once_with(
-            "redis://localhost:6379", decode_responses=True
-        )
+        mock_from_url.assert_called_once_with("redis://localhost:6379", decode_responses=True)
 
     @patch("app.db.redis.settings")
     @patch("app.db.redis.log")
-    def test_init_with_no_url(
-        self, mock_log: MagicMock, mock_settings: MagicMock
-    ) -> None:
+    def test_init_with_no_url(self, mock_log: MagicMock, mock_settings: MagicMock) -> None:
         """Should warn and disable caching when REDIS_URL is not set."""
         mock_settings.REDIS_URL = None
 
@@ -490,9 +484,7 @@ class TestRedisCacheClientProperty:
 
         result = cache.client
 
-        mock_from_url.assert_called_once_with(
-            "redis://localhost:6379", decode_responses=True
-        )
+        mock_from_url.assert_called_once_with("redis://localhost:6379", decode_responses=True)
         assert result is new_client
 
 
@@ -538,9 +530,7 @@ class TestModuleLevelWrappers:
 
     async def test_delete_cache_with_wildcard_calls_pattern_delete(self) -> None:
         """delete_cache with '*' suffix should delegate to delete_cache_by_pattern."""
-        with patch(
-            "app.db.redis.delete_cache_by_pattern", new_callable=AsyncMock
-        ) as mock_pattern:
+        with patch("app.db.redis.delete_cache_by_pattern", new_callable=AsyncMock) as mock_pattern:
             await delete_cache("user:*")
 
             mock_pattern.assert_awaited_once_with("user:*")

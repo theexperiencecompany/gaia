@@ -2,6 +2,41 @@
 
 GAIA is a proactive personal AI assistant — full-stack Nx monorepo with a Next.js frontend, FastAPI/LangGraph backend, React Native mobile app, Electron desktop app, and Discord/Slack/Telegram bots.
 
+## Engineering Discipline
+
+- Use best practices and write clean, idiomatic code every time. No shortcuts, no half-measures.
+- Do not override or work around the architecture. Never disable lint rules, add blanket `# noqa` / `// biome-ignore` / `# type: ignore`, or bypass CI to force something through. Linting, type-checking, and CI are guardrails that exist for a reason. Fix the cause, not the symptom.
+- Match the conventions of the surrounding code. Prefer the existing pattern over inventing a new one.
+
+### Agent Guidelines (Karpathy-inspired)
+
+Behavioral guidelines to reduce common LLM coding mistakes. Bias toward caution over speed; for trivial tasks, use judgment. Source: https://github.com/multica-ai/andrej-karpathy-skills
+
+**1. Think Before Coding.** Don't assume. Don't hide confusion. Surface tradeoffs.
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them, don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+**2. Simplicity First.** Minimum code that solves the problem, nothing speculative.
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it. Ask: "Would a senior engineer say this is overcomplicated?"
+
+**3. Surgical Changes.** Touch only what you must. Clean up only your own mess.
+- Don't "improve" adjacent code, comments, or formatting. Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- Remove imports/variables/functions that YOUR changes made unused. Don't delete pre-existing dead code unless asked, flag it instead.
+- The test: every changed line should trace directly to the user's request.
+
+**4. Goal-Driven Execution.** Define success criteria. Loop until verified.
+- Turn vague tasks into verifiable goals before starting.
+- For multi-step tasks, state a brief plan with a verify check per step.
+- Strong success criteria let you loop independently; weak criteria ("make it work") require constant clarification.
+- GAIA caveat: do not write tests as the verification unless explicitly asked (see Testing). Use `nx lint` / `nx type-check` or a manual run as the verify step instead.
+
 ## mise
 
 `mise` is the task runner and tool version manager for this repo. It manages Node, Python, uv, and nx versions, and defines all development tasks.
@@ -161,9 +196,24 @@ The full design system is documented in **[`DESIGN.md`](./DESIGN.md)** at the re
 - Adding new tool cards vs OpenUI primitives (decision tree)
 - Copy-paste card template and pre-commit checklist
 
-**Claude rules** for design consistency are in `.claude/rules/design.md` (auto-loaded).
-**Chat bubble rules** are in `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`.
+**Design rules** are in `apps/web/CLAUDE.md` (behavioral, loads when working in web) and `DESIGN.md` (tokens + full system).
+**Chat bubble & tool-card design rules** are in `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`.
+**OpenUI system guide** (generic LLM-emitted components) is in `apps/web/src/config/openui/CLAUDE.md`.
 **Visual style guide** (rendered as interactive docs) is in `docs/design-system.mdx` — sourced from `DESIGN.md`.
+
+### Component Library — Never Build From Scratch
+
+**Never create custom button, input, spinner, tooltip, modal, or other UI primitive components from scratch.** Always use HeroUI first:
+
+- `<Button>` — never `<button>`. Use `color`, `variant`, `radius`, `size`, `endContent`, `startContent`, `isLoading`, `isIconOnly` props.
+- `<Input>` / `<Textarea>` — never raw `<input>` / `<textarea>`
+- `<Spinner>` / `<Skeleton>` — never custom loaders or icon-based spinners
+- `<Tooltip>`, `<Popover>`, `<Modal>`, `<Dropdown>` — never custom implementations
+- `<Link>` — never `<a>` tags (use HeroUI or Next.js Link)
+- `<Chip>` — for status badges and tags
+- `<Divider>` — never `<hr>`
+
+If HeroUI doesn't cover the use case, reach for Shadcn/Radix. Only build a custom component when no library equivalent exists.
 
 ## Code Style
 
@@ -183,33 +233,17 @@ The full design system is documented in **[`DESIGN.md`](./DESIGN.md)** at the re
 - **Full type annotations required** on all functions and methods (enforced by mypy)
 - **Ruff** for linting/formatting — not black/flake8/isort
 
-Rules are also enforced via auto-loaded rule files — see `.claude/rules/`:
-- **TypeScript/React**: `.claude/rules/typescript.md` — Biome, strict types, component/hook patterns, Zustand, API layer
-- **Python/Backend**: `.claude/rules/python.md` — Ruff, mypy, FastAPI patterns, services, logging, caching
-- **Design system**: `.claude/rules/design.md` — card contract, colors, icons, animations, OpenUI
-- **General engineering**: `.claude/rules/general.md` — DRY, dead code, constants, feature-based org
-- **SEO**: `.claude/rules/seo.md` — page title template, no redundant brand suffix, description length
-- **Linear**: `.claude/rules/linear.md` — issue titles, descriptions, priorities, cycle hygiene, writing style
+Monorepo-wide rules live in `.claude/rules/general.md` (DRY, dead code, constants, feature-based org) and load every session.
 
-## DRY Principles
-
-**Never duplicate logic across the monorepo.** Before writing new code, search for existing utilities, types, hooks, or services that already solve the problem.
-
-- **Shared Python logic** belongs in `libs/shared/py/` — import it in `apps/api`, `apps/voice-agent`, and `apps/bots` via the `gaia-shared` package.
-- **Shared TypeScript logic** belongs in `libs/shared/ts/` — consumed as `@gaia/shared` workspace package.
-- **Shared React/RN components or hooks** that are used across `web`, `desktop`, and `mobile` should live in `libs/shared/ts/src/` or a dedicated lib, not duplicated in each app.
-- When extracting shared code, update all call sites — do not leave dead duplicates behind.
-- If you find duplicated logic while working, flag it and consolidate it before adding more.
-
-## No Dead Code
-
-**After every refactor or change, clean up before considering work complete.**
-
-- Remove unused imports, variables, functions, types, and files — do not leave them commented out or with `_` prefixes
-- When moving logic to shared libs, delete the original copies from all previous locations
-- When replacing an implementation, remove the old one entirely — do not keep it "just in case"
-- When renaming or restructuring, hunt down all references and update or remove them
-- If unsure whether something is still used, **grep for it** — do not assume it's dead or alive
+Area-specific rules live in nested `CLAUDE.md` files that load automatically when you work in that part of the tree (path-scoped `.claude/rules` frontmatter does NOT auto-attach in this setup — nested CLAUDE.md does):
+- **Frontend** (TS/React, Zustand, HeroUI, API layer, design): `apps/web/CLAUDE.md`
+- **Backend** (Python, FastAPI route contract, services, Pydantic): `apps/api/CLAUDE.md`
+- **Voice agent** (Python, LiveKit worker): `apps/voice-agent/CLAUDE.md`
+- **Bots** (TypeScript): `apps/bots/CLAUDE.md`
+- **SEO** (marketing pages, metadata, schemas, sitemaps): `apps/web/src/app/[locale]/(landing)/CLAUDE.md`
+- **OpenUI system** (LLM-emitted generic components): `apps/web/src/config/openui/CLAUDE.md`
+- **Chat bubbles & tool cards**: `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`
+- **Design tokens & system**: `DESIGN.md`
 
 ## Working Style
 
@@ -226,6 +260,15 @@ When investigating a bug, feature, or unfamiliar area of the codebase:
 - **Explore the intricacies** — check edge cases, related config, middleware, environment variables, and cross-app interactions. Do not stop at the surface.
 - **Use relevant skills** — before starting any significant task, check if a skill applies (`writing-plans`, `accurate-testing`, `logging-best-practices`, `copywriting`, etc.) and invoke it via the `Skill` tool.
 
+### Reporting Issues
+
+When asked to find bugs or issues in the code, **only report problems that a real user would actually encounter**:
+
+- Focus on broken UI, wrong data, missing functionality, bad UX flows, and visual bugs.
+- **Do NOT flag theoretical race conditions or extreme timing edge cases.** If an issue requires contriving a microsecond-level timing scenario to reproduce, it is not a real issue.
+- Ask yourself: "Would a QA tester find this bug in normal usage?" If not, don't report it.
+- Prioritize: functional bugs > UX issues > visual inconsistencies > code quality. Skip hypothetical concerns.
+
 ### Task Tracking
 
 **Always create todos for multi-step work** — use TaskCreate at the start of any non-trivial task. Update status (`in_progress` → `completed`) as you go. Never leave tasks stale.
@@ -234,6 +277,7 @@ When investigating a bug, feature, or unfamiliar area of the codebase:
 
 - **Plans must go in `.agents/plans/`** — never create plan files anywhere else. This directory is gitignored.
 - **Plans must be comprehensive** — include architecture decisions, step-by-step implementation, edge cases, and rollback considerations before writing any code.
+- **Plans contain only final decisions** — never include thought process, reasoning, pros/cons debates, or "why I chose X over Y" commentary. A plan is a spec, not a journal. If it reads like someone thinking out loud, rewrite it.
 - Use the `writing-plans` skill before starting any significant implementation.
 
 ### Testing
@@ -295,24 +339,6 @@ When creating implementation plans, store them in `.agents/plans/` directory. Th
 
 **Never create `.md` files** outside of `.agents/plans/` (gitignored) unless explicitly asked. Do not create `REVIEW.md`, `CONSISTENCY_REPORT.md`, `ANALYSIS.md`, spec files, or any other agent-generated documentation in the source tree. Planning and review artifacts belong only in `.agents/plans/` and only when absolutely necessary.
 
-## Worktrees
-
-We use **worktrunk** (`wt`) on top of `git worktree` to manage parallel branches. Worktrees live as siblings of the primary repo: `~/Projects/GAIA/gaia-<sanitized-branch>` (e.g. branch `feature/auth` → `~/Projects/GAIA/gaia-feature-auth`). The original checkout at `~/Projects/GAIA/gaia` is the **primary worktree** and the only place that owns real `node_modules`, `.venv`, and `.env*` files. Common commands: `wt switch --create <branch>`, `wt switch <branch>`, `wt list`, `wt remove`, `wt prune`. Full reference: [internal-docs → Worktrees](https://github.com/theexperiencecompany/gaia/blob/develop/internal-docs/docs/getting-started/worktrees.mdx).
-
-### Worktree install rules
-
-`node_modules/`, `.venv/`, and `.env*` files in any `gaia-<branch>` sibling are **symlinks pointing at primary** (`~/Projects/GAIA/gaia`). Edits to `.env*` from any worktree apply to primary's file — that's intentional, secrets live in one place. Three rules:
-
-1. **No trailing-slash `rm` on a symlinked dir.** `rm -rf node_modules/` (with the `/`) follows the symlink and recursively deletes primary's directory through it. Always `rm node_modules` (no flags, no slash) when removing a symlink.
-2. **No concurrent installs.** Two `pnpm install` / `mise run setup` / `uv sync` running at once corrupt the shared `node_modules`/`.venv`. Sequential only.
-3. **`mise run setup` runs in primary.** Full setups walk every workspace package; do them from `~/Projects/GAIA/gaia` so the install state matches a known branch.
-
-**`pnpm add some-pkg` from a worktree is fine** — that's the standard way to add a dep to a feature branch. pnpm reads the branch's `package.json` + lockfile, downloads the package, writes it into primary's `node_modules` via the symlink, and updates the worktree's lockfile. Commit the lockfile diff on the feature branch.
-
-If a worktree needs fully isolated installs (corrupted state, conflicting versions): `rm node_modules` (the symlink), then `pnpm install`. To rejoin the shared pool: `rm -rf node_modules && wt re-share`.
-
-Full reference: [internal-docs → Worktrees](https://github.com/theexperiencecompany/gaia/blob/develop/internal-docs/docs/getting-started/worktrees.mdx).
-
 ## Git Conventions
 
 - **Never add Claude as a co-author in commits.** Do not include `Co-Authored-By: Claude` or any similar line in commit messages.
@@ -344,3 +370,68 @@ rm -rf directory       # NOT: rm -r directory
 - Nx daemon issues → daemon is disabled (`useDaemonProcess: false` in `nx.json`)
 - Web app uses `output: "standalone"` — required for Electron bundling, do not remove
 - Console logs are stripped in production builds (except `console.error`)
+
+
+<!-- nx configuration start-->
+<!-- Leave the start & end comments to automatically receive updates. -->
+
+## General Guidelines for working with Nx
+
+- For navigating/exploring the workspace, invoke the `nx-workspace` skill first - it has patterns for querying projects, targets, and dependencies
+- When running tasks (for example build, lint, test, e2e, etc.), always prefer running the task through `nx` (i.e. `nx run`, `nx run-many`, `nx affected`) instead of using the underlying tooling directly
+- Prefix nx commands with the workspace's package manager (e.g., `pnpm nx build`, `npm exec nx test`) - avoids using globally installed CLI
+- You have access to the Nx MCP server and its tools, use them to help the user
+- For Nx plugin best practices, check `node_modules/@nx/<plugin>/PLUGIN.md`. Not all plugins have this file - proceed without it if unavailable.
+- NEVER guess CLI flags - always check nx_docs or `--help` first when unsure
+
+## Scaffolding & Generators
+
+- For scaffolding tasks (creating apps, libs, project structure, setup), ALWAYS invoke the `nx-generate` skill FIRST before exploring or calling MCP tools
+
+## When to use nx_docs
+
+- USE for: advanced config options, unfamiliar flags, migration guides, plugin configuration, edge cases
+- DON'T USE for: basic generator syntax (`nx g @nx/react:app`), standard commands, things you already know
+- The `nx-generate` skill handles generator discovery internally - don't call nx_docs just to look up generator syntax
+
+
+<!-- nx configuration end-->
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
+- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
+- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
+- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview` + `list_communities`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+|------|----------|
+| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
+| `get_review_context` | Need source snippets for review — token-efficient |
+| `get_impact_radius` | Understanding blast radius of a change |
+| `get_affected_flows` | Finding which execution paths are impacted |
+| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes` | Finding functions/classes by name or keyword |
+| `get_architecture_overview` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes` for code review.
+3. Use `get_affected_flows` to understand impact.
+4. Use `query_graph` pattern="tests_for" to check coverage.

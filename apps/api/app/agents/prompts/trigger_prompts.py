@@ -4,7 +4,7 @@ Simple template that accepts raw trigger config data as JSON.
 """
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 TRIGGER_CONTEXT_TEMPLATE = """## TRIGGER CONTEXT:
 
@@ -45,23 +45,22 @@ def generate_trigger_specific_guidance(trigger_config) -> str:
 - Example good steps: compose_email (reply), create_calendar_event (meeting), create_reminder (follow-up)
 - The LLM will automatically understand the email content and extract relevant information
 """
-    elif trigger_type == "calendar":
+    if trigger_type == "calendar":
         return """
 **CALENDAR TRIGGER - IMPORTANT:**
 - The triggering calendar event details are ALREADY AVAILABLE during execution
 - DO NOT create steps to fetch or search for the triggering event
 - FOCUS ON: Actions to take BASED ON the event (notifications, preparations, follow-ups)
 """
-    elif trigger_type == "schedule":
+    if trigger_type == "schedule":
         return """
 **SCHEDULED TRIGGER:**
 - This workflow runs on a schedule (cron expression)
 - Focus on periodic tasks and maintenance actions
 - Consider what data needs to be gathered and what actions need to be taken regularly
 """
-    else:
-        trigger_type_str = str(trigger_type).upper() if trigger_type else "UNKNOWN"
-        return f"""
+    trigger_type_str = str(trigger_type).upper() if trigger_type else "UNKNOWN"
+    return f"""
 **{trigger_type_str} TRIGGER:**
 - Consider what data is provided by this trigger type
 - Focus on actions that utilize the trigger context
@@ -69,7 +68,7 @@ def generate_trigger_specific_guidance(trigger_config) -> str:
 """
 
 
-def generate_trigger_context(trigger_config: Optional[Any] = None) -> str:
+def generate_trigger_context(trigger_config: Any | None = None) -> str:
     """
     Generate trigger context for workflow prompts.
 

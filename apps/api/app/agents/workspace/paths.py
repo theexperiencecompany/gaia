@@ -7,8 +7,8 @@ or `sessions/` anywhere else.
 
 from __future__ import annotations
 
-import re
 from enum import StrEnum
+import re
 
 _EXT_CONTENT_TYPES = {
     "png": "image/png",

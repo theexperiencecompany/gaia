@@ -6,20 +6,21 @@ when OAuth integrations are connected. This metadata is used to enhance agent
 system prompts with user context.
 """
 
+from datetime import UTC, datetime
 import json
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any
 
-from shared.py.wide_events import log
+from bson import ObjectId
+
 from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import PROVIDER_METADATA_CACHE_TTL
 from app.db.mongodb.collections import users_collection
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.services.composio.composio_service import get_composio_service
-from bson import ObjectId
+from shared.py.wide_events import log
 
 
-def _extract_nested_field(data: Dict[str, Any], field_path: str) -> Optional[str]:
+def _extract_nested_field(data: dict[str, Any], field_path: str) -> str | None:
     """
     Extract a value from a nested dictionary using dot notation.
 
@@ -46,7 +47,7 @@ def _extract_nested_field(data: Dict[str, Any], field_path: str) -> Optional[str
 
 async def fetch_tool_response(
     user_id: str, tool_name: str, integration_id: str
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """
     Fetch response from a single tool.
 
@@ -87,7 +88,7 @@ async def fetch_tool_response(
         # Handle different response types
         if isinstance(data, dict):
             return data
-        elif isinstance(data, str):
+        if isinstance(data, str):
             try:
                 return json.loads(data)
             except json.JSONDecodeError:
@@ -102,9 +103,7 @@ async def fetch_tool_response(
         return None
 
 
-async def fetch_provider_user_info(
-    user_id: str, integration_id: str
-) -> Optional[Dict[str, str]]:
+async def fetch_provider_user_info(user_id: str, integration_id: str) -> dict[str, str] | None:
     """
     Fetch user info from a provider using configured tools and extract variables.
 
@@ -118,16 +117,14 @@ async def fetch_provider_user_info(
     Returns:
         Dictionary of extracted variables (name -> value), or None if failed
     """
-    log.set(
-        provider_metadata_user_id=user_id, provider_metadata_integration=integration_id
-    )
+    log.set(provider_metadata_user_id=user_id, provider_metadata_integration=integration_id)
     integration = get_integration_by_id(integration_id)
 
     if not integration or not integration.metadata_config:
         log.debug(f"No metadata config for integration {integration_id}")
         return None
 
-    metadata: Dict[str, str] = {}
+    metadata: dict[str, str] = {}
 
     # Iterate through each tool configuration
     for tool_config in integration.metadata_config.tools:
@@ -135,9 +132,7 @@ async def fetch_provider_user_info(
         response = await fetch_tool_response(user_id, tool_config.tool, integration_id)
 
         if not response:
-            log.warning(
-                f"Failed to fetch {tool_config.tool} for {integration_id}, skipping"
-            )
+            log.warning(f"Failed to fetch {tool_config.tool} for {integration_id}, skipping")
             continue
 
         # Extract each configured variable from the response
@@ -156,9 +151,7 @@ async def fetch_provider_user_info(
 
 
 @CacheInvalidator(key_patterns=["provider_metadata:{user_id}:{provider}"])
-async def store_provider_metadata(
-    user_id: str, provider: str, metadata: Dict[str, str]
-) -> bool:
+async def store_provider_metadata(user_id: str, provider: str, metadata: dict[str, str]) -> bool:
     """
     Store provider metadata in the user's document.
 
@@ -181,7 +174,7 @@ async def store_provider_metadata(
             {
                 "$set": {
                     f"provider_metadata.{provider}": metadata,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
         )
@@ -189,9 +182,8 @@ async def store_provider_metadata(
         if result.modified_count > 0:
             log.info(f"Stored {provider} metadata for user {user_id}: {metadata}")
             return True
-        else:
-            log.warning(f"No document updated for user {user_id}")
-            return False
+        log.warning(f"No document updated for user {user_id}")
+        return False
 
     except Exception as e:
         log.error(f"Error storing {provider} metadata for user {user_id}: {e}")
@@ -202,9 +194,7 @@ async def store_provider_metadata(
     key_pattern="provider_metadata:{user_id}:{provider}",
     ttl=PROVIDER_METADATA_CACHE_TTL,
 )
-async def get_provider_metadata(
-    user_id: str, provider: str
-) -> Optional[Dict[str, str]]:
+async def get_provider_metadata(user_id: str, provider: str) -> dict[str, str] | None:
     """
     Retrieve provider metadata for a user.
 
@@ -216,9 +206,7 @@ async def get_provider_metadata(
         The metadata dictionary, or None if not found
     """
     try:
-        user = await users_collection.find_one(
-            {"_id": ObjectId(user_id)}, {"provider_metadata": 1}
-        )
+        user = await users_collection.find_one({"_id": ObjectId(user_id)}, {"provider_metadata": 1})
 
         if not user:
             return None
@@ -231,7 +219,7 @@ async def get_provider_metadata(
         return None
 
 
-async def get_all_provider_metadata(user_id: str) -> Dict[str, Dict[str, str]]:
+async def get_all_provider_metadata(user_id: str) -> dict[str, dict[str, str]]:
     """
     Retrieve all provider metadata for a user.
 
@@ -242,9 +230,7 @@ async def get_all_provider_metadata(user_id: str) -> Dict[str, Dict[str, str]]:
         Dictionary of provider -> metadata mappings
     """
     try:
-        user = await users_collection.find_one(
-            {"_id": ObjectId(user_id)}, {"provider_metadata": 1}
-        )
+        user = await users_collection.find_one({"_id": ObjectId(user_id)}, {"provider_metadata": 1})
 
         if not user:
             return {}

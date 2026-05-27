@@ -6,7 +6,7 @@ Pure data manipulation on the orchestrator's accumulators
 cancellation paths where the ``nostream`` marker never arrives.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.core.stream_manager import stream_manager
@@ -91,6 +91,6 @@ def inject_todo_progress(
             {
                 "tool_name": "todo_progress",
                 "data": todo_progress_accumulated,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
         )

@@ -11,6 +11,7 @@ import {
 } from "@icons";
 import { getSimpleTimeGreeting } from "@shared/utils";
 import { useRouter } from "next/navigation";
+import type { ReactNode } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
 import { useUpcomingEventsQuery } from "@/features/calendar/hooks/useUpcomingEventsQuery";
@@ -112,7 +113,7 @@ export default function HomePage() {
     activeWorkflows > 0;
 
   // Build sections array for display
-  const sections = [];
+  const sections: { icon: ReactNode; count: number; label: string }[] = [];
   if (todaysMeetings > 0) {
     sections.push({
       icon: <Calendar03Icon className="w-7 h-7 text-blue-400" />,

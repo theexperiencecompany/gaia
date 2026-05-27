@@ -13,7 +13,7 @@ Tests the real workflow service functions with mocked I/O boundaries
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -34,8 +34,8 @@ from app.services.workflow.execution_service import (
 )
 from app.services.workflow.generation_service import (
     WorkflowGenerationService,
-    enrich_steps,
     _parse_workflow_response,
+    enrich_steps,
 )
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.services.workflow.service import (
@@ -200,9 +200,7 @@ class TestWorkflowCRUDLifecycle:
         mock_collection = AsyncMock()
         # First call: get_workflow for current state
         # Second call: get_workflow after update
-        mock_collection.find_one = AsyncMock(
-            side_effect=[_workflow_as_doc(original), updated_doc]
-        )
+        mock_collection.find_one = AsyncMock(side_effect=[_workflow_as_doc(original), updated_doc])
         mock_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
 
         update_request = UpdateWorkflowRequest(title="Updated Title")
@@ -237,9 +235,7 @@ class TestWorkflowCRUDLifecycle:
         ):
             mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock()
             mock_scheduler.cancel_task = AsyncMock()
-            result = await WorkflowService.delete_workflow(
-                FAKE_WORKFLOW_ID, FAKE_USER_ID
-            )
+            result = await WorkflowService.delete_workflow(FAKE_WORKFLOW_ID, FAKE_USER_ID)
 
         assert result is True
         mock_collection.delete_one.assert_awaited_once()
@@ -259,9 +255,7 @@ class TestWorkflowCRUDLifecycle:
         ):
             mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock()
             mock_scheduler.cancel_task = AsyncMock()
-            result = await WorkflowService.delete_workflow(
-                "wf_nonexistent", FAKE_USER_ID
-            )
+            result = await WorkflowService.delete_workflow("wf_nonexistent", FAKE_USER_ID)
 
         assert result is False
 
@@ -354,7 +348,7 @@ class TestExecutionTracking:
 
     async def test_complete_execution_success(self):
         """complete_execution updates record to 'success' with duration."""
-        started_at = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        started_at = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
         stored_doc = {
             "execution_id": "exec_abc123",
             "workflow_id": FAKE_WORKFLOW_ID,
@@ -387,7 +381,7 @@ class TestExecutionTracking:
         stored_doc = {
             "execution_id": "exec_fail",
             "workflow_id": FAKE_WORKFLOW_ID,
-            "started_at": datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+            "started_at": datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
         }
         mock_collection = AsyncMock()
         mock_collection.find_one = AsyncMock(return_value=stored_doc)
@@ -433,7 +427,7 @@ class TestExecutionTracking:
                 "workflow_id": FAKE_WORKFLOW_ID,
                 "user_id": FAKE_USER_ID,
                 "status": "success",
-                "started_at": datetime(2026, 1, 1, 12, i, 0, tzinfo=timezone.utc),
+                "started_at": datetime(2026, 1, 1, 12, i, 0, tzinfo=UTC),
                 "trigger_type": "manual",
             }
             for i in range(3)
@@ -587,9 +581,7 @@ class TestMultiStepWorkflowExecution:
         )
         mock_collection = AsyncMock()
         mock_collection.find_one = AsyncMock(return_value=_workflow_as_doc(workflow))
-        mock_collection.find_one_and_update = AsyncMock(
-            return_value=_workflow_as_doc(workflow)
-        )
+        mock_collection.find_one_and_update = AsyncMock(return_value=_workflow_as_doc(workflow))
 
         with (
             patch(
@@ -649,9 +641,7 @@ class TestMultiStepWorkflowExecution:
         """enrich_steps assigns sequential IDs and preserves step order."""
 
         generated = [
-            GeneratedStep(
-                title="Fetch data", category="api", description="Get the data"
-            ),
+            GeneratedStep(title="Fetch data", category="api", description="Get the data"),
             GeneratedStep(
                 title="Process data",
                 category="gaia",
@@ -687,7 +677,7 @@ class TestExecutionFailure:
 
     async def test_execution_failure_records_error_state(self):
         """A failed execution stores error_message and status='failed'."""
-        started_at = datetime(2026, 3, 15, 10, 0, 0, tzinfo=timezone.utc)
+        started_at = datetime(2026, 3, 15, 10, 0, 0, tzinfo=UTC)
         stored_doc = {
             "execution_id": "exec_mid_fail",
             "workflow_id": FAKE_WORKFLOW_ID,
@@ -914,7 +904,7 @@ class TestQueueService:
         mock_job = MagicMock()
         mock_job.job_id = "job_sched_789"
         mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
-        scheduled_at = datetime(2026, 6, 1, 9, 0, 0, tzinfo=timezone.utc)
+        scheduled_at = datetime(2026, 6, 1, 9, 0, 0, tzinfo=UTC)
 
         with patch(
             "app.services.workflow.queue_service.RedisPoolManager.get_pool",
@@ -1051,9 +1041,7 @@ class TestActivateDeactivateLifecycle:
             ),
             patch("app.services.workflow.service.workflow_scheduler"),
         ):
-            result = await WorkflowService.activate_workflow(
-                FAKE_WORKFLOW_ID, FAKE_USER_ID
-            )
+            result = await WorkflowService.activate_workflow(FAKE_WORKFLOW_ID, FAKE_USER_ID)
 
         assert result is not None
         assert result.activated is True
@@ -1076,9 +1064,7 @@ class TestActivateDeactivateLifecycle:
             patch("app.services.workflow.service.workflow_scheduler") as mock_scheduler,
         ):
             mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock()
-            result = await WorkflowService.deactivate_workflow(
-                FAKE_WORKFLOW_ID, FAKE_USER_ID
-            )
+            result = await WorkflowService.deactivate_workflow(FAKE_WORKFLOW_ID, FAKE_USER_ID)
 
         assert result is not None
         assert result.activated is False

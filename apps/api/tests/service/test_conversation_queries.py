@@ -12,7 +12,7 @@ Key behaviors under test:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -32,7 +32,7 @@ class TestConversationQueriesReal:
         """
         import app.services.conversation_service as conv_svc  # noqa: F401 — ensures patch is active
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         c1 = await make_conversation(
             "sort-user",
@@ -47,9 +47,7 @@ class TestConversationQueriesReal:
             createdAt=now,
         )
 
-        cursor = conversations_collection.find({"user_id": "sort-user"}).sort(
-            "createdAt", -1
-        )
+        cursor = conversations_collection.find({"user_id": "sort-user"}).sort("createdAt", -1)
         docs = await cursor.to_list(length=10)
 
         assert docs[0]["conversation_id"] == c3
@@ -62,7 +60,7 @@ class TestConversationQueriesReal:
         """get_conversations must return non-starred conversations newest-first."""
         import app.services.conversation_service as conv_svc
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         oldest = await make_conversation(
             "svc-sort-user",
@@ -85,29 +83,25 @@ class TestConversationQueriesReal:
         assert conversation_ids.index(newest) < conversation_ids.index(middle)
         assert conversation_ids.index(middle) < conversation_ids.index(oldest)
 
-    async def test_user_isolation_in_queries(
-        self, conversations_collection, make_conversation
-    ):
+    async def test_user_isolation_in_queries(self, conversations_collection, make_conversation):
         """User A's conversations must not appear in User B's results."""
         await make_conversation("isolation-user-A")
         await make_conversation("isolation-user-A")
         await make_conversation("isolation-user-B")
 
-        docs_a = await conversations_collection.find(
-            {"user_id": "isolation-user-A"}
-        ).to_list(length=100)
-        docs_b = await conversations_collection.find(
-            {"user_id": "isolation-user-B"}
-        ).to_list(length=100)
+        docs_a = await conversations_collection.find({"user_id": "isolation-user-A"}).to_list(
+            length=100
+        )
+        docs_b = await conversations_collection.find({"user_id": "isolation-user-B"}).to_list(
+            length=100
+        )
 
         assert len(docs_a) == 2
         assert len(docs_b) == 1
         assert all(d["user_id"] == "isolation-user-A" for d in docs_a)
         assert all(d["user_id"] == "isolation-user-B" for d in docs_b)
 
-    async def test_user_isolation_via_service(
-        self, conversations_collection, make_conversation
-    ):
+    async def test_user_isolation_via_service(self, conversations_collection, make_conversation):
         """get_conversations must never return another user's conversations."""
         import app.services.conversation_service as conv_svc
 
@@ -134,7 +128,7 @@ class TestConversationQueriesReal:
         self, conversations_collection, make_conversation
     ):
         """Skip + limit must return the correct page of results."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for i in range(5):
             await make_conversation("page-user", createdAt=now - timedelta(hours=i))
 
@@ -195,7 +189,7 @@ class TestConversationQueriesReal:
         """Starred conversations must precede non-starred ones in get_conversations output."""
         import app.services.conversation_service as conv_svc
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         non_starred = await make_conversation(
             "starred-test-user",

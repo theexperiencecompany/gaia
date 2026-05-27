@@ -4,7 +4,5 @@ export type { ToolBannerProps, ToolBannerTone } from "./ToolBanner";
 export { ToolBanner } from "./ToolBanner";
 export type { ToolCardProps, ToolCardSize } from "./ToolCard";
 export { ToolCard } from "./ToolCard";
-export type { ToolGridProps } from "./ToolGrid";
-export { ToolGrid } from "./ToolGrid";
 export type { ToolInsetProps } from "./ToolInset";
 export { ToolInset } from "./ToolInset";

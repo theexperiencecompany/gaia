@@ -1,8 +1,7 @@
 """WorkOS session auth middleware + ``get_current_user`` dependency."""
 
 from collections.abc import Awaitable, Callable
-from datetime import datetime
-from datetime import timezone as tz
+from datetime import UTC, datetime
 from typing import Any
 
 from bson import ObjectId
@@ -98,7 +97,15 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                     request.state.auth_failure = "invalid_or_expired_session"
 
             except Exception as e:
-                log.error(f"Authentication middleware error: {e}")
+                log.error(
+                    "auth_middleware_error",
+                    auth_failure=type(e).__name__,
+                    path=request.url.path,
+                    method=request.method,
+                    session_present=bool(wos_session),
+                    error=str(e),
+                )
+                # Don't block request on auth failures - routes can handle this
 
         accepts_agent_token = request.url.path in self.agent_only_paths or any(
             request.url.path.startswith(p) for p in self.agent_only_path_prefixes
@@ -163,7 +170,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         try:
             await users_collection.update_one(
                 {"email": user_info["email"]},
-                {"$set": {"last_active_at": datetime.now(tz.utc)}},
+                {"$set": {"last_active_at": datetime.now(UTC)}},
             )
             return user_info, new_session
         except Exception as e:

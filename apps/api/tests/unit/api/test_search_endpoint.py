@@ -6,8 +6,8 @@ to verify routing, status codes, response bodies, and validation.
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 SEARCH_BASE = "/api/v1"
 
@@ -20,9 +20,7 @@ class TestSearchMessages:
         "app.api.v1.endpoints.search.search_messages",
         new_callable=AsyncMock,
     )
-    async def test_search_returns_200(
-        self, mock_search: AsyncMock, client: AsyncClient
-    ):
+    async def test_search_returns_200(self, mock_search: AsyncMock, client: AsyncClient):
         mock_search.return_value = {
             "messages": [{"id": "msg-1", "content": "hello"}],
             "conversations": [],
@@ -40,9 +38,7 @@ class TestSearchMessages:
         "app.api.v1.endpoints.search.search_messages",
         new_callable=AsyncMock,
     )
-    async def test_search_passes_user_id(
-        self, mock_search: AsyncMock, client: AsyncClient
-    ):
+    async def test_search_passes_user_id(self, mock_search: AsyncMock, client: AsyncClient):
         mock_search.return_value = {"messages": [], "conversations": [], "notes": []}
         await client.get(f"{SEARCH_BASE}/search", params={"query": "test"})
         mock_search.assert_awaited_once_with(
@@ -58,13 +54,9 @@ class TestSearchMessages:
         "app.api.v1.endpoints.search.search_messages",
         new_callable=AsyncMock,
     )
-    async def test_search_empty_results(
-        self, mock_search: AsyncMock, client: AsyncClient
-    ):
+    async def test_search_empty_results(self, mock_search: AsyncMock, client: AsyncClient):
         mock_search.return_value = {"messages": [], "conversations": [], "notes": []}
-        response = await client.get(
-            f"{SEARCH_BASE}/search", params={"query": "nothing"}
-        )
+        response = await client.get(f"{SEARCH_BASE}/search", params={"query": "nothing"})
         assert response.status_code == 200
         data = response.json()
         assert data["messages"] == []
@@ -91,9 +83,7 @@ class TestSearchEmail:
         "app.api.v1.endpoints.search.perform_search",
         new_callable=AsyncMock,
     )
-    async def test_search_email_returns_200(
-        self, mock_perform: AsyncMock, client: AsyncClient
-    ):
+    async def test_search_email_returns_200(self, mock_perform: AsyncMock, client: AsyncClient):
         mock_perform.return_value = {
             "web": [
                 {
@@ -102,9 +92,7 @@ class TestSearchEmail:
                 }
             ]
         }
-        response = await client.get(
-            f"{SEARCH_BASE}/search/email", params={"query": "Example Corp"}
-        )
+        response = await client.get(f"{SEARCH_BASE}/search/email", params={"query": "Example Corp"})
         assert response.status_code == 200
         data = response.json()
         assert "emails" in data
@@ -120,9 +108,7 @@ class TestSearchEmail:
         self, mock_perform: AsyncMock, client: AsyncClient
     ):
         mock_perform.return_value = None
-        response = await client.get(
-            f"{SEARCH_BASE}/search/email", params={"query": "unknown"}
-        )
+        response = await client.get(f"{SEARCH_BASE}/search/email", params={"query": "unknown"})
         assert response.status_code == 500
 
     @patch(
@@ -133,9 +119,7 @@ class TestSearchEmail:
         self, mock_perform: AsyncMock, client: AsyncClient
     ):
         mock_perform.return_value = {"images": []}
-        response = await client.get(
-            f"{SEARCH_BASE}/search/email", params={"query": "test"}
-        )
+        response = await client.get(f"{SEARCH_BASE}/search/email", params={"query": "test"})
         assert response.status_code == 500
 
     @patch(
@@ -151,9 +135,7 @@ class TestSearchEmail:
                 {"title": "Page2", "snippet": "info@test.com again"},
             ]
         }
-        response = await client.get(
-            f"{SEARCH_BASE}/search/email", params={"query": "test"}
-        )
+        response = await client.get(f"{SEARCH_BASE}/search/email", params={"query": "test"})
         assert response.status_code == 200
         data = response.json()
         assert len(data["emails"]) == 1
@@ -172,9 +154,7 @@ class TestFetchUrlMetadata:
         "app.api.v1.endpoints.search.fetch_url_metadata",
         new_callable=AsyncMock,
     )
-    async def test_fetch_url_metadata_returns_200(
-        self, mock_fetch: AsyncMock, client: AsyncClient
-    ):
+    async def test_fetch_url_metadata_returns_200(self, mock_fetch: AsyncMock, client: AsyncClient):
         from app.models.search_models import URLResponse
 
         mock_fetch.return_value = URLResponse(
@@ -256,9 +236,7 @@ class TestFetchUrlMetadata:
         assert "https://good.com" in data["results"]
         assert "https://bad.com" not in data["results"]
 
-    async def test_fetch_url_metadata_missing_urls_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_fetch_url_metadata_missing_urls_returns_422(self, client: AsyncClient):
         response = await client.post(f"{SEARCH_BASE}/fetch-url-metadata", json={})
         assert response.status_code == 422
 
@@ -269,9 +247,7 @@ class TestFetchUrlMetadata:
     async def test_fetch_url_metadata_empty_urls_returns_200(
         self, mock_fetch: AsyncMock, client: AsyncClient
     ):
-        response = await client.post(
-            f"{SEARCH_BASE}/fetch-url-metadata", json={"urls": []}
-        )
+        response = await client.post(f"{SEARCH_BASE}/fetch-url-metadata", json={"urls": []})
         assert response.status_code == 200
         data = response.json()
         assert data["results"] == {}

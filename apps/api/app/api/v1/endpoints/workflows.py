@@ -3,8 +3,9 @@ Clean workflow API router for GAIA workflow system.
 Provides CRUD operations, execution, and status endpoints.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pymongo.errors import DuplicateKeyError
 
 from app.api.v1.dependencies.oauth_dependencies import (
@@ -12,9 +13,9 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_timezone_from_preferences,
 )
 from app.api.v1.middleware.rate_limiter import limiter
-from shared.py.wide_events import log, WorkflowContext
 from app.db.mongodb.collections import workflows_collection
 from app.decorators import tiered_rate_limit
+from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     GenerateWorkflowPromptRequest,
@@ -32,20 +33,20 @@ from app.models.workflow_models import (
     WorkflowResponse,
     WorkflowStatusResponse,
 )
-from app.models.workflow_execution_models import WorkflowExecutionsResponse
+from app.services.system_workflows.provisioner import reset_system_workflow_to_default
 from app.services.workflow import WorkflowService
+from app.services.workflow.execution_service import (
+    get_workflow_executions as get_executions,
+)
+from app.services.workflow.generation_service import WorkflowGenerationService
 from app.services.workflow.service import (
     ensure_public_workflow_slug,
     generate_unique_workflow_slug,
 )
-from app.services.workflow.generation_service import WorkflowGenerationService
-from app.services.workflow.execution_service import (
-    get_workflow_executions as get_executions,
-)
-from app.services.system_workflows.provisioner import reset_system_workflow_to_default
+from app.utils.creator import creator_lookup_stage, format_creator
 from app.utils.exceptions import TriggerRegistrationError
 from app.utils.workflow_utils import transform_workflow_document
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from shared.py.wide_events import WorkflowContext, log
 
 router = APIRouter()
 
@@ -63,9 +64,7 @@ async def create_workflow(
         workflow=WorkflowContext(
             operation="create",
             title=request.title,
-            trigger_type=str(request.trigger_config.type)
-            if request.trigger_config
-            else None,
+            trigger_type=str(request.trigger_config.type) if request.trigger_config else None,
         ),
     )
 
@@ -89,9 +88,7 @@ async def create_workflow(
             ),
             outcome="success",
         )
-        return WorkflowResponse(
-            workflow=workflow, message="Workflow created successfully"
-        )
+        return WorkflowResponse(workflow=workflow, message="Workflow created successfully")
 
     except TriggerRegistrationError as e:
         # Specific error for trigger registration failures
@@ -102,7 +99,7 @@ async def create_workflow(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        log.error(f"Error creating workflow: {str(e)}")
+        log.error(f"Error creating workflow: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create workflow",
@@ -128,16 +125,14 @@ async def list_workflows(request: Request, user: dict = Depends(get_current_user
         return WorkflowListResponse(workflows=workflows)
 
     except Exception as e:
-        log.error(f"Error listing workflows for user {user['user_id']}: {str(e)}")
+        log.error(f"Error listing workflows for user {user['user_id']}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list workflows",
         )
 
 
-@router.post(
-    "/workflows/{workflow_id}/execute", response_model=WorkflowExecutionResponse
-)
+@router.post("/workflows/{workflow_id}/execute", response_model=WorkflowExecutionResponse)
 @tiered_rate_limit("workflow_operations")
 async def execute_workflow(
     workflow_id: str,
@@ -151,9 +146,7 @@ async def execute_workflow(
     )
 
     try:
-        result = await WorkflowService.execute_workflow(
-            workflow_id, request, user["user_id"]
-        )
+        result = await WorkflowService.execute_workflow(workflow_id, request, user["user_id"])
         log.set(
             workflow=WorkflowContext(
                 execution_id=str(result.execution_id)
@@ -167,16 +160,14 @@ async def execute_workflow(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        log.error(f"Error executing workflow {workflow_id}: {str(e)}")
+        log.error(f"Error executing workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to execute workflow",
         )
 
 
-@router.get(
-    "/workflows/{workflow_id}/executions", response_model=WorkflowExecutionsResponse
-)
+@router.get("/workflows/{workflow_id}/executions", response_model=WorkflowExecutionsResponse)
 @limiter.limit("100/minute")
 async def get_workflow_executions(
     request: Request,
@@ -210,7 +201,7 @@ async def get_workflow_executions(
         )
         return result
     except Exception as e:
-        log.error(f"Error getting executions for workflow {workflow_id}: {str(e)}")
+        log.error(f"Error getting executions for workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow executions",
@@ -226,14 +217,11 @@ async def get_workflow_status(workflow_id: str, user: dict = Depends(get_current
     )
 
     try:
-        status_response = await WorkflowService.get_workflow_status(
-            workflow_id, user["user_id"]
-        )
+        status_response = await WorkflowService.get_workflow_status(workflow_id, user["user_id"])
         log.set(
             workflow=WorkflowContext(
                 execution_id=str(status_response.execution_id)
-                if hasattr(status_response, "execution_id")
-                and status_response.execution_id
+                if hasattr(status_response, "execution_id") and status_response.execution_id
                 else None,
             ),
             outcome="success",
@@ -243,7 +231,7 @@ async def get_workflow_status(workflow_id: str, user: dict = Depends(get_current
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
-        log.error(f"Error getting workflow status {workflow_id}: {str(e)}")
+        log.error(f"Error getting workflow status {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow status",
@@ -273,9 +261,7 @@ async def activate_workflow(
             )
 
         log.set(outcome="success")
-        return WorkflowResponse(
-            workflow=workflow, message="Workflow activated successfully"
-        )
+        return WorkflowResponse(workflow=workflow, message="Workflow activated successfully")
 
     except TriggerRegistrationError as e:
         # Specific error for trigger registration failures
@@ -286,7 +272,7 @@ async def activate_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error activating workflow {workflow_id}: {str(e)}")
+        log.error(f"Error activating workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to activate workflow",
@@ -316,23 +302,19 @@ async def deactivate_workflow(
             )
 
         log.set(outcome="success")
-        return WorkflowResponse(
-            workflow=workflow, message="Workflow deactivated successfully"
-        )
+        return WorkflowResponse(workflow=workflow, message="Workflow deactivated successfully")
 
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error deactivating workflow {workflow_id}: {str(e)}")
+        log.error(f"Error deactivating workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to deactivate workflow",
         )
 
 
-@router.post(
-    "/workflows/{workflow_id}/regenerate-steps", response_model=WorkflowResponse
-)
+@router.post("/workflows/{workflow_id}/regenerate-steps", response_model=WorkflowResponse)
 async def regenerate_workflow_steps(
     workflow_id: str,
     request: RegenerateStepsRequest,
@@ -359,14 +341,12 @@ async def regenerate_workflow_steps(
             )
 
         log.set(outcome="success")
-        return WorkflowResponse(
-            workflow=workflow, message="Workflow regeneration started"
-        )
+        return WorkflowResponse(workflow=workflow, message="Workflow regeneration started")
 
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        log.error(f"Error regenerating workflow steps: {str(e)}")
+        log.error(f"Error regenerating workflow steps: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to regenerate workflow steps",
@@ -425,7 +405,7 @@ async def create_workflow_from_todo(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error creating workflow from todo: {str(e)}")
+        log.error(f"Error creating workflow from todo: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create workflow from todo",
@@ -463,7 +443,7 @@ async def publish_workflow(
             publish_set: dict = {
                 "is_public": True,
                 "created_by": user["user_id"],
-                "updated_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(UTC),
             }
             if not existing_slug:
                 slug = await generate_unique_workflow_slug(
@@ -500,7 +480,7 @@ async def publish_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error publishing workflow {workflow_id}: {str(e)}")
+        log.error(f"Error publishing workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to publish workflow",
@@ -534,7 +514,7 @@ async def unpublish_workflow(
         await workflows_collection.update_one(
             {"_id": workflow_id},
             {
-                "$set": {"is_public": False, "updated_at": datetime.now(timezone.utc)},
+                "$set": {"is_public": False, "updated_at": datetime.now(UTC)},
             },
         )
 
@@ -546,7 +526,7 @@ async def unpublish_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error unpublishing workflow {workflow_id}: {str(e)}")
+        log.error(f"Error unpublishing workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to unpublish workflow",
@@ -565,7 +545,7 @@ async def get_explore_workflows(
     try:
         return await WorkflowService.get_explore_workflows(limit=limit, offset=offset)
     except Exception as e:
-        log.error(f"Error fetching explore workflows: {str(e)}")
+        log.error(f"Error fetching explore workflows: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch explore workflows",
@@ -586,7 +566,7 @@ async def get_public_workflows(
             limit=limit, offset=offset, user_id=None
         )
     except Exception as e:
-        log.error(f"Error fetching public workflows: {str(e)}")
+        log.error(f"Error fetching public workflows: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch public workflows",
@@ -598,70 +578,62 @@ async def get_public_workflows(
 @limiter.limit("5000/hour")
 async def get_public_workflow(request: Request, workflow_ref: str):
     """Get a public workflow by ID (wf_xxx) or slug."""
+    lookup_mode = "id" if workflow_ref.startswith("wf_") else "slug"
+    log.set(
+        workflow=WorkflowContext(operation="get_public"),
+        public_workflow={"ref": workflow_ref, "lookup_mode": lookup_mode},
+    )
     try:
-        if workflow_ref.startswith("wf_"):
-            match: dict = {"_id": workflow_ref, "is_public": True}
-        else:
-            match = {"slug": workflow_ref, "is_public": True}
-
-        creator_lookup = {
-            "$lookup": {
-                "from": "users",
-                "let": {"creator_id": "$created_by"},
-                "pipeline": [
-                    {
-                        "$match": {
-                            "$expr": {"$eq": ["$_id", {"$toObjectId": "$$creator_id"}]}
-                        }
-                    },
-                    {"$project": {"name": 1, "picture": 1, "_id": 0}},
-                ],
-                "as": "creator_info",
-            }
-        }
+        match: dict = (
+            {"_id": workflow_ref, "is_public": True}
+            if lookup_mode == "id"
+            else {"slug": workflow_ref, "is_public": True}
+        )
 
         workflow_doc = None
         async for doc in workflows_collection.aggregate(
-            [{"$match": match}, creator_lookup, {"$limit": 1}]
+            [{"$match": match}, creator_lookup_stage(), {"$limit": 1}]
         ):
             workflow_doc = doc
             break
 
         if not workflow_doc:
+            log.info(f"get_public_workflow: no public workflow for ref={workflow_ref}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Public workflow not found",
             )
 
-        creator_info = (workflow_doc.get("creator_info") or [{}])[0]
+        creator = format_creator(workflow_doc)
         workflow_doc.pop("creator_info", None)
 
         await ensure_public_workflow_slug(workflow_doc)
 
         transformed_doc = transform_workflow_document(workflow_doc)
         workflow = Workflow(**transformed_doc)
-        workflow.creator = {
-            "id": workflow_doc.get("created_by"),
-            "name": creator_info.get("name") or "Unknown",
-            "avatar": creator_info.get("picture"),
-        }
+        workflow.creator = creator
 
-        return WorkflowResponse(
-            workflow=workflow, message="Workflow retrieved successfully"
+        log.set(
+            public_workflow={
+                "id": workflow_doc.get("_id"),
+                "slug": workflow_doc.get("slug"),
+                "creator_id": workflow_doc.get("created_by"),
+                "creator_name": creator.get("name") if isinstance(creator, dict) else None,
+                "step_count": len(workflow.steps) if getattr(workflow, "steps", None) else 0,
+            }
         )
+        return WorkflowResponse(workflow=workflow, message="Workflow retrieved successfully")
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error getting public workflow {workflow_ref}: {str(e)}")
+        log.error(f"Error getting public workflow {workflow_ref}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow",
         )
 
 
-@router.post(
-    "/workflows/generate-prompt", response_model=GenerateWorkflowPromptResponse
-)
+@router.post("/workflows/generate-prompt", response_model=GenerateWorkflowPromptResponse)
 async def generate_workflow_prompt_endpoint(
     request: GenerateWorkflowPromptRequest,
     user: dict = Depends(get_current_user),
@@ -692,9 +664,7 @@ async def generate_workflow_prompt_endpoint(
 @router.get("/workflows/{workflow_id}", response_model=WorkflowResponse)
 @limiter.limit("500/minute")
 @limiter.limit("5000/hour")
-async def get_workflow(
-    request: Request, workflow_id: str, user: dict = Depends(get_current_user)
-):
+async def get_workflow(request: Request, workflow_id: str, user: dict = Depends(get_current_user)):
     """Get a specific workflow by ID."""
     log.set(
         user={"id": user["user_id"]},
@@ -718,14 +688,12 @@ async def get_workflow(
             ),
             outcome="success",
         )
-        return WorkflowResponse(
-            workflow=workflow, message="Workflow retrieved successfully"
-        )
+        return WorkflowResponse(workflow=workflow, message="Workflow retrieved successfully")
 
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error getting workflow {workflow_id}: {str(e)}")
+        log.error(f"Error getting workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow",
@@ -756,9 +724,7 @@ async def update_workflow(
             )
 
         log.set(outcome="success")
-        return WorkflowResponse(
-            workflow=workflow, message="Workflow updated successfully"
-        )
+        return WorkflowResponse(workflow=workflow, message="Workflow updated successfully")
 
     except TriggerRegistrationError as e:
         # Specific error for trigger registration failures
@@ -769,7 +735,7 @@ async def update_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error updating workflow {workflow_id}: {str(e)}")
+        log.error(f"Error updating workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update workflow",
@@ -777,9 +743,7 @@ async def update_workflow(
 
 
 @router.post("/workflows/{workflow_id}/reset-to-default")
-async def reset_workflow_to_default(
-    workflow_id: str, user: dict = Depends(get_current_user)
-):
+async def reset_workflow_to_default(workflow_id: str, user: dict = Depends(get_current_user)):
     """Reset a GAIA system workflow to its original definition.
 
     Restores the workflow's title, description, steps, and trigger config to
@@ -809,7 +773,7 @@ async def reset_workflow_to_default(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error resetting workflow {workflow_id}: {str(e)}")
+        log.error(f"Error resetting workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to reset workflow",
@@ -838,7 +802,7 @@ async def delete_workflow(workflow_id: str, user: dict = Depends(get_current_use
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error deleting workflow {workflow_id}: {str(e)}")
+        log.error(f"Error deleting workflow {workflow_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete workflow",

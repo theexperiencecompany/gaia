@@ -1,20 +1,21 @@
 import asyncio
-import datetime
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+import datetime
+from typing import Any
 
 import httpx
-from shared.py.wide_events import log
+
 from app.config.settings import settings
 from app.constants.cache import ONE_HOUR_TTL
 from app.db.redis import get_cache, set_cache
+from shared.py.wide_events import log
 
 http_async_client = httpx.AsyncClient()
 
 
 async def prepare_weather_data(
-    lat: float, lon: float, location_info: Dict[str, Any], api_key: str
-) -> Dict[str, Any]:
+    lat: float, lon: float, location_info: dict[str, Any], api_key: str
+) -> dict[str, Any]:
     """
     Fetch and prepare weather data for a location.
 
@@ -74,7 +75,7 @@ async def prepare_weather_data(
     return weather
 
 
-async def fetch_weather_data(lat: float, lon: float, api_key: str) -> Tuple[Dict, Dict]:
+async def fetch_weather_data(lat: float, lon: float, api_key: str) -> tuple[dict, dict]:
     """
     Fetch weather and forecast data in parallel using asyncio.
 
@@ -93,9 +94,7 @@ async def fetch_weather_data(lat: float, lon: float, api_key: str) -> Tuple[Dict
     forecast_task = http_async_client.get(forecast_url)
 
     # Wait for both requests to complete
-    weather_response, forecast_response = await asyncio.gather(
-        weather_task, forecast_task
-    )
+    weather_response, forecast_response = await asyncio.gather(weather_task, forecast_task)
 
     # Process the responses
     weather_response.raise_for_status()
@@ -105,8 +104,8 @@ async def fetch_weather_data(lat: float, lon: float, api_key: str) -> Tuple[Dict
 
 
 async def get_location_data(
-    ip_address: Optional[str] = None, location_name: Optional[str] = None
-) -> Dict[str, Any]:
+    ip_address: str | None = None, location_name: str | None = None
+) -> dict[str, Any]:
     """
     Get location data either from a location name (via geocoding) or an IP address.
 
@@ -140,9 +139,7 @@ async def get_location_data(
         cache_key = f"weather:ip:{ip_address}"
 
         # Use IP-based geolocation
-        geo_response = await http_async_client.get(
-            f"http://ip-api.com/json/{ip_address}"
-        )
+        geo_response = await http_async_client.get(f"http://ip-api.com/json/{ip_address}")
         geo_response.raise_for_status()
         geolocation = geo_response.json()
 
@@ -165,7 +162,7 @@ async def get_location_data(
     }
 
 
-async def user_weather(location_name: Optional[str] = None):
+async def user_weather(location_name: str | None = None):
     """
     Fetch weather data for a specified location.
 
@@ -206,15 +203,15 @@ async def user_weather(location_name: Optional[str] = None):
 
         except Exception as e:
             error_msg = f"Could not find location: {location_name}"
-            log.error(f"Error getting location data: {str(e)}")
+            log.error(f"Error getting location data: {e!s}")
             return error_msg
 
     except Exception as e:
-        log.error(f"Error fetching weather: {str(e)}")
-        return f"Failed to fetch weather: {str(e)}"
+        log.error(f"Error fetching weather: {e!s}")
+        return f"Failed to fetch weather: {e!s}"
 
 
-def process_forecast_data(forecast_data: Dict) -> List[Dict]:
+def process_forecast_data(forecast_data: dict) -> list[dict]:
     """
     Process raw forecast data from OpenWeatherMap API into daily summaries.
 
@@ -296,7 +293,7 @@ def process_forecast_data(forecast_data: Dict) -> List[Dict]:
     return daily_forecasts
 
 
-async def geocode_location(location_name: str) -> Dict[str, Any]:
+async def geocode_location(location_name: str) -> dict[str, Any]:
     """
     Geocode a location name to latitude and longitude using OpenStreetMap Nominatim API.
 
@@ -313,12 +310,10 @@ async def geocode_location(location_name: str) -> Dict[str, Any]:
             "User-Agent": "GAIA-Backend/1.0"  # Properly identify your application
         }
 
-        params: Dict[str, str] = {"q": location_name, "format": "json", "limit": "1"}
+        params: dict[str, str] = {"q": location_name, "format": "json", "limit": "1"}
 
         nominatim_url = "https://nominatim.openstreetmap.org/search"
-        response = await http_async_client.get(
-            nominatim_url, params=params, headers=headers
-        )
+        response = await http_async_client.get(nominatim_url, params=params, headers=headers)
         response.raise_for_status()
 
         results = response.json()
@@ -339,5 +334,5 @@ async def geocode_location(location_name: str) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        log.error(f"Error geocoding location '{location_name}': {str(e)}")
-        raise Exception(f"Failed to geocode location: {str(e)}")
+        log.error(f"Error geocoding location '{location_name}': {e!s}")
+        raise Exception(f"Failed to geocode location: {e!s}")

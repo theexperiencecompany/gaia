@@ -10,8 +10,7 @@ _session_kwargs, and _setup_sender.
 """
 
 from abc import abstractmethod
-
-from typing import Any, Dict, List
+from typing import Any
 
 import aiohttp
 
@@ -48,13 +47,13 @@ class ExternalPlatformAdapter(ChannelAdapter):
         pass
 
     @abstractmethod
-    def _session_kwargs(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
+    def _session_kwargs(self, ctx: dict[str, Any]) -> dict[str, Any]:
         """Return extra kwargs for ``aiohttp.ClientSession`` (e.g. headers)."""
         pass
 
     @abstractmethod
     async def _setup_sender(
-        self, session: aiohttp.ClientSession, ctx: Dict[str, Any]
+        self, session: aiohttp.ClientSession, ctx: dict[str, Any]
     ) -> tuple[SendFn | None, ChannelDeliveryStatus | None]:
         """
         Prepare a send function for this platform.
@@ -72,7 +71,7 @@ class ExternalPlatformAdapter(ChannelAdapter):
         # The orchestrator's preference-check and platform-link lookup are the real guards.
         return True
 
-    def _split_text(self, text: str, limit: int) -> List[str]:
+    def _split_text(self, text: str, limit: int) -> list[str]:
         """Split text at paragraph/newline boundaries to respect char limits.
 
         Note: this uses Python ``len`` (Unicode code points), not UTF-16 code
@@ -81,7 +80,7 @@ class ExternalPlatformAdapter(ChannelAdapter):
         """
         if len(text) <= limit:
             return [text]
-        parts: List[str] = []
+        parts: list[str] = []
         while len(text) > limit:
             split_at = text.rfind("\n", 0, limit)
             if split_at == -1:
@@ -92,7 +91,7 @@ class ExternalPlatformAdapter(ChannelAdapter):
             parts.append(text)
         return parts
 
-    async def transform(self, notification: NotificationRequest) -> Dict[str, Any]:
+    async def transform(self, notification: NotificationRequest) -> dict[str, Any]:
         content = notification.content
         rich = content.rich_content or {}
         b = self.bold_marker
@@ -136,7 +135,7 @@ class ExternalPlatformAdapter(ChannelAdapter):
 
     async def _get_platform_context(
         self, user_id: str
-    ) -> tuple[Dict[str, Any] | None, ChannelDeliveryStatus | None]:
+    ) -> tuple[dict[str, Any] | None, ChannelDeliveryStatus | None]:
         """Validate platform link and bot token.
 
         Returns ``(context_dict, None)`` on success or
@@ -159,7 +158,7 @@ class ExternalPlatformAdapter(ChannelAdapter):
         return {"platform_user_id": platform_user_id, "token": token}, None
 
     async def _deliver_content(
-        self, send_fn: SendFn, content: Dict[str, Any]
+        self, send_fn: SendFn, content: dict[str, Any]
     ) -> ChannelDeliveryStatus:
         """Route content through *send_fn*, handling workflow & standard msgs."""
         name = self.platform_name.capitalize()
@@ -192,18 +191,12 @@ class ExternalPlatformAdapter(ChannelAdapter):
             return self._error(f"{name} message error: {err}")
         return self._success()
 
-    async def deliver(
-        self, content: Dict[str, Any], user_id: str
-    ) -> ChannelDeliveryStatus:
+    async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
         ctx, err = await self._get_platform_context(user_id)
         if err:
             return err
-        if (
-            ctx is None
-        ):  # guaranteed by _get_platform_context invariant; guard for type narrowing
-            raise RuntimeError(
-                "ctx is None despite no error — this should never happen"
-            )
+        if ctx is None:  # guaranteed by _get_platform_context invariant; guard for type narrowing
+            raise RuntimeError("ctx is None despite no error — this should never happen")
 
         try:
             async with aiohttp.ClientSession(**self._session_kwargs(ctx)) as session:

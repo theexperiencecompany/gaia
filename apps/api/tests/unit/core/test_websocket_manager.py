@@ -10,13 +10,12 @@ Covers:
 """
 
 import json
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.core.websocket_manager import WebSocketManager, get_websocket_manager
-
 
 # ---------------------------------------------------------------------------
 # WebSocketManager — Singleton
@@ -123,9 +122,7 @@ class TestBroadcastToUser:
         WebSocketManager._instance = None
 
     @patch("app.core.websocket_manager.is_main_app", return_value=True)
-    async def test_broadcasts_to_all_user_connections(
-        self, mock_is_main: MagicMock
-    ) -> None:
+    async def test_broadcasts_to_all_user_connections(self, mock_is_main: MagicMock) -> None:
         ws1 = AsyncMock()
         ws2 = AsyncMock()
         self.mgr.add_connection("user1", ws1)
@@ -138,9 +135,7 @@ class TestBroadcastToUser:
         ws2.send_json.assert_awaited_once_with(message)
 
     @patch("app.core.websocket_manager.is_main_app", return_value=True)
-    async def test_broadcast_to_user_with_no_connections(
-        self, mock_is_main: MagicMock
-    ) -> None:
+    async def test_broadcast_to_user_with_no_connections(self, mock_is_main: MagicMock) -> None:
         """Should silently return when user has no connections."""
         await self.mgr.broadcast_to_user("nobody", {"type": "test"})
         # No error raised
@@ -166,9 +161,7 @@ class TestBroadcastToUser:
         assert ws_good in self.mgr.connections["user1"]
 
     @patch("app.core.websocket_manager.is_main_app", return_value=True)
-    async def test_all_sockets_fail_leaves_empty_set(
-        self, mock_is_main: MagicMock
-    ) -> None:
+    async def test_all_sockets_fail_leaves_empty_set(self, mock_is_main: MagicMock) -> None:
         ws1 = AsyncMock()
         ws1.send_json.side_effect = RuntimeError("closed")
         ws2 = AsyncMock()
@@ -207,7 +200,7 @@ class TestBroadcastViaRabbitMQ:
         mock_publisher = AsyncMock()
         mock_get_publisher.return_value = mock_publisher
 
-        message: Dict[str, Any] = {"type": "notification", "text": "hello"}
+        message: dict[str, Any] = {"type": "notification", "text": "hello"}
         await self.mgr.broadcast_to_user("user1", message)
 
         mock_publisher.publish.assert_awaited_once()
@@ -252,7 +245,7 @@ class TestWebSocketEventConsumer:
 
         return WebSocketEventConsumer()
 
-    def _make_message(self, body: Dict[str, Any]) -> MagicMock:
+    def _make_message(self, body: dict[str, Any]) -> MagicMock:
         """Create a mock aio_pika message with an async context manager."""
         msg = MagicMock()
         msg.body = json.dumps(body).encode("utf-8")
@@ -403,9 +396,7 @@ class TestWebSocketEventConsumer:
 
 class TestWebSocketEventConsumerLifecycle:
     @patch("app.core.websocket_consumer.connect_robust", new_callable=AsyncMock)
-    async def test_start_creates_connection_and_queue(
-        self, mock_connect: AsyncMock
-    ) -> None:
+    async def test_start_creates_connection_and_queue(self, mock_connect: AsyncMock) -> None:
         from app.core.websocket_consumer import WebSocketEventConsumer
 
         mock_channel = AsyncMock()
@@ -420,9 +411,7 @@ class TestWebSocketEventConsumerLifecycle:
 
         mock_connect.assert_awaited_once()
         mock_channel.set_qos.assert_awaited_once_with(prefetch_count=10)
-        mock_channel.declare_queue.assert_awaited_once_with(
-            "websocket-events", durable=True
-        )
+        mock_channel.declare_queue.assert_awaited_once_with("websocket-events", durable=True)
         mock_queue.consume.assert_awaited_once()
 
         assert consumer.connection is mock_connection
@@ -430,9 +419,7 @@ class TestWebSocketEventConsumerLifecycle:
         assert consumer.queue is mock_queue
 
     @patch("app.core.websocket_consumer.connect_robust", new_callable=AsyncMock)
-    async def test_start_raises_on_connection_failure(
-        self, mock_connect: AsyncMock
-    ) -> None:
+    async def test_start_raises_on_connection_failure(self, mock_connect: AsyncMock) -> None:
         from app.core.websocket_consumer import WebSocketEventConsumer
 
         mock_connect.side_effect = RuntimeError("connection refused")

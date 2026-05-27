@@ -1,8 +1,11 @@
-import type { PersonalizationData } from "@/features/onboarding/hooks/usePersonalizationData";
+import type { PersonalizationData } from "@/features/onboarding/types/websocket";
 import { api } from "@/lib/api/client";
 import { apiService } from "@/lib/api/service";
 
-export interface HoloCardData extends PersonalizationData {}
+export interface HoloCardData extends PersonalizationData {
+  name: string;
+  holo_card_id?: string;
+}
 
 export interface PublicHoloCardData {
   house: string;

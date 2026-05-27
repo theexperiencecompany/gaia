@@ -9,10 +9,10 @@ workers and the ``/sessions`` admin endpoints.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 import os
-import shutil
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import shutil
 
 from app.agents.workspace.paths import (
     ARTIFACTS_DIRNAME,
@@ -21,7 +21,7 @@ from app.agents.workspace.paths import (
 )
 from app.agents.workspace.skill_loader import library_hash
 from app.services.storage.juicefs import _is_mounted, _mount_root, session_root
-from app.services.storage.metrics import FS_OPS, fs_timer
+from app.services.storage.metrics import FsOps, fs_timer
 from app.services.storage.sessions._paths import session_base, user_root
 from app.services.storage.sessions.meta import (
     SESSION_META_FILENAME,
@@ -62,7 +62,7 @@ async def bootstrap_user_session(
         _materialize_if_stale(u_root, expected_hash, connected)
         return base
 
-    async with fs_timer(FS_OPS.BOOTSTRAP_USER_SESSION):
+    async with fs_timer(FsOps.BOOTSTRAP_USER_SESSION):
         return await asyncio.to_thread(_go)
 
 
@@ -113,7 +113,7 @@ async def ensure_session_dirs(user_id: str, conv_id: str) -> Path:
         write_user_root_docs(base.parent.parent)
         return base
 
-    async with fs_timer(FS_OPS.ENSURE_SESSION_DIRS):
+    async with fs_timer(FsOps.ENSURE_SESSION_DIRS):
         return await asyncio.to_thread(_mk)
 
 
@@ -135,7 +135,7 @@ async def materialize_user_integrations(user_id: str, connected_ids: set[str]) -
         write_skills_marker(u_root, expected)
         return written
 
-    async with fs_timer(FS_OPS.MATERIALIZE_INTEGRATIONS):
+    async with fs_timer(FsOps.MATERIALIZE_INTEGRATIONS):
         await asyncio.to_thread(_go)
 
 
@@ -153,7 +153,7 @@ async def delete_session_dir(user_id: str, conv_id: str) -> None:
             return
         shutil.rmtree(base, ignore_errors=True)
 
-    async with fs_timer(FS_OPS.DELETE_SESSION_DIR):
+    async with fs_timer(FsOps.DELETE_SESSION_DIR):
         await asyncio.to_thread(_delete)
 
 
@@ -171,7 +171,7 @@ async def touch_session_last_active(user_id: str, conv_id: str) -> None:
         data["last_active"] = now
         write_session_meta(meta, data)
 
-    async with fs_timer(FS_OPS.TOUCH_LAST_ACTIVE):
+    async with fs_timer(FsOps.TOUCH_LAST_ACTIVE):
         await asyncio.to_thread(_touch)
 
 
@@ -191,7 +191,7 @@ async def list_session_ids(user_id: str) -> list[str]:
             return []
         return sorted(p.name for p in sessions_dir.iterdir() if p.is_dir())
 
-    async with fs_timer(FS_OPS.LIST_SESSION_IDS):
+    async with fs_timer(FsOps.LIST_SESSION_IDS):
         return await asyncio.to_thread(_scan)
 
 
@@ -209,7 +209,7 @@ async def list_stale_sessions(
         users_root = _mount_root() / "users"
         if not users_root.is_dir():
             return []
-        cutoff = datetime.now(timezone.utc) - timedelta(days=cutoff_days)
+        cutoff = datetime.now(UTC) - timedelta(days=cutoff_days)
         stale: list[tuple[str, str]] = []
         for user_dir in sorted(users_root.iterdir()):
             sessions_dir = user_dir / "sessions"
@@ -226,5 +226,5 @@ async def list_stale_sessions(
                     return stale
         return stale
 
-    async with fs_timer(FS_OPS.LIST_STALE_SESSIONS):
+    async with fs_timer(FsOps.LIST_STALE_SESSIONS):
         return await asyncio.to_thread(_scan)

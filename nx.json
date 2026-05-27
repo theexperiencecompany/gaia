@@ -96,9 +96,7 @@
       "bots": {
         "projects": [
           "bot-discord",
-
           "bot-slack",
-
           "bot-telegram",
           "bot-whatsapp"
         ],
@@ -121,5 +119,5 @@
       }
     }
   },
-  "analytics": true
+  "analytics": false
 }

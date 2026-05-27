@@ -3,9 +3,10 @@ Google Sheets trigger handler with cascading dropdown support.
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
-from shared.py.wide_events import log
+from composio.types import ToolExecutionResponse
+
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import (
     GoogleSheetsGetSheetNamesData,
@@ -23,7 +24,7 @@ from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
-from composio.types import ToolExecutionResponse
+from shared.py.wide_events import log
 
 
 class GoogleSheetsTriggerHandler(TriggerHandler):
@@ -46,11 +47,11 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
     }
 
     @property
-    def trigger_names(self) -> List[str]:
+    def trigger_names(self) -> list[str]:
         return self.SUPPORTED_TRIGGERS
 
     @property
-    def event_types(self) -> Set[str]:
+    def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
     async def get_config_options(
@@ -59,9 +60,9 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         field_name: str,
         user_id: str,
         integration_id: str,
-        parent_ids: Optional[List[str]] = None,
+        parent_ids: list[str] | None = None,
         **kwargs: Any,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get dynamic options for Google Sheets trigger config fields."""
         try:
             composio_service = get_composio_service()
@@ -106,9 +107,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
 
                     # Check if spreadsheet is shared (not owned by current user)
                     is_shared = sheet.shared or False
-                    is_owned_by_me = (
-                        any(o.me for o in sheet.owners) if sheet.owners else False
-                    )
+                    is_owned_by_me = any(o.me for o in sheet.owners) if sheet.owners else False
 
                     # Create label with shared indicator
                     label = sheet.name
@@ -121,7 +120,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 return options
 
             # Get sheets grouped by spreadsheet (cascading)
-            elif field_name == "sheet_names" and parent_ids:
+            if field_name == "sheet_names" and parent_ids:
                 tool = composio_service.get_tool(
                     "GOOGLESHEETS_GET_SHEET_NAMES",
                     user_id=user_id,
@@ -133,11 +132,9 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 # Fetch sheet names for all spreadsheets in parallel
                 async def fetch_sheets_for_spreadsheet(
                     spreadsheet_id: str,
-                ) -> Dict[str, Any] | None:
+                ) -> dict[str, Any] | None:
                     """Fetch sheet names for a single spreadsheet."""
-                    input_model = GoogleSheetsGetSheetNamesInput(
-                        spreadsheet_id=spreadsheet_id
-                    )
+                    input_model = GoogleSheetsGetSheetNamesInput(spreadsheet_id=spreadsheet_id)
                     sheets_result: ToolExecutionResponse = await asyncio.to_thread(
                         tool.invoke,
                         input_model.model_dump(exclude_none=True, by_alias=True),
@@ -150,9 +147,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                         )
                         return None
 
-                    sheet_data = GoogleSheetsGetSheetNamesData.model_validate(
-                        sheets_result["data"]
-                    )
+                    sheet_data = GoogleSheetsGetSheetNamesData.model_validate(sheets_result["data"])
                     sheet_names = sheet_data.sheet_names
 
                     if not sheet_names:
@@ -173,9 +168,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 )
 
                 # Filter out None/errors and collect results
-                grouped_results = [
-                    r for r in results if isinstance(r, dict) and r is not None
-                ]
+                grouped_results = [r for r in results if isinstance(r, dict) and r is not None]
 
                 log.info(f"Returning {len(grouped_results)} grouped sheet options")
                 return grouped_results
@@ -192,7 +185,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-    ) -> List[str]:
+    ) -> list[str]:
         """Register Google Sheets triggers with parallel execution and rollback.
 
         All triggers are registered in parallel. If any fail, all successfully
@@ -235,7 +228,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
             )
 
         # Build list of trigger configs to register
-        configs: List[Dict[str, Any]] = []
+        configs: list[dict[str, Any]] = []
         spreadsheets_to_monitor = spreadsheet_ids if spreadsheet_ids else [None]  # type: ignore
 
         for spreadsheet_id in spreadsheets_to_monitor:
@@ -249,7 +242,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                     else:
                         sheet_name = sheet_key
 
-                    config: Dict[str, Any] = {}
+                    config: dict[str, Any] = {}
                     if spreadsheet_id:
                         config["spreadsheet_id"] = spreadsheet_id
                     if sheet_name:
@@ -268,8 +261,8 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: Dict[str, Any]
-    ) -> List[Workflow]:
+        self, event_type: str, trigger_id: str, data: dict[str, Any]
+    ) -> list[Workflow]:
         """Find workflows matching a Google Sheets trigger event."""
         log.set(trigger={"provider": "google_sheets", "event": event_type})
         try:
@@ -291,7 +284,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 log.debug(f"Google Sheets payload validation failed: {e}")
 
             cursor = workflows_collection.find(query)
-            workflows: List[Workflow] = []
+            workflows: list[Workflow] = []
 
             async for workflow_doc in cursor:
                 try:

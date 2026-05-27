@@ -2,15 +2,13 @@
 Workflow conversation service for managing single conversations per workflow.
 """
 
-from typing import List
-
-from shared.py.wide_events import log
 from app.db.mongodb.collections import conversations_collection
 from app.models.chat_models import MessageModel, SystemPurpose, UpdateMessagesRequest
 from app.services.conversation_service import (
     create_system_conversation,
     update_messages,
 )
+from shared.py.wide_events import log
 
 
 async def get_or_create_workflow_conversation(
@@ -68,7 +66,7 @@ async def get_or_create_workflow_conversation(
 
 async def add_workflow_execution_messages(
     conversation_id: str,
-    workflow_execution_messages: List[MessageModel],
+    workflow_execution_messages: list[MessageModel],
     user_id: str,
 ) -> None:
     """
@@ -90,7 +88,5 @@ async def add_workflow_execution_messages(
         await update_messages(messages_request, user_dict)
 
     except Exception as e:
-        log.error(
-            f"Failed to store messages in conversation {conversation_id}: {str(e)}"
-        )
+        log.error(f"Failed to store messages in conversation {conversation_id}: {e!s}")
         raise

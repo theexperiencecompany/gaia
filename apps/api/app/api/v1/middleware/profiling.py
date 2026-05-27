@@ -6,10 +6,11 @@ Profiling is completely optional and must be explicitly enabled via environment 
 """
 
 import random
+
+from fastapi.responses import HTMLResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-from fastapi.responses import HTMLResponse
 
 from app.config.settings import settings
 from shared.py.wide_events import log
@@ -53,26 +54,19 @@ class ProfilingMiddleware(BaseHTTPMiddleware):
     def _log_startup_info(self):
         """Log profiling configuration at startup."""
         if not PYINSTRUMENT_AVAILABLE:
-            log.warning(
-                "PyInstrument profiling is not available (package not installed)"
-            )
+            log.warning("PyInstrument profiling is not available (package not installed)")
             return
 
         if settings.ENABLE_PROFILING:
             log.info(
-                f"PyInstrument profiling enabled: "
-                f"sample_rate={settings.PROFILING_SAMPLE_RATE}"
+                f"PyInstrument profiling enabled: sample_rate={settings.PROFILING_SAMPLE_RATE}"
             )
         else:
             log.info("PyInstrument profiling disabled (ENABLE_PROFILING=false)")
 
     async def dispatch(self, request: Request, call_next) -> Response:
         # Check if profiling is available and enabled
-        if (
-            not settings.ENABLE_PROFILING
-            or not PYINSTRUMENT_AVAILABLE
-            or Profiler is None
-        ):
+        if not settings.ENABLE_PROFILING or not PYINSTRUMENT_AVAILABLE or Profiler is None:
             return await call_next(request)
 
         # Check if profiling is explicitly requested
@@ -84,8 +78,7 @@ class ProfilingMiddleware(BaseHTTPMiddleware):
 
         # Apply sampling rate for automatic profiling
         should_profile = profiling_requested or (
-            settings.PROFILING_SAMPLE_RATE > 0
-            and random.random() < settings.PROFILING_SAMPLE_RATE  # nosec: B311
+            settings.PROFILING_SAMPLE_RATE > 0 and random.random() < settings.PROFILING_SAMPLE_RATE  # nosec: B311
         )
 
         if not should_profile:
@@ -103,27 +96,22 @@ class ProfilingMiddleware(BaseHTTPMiddleware):
             if profiling_requested:
                 html_output = profiler.output_html()
                 return HTMLResponse(html_output)
-            else:
-                # For sampled requests, log the actual profiling results and return normal response
-                try:
-                    # Get text output for logging
-                    text_output = profiler.output_text()
-                    log.info(
-                        f"Profiling Results for {request.method} {request.url.path}:\n{text_output}"
-                    )
-                except Exception as profile_error:
-                    log.warning(
-                        f"Could not generate profiling output for {request.method} {request.url.path}: {profile_error}"
-                    )
-                    log.info(
-                        f"Profiled {request.method} {request.url.path} (output generation failed)"
-                    )
-                return response
+            # For sampled requests, log the actual profiling results and return normal response
+            try:
+                # Get text output for logging
+                text_output = profiler.output_text()
+                log.info(
+                    f"Profiling Results for {request.method} {request.url.path}:\n{text_output}"
+                )
+            except Exception as profile_error:
+                log.warning(
+                    f"Could not generate profiling output for {request.method} {request.url.path}: {profile_error}"
+                )
+                log.info(f"Profiled {request.method} {request.url.path} (output generation failed)")
+            return response
 
         except Exception as e:
             profiler.stop()
-            log.exception(
-                f"Profiling error during {request.method} {request.url.path}: {str(e)}"
-            )
+            log.exception(f"Profiling error during {request.method} {request.url.path}: {e!s}")
             # Always return the original response on error
             return await call_next(request)

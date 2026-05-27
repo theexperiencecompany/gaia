@@ -9,8 +9,8 @@ Tests cover:
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 SUBMIT_URL = "/api/v1/support/requests"
 SUBMIT_WITH_ATTACHMENTS_URL = "/api/v1/support/requests/with-attachments"
@@ -19,9 +19,7 @@ RATE_LIMIT_STATUS_URL = "/api/v1/support/rate-limit-status"
 
 # Patch targets
 _CREATE_SUPPORT_REQUEST = "app.api.v1.endpoints.support.create_support_request"
-_CREATE_WITH_ATTACHMENTS = (
-    "app.api.v1.endpoints.support.create_support_request_with_attachments"
-)
+_CREATE_WITH_ATTACHMENTS = "app.api.v1.endpoints.support.create_support_request_with_attachments"
 _GET_USER_REQUESTS = "app.api.v1.endpoints.support.get_user_support_requests"
 
 
@@ -81,9 +79,7 @@ class TestSubmitSupportRequest:
 
         assert response.status_code == 200
 
-    async def test_submit_support_request_invalid_type_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_submit_support_request_invalid_type_returns_422(self, client: AsyncClient):
         response = await client.post(
             SUBMIT_URL,
             json={
@@ -94,9 +90,7 @@ class TestSubmitSupportRequest:
         )
         assert response.status_code == 422
 
-    async def test_submit_support_request_missing_title_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_submit_support_request_missing_title_returns_422(self, client: AsyncClient):
         response = await client.post(
             SUBMIT_URL,
             json={
@@ -128,9 +122,7 @@ class TestSubmitSupportRequest:
         )
         assert response.status_code == 422
 
-    async def test_submit_support_request_title_too_long_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_submit_support_request_title_too_long_returns_422(self, client: AsyncClient):
         response = await client.post(
             SUBMIT_URL,
             json={
@@ -141,9 +133,7 @@ class TestSubmitSupportRequest:
         )
         assert response.status_code == 422
 
-    async def test_submit_support_request_service_passes_user_info(
-        self, client: AsyncClient
-    ):
+    async def test_submit_support_request_service_passes_user_info(self, client: AsyncClient):
         mock_result = _make_submission_response()
         with patch(
             _CREATE_SUPPORT_REQUEST,
@@ -164,9 +154,7 @@ class TestSubmitSupportRequest:
         assert call_kwargs["user_id"] == "507f1f77bcf86cd799439011"
         assert call_kwargs["user_email"] == "test@example.com"
 
-    async def test_submit_support_request_service_error_returns_500(
-        self, client: AsyncClient
-    ):
+    async def test_submit_support_request_service_error_returns_500(self, client: AsyncClient):
         with patch(
             _CREATE_SUPPORT_REQUEST,
             new_callable=AsyncMock,
@@ -211,9 +199,7 @@ class TestSubmitSupportRequestWithAttachments:
 
         assert response.status_code == 200
 
-    async def test_submit_with_attachments_invalid_type_returns_400(
-        self, client: AsyncClient
-    ):
+    async def test_submit_with_attachments_invalid_type_returns_400(self, client: AsyncClient):
         response = await client.post(
             SUBMIT_WITH_ATTACHMENTS_URL,
             data={
@@ -224,9 +210,7 @@ class TestSubmitSupportRequestWithAttachments:
         )
         assert response.status_code == 400
 
-    async def test_submit_with_attachments_missing_title_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_submit_with_attachments_missing_title_returns_422(self, client: AsyncClient):
         response = await client.post(
             SUBMIT_WITH_ATTACHMENTS_URL,
             data={
@@ -236,9 +220,7 @@ class TestSubmitSupportRequestWithAttachments:
         )
         assert response.status_code == 422
 
-    async def test_submit_with_attachments_service_error_returns_500(
-        self, client: AsyncClient
-    ):
+    async def test_submit_with_attachments_service_error_returns_500(self, client: AsyncClient):
         with patch(
             _CREATE_WITH_ATTACHMENTS,
             new_callable=AsyncMock,
@@ -295,9 +277,7 @@ class TestGetMySupportRequests:
             new_callable=AsyncMock,
             return_value=mock_result,
         ) as mock_get:
-            response = await client.get(
-                MY_REQUESTS_URL, params={"page": 2, "per_page": 5}
-            )
+            response = await client.get(MY_REQUESTS_URL, params={"page": 2, "per_page": 5})
 
         assert response.status_code == 200
         mock_get.assert_awaited_once_with(
@@ -322,9 +302,7 @@ class TestGetMySupportRequests:
         response = await client.get(MY_REQUESTS_URL, params={"page": 0})
         assert response.status_code == 422
 
-    async def test_get_my_requests_per_page_exceeds_max_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_get_my_requests_per_page_exceeds_max_returns_422(self, client: AsyncClient):
         response = await client.get(MY_REQUESTS_URL, params={"per_page": 51})
         assert response.status_code == 422
 

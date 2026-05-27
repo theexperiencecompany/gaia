@@ -1,10 +1,10 @@
 """Unit tests for context_utils: execute_tool, fetch_all_providers, resolve_providers."""
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from pydantic import BaseModel
+import pytest
 
 from app.utils.context_utils import execute_tool, fetch_all_providers, resolve_providers
 
@@ -33,7 +33,7 @@ class _StrictOutputModel(BaseModel):
     another_required: str
 
 
-def _make_composio_service(result: Dict[str, Any]) -> MagicMock:
+def _make_composio_service(result: dict[str, Any]) -> MagicMock:
     """Build a mock ComposioService whose tools.execute returns *result*."""
     service = MagicMock()
     service.composio.tools.execute.return_value = result
@@ -50,9 +50,7 @@ class TestExecuteTool:
     """Tests for execute_tool (sync, calls Composio service)."""
 
     @patch(_COMPOSIO_SERVICE_PATCH)
-    def test_successful_execution_returns_data(
-        self, mock_get_service: MagicMock
-    ) -> None:
+    def test_successful_execution_returns_data(self, mock_get_service: MagicMock) -> None:
         mock_get_service.return_value = _make_composio_service(
             {"successful": True, "data": {"emails": [1, 2, 3]}}
         )
@@ -88,16 +86,12 @@ class TestExecuteTool:
             execute_tool("GMAIL_FETCH_EMAILS", {}, "user_123")
 
     @patch(_COMPOSIO_SERVICE_PATCH)
-    def test_with_output_model_validation_succeeds(
-        self, mock_get_service: MagicMock
-    ) -> None:
+    def test_with_output_model_validation_succeeds(self, mock_get_service: MagicMock) -> None:
         mock_get_service.return_value = _make_composio_service(
             {"successful": True, "data": {"name": "Test", "count": 42}}
         )
 
-        result = execute_tool(
-            "SOME_TOOL", {}, "user_123", output_model=_SampleOutputModel
-        )
+        result = execute_tool("SOME_TOOL", {}, "user_123", output_model=_SampleOutputModel)
 
         assert result == {"name": "Test", "count": 42}
 
@@ -110,17 +104,13 @@ class TestExecuteTool:
             {"successful": True, "data": raw_data}
         )
 
-        result = execute_tool(
-            "SOME_TOOL", {}, "user_123", output_model=_StrictOutputModel
-        )
+        result = execute_tool("SOME_TOOL", {}, "user_123", output_model=_StrictOutputModel)
 
         # Should return raw data when validation fails
         assert result == raw_data
 
     @patch(_COMPOSIO_SERVICE_PATCH)
-    def test_without_output_model_returns_raw_data(
-        self, mock_get_service: MagicMock
-    ) -> None:
+    def test_without_output_model_returns_raw_data(self, mock_get_service: MagicMock) -> None:
         raw_data = {"arbitrary": "structure", "nested": {"deep": True}}
         mock_get_service.return_value = _make_composio_service(
             {"successful": True, "data": raw_data}
@@ -132,9 +122,7 @@ class TestExecuteTool:
 
     @patch(_COMPOSIO_SERVICE_PATCH)
     def test_empty_params_accepted(self, mock_get_service: MagicMock) -> None:
-        mock_get_service.return_value = _make_composio_service(
-            {"successful": True, "data": {}}
-        )
+        mock_get_service.return_value = _make_composio_service({"successful": True, "data": {}})
 
         result = execute_tool("TOOL", {}, "user_1")
 
@@ -143,21 +131,15 @@ class TestExecuteTool:
     @patch(_COMPOSIO_SERVICE_PATCH)
     def test_unsuccessful_with_error_none(self, mock_get_service: MagicMock) -> None:
         """When error key exists but is None, fallback message should be used."""
-        mock_get_service.return_value = _make_composio_service(
-            {"successful": False, "error": None}
-        )
+        mock_get_service.return_value = _make_composio_service({"successful": False, "error": None})
 
         with pytest.raises(Exception, match="MY_TOOL failed"):
             execute_tool("MY_TOOL", {}, "user_1")
 
     @patch(_COMPOSIO_SERVICE_PATCH)
-    def test_unsuccessful_with_empty_string_error(
-        self, mock_get_service: MagicMock
-    ) -> None:
+    def test_unsuccessful_with_empty_string_error(self, mock_get_service: MagicMock) -> None:
         """When error is empty string, fallback message should be used."""
-        mock_get_service.return_value = _make_composio_service(
-            {"successful": False, "error": ""}
-        )
+        mock_get_service.return_value = _make_composio_service({"successful": False, "error": ""})
 
         with pytest.raises(Exception, match="EMPTY_ERR_TOOL failed"):
             execute_tool("EMPTY_ERR_TOOL", {}, "user_1")
@@ -227,9 +209,7 @@ class TestFetchAllProviders:
             "slow_provider": "SLOW_GATHER",
         }
 
-        result = fetch_all_providers(
-            ["fast_provider", "slow_provider"], provider_tools, "user_1"
-        )
+        result = fetch_all_providers(["fast_provider", "slow_provider"], provider_tools, "user_1")
 
         assert "fast_provider" in result
         assert result["fast_provider"] == {"fast": True}
@@ -257,9 +237,7 @@ class TestFetchAllProviders:
         assert result == {}
 
     @patch("app.utils.context_utils.execute_tool")
-    def test_provider_returning_none_data_excluded(
-        self, mock_execute: MagicMock
-    ) -> None:
+    def test_provider_returning_none_data_excluded(self, mock_execute: MagicMock) -> None:
         """fetch_one returns (provider, None) on exception, which should be excluded."""
         call_count = 0
 
@@ -330,9 +308,7 @@ class TestResolveProviders:
         assert result == ["gmail"]
 
     @patch(_NAMESPACES_PATCH, new_callable=AsyncMock, return_value=set())
-    async def test_with_explicit_requested_empty_list(
-        self, mock_namespaces: AsyncMock
-    ) -> None:
+    async def test_with_explicit_requested_empty_list(self, mock_namespaces: AsyncMock) -> None:
         """An empty requested list is falsy, so it should trigger auto-detect."""
         provider_tools = {"gmail": "GMAIL_TOOL"}
 
@@ -347,9 +323,7 @@ class TestResolveProviders:
         assert result == []
 
     @patch(_NAMESPACES_PATCH, new_callable=AsyncMock)
-    async def test_auto_detect_connected_found(
-        self, mock_namespaces: AsyncMock
-    ) -> None:
+    async def test_auto_detect_connected_found(self, mock_namespaces: AsyncMock) -> None:
         mock_namespaces.return_value = {"gmail_ns", "calendar_ns"}
 
         provider_tools = {
@@ -371,9 +345,7 @@ class TestResolveProviders:
         assert sorted(result) == ["calendar", "gmail"]
 
     @patch(_NAMESPACES_PATCH, new_callable=AsyncMock, return_value=set())
-    async def test_auto_detect_no_connected_returns_empty(
-        self, mock_namespaces: AsyncMock
-    ) -> None:
+    async def test_auto_detect_no_connected_returns_empty(self, mock_namespaces: AsyncMock) -> None:
         provider_tools = {"gmail": "GMAIL_TOOL"}
 
         result = await resolve_providers(

@@ -167,9 +167,7 @@ def verify_magic_bytes(content: bytes, signatures: tuple[bytes, ...]) -> None:
         )
 
 
-async def validate_upload(
-    file: UploadFile, content_length: int | None
-) -> tuple[bytes, str, str]:
+async def validate_upload(file: UploadFile, content_length: int | None) -> tuple[bytes, str, str]:
     """
     Full upload validation pipeline. Raises HTTPException on any failure.
 

@@ -18,7 +18,6 @@ from app.utils.agent_utils import (
     store_agent_progress,
 )
 
-
 # ---------------------------------------------------------------------------
 # UUID_PATTERN
 # ---------------------------------------------------------------------------
@@ -392,9 +391,7 @@ class TestStoreAgentProgress:
     @pytest.mark.asyncio
     async def test_with_unified_tool_data(self) -> None:
         tool_data = {
-            "tool_data": [
-                {"tool_name": "search", "data": {"q": "test"}, "timestamp": "now"}
-            ]
+            "tool_data": [{"tool_name": "search", "data": {"q": "test"}, "timestamp": "now"}]
         }
         with patch(
             "app.utils.agent_utils.update_messages",

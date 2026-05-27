@@ -4,15 +4,17 @@ PostgreSQL Database Configuration
 This module provides SQLAlchemy setup for PostgreSQL database connection.
 """
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator
+from typing import Any
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
-from app.config.settings import settings
-from shared.py.wide_events import log
-from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base
+
+from app.config.settings import settings
+from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from shared.py.wide_events import log
 
 # Create a SQLAlchemy base class for declarative models
 Base = declarative_base()
@@ -39,7 +41,7 @@ def _adapt_url_for_asyncpg(postgres_url: str) -> tuple[str, dict[str, Any]]:
         # asyncpg's `ssl` kwarg accepts True/False/'require'/etc.
         # 'disable' → no SSL; everything else → require SSL.
         if sslmode in {"disable", "allow", "prefer"}:
-            connect_args["ssl"] = False if sslmode == "disable" else True
+            connect_args["ssl"] = sslmode != "disable"
         else:
             connect_args["ssl"] = True
 

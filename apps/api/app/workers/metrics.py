@@ -8,7 +8,7 @@ A standalone HTTP server is started in `startup()` on the port configured via
 ``ARQ_METRICS_PORT`` (default 9100). Prometheus scrapes this endpoint via the
 ``arq_worker`` job in ``prometheus.yml``.
 
-This module also re-registers the FS_OPS Prometheus collectors (declared on
+This module also re-registers the FsOps Prometheus collectors (declared on
 the default registry in ``app/services/storage/metrics.py``) onto the worker's
 custom ``REGISTRY`` so the same ``fs_op_*`` metric families show up at
 ``/metrics`` for the worker process too.
@@ -16,9 +16,10 @@ custom ``REGISTRY`` so the same ``fs_op_*`` metric families show up at
 
 from __future__ import annotations
 
+from collections.abc import Callable, Coroutine
 import functools
 import time
-from typing import Any, Callable, Coroutine, TypeVar
+from typing import Any, TypeVar
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, start_http_server
 
@@ -50,7 +51,7 @@ TASK_TOTAL = Counter(
     registry=REGISTRY,
 )
 
-# Cross-register the FS_OPS collectors onto this worker registry so the worker
+# Cross-register the FsOps collectors onto this worker registry so the worker
 # process's /metrics surface mirrors the API's. The same collector instances
 # are registered on both registries — observations from `record_fs_op` flow
 # into one underlying state and surface on both /metrics endpoints.
@@ -91,9 +92,7 @@ def instrument_task(
             raise
         finally:
             elapsed = time.perf_counter() - start
-            TASK_DURATION_SECONDS.labels(task_name=task_name, status=status).observe(
-                elapsed
-            )
+            TASK_DURATION_SECONDS.labels(task_name=task_name, status=status).observe(elapsed)
             TASK_TOTAL.labels(task_name=task_name, status=status).inc()
 
     return wrapper

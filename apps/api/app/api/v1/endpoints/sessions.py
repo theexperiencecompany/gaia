@@ -11,7 +11,10 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
 
-from shared.py.wide_events import log
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
+
 from app.agents.workspace.paths import detect_content_type
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.db.mongodb.collections import conversations_collection
@@ -23,9 +26,7 @@ from app.services.storage import (
     pin_session_artifact,
     resolve_session_path,
 )
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field
+from shared.py.wide_events import log
 
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
 

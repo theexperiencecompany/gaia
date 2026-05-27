@@ -26,6 +26,7 @@ Usage in build_graph.py:
 """
 
 from app.agents.middleware.accounting import LLMAccountingMiddleware
+from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.agents.middleware.factory import (
     create_comms_middleware,
@@ -40,7 +41,6 @@ from app.agents.middleware.runtime_adapter import (
     create_model_request,
     create_tool_call_request,
 )
-from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,

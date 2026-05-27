@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+import pytest
 
 from app.agents.core.nodes.follow_up_actions_node import (
     FollowUpActions,

@@ -12,13 +12,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from shared.py.wide_events import log, wide_task
 from app.config.settings import settings
 from app.services.storage import (
     delete_session_dir,
     flush_fs_metrics,
     list_stale_sessions,
 )
+from shared.py.wide_events import log, wide_task
 
 
 async def prune_inactive_sessions(ctx: dict[str, Any]) -> str:

@@ -12,18 +12,20 @@ Two independent triggers (unchanged from the prior VFS-backed version):
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 import hashlib
 import json
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable
+from typing import Any
 
-from shared.py.wide_events import log
-from app.constants.summarization import MIN_COMPACTION_SIZE
-from app.services.storage import JuiceFSUnavailable, write_session_file
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
+
+from app.constants.summarization import MIN_COMPACTION_SIZE
+from app.services.storage import JuiceFSUnavailable, write_session_file
+from shared.py.wide_events import log
 
 
 class WorkspaceCompactionMiddleware(AgentMiddleware):
@@ -141,7 +143,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         content_hash = hashlib.md5(
             content_str.encode(), usedforsecurity=False
         ).hexdigest()[:8]  # nosec B324
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         relative_path = (
             f"tool_outputs/{tool_name}_{timestamp}_{content_hash}.json"
         )
@@ -155,7 +157,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
                 else tool_call.args
             ),
             "content": content,
-            "stored_at": datetime.now(timezone.utc).isoformat(),
+            "stored_at": datetime.now(UTC).isoformat(),
             "compaction_reason": reason,
         }
         _, sandbox_path = await write_session_file(

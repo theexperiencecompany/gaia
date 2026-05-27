@@ -1,26 +1,25 @@
-from typing import List, Optional
-from pydantic import BaseModel, Field, ConfigDict
 from bson import ObjectId
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AuthorDetails(BaseModel):
     """Author details model for populated team member information."""
 
-    id: Optional[str] = None
+    id: str | None = None
     name: str
     role: str
-    avatar: Optional[str] = None
-    linkedin: Optional[str] = None
-    twitter: Optional[str] = None
+    avatar: str | None = None
+    linkedin: str | None = None
+    twitter: str | None = None
 
 
 class BlogPostBase(BaseModel):
     title: str
     date: str
-    authors: List[str]  # Team member IDs
+    authors: list[str]  # Team member IDs
     category: str
     content: str
-    image: Optional[str] = None
+    image: str | None = None
 
 
 class BlogPostCreate(BlogPostBase):
@@ -28,12 +27,12 @@ class BlogPostCreate(BlogPostBase):
 
 
 class BlogPostUpdate(BaseModel):
-    title: Optional[str] = None
-    date: Optional[str] = None
-    authors: Optional[List[str]] = None
-    category: Optional[str] = None
-    content: Optional[str] = None
-    image: Optional[str] = None
+    title: str | None = None
+    date: str | None = None
+    authors: list[str] | None = None
+    category: str | None = None
+    content: str | None = None
+    image: str | None = None
 
 
 class BlogPost(BlogPostBase):
@@ -48,7 +47,7 @@ class BlogPost(BlogPostBase):
 
     slug: str
     id: str = Field(description="Unique identifier for the blog post")
-    author_details: Optional[List[AuthorDetails]] = None
+    author_details: list[AuthorDetails] | None = None
 
     @classmethod
     def from_mongo(cls, data: dict) -> "BlogPost":

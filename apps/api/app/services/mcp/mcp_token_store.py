@@ -5,12 +5,13 @@ Stores MCP credentials encrypted in PostgreSQL instead of filesystem.
 Follows same patterns as Composio for parity.
 """
 
+from datetime import UTC, datetime
 import json
 import secrets
-from datetime import datetime, timezone
-from typing import Optional
 
-from shared.py.wide_events import log
+from cryptography.fernet import Fernet
+from sqlalchemy import select
+
 from app.config.settings import settings
 from app.constants.cache import (
     OAUTH_DISCOVERY_PREFIX,
@@ -22,8 +23,7 @@ from app.db.postgresql import get_db_session
 from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.utils.mcp_oauth_utils import introspect_token as do_introspect
-from cryptography.fernet import Fernet
-from sqlalchemy import select
+from shared.py.wide_events import log
 
 
 class MCPTokenStore:
@@ -31,7 +31,7 @@ class MCPTokenStore:
 
     def __init__(self, user_id: str):
         self.user_id = user_id
-        self._cipher: Optional[Fernet] = None
+        self._cipher: Fernet | None = None
 
     def _get_cipher(self) -> Fernet:
         """Get Fernet cipher from Infisical secret (lazy init)."""
@@ -56,7 +56,7 @@ class MCPTokenStore:
         """Decrypt sensitive data."""
         return self._get_cipher().decrypt(data.encode()).decode()
 
-    async def get_credential(self, integration_id: str) -> Optional[MCPCredential]:
+    async def get_credential(self, integration_id: str) -> MCPCredential | None:
         """Get stored credential for integration."""
         async with get_db_session() as session:
             result = await session.execute(
@@ -67,7 +67,7 @@ class MCPTokenStore:
             )
             return result.scalar_one_or_none()
 
-    async def get_bearer_token(self, integration_id: str) -> Optional[str]:
+    async def get_bearer_token(self, integration_id: str) -> str | None:
         """Get decrypted bearer token."""
         cred = await self.get_credential(integration_id)
         if (
@@ -79,7 +79,7 @@ class MCPTokenStore:
             return self._decrypt(cred.access_token)
         return None
 
-    async def get_oauth_token(self, integration_id: str) -> Optional[str]:
+    async def get_oauth_token(self, integration_id: str) -> str | None:
         """Get decrypted OAuth access token if not expired."""
         cred = await self.get_credential(integration_id)
         if not cred:
@@ -100,7 +100,7 @@ class MCPTokenStore:
         # Note: token_expires_at is stored as naive UTC in PostgreSQL TIMESTAMP WITHOUT TIME ZONE
         # We compare with naive UTC for consistency
         if cred.token_expires_at:
-            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+            now_utc = datetime.now(UTC).replace(tzinfo=None)
             if cred.token_expires_at < now_utc:
                 log.warning(f"OAuth token expired for {integration_id}")
                 return None
@@ -108,7 +108,7 @@ class MCPTokenStore:
         log.debug(f"[{integration_id}] Returning decrypted OAuth token")
         return self._decrypt(cred.access_token)
 
-    async def get_refresh_token(self, integration_id: str) -> Optional[str]:
+    async def get_refresh_token(self, integration_id: str) -> str | None:
         """Get decrypted refresh token."""
         cred = await self.get_credential(integration_id)
         if cred and cred.refresh_token:
@@ -133,9 +133,9 @@ class MCPTokenStore:
             from datetime import timedelta
 
             # Use naive UTC for comparison with stored naive timestamps
-            expiry_threshold = (
-                datetime.now(timezone.utc) + timedelta(seconds=threshold_seconds)
-            ).replace(tzinfo=None)
+            expiry_threshold = (datetime.now(UTC) + timedelta(seconds=threshold_seconds)).replace(
+                tzinfo=None
+            )
             return cred.token_expires_at < expiry_threshold
 
         # No expires_at stored — treat tokens older than 1 hour as stale
@@ -145,9 +145,9 @@ class MCPTokenStore:
         if cred.connected_at:
             from datetime import timedelta
 
-            age_threshold = (
-                datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
-            ).replace(tzinfo=None)
+            age_threshold = (datetime.now(UTC) - timedelta(seconds=max_age_seconds)).replace(
+                tzinfo=None
+            )
             return cred.connected_at < age_threshold
 
         return False
@@ -156,7 +156,7 @@ class MCPTokenStore:
         """Store encrypted bearer token."""
         encrypted = self._encrypt(token)
         # Use naive UTC datetime for PostgreSQL TIMESTAMP WITHOUT TIME ZONE column
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(UTC).replace(tzinfo=None)
 
         async with get_db_session() as session:
             # Query within this session
@@ -166,7 +166,7 @@ class MCPTokenStore:
                     MCPCredential.integration_id == integration_id,
                 )
             )
-            cred: Optional[MCPCredential] = result.scalar_one_or_none()
+            cred: MCPCredential | None = result.scalar_one_or_none()
 
             if cred:
                 cred.access_token = encrypted
@@ -191,14 +191,14 @@ class MCPTokenStore:
         self,
         integration_id: str,
         access_token: str,
-        refresh_token: Optional[str] = None,
-        expires_at: Optional[datetime] = None,
+        refresh_token: str | None = None,
+        expires_at: datetime | None = None,
     ) -> None:
         """Store encrypted OAuth tokens."""
         encrypted_access = self._encrypt(access_token)
         encrypted_refresh = self._encrypt(refresh_token) if refresh_token else None
         # Use naive UTC datetime for PostgreSQL TIMESTAMP WITHOUT TIME ZONE column
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(UTC).replace(tzinfo=None)
         # Also strip timezone from expires_at if provided
         naive_expires_at = expires_at.replace(tzinfo=None) if expires_at else None
 
@@ -210,7 +210,7 @@ class MCPTokenStore:
                     MCPCredential.integration_id == integration_id,
                 )
             )
-            cred: Optional[MCPCredential] = result.scalar_one_or_none()
+            cred: MCPCredential | None = result.scalar_one_or_none()
 
             if cred:
                 cred.access_token = encrypted_access
@@ -261,9 +261,7 @@ class MCPTokenStore:
                 )
                 session.add(cred)
                 await session.commit()
-                log.info(
-                    f"Created credential record for unauthenticated {integration_id}"
-                )
+                log.info(f"Created credential record for unauthenticated {integration_id}")
 
     async def create_oauth_state(self, integration_id: str, code_verifier: str) -> str:
         """
@@ -286,9 +284,7 @@ class MCPTokenStore:
 
         return state
 
-    async def verify_oauth_state(
-        self, integration_id: str, state: str
-    ) -> tuple[bool, Optional[str]]:
+    async def verify_oauth_state(self, integration_id: str, state: str) -> tuple[bool, str | None]:
         """
         Verify OAuth state matches stored state.
 
@@ -338,7 +334,7 @@ class MCPTokenStore:
         self,
         integration_id: str,
         status: MCPCredentialStatus,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> None:
         """Update PostgreSQL credential status (informational only).
 
@@ -353,7 +349,7 @@ class MCPTokenStore:
                     MCPCredential.integration_id == integration_id,
                 )
             )
-            cred: Optional[MCPCredential] = result.scalar_one_or_none()
+            cred: MCPCredential | None = result.scalar_one_or_none()
             if cred:
                 cred.status = MCPCredentialStatus(status)
                 cred.error_message = error
@@ -392,7 +388,7 @@ class MCPTokenStore:
             )
             return [row[0] for row in result.fetchall()]
 
-    async def get_dcr_client(self, integration_id: str) -> Optional[dict]:
+    async def get_dcr_client(self, integration_id: str) -> dict | None:
         """Get stored DCR client registration."""
         cred = await self.get_credential(integration_id)
         if cred and cred.client_registration:
@@ -468,7 +464,7 @@ class MCPTokenStore:
         await set_cache(cache_key, discovery, ttl=OAUTH_DISCOVERY_TTL)
         log.info(f"Cached OAuth discovery for {integration_id}")
 
-    async def get_oauth_discovery(self, integration_id: str) -> Optional[dict]:
+    async def get_oauth_discovery(self, integration_id: str) -> dict | None:
         """Get cached OAuth discovery data from Redis."""
         cache_key = f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"
         # get_cache already deserializes via TypeAdapter, returning dict directly
@@ -490,7 +486,7 @@ class MCPTokenStore:
         await set_cache(cache_key, nonce, ttl=OAUTH_STATE_TTL)
         log.debug(f"Stored OIDC nonce for {integration_id}")
 
-    async def get_and_delete_oauth_nonce(self, integration_id: str) -> Optional[str]:
+    async def get_and_delete_oauth_nonce(self, integration_id: str) -> str | None:
         """
         Get and delete OIDC nonce (atomic operation).
 
@@ -502,9 +498,9 @@ class MCPTokenStore:
     async def introspect_token(
         self,
         integration_id: str,
-        client_id: Optional[str] = None,
-        client_secret: Optional[str] = None,
-    ) -> Optional[dict]:
+        client_id: str | None = None,
+        client_secret: str | None = None,
+    ) -> dict | None:
         """
         Introspect token at authorization server per RFC 7662.
 

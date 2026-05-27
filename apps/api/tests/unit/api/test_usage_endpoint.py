@@ -5,11 +5,11 @@ Tests cover:
 - GET /api/v1/usage/history
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 SUMMARY_URL = "/api/v1/usage/summary"
 HISTORY_URL = "/api/v1/usage/history"
@@ -114,7 +114,7 @@ class TestGetUsageHistory:
         mock_feature.limit = 50
 
         mock_snapshot = MagicMock()
-        mock_snapshot.created_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        mock_snapshot.created_at = datetime(2025, 1, 1, tzinfo=UTC)
         mock_snapshot.plan_type = "free"
         mock_snapshot.features = [mock_feature]
 
@@ -163,9 +163,7 @@ class TestGetUsageHistory:
             "app.api.v1.endpoints.usage.FEATURE_LIMITS",
             {"chat": MagicMock()},
         ):
-            response = await client.get(
-                HISTORY_URL, params={"feature_key": "nonexistent"}
-            )
+            response = await client.get(HISTORY_URL, params={"feature_key": "nonexistent"})
 
         assert response.status_code == 400
         assert "Unknown feature" in response.json()["detail"]

@@ -17,17 +17,10 @@ context into the latest non-memory SystemMessage before each LLM call.
 """
 
 from collections.abc import Callable
-from datetime import datetime, timezone
-from typing import Annotated, Any, Literal, Optional, cast
+from datetime import UTC, datetime
+from typing import Annotated, Any, Literal, cast
 from uuid import uuid4
 
-from app.agents.prompts.todo_prompts import (
-    PLAN_TASKS_DESCRIPTION,
-    TODO_SYSTEM_PROMPT,
-    UPDATE_TASKS_DESCRIPTION,
-)
-from shared.py.wide_events import log
-from app.override.langgraph_bigtool.utils import State
 from langchain.tools import InjectedToolCallId
 from langchain_core.messages import SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -37,6 +30,14 @@ from langgraph.prebuilt import InjectedState
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 from typing_extensions import TypedDict
+
+from app.agents.prompts.todo_prompts import (
+    PLAN_TASKS_DESCRIPTION,
+    TODO_SYSTEM_PROMPT,
+    UPDATE_TASKS_DESCRIPTION,
+)
+from app.override.langgraph_bigtool.utils import State
+from shared.py.wide_events import log
 
 TODO_TOOL_NAMES: set[str] = {"plan_tasks", "update_tasks"}
 
@@ -63,11 +64,9 @@ class TaskUpdate(TypedDict, total=False):
     To add a new task: provide only content (omit task_id and status).
     """
 
-    task_id: Optional[str]  # omit to add a new task
-    content: Optional[str]  # required when adding a new task
-    status: Optional[
-        Literal["in_progress", "completed", "cancelled"]
-    ]  # required when updating
+    task_id: str | None  # omit to add a new task
+    content: str | None  # required when adding a new task
+    status: Literal["in_progress", "completed", "cancelled"] | None  # required when updating
 
 
 def _emit_todo_progress(todos: list[Todo], source: str) -> None:
@@ -75,8 +74,7 @@ def _emit_todo_progress(todos: list[Todo], source: str) -> None:
     payload = {
         "todo_progress": {
             "todos": [
-                {"id": t["id"], "content": t["content"], "status": t["status"]}
-                for t in todos
+                {"id": t["id"], "content": t["content"], "status": t["status"]} for t in todos
             ],
             "source": source,
         }
@@ -130,7 +128,7 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
         todos: Annotated[list, InjectedState("todos")],
     ) -> Command[Any]:
         """Create a task plan for multi-step work."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         new_todos: list[Todo] = []
 
         for i, task in enumerate(tasks):
@@ -167,7 +165,7 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
         todos: Annotated[list, InjectedState("todos")],
     ) -> Command[Any]:
         """Update task statuses and/or add new tasks in a single call."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         updated_todos: list[Todo] = [dict(t) for t in todos]  # type: ignore[misc]
         todo_map = {t["id"]: t for t in updated_todos}
 
@@ -235,9 +233,7 @@ def create_todo_pre_model_hook(
     """
     del source  # intentionally unused — kept for signature stability
 
-    def todo_pre_model_hook(
-        state: State, config: RunnableConfig, store: BaseStore
-    ) -> State:
+    def todo_pre_model_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:
         messages = list(state.get("messages", []))
         if not messages:
             return state
@@ -248,11 +244,7 @@ def create_todo_pre_model_hook(
             if msg.additional_kwargs.get("todo_context", False):
                 return True
             extra = msg.model_extra or {}
-            return (
-                bool(extra.get("todo_context", False))
-                if isinstance(extra, dict)
-                else False
-            )
+            return bool(extra.get("todo_context", False)) if isinstance(extra, dict) else False
 
         # Strip any prior todo_context SystemMessage. Without this, the next
         # manage_system_prompts pass would drop the stale one anyway, but

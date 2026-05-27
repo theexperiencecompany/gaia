@@ -1,24 +1,25 @@
+from collections.abc import Callable
+from datetime import UTC, datetime
 import json
 import re
-from datetime import datetime, timezone
-from typing import List, Optional, cast
+from typing import Any, TypedDict, cast
 from uuid import uuid4
 
 from langchain_core.messages import ToolCall
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
-from shared.py.wide_events import log
+from app.db.mongodb.collections import integrations_collection
+from app.decorators.caching import Cacheable
 from app.models.chat_models import (
     MessageModel,
     ToolDataEntry,
     UpdateMessagesRequest,
     tool_fields,
 )
-from app.db.mongodb.collections import integrations_collection
-from app.decorators.caching import Cacheable
 from app.services.chat.chunks import extract_tool_data
 from app.services.conversation_service import update_messages
+from shared.py.wide_events import log
 
 # UUID v4 pattern for identifying user ID suffixes
 # Matches: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
@@ -26,8 +27,19 @@ UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
 )
 
+# Type for the stream_writer callable used across agent execution paths.
+StreamWriterCallable = Callable[[dict[str, Any]], None]
 
-def parse_subagent_id(subagent_id: str) -> tuple[str, Optional[str]]:
+
+class IntegrationMetadata(TypedDict, total=False):
+    """Metadata for a custom MCP integration, used to decorate tool events."""
+
+    icon_url: str | None
+    integration_id: str | None
+    name: str | None
+
+
+def parse_subagent_id(subagent_id: str) -> tuple[str, str | None]:
     """Parse subagent ID from various formats and extract clean ID and display name.
 
     Handles:
@@ -52,7 +64,7 @@ def parse_subagent_id(subagent_id: str) -> tuple[str, Optional[str]]:
 
 
 @Cacheable(key_pattern="handoff_name:{clean_id}", ttl=3600)
-async def _lookup_custom_integration_name(clean_id: str) -> Optional[str]:
+async def _lookup_custom_integration_name(clean_id: str) -> str | None:
     """Look up custom integration name from MongoDB with caching."""
     custom = await integrations_collection.find_one(
         {"integration_id": {"$regex": f"^{clean_id}", "$options": "i"}}, {"name": 1}
@@ -78,12 +90,84 @@ async def _resolve_handoff_display_name(subagent_id: str) -> str:
     return clean_id.replace("_", " ").title()
 
 
+def format_subagent_start_event(
+    subagent_name: str,
+    agent_type: str,
+    subagent_id: str,
+    icon_url: str | None = None,
+    tool_category: str | None = None,
+    parent_subagent_id: str | None = None,
+) -> dict:
+    """Format a subagent_start SSE payload."""
+    payload: dict = {
+        "subagent_id": subagent_id,
+        "subagent_name": subagent_name,
+        "agent_type": agent_type,
+        "started_at": datetime.now(UTC).isoformat(),
+    }
+    if icon_url:
+        payload["icon_url"] = icon_url
+    if tool_category:
+        payload["tool_category"] = tool_category
+    if parent_subagent_id:
+        payload["parent_subagent_id"] = parent_subagent_id
+    return payload
+
+
+def format_subagent_end_event(
+    subagent_id: str,
+    duration_ms: int,
+    token_count: int | None = None,
+) -> dict:
+    """Format a subagent_end SSE payload."""
+    return {
+        "subagent_id": subagent_id,
+        "duration_ms": duration_ms,
+        "token_count": token_count,
+    }
+
+
+def emit_subagent_tool_calls(
+    stream_writer: StreamWriterCallable,
+    subagent_id: str,
+    tool_calls: list[ToolCall],
+) -> None:
+    """Emit tool_data events for each tool call made inside a spawned subagent.
+
+    Called from SubagentMiddleware._execute_subagent before parallel tool
+    invocation so the frontend can show tools as they are dispatched.
+    """
+    now = datetime.now(UTC).isoformat()
+    for tc in tool_calls:
+        tool_name_str = tc["name"]
+        stream_writer(
+            {
+                "tool_data": {
+                    "tool_name": "tool_calls_data",
+                    "tool_category": tool_name_str,
+                    "data": {
+                        "tool_name": tool_name_str,
+                        "tool_category": tool_name_str,
+                        "message": tool_name_str.replace("_", " ").title(),
+                        "show_category": True,
+                        "tool_call_id": tc.get("id"),
+                        "inputs": tc.get("args", {}),
+                        "icon_url": None,
+                        "integration_name": None,
+                    },
+                    "timestamp": now,
+                    "subagent_id": subagent_id,
+                }
+            }
+        )
+
+
 async def format_tool_call_entry(
     tool_call: ToolCall,
-    icon_url: Optional[str] = None,
-    integration_id: Optional[str] = None,
-    integration_name: Optional[str] = None,
-) -> Optional[dict]:
+    icon_url: str | None = None,
+    integration_id: str | None = None,
+    integration_name: str | None = None,
+) -> dict | None:
     """Format tool call as tool_data entry for frontend streaming.
 
     Creates a unified tool_data entry that the frontend can directly append
@@ -143,11 +227,11 @@ async def format_tool_call_entry(
         tool_display_name = tool_name_raw.replace("_", " ").title()
         show_category = True
 
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(UTC).isoformat()
 
     # Look up mcp_ui metadata from the tool registry
-    mcp_ui: Optional[dict] = None
-    mcp_server_url: Optional[str] = None
+    mcp_ui: dict | None = None
+    mcp_server_url: str | None = None
     try:
         registry_tools = tool_registry.get_all_tools_for_search()
         for registry_tool in registry_tools:
@@ -255,10 +339,7 @@ async def store_agent_progress(
         has_tool_data = False
         if current_tool_data:
             # Check for unified tool_data format
-            if "tool_data" in current_tool_data and current_tool_data["tool_data"]:
-                has_tool_data = True
-            # Check for any other tool data keys (legacy individual fields)
-            elif any(current_tool_data.values()):
+            if current_tool_data.get("tool_data") or any(current_tool_data.values()):
                 has_tool_data = True
 
         has_content = current_message.strip() or has_tool_data
@@ -270,7 +351,7 @@ async def store_agent_progress(
         bot_message = MessageModel(
             type="bot",
             response=current_message,
-            date=datetime.now(timezone.utc).isoformat(),
+            date=datetime.now(UTC).isoformat(),
             message_id=str(uuid4()),
         )
 
@@ -282,7 +363,7 @@ async def store_agent_progress(
             else:
                 # Legacy support: convert individual fields to unified format
                 tool_data_entries = []
-                timestamp = datetime.now(timezone.utc).isoformat()
+                timestamp = datetime.now(UTC).isoformat()
 
                 # Convert individual tool fields to unified ToolDataEntry format using tool_fields list
                 for field_name in tool_fields:
@@ -298,7 +379,7 @@ async def store_agent_progress(
                         tool_data_entries.append(tool_entry)
 
                 if tool_data_entries:
-                    bot_message.tool_data = cast(List[ToolDataEntry], tool_data_entries)
+                    bot_message.tool_data = cast(list[ToolDataEntry], tool_data_entries)
 
             # Handle follow_up_actions separately (it's a core field, not tool data)
             if "follow_up_actions" in current_tool_data:
@@ -315,4 +396,4 @@ async def store_agent_progress(
 
     except Exception as e:
         # Don't break agent execution for storage failures
-        log.error(f"Failed to store agent progress: {str(e)}")
+        log.error(f"Failed to store agent progress: {e!s}")

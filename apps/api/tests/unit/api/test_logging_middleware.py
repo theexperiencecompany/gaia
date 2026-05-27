@@ -14,7 +14,6 @@ from starlette.testclient import TestClient
 
 from app.api.v1.middleware.logging import LoggingMiddleware, log_function_call
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

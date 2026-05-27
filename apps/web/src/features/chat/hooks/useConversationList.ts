@@ -13,6 +13,7 @@ export const useConversationList = () => {
       title: conv.title,
       starred: conv.starred,
       is_system_generated: conv.isSystemGenerated,
+      is_onboarding_conversation: conv.isOnboardingConversation,
       system_purpose: conv.systemPurpose,
       is_unread: conv.isUnread,
       user_id: conv.userId,

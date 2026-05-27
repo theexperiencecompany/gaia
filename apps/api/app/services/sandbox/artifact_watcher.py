@@ -30,7 +30,6 @@ import asyncio
 import contextlib
 from typing import Any, Literal
 
-from shared.py.wide_events import log
 from app.agents.workspace.paths import (
     SESSIONS_DIRNAME,
     WORKSPACE_ROOT,
@@ -45,13 +44,14 @@ from app.services.artifact_events import (
     upsert_event,
 )
 from app.services.storage import (
-    FS_OPS,
+    FsOps,
     JuiceFSUnavailable,
     fs_timer,
     list_artifacts,
     list_session_ids,
     stat_artifact,
 )
+from shared.py.wide_events import log
 
 SESSIONS_WATCH_ROOT = f"{WORKSPACE_ROOT}/{SESSIONS_DIRNAME}"
 # `.accesslog` is a JuiceFS *mount-root* virtual file. mount_juicefs.sh mounts
@@ -245,7 +245,7 @@ class ArtifactWatcher:
             log.debug(f"[artifact-watcher] rescan failed: {e}")
 
     async def _rescan_all(self) -> None:
-        async with fs_timer(FS_OPS.WATCHER_RESCAN):
+        async with fs_timer(FsOps.WATCHER_RESCAN):
             try:
                 conv_ids = await list_session_ids(self.user_id)
             except JuiceFSUnavailable:

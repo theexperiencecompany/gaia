@@ -8,17 +8,16 @@ This module provides helpers for Google Sheets and Drive API interactions:
 """
 
 import re
-from typing import Dict, Optional
 
-from shared.py.wide_events import log
 from app.services.composio.proxy_client import proxy_request_sync
+from shared.py.wide_events import log
 
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
 SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets"
 SHEETS_TOOLKIT = "GOOGLESHEETS"
 
 
-def hex_to_rgb(hex_color: str) -> Dict[str, float]:
+def hex_to_rgb(hex_color: str) -> dict[str, float]:
     """Convert hex color (#RRGGBB) to Google API RGB format (0-1 floats)."""
     hex_color = hex_color.lstrip("#")
     r = int(hex_color[0:2], 16) / 255.0
@@ -27,7 +26,7 @@ def hex_to_rgb(hex_color: str) -> Dict[str, float]:
     return {"red": r, "green": g, "blue": b}
 
 
-def parse_a1_range(range_str: str) -> Dict[str, int]:
+def parse_a1_range(range_str: str) -> dict[str, int]:
     """Parse A1 notation (e.g., 'A1:B10') to row/column indices."""
     # Handle ranges like "A1:B10" or single cells like "A1"
     parts = range_str.replace("$", "").upper().split(":")
@@ -39,13 +38,7 @@ def parse_a1_range(range_str: str) -> Dict[str, int]:
         if not match:
             return 0, 0
         col_str, row_str = match.groups()
-        col = (
-            sum(
-                (ord(c) - ord("A") + 1) * (26**i)
-                for i, c in enumerate(reversed(col_str))
-            )
-            - 1
-        )
+        col = sum((ord(c) - ord("A") + 1) * (26**i) for i, c in enumerate(reversed(col_str))) - 1
         row = int(row_str) - 1
         return row, col
 
@@ -60,9 +53,7 @@ def parse_a1_range(range_str: str) -> Dict[str, int]:
     }
 
 
-def get_sheet_id_by_name(
-    spreadsheet_id: str, sheet_name: str, user_id: str
-) -> Optional[int]:
+def get_sheet_id_by_name(spreadsheet_id: str, sheet_name: str, user_id: str) -> int | None:
     """Get sheet ID by its name."""
     log.set(spreadsheet_id=spreadsheet_id, sheet_name=sheet_name)
     try:
@@ -87,11 +78,9 @@ def get_column_index_by_header(
     sheet_name: str,
     column_name: str,
     user_id: str,
-) -> Optional[int]:
+) -> int | None:
     """Get column index by header name (first row)."""
-    log.set(
-        spreadsheet_id=spreadsheet_id, sheet_name=sheet_name, column_name=column_name
-    )
+    log.set(spreadsheet_id=spreadsheet_id, sheet_name=sheet_name, column_name=column_name)
     try:
         data = proxy_request_sync(
             user_id=user_id,

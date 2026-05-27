@@ -8,6 +8,7 @@ for all Composio tools.
 from composio.types import ToolExecuteParams
 
 from shared.py.wide_events import log
+
 from .registry import register_before_hook
 
 

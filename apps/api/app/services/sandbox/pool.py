@@ -15,13 +15,13 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
-from shared.py.wide_events import log
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.services.sandbox.shard_router import shard_for
 from app.services.storage.metrics import set_sandbox_pool_size
+from shared.py.wide_events import log
 
 
 @dataclass
@@ -31,8 +31,8 @@ class PooledSandbox:
     sandbox: Any  # e2b.AsyncSandbox — typed as Any to avoid import at module load
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     refcount: int = 0
-    pause_task: Optional[asyncio.Task[None]] = None
-    last_canary_ts: Optional[str] = None
+    pause_task: asyncio.Task[None] | None = None
+    last_canary_ts: str | None = None
     # ArtifactWatcher | None — Any to avoid importing it at module load.
     watcher: Any = None
 
@@ -41,8 +41,8 @@ class SandboxPool:
     """Per-user in-process cache of AsyncSandbox handles."""
 
     def __init__(self) -> None:
-        self._entries: Dict[str, PooledSandbox] = {}
-        self._lock_registry: Dict[str, asyncio.Lock] = {}
+        self._entries: dict[str, PooledSandbox] = {}
+        self._lock_registry: dict[str, asyncio.Lock] = {}
         # Guards mutation of _entries and _lock_registry themselves.
         self._registry_lock = asyncio.Lock()
         # Shards we have ever published a count for. Tracked so transitions
@@ -65,20 +65,20 @@ class SandboxPool:
                 self._lock_registry[user_id] = lock
             return lock
 
-    def get(self, user_id: str) -> Optional[PooledSandbox]:
+    def get(self, user_id: str) -> PooledSandbox | None:
         return self._entries.get(user_id)
 
     def put(self, user_id: str, entry: PooledSandbox) -> None:
         self._entries[user_id] = entry
         self._publish_size()
 
-    def evict(self, user_id: str) -> Optional[PooledSandbox]:
+    def evict(self, user_id: str) -> PooledSandbox | None:
         removed = self._entries.pop(user_id, None)
         if removed is not None:
             self._publish_size()
         return removed
 
-    def all(self) -> Dict[str, PooledSandbox]:
+    def all(self) -> dict[str, PooledSandbox]:
         return dict(self._entries)
 
     def _publish_size(self) -> None:
@@ -93,7 +93,7 @@ class SandboxPool:
         one entry per active user per replica). If this gets expensive we
         switch to incremental counts; today it's cheap.
         """
-        counts: Dict[int, int] = {}
+        counts: dict[int, int] = {}
         for user_id in self._entries:
             shard = shard_for(user_id)
             counts[shard] = counts.get(shard, 0) + 1
@@ -104,7 +104,7 @@ class SandboxPool:
             set_sandbox_pool_size("user", str(shard), 0)
 
 
-_pool_singleton: Optional[SandboxPool] = None
+_pool_singleton: SandboxPool | None = None
 
 
 @lazy_provider(

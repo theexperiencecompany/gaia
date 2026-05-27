@@ -50,9 +50,7 @@ class SlackListAllChannelsData(BaseModel):
 
     def get_channels(self) -> list[SlackChannel]:
         """Get channels as typed models."""
-        return [
-            SlackChannel.model_validate(c) for c in self.channels if isinstance(c, dict)
-        ]
+        return [SlackChannel.model_validate(c) for c in self.channels if isinstance(c, dict)]
 
     @property
     def next_cursor(self) -> str | None:

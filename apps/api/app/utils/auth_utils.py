@@ -1,16 +1,17 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
-from shared.py.wide_events import log
+from workos import AsyncWorkOSClient
+
 from app.config.settings import settings
 from app.db.mongodb.collections import users_collection
-from workos import AsyncWorkOSClient
+from shared.py.wide_events import log
 
 # T is the return type of the wrapped function
 
 
 async def authenticate_workos_session(
-    session_token: str, workos_client: Optional[AsyncWorkOSClient] = None
-) -> Tuple[Dict[str, Any], Optional[str]]:
+    session_token: str, workos_client: AsyncWorkOSClient | None = None
+) -> tuple[dict[str, Any], str | None]:
     """
     Authenticate a WorkOS session and refresh if needed.
     This is a shared utility function used by both HTTP middleware and WebSocket connections.
@@ -67,9 +68,7 @@ async def authenticate_workos_session(
                     workos_user = refresh_dict.get("user")
                     new_session = refresh_dict.get("sealed_session")
                     if not workos_user:
-                        log.error(
-                            "Refresh successful but no user data in refresh result"
-                        )
+                        log.error("Refresh successful but no user data in refresh result")
                         return {}, new_session
                 else:
                     log.error("Refresh result doesn't have expected structure")
@@ -92,9 +91,7 @@ async def authenticate_workos_session(
 
             if not user_data:
                 # User doesn't exist in our database
-                log.warning(
-                    f"User {user_email} authenticated but not found in database"
-                )
+                log.warning(f"User {user_email} authenticated but not found in database")
                 return {}, new_session
 
             # Prepare user info for return

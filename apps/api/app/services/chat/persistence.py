@@ -12,9 +12,9 @@ message renders correctly even when the user's browser is holding a stale
 frontend chunk.
 """
 
+from datetime import UTC, datetime, timedelta
 import json
 import re
-from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
@@ -27,7 +27,6 @@ from app.services.conversation_service import update_messages
 from app.services.payments.payment_service import payment_service
 from app.utils.chat_utils import create_conversation
 from shared.py.wide_events import log
-
 
 # Matches bot-emitted artifact references in three shapes — ``./artifacts/x``,
 # ``/artifacts/x``, and plain ``artifacts/x`` — so we can rewrite each to an
@@ -117,7 +116,7 @@ async def save_conversation_async(
         except Exception as e:  # noqa: BLE001 — billing failure must not block save
             log.error(f"Failed to process token usage: {e}")
 
-    bot_timestamp = datetime.now(timezone.utc)
+    bot_timestamp = datetime.now(UTC)
     user_timestamp = bot_timestamp - timedelta(milliseconds=100)
 
     user_content = (
