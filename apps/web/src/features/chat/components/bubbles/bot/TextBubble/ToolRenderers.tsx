@@ -129,7 +129,7 @@ function mergeSearchResults(items: readonly SearchResults[]): SearchResults {
   return merged;
 }
 
-export const TOOL_RENDERERS: Partial<RendererMap> = {
+const TOOL_RENDERERS: Partial<RendererMap> = {
   // Search
   search_results: (data, index) => {
     const items = (Array.isArray(data) ? data : [data]) as SearchResults[];
