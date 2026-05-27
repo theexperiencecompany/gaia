@@ -104,6 +104,11 @@ const config: KnipConfig = {
     // galleries above, so it reads as unused once those are ignored.
     "apps/web/src/components/shared/ErrorBoundary.tsx",
 
+    // Tool-gallery infra: ToolCallsSection is consumed only by the dev tool
+    // gallery (ignored above) but is kept as the production-shaped renderer
+    // demo subjects compose against.
+    "apps/web/src/features/chat/components/bubbles/bot/ToolCallsSection.tsx",
+
     // Wake-word ("Hey GAIA"): recently merged, currently wired only into the
     // dev/wake-word gallery (ignored above). Work-in-progress, not dead.
     "apps/web/src/features/wake-word/**",
