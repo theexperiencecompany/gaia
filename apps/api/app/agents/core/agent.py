@@ -23,6 +23,7 @@ from langchain_core.callbacks import UsageMetadataCallbackHandler
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.messages import construct_langchain_messages
 from app.config.langfuse import trace_async_stream
+from app.config.settings import settings
 from app.helpers.agent_helpers import (
     build_agent_config,
     build_initial_state,
@@ -196,6 +197,10 @@ async def call_agent(
         return trace_async_stream(
             execute_graph_streaming(graph, initial_state, config),
             message_id=bot_message_id,
+            session_id=conversation_id,
+            user_id=user.get("user_id"),
+            user_input=request.message,
+            tags=["comms_agent", settings.ENV],
             name="chat-message",
         )
 
