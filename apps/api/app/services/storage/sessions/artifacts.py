@@ -88,9 +88,7 @@ async def list_user_uploaded(user_id: str, conv_id: str) -> list[ArtifactInfo]:
         return await asyncio.to_thread(_go)
 
 
-async def stat_artifact(
-    user_id: str, conv_id: str, rel_path: str
-) -> ArtifactInfo | None:
+async def stat_artifact(user_id: str, conv_id: str, rel_path: str) -> ArtifactInfo | None:
     """Stat a single file under ``artifacts/``. Returns ``None`` if not a file."""
 
     def _stat() -> ArtifactInfo | None:

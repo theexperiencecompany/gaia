@@ -120,9 +120,7 @@ async def save_conversation_async(
     user_timestamp = bot_timestamp - timedelta(milliseconds=100)
 
     user_content = (
-        body.messages[-1].get("content")
-        if body.messages and len(body.messages) > 0
-        else None
+        body.messages[-1].get("content") if body.messages and len(body.messages) > 0 else None
     ) or body.message
 
     user_message = MessageModel(
@@ -181,9 +179,7 @@ async def process_token_usage_and_cost(user_id: str, metadata: dict[str, Any]) -
             output_tokens = usage_data.get("output_tokens", 0)
             details = usage_data.get("input_token_details") or {}
             cached_tokens = int(
-                details.get("cache_read")
-                or usage_data.get("cached_content_token_count")
-                or 0
+                details.get("cache_read") or usage_data.get("cached_content_token_count") or 0
             )
 
             if input_tokens > 0 or output_tokens > 0:

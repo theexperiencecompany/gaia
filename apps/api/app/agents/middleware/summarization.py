@@ -68,10 +68,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         filtered = [
             m
             for m in messages
-            if not (
-                isinstance(m, ToolMessage)
-                and getattr(m, "name", None) in self.excluded_tools
-            )
+            if not (isinstance(m, ToolMessage) and getattr(m, "name", None) in self.excluded_tools)
         ]
         if not filtered:
             return False
@@ -100,9 +97,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         if not user_id:
             raise ValueError("archive requires 'user_id' in configurable")
         if not conversation_id:
-            raise ValueError(
-                "archive requires 'vfs_session_id' or 'thread_id' in configurable"
-            )
+            raise ValueError("archive requires 'vfs_session_id' or 'thread_id' in configurable")
 
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         relative_path = f"archives/pre_summary_{timestamp}.json"
@@ -114,9 +109,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             relative_path=relative_path,
             content=json.dumps(history, indent=2, default=str),
         )
-        log.info(
-            f"Archived {len(messages)} messages to {sandbox_path} before summarization"
-        )
+        log.info(f"Archived {len(messages)} messages to {sandbox_path} before summarization")
         return sandbox_path
 
     def _serialize_messages(self, messages: list[AnyMessage]) -> list[dict[str, Any]]:
@@ -138,9 +131,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             history.append(entry)
         return history
 
-    def _inject_archive_path(
-        self, result: dict[str, Any], archive_path: str
-    ) -> dict[str, Any]:
+    def _inject_archive_path(self, result: dict[str, Any], archive_path: str) -> dict[str, Any]:
         messages = result.get("messages", [])
         if not messages:
             return result

@@ -35,5 +35,5 @@ def shard_meta_url(shard_id: int) -> str:
     if "{shard}" in template:
         template = template.replace("{shard}", str(shard_id))
     if template.startswith("postgresql://"):
-        template = "postgres://" + template[len("postgresql://"):]
+        template = "postgres://" + template[len("postgresql://") :]
     return template

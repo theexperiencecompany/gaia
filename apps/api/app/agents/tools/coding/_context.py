@@ -58,9 +58,7 @@ def get_session_id(config: RunnableConfig) -> str | None:
     )
 
 
-def canonical_path(
-    path: str, *, session_id: str | None
-) -> tuple[str, MountRole, str | None]:
+def canonical_path(path: str, *, session_id: str | None) -> tuple[str, MountRole, str | None]:
     """Resolve a tool-supplied path to an absolute `/workspace` path.
 
     - Relative paths join to the session root (when `session_id` is known)

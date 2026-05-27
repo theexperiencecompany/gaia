@@ -128,8 +128,7 @@ async def main_async(args: argparse.Namespace) -> int:
 
     total_files = sum(r["files"] for r in summary)
     print(
-        f"Migrated {len(summary)} users, {total_files} files "
-        f"(dry_run={args.dry_run})",
+        f"Migrated {len(summary)} users, {total_files} files (dry_run={args.dry_run})",
         file=sys.stderr,
     )
     return 0

@@ -64,9 +64,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
             return result
 
         tool_call = request.tool_call
-        tool_name = (
-            tool_call.get("name", "") if isinstance(tool_call, dict) else tool_call.name
-        )
+        tool_name = tool_call.get("name", "") if isinstance(tool_call, dict) else tool_call.name
         context_usage = self._get_context_usage(request)
         should_compact, reason = self._should_compact(result, tool_name, context_usage)
         if not should_compact:
@@ -119,13 +117,9 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
 
         tool_call = request.tool_call
         tool_name = (
-            tool_call.get("name", "unknown")
-            if isinstance(tool_call, dict)
-            else tool_call.name
+            tool_call.get("name", "unknown") if isinstance(tool_call, dict) else tool_call.name
         )
-        tool_call_id = (
-            tool_call.get("id", "") if isinstance(tool_call, dict) else tool_call.id
-        )
+        tool_call_id = tool_call.get("id", "") if isinstance(tool_call, dict) else tool_call.id
 
         runtime = request.runtime
         config = getattr(runtime, "config", {}) or {}
@@ -136,26 +130,16 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         if not user_id:
             raise ValueError("compaction requires 'user_id' in configurable")
         if not conversation_id:
-            raise ValueError(
-                "compaction requires 'vfs_session_id' or 'thread_id' in configurable"
-            )
+            raise ValueError("compaction requires 'vfs_session_id' or 'thread_id' in configurable")
 
-        content_hash = hashlib.md5(
-            content_str.encode(), usedforsecurity=False
-        ).hexdigest()[:8]  # nosec B324
+        content_hash = hashlib.md5(content_str.encode(), usedforsecurity=False).hexdigest()[:8]  # nosec B324
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        relative_path = (
-            f"tool_outputs/{tool_name}_{timestamp}_{content_hash}.json"
-        )
+        relative_path = f"tool_outputs/{tool_name}_{timestamp}_{content_hash}.json"
 
         output_data: dict[str, Any] = {
             "tool_name": tool_name,
             "tool_call_id": tool_call_id,
-            "args": (
-                tool_call.get("args", {})
-                if isinstance(tool_call, dict)
-                else tool_call.args
-            ),
+            "args": (tool_call.get("args", {}) if isinstance(tool_call, dict) else tool_call.args),
             "content": content,
             "stored_at": datetime.now(UTC).isoformat(),
             "compaction_reason": reason,
@@ -177,8 +161,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         )
 
         log.info(
-            f"Compacted {tool_name} output ({len(content_str)} chars) to "
-            f"{sandbox_path} ({reason})"
+            f"Compacted {tool_name} output ({len(content_str)} chars) to {sandbox_path} ({reason})"
         )
         return ToolMessage(
             content=body,

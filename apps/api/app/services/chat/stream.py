@@ -121,19 +121,13 @@ async def _run_chat_stream(
     description_task: asyncio.Task[str] | None = None
 
     try:
-        description_task = _start_description_task(
-            is_new_conversation, body, conversation_id, user
-        )
-        _set_stream_log_context(
-            body, user_id, conversation_id, stream_id, is_new_conversation
-        )
+        description_task = _start_description_task(is_new_conversation, body, conversation_id, user)
+        _set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
 
         if user_id:
             await prepare_user_workspace(user_id, conversation_id)
             artifact_task = asyncio.create_task(
-                forward_artifact_events(
-                    user_id, conversation_id, stream_id, state.tool_data
-                )
+                forward_artifact_events(user_id, conversation_id, stream_id, state.tool_data)
             )
 
         await _publish_init_chunk(
@@ -166,9 +160,7 @@ async def _run_chat_stream(
     except Exception as e:  # noqa: BLE001 — surface to client + flag the stream
         await _handle_stream_error(stream_id, e, start_event)
     finally:
-        await _finalize_stream(
-            stream_id, body, user, conversation_id, state, artifact_task
-        )
+        await _finalize_stream(stream_id, body, user, conversation_id, state, artifact_task)
 
 
 def _set_stream_log_context(
@@ -191,9 +183,7 @@ def _set_stream_log_context(
             tool_category=body.toolCategory,
             has_reply=bool(body.replyToMessage),
             has_calendar_event=bool(body.selectedCalendarEvent),
-            selected_workflow_id=body.selectedWorkflow.id
-            if body.selectedWorkflow
-            else None,
+            selected_workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else None,
         ),
         user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
         selected_tool=body.selectedTool,
@@ -319,9 +309,7 @@ async def _consume_agent_stream(
         if chunk == "data: [DONE]\n\n":
             continue
 
-        description_task = await _publish_description_if_ready(
-            stream_id, description_task
-        )
+        description_task = await _publish_description_if_ready(stream_id, description_task)
 
         if chunk.startswith("nostream: "):
             state.complete_message = _parse_complete_message(chunk)
@@ -366,12 +354,8 @@ def _log_usage_summary(state: _StreamState) -> None:
     handler runs in the parent context via LangChain's tracer and accumulates
     correctly across every model call.
     """
-    total_input, total_output, total_cached = aggregate_usage_metadata(
-        state.usage_metadata
-    )
-    cache_hit_rate = (
-        round(total_cached / max(total_input, 1), 4) if total_input else 0.0
-    )
+    total_input, total_output, total_cached = aggregate_usage_metadata(state.usage_metadata)
+    cache_hit_rate = round(total_cached / max(total_input, 1), 4) if total_input else 0.0
     existing_model = log.get().get("model") or {}
     log.set(
         model={
@@ -417,9 +401,7 @@ async def _handle_stream_error(
     """
     log.error(f"Background stream error for {stream_id}: {error}")
     await _wait_for_http_subscriber(start_event, stream_id)
-    await stream_manager.publish_chunk(
-        stream_id, f"data: {json.dumps({'error': str(error)})}\n\n"
-    )
+    await stream_manager.publish_chunk(stream_id, f"data: {json.dumps({'error': str(error)})}\n\n")
     await stream_manager.set_error(stream_id, str(error))
 
 

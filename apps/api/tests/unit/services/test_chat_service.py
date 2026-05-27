@@ -163,9 +163,7 @@ class TestExtractToolData:
         assert result["other_data"]["follow_up_actions"] == ["Do X", "Do Y"]
 
     def test_extracts_tool_output(self):
-        payload = json.dumps(
-            {"tool_output": {"tool_call_id": "call_1", "output": "result text"}}
-        )
+        payload = json.dumps({"tool_output": {"tool_call_id": "call_1", "output": "result text"}})
         result = extract_tool_data(payload)
         assert "tool_output" in result
         assert result["tool_output"]["tool_call_id"] == "call_1"
@@ -455,9 +453,7 @@ class TestSaveConversationAsync:
         assert request_arg.messages[0].message_id == "umsg_specific"
         assert request_arg.messages[1].message_id == "bmsg_specific"
 
-    async def test_token_processing_called_when_metadata_present(
-        self, test_user, basic_body
-    ):
+    async def test_token_processing_called_when_metadata_present(self, test_user, basic_body):
         mock_token_processor = AsyncMock()
         mock_update = AsyncMock()
         metadata = {"claude-3-5-sonnet": {"input_tokens": 100, "output_tokens": 50}}
@@ -480,9 +476,7 @@ class TestSaveConversationAsync:
             )
         mock_token_processor.assert_called_once_with("user_abc", metadata)
 
-    async def test_token_processing_skipped_when_no_metadata(
-        self, test_user, basic_body
-    ):
+    async def test_token_processing_skipped_when_no_metadata(self, test_user, basic_body):
         mock_token_processor = AsyncMock()
         mock_update = AsyncMock()
         with (
@@ -504,9 +498,7 @@ class TestSaveConversationAsync:
             )
         mock_token_processor.assert_not_called()
 
-    async def test_token_processing_error_does_not_propagate(
-        self, test_user, basic_body
-    ):
+    async def test_token_processing_error_does_not_propagate(self, test_user, basic_body):
         """A token processing failure must not prevent the conversation from saving."""
         mock_update = AsyncMock()
         with (
@@ -532,9 +524,7 @@ class TestSaveConversationAsync:
     async def test_tool_data_applied_to_bot_message(self, test_user, basic_body):
         mock_update = AsyncMock()
         tool_data = {
-            "tool_data": [
-                {"tool_name": "search_results", "data": {"items": []}, "timestamp": "t"}
-            ]
+            "tool_data": [{"tool_name": "search_results", "data": {"items": []}, "timestamp": "t"}]
         }
         with (
             patch("app.services.chat.persistence.update_messages", new=mock_update),
@@ -557,9 +547,7 @@ class TestSaveConversationAsync:
         bot_msg = request_arg.messages[1]
         assert bot_msg.tool_data == tool_data["tool_data"]
 
-    async def test_correct_conversation_id_passed_to_update(
-        self, test_user, basic_body
-    ):
+    async def test_correct_conversation_id_passed_to_update(self, test_user, basic_body):
         mock_update = AsyncMock()
         with (
             patch("app.services.chat.persistence.update_messages", new=mock_update),
@@ -678,9 +666,7 @@ class TestRunChatStreamBackground:
         # Should NOT contain conversation_id for existing conversations
         assert "conversation_id" not in payload
 
-    async def test_done_marker_published_after_agent_completes(
-        self, test_user, existing_conv_body
-    ):
+    async def test_done_marker_published_after_agent_completes(self, test_user, existing_conv_body):
         sm = _make_stream_manager_mock()
         with (
             _patch_stream_manager(sm),
@@ -705,9 +691,7 @@ class TestRunChatStreamBackground:
         published = [call.args[1] for call in sm.publish_chunk.call_args_list]
         assert "data: [DONE]\n\n" in published
 
-    async def test_complete_stream_called_on_success(
-        self, test_user, existing_conv_body
-    ):
+    async def test_complete_stream_called_on_success(self, test_user, existing_conv_body):
         sm = _make_stream_manager_mock()
         with (
             _patch_stream_manager(sm),
@@ -731,9 +715,7 @@ class TestRunChatStreamBackground:
 
         sm.complete_stream.assert_called_once_with("stream_4")
 
-    async def test_cleanup_always_called_on_success(
-        self, test_user, existing_conv_body
-    ):
+    async def test_cleanup_always_called_on_success(self, test_user, existing_conv_body):
         sm = _make_stream_manager_mock()
         with (
             _patch_stream_manager(sm),
@@ -757,9 +739,7 @@ class TestRunChatStreamBackground:
 
         sm.cleanup.assert_called_once_with("stream_5")
 
-    async def test_cleanup_called_even_when_agent_raises(
-        self, test_user, existing_conv_body
-    ):
+    async def test_cleanup_called_even_when_agent_raises(self, test_user, existing_conv_body):
         """The finally block must always run cleanup even on agent failure."""
         sm = _make_stream_manager_mock()
         sm.get_progress = AsyncMock(return_value=None)
@@ -786,9 +766,7 @@ class TestRunChatStreamBackground:
 
         sm.cleanup.assert_called_once_with("stream_6")
 
-    async def test_error_chunk_published_before_set_error(
-        self, test_user, existing_conv_body
-    ):
+    async def test_error_chunk_published_before_set_error(self, test_user, existing_conv_body):
         """set_error() sends STREAM_ERROR_SIGNAL which breaks the subscriber.
         The human-readable error JSON must be published first."""
         sm = _make_stream_manager_mock()
@@ -839,9 +817,7 @@ class TestRunChatStreamBackground:
         # set_error must also have been called
         assert set_error_calls, "Expected set_error to be called"
 
-    async def test_save_always_called_even_on_agent_failure(
-        self, test_user, existing_conv_body
-    ):
+    async def test_save_always_called_even_on_agent_failure(self, test_user, existing_conv_body):
         sm = _make_stream_manager_mock()
         sm.get_progress = AsyncMock(return_value=None)
         mock_save = AsyncMock()
@@ -868,9 +844,7 @@ class TestRunChatStreamBackground:
 
         mock_save.assert_called_once()
 
-    async def test_nostream_chunk_sets_complete_message(
-        self, test_user, existing_conv_body
-    ):
+    async def test_nostream_chunk_sets_complete_message(self, test_user, existing_conv_body):
         """nostream: chunk must set complete_message which is later saved."""
         complete_text = "The final answer is here."
 
@@ -905,9 +879,7 @@ class TestRunChatStreamBackground:
         save_kwargs = mock_save.call_args.kwargs
         assert save_kwargs["complete_message"] == complete_text
 
-    async def test_nostream_chunk_not_forwarded_to_client(
-        self, test_user, existing_conv_body
-    ):
+    async def test_nostream_chunk_not_forwarded_to_client(self, test_user, existing_conv_body):
         """The nostream: prefix is internal — must never be published to Redis."""
 
         async def agent_with_nostream():
@@ -979,9 +951,7 @@ class TestRunChatStreamBackground:
         # Save still called even when cancelled
         mock_save.assert_called_once()
 
-    async def test_tool_data_chunks_accumulated_and_saved(
-        self, test_user, existing_conv_body
-    ):
+    async def test_tool_data_chunks_accumulated_and_saved(self, test_user, existing_conv_body):
         """tool_data entries from agent stream must be merged into saved bot message."""
 
         async def agent_with_tool_data():
@@ -1077,9 +1047,7 @@ class TestRunChatStreamBackground:
         assert calls_entry is not None
         assert calls_entry["data"]["output"] == "search results"
 
-    async def test_follow_up_actions_published_to_stream(
-        self, test_user, existing_conv_body
-    ):
+    async def test_follow_up_actions_published_to_stream(self, test_user, existing_conv_body):
         """follow_up_actions from agent must be published as a separate SSE event."""
 
         async def agent_with_follow_up():
@@ -1163,9 +1131,7 @@ class TestRunChatStreamBackground:
         save_kwargs = mock_save.call_args.kwargs
         assert save_kwargs["complete_message"] == "recovered text"
 
-    async def test_description_task_spawned_for_new_conversation(
-        self, test_user, basic_body
-    ):
+    async def test_description_task_spawned_for_new_conversation(self, test_user, basic_body):
         """generate_and_update_description must be called for new conversations."""
         mock_desc = AsyncMock(return_value="Generated description")
         sm = _make_stream_manager_mock()

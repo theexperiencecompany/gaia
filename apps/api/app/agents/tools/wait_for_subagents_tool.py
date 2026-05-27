@@ -63,12 +63,8 @@ async def wait_for_subagents(
     if not results:
         return "No background subagent results to collect."
 
-    log.info(
-        f"wait_for_subagents: collected {len(results)} result(s) for stream {stream_id}"
-    )
-    return "\n\n---\n\n".join(
-        f"[{item['agent']} result]\n{item['message']}" for item in results
-    )
+    log.info(f"wait_for_subagents: collected {len(results)} result(s) for stream {stream_id}")
+    return "\n\n---\n\n".join(f"[{item['agent']} result]\n{item['message']}" for item in results)
 
 
 tools = [wait_for_subagents]

@@ -88,9 +88,7 @@ def materialize_skills(user_root: Path, connected_ids: set[str]) -> int:
     integrations_root = user_root / "integrations"
     integrations_root.mkdir(parents=True, exist_ok=True)
     if not matches_text(integrations_root / "GUIDE.md", INTEGRATIONS_GUIDE_MD):
-        (integrations_root / "GUIDE.md").write_text(
-            INTEGRATIONS_GUIDE_MD, encoding="utf-8"
-        )
+        (integrations_root / "GUIDE.md").write_text(INTEGRATIONS_GUIDE_MD, encoding="utf-8")
 
     grouped = skills_by_subagent()
     for iid, skills in grouped.items():

@@ -82,9 +82,7 @@ def _stamp_meta_on_bootstrap(meta: Path) -> None:
     write_session_meta(meta, data)
 
 
-def _materialize_if_stale(
-    u_root: Path, expected_hash: str, connected: set[str]
-) -> None:
+def _materialize_if_stale(u_root: Path, expected_hash: str, connected: set[str]) -> None:
     """Rewrite the SKILL.md catalog iff the hash or connected-set changed."""
     current = read_skills_marker(u_root)
     connected_marker_path = u_root / ".gaia" / "connected.v"
@@ -107,9 +105,7 @@ async def ensure_session_dirs(user_id: str, conv_id: str) -> Path:
         meta = base / SESSION_META_FILENAME
         if not meta.exists():
             now = now_iso()
-            write_session_meta(
-                meta, {"created_at": now, "last_active": now, "msg_count": 0}
-            )
+            write_session_meta(meta, {"created_at": now, "last_active": now, "msg_count": 0})
         write_user_root_docs(base.parent.parent)
         return base
 
@@ -195,9 +191,7 @@ async def list_session_ids(user_id: str) -> list[str]:
         return await asyncio.to_thread(_scan)
 
 
-async def list_stale_sessions(
-    cutoff_days: int, limit: int | None = None
-) -> list[tuple[str, str]]:
+async def list_stale_sessions(cutoff_days: int, limit: int | None = None) -> list[tuple[str, str]]:
     """Return (user_id, conv_id) for sessions inactive past ``cutoff_days``.
 
     Sessions whose ``last_active`` cannot be parsed are skipped, never pruned.

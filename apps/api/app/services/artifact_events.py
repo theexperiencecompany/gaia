@@ -37,9 +37,7 @@ def artifact_channel(user_id: str) -> str:
     return f"{ARTIFACT_CHANNEL_PREFIX}{user_id}"
 
 
-def upsert_event(
-    session_id: str, info: ArtifactInfo, *, body: str | None = None
-) -> dict[str, Any]:
+def upsert_event(session_id: str, info: ArtifactInfo, *, body: str | None = None) -> dict[str, Any]:
     """An `artifacts/` file was created or changed.
 
     `body` is the UTF-8 file contents inlined for small textual artifacts —

@@ -45,9 +45,7 @@ async def edit(
     if (len(old_string.encode("utf-8")) > MAX_PATCH_BYTES) or (
         len(new_string.encode("utf-8")) > MAX_PATCH_BYTES
     ):
-        return (
-            f"Error: old_string and new_string must each be <= {MAX_PATCH_BYTES} bytes"
-        )
+        return f"Error: old_string and new_string must each be <= {MAX_PATCH_BYTES} bytes"
 
     try:
         user_id = get_user_id(config)
@@ -64,9 +62,7 @@ async def edit(
 
     try:
         async with fs_timer(FsOps.TOOL_EDIT), acquire_sandbox(user_id) as sbx:
-            return await _do_edit(
-                sbx, abs_path, old_string, new_string, replace_all, session_id
-            )
+            return await _do_edit(sbx, abs_path, old_string, new_string, replace_all, session_id)
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"
     except Exception as e:
@@ -85,8 +81,7 @@ async def _do_edit(
     # Read full file via base64 to keep binary-safe and to avoid quoting issues.
     # Signal "file missing" via exit code, not an in-band marker.
     read_cmd = (
-        f"if [ ! -f {sh_quote(abs_path)} ]; then exit 44; "
-        f"else base64 -w0 {sh_quote(abs_path)}; fi"
+        f"if [ ! -f {sh_quote(abs_path)} ]; then exit 44; else base64 -w0 {sh_quote(abs_path)}; fi"
     )
     read_result = await sbx.commands.run(read_cmd, timeout=15)  # type: ignore[attr-defined]
     if (getattr(read_result, "exit_code", 0) or 0) == 44:

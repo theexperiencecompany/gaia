@@ -77,9 +77,7 @@ def _split_meta_url(url: str) -> tuple[str, str]:
     if parts.port:
         host = f"{host}:{parts.port}"
     netloc = f"{username}@{host}" if username else host
-    sanitized = urlunsplit(
-        (parts.scheme, netloc, parts.path, parts.query, parts.fragment)
-    )
+    sanitized = urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
     return sanitized, password
 
 

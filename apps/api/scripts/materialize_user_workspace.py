@@ -62,9 +62,7 @@ async def _connected_for(user_id: str) -> set[str]:
 
 async def _materialize_one(user_id: str, connected_override: set[str] | None) -> None:
     connected = (
-        connected_override
-        if connected_override is not None
-        else await _connected_for(user_id)
+        connected_override if connected_override is not None else await _connected_for(user_id)
     )
     # The unified bootstrap lays down INDEX/GUIDE + the full SKILL.md catalog
     # in one pass. A sentinel conv id keeps the call shape consistent for users
@@ -90,9 +88,7 @@ async def _all_users() -> Iterable[str]:
 
     return {
         doc["user_id"]
-        async for doc in user_integrations_collection.find(
-            {"status": "connected"}, {"user_id": 1}
-        )
+        async for doc in user_integrations_collection.find({"status": "connected"}, {"user_id": 1})
         if doc.get("user_id")
     }
 

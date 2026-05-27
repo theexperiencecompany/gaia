@@ -48,10 +48,7 @@ def is_inlineable_content_type(content_type: str | None) -> bool:
     """Whether the content type is safe to ship as a UTF-8 string inline."""
     if not content_type:
         return False
-    return (
-        content_type.startswith("text/")
-        or content_type in _INLINEABLE_APPLICATION_TYPES
-    )
+    return content_type.startswith("text/") or content_type in _INLINEABLE_APPLICATION_TYPES
 
 
 WORKSPACE_ROOT = "/workspace"
@@ -113,11 +110,7 @@ def classify(abs_path: str) -> tuple[MountRole, str | None]:
     """
     if not is_under_workspace(abs_path):
         return MountRole.UNKNOWN, None
-    rest = (
-        abs_path[len(WORKSPACE_ROOT) + 1 :].split("/")
-        if abs_path != WORKSPACE_ROOT
-        else []
-    )
+    rest = abs_path[len(WORKSPACE_ROOT) + 1 :].split("/") if abs_path != WORKSPACE_ROOT else []
     if not rest:
         return MountRole.UNKNOWN, None
     head = rest[0]

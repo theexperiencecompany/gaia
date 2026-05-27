@@ -89,9 +89,7 @@ def _bucket_exit_code(code: int | None, timed_out: bool) -> str:
 def _record_bash_exit_code(code: int | None, *, timed_out: bool) -> None:
     """Increment the exit-code counter once per command completion. Non-fatal."""
     try:
-        _BASH_EXIT_CODE_TOTAL.labels(
-            exit_code=_bucket_exit_code(code, timed_out=timed_out)
-        ).inc()
+        _BASH_EXIT_CODE_TOTAL.labels(exit_code=_bucket_exit_code(code, timed_out=timed_out)).inc()
     except Exception as e:  # noqa: BLE001
         _metrics_log.warning(
             "[metrics] bash exit_code inc failed",
@@ -161,9 +159,7 @@ async def bash(
                     await sbx.commands.run(f"mkdir -p {sh_quote(cwd)}", timeout=10)
             if background:
                 return await _run_background(sbx, run_id, command, cwd, session_id)
-            result = await _run_foreground(
-                sbx, run_id, command, cwd, timeout, session_id
-            )
+            result = await _run_foreground(sbx, run_id, command, cwd, timeout, session_id)
             # A bash command can create artifacts any number of ways (cat,
             # python, mv, curl -o, …), not just the write tool. Enumerate the
             # session's artifacts/ from the sandbox itself (it sees its
@@ -278,9 +274,7 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
             )
 
 
-def _decode_inline(
-    body_b64: str, size_bytes: int, content_type: str | None
-) -> str | None:
+def _decode_inline(body_b64: str, size_bytes: int, content_type: str | None) -> str | None:
     """Decode the inline body if the file is small + textual, else None."""
     if not body_b64:
         return None
@@ -414,8 +408,7 @@ async def _run_background(
     pid = (getattr(result, "stdout", "") or "").strip()
     if not pid:
         return (
-            "Error: failed to start background command "
-            f"(stderr: {getattr(result, 'stderr', '')})"
+            f"Error: failed to start background command (stderr: {getattr(result, 'stderr', '')})"
         )
     safe_emit(
         {

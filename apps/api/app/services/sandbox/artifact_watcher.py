@@ -165,9 +165,7 @@ class ArtifactWatcher:
         # watch_dir errors if the path doesn't exist yet; sessions are created
         # lazily on first chat message, so make the root eagerly.
         with contextlib.suppress(Exception):
-            await self.sandbox.commands.run(
-                f"mkdir -p {SESSIONS_WATCH_ROOT}", timeout=10
-            )
+            await self.sandbox.commands.run(f"mkdir -p {SESSIONS_WATCH_ROOT}", timeout=10)
         self._handle = await self.sandbox.files.watch_dir(
             SESSIONS_WATCH_ROOT,
             self._on_fs_event,
@@ -258,7 +256,13 @@ class ArtifactWatcher:
                 infos = await list_artifacts(self.user_id, conv)
             except JuiceFSUnavailable:
                 return
-            except Exception:
+            except Exception as exc:
+                log.debug(
+                    "artifact_watcher.rescan_skipped",
+                    user_id=self.user_id,
+                    conv=conv,
+                    error=str(exc),
+                )
                 continue
             prev = self._snapshots.get(conv, {})
             current: dict[str, tuple[int, float]] = {}

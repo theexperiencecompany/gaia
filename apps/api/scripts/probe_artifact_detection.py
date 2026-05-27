@@ -53,9 +53,7 @@ def _event_type_name(ev: Any) -> str:
     return getattr(t, "name", str(t))
 
 
-async def _wait_for(
-    queue: asyncio.Queue[Any], suffix: str, timeout: float
-) -> dict[str, Any]:
+async def _wait_for(queue: asyncio.Queue[Any], suffix: str, timeout: float) -> dict[str, Any]:
     """Drain events until one whose name ends with `suffix`, or time out."""
     deadline = time.monotonic() + timeout
     seen: list[str] = []
@@ -99,8 +97,7 @@ async def _run_matrix(user_a: str, user_b: str | None) -> dict[str, Any]:
             # Case 2: background-process write (proves detached writes caught).
             t0 = time.monotonic()
             await sbx.commands.run(
-                f"nohup bash -c 'sleep 2 && echo late > {PROBE_VISIBLE}/b.md' "
-                ">/dev/null 2>&1 &",
+                f"nohup bash -c 'sleep 2 && echo late > {PROBE_VISIBLE}/b.md' >/dev/null 2>&1 &",
                 timeout=10,
             )
             r2 = await _wait_for(queue, "b.md", 8.0)

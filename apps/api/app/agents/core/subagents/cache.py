@@ -81,9 +81,7 @@ class UserSubagentGraphCache:
             self._cache.move_to_end(key)
             return pooled.graph
 
-    async def put(
-        self, integration_id: str, user_id: str, graph: CompiledStateGraph
-    ) -> None:
+    async def put(self, integration_id: str, user_id: str, graph: CompiledStateGraph) -> None:
         """Insert or replace; evicts least-recently-used entry if at capacity."""
         key = (integration_id, user_id)
         evicted: CacheKey | None = None
@@ -147,8 +145,7 @@ class UserSubagentGraphCache:
                 await result
         except Exception as e:
             log.warning(
-                f"Subagent cache eviction handler failed for "
-                f"({integration_id}, {user_id}): {e}"
+                f"Subagent cache eviction handler failed for ({integration_id}, {user_id}): {e}"
             )
 
     async def start_cleanup_loop(

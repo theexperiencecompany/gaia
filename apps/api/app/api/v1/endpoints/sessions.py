@@ -61,9 +61,7 @@ def _serve(host_path: Path, *, is_artifact: bool, filename: str) -> FileResponse
     content_type = detect_content_type(filename) or _DOWNLOAD_OCTET
     headers = {
         "X-Content-Type-Options": "nosniff",
-        "Cache-Control": (
-            "private, max-age=60" if is_artifact else "private, max-age=3600"
-        ),
+        "Cache-Control": ("private, max-age=60" if is_artifact else "private, max-age=3600"),
     }
     if content_type == "text/html":
         # Agent-generated HTML is untrusted — neuter scripts/same-origin.
@@ -121,9 +119,7 @@ async def get_artifact_file(
 
 @router.get("/{conv_id}/uploads")
 @tiered_rate_limit("session_files")
-async def list_uploads(
-    conv_id: str, user: dict = Depends(get_current_user)
-) -> JSONResponse:
+async def list_uploads(conv_id: str, user: dict = Depends(get_current_user)) -> JSONResponse:
     user_id = user["user_id"]
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "list_uploads"})
     await _assert_owns(user_id, conv_id)
