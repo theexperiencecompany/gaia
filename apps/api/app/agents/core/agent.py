@@ -198,7 +198,6 @@ async def call_agent(
             user_id=user.get("user_id"),
             user_input=request.message,
             tags=["comms_agent", settings.ENV],
-            name="chat-message",
         )
 
     except Exception as exc:

@@ -98,6 +98,12 @@ class CommonSettings(BaseAppSettings):
     # scraping /metrics. Generate with: openssl rand -hex 32
     METRICS_TOKEN: str | None = None
 
+    # Langfuse — opt-in self-hosted LLM observability. Traces ship only when
+    # all three are set; missing any one is a silent no-op in every env.
+    LANGFUSE_PUBLIC_KEY: str | None = None
+    LANGFUSE_SECRET_KEY: str | None = None
+    LANGFUSE_HOST: str | None = None
+
     # ----------------------------------------------
     # Profiling & Performance Monitoring
     # ----------------------------------------------
@@ -259,9 +265,6 @@ class ProductionSettings(CommonSettings):
     POSTHOG_API_KEY: str
     OPIK_API_KEY: str
     OPIK_WORKSPACE: str
-    LANGFUSE_PUBLIC_KEY: str | None = None
-    LANGFUSE_SECRET_KEY: str | None = None
-    LANGFUSE_HOST: str | None = None
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -416,9 +419,6 @@ class DevelopmentSettings(CommonSettings):
     POSTHOG_API_KEY: str | None = None
     OPIK_API_KEY: str | None = None
     OPIK_WORKSPACE: str | None = None
-    LANGFUSE_PUBLIC_KEY: str | None = None
-    LANGFUSE_SECRET_KEY: str | None = None
-    LANGFUSE_HOST: str | None = None
 
     # ----------------------------------------------
     # MCP OAuth Credentials

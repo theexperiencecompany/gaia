@@ -18,6 +18,7 @@ from typing import Any
 from uuid import uuid4
 
 from langchain_core.messages import SystemMessage
+from langfuse.types import TraceContext
 from langsmith import traceable
 
 from app.agents.core.background.inbox import (
@@ -367,7 +368,7 @@ async def run_executor_background(
     conversation_id: str,
     task_id: str | None = None,
     user_message_id: str | None = None,
-    langfuse_trace_context: dict[str, str] | None = None,
+    langfuse_trace_context: TraceContext | None = None,
 ) -> None:
     """Run executor agent in background and hand its result to comms for delivery.
 
@@ -390,7 +391,7 @@ async def run_executor_background(
     result_type = "final"
 
     try:
-        async with trace_child_observation(
+        with trace_child_observation(
             langfuse_trace_context,
             name="executor_agent",
             input=task,

@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+from langfuse.types import TraceContext
 
 from app.agents.core.background.executor_runner import run_executor_background
 from app.agents.core.background.inbox import mark_executor_spawned
@@ -210,7 +211,7 @@ async def _dispatch_executor(
     task_id: str,
     configurable: dict,
     conversation_id: str,
-    parent_trace_context: dict[str, str] | None = None,
+    parent_trace_context: TraceContext | None = None,
 ) -> str:
     """Core dispatch logic — acquire lock, queue if busy, or spawn."""
     log.set(
