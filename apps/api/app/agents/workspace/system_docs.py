@@ -27,6 +27,8 @@ here survives across conversations for this user.
     integrations/     connected integrations: subagents, prompts, skills
                       (present only when the user has connected one)
     skills/           reusable agent skills (when present)
+    todos/            tracked todos — your institutional memory
+                      (see todos/GUIDE.md). One folder per active todo.
     pinned/           cross-session files the user has pinned for reuse
 
 ## How to navigate
@@ -143,6 +145,61 @@ Each external service the user has connected (gmail, googlecalendar, slack,
 """
 
 
+TODOS_GUIDE_MD = """# Todos — your tracked-todo institutional memory
+
+Each active tracked todo for this user has a folder here:
+
+    todos/
+        GUIDE.md           (this file)
+        index.md           one-line-per-todo summary, sorted by last update
+        <todo_id>/
+            canvas.md      the agent-written brain dump for this initiative
+            log.md         system-written audit trail (who/what/when)
+            meta.json      status, priority, due date, labels, references
+
+"Active" = the todo is labelled ``gaia-tracked`` AND it is either still
+open or completed within the last 30 days. Older completed todos drop
+out of `ls` here; `search_todo_context` still finds them via embeddings.
+
+## How to read
+
+- `ls todos/` — scan everything currently in memory.
+- `cat todos/index.md` — one-line summary for each, freshest first.
+- `cat todos/<id>/canvas.md` — full state of one todo. Fastest read path
+  when you already know the id (no tool call needed).
+- `cat todos/<id>/meta.json` — labels, due date, schedule, references.
+- `grep -r "rahul" todos/` — find every todo that mentions a name or id
+  without firing a semantic search.
+
+## How to mutate
+
+These files are **read-only projections** of MongoDB state. Editing them
+with `Write` / `Edit` / `sed -i` will fail with `Permission denied` —
+that is intentional. Mutations flow through the existing tracked-todo
+tools, which update Mongo and trigger a sync back to this directory:
+
+- `create_tracked_todo` — creates a new folder here.
+- `update_tracked_todo_canvas` — rewrites `canvas.md`.
+- `update_tracked_todo` — rewrites `meta.json` (and bumps `updated_at`).
+- `complete_tracked_todo` — folder stays for up to 30 days, then drops.
+- `archive_tracked_todo` — same as completing with a system-generated
+  summary; folder drops on the same 30-day window.
+
+`log.md` is system-written; you do not need to touch it. The
+``search_todo_context`` tool still indexes canvas content for fuzzy
+recall across all (active + historical) tracked todos.
+
+## When to prefer this over tools
+
+- Already know the id (e.g. it was in a previous message, a
+  notification, or `index.md`): `cat todos/<id>/canvas.md` beats
+  `search_todo_context`.
+- Scanning for context at the start of a session: `cat todos/index.md`
+  beats `list_tracked_todos`.
+- Free-text find for a person, project, or external id: `grep -r`.
+"""
+
+
 def integration_skills_block(subagent_id: str) -> str:
     """Markdown listing of a subagent's available skills, or "" if none."""
     skills = skills_by_subagent().get(subagent_id) or []
@@ -166,5 +223,6 @@ __all__ = [
     "INDEX_MD",
     "INTEGRATIONS_GUIDE_MD",
     "SESSIONS_GUIDE_MD",
+    "TODOS_GUIDE_MD",
     "integration_skills_block",
 ]

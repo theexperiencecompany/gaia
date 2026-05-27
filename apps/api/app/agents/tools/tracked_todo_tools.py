@@ -15,10 +15,11 @@ from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.mongodb.collections import todos_collection
 from app.models.todo_models import Priority, TodoResponse
 from app.services.todo_canvas_storage import append_canvas, read_canvas, write_canvas
-from app.services.tracked_todo_service import GAIA_TRACKED_LABEL, tracked_todo_service
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
 from app.utils.canvas_vector_utils import search_canvas_context
 from shared.py.wide_events import log

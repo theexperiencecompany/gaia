@@ -17,6 +17,7 @@ import re
 
 from bson import ObjectId
 
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.mongodb.collections import todos_collection
 from app.models.todo_models import Priority, TodoModel, TodoResponse
 from app.services.todo_canvas_storage import (
@@ -26,6 +27,7 @@ from app.services.todo_canvas_storage import (
     write_canvas,
 )
 from app.services.todos.todo_service import TodoService
+from app.services.tracked_todos_fs import schedule_sync
 from app.utils.canvas_vector_utils import (
     mark_canvas_completed,
     store_canvas_embedding,
@@ -54,8 +56,6 @@ CANVAS_TEMPLATE = """# {title}
 ## Learnings
 <!-- written on completion: what worked, what didn't, key decisions, timing insights, optimizations for next time -->
 """
-
-GAIA_TRACKED_LABEL = "gaia-tracked"
 
 
 def _pin_active_todo(docs: list[dict], active_todo_id: str | None) -> None:
@@ -212,6 +212,7 @@ class TrackedTodoService:
             title=title,
             vfs_path=vfs_path,
         )
+        schedule_sync(user_id)
         return result
 
     @staticmethod
@@ -268,6 +269,7 @@ class TrackedTodoService:
             user_id=user_id,
             summary=summary,
         )
+        schedule_sync(user_id)
         return True
 
     @staticmethod

@@ -284,6 +284,7 @@ class FsOps:
     BOOTSTRAP_USER_SESSION: Final[str] = "bootstrap_user_session"
     ENSURE_SESSION_DIRS: Final[str] = "ensure_session_dirs"
     MATERIALIZE_INTEGRATIONS: Final[str] = "materialize_integrations"
+    SYNC_TODOS_VFS: Final[str] = "sync_todos_vfs"
     TOUCH_LAST_ACTIVE: Final[str] = "touch_last_active"
 
     # Read paths driving the HTTP `GET /sessions` endpoints + watcher fallback.

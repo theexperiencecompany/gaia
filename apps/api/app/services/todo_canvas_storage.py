@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from bson import ObjectId
 
 from app.db.mongodb.collections import todos_collection
+from app.services.tracked_todos_fs import schedule_sync
 from shared.py.wide_events import log
 
 
@@ -38,7 +39,10 @@ async def write_canvas(todo_id: str, user_id: str, content: str) -> bool:
         {"_id": ObjectId(todo_id), "user_id": user_id},
         {"$set": {"canvas_content": content, "updated_at": datetime.now(UTC)}},
     )
-    return result.matched_count > 0
+    if result.matched_count > 0:
+        schedule_sync(user_id)
+        return True
+    return False
 
 
 async def append_canvas(todo_id: str, user_id: str, content: str) -> bool:
@@ -65,7 +69,10 @@ async def write_log(todo_id: str, user_id: str, content: str) -> bool:
         {"_id": ObjectId(todo_id), "user_id": user_id},
         {"$set": {"log_content": content, "updated_at": datetime.now(UTC)}},
     )
-    return result.matched_count > 0
+    if result.matched_count > 0:
+        schedule_sync(user_id)
+        return True
+    return False
 
 
 async def append_log(todo_id: str, user_id: str, content: str) -> bool:
