@@ -166,12 +166,9 @@ async def call_agent(
                    When provided, streaming can be cancelled via stream_manager.
         user_message_id: Optional user message ID for reply-to linking in
                          background notifications.
-        bot_message_id: Optional assistant message ID used to seed the
-                        Langfuse trace_id for this run. When supplied the
-                        whole agent execution lands as one Langfuse trace
-                        keyed deterministically off this ID, which lets
-                        /messages/{id}/feedback score the exact reply
-                        without persisting the trace_id anywhere.
+        bot_message_id: Assistant message ID used to seed the Langfuse
+                        trace_id so /messages/{id}/feedback can re-derive
+                        the same trace_id to attach scores.
 
     Returns an AsyncGenerator that yields SSE-formatted streaming data.
     """
