@@ -424,10 +424,23 @@ def build_agent_config(
         "__pinned_skills__": resolved["pinned_skills"],
     }
 
+    user_id = user.get("user_id")
+    # Langfuse picks up these well-known metadata keys from the LangChain config
+    # and exposes them as first-class fields on every trace: session groups
+    # traces from the same conversation, user_id powers per-user cost/quality
+    # views, tags let us filter by agent name (comms_agent vs executor_agent
+    # vs any subagent) in the UI.
+    metadata: dict[str, object] = {
+        "user_id": user_id,
+        "langfuse_session_id": conversation_id,
+        "langfuse_user_id": user_id,
+        "langfuse_tags": [agent_name, settings.ENV],
+    }
+
     return {
         "configurable": configurable,
         "recursion_limit": AGENT_RECURSION_LIMIT,
-        "metadata": {"user_id": user.get("user_id")},
+        "metadata": metadata,
         "callbacks": callbacks,
         "agent_name": agent_name,
     }

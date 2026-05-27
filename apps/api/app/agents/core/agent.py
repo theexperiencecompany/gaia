@@ -22,6 +22,7 @@ from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.messages import construct_langchain_messages
+from app.config.langfuse import trace_async_stream
 from app.helpers.agent_helpers import (
     build_agent_config,
     build_initial_state,
@@ -153,6 +154,7 @@ async def call_agent(
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     stream_id: str | None = None,
     user_message_id: str | None = None,
+    bot_message_id: str | None = None,
     source: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
@@ -163,6 +165,12 @@ async def call_agent(
                    When provided, streaming can be cancelled via stream_manager.
         user_message_id: Optional user message ID for reply-to linking in
                          background notifications.
+        bot_message_id: Optional assistant message ID used to seed the
+                        Langfuse trace_id for this run. When supplied the
+                        whole agent execution lands as one Langfuse trace
+                        keyed deterministically off this ID, which lets
+                        /messages/{id}/feedback score the exact reply
+                        without persisting the trace_id anywhere.
 
     Returns an AsyncGenerator that yields SSE-formatted streaming data.
     """
@@ -185,7 +193,11 @@ async def call_agent(
         if user_message_id:
             config["configurable"]["user_message_id"] = user_message_id
 
-        return execute_graph_streaming(graph, initial_state, config)
+        return trace_async_stream(
+            execute_graph_streaming(graph, initial_state, config),
+            message_id=bot_message_id,
+            name="chat-message",
+        )
 
     except Exception as exc:
         log.error(f"Error when calling agent: {exc}")
