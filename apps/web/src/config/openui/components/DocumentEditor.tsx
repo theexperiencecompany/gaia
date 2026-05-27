@@ -138,6 +138,14 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
     },
   });
 
+  // Re-apply streamed body: tiptap only reads `content` at creation.
+  const lastBodyRef = React.useRef(body);
+  React.useEffect(() => {
+    if (!editor || body === lastBodyRef.current) return;
+    lastBodyRef.current = body;
+    editor.commands.setContent(body, false);
+  }, [editor, body]);
+
   const flashCopied = () => {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);

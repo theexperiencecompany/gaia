@@ -131,6 +131,7 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
         element.removeEventListener("wheel", handleWheel);
       };
     }
+    return undefined;
   }, [handleWheel]);
 
   return (

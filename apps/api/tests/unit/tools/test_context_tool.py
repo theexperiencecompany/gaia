@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.context_tool."""
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,12 +14,12 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.context_tool"
 
 
-def _make_config(user_id: str = FAKE_USER_ID) -> Dict[str, Any]:
+def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
     """Return a minimal RunnableConfig-like dict with metadata.user_id."""
     return {"metadata": {"user_id": user_id}}
 
 
-def _make_config_no_user() -> Dict[str, Any]:
+def _make_config_no_user() -> dict[str, Any]:
     """Config with no user_id to trigger auth errors."""
     return {"metadata": {}}
 

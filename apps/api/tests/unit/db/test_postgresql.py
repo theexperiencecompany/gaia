@@ -113,9 +113,7 @@ class TestGetDbSession:
             patch("app.db.postgresql.AsyncSession") as mock_session_cls,
         ):
             # AsyncSession as context manager
-            mock_session_cls.return_value.__aenter__ = AsyncMock(
-                return_value=mock_session
-            )
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
             async with get_db_session() as session:
@@ -136,9 +134,7 @@ class TestGetDbSession:
             ),
             patch("app.db.postgresql.AsyncSession") as mock_session_cls,
         ):
-            mock_session_cls.return_value.__aenter__ = AsyncMock(
-                return_value=mock_session
-            )
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
             with pytest.raises(ValueError, match="test error"):
@@ -239,9 +235,7 @@ class TestInitPostgresqlEngine:
 
         with (
             patch("app.db.postgresql.settings") as mock_settings,
-            patch(
-                "app.db.postgresql.create_async_engine", return_value=mock_engine
-            ) as mock_create,
+            patch("app.db.postgresql.create_async_engine", return_value=mock_engine) as mock_create,
             patch("app.db.postgresql.log"),
         ):
             mock_settings.POSTGRES_URL = "postgresql://user:pass@host:5432/db"
@@ -286,9 +280,7 @@ class TestInitPostgresqlEngine:
 
         with (
             patch("app.db.postgresql.settings") as mock_settings,
-            patch(
-                "app.db.postgresql.create_async_engine", return_value=mock_engine
-            ) as mock_create,
+            patch("app.db.postgresql.create_async_engine", return_value=mock_engine) as mock_create,
             patch("app.db.postgresql.log"),
         ):
             mock_settings.POSTGRES_URL = "postgresql://localhost/test"
@@ -312,9 +304,7 @@ class TestInitPostgresqlEngine:
 
         with (
             patch("app.db.postgresql.settings") as mock_settings,
-            patch(
-                "app.db.postgresql.create_async_engine", return_value=mock_engine
-            ) as mock_create,
+            patch("app.db.postgresql.create_async_engine", return_value=mock_engine) as mock_create,
             patch("app.db.postgresql.log"),
         ):
             # URL that doesn't have plain "postgresql://" won't be rewritten

@@ -1,5 +1,5 @@
 export function getUserTimezone(): string {
-  if (typeof window !== "undefined") {
+  if (typeof globalThis !== "undefined" && "window" in globalThis) {
     try {
       return Intl.DateTimeFormat().resolvedOptions().timeZone;
     } catch (error) {

@@ -5,8 +5,8 @@ Sentry configuration for error tracking and performance monitoring.
 from loguru import logger as _loguru
 import sentry_sdk
 
-from shared.py.wide_events import log
 from app.config.settings import settings
+from shared.py.wide_events import log
 
 
 def _make_sentry_loguru_sink():

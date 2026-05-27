@@ -52,24 +52,6 @@ export interface IntegrationStatus {
   metadata?: Record<string, unknown>;
 }
 
-export interface IntegrationCategory {
-  id: string;
-  name: string;
-  description: string;
-  integrations: Integration[];
-}
-
-export type IntegrationAction =
-  | "connect"
-  | "disconnect"
-  | "settings"
-  | "refresh";
-
-export interface IntegrationActionEvent {
-  integration: Integration;
-  action: IntegrationAction;
-}
-
 // Marketplace API Types - matches backend IntegrationResponse with camelCase aliases
 export interface MarketplaceIntegration {
   integrationId: string;
@@ -155,22 +137,6 @@ export interface CreateCustomIntegrationResponse {
 export interface IntegrationConnectionData {
   integration_id: string;
   message: string;
-}
-
-export interface IntegrationInfo {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  connected: boolean;
-  iconUrl?: string | null;
-  source?: string;
-}
-
-export interface IntegrationListData {
-  integrations: IntegrationInfo[];
-  total_count: number;
-  connected_count: number;
 }
 
 /**

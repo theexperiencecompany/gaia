@@ -1,23 +1,23 @@
 """GitHub tools using Composio custom tool infrastructure."""
 
-from typing import Any, Dict, List
+from typing import Any
 
 from composio import Composio
 
-from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
+from shared.py.wide_events import log
 
 
-def register_github_custom_tools(composio: Composio) -> List[str]:
+def register_github_custom_tools(composio: Composio) -> list[str]:
     """Register GitHub tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="GITHUB")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get GitHub context snapshot: assigned issues, PRs, review requests, notifications.
 
         Zero required parameters. Returns current GitHub state for situational awareness.
@@ -36,7 +36,7 @@ def register_github_custom_tools(composio: Composio) -> List[str]:
         prs = [i for i in issues if i.get("pull_request")]
         actual_issues = [i for i in issues if not i.get("pull_request")]
 
-        review_requests: List[Dict[str, Any]] = []
+        review_requests: list[dict[str, Any]] = []
         try:
             reviews_data = execute_tool(
                 "GITHUB_SEARCH_GITHUB_ISSUES_AND_PULL_REQUESTS",
@@ -47,7 +47,7 @@ def register_github_custom_tools(composio: Composio) -> List[str]:
         except Exception as e:
             log.debug(f"GitHub review requests fetch skipped: {e}")
 
-        notifications: List[Dict[str, Any]] = []
+        notifications: list[dict[str, Any]] = []
         try:
             notif_data = execute_tool(
                 "GITHUB_LIST_NOTIFICATIONS",

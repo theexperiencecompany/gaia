@@ -5,12 +5,12 @@ It streams chat responses from the backend and integrates with ElevenLabs for te
 """
 
 import asyncio
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 import json
 import re
 import sys
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
-from typing import Optional, Any
+from typing import Any
 
 import aiohttp
 from livekit import rtc  # type: ignore[attr-defined]
@@ -28,8 +28,14 @@ from livekit.agents import (
     metrics,
 )
 from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
-from livekit.plugins import deepgram, elevenlabs, noise_cancellation, silero  # type: ignore[attr-defined]
+from livekit.plugins import (  # type: ignore[attr-defined]
+    deepgram,
+    elevenlabs,
+    noise_cancellation,
+    silero,
+)
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
+
 from shared.py.logging import configure_file_logging, get_contextual_logger
 
 # Write structured JSON log files for Promtail to scrape in local dev
@@ -119,17 +125,17 @@ class CustomLLM(LLM):
         """Initialize CustomLLM with backend URL and optional LiveKit room."""
         super().__init__()
         self.base_url = base_url
-        self.agent_token: Optional[str] = None
-        self.conversation_id: Optional[str] = None
-        self.conversation_description: Optional[str] = None
+        self.agent_token: str | None = None
+        self.conversation_id: str | None = None
+        self.conversation_description: str | None = None
         self.request_timeout_s = request_timeout_s
         self.room = room
 
-    def set_agent_token(self, token: Optional[str]):
+    def set_agent_token(self, token: str | None):
         """Set the authentication token for backend requests."""
         self.agent_token = token
 
-    async def set_conversation_id(self, conversation_id: Optional[str]):
+    async def set_conversation_id(self, conversation_id: str | None):
         """Store and broadcast conversation ID to room participants."""
         self.conversation_id = conversation_id
         if self.room and self.room.local_participant:
@@ -140,7 +146,7 @@ class CustomLLM(LLM):
             except Exception as e:
                 logger.error(f"Failed to send conversation ID: {e}")
 
-    async def set_conversation_description(self, description: Optional[str]):
+    async def set_conversation_description(self, description: str | None):
         """Store and broadcast conversation description to room participants."""
         self.conversation_description = description
         if self.room and self.room.local_participant:
@@ -384,9 +390,7 @@ async def entrypoint(ctx: JobContext):
 
     ctx.add_shutdown_callback(log_usage)
 
-    async def _extract_and_set_participant_credentials(
-        md: Optional[str], origin: str, who: str
-    ):
+    async def _extract_and_set_participant_credentials(md: str | None):
         """Extract and set agent token and conversation ID from participant metadata."""
         token, conv_id = _extract_meta_data(md)
         if token:
@@ -400,29 +404,21 @@ async def entrypoint(ctx: JobContext):
     def _on_participant_connected(p: rtc.RemoteParticipant):
         """Handle new participant connection and process their metadata."""
         task = asyncio.create_task(
-            _extract_and_set_participant_credentials(
-                getattr(p, "metadata", None), "participant_connected", p.identity
-            )
+            _extract_and_set_participant_credentials(getattr(p, "metadata", None))
         )
         background_tasks.add(task)
         task.add_done_callback(background_tasks.discard)
 
     @ctx.room.on("participant_metadata_changed")
     def _on_participant_metadata_changed(p: rtc.Participant, old_md: str, new_md: str):
-        task = asyncio.create_task(
-            _extract_and_set_participant_credentials(
-                new_md, "participant_metadata_changed", p.identity
-            )
-        )
+        task = asyncio.create_task(_extract_and_set_participant_credentials(new_md))
         background_tasks.add(task)
         task.add_done_callback(background_tasks.discard)
 
     await ctx.connect()
     for p in ctx.room.remote_participants.values():
         logger.info("participant already present, processing metadata")
-        await _extract_and_set_participant_credentials(
-            getattr(p, "metadata", None), "existing_participant", p.identity
-        )
+        await _extract_and_set_participant_credentials(getattr(p, "metadata", None))
 
     await session.start(
         agent=Agent(instructions="Avoid markdowns"),

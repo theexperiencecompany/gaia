@@ -4,13 +4,14 @@ import hashlib
 import inspect
 from typing import Any
 
+from langgraph.store.base import PutOp
+
 from app.agents.core.subagents.registry import all_subagents
 from app.agents.tools.core.registry import get_tool_registry
-from shared.py.wide_events import log
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.chromadb import ChromaClient
 from app.db.redis import delete_cache, get_cache, set_cache
-from langgraph.store.base import PutOp
+from shared.py.wide_events import log
 
 from .chroma_store import ChromaStore
 
@@ -132,14 +133,8 @@ async def _get_existing_tools_from_chroma(
             get_kwargs["where"] = where_filter
 
         existing_data = await collection.get(**get_kwargs)
-        if (
-            existing_data
-            and existing_data.get("ids")
-            and existing_data.get("metadatas")
-        ):
-            for doc_id, metadata in zip(
-                existing_data["ids"], existing_data["metadatas"] or []
-            ):
+        if existing_data and existing_data.get("ids") and existing_data.get("metadatas"):
+            for doc_id, metadata in zip(existing_data["ids"], existing_data["metadatas"] or []):
                 if metadata and "::" in doc_id:
                     parts = doc_id.split("::")
                     namespace = parts[0] if len(parts) > 1 else "default"
@@ -205,9 +200,7 @@ def _build_put_operations(
     # Add upsert operations
     for composite_key, tool_data in tools_to_upsert:
         # Extract actual tool name from composite key (namespace::tool_name)
-        tool_name = (
-            composite_key.split("::", 1)[-1] if "::" in composite_key else composite_key
-        )
+        tool_name = composite_key.split("::", 1)[-1] if "::" in composite_key else composite_key
 
         # Handle regular tools vs subagent tools
         if "tool" in tool_data:
@@ -230,9 +223,7 @@ def _build_put_operations(
 
     # Add delete operations
     for composite_key, namespace in tools_to_delete:
-        tool_name = (
-            composite_key.split("::", 1)[-1] if "::" in composite_key else composite_key
-        )
+        tool_name = composite_key.split("::", 1)[-1] if "::" in composite_key else composite_key
         put_ops.append(
             PutOp(
                 namespace=(namespace,),
@@ -261,8 +252,7 @@ async def _execute_batch_operations(store, put_ops: list[PutOp], batch_size: int
         batch = put_ops[i : i + batch_size]
         await store.abatch(batch)
         log.info(
-            f"Processed batch {i // batch_size + 1}/"
-            f"{(total_ops + batch_size - 1) // batch_size}"
+            f"Processed batch {i // batch_size + 1}/{(total_ops + batch_size - 1) // batch_size}"
         )
 
     log.info(f"Successfully updated {total_ops} tools in ChromaDB")
@@ -280,14 +270,42 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
     Args:
         tools_with_space: List of (tool, space_name) tuples to index
     """
+    input_count = len(tools_with_space)
+    namespace = tools_with_space[0][1] if tools_with_space else None
+
+    log.set(
+        chroma_index={
+            "phase": "entry",
+            "namespace": namespace,
+            "input_tool_count": input_count,
+        }
+    )
+    log.info(f"index_tools_to_store called: namespace='{namespace}' input_tools={input_count}")
 
     if not tools_with_space:
+        log.warning(
+            "index_tools_to_store called with EMPTY tools_with_space — caller "
+            "passed [], no indexing will occur. Verify category.tools is populated."
+        )
         return
 
-    namespace = tools_with_space[0][1]
+    # Function assumes a homogeneous namespace (used as the cache key and for
+    # diff scoping). Mixed namespaces would silently corrupt indexing for all
+    # but the first one. Reject and surface the caller bug.
+    distinct_namespaces = {space for _, space in tools_with_space}
+    if len(distinct_namespaces) > 1:
+        log.error(
+            f"index_tools_to_store: mixed namespaces in single call "
+            f"({sorted(distinct_namespaces)}); aborting to prevent partial indexing. "
+            f"Caller must batch per-namespace."
+        )
+        return
 
     if not namespace or len(namespace) > 512 or "::" in namespace:
-        log.error(f"Invalid namespace: '{namespace}' (empty, too long, or contains ::)")
+        log.error(
+            f"index_tools_to_store: invalid namespace '{namespace}' "
+            f"(empty/too-long/contains-::), aborting"
+        )
         return
 
     # Compute hash of incoming tools for cache check
@@ -295,18 +313,25 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
         f"{t.name}:{getattr(t, 'description', '')[:200]}" for t, _ in tools_with_space
     )
     tools_hash = hashlib.sha256(tools_signature.encode()).hexdigest()[:16]
+    log.set(chroma_index={"tools_hash": tools_hash})
 
     # Check Redis cache BEFORE expensive ChromaDB operations
     # Single source of truth for cache keys: always namespace-based
     cache_key = f"chroma:indexed:{namespace}"
     cached_hash = await get_cache(cache_key)
     if cached_hash == tools_hash:
-        log.debug(f"Namespace '{namespace}' unchanged (Redis cache hit)")
+        log.info(
+            f"index_tools_to_store: namespace '{namespace}' Redis cache HIT "
+            f"(hash={tools_hash}), skipping reindex of {input_count} tools"
+        )
         return
 
     store = await providers.aget("chroma_tools_store")
     if store is None:
-        log.warning("ChromaDB store not available, skipping tool indexing")
+        log.warning(
+            f"index_tools_to_store: chroma_tools_store provider returned None "
+            f"for namespace '{namespace}', skipping {input_count} tools"
+        )
         return
 
     collection = await store._get_collection()
@@ -320,20 +345,31 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
             "namespace": space,
             "tool": tool,
         }
+    log.info(
+        f"index_tools_to_store: built current_tools dict for '{namespace}': "
+        f"{len(current_tools)} unique composite keys from {input_count} inputs"
+    )
 
     existing_tools = await _get_existing_tools_from_chroma(collection, {namespace})
+    log.info(
+        f"index_tools_to_store: fetched {len(existing_tools)} existing docs "
+        f"for namespace '{namespace}'"
+    )
 
     tools_to_upsert, tools_to_delete = _compute_tool_diff(current_tools, existing_tools)
 
     if not tools_to_upsert and not tools_to_delete:
-        log.info(f"Namespace '{namespace}' is up-to-date, no changes needed")
+        log.info(
+            f"index_tools_to_store: namespace '{namespace}' is up-to-date "
+            f"({len(current_tools)} tools, no diff)"
+        )
         # Cache the hash even if no changes (first time seeing this namespace)
         await set_cache(cache_key, tools_hash, ttl=86400)
         return
 
     log.info(
-        f"Updating namespace '{namespace}': {len(tools_to_upsert)} to upsert, "
-        f"{len(tools_to_delete)} to delete"
+        f"index_tools_to_store: Updating namespace '{namespace}': "
+        f"{len(tools_to_upsert)} to upsert, {len(tools_to_delete)} to delete"
     )
 
     put_ops = _build_put_operations(tools_to_upsert, tools_to_delete)
@@ -341,6 +377,7 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
 
     # Cache the hash after successful indexing (24 hour TTL)
     await set_cache(cache_key, tools_hash, ttl=86400)
+    log.info(f"index_tools_to_store: completed namespace '{namespace}', cache key set")
 
 
 async def delete_tools_by_namespace(namespace: str) -> int:
@@ -418,15 +455,11 @@ async def initialize_chroma_tools_store():
 
     current_tools = await _get_current_tools_with_hashes(tool_registry)
 
-    managed_namespaces = {
-        tool_data["namespace"] for tool_data in current_tools.values()
-    }
+    managed_namespaces = {tool_data["namespace"] for tool_data in current_tools.values()}
     log.set(db={"operation": "init_tools_store", "collection": "langgraph_tools_store"})
     log.info(f"Managing namespaces at init: {managed_namespaces}")
 
-    existing_tools = await _get_existing_tools_from_chroma(
-        collection, managed_namespaces
-    )
+    existing_tools = await _get_existing_tools_from_chroma(collection, managed_namespaces)
 
     tools_to_upsert, tools_to_delete = _compute_tool_diff(current_tools, existing_tools)
 

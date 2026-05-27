@@ -1,15 +1,15 @@
 import io
-from typing import List, cast
+from typing import cast
 from urllib.parse import urlencode
 
 import cloudinary
 import cloudinary.uploader
-import httpx
 from fastapi import HTTPException
+import httpx
 
-from shared.py.wide_events import log
 from app.config.settings import settings
 from app.config.token_repository import token_repository
+from shared.py.wide_events import log
 
 http_async_client = httpx.AsyncClient()
 
@@ -17,7 +17,7 @@ http_async_client = httpx.AsyncClient()
 async def build_google_oauth_url(
     user_email: str,
     state_token: str,
-    integration_scopes: List[str],
+    integration_scopes: list[str],
     user_id: str | None = None,
 ) -> str:
     log.set(
@@ -42,12 +42,10 @@ async def build_google_oauth_url(
     base_scopes = ["openid", "profile", "email"]
 
     # Get existing scopes from user's current token
-    existing_scopes: List[str] = []
+    existing_scopes: list[str] = []
     if user_id:
         try:
-            token = await token_repository.get_token(
-                str(user_id), "google", renew_if_expired=False
-            )
+            token = await token_repository.get_token(str(user_id), "google", renew_if_expired=False)
             if token:
                 existing_scopes = (token.get("scope") or "").split()
         except Exception as e:
@@ -95,14 +93,12 @@ async def upload_user_picture(image_bytes: bytes, public_id: str) -> str:
         image_url = upload_result.get("secure_url")
         if not image_url:
             log.error("Missing secure_url in Cloudinary upload response")
-            raise HTTPException(
-                status_code=500, detail="Invalid response from image service"
-            )
+            raise HTTPException(status_code=500, detail="Invalid response from image service")
 
         log.info(f"Image uploaded successfully. URL: {image_url}")
         return image_url
     except Exception as e:
-        log.error(f"Failed to upload image to Cloudinary: {str(e)}", exc_info=True)
+        log.error(f"Failed to upload image to Cloudinary: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Image upload failed")
 
 
@@ -152,5 +148,5 @@ async def get_tokens_by_user_id(user_id: str) -> tuple[str, str, bool]:
         return new_access_token, new_refresh_token, True
 
     except Exception as e:
-        log.error(f"Error getting tokens for user {user_id}: {str(e)}")
+        log.error(f"Error getting tokens for user {user_id}: {e!s}")
         return "", "", False

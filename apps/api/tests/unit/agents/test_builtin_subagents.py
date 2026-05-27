@@ -28,15 +28,12 @@ class TestBuiltinSubagentsTuple:
         # value documented in the Subagent type).
         for entry in BUILTIN_SUBAGENTS:
             assert entry.managed_by == "internal", (
-                f"Builtin {entry.id!r} has managed_by={entry.managed_by!r}, "
-                "expected 'internal'"
+                f"Builtin {entry.id!r} has managed_by={entry.managed_by!r}, expected 'internal'"
             )
 
     def test_all_have_subagent_enabled(self) -> None:
         for entry in BUILTIN_SUBAGENTS:
-            assert entry.config.has_subagent is True, (
-                f"Builtin {entry.id!r} has has_subagent=False"
-            )
+            assert entry.config.has_subagent is True, f"Builtin {entry.id!r} has has_subagent=False"
 
     def test_ids_are_unique(self) -> None:
         ids = [entry.id for entry in BUILTIN_SUBAGENTS]
@@ -59,8 +56,7 @@ class TestBuiltinSubagentsTuple:
         oauth_providers = {integ.provider for integ in OAUTH_INTEGRATIONS}
         overlap = builtin_providers & oauth_providers
         assert not overlap, (
-            f"Builtin providers collide with OAUTH_INTEGRATIONS providers: "
-            f"{sorted(overlap)}"
+            f"Builtin providers collide with OAUTH_INTEGRATIONS providers: {sorted(overlap)}"
         )
 
     def test_ids_do_not_collide_with_oauth(self) -> None:
@@ -69,9 +65,7 @@ class TestBuiltinSubagentsTuple:
         builtin_ids = {entry.id for entry in BUILTIN_SUBAGENTS}
         oauth_ids = {integ.id for integ in OAUTH_INTEGRATIONS}
         overlap = builtin_ids & oauth_ids
-        assert not overlap, (
-            f"Builtin ids collide with OAUTH_INTEGRATIONS ids: {sorted(overlap)}"
-        )
+        assert not overlap, f"Builtin ids collide with OAUTH_INTEGRATIONS ids: {sorted(overlap)}"
 
 
 @pytest.mark.unit
@@ -80,12 +74,8 @@ class TestGaiaBuiltin:
 
     @pytest.fixture
     def gaia(self) -> Subagent:
-        match = next(
-            (s for s in BUILTIN_SUBAGENTS if s.id == "gaia_knowledge_guide"), None
-        )
-        assert match is not None, (
-            "GAIA Knowledge Guide builtin missing from BUILTIN_SUBAGENTS"
-        )
+        match = next((s for s in BUILTIN_SUBAGENTS if s.id == "gaia_knowledge_guide"), None)
+        assert match is not None, "GAIA Knowledge Guide builtin missing from BUILTIN_SUBAGENTS"
         return match
 
     def test_gaia_id_and_provider(self, gaia: Subagent) -> None:

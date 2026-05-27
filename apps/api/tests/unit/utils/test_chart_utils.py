@@ -2,7 +2,7 @@
 
 import base64
 from types import SimpleNamespace
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,7 +12,6 @@ from app.utils.chart_utils import (
     upload_chart_to_cloudinary,
     validate_chart_data,
 )
-
 
 # ---------------------------------------------------------------------------
 # upload_chart_to_cloudinary
@@ -25,9 +24,7 @@ class TestUploadChartToCloudinary:
         chart_bytes = b"\x89PNG\r\n\x1a\n"
         mock_result = {"secure_url": "https://res.cloudinary.com/test/chart.png"}
 
-        with patch(
-            "app.utils.chart_utils.cloudinary.uploader.upload", return_value=mock_result
-        ):
+        with patch("app.utils.chart_utils.cloudinary.uploader.upload", return_value=mock_result):
             url = await upload_chart_to_cloudinary(
                 chart_bytes, chart_title="revenue", user_id="user123"
             )
@@ -54,9 +51,7 @@ class TestUploadChartToCloudinary:
         with patch(
             "app.utils.chart_utils.cloudinary.uploader.upload", return_value=mock_result
         ) as mock_upload:
-            await upload_chart_to_cloudinary(
-                chart_bytes, chart_title="test", user_id="abc123"
-            )
+            await upload_chart_to_cloudinary(chart_bytes, chart_title="test", user_id="abc123")
             public_id = mock_upload.call_args.kwargs["public_id"]
             assert public_id.startswith("charts/abc123/")
 
@@ -87,9 +82,7 @@ class TestUploadChartToCloudinary:
         chart_bytes = b"data"
         mock_result = {"url": "https://example.com/img.png"}  # no secure_url
 
-        with patch(
-            "app.utils.chart_utils.cloudinary.uploader.upload", return_value=mock_result
-        ):
+        with patch("app.utils.chart_utils.cloudinary.uploader.upload", return_value=mock_result):
             result = await upload_chart_to_cloudinary(chart_bytes, chart_title="test")
             assert result is None
 
@@ -112,9 +105,7 @@ class TestUploadChartToCloudinary:
         with patch(
             "app.utils.chart_utils.cloudinary.uploader.upload", return_value=mock_result
         ) as mock_upload:
-            await upload_chart_to_cloudinary(
-                chart_bytes, chart_title="Revenue $$ Chart!!!"
-            )
+            await upload_chart_to_cloudinary(chart_bytes, chart_title="Revenue $$ Chart!!!")
             public_id = mock_upload.call_args.kwargs["public_id"]
             # "$" and "!" should be stripped; spaces become underscores
             assert "revenue" in public_id
@@ -363,9 +354,7 @@ class TestProcessChartResults:
             return_value="https://cdn.example.com/c.png",
         ) as mock_upload:
             await process_chart_results([result], user_id="test_user")
-            mock_upload.assert_called_once_with(
-                base64.b64decode(png_data), "chart_0", "test_user"
-            )
+            mock_upload.assert_called_once_with(base64.b64decode(png_data), "chart_0", "test_user")
 
     async def test_default_user_id(self):
         """Default user_id is 'anonymous'."""
@@ -389,7 +378,7 @@ class TestProcessChartResults:
 @pytest.mark.unit
 class TestValidateChartData:
     def test_valid_charts(self):
-        charts: List[Dict[str, Any]] = [
+        charts: list[dict[str, Any]] = [
             {
                 "id": "chart_0",
                 "url": "https://example.com/chart.png",
@@ -409,19 +398,17 @@ class TestValidateChartData:
         assert result[0]["description"] == "Shows revenue"
 
     def test_missing_id(self):
-        charts: List[Dict[str, Any]] = [
-            {"url": "https://example.com/chart.png", "text": "Chart"}
-        ]
+        charts: list[dict[str, Any]] = [{"url": "https://example.com/chart.png", "text": "Chart"}]
         result = validate_chart_data(charts)
         assert len(result) == 0
 
     def test_missing_url(self):
-        charts: List[Dict[str, Any]] = [{"id": "chart_0", "text": "Chart"}]
+        charts: list[dict[str, Any]] = [{"id": "chart_0", "text": "Chart"}]
         result = validate_chart_data(charts)
         assert len(result) == 0
 
     def test_missing_both_id_and_url(self):
-        charts: List[Dict[str, Any]] = [{"text": "Chart", "type": "static"}]
+        charts: list[dict[str, Any]] = [{"text": "Chart", "type": "static"}]
         result = validate_chart_data(charts)
         assert len(result) == 0
 
@@ -443,9 +430,7 @@ class TestValidateChartData:
         assert result[1]["id"] == "c2"
 
     def test_defaults_for_optional_fields(self):
-        charts: List[Dict[str, Any]] = [
-            {"id": "c1", "url": "https://example.com/c.png"}
-        ]
+        charts: list[dict[str, Any]] = [{"id": "c1", "url": "https://example.com/c.png"}]
         result = validate_chart_data(charts)
         assert len(result) == 1
         assert result[0]["text"] == "Chart"
@@ -454,7 +439,7 @@ class TestValidateChartData:
         assert result[0]["description"] == ""
 
     def test_whitespace_stripping(self):
-        charts: List[Dict[str, Any]] = [
+        charts: list[dict[str, Any]] = [
             {
                 "id": "  c1  ",
                 "url": "  https://example.com/c.png  ",
@@ -478,7 +463,7 @@ class TestValidateChartData:
             "title": "Test",
             "elements": [{"label": "A", "value": 1}],
         }
-        charts: List[Dict[str, Any]] = [
+        charts: list[dict[str, Any]] = [
             {
                 "id": "c1",
                 "url": "",
@@ -492,7 +477,7 @@ class TestValidateChartData:
         assert result[0]["chart_data"] == chart_data
 
     def test_without_chart_data_not_added(self):
-        charts: List[Dict[str, Any]] = [
+        charts: list[dict[str, Any]] = [
             {"id": "c1", "url": "https://example.com/c.png", "type": "static"}
         ]
         result = validate_chart_data(charts)
@@ -504,7 +489,7 @@ class TestValidateChartData:
 
     def test_values_cast_to_string(self):
         """Non-string id/url values are cast via str()."""
-        charts: List[Dict[str, Any]] = [
+        charts: list[dict[str, Any]] = [
             {"id": 123, "url": 456, "text": 789, "type": True, "title": 0}
         ]
         result = validate_chart_data(charts)
@@ -527,7 +512,7 @@ class TestValidateChartData:
         ],
         ids=["two_charts", "three_charts"],
     )
-    def test_multiple_valid_charts(self, charts_input: List[Dict[str, Any]]):
+    def test_multiple_valid_charts(self, charts_input: list[dict[str, Any]]):
         result = validate_chart_data(charts_input)
         assert len(result) == len(charts_input)
         for i, chart in enumerate(result):
@@ -536,13 +521,13 @@ class TestValidateChartData:
     def test_chart_data_not_deep_copied(self):
         """chart_data is passed by reference, not deep copied."""
         inner = {"type": "bar", "elements": []}
-        charts: List[Dict[str, Any]] = [{"id": "c1", "url": "u1", "chart_data": inner}]
+        charts: list[dict[str, Any]] = [{"id": "c1", "url": "u1", "chart_data": inner}]
         result = validate_chart_data(charts)
         assert result[0]["chart_data"] is inner
 
     def test_interactive_chart_empty_url_accepted(self):
         """Interactive charts often have empty URL — should still pass validation."""
-        charts: List[Dict[str, Any]] = [
+        charts: list[dict[str, Any]] = [
             {"id": "ic1", "url": "", "type": "interactive", "chart_data": {}}
         ]
         result = validate_chart_data(charts)

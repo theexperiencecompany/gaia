@@ -1,7 +1,7 @@
-from typing import Any, Dict, List, Set
+from typing import Any
 
-import pendulum
 from fastapi import HTTPException
+import pendulum
 
 from shared.py.wide_events import log
 
@@ -48,7 +48,7 @@ def fetch_calendar_color(calendar_id: str, user_id: str) -> tuple[str, str]:
     return "Calendar", "#00bbff"
 
 
-def extract_event_dates(calendar_options: List[Dict[str, Any]]) -> Set[str]:
+def extract_event_dates(calendar_options: list[dict[str, Any]]) -> set[str]:
     """
     Extract unique dates from calendar options.
 
@@ -71,9 +71,9 @@ def extract_event_dates(calendar_options: List[Dict[str, Any]]) -> Set[str]:
 
 
 def fetch_same_day_events(
-    event_dates: Set[str],
+    event_dates: set[str],
     user_id: str,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Fetch all events for the given dates.
 
@@ -87,7 +87,7 @@ def fetch_same_day_events(
     """
     from app.services.calendar_service import get_calendar_events
 
-    all_events: List[Dict[str, Any]] = []
+    all_events: list[dict[str, Any]] = []
 
     for event_date in event_dates:
         try:
@@ -103,6 +103,6 @@ def fetch_same_day_events(
             if events_response:
                 all_events.extend(events_response.get("events", []))
         except Exception as e:
-            log.warning(f"Error fetching events for {event_date}: {str(e)}")
+            log.warning(f"Error fetching events for {event_date}: {e!s}")
 
     return all_events

@@ -197,12 +197,8 @@ class TestGetAllIntegrations:
 
         mock_coll.find.return_value = _make_async_cursor([])
 
-        gmail = _make_oauth_integration(
-            "gmail", "Gmail", is_featured=True, display_priority=5
-        )
-        github = _make_oauth_integration(
-            "github", "GitHub", is_featured=True, display_priority=10
-        )
+        gmail = _make_oauth_integration("gmail", "Gmail", is_featured=True, display_priority=5)
+        github = _make_oauth_integration("github", "GitHub", is_featured=True, display_priority=10)
         mock_oauth_list.__iter__ = MagicMock(return_value=iter([gmail, github]))
 
         from app.services.integrations.marketplace import get_all_integrations
@@ -326,9 +322,7 @@ class TestGetIntegrationDetails:
         # Patch the response to have created_by
         from app.services.integrations.marketplace import get_integration_details
 
-        with patch(
-            f"{MODULE}.IntegrationResponse.from_oauth_integration"
-        ) as mock_from_oauth:
+        with patch(f"{MODULE}.IntegrationResponse.from_oauth_integration") as mock_from_oauth:
             resp = MagicMock()
             resp.created_by = "507f1f77bcf86cd799439011"  # pragma: allowlist secret
             resp.tools = []

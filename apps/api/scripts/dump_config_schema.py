@@ -5,7 +5,7 @@ import sys
 
 
 def extract_settings_validator(file_path):
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         tree = ast.parse(f.read())
 
     groups = []
@@ -41,14 +41,10 @@ def extract_settings_validator(file_path):
                         elif isinstance(value, ast.Str):
                             group["affectedFeatures"] = value.s
                     elif key == "required_in_prod":
-                        if isinstance(value, ast.Constant):
-                            group["requiredInProd"] = value.value
-                        elif isinstance(value, ast.NameConstant):  # Python 3.7
+                        if isinstance(value, ast.Constant) or isinstance(value, ast.NameConstant):
                             group["requiredInProd"] = value.value
                     elif key == "all_required":
-                        if isinstance(value, ast.Constant):
-                            group["allRequired"] = value.value
-                        elif isinstance(value, ast.NameConstant):
+                        if isinstance(value, ast.Constant) or isinstance(value, ast.NameConstant):
                             group["allRequired"] = value.value
                     elif key == "docs_url":
                         if isinstance(value, ast.Constant):
@@ -80,7 +76,7 @@ def extract_settings_validator(file_path):
 
 
 def extract_settings(file_path):
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         tree = ast.parse(f.read())
 
     required_in_dev = set()
@@ -146,9 +142,8 @@ def extract_settings(file_path):
                                 # Assume required unless overridden in Dev
                                 if not (is_optional or has_default):
                                     required_in_dev.add(var_name)
-                                else:
-                                    if isinstance(default_val, str):
-                                        defaults[var_name] = default_val
+                                elif isinstance(default_val, str):
+                                    defaults[var_name] = default_val
 
     SettingsVisitor().visit(tree)
     return required_in_dev, defaults

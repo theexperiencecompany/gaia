@@ -28,3 +28,8 @@ packages/cli/gaia
 .claude/worktrees
 .conductor
 
+# Baked Grafana image — has a Dockerfile but is not an Nx project. Without this,
+# the @nx/docker plugin infers an unnamed project and the whole graph fails to
+# build ("no name provided"), breaking every nx command.
+infra/docker/observability/grafana/Dockerfile
+

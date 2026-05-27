@@ -13,17 +13,18 @@ Add env vars
 4) Read values via `from app.config.settings import settings`.
 """
 
+from functools import lru_cache
 import os
 import time
-from functools import lru_cache
-from typing import Literal, Optional
+from typing import Literal
 
-from shared.py.wide_events import log
-from app.config.secrets import inject_infisical_secrets
-from app.config.settings_validator import settings_validator
 from dotenv import load_dotenv
 from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.config.secrets import inject_infisical_secrets
+from app.config.settings_validator import settings_validator
+from shared.py.wide_events import log
 
 load_dotenv()
 
@@ -48,7 +49,7 @@ class BaseAppSettings(BaseSettings):
         try:
             return cls(**kwargs)
         except Exception as e:
-            log.warning(f"Error creating settings: {str(e)}")
+            log.warning(f"Error creating settings: {e!s}")
             # Create a minimal instance with empty strings for required fields,
             # but skip fields that already have env vars set or have defaults.
             fields = cls.model_fields
@@ -95,7 +96,7 @@ class CommonSettings(BaseAppSettings):
     # ----------------------------------------------
     # Secret token Prometheus sends as "Authorization: Bearer <token>" when
     # scraping /metrics. Generate with: openssl rand -hex 32
-    METRICS_TOKEN: Optional[str] = None
+    METRICS_TOKEN: str | None = None
 
     # ----------------------------------------------
     # Profiling & Performance Monitoring
@@ -110,7 +111,7 @@ class CommonSettings(BaseAppSettings):
     # - No scopes needed (just public repo read)
     # - Gives 5,000 API requests/hour vs 60/hour without token
     # - Used for discovering and installing skills from GitHub
-    GITHUB_TOKEN: Optional[str] = None
+    GITHUB_TOKEN: str | None = None
 
     # ----------------------------------------------
     # Computed Properties
@@ -272,9 +273,9 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     # Opik Evaluation Config
     # ----------------------------------------------
-    EVAL_USER_ID: Optional[str] = None
-    EVAL_USER_EMAIL: Optional[str] = None
-    EVAL_USER_NAME: Optional[str] = None
+    EVAL_USER_ID: str | None = None
+    EVAL_USER_EMAIL: str | None = None
+    EVAL_USER_NAME: str | None = None
 
     # ----------------------------------------------
     # Debug Config
@@ -284,34 +285,32 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     # Bot Configuration
     # ----------------------------------------------
-    GAIA_BOT_API_KEY: Optional[str] = None
-    DISCORD_BOT_TOKEN: Optional[str] = None
-    DISCORD_CLIENT_ID: Optional[str] = None
-    SLACK_BOT_TOKEN: Optional[str] = None
-    SLACK_SIGNING_SECRET: Optional[str] = None
-    SLACK_APP_TOKEN: Optional[str] = None
-    TELEGRAM_BOT_TOKEN: Optional[str] = None
-    KAPSO_API_KEY: Optional[str] = None
-    KAPSO_PHONE_NUMBER_ID: Optional[str] = None
-    WHATSAPP_PHONE_NUMBER: Optional[str] = (
+    GAIA_BOT_API_KEY: str | None = None
+    DISCORD_BOT_TOKEN: str | None = None
+    DISCORD_CLIENT_ID: str | None = None
+    SLACK_BOT_TOKEN: str | None = None
+    SLACK_SIGNING_SECRET: str | None = None
+    SLACK_APP_TOKEN: str | None = None
+    TELEGRAM_BOT_TOKEN: str | None = None
+    KAPSO_API_KEY: str | None = None
+    KAPSO_PHONE_NUMBER_ID: str | None = None
+    WHATSAPP_PHONE_NUMBER: str | None = (
         None  # E.164 without +, e.g. "15551234567" — used for wa.me links
     )
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)
     # ----------------------------------------------
-    DISCORD_OAUTH_CLIENT_ID: Optional[str] = None
-    DISCORD_OAUTH_CLIENT_SECRET: Optional[str] = None
-    SLACK_OAUTH_CLIENT_ID: Optional[str] = None
-    SLACK_OAUTH_CLIENT_SECRET: Optional[str] = None
-    TELEGRAM_BOT_USERNAME: Optional[str] = "heygaia_bot"
+    DISCORD_OAUTH_CLIENT_ID: str | None = None
+    DISCORD_OAUTH_CLIENT_SECRET: str | None = None
+    SLACK_OAUTH_CLIENT_ID: str | None = None
+    SLACK_OAUTH_CLIENT_SECRET: str | None = None
+    TELEGRAM_BOT_USERNAME: str | None = "heygaia_bot"
 
     # ----------------------------------------------
     # Bot Session Token Configuration
     # ----------------------------------------------
-    BOT_SESSION_TOKEN_SECRET: (
-        str  # Required: min 32 chars - DO NOT reuse GAIA_BOT_API_KEY
-    )
+    BOT_SESSION_TOKEN_SECRET: str  # Required: min 32 chars - DO NOT reuse GAIA_BOT_API_KEY
     BOT_SESSION_TOKEN_EXPIRY_MINUTES: int = 15
 
     model_config = SettingsConfigDict(
@@ -326,16 +325,16 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     # Database & Message Queue Connections
     # ----------------------------------------------
-    CHROMADB_HOST: Optional[str] = None
-    CHROMADB_PORT: Optional[int] = None
-    POSTGRES_URL: Optional[str] = None
-    RABBITMQ_URL: Optional[str] = None
+    CHROMADB_HOST: str | None = None
+    CHROMADB_PORT: int | None = None
+    POSTGRES_URL: str | None = None
+    RABBITMQ_URL: str | None = None
 
     # ----------------------------------------------
     # Authentication & OAuth
     # ----------------------------------------------
-    GOOGLE_CLIENT_ID: Optional[str] = None
-    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_CLIENT_ID: str | None = None
+    GOOGLE_CLIENT_SECRET: str | None = None
     ENABLE_PUBSUB_JWT_VERIFICATION: bool = False
     GOOGLE_USERINFO_URL: str = "https://www.googleapis.com/oauth2/v2/userinfo"
     GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
@@ -344,95 +343,93 @@ class DevelopmentSettings(CommonSettings):
     # External API Integration Keys
     # ----------------------------------------------
     # Search & Data Services
-    TAVILY_API_KEY: Optional[str] = None
-    LLAMA_INDEX_KEY: Optional[str] = None
+    TAVILY_API_KEY: str | None = None
+    LLAMA_INDEX_KEY: str | None = None
 
     # AI & Machine Learning
-    OPENAI_API_KEY: Optional[str] = None
-    GOOGLE_API_KEY: Optional[str] = None
-    OPENROUTER_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: str | None = None
+    GOOGLE_API_KEY: str | None = None
+    OPENROUTER_API_KEY: str | None = None
 
     # Weather Services
-    OPENWEATHER_API_KEY: Optional[str] = None
+    OPENWEATHER_API_KEY: str | None = None
 
     # Email & Communication
-    RESEND_API_KEY: Optional[str] = None
-    RESEND_AUDIENCE_ID: Optional[str] = None
+    RESEND_API_KEY: str | None = None
+    RESEND_AUDIENCE_ID: str | None = None
 
     # Media Storage
-    CLOUDINARY_CLOUD_NAME: Optional[str] = None
-    CLOUDINARY_API_KEY: Optional[str] = None
-    CLOUDINARY_API_SECRET: Optional[str] = None
+    CLOUDINARY_CLOUD_NAME: str | None = None
+    CLOUDINARY_API_KEY: str | None = None
+    CLOUDINARY_API_SECRET: str | None = None
 
     # External Service Integration
-    COMPOSIO_KEY: Optional[str] = None
-    FIRECRAWL_API_KEY: Optional[str] = None
+    COMPOSIO_KEY: str | None = None
+    FIRECRAWL_API_KEY: str | None = None
 
     # ----------------------------------------------
     # Webhook Secrets & Security
     # ----------------------------------------------
-    COMPOSIO_WEBHOOK_SECRET: Optional[str] = None
-    DODO_WEBHOOK_PAYMENTS_SECRET: Optional[str] = None
+    COMPOSIO_WEBHOOK_SECRET: str | None = None
+    DODO_WEBHOOK_PAYMENTS_SECRET: str | None = None
 
     # Voice Agent Configuration
-    LIVEKIT_URL: Optional[str] = None
-    LIVEKIT_API_KEY: Optional[str] = None
-    LIVEKIT_API_SECRET: Optional[str] = None
-    AGENT_SECRET: Optional[str] = None
-    DEEPGRAM_API_KEY: Optional[str] = None
-    ELEVENLABS_API_KEY: Optional[str] = None
-    ELEVENLABS_TTS_MODEL: Optional[str] = None
-    GAIA_BACKEND_URL: Optional[str] = "http://host.docker.internal:8000"
-    ELEVENLABS_VOICE_ID: Optional[str] = None
+    LIVEKIT_URL: str | None = None
+    LIVEKIT_API_KEY: str | None = None
+    LIVEKIT_API_SECRET: str | None = None
+    AGENT_SECRET: str | None = None
+    DEEPGRAM_API_KEY: str | None = None
+    ELEVENLABS_API_KEY: str | None = None
+    ELEVENLABS_TTS_MODEL: str | None = None
+    GAIA_BACKEND_URL: str | None = "http://host.docker.internal:8000"
+    ELEVENLABS_VOICE_ID: str | None = None
 
     # ----------------------------------------------
     # Content Management
     # ----------------------------------------------
-    BLOG_BEARER_TOKEN: Optional[str] = (
-        None  # Bearer token for blog management operations
-    )
+    BLOG_BEARER_TOKEN: str | None = None  # Bearer token for blog management operations
 
     # ----------------------------------------------
     # Memory & Storage Configuration
     # ----------------------------------------------
-    MEM0_API_KEY: Optional[str] = None
-    MEM0_ORG_ID: Optional[str] = None
-    MEM0_PROJECT_ID: Optional[str] = None
+    MEM0_API_KEY: str | None = None
+    MEM0_ORG_ID: str | None = None
+    MEM0_PROJECT_ID: str | None = None
 
     # ----------------------------------------------
     # Code Execution Environment
     # ----------------------------------------------
-    E2B_API_KEY: Optional[str] = None
+    E2B_API_KEY: str | None = None
 
     # ----------------------------------------------
     # Payment Processing
     # ----------------------------------------------
-    DODO_PAYMENTS_API_KEY: Optional[str] = None
+    DODO_PAYMENTS_API_KEY: str | None = None
 
     # ----------------------------------------------
     # Monitoring & Analytics
     # ----------------------------------------------
-    SENTRY_DSN: Optional[str] = None
-    POSTHOG_API_KEY: Optional[str] = None
-    OPIK_API_KEY: Optional[str] = None
-    OPIK_WORKSPACE: Optional[str] = None
+    SENTRY_DSN: str | None = None
+    POSTHOG_API_KEY: str | None = None
+    OPIK_API_KEY: str | None = None
+    OPIK_WORKSPACE: str | None = None
 
     # ----------------------------------------------
     # MCP OAuth Credentials
     # ----------------------------------------------
-    MCP_ENCRYPTION_KEY: Optional[str] = None
-    VERCEL_MCP_CLIENT_ID: Optional[str] = None
-    NOTION_MCP_CLIENT_ID: Optional[str] = None
-    NOTION_MCP_CLIENT_SECRET: Optional[str] = None
-    FIGMA_MCP_CLIENT_ID: Optional[str] = None
-    FIGMA_MCP_CLIENT_SECRET: Optional[str] = None
+    MCP_ENCRYPTION_KEY: str | None = None
+    VERCEL_MCP_CLIENT_ID: str | None = None
+    NOTION_MCP_CLIENT_ID: str | None = None
+    NOTION_MCP_CLIENT_SECRET: str | None = None
+    FIGMA_MCP_CLIENT_ID: str | None = None
+    FIGMA_MCP_CLIENT_SECRET: str | None = None
 
     # ----------------------------------------------
     # Opik Evaluation Config
     # ----------------------------------------------
-    EVAL_USER_ID: Optional[str] = None
-    EVAL_USER_EMAIL: Optional[str] = None
-    EVAL_USER_NAME: Optional[str] = None
+    EVAL_USER_ID: str | None = None
+    EVAL_USER_EMAIL: str | None = None
+    EVAL_USER_NAME: str | None = None
 
     # ----------------------------------------------
     # Environment Configuration
@@ -450,32 +447,32 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     # Bot Configuration
     # ----------------------------------------------
-    GAIA_BOT_API_KEY: Optional[str] = None
-    DISCORD_BOT_TOKEN: Optional[str] = None
-    DISCORD_CLIENT_ID: Optional[str] = None
-    SLACK_BOT_TOKEN: Optional[str] = None
-    SLACK_SIGNING_SECRET: Optional[str] = None
-    SLACK_APP_TOKEN: Optional[str] = None
-    TELEGRAM_BOT_TOKEN: Optional[str] = None
-    KAPSO_API_KEY: Optional[str] = None
-    KAPSO_PHONE_NUMBER_ID: Optional[str] = None
-    WHATSAPP_PHONE_NUMBER: Optional[str] = (
+    GAIA_BOT_API_KEY: str | None = None
+    DISCORD_BOT_TOKEN: str | None = None
+    DISCORD_CLIENT_ID: str | None = None
+    SLACK_BOT_TOKEN: str | None = None
+    SLACK_SIGNING_SECRET: str | None = None
+    SLACK_APP_TOKEN: str | None = None
+    TELEGRAM_BOT_TOKEN: str | None = None
+    KAPSO_API_KEY: str | None = None
+    KAPSO_PHONE_NUMBER_ID: str | None = None
+    WHATSAPP_PHONE_NUMBER: str | None = (
         None  # E.164 without +, e.g. "15551234567" — used for wa.me links
     )
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)
     # ----------------------------------------------
-    DISCORD_OAUTH_CLIENT_ID: Optional[str] = None
-    DISCORD_OAUTH_CLIENT_SECRET: Optional[str] = None
-    SLACK_OAUTH_CLIENT_ID: Optional[str] = None
-    SLACK_OAUTH_CLIENT_SECRET: Optional[str] = None
-    TELEGRAM_BOT_USERNAME: Optional[str] = "heygaia_bot"
+    DISCORD_OAUTH_CLIENT_ID: str | None = None
+    DISCORD_OAUTH_CLIENT_SECRET: str | None = None
+    SLACK_OAUTH_CLIENT_ID: str | None = None
+    SLACK_OAUTH_CLIENT_SECRET: str | None = None
+    TELEGRAM_BOT_USERNAME: str | None = "heygaia_bot"
 
     # ----------------------------------------------
     # Bot Session Token Configuration
     # ----------------------------------------------
-    BOT_SESSION_TOKEN_SECRET: Optional[str] = None  # Falls back to GAIA_BOT_API_KEY
+    BOT_SESSION_TOKEN_SECRET: str | None = None  # Falls back to GAIA_BOT_API_KEY
     BOT_SESSION_TOKEN_EXPIRY_MINUTES: int = 15
 
     @computed_field  # type: ignore
@@ -539,14 +536,13 @@ def get_settings():
         return settings_obj
 
     except Exception as e:
-        log.error(f"Error initializing settings: {str(e)}")
+        log.error(f"Error initializing settings: {e!s}")
         # In case of error, we still need to return a settings object
         # Use development settings with defaults as fallback
         if env == "development":
             return DevelopmentSettings.from_env(SHOW_MISSING_KEY_WARNINGS=True)
-        else:
-            log.critical("Critical error initializing production settings!")
-            raise
+        log.critical("Critical error initializing production settings!")
+        raise
 
 
 settings = get_settings()

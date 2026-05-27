@@ -104,6 +104,25 @@ export interface ToolCallEntry {
   integration_name?: string; // Friendly name (e.g., 'Researcher')
 }
 
+export interface SubagentGroupData {
+  subagent_id: string;
+  subagent_name: string;
+  /** "handoff" = integration subagent (Gmail, GitHub etc); "spawned" = lightweight task agent */
+  agent_type: "handoff" | "spawned";
+  /** Accumulated tool calls from this subagent, in order of emission */
+  tool_calls: ToolCallEntry[];
+  duration_ms: number | null;
+  token_count: number | null;
+  started_at: string;
+  completed_at: string | null;
+  /** Integration icon URL forwarded from the backend (used by SubagentThread) */
+  icon_url: string | null;
+  /** Integration category ID used for icon lookup (e.g. "gmail", "googlecalendar") */
+  tool_category: string | null;
+  /** Spawned subagents launched from within this subagent (nested in the UI) */
+  nested_subagents: SubagentGroupData[];
+}
+
 export const TOOL_REGISTRY = {
   search_results: null as unknown as SearchResults,
   deep_research_results: null as unknown as DeepResearchResults,
@@ -130,6 +149,7 @@ export const TOOL_REGISTRY = {
   integration_connection_required: null as unknown as IntegrationConnectionData,
   integration_list_data: null as unknown as IntegrationListStreamData,
   tool_calls_data: null as unknown as ToolCallEntry[],
+  subagent_group: null as unknown as SubagentGroupData,
   twitter_search_data: null as unknown as TwitterSearchData,
   twitter_user_data: null as unknown as TwitterUserData[],
   workflow_draft: null as unknown as WorkflowDraftData,
@@ -172,7 +192,6 @@ export const TOOLS_MESSAGE_KEYS = Object.keys(
 export const GROUPED_TOOLS = new Set<ToolName>([
   "search_results",
   "reddit_data",
-  "tool_calls_data",
   "integration_connection_required",
   "integration_list_data",
   "rate_limit_data",

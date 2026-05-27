@@ -1,4 +1,6 @@
-from typing import List, Literal, Optional
+from typing import Literal
+
+from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 
 from app.helpers.message_helpers import (
     build_current_time_message,
@@ -9,6 +11,7 @@ from app.helpers.message_helpers import (
     format_reply_context,
     format_tool_selection_message,
     format_workflow_execution_message,
+    get_onboarding_system_prompt_if_applicable,
 )
 from app.models.message_models import (
     FileData,
@@ -17,26 +20,28 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
-from langchain_core.messages import AnyMessage, HumanMessage
 
 
 async def construct_langchain_messages(
-    messages: List[MessageDict],
-    files_data: List[FileData] | None = None,
-    currently_uploaded_file_ids: Optional[List[str]] = [],
-    user_id: Optional[str] = None,
-    user_name: Optional[str] = None,
-    user_dict: Optional[dict] = None,
-    query: Optional[str] = None,
-    selected_tool: Optional[str] = None,
-    tool_category: Optional[str] = None,
-    selected_workflow: Optional[SelectedWorkflowData] = None,
-    selected_calendar_event: Optional[SelectedCalendarEventData] = None,
-    reply_to_message: Optional[ReplyToMessageData] = None,
-    trigger_context: Optional[dict] = None,
+    messages: list[MessageDict],
+    files_data: list[FileData] | None = None,
+    currently_uploaded_file_ids: list[str] | None = [],
+    user_id: str | None = None,
+    user_name: str | None = None,
+    user_dict: dict | None = None,
+    query: str | None = None,
+    selected_tool: str | None = None,
+    tool_category: str | None = None,
+    selected_workflow: SelectedWorkflowData | None = None,
+    selected_calendar_event: SelectedCalendarEventData | None = None,
+    reply_to_message: ReplyToMessageData | None = None,
+    trigger_context: dict | None = None,
     agent_type: Literal["comms", "executor"] = "comms",
-    source: Optional[str] = None,
-) -> List[AnyMessage]:
+    active_todo_id: str | None = None,
+    execution_mode: Literal["interactive", "background"] = "interactive",
+    conversation_id: str | None = None,
+    source: str | None = None,
+) -> list[AnyMessage]:
     """
     Construct LangChain messages for agent interaction.
 
@@ -73,11 +78,12 @@ async def construct_langchain_messages(
     )
 
     user_timezone = user_dict.get("timezone") if user_dict else None
-    user_preferences = (
-        user_dict.get("onboarding", {}).get("preferences") if user_dict else None
-    )
+    onboarding = user_dict.get("onboarding", {}) if user_dict else {}
+    user_preferences = onboarding.get("preferences") if onboarding else None
+    writing_style = onboarding.get("writing_style") if onboarding else None
 
-    # Dynamic-context SystemMessage — user name, preferences, memories.
+    # Dynamic-context SystemMessage — user name, preferences, memories,
+    # tracked-todos, and (on bound / headless runs) run-binding banners.
     # Intentionally does NOT contain the clock or any output-format
     # instructions; both live elsewhere to protect the cache prefix.
     dynamic_msg = await build_dynamic_context_message(
@@ -86,7 +92,10 @@ async def construct_langchain_messages(
         user_name=user_name,
         user_timezone=user_timezone,
         user_preferences=user_preferences,
+        writing_style=writing_style,
         source=source,
+        active_todo_id=active_todo_id,
+        execution_mode=execution_mode,
     )
     # Current time lives in a HumanMessage in ``contents`` (not
     # ``system_instruction``) so minute ticks never invalidate the cache
@@ -100,6 +109,15 @@ async def construct_langchain_messages(
         if messages and messages[-1].get("role") == "user"
         else ""
     )
+
+    # Tagged memory_message so manage_system_prompts_node preserves it alongside
+    # the main comms agent prompt.
+    if user_id and conversation_id:
+        onboarding_prompt = await get_onboarding_system_prompt_if_applicable(
+            user_id, conversation_id, latest_user_message=user_content
+        )
+        if onboarding_prompt:
+            chain_msgs.append(SystemMessage(content=onboarding_prompt, memory_message=True))
 
     # Priority: workflow > calendar event > tool selection > user message
     content = (

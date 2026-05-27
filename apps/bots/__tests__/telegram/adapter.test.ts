@@ -6,17 +6,22 @@
  * connection by mocking grammy and @gaia/shared, then exercising the
  * adapter's private/protected methods directly via TypeScript casts.
  *
+ * The assertions target observable behavior — the message text/args sent, the
+ * parse_mode used, the file ids/data forwarded — not which internal method ran.
+ *
  * Covered behaviors:
  * 1. platform property returns "telegram"
- * 2. handleMentionMessage (registerEvents group path) strips @botUsername
- * 3. createCtxTarget.send — sends text to the correct chat_id
+ * 2. group @mention path strips @botUsername and streams the cleaned content
+ * 3. createCtxTarget.send — sends HTML text to the correct chat_id
  * 4. createCtxTarget.sendRich — formats rich message via richMessageToMarkdown
  * 5. handleTelegramStreaming — sends "Thinking..." then delegates to handleStreamingChat
- * 6. handleTelegramStreaming — markdown fallback retries without parse_mode on rejection
- * 7. registerCommands — /todo command dispatches via dispatchCommand
+ * 6. HTML fallback — edits/sends retry as plain text when Telegram rejects HTML
+ * 7. registerCommands — a slash command dispatches with the parsed subcommand args
  * 8. dispatchCommand — unknown command sends ephemeral error
  * 9. registerGaiaCommand — empty /gaia message sends usage hint
- * 10. handleTelegramStreaming — unknown/unauthenticated chat (no chatId) returns early
+ * 10. extractTelegramMedia — pure mapping of grammY messages to media descriptors
+ * 11. media routing — resolved "chat" outcome streams with attachments, "reply"
+ *     outcome posts the plain reply
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -55,92 +60,55 @@ vi.mock("grammy", () => ({
 vi.mock("@grammyjs/types", () => ({}));
 
 // ---------------------------------------------------------------------------
-// Mock @gaia/shared so we control handleStreamingChat and friends.
+// Mock @gaia/shared via the shared factory. The factory's BaseBotAdapter stub
+// supplies shouldSendWelcome / startTypingIndicator / resolveIncomingMedia and
+// the common helpers; we layer the Telegram-specific exports the adapter pulls
+// in (the HTML converter chokepoint, htmlToPlainText fallback, media helpers,
+// extractSubcommandArgs) on top via `converters` — these are spread last into
+// the returned module, so we never touch the shared mock file.
 // ---------------------------------------------------------------------------
 
-vi.mock("@gaia/shared", () => {
-  // formatBotError is defined before BaseBotAdapter so the stub's dispatchCommand
-  // can call it for error recovery — mirroring the real BaseBotAdapter behavior.
-  const formatBotErrorImpl = (err: unknown): string =>
-    err instanceof Error ? `Error: ${err.message}` : "Something went wrong";
-
-  const BaseBotAdapter = class {
-    platform = "telegram";
-    gaia = {};
-    config = {};
-    commands = new Map();
-
-    protected async dispatchCommand(
-      name: string,
-      target: {
-        sendEphemeral: (
-          t: string,
-        ) => Promise<{ id: string; edit: (t: string) => Promise<void> }>;
-      },
-      args: Record<string, string | number | boolean | undefined> = {},
-      rawText?: string,
-    ) {
-      const cmd = (
-        this.commands as Map<string, { execute: (p: unknown) => Promise<void> }>
-      ).get(name);
-      if (!cmd) {
-        await target.sendEphemeral(`Unknown command: /${name}`);
-        return;
-      }
-      try {
-        await cmd.execute({ gaia: this.gaia, target, ctx: {}, args, rawText });
-      } catch (error) {
-        const errMsg = formatBotErrorImpl(error);
-        try {
-          await target.sendEphemeral(errMsg);
-        } catch {
-          // Target may be expired
-        }
-      }
-    }
-
-    protected buildContext(userId: string, channelId?: string) {
-      return { platform: this.platform, platformUserId: userId, channelId };
-    }
-  };
-
-  return {
-    BaseBotAdapter,
-    createBotLogger: vi.fn(() => ({
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    })),
-    hashLogIdentifier: vi.fn((value: string | number | undefined | null) => {
-      if (value === undefined || value === null) return undefined;
-      return `h_${String(value)}`;
-    }),
-    sanitizeErrorForLog: vi.fn((error: unknown) => {
-      if (error instanceof Error) {
-        return { error_name: error.name, error_message: error.message };
-      }
-      return { error_name: "Unknown", error_message: String(error) };
-    }),
-    formatBotError: vi.fn((err: unknown) =>
-      err instanceof Error ? `Error: ${err.message}` : "Something went wrong",
-    ),
-    handleStreamingChat: vi.fn().mockResolvedValue(undefined),
-    STREAMING_DEFAULTS: {
+vi.mock("@gaia/shared", async () => {
+  const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
+  return makeGaiaSharedMock("telegram", {
+    streamingDefaults: {
       telegram: {
-        editIntervalMs: 1200,
-        streaming: false,
+        editIntervalMs: 1000,
+        streaming: true,
         platform: "telegram",
       },
     },
-    convertToTelegramMarkdown: vi.fn((t: string) => t),
-    richMessageToMarkdown: vi
-      .fn()
-      .mockReturnValue("**GAIA Settings**\nYour settings"),
-    parseTextArgs: vi.fn((text: string) => ({
-      subcommand: text.split(" ")[0] || undefined,
-    })),
-  };
+    defaultRichMarkdown: "**GAIA Settings**\nYour settings",
+    converters: {
+      // renderForPlatform is the shared non-streaming chokepoint; identity here
+      // so the adapter's wiring (chat_id, parse_mode) is what we assert. The
+      // real conversion is covered by mention.test.ts against the live function.
+      renderForPlatform: vi.fn((text: string) => text),
+      // htmlToPlainText is the fallback the adapter sends when Telegram rejects
+      // HTML markup. Mirror the real strip so plain-text fallback assertions are
+      // meaningful (tags removed, entities decoded).
+      htmlToPlainText: vi.fn((html: string) =>
+        html
+          .replaceAll(/<[^>]+>/g, "")
+          .replaceAll(/&lt;/g, "<")
+          .replaceAll(/&gt;/g, ">")
+          .replaceAll(/&quot;/g, '"')
+          .replaceAll(/&amp;/g, "&"),
+      ),
+      extractSubcommandArgs: vi.fn(
+        (commandName: string, rawText: string | undefined) =>
+          commandName === "todo" || commandName === "workflow"
+            ? { subcommand: (rawText ?? "").trim().split(/\s+/)[0] || "list" }
+            : {},
+      ),
+      friendlyMediaError: vi.fn(
+        (kind: string) => `Could not process your ${kind}.`,
+      ),
+      unsupportedMediaMessage: vi.fn(
+        (kind: string) => `I can't process ${kind} yet.`,
+      ),
+    },
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -148,11 +116,15 @@ vi.mock("@gaia/shared", () => {
 // ---------------------------------------------------------------------------
 
 import {
-  convertToTelegramMarkdown,
   handleStreamingChat,
+  renderForPlatform,
   richMessageToMarkdown,
 } from "@gaia/shared";
-import { TelegramAdapter } from "../../telegram/src/adapter";
+import type { Message } from "@grammyjs/types";
+import {
+  extractTelegramMedia,
+  TelegramAdapter,
+} from "../../telegram/src/adapter";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -372,7 +344,7 @@ describe("TelegramAdapter - createCtxTarget.send", () => {
     adapter = makeAdapter();
   });
 
-  it("sends converted text to the correct chat_id and returns a SentMessage", async () => {
+  it("sends HTML text to the correct chat_id and returns a SentMessage", async () => {
     const sendMessageFn = vi.fn().mockResolvedValue({ message_id: 77 });
     const ctx = makeCtx({ chatId: 111, sendMessageFn });
 
@@ -394,17 +366,22 @@ describe("TelegramAdapter - createCtxTarget.send", () => {
 
     const sent = await target.send("Hello from GAIA");
 
-    expect(convertToTelegramMarkdown).toHaveBeenCalledWith("Hello from GAIA");
+    // Non-streaming sends go through the shared renderForPlatform chokepoint
+    // (mocked as identity here) and are sent with parse_mode: "HTML".
+    expect(renderForPlatform).toHaveBeenCalledWith(
+      "Hello from GAIA",
+      "telegram",
+    );
     expect(sendMessageFn).toHaveBeenCalledWith(111, "Hello from GAIA", {
-      parse_mode: "Markdown",
+      parse_mode: "HTML",
     });
     expect(sent.id).toBe("77");
   });
 
-  it("falls back to plain send when Markdown parse fails", async () => {
+  it("falls back to stripped plain text when HTML parse fails", async () => {
     const sendMessageFn = vi
       .fn()
-      .mockRejectedValueOnce(new Error("can't parse entities: stray bracket"))
+      .mockRejectedValueOnce(new Error("can't parse entities: stray tag"))
       .mockResolvedValueOnce({ message_id: 88 });
 
     const ctx = makeCtx({ chatId: 111, sendMessageFn });
@@ -420,11 +397,17 @@ describe("TelegramAdapter - createCtxTarget.send", () => {
       }
     ).createCtxTarget(ctx, "999");
 
-    const sent = await target.send("bad *markup");
+    const sent = await target.send("<b>bold</b> & risky");
 
-    // Second call must be without parse_mode
+    // Second (fallback) call must drop parse_mode and send the tag-stripped,
+    // entity-decoded plain text so the user still receives a readable message.
+    // The opts arg is omitted (undefined) on the fallback path.
     expect(sendMessageFn).toHaveBeenCalledTimes(2);
-    expect(sendMessageFn.mock.calls[1]).toEqual([111, "bad *markup"]);
+    expect(sendMessageFn.mock.calls[1]).toEqual([
+      111,
+      "bold & risky",
+      undefined,
+    ]);
     expect(sent.id).toBe("88");
   });
 
@@ -483,11 +466,13 @@ describe("TelegramAdapter - createCtxTarget.sendRich", () => {
     const sent = await target.sendRich(richMsg);
 
     expect(richMessageToMarkdown).toHaveBeenCalledWith(richMsg, "telegram");
-    // richMessageToMarkdown is mocked to return "**GAIA Settings**\nYour settings"
+    // richMessageToMarkdown is mocked to return "**GAIA Settings**\nYour settings";
+    // renderForPlatform is identity in this mock, so the text is forwarded as-is
+    // but with parse_mode: "HTML".
     expect(sendMessageFn).toHaveBeenCalledWith(
       555,
       "**GAIA Settings**\nYour settings",
-      { parse_mode: "Markdown" },
+      { parse_mode: "HTML" },
     );
     expect(sent.id).toBe("200");
   });
@@ -596,10 +581,10 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Markdown fallback — the audit-required test: must fail if fallback logic breaks
+// HTML fallback — the audit-required test: must fail if fallback logic breaks
 // ---------------------------------------------------------------------------
 
-describe("TelegramAdapter - markdown fallback retry (editMessage callback)", () => {
+describe("TelegramAdapter - HTML fallback retry (editMessage callback)", () => {
   let adapter: TelegramAdapter;
 
   beforeEach(() => {
@@ -607,21 +592,18 @@ describe("TelegramAdapter - markdown fallback retry (editMessage callback)", () 
     adapter = makeAdapter();
   });
 
-  it("retries editMessageText without parse_mode when Telegram rejects markdown", async () => {
-    const editMessageTextFn = vi
-      .fn()
-      .mockRejectedValueOnce(
-        new Error(
-          "Bad Request: can't parse entities: Character '@' is reserved",
-        ),
-      )
-      .mockResolvedValueOnce({});
-
+  // Drives one streaming turn through handleTelegramStreaming and returns the
+  // edit callback it handed to handleStreamingChat. Shared by the HTML-fallback
+  // tests, which differ only in the editMessageText mock and the message text.
+  async function streamAndCaptureEdit(
+    a: TelegramAdapter,
+    editMessageTextFn: ReturnType<typeof vi.fn>,
+    message: string,
+  ): Promise<(text: string) => Promise<void>> {
     const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
     const ctx = makeCtx({ chatId: 100, replyFn, editMessageTextFn });
 
     let capturedEditCallback: ((text: string) => Promise<void>) | undefined;
-
     vi.mocked(handleStreamingChat).mockImplementationOnce(
       async (_gaia, _req, editMessage) => {
         capturedEditCallback = editMessage;
@@ -629,35 +611,57 @@ describe("TelegramAdapter - markdown fallback retry (editMessage callback)", () 
     );
 
     await (
-      adapter as unknown as {
+      a as unknown as {
         handleTelegramStreaming: (
-          ctx: typeof ctx,
+          ctx: ReturnType<typeof makeCtx>,
           userId: string,
           message: string,
         ) => Promise<void>;
       }
-    ).handleTelegramStreaming(ctx, "999", "stream me something");
+    ).handleTelegramStreaming(ctx, "999", message);
 
-    expect(capturedEditCallback).toBeDefined();
+    if (!capturedEditCallback) {
+      throw new Error("edit callback was not captured");
+    }
+    return capturedEditCallback;
+  }
 
-    // Simulate streaming update with bad markdown
-    await capturedEditCallback!("text with *bad markup @here");
+  it("retries editMessageText as stripped plain text when Telegram rejects HTML", async () => {
+    const editMessageTextFn = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error("Bad Request: can't parse entities: Unsupported start tag"),
+      )
+      .mockResolvedValueOnce({});
 
-    // First attempt: with parse_mode: "Markdown"
+    const editCb = await streamAndCaptureEdit(
+      adapter,
+      editMessageTextFn,
+      "stream me something",
+    );
+
+    // Simulate a streaming update with markup Telegram rejects.
+    await editCb("a <b>bold</b> & risky chunk");
+
+    // First attempt: with parse_mode: "HTML". Conversion happens inside
+    // handleStreamingChat (mocked here), so the adapter callback forwards the
+    // text it receives verbatim.
     expect(editMessageTextFn).toHaveBeenNthCalledWith(
       1,
       100,
       42,
-      "text with *bad markup @here", // convertToTelegramMarkdown is mocked as identity
-      { parse_mode: "Markdown" },
+      "a <b>bold</b> & risky chunk",
+      { parse_mode: "HTML" },
     );
 
-    // Second attempt (fallback): without parse_mode
+    // Second attempt (fallback): no parse_mode, tags stripped + entities decoded
+    // so the user still gets a readable message (opts omitted = undefined).
     expect(editMessageTextFn).toHaveBeenNthCalledWith(
       2,
       100,
       42,
-      "text with *bad markup @here",
+      "a bold & risky chunk",
+      undefined,
     );
   });
 
@@ -666,46 +670,32 @@ describe("TelegramAdapter - markdown fallback retry (editMessage callback)", () 
       .fn()
       .mockRejectedValueOnce(new Error("Bad Request: message is not modified"));
 
-    const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
-    const ctx = makeCtx({ chatId: 100, replyFn, editMessageTextFn });
-
-    let capturedEditCallback: ((text: string) => Promise<void>) | undefined;
-
-    vi.mocked(handleStreamingChat).mockImplementationOnce(
-      async (_gaia, _req, editMessage) => {
-        capturedEditCallback = editMessage;
-      },
+    const editCb = await streamAndCaptureEdit(
+      adapter,
+      editMessageTextFn,
+      "same content twice",
     );
 
-    await (
-      adapter as unknown as {
-        handleTelegramStreaming: (
-          ctx: typeof ctx,
-          userId: string,
-          message: string,
-        ) => Promise<void>;
-      }
-    ).handleTelegramStreaming(ctx, "999", "same content twice");
-
-    await capturedEditCallback!("unchanged content");
+    await editCb("unchanged content");
 
     // Only one attempt — must not retry for "not modified"
     expect(editMessageTextFn).toHaveBeenCalledTimes(1);
   });
 
-  it("markdown fallback also applies to sendNewMessage (reply with new message)", async () => {
-    // The sendNewMessage callback attempts ctx.reply with parse_mode first.
-    // If that throws "can't parse entities", it falls back to ctx.reply without options.
+  it("HTML fallback also applies to sendNewMessage (reply with new message)", async () => {
+    // The sendNewMessage callback attempts ctx.reply with parse_mode: "HTML"
+    // first. If that throws "can't parse entities", it falls back to ctx.reply
+    // with the tag-stripped plain text and no options.
     //
     // Call sequence for replyFn:
     //   1st call: ctx.reply("Thinking...")  → succeeds (message_id: 42)
-    //   2nd call: ctx.reply(converted, { parse_mode: "Markdown" }) → fails (parse error)
-    //   3rd call: ctx.reply(text)           → succeeds (message_id: 99, fallback)
+    //   2nd call: ctx.reply(html, { parse_mode: "HTML" }) → fails (parse error)
+    //   3rd call: ctx.reply(plainText)      → succeeds (message_id: 99, fallback)
     const replyFn = vi
       .fn()
       .mockResolvedValueOnce({ message_id: 42 }) // Thinking...
       .mockRejectedValueOnce(
-        new Error("Bad Request: can't parse entities in bold text"),
+        new Error("Bad Request: can't parse entities: Unsupported start tag"),
       )
       .mockResolvedValueOnce({ message_id: 99 }); // plain fallback
 
@@ -735,15 +725,15 @@ describe("TelegramAdapter - markdown fallback retry (editMessage callback)", () 
 
     expect(capturedSendNewMessage).toBeDefined();
 
-    // Simulate a new streaming segment with broken markdown
-    await capturedSendNewMessage!("*unclosed bold"); // NOSONAR — non-null assertion needed; variable typed as T | undefined
+    // Simulate a new streaming segment with markup Telegram rejects.
+    await capturedSendNewMessage!("<i>unclosed italic"); // NOSONAR — non-null assertion needed; variable typed as T | undefined
 
-    // Total calls: Thinking... + markdown attempt + plain fallback = 3
+    // Total calls: Thinking... + HTML attempt + plain fallback = 3
     expect(replyFn).toHaveBeenCalledTimes(3);
 
-    // The last reply call should be without parse_mode options (plain fallback)
+    // The last reply call should be plain text with no parse_mode options.
     const lastCall = replyFn.mock.calls[replyFn.mock.calls.length - 1];
-    expect(lastCall[0]).toBe("*unclosed bold");
+    expect(lastCall[0]).toBe("unclosed italic");
     expect(lastCall[1]).toBeUndefined();
   });
 });
@@ -760,7 +750,7 @@ describe("TelegramAdapter - registerCommands command routing", () => {
     adapter = makeAdapter();
   });
 
-  it("routes /todo command through dispatchCommand with parsed subcommand", async () => {
+  it("routes /todo list through dispatch with the parsed subcommand args", async () => {
     const todoExecute = vi.fn().mockResolvedValue(undefined);
     const todoCommand = {
       name: "todo",
@@ -789,10 +779,12 @@ describe("TelegramAdapter - registerCommands command routing", () => {
       ctx: ReturnType<typeof makeCtx>,
     ) => Promise<void>;
 
+    // grammY's ctx.match is the text after the command, i.e. the subcommand.
     const ctx = makeCtx({ match: "list" });
     await todoHandler(ctx);
 
-    // dispatchCommand should have been invoked with the command name
+    // The adapter derives args via extractSubcommandArgs and the command is
+    // executed with the parsed subcommand — the observable contract callers see.
     expect(todoExecute).toHaveBeenCalledWith(
       expect.objectContaining({
         args: expect.objectContaining({ subcommand: "list" }),
@@ -1046,7 +1038,7 @@ describe("TelegramAdapter - unauthenticated / unknown chat handling", () => {
     expect(handleStreamingChat).not.toHaveBeenCalled();
   });
 
-  it("onAuthError callback sends auth URL via DM in private chat", async () => {
+  it("onAuthError edits the loading message with the auth link as HTML (same pipeline as /auth)", async () => {
     vi.clearAllMocks();
     const adapter = makeAdapter();
 
@@ -1081,11 +1073,14 @@ describe("TelegramAdapter - unauthenticated / unknown chat handling", () => {
 
     await capturedAuthError!("https://gaia.example.com/auth?token=abc");
 
-    // In a private chat, auth URL goes directly into the chat via editMessageText
+    // In a private chat the auth prompt is edited in place, through the SAME
+    // HTML pipeline as the /auth command — so it renders identically (bold +
+    // clickable link), with parse_mode HTML, not raw markdown.
     expect(editMessageTextFn).toHaveBeenCalledWith(
       500,
       42,
       expect.stringContaining("https://gaia.example.com/auth?token=abc"),
+      { parse_mode: "HTML" },
     );
   });
 
@@ -1124,10 +1119,292 @@ describe("TelegramAdapter - unauthenticated / unknown chat handling", () => {
 
     await capturedGenericError!("Something went wrong on our end.");
 
+    // Errors go through the same HTML pipeline (parse_mode HTML) so any
+    // `code`/bold in the formatted error renders instead of showing literally.
     expect(editMessageTextFn).toHaveBeenCalledWith(
       600,
       42,
       "Something went wrong on our end.",
+      { parse_mode: "HTML" },
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractTelegramMedia — pure mapping of a grammY Message to a media descriptor
+// ---------------------------------------------------------------------------
+
+describe("extractTelegramMedia", () => {
+  it("picks the largest photo size and maps it to an image", () => {
+    const msg = {
+      photo: [
+        { file_id: "small", width: 90, height: 90 },
+        { file_id: "medium", width: 320, height: 320 },
+        { file_id: "large", width: 1280, height: 1280 },
+      ],
+    } as unknown as Message;
+
+    expect(extractTelegramMedia(msg)).toEqual({
+      kind: "image",
+      isVoiceNote: false,
+      mimeType: "image/jpeg",
+      fileId: "large",
+    });
+  });
+
+  it("maps a voice note to audio with isVoiceNote true and the ogg mime", () => {
+    const msg = {
+      voice: { file_id: "voice-1", mime_type: "audio/ogg", duration: 5 },
+    } as unknown as Message;
+
+    expect(extractTelegramMedia(msg)).toEqual({
+      kind: "audio",
+      isVoiceNote: true,
+      mimeType: "audio/ogg",
+      fileId: "voice-1",
+    });
+  });
+
+  it("maps an audio file to audio with isVoiceNote false and its filename", () => {
+    const msg = {
+      audio: {
+        file_id: "audio-1",
+        mime_type: "audio/mpeg",
+        file_name: "song.mp3",
+        duration: 180,
+      },
+    } as unknown as Message;
+
+    expect(extractTelegramMedia(msg)).toEqual({
+      kind: "audio",
+      isVoiceNote: false,
+      mimeType: "audio/mpeg",
+      filename: "song.mp3",
+      fileId: "audio-1",
+    });
+  });
+
+  it("maps a document to the document kind with filename and mime", () => {
+    const msg = {
+      document: {
+        file_id: "doc-1",
+        mime_type: "application/pdf",
+        file_name: "report.pdf",
+      },
+    } as unknown as Message;
+
+    expect(extractTelegramMedia(msg)).toEqual({
+      kind: "document",
+      isVoiceNote: false,
+      mimeType: "application/pdf",
+      filename: "report.pdf",
+      fileId: "doc-1",
+    });
+  });
+
+  it("maps a video to the video kind", () => {
+    const msg = {
+      video: { file_id: "video-1", width: 640, height: 480, duration: 12 },
+    } as unknown as Message;
+
+    expect(extractTelegramMedia(msg)).toEqual({
+      kind: "video",
+      isVoiceNote: false,
+      mimeType: "video/mp4",
+      fileId: "video-1",
+    });
+  });
+
+  it("maps a video note (round video) to the video kind", () => {
+    const msg = {
+      video_note: { file_id: "vnote-1", length: 240, duration: 8 },
+    } as unknown as Message;
+
+    expect(extractTelegramMedia(msg)?.kind).toBe("video");
+    expect(extractTelegramMedia(msg)?.fileId).toBe("vnote-1");
+  });
+
+  it("maps an animation (GIF) to the video kind", () => {
+    const msg = {
+      animation: { file_id: "gif-1", width: 320, height: 240, duration: 3 },
+    } as unknown as Message;
+
+    expect(extractTelegramMedia(msg)?.kind).toBe("video");
+    expect(extractTelegramMedia(msg)?.fileId).toBe("gif-1");
+  });
+
+  it("maps a sticker to the sticker kind", () => {
+    const msg = {
+      sticker: { file_id: "sticker-1", width: 512, height: 512 },
+    } as unknown as Message;
+
+    expect(extractTelegramMedia(msg)).toEqual({
+      kind: "sticker",
+      isVoiceNote: false,
+      mimeType: "image/webp",
+      fileId: "sticker-1",
+    });
+  });
+
+  it("returns null for a text-only message", () => {
+    const msg = { text: "just text" } as unknown as Message;
+    expect(extractTelegramMedia(msg)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Media routing — the adapter extracts, resolves, then dispatches the outcome
+// ---------------------------------------------------------------------------
+
+/** Builds a grammY-like ctx carrying a private-chat photo message. */
+function makePhotoCtx(
+  overrides: {
+    caption?: string;
+    chatType?: "private" | "group" | "supergroup";
+    replyFn?: ReturnType<typeof vi.fn>;
+  } = {},
+) {
+  const {
+    caption,
+    chatType = "private",
+    replyFn = vi.fn().mockResolvedValue({ message_id: 42 }),
+  } = overrides;
+  return {
+    chat: { id: 123456, type: chatType },
+    from: { id: 999, first_name: "Alice", username: "aliceuser" },
+    message: {
+      message_id: 10,
+      caption,
+      photo: [
+        { file_id: "small", width: 90, height: 90 },
+        { file_id: "large", width: 1280, height: 1280 },
+      ],
+    },
+    reply: replyFn,
+    api: {
+      editMessageText: vi.fn().mockResolvedValue({}),
+      sendMessage: vi.fn().mockResolvedValue({ message_id: 55 }),
+      sendChatAction: vi.fn().mockResolvedValue({}),
+    },
+  };
+}
+
+describe("TelegramAdapter - media message routing", () => {
+  let adapter: TelegramAdapter;
+
+  /** Overrides the per-test media resolution outcome on the adapter. */
+  function setResolveOutcome(outcome: unknown): void {
+    (
+      adapter as unknown as {
+        resolveIncomingMedia: ReturnType<typeof vi.fn>;
+      }
+    ).resolveIncomingMedia.mockResolvedValueOnce(outcome);
+  }
+
+  function invokeMediaHandler(ctx: ReturnType<typeof makePhotoCtx>) {
+    return (
+      adapter as unknown as {
+        handleTelegramMediaMessage: (
+          ctx: ReturnType<typeof makePhotoCtx>,
+        ) => Promise<void>;
+      }
+    ).handleTelegramMediaMessage(ctx);
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    adapter = makeAdapter();
+  });
+
+  it("streams a 'chat' outcome forwarding the uploaded attachment's fileId and data", async () => {
+    const attachment = {
+      fileId: "uploaded-file-1",
+      fileType: "image/jpeg",
+      filename: "photo.jpg",
+    };
+    setResolveOutcome({
+      action: "chat",
+      text: "describe this image",
+      attachments: [attachment],
+    });
+
+    const ctx = makePhotoCtx({ caption: "describe this image" });
+    await invokeMediaHandler(ctx);
+
+    // The resolved chat turn is streamed with the attachment forwarded as both
+    // fileIds (for lookup) and fileData (full metadata) — the observable
+    // contract the backend relies on.
+    expect(handleStreamingChat).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        message: "describe this image",
+        platform: "telegram",
+        platformUserId: "999",
+        channelId: "123456",
+        fileIds: ["uploaded-file-1"],
+        fileData: [attachment],
+      }),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.objectContaining({ platform: "telegram" }),
+      undefined,
+    );
+  });
+
+  it("posts a plain reply for a 'reply' outcome and does not stream", async () => {
+    const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
+    setResolveOutcome({
+      action: "reply",
+      text: "I can't process videos yet.",
+    });
+
+    const ctx = makePhotoCtx({ replyFn });
+    await invokeMediaHandler(ctx);
+
+    expect(replyFn).toHaveBeenCalledWith("I can't process videos yet.");
+    expect(handleStreamingChat).not.toHaveBeenCalled();
+  });
+
+  it("passes the extracted media and a download thunk to resolveIncomingMedia", async () => {
+    setResolveOutcome({ action: "reply", text: "ok" });
+
+    const ctx = makePhotoCtx({ caption: "look at this" });
+    await invokeMediaHandler(ctx);
+
+    const resolve = (
+      adapter as unknown as {
+        resolveIncomingMedia: ReturnType<typeof vi.fn>;
+      }
+    ).resolveIncomingMedia;
+
+    expect(resolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "image",
+        isVoiceNote: false,
+        mimeType: "image/jpeg",
+        caption: "look at this",
+      }),
+      expect.any(Function), // download thunk (deferred until needed)
+      "999",
+      "123456",
+    );
+  });
+
+  it("ignores a group photo that does not @mention the bot in its caption", async () => {
+    setResolveOutcome({ action: "reply", text: "should not be used" });
+
+    const ctx = makePhotoCtx({ chatType: "group", caption: "just a photo" });
+    await invokeMediaHandler(ctx);
+
+    // No mention → no resolution, no stream, no reply.
+    const resolve = (
+      adapter as unknown as {
+        resolveIncomingMedia: ReturnType<typeof vi.fn>;
+      }
+    ).resolveIncomingMedia;
+    expect(resolve).not.toHaveBeenCalled();
+    expect(handleStreamingChat).not.toHaveBeenCalled();
   });
 });

@@ -94,9 +94,8 @@ export function MCPAppRenderer({ data }: Props) {
         );
         const content = result.content.map((item) => {
           if (item && typeof item === "object") {
-            const c = { ...(item as Record<string, unknown>) };
-            if (c.annotations == null) delete c.annotations;
-            return c;
+            const { annotations, ...rest } = item as Record<string, unknown>;
+            return annotations == null ? rest : { ...rest, annotations };
           }
           return item;
         });

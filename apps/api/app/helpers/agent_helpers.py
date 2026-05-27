@@ -6,10 +6,10 @@ building, state initialization, and graph execution in both streaming and silent
 These functions are tightly coupled to agent-specific logic and LangGraph execution.
 """
 
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 import json
 import re
-from datetime import datetime, timezone
-from typing import AsyncGenerator, Optional
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
@@ -18,7 +18,6 @@ from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
-from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.cache import (
     CUSTOM_INT_METADATA_CACHE_PREFIX,
@@ -44,6 +43,7 @@ from app.utils.agent_utils import (
     parse_subagent_id,
     process_custom_event_for_tools,
 )
+from shared.py.wide_events import log
 
 
 async def get_custom_integration_metadata(tool_name: str, user_id: str) -> dict:
@@ -225,20 +225,133 @@ def _extract_timezone_offset(user_time: datetime) -> str:
     return f"{sign}{hours:02d}:{minutes:02d}"
 
 
+def _build_agent_callbacks(
+    conversation_id: str,
+    user: dict,
+    agent_name: str,
+    usage_metadata_callback: UsageMetadataCallbackHandler | None,
+) -> list[BaseCallbackHandler]:
+    """Assemble the LangChain callback list for an agent run (Opik, PostHog, usage)."""
+    callbacks: list[BaseCallbackHandler] = []
+
+    # Add OpikTracer in production, or in development only if configured.
+    # Import is deferred to avoid paying the cost when Opik is unused and to
+    # sidestep import-time litellm shadowing (crawl4ai installs unclecode-litellm
+    # which conflicts with the real litellm at module load time).
+    is_opik_configured = settings.OPIK_API_KEY and settings.OPIK_WORKSPACE
+    if settings.ENV == "production" or is_opik_configured:
+        from opik.integrations.langchain import OpikTracer  # noqa: PLC0415
+
+        callbacks.append(
+            OpikTracer(
+                tags=["langchain", settings.ENV],
+                thread_id=conversation_id,
+                metadata={
+                    "user_id": user.get("user_id"),
+                    "conversation_id": conversation_id,
+                    "agent_name": agent_name,
+                },
+                project_name="GAIA",
+            )
+        )
+
+    posthog_client = providers.get("posthog") if providers.is_available("posthog") else None
+    if posthog_client is not None:
+        callbacks.append(
+            PostHogCallbackHandler(
+                client=posthog_client,
+                distinct_id=user.get("user_id"),
+                properties={
+                    "conversation_id": conversation_id,
+                    "agent_name": agent_name,
+                },
+                privacy_mode=False,
+            ),
+        )
+
+    if usage_metadata_callback:
+        callbacks.append(usage_metadata_callback)
+
+    return callbacks
+
+
+def _resolve_model_config(
+    user_model_config: ModelConfig | None,
+) -> tuple[str, str, int]:
+    """Pick the model triple (name, provider, max_tokens) from user choice or defaults."""
+    if user_model_config:
+        log.set(model_config_source="user_selected")
+        return (
+            user_model_config.provider_model_name,
+            user_model_config.inference_provider.value,
+            user_model_config.max_tokens,
+        )
+    log.set(model_config_source="default")
+    return DEFAULT_MODEL_NAME, DEFAULT_LLM_PROVIDER, DEFAULT_MAX_TOKENS
+
+
+# Fields that fall back to the parent only when the current call left them blank.
+_PARENT_FALLBACK_FIELDS: tuple[tuple[str, str], ...] = (
+    ("selected_tool", "selected_tool"),
+    ("tool_category", "tool_category"),
+    ("subagent_id", "subagent_id"),
+    ("vfs_session_id", "vfs_session_id"),
+    ("active_todo_id", "active_todo_id"),
+    ("execution_mode", "execution_mode"),
+    ("source", "conversation_source"),
+)
+
+
+def _inherit_from_parent_configurable(
+    base_configurable: dict | None,
+    current: dict,
+) -> dict:
+    """Merge `current` with optional inheritance from a parent agent's configurable.
+
+    - Model fields (provider/max_tokens/model_name): parent overrides child.
+    - Fallback fields (tool / subagent / vfs / todo / mode / source): child wins; parent
+      only fills in blanks.
+    - Pass-through (stream_id, pinned memories/skills): always come from parent.
+    """
+    merged = dict(current)
+    merged["stream_id"] = None
+    merged["pinned_memories"] = None
+    merged["pinned_skills"] = None
+
+    if not base_configurable:
+        return merged
+
+    merged["provider_name"] = base_configurable.get("provider", merged["provider_name"])
+    merged["max_tokens"] = base_configurable.get("max_tokens", merged["max_tokens"])
+    merged["model_name"] = base_configurable.get("model_name", merged["model_name"])
+
+    for local_key, parent_key in _PARENT_FALLBACK_FIELDS:
+        if not merged.get(local_key):
+            merged[local_key] = base_configurable.get(parent_key)
+
+    # Pre-fetched memory/skills sections avoid repeat ChromaDB lookups on the subagent.
+    merged["stream_id"] = base_configurable.get("stream_id")
+    merged["pinned_memories"] = base_configurable.get("__pinned_memories__")
+    merged["pinned_skills"] = base_configurable.get("__pinned_skills__")
+    return merged
+
+
 def build_agent_config(
     conversation_id: str,
     user: dict,
     user_time: datetime,
     agent_name: str,
-    user_model_config: Optional[ModelConfig] = None,
-    usage_metadata_callback: Optional[UsageMetadataCallbackHandler] = None,
-    thread_id: Optional[str] = None,
-    base_configurable: Optional[dict] = None,
-    selected_tool: Optional[str] = None,
-    tool_category: Optional[str] = None,
-    subagent_id: Optional[str] = None,
-    vfs_session_id: Optional[str] = None,
-    source: Optional[str] = None,
+    user_model_config: ModelConfig | None = None,
+    usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
+    thread_id: str | None = None,
+    base_configurable: dict | None = None,
+    selected_tool: str | None = None,
+    tool_category: str | None = None,
+    subagent_id: str | None = None,
+    vfs_session_id: str | None = None,
+    active_todo_id: str | None = None,
+    execution_mode: str | None = None,
+    source: str | None = None,
 ) -> dict:
     """Build configuration for graph execution with optional authentication tokens.
 
@@ -264,78 +377,24 @@ def build_agent_config(
         Configuration dictionary formatted for LangGraph execution with configurable
         parameters, metadata, and recursion limits
     """
+    callbacks = _build_agent_callbacks(conversation_id, user, agent_name, usage_metadata_callback)
+    model_name, provider_name, max_tokens = _resolve_model_config(user_model_config)
 
-    callbacks: list[BaseCallbackHandler] = []
-
-    # Add OpikTracer in production, or in development only if configured.
-    # Import is deferred to avoid paying the cost when Opik is unused and to
-    # sidestep import-time litellm shadowing (crawl4ai installs unclecode-litellm
-    # which conflicts with the real litellm at module load time).
-    is_opik_configured = settings.OPIK_API_KEY and settings.OPIK_WORKSPACE
-    if settings.ENV == "production" or is_opik_configured:
-        from opik.integrations.langchain import OpikTracer  # noqa: PLC0415
-
-        callbacks.append(
-            OpikTracer(
-                tags=["langchain", settings.ENV],
-                thread_id=conversation_id,
-                metadata={
-                    "user_id": user.get("user_id"),
-                    "conversation_id": conversation_id,
-                    "agent_name": agent_name,
-                },
-                project_name="GAIA",
-            )
-        )
-    posthog_client = (
-        providers.get("posthog") if providers.is_available("posthog") else None
+    resolved = _inherit_from_parent_configurable(
+        base_configurable,
+        {
+            "provider_name": provider_name,
+            "max_tokens": max_tokens,
+            "model_name": model_name,
+            "selected_tool": selected_tool,
+            "tool_category": tool_category,
+            "subagent_id": subagent_id,
+            "vfs_session_id": vfs_session_id,
+            "active_todo_id": active_todo_id,
+            "execution_mode": execution_mode,
+            "source": source,
+        },
     )
-
-    if posthog_client is not None:
-        callbacks.append(
-            PostHogCallbackHandler(
-                client=posthog_client,
-                distinct_id=user.get("user_id"),
-                properties={
-                    "conversation_id": conversation_id,
-                    "agent_name": agent_name,
-                },
-                privacy_mode=False,
-            ),
-        )
-
-    if usage_metadata_callback:
-        callbacks.append(usage_metadata_callback)
-
-    if user_model_config:
-        model_name = user_model_config.provider_model_name
-        provider_name = user_model_config.inference_provider.value
-        max_tokens = user_model_config.max_tokens
-        log.set(model_config_source="user_selected")
-    else:
-        model_name = DEFAULT_MODEL_NAME
-        provider_name = DEFAULT_LLM_PROVIDER
-        max_tokens = DEFAULT_MAX_TOKENS
-        log.set(model_config_source="default")
-
-    # Cherry-pick specific keys from base_configurable if provided
-    # Only inherit model config and user context, not LangChain internal state
-    pinned_memories = None
-    pinned_skills = None
-    if base_configurable:
-        # Inherit model config from parent if not overridden
-        provider_name = base_configurable.get("provider", provider_name)
-        max_tokens = base_configurable.get("max_tokens", max_tokens)
-        model_name = base_configurable.get("model_name", model_name)
-        selected_tool = selected_tool or base_configurable.get("selected_tool")
-        tool_category = tool_category or base_configurable.get("tool_category")
-        subagent_id = subagent_id or base_configurable.get("subagent_id")
-        vfs_session_id = vfs_session_id or base_configurable.get("vfs_session_id")
-        source = source or base_configurable.get("conversation_source")
-        # Pass pre-fetched memory/skills sections through to avoid repeat
-        # ChromaDB lookups on the subagent side.
-        pinned_memories = base_configurable.get("__pinned_memories__")
-        pinned_skills = base_configurable.get("__pinned_skills__")
 
     configurable = {
         "thread_id": thread_id or conversation_id,
@@ -344,20 +403,23 @@ def build_agent_config(
         "user_name": user.get("name", ""),
         "user_time": user_time.isoformat(),
         "user_timezone": _extract_timezone_offset(user_time),
-        "provider": provider_name,
-        "max_tokens": max_tokens,
-        "model_name": model_name,
-        "model": model_name,
-        "selected_tool": selected_tool,
-        "tool_category": tool_category,
-        "subagent_id": subagent_id,
-        "vfs_session_id": vfs_session_id,
-        "conversation_source": source,
-        "__pinned_memories__": pinned_memories,
-        "__pinned_skills__": pinned_skills,
+        "provider": resolved["provider_name"],
+        "max_tokens": resolved["max_tokens"],
+        "model_name": resolved["model_name"],
+        "model": resolved["model_name"],
+        "selected_tool": resolved["selected_tool"],
+        "tool_category": resolved["tool_category"],
+        "subagent_id": resolved["subagent_id"],
+        "vfs_session_id": resolved["vfs_session_id"],
+        "stream_id": resolved["stream_id"],
+        "active_todo_id": resolved["active_todo_id"],
+        "execution_mode": resolved["execution_mode"] or "interactive",
+        "conversation_source": resolved["source"],
+        "__pinned_memories__": resolved["pinned_memories"],
+        "__pinned_skills__": resolved["pinned_skills"],
     }
 
-    config = {
+    return {
         "configurable": configurable,
         "recursion_limit": AGENT_RECURSION_LIMIT,
         "metadata": {"user_id": user.get("user_id")},
@@ -365,15 +427,13 @@ def build_agent_config(
         "agent_name": agent_name,
     }
 
-    return config
-
 
 def build_initial_state(
     request,
     user_id: str,
     conversation_id: str,
     history,
-    trigger_context: Optional[dict] = None,
+    trigger_context: dict | None = None,
 ) -> dict:
     """Construct initial state dictionary for LangGraph execution.
 
@@ -396,7 +456,7 @@ def build_initial_state(
         "query": request.message,
         "intent": request.message,
         "messages": history,
-        "current_datetime": datetime.now(timezone.utc).isoformat(),
+        "current_datetime": datetime.now(UTC).isoformat(),
         "mem0_user_id": user_id,
         "conversation_id": conversation_id,
         "integration_usernames": {},
@@ -407,6 +467,15 @@ def build_initial_state(
 
     if trigger_context:
         state["trigger_context"] = trigger_context
+        # Bind active todo + execution mode so banners and tools default
+        # to the firing todo. Scheduled runs always set these; comms-driven
+        # turns may set them when delegating todo-bound work.
+        if active_todo_id := trigger_context.get("active_todo_id") or trigger_context.get(
+            "todo_id"
+        ):
+            state["active_todo_id"] = active_todo_id
+        if execution_mode := trigger_context.get("execution_mode"):
+            state["execution_mode"] = execution_mode
 
     return state
 
@@ -457,6 +526,10 @@ async def execute_graph_silent(
         # Process "updates" events - same logic as execute_graph_streaming
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
+                # Only collect tool_data from the LLM node — pre-model hooks
+                # produce updates containing historical messages with old tool_calls.
+                if node_name != "agent":
+                    continue
                 if isinstance(state_update, dict) and "messages" in state_update:
                     for msg in state_update["messages"]:
                         if not hasattr(msg, "tool_calls") or not msg.tool_calls:
@@ -479,9 +552,7 @@ async def execute_graph_silent(
                                 args = tc.get("args", {})
                                 subagent_id = args.get("subagent_id", "")
                                 if subagent_id:
-                                    tool_metadata = await get_handoff_metadata(
-                                        subagent_id
-                                    )
+                                    tool_metadata = await get_handoff_metadata(subagent_id)
                             elif tool_name and user_id:
                                 tool_metadata = await get_custom_integration_metadata(
                                     tool_name, user_id
@@ -507,7 +578,7 @@ async def execute_graph_silent(
 
             if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
                 content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
-                if content and metadata.get("agent_name") == "comms_agent":
+                if content and config.get("agent_name") == "comms_agent":
                     complete_message += content
 
         elif stream_mode == "custom":
@@ -534,7 +605,7 @@ async def execute_graph_silent(
             {
                 "tool_name": "todo_progress",
                 "data": todo_progress_accumulated,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
         )
 
@@ -616,6 +687,14 @@ async def execute_graph_streaming(
 
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
+                # Only emit tool_data from the LLM ("agent") node.
+                # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
+                # etc.) also produce "updates" events that include historical
+                # AIMessages with tool_calls from previous turns — emitting those
+                # would replay stale tool cards into the current SSE stream.
+                if node_name != "agent":
+                    continue
+
                 # Process tool entries with metadata lookup
                 if isinstance(state_update, dict) and "messages" in state_update:
                     for msg in state_update["messages"]:
@@ -634,9 +713,7 @@ async def execute_graph_streaming(
                                 args = tc.get("args", {})
                                 subagent_id = args.get("subagent_id", "")
                                 if subagent_id:
-                                    tool_metadata = await get_handoff_metadata(
-                                        subagent_id
-                                    )
+                                    tool_metadata = await get_handoff_metadata(subagent_id)
                             elif tool_name and user_id:
                                 tool_metadata = await get_custom_integration_metadata(
                                     tool_name, user_id
@@ -661,25 +738,15 @@ async def execute_graph_streaming(
                                     and tool_entry.get("mcp_ui")
                                     and tool_entry["mcp_ui"].get("resource_uri")
                                 ):
-                                    tc_id_for_app = tool_entry["data"].get(
-                                        "tool_call_id", ""
-                                    )
+                                    tc_id_for_app = tool_entry["data"].get("tool_call_id", "")
                                     if tc_id_for_app:
                                         pending_mcp_apps[tc_id_for_app] = {
-                                            "tool_category": tool_entry.get(
-                                                "tool_category", ""
-                                            ),
-                                            "tool_name": tool_entry["data"].get(
-                                                "tool_name", ""
-                                            ),
-                                            "server_url": tool_entry.get(
-                                                "mcp_server_url", ""
-                                            ),
+                                            "tool_category": tool_entry.get("tool_category", ""),
+                                            "tool_name": tool_entry["data"].get("tool_name", ""),
+                                            "server_url": tool_entry.get("mcp_server_url", ""),
                                             "mcp_ui": tool_entry["mcp_ui"],
                                             "timestamp": tool_entry.get("timestamp"),
-                                            "tool_arguments": tool_entry["data"].get(
-                                                "inputs", {}
-                                            ),
+                                            "tool_arguments": tool_entry["data"].get("inputs", {}),
                                         }
             continue
 
@@ -691,7 +758,7 @@ async def execute_graph_streaming(
             # Stream AI response content (only from comms_agent to avoid duplication)
             if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
                 content = chunk.text
-                if content and metadata.get("agent_name") == "comms_agent":
+                if content and config.get("agent_name") == "comms_agent":
                     yield format_sse_response(content)
                     complete_message += content
 
@@ -708,8 +775,9 @@ async def execute_graph_streaming(
                 try:
                     json.dumps(tool_result_payload)
                 except TypeError:
-                    if hasattr(tool_result_payload, "model_dump"):
-                        tool_result_payload = tool_result_payload.model_dump()
+                    model_dump = getattr(tool_result_payload, "model_dump", None)
+                    if callable(model_dump):
+                        tool_result_payload = model_dump()
                     elif hasattr(tool_result_payload, "__dict__"):
                         tool_result_payload = dict(tool_result_payload.__dict__)
                     else:
@@ -738,15 +806,11 @@ async def execute_graph_streaming(
                             user_id=user_id or "",
                         )
                         html_content = (
-                            ui_resource.get("html")
-                            if isinstance(ui_resource, dict)
-                            else None
+                            ui_resource.get("html") if isinstance(ui_resource, dict) else None
                         )
                         if html_content:
                             content_csp = (
-                                ui_resource.get("csp")
-                                if isinstance(ui_resource, dict)
-                                else None
+                                ui_resource.get("csp") if isinstance(ui_resource, dict) else None
                             )
                             content_permissions = (
                                 ui_resource.get("permissions")
@@ -762,9 +826,7 @@ async def execute_graph_streaming(
                                             "tool_call_id": chunk.tool_call_id,
                                             "tool_name": app_meta["tool_name"],
                                             "server_url": app_meta["server_url"],
-                                            "resource_uri": app_meta["mcp_ui"][
-                                                "resource_uri"
-                                            ],
+                                            "resource_uri": app_meta["mcp_ui"]["resource_uri"],
                                             "html_content": html_content,
                                             "tool_result": tool_result_payload,
                                             "csp": content_csp
@@ -772,12 +834,8 @@ async def execute_graph_streaming(
                                             else app_meta["mcp_ui"].get("csp"),
                                             "permissions": content_permissions
                                             if content_permissions is not None
-                                            else app_meta["mcp_ui"].get(
-                                                "permissions", []
-                                            ),
-                                            "tool_arguments": app_meta.get(
-                                                "tool_arguments", {}
-                                            ),
+                                            else app_meta["mcp_ui"].get("permissions", []),
+                                            "tool_arguments": app_meta.get("tool_arguments", {}),
                                         },
                                         "timestamp": app_meta["timestamp"],
                                     }
@@ -809,9 +867,7 @@ async def execute_graph_streaming(
                             "server_url": sub_entry.get("mcp_server_url", ""),
                             "mcp_ui": sub_entry["mcp_ui"],
                             "timestamp": sub_entry.get("timestamp"),
-                            "tool_arguments": sub_entry.get("data", {}).get(
-                                "inputs", {}
-                            ),
+                            "tool_arguments": sub_entry.get("data", {}).get("inputs", {}),
                         }
 
             # Intercept subagent tool_output events to emit deferred mcp_app
@@ -827,15 +883,11 @@ async def execute_graph_streaming(
                             user_id=user_id or "",
                         )
                         html_content = (
-                            ui_resource.get("html")
-                            if isinstance(ui_resource, dict)
-                            else None
+                            ui_resource.get("html") if isinstance(ui_resource, dict) else None
                         )
                         if html_content:
                             content_csp = (
-                                ui_resource.get("csp")
-                                if isinstance(ui_resource, dict)
-                                else None
+                                ui_resource.get("csp") if isinstance(ui_resource, dict) else None
                             )
                             content_permissions = (
                                 ui_resource.get("permissions")
@@ -851,9 +903,7 @@ async def execute_graph_streaming(
                                             "tool_call_id": tc_id,
                                             "tool_name": app_meta["tool_name"],
                                             "server_url": app_meta["server_url"],
-                                            "resource_uri": app_meta["mcp_ui"][
-                                                "resource_uri"
-                                            ],
+                                            "resource_uri": app_meta["mcp_ui"]["resource_uri"],
                                             "html_content": html_content,
                                             "tool_result": sub_output.get("output"),
                                             "csp": content_csp
@@ -861,12 +911,8 @@ async def execute_graph_streaming(
                                             else app_meta["mcp_ui"].get("csp"),
                                             "permissions": content_permissions
                                             if content_permissions is not None
-                                            else app_meta["mcp_ui"].get(
-                                                "permissions", []
-                                            ),
-                                            "tool_arguments": app_meta.get(
-                                                "tool_arguments", {}
-                                            ),
+                                            else app_meta["mcp_ui"].get("permissions", []),
+                                            "tool_arguments": app_meta.get("tool_arguments", {}),
                                         },
                                         "timestamp": app_meta["timestamp"],
                                     }

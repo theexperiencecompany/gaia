@@ -1,6 +1,5 @@
 """Unit tests for app.utils.search_utils."""
 
-from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -8,13 +7,12 @@ import pytest
 
 from app.utils.exceptions import FetchError
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _make_tavily_client_mock(search_return: Optional[dict] = None) -> MagicMock:
+def _make_tavily_client_mock(search_return: dict | None = None) -> MagicMock:
     """Return a mock TavilyClient whose .search() returns *search_return*."""
     client = MagicMock()
     client.search.return_value = search_return or {
@@ -28,8 +26,8 @@ def _make_tavily_client_mock(search_return: Optional[dict] = None) -> MagicMock:
 
 
 def _make_firecrawl_client_mock(
-    markdown: Optional[str] = "# Hello",
-    raise_on_scrape: Optional[Exception] = None,
+    markdown: str | None = "# Hello",
+    raise_on_scrape: Exception | None = None,
 ) -> MagicMock:
     """Return a mock FirecrawlApp whose .scrape() returns a Document-like object."""
     client = MagicMock()
@@ -107,9 +105,7 @@ class TestGetFirecrawlClient:
     def test_creates_client_when_key_present(
         self, mock_cls: MagicMock, mock_settings: MagicMock
     ) -> None:
-        mock_settings.FIRECRAWL_API_KEY = (
-            "test-firecrawl-key"  # pragma: allowlist secret
-        )
+        mock_settings.FIRECRAWL_API_KEY = "test-firecrawl-key"  # pragma: allowlist secret
         from app.utils.search_utils import get_firecrawl_client
 
         client = get_firecrawl_client()
@@ -165,9 +161,7 @@ class TestFetchTavilySearch:
         assert call_kwargs["max_results"] == 3
 
     @patch("app.utils.search_utils.get_tavily_client")
-    async def test_returns_empty_dict_on_exception(
-        self, mock_get_client: MagicMock
-    ) -> None:
+    async def test_returns_empty_dict_on_exception(self, mock_get_client: MagicMock) -> None:
         mock_get_client.side_effect = RuntimeError("boom")
 
         from app.utils.search_utils import fetch_tavily_search
@@ -177,9 +171,7 @@ class TestFetchTavilySearch:
         assert result == {}
 
     @patch("app.utils.search_utils.get_tavily_client")
-    async def test_default_search_topic_is_general(
-        self, mock_get_client: MagicMock
-    ) -> None:
+    async def test_default_search_topic_is_general(self, mock_get_client: MagicMock) -> None:
         client = _make_tavily_client_mock({"results": []})
         mock_get_client.return_value = client
 
@@ -192,9 +184,7 @@ class TestFetchTavilySearch:
         assert call_kwargs["topic"] == "general"
 
     @patch("app.utils.search_utils.get_tavily_client")
-    async def test_no_extra_params_does_not_inject_none(
-        self, mock_get_client: MagicMock
-    ) -> None:
+    async def test_no_extra_params_does_not_inject_none(self, mock_get_client: MagicMock) -> None:
         client = _make_tavily_client_mock({"results": []})
         mock_get_client.return_value = client
 
@@ -463,14 +453,10 @@ class TestFetchWithHttpx:
             assert "empty content" in str(e)
 
     @patch("app.utils.search_utils.httpx.AsyncClient")
-    async def test_http_status_error_wraps_as_fetch_error(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_http_status_error_wraps_as_fetch_error(self, mock_client_cls: MagicMock) -> None:
         mock_response = MagicMock()
         mock_response.status_code = 404
-        error = httpx.HTTPStatusError(
-            "Not Found", request=MagicMock(), response=mock_response
-        )
+        error = httpx.HTTPStatusError("Not Found", request=MagicMock(), response=mock_response)
 
         client_inst = AsyncMock()
         client_inst.get = AsyncMock(side_effect=error)
@@ -486,9 +472,7 @@ class TestFetchWithHttpx:
             await fn(url="https://example.com/missing")
 
     @patch("app.utils.search_utils.httpx.AsyncClient")
-    async def test_generic_exception_wraps_as_fetch_error(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_generic_exception_wraps_as_fetch_error(self, mock_client_cls: MagicMock) -> None:
         mock_client_cls.side_effect = RuntimeError("DNS failure")
 
         from app.utils.search_utils import fetch_with_httpx

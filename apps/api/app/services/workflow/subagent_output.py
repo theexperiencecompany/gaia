@@ -10,11 +10,12 @@ The workflow subagent can respond in two modes:
 
 import json
 import re
-from typing import Literal, Optional
+from typing import Literal
 
-from shared.py.wide_events import log
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
+
+from shared.py.wide_events import log
 
 # =============================================================================
 # PYDANTIC MODELS FOR STRUCTURED OUTPUT
@@ -24,18 +25,14 @@ from pydantic import BaseModel, Field
 class ClarifyingOutput(BaseModel):
     """Output when subagent needs to ask clarifying questions."""
 
-    type: Literal["clarifying"] = Field(
-        description="Must be 'clarifying' when asking questions"
-    )
+    type: Literal["clarifying"] = Field(description="Must be 'clarifying' when asking questions")
     message: str = Field(description="The clarifying question to ask the user")
 
 
 class FinalizedOutput(BaseModel):
     """Output when workflow is ready to be created."""
 
-    type: Literal["finalized"] = Field(
-        description="Must be 'finalized' when workflow is complete"
-    )
+    type: Literal["finalized"] = Field(description="Must be 'finalized' when workflow is complete")
     title: str = Field(description="Workflow title")
     description: str = Field(
         description="Short description for display in cards/UI (1-2 sentences summarizing what the workflow does)"
@@ -46,11 +43,11 @@ class FinalizedOutput(BaseModel):
     trigger_type: Literal["manual", "scheduled", "integration"] = Field(
         description="When the workflow runs"
     )
-    cron_expression: Optional[str] = Field(
+    cron_expression: str | None = Field(
         default=None,
         description="Cron expression for scheduled triggers (in user's local time)",
     )
-    trigger_slug: Optional[str] = Field(
+    trigger_slug: str | None = Field(
         default=None, description="Trigger slug for integration triggers"
     )
     direct_create: bool = Field(
@@ -84,10 +81,10 @@ class ParseResult:
     def __init__(
         self,
         mode: Literal["clarifying", "finalized", "parse_error"],
-        message: Optional[str] = None,
-        draft: Optional[FinalizedOutput] = None,
-        parse_error: Optional[str] = None,
-        raw_response: Optional[str] = None,
+        message: str | None = None,
+        draft: FinalizedOutput | None = None,
+        parse_error: str | None = None,
+        raw_response: str | None = None,
     ):
         self.mode = mode
         self.message = message
@@ -181,7 +178,7 @@ def parse_subagent_response(response: str) -> ParseResult:
                         log.warning(f"Failed to parse finalized output: {e}")
                         return ParseResult(
                             mode="parse_error",
-                            parse_error=f"Invalid finalized output: {str(e)}",
+                            parse_error=f"Invalid finalized output: {e!s}",
                             raw_response=response,
                         )
 
@@ -207,7 +204,7 @@ def parse_subagent_response(response: str) -> ParseResult:
                         raw_response=response,
                     )
 
-                elif output_type == "clarifying":
+                if output_type == "clarifying":
                     try:
                         clarifying = ClarifyingOutput(**data)
                         log.info("Successfully parsed clarifying response")

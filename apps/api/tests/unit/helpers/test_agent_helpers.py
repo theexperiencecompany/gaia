@@ -1,6 +1,6 @@
 """Comprehensive tests for app/helpers/agent_helpers.py."""
 
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -70,7 +70,7 @@ def _make_user_time(offset_hours: int = 0) -> datetime:
 
 class TestExtractTimezoneOffset:
     def test_utc(self):
-        dt = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        dt = datetime(2025, 1, 1, tzinfo=UTC)
         assert _extract_timezone_offset(dt) == "+00:00"
 
     def test_positive_offset(self):
@@ -214,16 +214,12 @@ class TestGetCustomIntegrationMetadata:
 
     @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_tool_registry", new_callable=AsyncMock)
-    async def test_mcp_category_with_uuid_suffix_stripped(
-        self, mock_get_registry, mock_get_cache
-    ):
+    async def test_mcp_category_with_uuid_suffix_stripped(self, mock_get_registry, mock_get_cache):
         """UUID-like suffix (>= 32 chars with dashes) should be stripped from integration ID."""
         mock_registry = MagicMock()
         # category: mcp_{integration_id}_{uuid_user_id}
         uuid_suffix = "550e8400-e29b-41d4-a716-446655440000"
-        mock_registry.get_category_of_tool.return_value = (
-            f"mcp_myintegration_{uuid_suffix}"
-        )
+        mock_registry.get_category_of_tool.return_value = f"mcp_myintegration_{uuid_suffix}"
         mock_get_registry.return_value = mock_registry
         mock_get_cache.return_value = {"integration_id": "myintegration"}
 
@@ -672,9 +668,7 @@ class TestExecuteGraphSilent:
             )
 
         # Should have one todo_progress entry
-        todo_entries = [
-            e for e in tool_data["tool_data"] if e["tool_name"] == "todo_progress"
-        ]
+        todo_entries = [e for e in tool_data["tool_data"] if e["tool_name"] == "todo_progress"]
         assert len(todo_entries) == 1
         # Last snapshot wins
         assert todo_entries[0]["data"]["executor"]["count"] == 5
@@ -689,9 +683,7 @@ class TestExecuteGraphSilent:
         mock_format.return_value = {"tool_name": "handoff", "data": {}}
 
         msg = MagicMock()
-        msg.tool_calls = [
-            {"id": "tc1", "name": "handoff", "args": {"subagent_id": "github"}}
-        ]
+        msg.tool_calls = [{"id": "tc1", "name": "handoff", "args": {"subagent_id": "github"}}]
 
         events = [
             ((), "updates", {"node1": {"messages": [msg]}}),

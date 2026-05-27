@@ -4,8 +4,8 @@ import hashlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langgraph.store.base import PutOp
+import pytest
 
 from app.db.chroma.chroma_tools_store import (
     _build_put_operations,
@@ -20,7 +20,6 @@ from app.db.chroma.chroma_tools_store import (
 )
 from app.models.mcp_config import SubAgentConfig
 from app.models.subagent_models import Subagent
-
 
 # ---------------------------------------------------------------------------
 # _compute_tool_hash
@@ -46,7 +45,7 @@ class TestComputeToolHash:
             side_effect=OSError("no source"),
         ):
             result = await _compute_tool_hash(tool)
-        expected = hashlib.sha256("broken_tool::desc".encode()).hexdigest()
+        expected = hashlib.sha256(b"broken_tool::desc").hexdigest()
         assert result == expected
 
     async def test_hash_falls_back_on_type_error(self):
@@ -56,7 +55,7 @@ class TestComputeToolHash:
             side_effect=TypeError,
         ):
             result = await _compute_tool_hash(tool)
-        assert result == hashlib.sha256("t::d".encode()).hexdigest()
+        assert result == hashlib.sha256(b"t::d").hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -131,9 +130,7 @@ class TestGetCurrentToolsWithHashes:
             patch(
                 "app.db.chroma.chroma_tools_store._get_subagent_tools",
                 new_callable=AsyncMock,
-                return_value={
-                    "subagents::subagent:x": {"hash": "h", "namespace": "subagents"}
-                },
+                return_value={"subagents::subagent:x": {"hash": "h", "namespace": "subagents"}},
             ),
         ):
             result = await _get_current_tools_with_hashes(registry)
@@ -435,9 +432,7 @@ class TestDeleteToolsByNamespace:
     async def test_returns_zero_when_store_unavailable(self):
         with patch("app.db.chroma.chroma_tools_store.providers") as mock_providers:
             mock_providers.aget = AsyncMock(return_value=None)
-            with patch(
-                "app.db.chroma.chroma_tools_store.delete_cache", new_callable=AsyncMock
-            ):
+            with patch("app.db.chroma.chroma_tools_store.delete_cache", new_callable=AsyncMock):
                 count = await delete_tools_by_namespace("ns")
         assert count == 0
 
@@ -468,9 +463,7 @@ class TestDeleteToolsByNamespace:
 
         with (
             patch("app.db.chroma.chroma_tools_store.providers") as mock_providers,
-            patch(
-                "app.db.chroma.chroma_tools_store.delete_cache", new_callable=AsyncMock
-            ),
+            patch("app.db.chroma.chroma_tools_store.delete_cache", new_callable=AsyncMock),
         ):
             mock_providers.aget = AsyncMock(return_value=mock_store)
             count = await delete_tools_by_namespace("ns")

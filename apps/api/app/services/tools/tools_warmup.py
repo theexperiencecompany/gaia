@@ -6,10 +6,10 @@ eliminating cold-start latency for the /tools endpoint.
 """
 
 from app.agents.tools.core.registry import get_tool_registry
-from shared.py.wide_events import log
 from app.constants.cache import GLOBAL_TOOLS_CACHE_KEY, GLOBAL_TOOLS_CACHE_TTL
 from app.db.redis import set_cache
 from app.services.tools.tools_service import get_available_tools
+from shared.py.wide_events import log
 
 
 async def warmup_tools_cache() -> None:

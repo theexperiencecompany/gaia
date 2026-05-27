@@ -8,13 +8,13 @@ Covers:
   idempotency, error paths, welcome email dispatch
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from bson import ObjectId
 from fastapi import HTTPException
+import pytest
 
 from app.models.payment_models import (
     PlanResponse,
@@ -35,9 +35,9 @@ from app.services.payments.payment_webhook_service import PaymentWebhookService
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
 FAKE_EMAIL = "alice@example.com"
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 
-SAMPLE_PLAN_DOC: Dict[str, Any] = {
+SAMPLE_PLAN_DOC: dict[str, Any] = {
     "_id": ObjectId(),
     "dodo_product_id": "prod_abc123",
     "name": "Pro Monthly",
@@ -52,7 +52,7 @@ SAMPLE_PLAN_DOC: Dict[str, Any] = {
     "updated_at": NOW,
 }
 
-SAMPLE_SUBSCRIPTION_DOC: Dict[str, Any] = {
+SAMPLE_SUBSCRIPTION_DOC: dict[str, Any] = {
     "_id": ObjectId(),
     "dodo_subscription_id": "sub_xyz789",
     "user_id": FAKE_USER_ID,
@@ -65,7 +65,7 @@ SAMPLE_SUBSCRIPTION_DOC: Dict[str, Any] = {
     "updated_at": NOW,
 }
 
-SAMPLE_USER_DOC: Dict[str, Any] = {
+SAMPLE_USER_DOC: dict[str, Any] = {
     "_id": ObjectId(FAKE_USER_ID),
     "email": FAKE_EMAIL,
     "first_name": "Alice",
@@ -74,7 +74,7 @@ SAMPLE_USER_DOC: Dict[str, Any] = {
 
 # Full webhook payloads -------------------------------------------------------
 
-PAYMENT_DATA_PAYLOAD: Dict[str, Any] = {
+PAYMENT_DATA_PAYLOAD: dict[str, Any] = {
     "payment_id": "pay_001",
     "subscription_id": "sub_xyz789",
     "business_id": "biz_001",
@@ -103,7 +103,7 @@ PAYMENT_DATA_PAYLOAD: Dict[str, Any] = {
     "metadata": {"user_id": FAKE_USER_ID},
 }
 
-SUBSCRIPTION_DATA_PAYLOAD: Dict[str, Any] = {
+SUBSCRIPTION_DATA_PAYLOAD: dict[str, Any] = {
     "subscription_id": "sub_xyz789",
     "product_id": "prod_abc123",
     "customer": {
@@ -137,7 +137,7 @@ SUBSCRIPTION_DATA_PAYLOAD: Dict[str, Any] = {
 # ---------------------------------------------------------------------------
 
 
-def _make_webhook_event(event_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+def _make_webhook_event(event_type: str, data: dict[str, Any]) -> dict[str, Any]:
     return {
         "business_id": "biz_001",
         "type": event_type,
@@ -159,9 +159,7 @@ def mock_plans_collection():
 
 @pytest.fixture
 def mock_subscriptions_collection():
-    with patch(
-        "app.services.payments.payment_service.subscriptions_collection"
-    ) as mock_col:
+    with patch("app.services.payments.payment_service.subscriptions_collection") as mock_col:
         yield mock_col
 
 
@@ -222,9 +220,7 @@ def mock_webhook_subscriptions_collection():
 
 @pytest.fixture
 def mock_webhook_users_collection():
-    with patch(
-        "app.services.payments.payment_webhook_service.users_collection"
-    ) as mock_col:
+    with patch("app.services.payments.payment_webhook_service.users_collection") as mock_col:
         mock_col.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
         yield mock_col
 
@@ -241,17 +237,13 @@ def mock_processed_webhooks_collection():
 
 @pytest.fixture
 def mock_track_payment():
-    with patch(
-        "app.services.payments.payment_webhook_service.track_payment_event"
-    ) as mock_fn:
+    with patch("app.services.payments.payment_webhook_service.track_payment_event") as mock_fn:
         yield mock_fn
 
 
 @pytest.fixture
 def mock_track_subscription():
-    with patch(
-        "app.services.payments.payment_webhook_service.track_subscription_event"
-    ) as mock_fn:
+    with patch("app.services.payments.payment_webhook_service.track_subscription_event") as mock_fn:
         yield mock_fn
 
 
@@ -267,14 +259,10 @@ def mock_webhook_send_email():
 @pytest.fixture
 def webhook_service():
     """Create a PaymentWebhookService with a mocked webhook verifier."""
-    with patch(
-        "app.services.payments.payment_webhook_service.settings"
-    ) as mock_settings:
+    with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
         mock_settings.DODO_WEBHOOK_PAYMENTS_SECRET = "whsec_test123"
         mock_settings.ENV = "development"
-        with patch(
-            "app.services.payments.payment_webhook_service.Webhook"
-        ) as mock_wh_cls:
+        with patch("app.services.payments.payment_webhook_service.Webhook") as mock_wh_cls:
             mock_verifier = MagicMock()
             mock_wh_cls.return_value = mock_verifier
             svc = PaymentWebhookService()
@@ -463,9 +451,7 @@ class TestCreateSubscription:
         checkout_response = MagicMock()
         checkout_response.session_id = "sess_001"
         checkout_response.checkout_url = "https://checkout.dodo.dev/sess_001"
-        mock_dodo_client.checkout_sessions.create = MagicMock(
-            return_value=checkout_response
-        )
+        mock_dodo_client.checkout_sessions.create = MagicMock(return_value=checkout_response)
 
         # Stub get_plans so plan name lookup doesn't fail
         cursor = AsyncMock()
@@ -506,9 +492,7 @@ class TestCreateSubscription:
         mock_subscriptions_collection,
     ):
         mock_users_collection.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
-        mock_subscriptions_collection.find_one = AsyncMock(
-            return_value=SAMPLE_SUBSCRIPTION_DOC
-        )
+        mock_subscriptions_collection.find_one = AsyncMock(return_value=SAMPLE_SUBSCRIPTION_DOC)
 
         with pytest.raises(HTTPException) as exc_info:
             await payment_service.create_subscription(
@@ -557,9 +541,7 @@ class TestCreateSubscription:
         checkout_response = MagicMock()
         checkout_response.session_id = "sess_002"
         checkout_response.checkout_url = "https://checkout.dodo.dev/sess_002"
-        mock_dodo_client.checkout_sessions.create = MagicMock(
-            return_value=checkout_response
-        )
+        mock_dodo_client.checkout_sessions.create = MagicMock(return_value=checkout_response)
 
         cursor = AsyncMock()
         cursor.sort = MagicMock(return_value=cursor)
@@ -591,9 +573,7 @@ class TestCreateSubscription:
         checkout_response = MagicMock()
         checkout_response.session_id = "sess_003"
         checkout_response.checkout_url = "https://checkout.dodo.dev/sess_003"
-        mock_dodo_client.checkout_sessions.create = MagicMock(
-            return_value=checkout_response
-        )
+        mock_dodo_client.checkout_sessions.create = MagicMock(return_value=checkout_response)
 
         cursor = AsyncMock()
         cursor.sort = MagicMock(return_value=cursor)
@@ -624,9 +604,7 @@ class TestCreateSubscription:
         checkout_response = MagicMock()
         checkout_response.session_id = "sess_004"
         checkout_response.checkout_url = "https://checkout.dodo.dev/sess_004"
-        mock_dodo_client.checkout_sessions.create = MagicMock(
-            return_value=checkout_response
-        )
+        mock_dodo_client.checkout_sessions.create = MagicMock(return_value=checkout_response)
 
         cursor = AsyncMock()
         cursor.sort = MagicMock(return_value=cursor)
@@ -657,9 +635,7 @@ class TestCreateSubscription:
         checkout_response = MagicMock()
         checkout_response.session_id = "sess_005"
         checkout_response.checkout_url = "https://checkout.dodo.dev/sess_005"
-        mock_dodo_client.checkout_sessions.create = MagicMock(
-            return_value=checkout_response
-        )
+        mock_dodo_client.checkout_sessions.create = MagicMock(return_value=checkout_response)
 
         cursor = AsyncMock()
         cursor.sort = MagicMock(return_value=cursor)
@@ -687,9 +663,7 @@ class TestVerifyPaymentCompletion:
         mock_users_collection,
         mock_send_email,
     ):
-        mock_subscriptions_collection.find_one = AsyncMock(
-            return_value=SAMPLE_SUBSCRIPTION_DOC
-        )
+        mock_subscriptions_collection.find_one = AsyncMock(return_value=SAMPLE_SUBSCRIPTION_DOC)
         mock_users_collection.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
@@ -718,9 +692,7 @@ class TestVerifyPaymentCompletion:
         mock_send_email,
     ):
         """Email failure is swallowed silently."""
-        mock_subscriptions_collection.find_one = AsyncMock(
-            return_value=SAMPLE_SUBSCRIPTION_DOC
-        )
+        mock_subscriptions_collection.find_one = AsyncMock(return_value=SAMPLE_SUBSCRIPTION_DOC)
         mock_users_collection.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
         mock_send_email.side_effect = Exception("SMTP error")
 
@@ -736,9 +708,7 @@ class TestVerifyPaymentCompletion:
         mock_send_email,
     ):
         """No email sent when user has no email address."""
-        mock_subscriptions_collection.find_one = AsyncMock(
-            return_value=SAMPLE_SUBSCRIPTION_DOC
-        )
+        mock_subscriptions_collection.find_one = AsyncMock(return_value=SAMPLE_SUBSCRIPTION_DOC)
         user_without_email = {**SAMPLE_USER_DOC, "email": None}
         mock_users_collection.find_one = AsyncMock(return_value=user_without_email)
 
@@ -754,9 +724,7 @@ class TestVerifyPaymentCompletion:
         mock_send_email,
     ):
         """No email sent when user doesn't exist in DB."""
-        mock_subscriptions_collection.find_one = AsyncMock(
-            return_value=SAMPLE_SUBSCRIPTION_DOC
-        )
+        mock_subscriptions_collection.find_one = AsyncMock(return_value=SAMPLE_SUBSCRIPTION_DOC)
         mock_users_collection.find_one = AsyncMock(return_value=None)
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
@@ -795,17 +763,13 @@ class TestGetUserSubscriptionStatus:
         mock_plans_collection,
         mock_redis_cache,
     ):
-        mock_subscriptions_collection.find_one = AsyncMock(
-            return_value=SAMPLE_SUBSCRIPTION_DOC
-        )
+        mock_subscriptions_collection.find_one = AsyncMock(return_value=SAMPLE_SUBSCRIPTION_DOC)
         cursor = AsyncMock()
         cursor.sort = MagicMock(return_value=cursor)
         cursor.to_list = AsyncMock(return_value=[SAMPLE_PLAN_DOC])
         mock_plans_collection.find = MagicMock(return_value=cursor)
 
-        with patch(
-            "app.services.payments.payment_service.serialize_document"
-        ) as mock_serialize:
+        with patch("app.services.payments.payment_service.serialize_document") as mock_serialize:
             mock_serialize.return_value = {"id": "serialized"}
             status = await payment_service.get_user_subscription_status(FAKE_USER_ID)
 
@@ -834,9 +798,7 @@ class TestGetUserSubscriptionStatus:
         cursor.to_list = AsyncMock(return_value=[SAMPLE_PLAN_DOC])
         mock_plans_collection.find = MagicMock(return_value=cursor)
 
-        with patch(
-            "app.services.payments.payment_service.serialize_document"
-        ) as mock_serialize:
+        with patch("app.services.payments.payment_service.serialize_document") as mock_serialize:
             mock_serialize.return_value = {"id": "serialized"}
             status = await payment_service.get_user_subscription_status(FAKE_USER_ID)
 
@@ -851,9 +813,7 @@ class TestGetUserSubscriptionStatus:
         mock_redis_cache,
     ):
         """If get_plans raises, plan gracefully falls back to None."""
-        mock_subscriptions_collection.find_one = AsyncMock(
-            return_value=SAMPLE_SUBSCRIPTION_DOC
-        )
+        mock_subscriptions_collection.find_one = AsyncMock(return_value=SAMPLE_SUBSCRIPTION_DOC)
         # Make get_plans fail by causing the cache to raise
         mock_redis_cache.get = AsyncMock(side_effect=Exception("Redis down"))
         cursor = AsyncMock()
@@ -861,9 +821,7 @@ class TestGetUserSubscriptionStatus:
         cursor.to_list = AsyncMock(side_effect=Exception("DB down"))
         mock_plans_collection.find = MagicMock(return_value=cursor)
 
-        with patch(
-            "app.services.payments.payment_service.serialize_document"
-        ) as mock_serialize:
+        with patch("app.services.payments.payment_service.serialize_document") as mock_serialize:
             mock_serialize.return_value = {"id": "serialized"}
             status = await payment_service.get_user_subscription_status(FAKE_USER_ID)
 
@@ -884,9 +842,7 @@ class TestDodoPaymentServiceInit:
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "production"
             mock_settings.DODO_PAYMENTS_API_KEY = "sk_live_test"
-            with patch(
-                "app.services.payments.payment_service.DodoPayments"
-            ) as mock_cls:
+            with patch("app.services.payments.payment_service.DodoPayments") as mock_cls:
                 DodoPaymentService()
                 mock_cls.assert_called_once_with(
                     bearer_token="sk_live_test",
@@ -897,9 +853,7 @@ class TestDodoPaymentServiceInit:
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "development"
             mock_settings.DODO_PAYMENTS_API_KEY = "sk_test_test"
-            with patch(
-                "app.services.payments.payment_service.DodoPayments"
-            ) as mock_cls:
+            with patch("app.services.payments.payment_service.DodoPayments") as mock_cls:
                 DodoPaymentService()
                 mock_cls.assert_called_once_with(
                     bearer_token="sk_test_test",
@@ -932,9 +886,7 @@ class TestVerifyWebhookSignature:
 
     def test_returns_true_when_no_verifier_configured(self):
         """When webhook_secret is empty, skip verification and return True."""
-        with patch(
-            "app.services.payments.payment_webhook_service.settings"
-        ) as mock_settings:
+        with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
             mock_settings.DODO_WEBHOOK_PAYMENTS_SECRET = ""
             mock_settings.ENV = "production"
             svc = PaymentWebhookService()
@@ -945,9 +897,7 @@ class TestVerifyWebhookSignature:
 
     def test_returns_true_in_development_mode(self, webhook_service):
         """In non-production env, skip verification."""
-        with patch(
-            "app.services.payments.payment_webhook_service.settings"
-        ) as mock_settings:
+        with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
             mock_settings.ENV = "development"
             result = webhook_service.verify_webhook_signature(
                 '{"type":"test"}',
@@ -961,22 +911,16 @@ class TestVerifyWebhookSignature:
 
     def test_production_valid_signature(self):
         """In production with valid signature, returns True."""
-        with patch(
-            "app.services.payments.payment_webhook_service.settings"
-        ) as mock_settings:
+        with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
             mock_settings.DODO_WEBHOOK_PAYMENTS_SECRET = "whsec_test123"
             mock_settings.ENV = "production"
-            with patch(
-                "app.services.payments.payment_webhook_service.Webhook"
-            ) as mock_wh_cls:
+            with patch("app.services.payments.payment_webhook_service.Webhook") as mock_wh_cls:
                 mock_verifier = MagicMock()
                 mock_verifier.verify = MagicMock(return_value=None)
                 mock_wh_cls.return_value = mock_verifier
                 svc = PaymentWebhookService()
 
-        with patch(
-            "app.services.payments.payment_webhook_service.settings"
-        ) as mock_settings:
+        with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
             mock_settings.ENV = "production"
             result = svc.verify_webhook_signature(
                 '{"type":"test"}',
@@ -992,24 +936,16 @@ class TestVerifyWebhookSignature:
 
     def test_production_invalid_signature_returns_false(self):
         """In production with invalid signature, returns False."""
-        with patch(
-            "app.services.payments.payment_webhook_service.settings"
-        ) as mock_settings:
+        with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
             mock_settings.DODO_WEBHOOK_PAYMENTS_SECRET = "whsec_test123"
             mock_settings.ENV = "production"
-            with patch(
-                "app.services.payments.payment_webhook_service.Webhook"
-            ) as mock_wh_cls:
+            with patch("app.services.payments.payment_webhook_service.Webhook") as mock_wh_cls:
                 mock_verifier = MagicMock()
-                mock_verifier.verify = MagicMock(
-                    side_effect=Exception("Invalid signature")
-                )
+                mock_verifier.verify = MagicMock(side_effect=Exception("Invalid signature"))
                 mock_wh_cls.return_value = mock_verifier
                 svc = PaymentWebhookService()
 
-        with patch(
-            "app.services.payments.payment_webhook_service.settings"
-        ) as mock_settings:
+        with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
             mock_settings.ENV = "production"
             result = svc.verify_webhook_signature(
                 '{"type":"test"}',
@@ -1024,22 +960,16 @@ class TestVerifyWebhookSignature:
 
     def test_header_normalization(self):
         """Headers are normalized to lowercase-with-dashes format."""
-        with patch(
-            "app.services.payments.payment_webhook_service.settings"
-        ) as mock_settings:
+        with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
             mock_settings.DODO_WEBHOOK_PAYMENTS_SECRET = "whsec_test123"
             mock_settings.ENV = "production"
-            with patch(
-                "app.services.payments.payment_webhook_service.Webhook"
-            ) as mock_wh_cls:
+            with patch("app.services.payments.payment_webhook_service.Webhook") as mock_wh_cls:
                 mock_verifier = MagicMock()
                 mock_verifier.verify = MagicMock(return_value=None)
                 mock_wh_cls.return_value = mock_verifier
                 svc = PaymentWebhookService()
 
-        with patch(
-            "app.services.payments.payment_webhook_service.settings"
-        ) as mock_settings:
+        with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
             mock_settings.ENV = "production"
             svc.verify_webhook_signature(
                 '{"data":"test"}',
@@ -1058,9 +988,7 @@ class TestVerifyWebhookSignature:
 
     def test_verifier_init_failure_sets_verifier_to_none(self):
         """If Webhook() constructor fails, verifier is None."""
-        with patch(
-            "app.services.payments.payment_webhook_service.settings"
-        ) as mock_settings:
+        with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
             mock_settings.DODO_WEBHOOK_PAYMENTS_SECRET = "bad_secret"
             mock_settings.ENV = "production"
             with patch(
@@ -1295,9 +1223,7 @@ class TestHandleSubscriptionActive:
         mock_webhook_send_email,
         mock_track_subscription,
     ):
-        event_data = _make_webhook_event(
-            "subscription.active", SUBSCRIPTION_DATA_PAYLOAD
-        )
+        event_data = _make_webhook_event("subscription.active", SUBSCRIPTION_DATA_PAYLOAD)
         result = await webhook_service.process_webhook(event_data, "wh_sub_001")
 
         assert result.status == "processed"
@@ -1319,9 +1245,7 @@ class TestHandleSubscriptionActive:
             return_value=SAMPLE_SUBSCRIPTION_DOC
         )
 
-        event_data = _make_webhook_event(
-            "subscription.active", SUBSCRIPTION_DATA_PAYLOAD
-        )
+        event_data = _make_webhook_event("subscription.active", SUBSCRIPTION_DATA_PAYLOAD)
         result = await webhook_service.process_webhook(event_data, "wh_sub_002")
 
         assert result.status == "processed"
@@ -1376,9 +1300,7 @@ class TestHandleSubscriptionActive:
         mock_webhook_send_email,
         mock_track_subscription,
     ):
-        event_data = _make_webhook_event(
-            "subscription.active", SUBSCRIPTION_DATA_PAYLOAD
-        )
+        event_data = _make_webhook_event("subscription.active", SUBSCRIPTION_DATA_PAYLOAD)
         # For welcome email, _send_welcome_email does a separate find_one
         mock_webhook_users_collection.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
 
@@ -1395,9 +1317,7 @@ class TestHandleSubscriptionActive:
         mock_webhook_send_email,
         mock_track_subscription,
     ):
-        event_data = _make_webhook_event(
-            "subscription.active", SUBSCRIPTION_DATA_PAYLOAD
-        )
+        event_data = _make_webhook_event("subscription.active", SUBSCRIPTION_DATA_PAYLOAD)
         await webhook_service.process_webhook(event_data, "wh_sub_006")
 
         mock_track_subscription.assert_called_once()
@@ -1417,9 +1337,7 @@ class TestHandleSubscriptionActive:
         mock_webhook_subscriptions_collection.insert_one = AsyncMock(
             return_value=MagicMock(inserted_id=None)
         )
-        event_data = _make_webhook_event(
-            "subscription.active", SUBSCRIPTION_DATA_PAYLOAD
-        )
+        event_data = _make_webhook_event("subscription.active", SUBSCRIPTION_DATA_PAYLOAD)
 
         result = await webhook_service.process_webhook(event_data, "wh_sub_007")
 
@@ -1438,9 +1356,7 @@ class TestHandleSubscriptionRenewed:
         mock_webhook_subscriptions_collection,
         mock_track_subscription,
     ):
-        event_data = _make_webhook_event(
-            "subscription.renewed", SUBSCRIPTION_DATA_PAYLOAD
-        )
+        event_data = _make_webhook_event("subscription.renewed", SUBSCRIPTION_DATA_PAYLOAD)
         result = await webhook_service.process_webhook(event_data, "wh_renew_001")
 
         assert result.status == "processed"
@@ -1463,9 +1379,7 @@ class TestHandleSubscriptionRenewed:
         mock_webhook_subscriptions_collection.update_one = AsyncMock(
             return_value=MagicMock(matched_count=0)
         )
-        event_data = _make_webhook_event(
-            "subscription.renewed", SUBSCRIPTION_DATA_PAYLOAD
-        )
+        event_data = _make_webhook_event("subscription.renewed", SUBSCRIPTION_DATA_PAYLOAD)
 
         result = await webhook_service.process_webhook(event_data, "wh_renew_002")
 
@@ -1480,9 +1394,7 @@ class TestHandleSubscriptionRenewed:
         mock_webhook_subscriptions_collection,
         mock_track_subscription,
     ):
-        event_data = _make_webhook_event(
-            "subscription.renewed", SUBSCRIPTION_DATA_PAYLOAD
-        )
+        event_data = _make_webhook_event("subscription.renewed", SUBSCRIPTION_DATA_PAYLOAD)
 
         await webhook_service.process_webhook(event_data, "wh_renew_003")
 
@@ -1502,9 +1414,7 @@ class TestHandleSubscriptionCancelled:
         mock_webhook_subscriptions_collection,
         mock_track_subscription,
     ):
-        event_data = _make_webhook_event(
-            "subscription.cancelled", SUBSCRIPTION_DATA_PAYLOAD
-        )
+        event_data = _make_webhook_event("subscription.cancelled", SUBSCRIPTION_DATA_PAYLOAD)
         result = await webhook_service.process_webhook(event_data, "wh_cancel_sub_001")
 
         assert result.status == "processed"
@@ -1555,9 +1465,7 @@ class TestHandleSubscriptionCancelled:
         mock_webhook_subscriptions_collection,
         mock_track_subscription,
     ):
-        event_data = _make_webhook_event(
-            "subscription.cancelled", SUBSCRIPTION_DATA_PAYLOAD
-        )
+        event_data = _make_webhook_event("subscription.cancelled", SUBSCRIPTION_DATA_PAYLOAD)
         await webhook_service.process_webhook(event_data, "wh_cancel_sub_004")
 
         mock_track_subscription.assert_called_once()
@@ -1576,9 +1484,7 @@ class TestHandleSubscriptionExpired:
         mock_webhook_subscriptions_collection,
         mock_track_subscription,
     ):
-        event_data = _make_webhook_event(
-            "subscription.expired", SUBSCRIPTION_DATA_PAYLOAD
-        )
+        event_data = _make_webhook_event("subscription.expired", SUBSCRIPTION_DATA_PAYLOAD)
         result = await webhook_service.process_webhook(event_data, "wh_expire_001")
 
         assert result.status == "processed"
@@ -1594,9 +1500,7 @@ class TestHandleSubscriptionExpired:
         mock_webhook_subscriptions_collection,
         mock_track_subscription,
     ):
-        event_data = _make_webhook_event(
-            "subscription.expired", SUBSCRIPTION_DATA_PAYLOAD
-        )
+        event_data = _make_webhook_event("subscription.expired", SUBSCRIPTION_DATA_PAYLOAD)
         await webhook_service.process_webhook(event_data, "wh_expire_002")
 
         mock_track_subscription.assert_called_once()
@@ -1614,9 +1518,7 @@ class TestHandleSubscriptionFailed:
         mock_processed_webhooks_collection,
         mock_webhook_subscriptions_collection,
     ):
-        event_data = _make_webhook_event(
-            "subscription.failed", SUBSCRIPTION_DATA_PAYLOAD
-        )
+        event_data = _make_webhook_event("subscription.failed", SUBSCRIPTION_DATA_PAYLOAD)
         result = await webhook_service.process_webhook(event_data, "wh_sfail_001")
 
         assert result.status == "processed"
@@ -1636,9 +1538,7 @@ class TestHandleSubscriptionOnHold:
         mock_processed_webhooks_collection,
         mock_webhook_subscriptions_collection,
     ):
-        event_data = _make_webhook_event(
-            "subscription.on_hold", SUBSCRIPTION_DATA_PAYLOAD
-        )
+        event_data = _make_webhook_event("subscription.on_hold", SUBSCRIPTION_DATA_PAYLOAD)
         result = await webhook_service.process_webhook(event_data, "wh_hold_001")
 
         assert result.status == "processed"
@@ -1658,9 +1558,7 @@ class TestHandleSubscriptionPlanChanged:
         mock_processed_webhooks_collection,
         mock_webhook_subscriptions_collection,
     ):
-        event_data = _make_webhook_event(
-            "subscription.plan_changed", SUBSCRIPTION_DATA_PAYLOAD
-        )
+        event_data = _make_webhook_event("subscription.plan_changed", SUBSCRIPTION_DATA_PAYLOAD)
         result = await webhook_service.process_webhook(event_data, "wh_change_001")
 
         assert result.status == "processed"
@@ -1742,9 +1640,7 @@ class TestGetUserEmailFromMetadata:
         webhook_service,
         mock_webhook_users_collection,
     ):
-        email = await webhook_service._get_user_email_from_metadata(
-            {"user_id": FAKE_USER_ID}
-        )
+        email = await webhook_service._get_user_email_from_metadata({"user_id": FAKE_USER_ID})
         assert email == FAKE_EMAIL
 
     async def test_returns_none_when_no_user_id(
@@ -1762,9 +1658,7 @@ class TestGetUserEmailFromMetadata:
     ):
         mock_webhook_users_collection.find_one = AsyncMock(return_value=None)
 
-        email = await webhook_service._get_user_email_from_metadata(
-            {"user_id": FAKE_USER_ID}
-        )
+        email = await webhook_service._get_user_email_from_metadata({"user_id": FAKE_USER_ID})
         assert email is None
 
 
@@ -1812,9 +1706,7 @@ class TestMarkWebhookAsProcessed:
             subscription_id="sub_001",
         )
 
-        await webhook_service._mark_webhook_as_processed(
-            "wh_mark_001", "payment.succeeded", result
-        )
+        await webhook_service._mark_webhook_as_processed("wh_mark_001", "payment.succeeded", result)
 
         mock_processed_webhooks_collection.insert_one.assert_awaited_once()
         inserted_doc = mock_processed_webhooks_collection.insert_one.call_args[0][0]
@@ -1842,9 +1734,7 @@ class TestMarkWebhookAsProcessed:
         )
 
         # Should not raise
-        await webhook_service._mark_webhook_as_processed(
-            "wh_mark_002", "payment.succeeded", result
-        )
+        await webhook_service._mark_webhook_as_processed("wh_mark_002", "payment.succeeded", result)
 
 
 # ============================================================================
@@ -1857,9 +1747,7 @@ class TestPaymentWebhookServiceInit:
     """Tests for PaymentWebhookService.__init__."""
 
     def test_no_secret_disables_verifier(self):
-        with patch(
-            "app.services.payments.payment_webhook_service.settings"
-        ) as mock_settings:
+        with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
             mock_settings.DODO_WEBHOOK_PAYMENTS_SECRET = ""
             mock_settings.ENV = "development"
             svc = PaymentWebhookService()
@@ -1867,9 +1755,7 @@ class TestPaymentWebhookServiceInit:
         assert svc.webhook_verifier is None
 
     def test_none_secret_disables_verifier(self):
-        with patch(
-            "app.services.payments.payment_webhook_service.settings"
-        ) as mock_settings:
+        with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
             mock_settings.DODO_WEBHOOK_PAYMENTS_SECRET = None
             mock_settings.ENV = "development"
             svc = PaymentWebhookService()
@@ -1878,9 +1764,7 @@ class TestPaymentWebhookServiceInit:
 
     def test_all_handler_event_types_registered(self):
         """All DodoWebhookEventType values have a corresponding handler."""
-        with patch(
-            "app.services.payments.payment_webhook_service.settings"
-        ) as mock_settings:
+        with patch("app.services.payments.payment_webhook_service.settings") as mock_settings:
             mock_settings.DODO_WEBHOOK_PAYMENTS_SECRET = ""
             mock_settings.ENV = "development"
             svc = PaymentWebhookService()

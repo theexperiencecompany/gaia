@@ -8,19 +8,20 @@ third-party service integrations.
 Note: User authentication via WorkOS is handled separately by the WorkOSAuthMiddleware.
 """
 
+from datetime import UTC, datetime, timedelta
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any
 
-import httpx
-from shared.py.wide_events import log
-from app.config.settings import settings
-from app.db.postgresql import get_db_session
-from app.models.db_oauth import OAuthToken
 from authlib.integrations.starlette_client import OAuth
 from authlib.oauth2.rfc6749 import OAuth2Token
 from fastapi import HTTPException
+import httpx
 from sqlalchemy import select, update
+
+from app.config.settings import settings
+from app.db.postgresql import get_db_session
+from app.models.db_oauth import OAuthToken
+from shared.py.wide_events import log
 
 
 class TokenRepository:
@@ -77,10 +78,10 @@ class TokenRepository:
             return datetime.now() + timedelta(seconds=expires_in)
         except (ValueError, TypeError):
             log.warning(f"Invalid expires_in: {expires_in}, using default")
-            return datetime.now(timezone.utc) + timedelta(seconds=3600)
+            return datetime.now(UTC) + timedelta(seconds=3600)
 
     async def store_token(
-        self, user_id: str, provider: str, token_data: Dict[str, Any]
+        self, user_id: str, provider: str, token_data: dict[str, Any]
     ) -> OAuth2Token:
         """
         Store a new integration OAuth token in the database.
@@ -109,11 +110,7 @@ class TokenRepository:
             refresh_token_value = token_data.get("refresh_token")
 
             # If no new refresh token is provided and there's an existing one, keep it
-            if (
-                not refresh_token_value
-                and existing_token
-                and existing_token.refresh_token
-            ):
+            if not refresh_token_value and existing_token and existing_token.refresh_token:
                 refresh_token_value = existing_token.refresh_token
                 # Update token_data to include the preserved refresh token
                 token_data["refresh_token"] = refresh_token_value
@@ -222,7 +219,7 @@ class TokenRepository:
 
             return oauth_token
 
-    async def _refresh_google_token(self, refresh_token: str) -> Optional[OAuth2Token]:
+    async def _refresh_google_token(self, refresh_token: str) -> OAuth2Token | None:
         """
         Refresh a Google OAuth token using the refresh token.
 
@@ -268,12 +265,12 @@ class TokenRepository:
             # Create OAuth2Token from response
             return OAuth2Token(token_data)
         except Exception as e:
-            log.error(f"Error refreshing Google token: {str(e)}")
+            log.error(f"Error refreshing Google token: {e!s}")
             return None
 
     async def _refresh_provider_token(
         self, provider: str, refresh_token: str
-    ) -> Optional[OAuth2Token]:
+    ) -> OAuth2Token | None:
         """
         Dispatch token refresh to the appropriate provider-specific method.
 
@@ -287,11 +284,10 @@ class TokenRepository:
         if provider == "google":
             return await self._refresh_google_token(refresh_token)
         # Add more providers as needed
-        else:
-            log.error(f"Provider {provider} not supported for token refresh")
-            return None
+        log.error(f"Provider {provider} not supported for token refresh")
+        return None
 
-    async def refresh_token(self, user_id: str, provider: str) -> Optional[OAuth2Token]:
+    async def refresh_token(self, user_id: str, provider: str) -> OAuth2Token | None:
         """
         Refresh an expired integration token.
 
@@ -311,9 +307,7 @@ class TokenRepository:
             token_record = result.scalar_one_or_none()
 
             if not token_record:
-                log.warning(
-                    f"Cannot refresh token: No {provider} token found for user {user_id}"
-                )
+                log.warning(f"Cannot refresh token: No {provider} token found for user {user_id}")
                 return None
 
             # Check if refresh token is available
@@ -345,9 +339,7 @@ class TokenRepository:
 
                 # Preserve the refresh token
                 # If the new token has a refresh token, use it; otherwise keep the existing one
-                token_dict["refresh_token"] = token.get(
-                    "refresh_token", token_record.refresh_token
-                )
+                token_dict["refresh_token"] = token.get("refresh_token", token_record.refresh_token)
 
                 # Store the refreshed token using our existing store_token method
                 # This will return the properly formatted OAuth2Token object directly
@@ -358,7 +350,7 @@ class TokenRepository:
 
                 return refreshed_token
             except Exception as e:
-                log.error(f"Error refreshing {provider} token: {str(e)}")
+                log.error(f"Error refreshing {provider} token: {e!s}")
                 return None
 
     async def revoke_token(self, user_id: str, provider: str) -> bool:
@@ -382,9 +374,7 @@ class TokenRepository:
             token_record = result.scalar_one_or_none()
 
             if not token_record:
-                log.warning(
-                    f"Cannot revoke token: No {provider} token found for user {user_id}"
-                )
+                log.warning(f"Cannot revoke token: No {provider} token found for user {user_id}")
                 return False
 
             try:
@@ -394,13 +384,13 @@ class TokenRepository:
                 log.info(f"Successfully revoked {provider} token for user {user_id}")
                 return True
             except Exception as e:
-                log.error(f"Error revoking token: {str(e)}")
+                log.error(f"Error revoking token: {e!s}")
                 await session.rollback()
                 return False
 
     async def get_token_by_auth_token(
         self, access_token: str, renew_if_expired: bool = False
-    ) -> Optional[OAuth2Token]:
+    ) -> OAuth2Token | None:
         """
         Retrieve a token using the access token.
 

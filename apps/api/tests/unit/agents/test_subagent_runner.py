@@ -1,16 +1,16 @@
 """Unit tests for subagent_runner.py and subagent_helpers.py."""
 
+from datetime import UTC, datetime
 import json
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import (
     AIMessageChunk,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
+import pytest
 
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
@@ -23,7 +23,6 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.models.mcp_config import SubAgentConfig
 from app.models.subagent_models import Subagent
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -265,7 +264,7 @@ class TestPrepareSubagentExecution:
                 subagent_id="github",
                 task="List my repos",
                 user={"user_id": "u1", "email": "t@t.com", "name": "T"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id="conv-1",
             )
 
@@ -292,7 +291,7 @@ class TestPrepareSubagentExecution:
                 subagent_id="nonexistent",
                 task="task",
                 user={"user_id": "u1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id="conv-1",
             )
 
@@ -319,7 +318,7 @@ class TestPrepareSubagentExecution:
                 subagent_id="github",
                 task="task",
                 user={"user_id": "u1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id="conv-1",
             )
 
@@ -362,7 +361,7 @@ class TestPrepareSubagentExecution:
                 subagent_id="subagent:github",
                 task="task",
                 user={"user_id": "u1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 conversation_id="conv-1",
             )
 
@@ -475,7 +474,7 @@ class TestExecuteSubagentStream:
         stream_writer = MagicMock()
 
         async def _fake_astream(*args, **kwargs):
-            yield ("updates", {"node1": {"messages": []}})
+            yield ("updates", {"agent": {"messages": []}})
 
         mock_graph = MagicMock()
         mock_graph.astream = _fake_astream
@@ -491,6 +490,52 @@ class TestExecuteSubagentStream:
         ):
             await execute_subagent_stream(ctx, stream_writer=stream_writer)
 
+        stream_writer.assert_called_once()
+        call_data = stream_writer.call_args[0][0]
+        assert call_data["tool_data"] == tool_entry
+
+    @pytest.mark.asyncio
+    async def test_non_agent_node_updates_skipped(self):
+        """Updates from non-agent nodes (pre-model hooks) must not emit tool_data.
+
+        When a subagent runs a second time with the same checkpoint, LangGraph
+        replays historical AIMessages via filter_messages_node / manage_system_prompts_node
+        "updates" events. Without the guard these stale tool_calls get re-emitted,
+        causing cumulative duplication in the UI (e.g. "13 tools" instead of 3).
+        """
+        tool_entry = {"name": "web_search", "args": {"q": "test"}}
+        stream_writer = MagicMock()
+
+        async def _fake_astream(*args, **kwargs):
+            # Simulate pre-model hook nodes replaying historical messages
+            yield ("updates", {"filter_messages_node": {"messages": []}})
+            yield ("updates", {"manage_system_prompts_node": {"messages": []}})
+            # Only the "agent" node should produce tool_data
+            yield ("updates", {"agent": {"messages": []}})
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph)
+
+        call_count = 0
+
+        def _extract_side_effect(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            return [("tc-1", tool_entry)]
+
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            patch(
+                "app.agents.core.subagents.subagent_runner.extract_tool_entries_from_update",
+                new_callable=AsyncMock,
+                side_effect=_extract_side_effect,
+            ),
+        ):
+            await execute_subagent_stream(ctx, stream_writer=stream_writer)
+
+        # extract_tool_entries_from_update should only be called once (for "agent" node)
+        assert call_count == 1
         stream_writer.assert_called_once()
         call_data = stream_writer.call_args[0][0]
         assert call_data["tool_data"] == tool_entry
@@ -582,7 +627,7 @@ class TestExecuteSubagentStream:
         metadata = {"icon_url": "https://icon.png", "name": "Custom MCP"}
 
         async def _fake_astream(*args, **kwargs):
-            yield ("updates", {"node": {"messages": []}})
+            yield ("updates", {"agent": {"messages": []}})
 
         mock_graph = MagicMock()
         mock_graph.astream = _fake_astream
@@ -681,7 +726,7 @@ class TestPrepareExecutorExecution:
                     "email": "t@t.com",
                     "user_name": "Test",
                 },
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert error is None
@@ -700,7 +745,7 @@ class TestPrepareExecutorExecution:
             ctx, error = await prepare_executor_execution(
                 task="task",
                 configurable={"user_id": "u1", "thread_id": "t1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert ctx is None
@@ -744,7 +789,7 @@ class TestPrepareExecutorExecution:
                     "tool_category": "github",
                     "selected_tool": "github_search_repos",
                 },
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert error is None
@@ -782,7 +827,7 @@ class TestPrepareExecutorExecution:
                     "user_id": "u1",
                     "thread_id": "t1",
                 },
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         human_msg = ctx.initial_state["messages"][-1]
@@ -815,7 +860,7 @@ class TestPrepareExecutorExecution:
             ctx, error = await prepare_executor_execution(
                 task="task",
                 configurable={"user_id": "u1", "thread_id": "t1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 stream_id="my-stream-id",
             )
 
@@ -849,7 +894,7 @@ class TestPrepareExecutorExecution:
             await prepare_executor_execution(
                 task="task",
                 configurable={"user_id": "u1", "thread_id": "t1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         call_kwargs = mock_build_config.call_args.kwargs
@@ -899,7 +944,7 @@ class TestCallSubagent:
                 query="List repos",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 chunks.append(c)
 
@@ -927,7 +972,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 chunks.append(c)
 
@@ -957,7 +1002,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 skip_integration_check=False,
             ):
                 chunks.append(c)
@@ -1000,7 +1045,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 pass
 
@@ -1043,7 +1088,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 stream_id="s-1",
             ):
                 chunks.append(c)
@@ -1058,7 +1103,7 @@ class TestCallSubagent:
         tool_entry = {"name": "search", "args": {}}
 
         async def _fake_astream(*args, **kwargs):
-            yield ("updates", {"node": {"messages": []}})
+            yield ("updates", {"agent": {"messages": []}})
 
         mock_graph = MagicMock()
         mock_graph.astream = _fake_astream
@@ -1088,7 +1133,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 chunks.append(c)
 
@@ -1123,7 +1168,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 chunks.append(c)
 
@@ -1159,7 +1204,7 @@ class TestCallSubagent:
                 query="hello",
                 user={"user_id": "u1"},
                 conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             ):
                 chunks.append(c)
 

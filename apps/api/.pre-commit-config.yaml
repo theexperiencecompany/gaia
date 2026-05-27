@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.4
+    rev: v0.14.6
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
@@ -28,10 +28,11 @@ repos:
         priority: 0
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.9.0
+    rev: v1.13.0
     hooks:
       - id: mypy
         args: [--ignore-missing-imports]
+        files: ^apps/api/app/
         additional_dependencies:
           - types-redis
           - types-requests

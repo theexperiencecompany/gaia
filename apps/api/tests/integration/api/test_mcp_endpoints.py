@@ -14,7 +14,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Shared payload builders
 # ---------------------------------------------------------------------------
@@ -227,9 +226,7 @@ class TestMCPTestConnectionEndpoint:
     ):
         """POST /api/v1/mcp/test/{id} returns status=failed when connect() raises."""
         mock_resolve.return_value = _make_resolved_integration(requires_auth=False)
-        mock_client = _make_mcp_client(
-            probe_result={"requires_auth": False, "error": None}
-        )
+        mock_client = _make_mcp_client(probe_result={"requires_auth": False, "error": None})
         mock_client.connect = AsyncMock(side_effect=RuntimeError("Transport error"))
         mock_get_client.return_value = mock_client
 
@@ -242,9 +239,7 @@ class TestMCPTestConnectionEndpoint:
 
     async def test_test_mcp_connection_requires_auth(self, unauthenticated_client):
         """POST /api/v1/mcp/test/{id} without auth must return 401."""
-        response = await unauthenticated_client.post(
-            "/api/v1/mcp/test/some-integration"
-        )
+        response = await unauthenticated_client.post("/api/v1/mcp/test/some-integration")
         assert response.status_code == 401
 
     @patch(
@@ -458,9 +453,7 @@ class TestMCPOAuthCallbackEndpoint:
         mock_resolve.return_value.name = "Failing Integration"
 
         mock_client = _make_mcp_client()
-        mock_client.handle_oauth_callback = AsyncMock(
-            side_effect=ValueError("Invalid state token")
-        )
+        mock_client.handle_oauth_callback = AsyncMock(side_effect=ValueError("Invalid state token"))
         mock_get_client.return_value = mock_client
 
         state = "bad-token:failing-integration:/integrations"
@@ -669,9 +662,7 @@ class TestMCPOAuthCallbackEndpoint:
         # Simulate what happens when Redis has expired the OAuth state key:
         # verify_oauth_state returns (False, None) → handle_oauth_callback raises
         mock_client.handle_oauth_callback = AsyncMock(
-            side_effect=ValueError(
-                "Invalid state token: state has expired or does not exist"
-            )
+            side_effect=ValueError("Invalid state token: state has expired or does not exist")
         )
         mock_get_client.return_value = mock_client
 

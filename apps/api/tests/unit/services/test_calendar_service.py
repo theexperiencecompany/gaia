@@ -5,11 +5,12 @@ After the Composio proxy migration, every Calendar API call routes through
 shape of each request (toolkit + endpoint + method + body + query).
 """
 
-from typing import Any, Dict, Iterator, List
+from collections.abc import Iterator
+from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi import HTTPException
+import pytest
 
 from app.models.calendar_models import (
     EventCreateRequest,
@@ -56,7 +57,7 @@ def mock_calendars_collection() -> Iterator[MagicMock]:
         yield col
 
 
-def _http_error(status: int, body: Dict[str, Any] | None = None) -> AppError:
+def _http_error(status: int, body: dict[str, Any] | None = None) -> AppError:
     return AppError(
         message=f"GOOGLECALENDAR API error ({status})",
         status_code=status,
@@ -75,9 +76,7 @@ class TestFilterEvents:
             {"eventType": "birthday", "start": {"date": "2025-01-01"}},
             {"eventType": "default", "start": {"date": "2025-01-02"}},
         ]
-        assert filter_events(events) == [
-            {"eventType": "default", "start": {"date": "2025-01-02"}}
-        ]
+        assert filter_events(events) == [{"eventType": "default", "start": {"date": "2025-01-02"}}]
 
     def test_drops_events_without_start(self):
         events = [
@@ -113,9 +112,7 @@ class TestFormatEventForFrontend:
             "end": {"dateTime": "2025-01-15T13:00"},
             "calendarId": "cal-1",
         }
-        formatted = format_event_for_frontend(
-            event, {"cal-1": "#abc"}, {"cal-1": "Work"}
-        )
+        formatted = format_event_for_frontend(event, {"cal-1": "#abc"}, {"cal-1": "Work"})
         assert formatted == {
             "summary": "Lunch",
             "start_time": "2025-01-15T12:00",
@@ -161,9 +158,7 @@ class TestFetchCalendarList:
             ]
         }
         result = fetch_calendar_list(USER_ID, short=True)
-        assert result == [
-            {"id": "c1", "summary": "A", "description": "x", "backgroundColor": "#1"}
-        ]
+        assert result == [{"id": "c1", "summary": "A", "description": "x", "backgroundColor": "#1"}]
 
     def test_propagates_proxy_error_as_http_exception(self, mock_proxy):
         mock_proxy.side_effect = _http_error(500, {"error": {"message": "boom"}})
@@ -283,9 +278,9 @@ class TestCreateCalendarEvent:
         )
         create_calendar_event(event, USER_ID)
         kwargs = mock_proxy.call_args.kwargs
-        assert kwargs["body"]["conferenceData"]["createRequest"][
-            "conferenceSolutionKey"
-        ] == {"type": "hangoutsMeet"}
+        assert kwargs["body"]["conferenceData"]["createRequest"]["conferenceSolutionKey"] == {
+            "type": "hangoutsMeet"
+        }
         assert kwargs["query"]["conferenceDataVersion"] == "1"
 
     def test_missing_start_for_timed_event_raises(self, mock_proxy):
@@ -319,9 +314,7 @@ class TestDeleteCalendarEvent:
     def test_404_raises_clean_message(self, mock_proxy):
         mock_proxy.side_effect = _http_error(404)
         with pytest.raises(HTTPException) as exc:
-            delete_calendar_event(
-                EventDeleteRequest(event_id="x", calendar_id="primary"), USER_ID
-            )
+            delete_calendar_event(EventDeleteRequest(event_id="x", calendar_id="primary"), USER_ID)
         assert exc.value.status_code == 404
         assert "Event not found" in str(exc.value.detail)
 
@@ -359,27 +352,17 @@ class TestFindEventForAction:
 
 class TestGetCalendarEvents:
     def test_uses_existing_preferences(self, mock_proxy, mock_calendars_collection):
-        mock_proxy.return_value = {
-            "items": [{"id": "c1", "summary": "Work"}]
-        }
-        mock_calendars_collection.find_one.return_value = {
-            "selected_calendars": ["c1"]
-        }
-        with patch(
-            "app.services.calendar_service.fetch_calendar_events"
-        ) as mock_fetch:
+        mock_proxy.return_value = {"items": [{"id": "c1", "summary": "Work"}]}
+        mock_calendars_collection.find_one.return_value = {"selected_calendars": ["c1"]}
+        with patch("app.services.calendar_service.fetch_calendar_events") as mock_fetch:
             mock_fetch.return_value = {"items": []}
             result = get_calendar_events(USER_ID)
         assert result["selectedCalendars"] == ["c1"]
 
-    def test_seeds_preferences_when_missing(
-        self, mock_proxy, mock_calendars_collection
-    ):
+    def test_seeds_preferences_when_missing(self, mock_proxy, mock_calendars_collection):
         mock_proxy.return_value = {"items": [{"id": "c1"}, {"id": "c2"}]}
         mock_calendars_collection.find_one.return_value = None
-        with patch(
-            "app.services.calendar_service.fetch_calendar_events"
-        ) as mock_fetch:
+        with patch("app.services.calendar_service.fetch_calendar_events") as mock_fetch:
             mock_fetch.return_value = {"items": []}
             get_calendar_events(USER_ID)
         mock_calendars_collection.update_one.assert_called_once()
@@ -401,18 +384,10 @@ class TestGetCalendarEventsById:
 
 
 class TestSearchCalendarEventsNative:
-    def test_searches_selected_calendars(
-        self, mock_proxy, mock_calendars_collection
-    ):
-        mock_calendars_collection.find_one.return_value = {
-            "selected_calendars": ["c1"]
-        }
-        mock_proxy.return_value = {
-            "items": [{"id": "c1", "summary": "Work"}]
-        }
-        with patch(
-            "app.services.calendar_service.search_events_in_calendar"
-        ) as mock_search:
+    def test_searches_selected_calendars(self, mock_proxy, mock_calendars_collection):
+        mock_calendars_collection.find_one.return_value = {"selected_calendars": ["c1"]}
+        mock_proxy.return_value = {"items": [{"id": "c1", "summary": "Work"}]}
+        with patch("app.services.calendar_service.search_events_in_calendar") as mock_search:
             mock_search.return_value = {
                 "items": [
                     {
@@ -432,12 +407,8 @@ class TestSearchCalendarEventsNative:
 
 class TestPreferences:
     def test_get_returns_selected_calendars(self, mock_calendars_collection):
-        mock_calendars_collection.find_one.return_value = {
-            "selected_calendars": ["c1"]
-        }
-        assert get_user_calendar_preferences(USER_ID) == {
-            "selectedCalendars": ["c1"]
-        }
+        mock_calendars_collection.find_one.return_value = {"selected_calendars": ["c1"]}
+        assert get_user_calendar_preferences(USER_ID) == {"selectedCalendars": ["c1"]}
 
     def test_get_raises_when_missing(self, mock_calendars_collection):
         mock_calendars_collection.find_one.return_value = None
@@ -455,9 +426,7 @@ class TestPreferences:
 
 class TestInitializeCalendarPreferences:
     def test_skips_when_already_set(self, mock_proxy, mock_calendars_collection):
-        mock_calendars_collection.find_one.return_value = {
-            "selected_calendars": ["c1"]
-        }
+        mock_calendars_collection.find_one.return_value = {"selected_calendars": ["c1"]}
         initialize_calendar_preferences(USER_ID)
         mock_calendars_collection.update_one.assert_not_called()
         mock_proxy.assert_not_called()
@@ -467,5 +436,5 @@ class TestInitializeCalendarPreferences:
         mock_proxy.return_value = {"items": [{"id": "c1"}, {"id": "c2"}]}
         initialize_calendar_preferences(USER_ID)
         mock_calendars_collection.update_one.assert_called_once()
-        update_args: List[Any] = mock_calendars_collection.update_one.call_args[0]
+        update_args: list[Any] = mock_calendars_collection.update_one.call_args[0]
         assert update_args[1] == {"$set": {"selected_calendars": ["c1", "c2"]}}

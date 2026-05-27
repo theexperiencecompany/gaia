@@ -20,7 +20,8 @@ interface WorkflowDescriptionFieldProps {
   control: Control<WorkflowFormData>;
   errors: FieldErrors<WorkflowFormData>;
   setValue?: UseFormSetValue<WorkflowFormData>;
-  mode?: "create" | "edit";
+  mode?: "create" | "edit" | "preview";
+  isPreview?: boolean;
   selectedIntegrationSlugs: string[];
   onIntegrationSlugsChange: (slugs: string[]) => void;
 }
@@ -30,6 +31,7 @@ export default function WorkflowDescriptionField({
   errors,
   setValue,
   mode = "create",
+  isPreview = false,
   selectedIntegrationSlugs,
   onIntegrationSlugsChange,
 }: WorkflowDescriptionFieldProps) {
@@ -123,6 +125,7 @@ export default function WorkflowDescriptionField({
               errorMessage={errors.prompt?.message}
               onKeyDown={(e) => {
                 if (
+                  !isPreview &&
                   (e.metaKey || e.ctrlKey) &&
                   e.shiftKey &&
                   e.key === "Enter"
@@ -132,31 +135,35 @@ export default function WorkflowDescriptionField({
                 }
               }}
             />
-            <div className="absolute top-1 right-0 z-10">
-              <Tooltip content={tooltipText} placement="top">
-                <Button
-                  size="sm"
-                  variant="light"
-                  isIconOnly
-                  isDisabled={isGenerating}
-                  isLoading={isGenerating}
-                  onPress={() => handleGenerate(field.onChange)}
-                  aria-label={tooltipText}
-                  className="text-foreground-400 hover:text-primary"
-                >
-                  {!isGenerating && <SparklesIcon className="h-4 w-4" />}
-                </Button>
-              </Tooltip>
-            </div>
+            {!isPreview && (
+              <div className="absolute top-1 right-0 z-10">
+                <Tooltip content={tooltipText} placement="top">
+                  <Button
+                    size="sm"
+                    variant="light"
+                    isIconOnly
+                    isDisabled={isGenerating}
+                    isLoading={isGenerating}
+                    onPress={() => handleGenerate(field.onChange)}
+                    aria-label={tooltipText}
+                    className="text-foreground-400 hover:text-primary"
+                  >
+                    {!isGenerating && <SparklesIcon className="h-4 w-4" />}
+                  </Button>
+                </Tooltip>
+              </div>
+            )}
           </div>
         )}
       />
-      <div className="pt-1">
-        <IntegrationChipsSelector
-          selectedSlugs={selectedIntegrationSlugs}
-          onChange={onIntegrationSlugsChange}
-        />
-      </div>
+      {!isPreview && (
+        <div className="pt-1">
+          <IntegrationChipsSelector
+            selectedSlugs={selectedIntegrationSlugs}
+            onChange={onIntegrationSlugsChange}
+          />
+        </div>
+      )}
     </div>
   );
 }

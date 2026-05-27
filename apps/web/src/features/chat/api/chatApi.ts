@@ -47,6 +47,7 @@ export interface Conversation {
   description: string;
   starred?: boolean;
   is_system_generated?: boolean;
+  is_onboarding_conversation?: boolean;
   system_purpose?: SystemPurpose;
   is_unread?: boolean;
   source?: ConversationSource;
@@ -96,6 +97,7 @@ export const chatApi = {
       description: string;
       starred?: boolean;
       is_system_generated?: boolean;
+      is_onboarding_conversation?: boolean;
       system_purpose?: SystemPurpose;
       is_unread?: boolean;
       createdAt: string;
@@ -241,6 +243,7 @@ export const chatApi = {
       content: string;
       role: "user" | "assistant";
     } | null = null,
+    isOnboardingDemo: boolean = false,
   ) => {
     const controller = externalController || new AbortController();
     // Extract fileIds from fileData for backward compatibility
@@ -250,6 +253,11 @@ export const chatApi = {
     if (conversationId === undefined && typeof window !== "undefined") {
       const match = window.location.pathname.match(/\/c\/([^/]+)(?:\/|$)/);
       if (match) conversationId = match[1];
+    }
+
+    // "new" is a UI sentinel for "create a new conversation" — backend expects null
+    if (conversationId === "new") {
+      conversationId = null;
     }
 
     // Guard against double onClose — [DONE] in onmessage fires onClose, then
@@ -279,6 +287,7 @@ export const chatApi = {
           selectedWorkflow,
           selectedCalendarEvent,
           replyToMessage,
+          is_onboarding_demo: isOnboardingDemo,
           messages: convoMessages
             .slice(-30)
             .filter(({ response }) => response.trim().length > 0)
@@ -329,6 +338,46 @@ export const chatApi = {
           });
           onError(err);
           throw err; // This stops any retry attempts
+        },
+      },
+    );
+  },
+
+  subscribeToExecutorStream: async (
+    streamId: string,
+    onMessage: (event: EventSourceMessage) => void,
+    onClose: () => void,
+    onError: (err: Error) => void,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    let doneReceived = false;
+
+    await fetchEventSource(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}stream/${streamId}`,
+      {
+        method: "GET",
+        openWhenHidden: true,
+        headers: {
+          Accept: "text/event-stream",
+        },
+        credentials: "include",
+        signal,
+        onmessage(event) {
+          if (event.data === "[DONE]") {
+            doneReceived = true;
+            onClose();
+            return;
+          }
+          onMessage(event);
+        },
+        onclose() {
+          if (!doneReceived) {
+            onClose();
+          }
+        },
+        onerror(err) {
+          onError(err);
+          throw err; // stops retry attempts
         },
       },
     );

@@ -9,10 +9,9 @@ skill_metadata). SkillMetadata is retained only for parsing external
 SKILL.md frontmatter during import.
 """
 
-import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Dict, List, Optional
+import re
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
@@ -75,16 +74,14 @@ class SkillMetadata(BaseModel):
     )
 
     # Optional (Agent Skills spec)
-    license: Optional[str] = Field(
-        default=None, description="License name or reference"
-    )
-    compatibility: Optional[str] = Field(
+    license: str | None = Field(default=None, description="License name or reference")
+    compatibility: str | None = Field(
         default=None, max_length=500, description="Environment requirements"
     )
-    metadata: Dict[str, str] = Field(
+    metadata: dict[str, str] = Field(
         default_factory=dict, description="Arbitrary key-value metadata"
     )
-    allowed_tools: List[str] = Field(
+    allowed_tools: list[str] = Field(
         default_factory=list, description="Pre-approved tools (experimental)"
     )
 
@@ -92,8 +89,7 @@ class SkillMetadata(BaseModel):
     target: str = Field(
         default="executor",
         description=(
-            "Target agent: 'executor', or a subagent agent_name "
-            "(gmail_agent, github_agent, etc.)"
+            "Target agent: 'executor', or a subagent agent_name (gmail_agent, github_agent, etc.)"
         ),
     )
 
@@ -116,7 +112,7 @@ class Skill(BaseModel):
     System skills use user_id="system"; user skills use the actual user ID.
     """
 
-    id: Optional[str] = Field(default=None, description="MongoDB document ID")
+    id: str | None = Field(default=None, description="MongoDB document ID")
 
     # Ownership
     user_id: str = Field(
@@ -137,28 +133,25 @@ class Skill(BaseModel):
     target: str = Field(
         default="executor",
         description=(
-            "Target agent: 'executor', or a subagent agent_name "
-            "(gmail_agent, github_agent, etc.)"
+            "Target agent: 'executor', or a subagent agent_name (gmail_agent, github_agent, etc.)"
         ),
     )
 
     # Optional metadata (from frontmatter, now top-level)
-    license: Optional[str] = Field(
-        default=None, description="License name or reference"
-    )
-    compatibility: Optional[str] = Field(
+    license: str | None = Field(default=None, description="License name or reference")
+    compatibility: str | None = Field(
         default=None, max_length=500, description="Environment requirements"
     )
-    metadata: Dict[str, str] = Field(
+    metadata: dict[str, str] = Field(
         default_factory=dict,
         description="Arbitrary key-value metadata from frontmatter",
     )
-    allowed_tools: List[str] = Field(
+    allowed_tools: list[str] = Field(
         default_factory=list, description="Pre-approved tools (experimental)"
     )
 
     # Skill content
-    body_content: Optional[str] = Field(
+    body_content: str | None = Field(
         default=None,
         description="Markdown body from SKILL.md (cached for discovery)",
     )
@@ -169,14 +162,14 @@ class Skill(BaseModel):
     # Installation tracking
     enabled: bool = Field(default=True, description="Whether skill is active")
     source: SkillSource = Field(..., description="How the skill was installed")
-    source_url: Optional[str] = Field(
+    source_url: str | None = Field(
         default=None, description="Original source for updates (GitHub URL, etc.)"
     )
-    installed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: Optional[datetime] = Field(default=None)
+    installed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = Field(default=None)
 
     # Files in the skill directory (relative paths)
-    files: List[str] = Field(
+    files: list[str] = Field(
         default_factory=list,
         description="List of files in the skill folder (e.g., SKILL.md, scripts/run.py)",
     )
@@ -205,12 +198,8 @@ class SkillInlineCreateRequest(BaseModel):
     """Request to create a skill from components."""
 
     name: str = Field(..., max_length=64, description="Skill name (kebab-case)")
-    description: str = Field(
-        ..., max_length=1024, description="What it does and when to use it"
-    )
-    instructions: str = Field(
-        ..., description="Markdown instructions (body of SKILL.md)"
-    )
+    description: str = Field(..., max_length=1024, description="What it does and when to use it")
+    instructions: str = Field(..., description="Markdown instructions (body of SKILL.md)")
     target: str = Field(
         default="executor",
         description="Target agent: 'executor' or a subagent agent_name (e.g., gmail_agent)",
@@ -220,5 +209,5 @@ class SkillInlineCreateRequest(BaseModel):
 class SkillListResponse(BaseModel):
     """Response for listing installed skills."""
 
-    skills: List[Skill] = Field(default_factory=list)
+    skills: list[Skill] = Field(default_factory=list)
     total: int = Field(default=0)

@@ -17,8 +17,15 @@ Folder Structure (per user):
   - ../skills/   - Shared skills (learned and custom)
 """
 
+import asyncio
+from collections.abc import Coroutine
 import contextlib
-from typing import Annotated, Any, Dict
+import re
+from typing import Annotated, Any
+
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
 
 from app.agents.tools.vfs_cmd_parser import get_vfs_command_parser
 from app.agents.tools.vfs_constants import (
@@ -26,8 +33,8 @@ from app.agents.tools.vfs_constants import (
     detect_artifact_content_type,
     is_user_visible_path,
 )
-from shared.py.wide_events import log
 from app.decorators import with_rate_limiting
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.vfs import MongoVFS, get_vfs
 from app.services.vfs.path_resolver import (
     get_agent_root,
@@ -35,12 +42,20 @@ from app.services.vfs.path_resolver import (
     normalize_path,
     validate_user_access,
 )
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
+from shared.py.wide_events import log
+
+# Module-level set to hold references to fire-and-forget tasks and prevent GC.
+_background_tasks: set[asyncio.Task] = set()
 
 
-def _get_context(config: RunnableConfig) -> Dict[str, Any]:
+def _fire_and_forget(coro: Coroutine[Any, Any, Any]) -> None:
+    """Schedule a coroutine without awaiting it, keeping a strong ref alive."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
+def _get_context(config: RunnableConfig) -> dict[str, Any]:
     """Extract VFS context fields from config.
 
     When vfs_session_id is present in configurable every agent in the chain
@@ -143,9 +158,7 @@ def _resolve_path(
     # .user-visible/ paths map to the current session
     if path.startswith(f"{USER_VISIBLE_FOLDER}/") or path == USER_VISIBLE_FOLDER:
         if not conversation_id:
-            log.warning(
-                "No conversation_id for .user-visible path, falling back to files/"
-            )
+            log.warning("No conversation_id for .user-visible path, falling back to files/")
             files_path = get_files_path(user_id, agent_name)
             relative = (
                 path[len(f"{USER_VISIBLE_FOLDER}/") :]
@@ -157,11 +170,7 @@ def _resolve_path(
             return normalize_path(files_path)
 
         agent_root = get_agent_root(user_id, agent_name)
-        relative = (
-            path[len(USER_VISIBLE_FOLDER) :]
-            if len(path) > len(USER_VISIBLE_FOLDER)
-            else ""
-        )
+        relative = path[len(USER_VISIBLE_FOLDER) :] if len(path) > len(USER_VISIBLE_FOLDER) else ""
         return normalize_path(
             f"{agent_root}/sessions/{conversation_id}/{USER_VISIBLE_FOLDER}{relative}"
         )
@@ -260,7 +269,7 @@ async def vfs_read(
 
     except Exception as e:
         log.error(f"VFS read error: {e}")
-        return f"Error reading file: {str(e)}"
+        return f"Error reading file: {e!s}"
 
 
 @tool
@@ -300,7 +309,7 @@ async def vfs_write(
         )
 
         # Provenance metadata — who created this file and in which session
-        metadata: Dict[str, Any] = {
+        metadata: dict[str, Any] = {
             "agent_name": ctx["agent_name"],
             "written_by": ctx["written_by"],
         }
@@ -319,20 +328,34 @@ async def vfs_write(
                 vfs=vfs,
                 fallback_size_bytes=len(content.encode("utf-8")),
             )
-            return f"Appended {len(content)} characters to: {resolved_path}"
+            result = f"Appended {len(content)} characters to: {resolved_path}"
+        else:
+            await vfs.write(resolved_path, content, ctx["user_id"], metadata)
+            await _emit_artifact_event(
+                path=resolved_path,
+                user_id=ctx["user_id"],
+                vfs=vfs,
+                fallback_size_bytes=len(content.encode("utf-8")),
+            )
+            result = f"Wrote {len(content)} characters to: {resolved_path}"
 
-        await vfs.write(resolved_path, content, ctx["user_id"], metadata)
-        await _emit_artifact_event(
-            path=resolved_path,
-            user_id=ctx["user_id"],
-            vfs=vfs,
-            fallback_size_bytes=len(content.encode("utf-8")),
-        )
-        return f"Wrote {len(content)} characters to: {resolved_path}"
+        # After successful write, check if this is a tracked todo canvas.
+        # Re-index ChromaDB out-of-band — never block the write on it.
+        if "/todos/" in resolved_path and resolved_path.endswith("/canvas.md"):
+            try:
+                # Extract todo_id from path: /users/{uid}/todos/{todo_id}/canvas.md
+                canvas_match = re.search(r"/todos/([^/]+)/canvas\.md$", resolved_path)
+                if canvas_match:
+                    todo_id = canvas_match.group(1)
+                    _fire_and_forget(tracked_todo_service.reindex_canvas(todo_id, ctx["user_id"]))
+            except Exception as reindex_err:
+                log.debug(f"Canvas reindex skipped: {reindex_err}", path=resolved_path)
+
+        return result
 
     except Exception as e:
         log.error(f"VFS write error: {e}")
-        return f"Error writing file: {str(e)}"
+        return f"Error writing file: {e!s}"
 
 
 @tool
@@ -389,7 +412,7 @@ async def vfs_cmd(
 
     except Exception as e:
         log.error(f"VFS cmd error: {e}")
-        return f"Error executing command: {str(e)}"
+        return f"Error executing command: {e!s}"
 
 
 tools = [

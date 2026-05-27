@@ -1,8 +1,9 @@
 """Unit tests for user_tasks ARQ worker."""
 
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from app.workers.tasks.user_tasks import check_inactive_users
 
@@ -14,7 +15,7 @@ def _make_db_user(
     last_active_days_ago: int = 10,
 ) -> dict:
     """Build a minimal user document as returned by MongoDB."""
-    last_active = datetime.now(timezone.utc) - timedelta(days=last_active_days_ago)
+    last_active = datetime.now(UTC) - timedelta(days=last_active_days_ago)
     return {
         "_id": MagicMock(__str__=lambda s: user_id),
         "email": email,
@@ -146,9 +147,9 @@ class TestCheckInactiveUsers:
             patch("app.utils.email_utils.send_inactive_user_email"),
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
-            before_call = datetime.now(timezone.utc)
+            before_call = datetime.now(UTC)
             await check_inactive_users(ctx)
-            after_call = datetime.now(timezone.utc)
+            after_call = datetime.now(UTC)
 
         query = mock_col.find.call_args[0][0]
         cutoff = query["last_active_at"]["$lt"]
@@ -157,9 +158,7 @@ class TestCheckInactiveUsers:
         expected_upper = (after_call - timedelta(days=7)).replace(tzinfo=None)
 
         assert (
-            expected_lower - timedelta(seconds=5)
-            <= cutoff
-            <= expected_upper + timedelta(seconds=5)
+            expected_lower - timedelta(seconds=5) <= cutoff <= expected_upper + timedelta(seconds=5)
         )
 
     async def test_db_query_excludes_inactive_flagged_users(self, ctx):
@@ -191,9 +190,7 @@ class TestCheckInactiveUsers:
 
         # The $or clause must be present to prevent duplicate emails.
         # Removing it from production code will cause this assertion to fail.
-        assert "$or" in query, (
-            "Query must contain a $or clause to avoid re-sending emails"
-        )
+        assert "$or" in query, "Query must contain a $or clause to avoid re-sending emails"
 
         or_conditions = query["$or"]
         assert isinstance(or_conditions, list) and len(or_conditions) >= 2, (
@@ -231,9 +228,7 @@ class TestCheckInactiveUsers:
         assert lt_branch is not None, (
             "One $or branch must check {$lt: <cutoff>} for last_inactive_email_sent"
         )
-        assert isinstance(lt_branch["$lt"], datetime), (
-            "The $lt value must be a datetime"
-        )
+        assert isinstance(lt_branch["$lt"], datetime), "The $lt value must be a datetime"
 
     async def test_db_exception_propagates(self, ctx):
         with patch("app.db.mongodb.collections.users_collection") as mock_col:
@@ -244,8 +239,7 @@ class TestCheckInactiveUsers:
     async def test_multiple_users_all_succeed_count_matches(self, ctx):
         count = 5
         users = [
-            _make_db_user(f"user{i}@example.com", f"User {i}", f"id_{i}")
-            for i in range(count)
+            _make_db_user(f"user{i}@example.com", f"User {i}", f"id_{i}") for i in range(count)
         ]
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=users)

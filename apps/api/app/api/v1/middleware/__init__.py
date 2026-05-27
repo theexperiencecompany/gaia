@@ -9,10 +9,10 @@ from .logging import LoggingMiddleware, log_function_call
 from .profiling import ProfilingMiddleware
 from .rate_limiter import limiter
 from .tiered_rate_limiter import (
-    TieredRateLimiter,
-    tiered_rate_limit,
     RateLimitExceededException,
+    TieredRateLimiter,
     UsageInfo,
+    tiered_rate_limit,
 )
 
 __all__ = [

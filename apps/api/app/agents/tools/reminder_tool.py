@@ -1,11 +1,20 @@
 """Reminder LangChain tools."""
 
-import json
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any, Optional
+import json
+from typing import Annotated, Any
 
-from shared.py.wide_events import log
+from langchain_core.runnables.config import RunnableConfig
+from langchain_core.tools import tool
+
 from app.decorators import with_doc, with_rate_limiting
+from app.models.reminder_models import (
+    AgentType,
+    CreateReminderToolRequest,
+    ReminderStatus,
+    StaticReminderPayload,
+)
+from app.services.reminder_service import reminder_scheduler
 from app.templates.docstrings.reminder_tool_docs import (
     CREATE_REMINDER,
     DELETE_REMINDER,
@@ -14,15 +23,7 @@ from app.templates.docstrings.reminder_tool_docs import (
     SEARCH_REMINDERS,
     UPDATE_REMINDER,
 )
-from app.models.reminder_models import (
-    AgentType,
-    CreateReminderToolRequest,
-    ReminderStatus,
-    StaticReminderPayload,
-)
-from app.services.reminder_service import reminder_scheduler
-from langchain_core.runnables.config import RunnableConfig
-from langchain_core.tools import tool
+from shared.py.wide_events import log
 
 
 def _apply_timezone_offset(dt: datetime, offset_str: str) -> datetime:
@@ -47,25 +48,25 @@ async def create_reminder_tool(
     agent: Annotated[
         AgentType, "The agent type creating the reminder (static only)"
     ] = AgentType.STATIC,
-    repeat: Annotated[Optional[str], "Cron expression for recurring reminders"] = None,
+    repeat: Annotated[str | None, "Cron expression for recurring reminders"] = None,
     scheduled_at: Annotated[
-        Optional[str],
+        str | None,
         "Date/time for when the reminder should run (YYYY-MM-DD HH:MM:SS format)",
     ] = None,
     timezone_offset: Annotated[
-        Optional[str],
+        str | None,
         "Timezone offset in (+|-)HH:MM format. Only use if user explicitly mentions a timezone.",
     ] = None,
     max_occurrences: Annotated[
-        Optional[int],
+        int | None,
         "Maximum number of times to run the reminder. Use this when user explicitly sets a limit on how many times the reminder should run.",
     ] = None,
     stop_after: Annotated[
-        Optional[str],
+        str | None,
         "Date/time after which no more runs (YYYY-MM-DD HH:MM:SS format)",
     ] = None,
     stop_after_timezone_offset: Annotated[
-        Optional[str],
+        str | None,
         "Timezone offset for stop_after in (+|-)HH:MM format. Only use if user explicitly mentions a timezone.",
     ] = None,
 ) -> Any:
@@ -115,7 +116,7 @@ async def create_reminder_tool(
 async def list_user_reminders_tool(
     config: RunnableConfig,
     status: Annotated[
-        Optional[ReminderStatus],
+        ReminderStatus | None,
         "Filter by reminder status (scheduled, completed, cancelled, paused)",
     ] = None,
 ) -> Any:
@@ -153,8 +154,7 @@ async def get_reminder_tool(
         reminder = await reminder_scheduler.get_reminder(reminder_id, user_id)
         if reminder:
             return reminder.model_dump()
-        else:
-            return {"error": "Reminder not found"}
+        return {"error": "Reminder not found"}
     except Exception as e:
         log.exception("Exception occurred while getting reminder")
         return {"error": str(e)}
@@ -179,8 +179,7 @@ async def delete_reminder_tool(
         success = await reminder_scheduler.cancel_task(reminder_id, user_id)
         if success:
             return {"status": "cancelled"}
-        else:
-            return {"error": "Failed to cancel reminder"}
+        return {"error": "Failed to cancel reminder"}
     except Exception as e:
         log.exception("Exception occurred while deleting reminder")
         return {"error": str(e)}
@@ -193,23 +192,19 @@ async def delete_reminder_tool(
 async def update_reminder_tool(
     config: RunnableConfig,
     reminder_id: Annotated[str, "The unique identifier of the reminder to update"],
-    repeat: Annotated[
-        Optional[str], "Cron expression for recurring reminders (optional)"
-    ] = None,
+    repeat: Annotated[str | None, "Cron expression for recurring reminders (optional)"] = None,
     max_occurrences: Annotated[
-        Optional[int], "Maximum number of times to run the reminder (optional)"
+        int | None, "Maximum number of times to run the reminder (optional)"
     ] = None,
     stop_after: Annotated[
-        Optional[str],
+        str | None,
         "Date/time after which no more runs (YYYY-MM-DD HH:MM:SS format, optional)",
     ] = None,
     stop_after_timezone_offset: Annotated[
-        Optional[str],
+        str | None,
         "Timezone offset for stop_after in (+|-)HH:MM format. Only use if user explicitly mentions a timezone.",
     ] = None,
-    payload: Annotated[
-        Optional[dict], "Additional data for the reminder task (optional)"
-    ] = None,
+    payload: Annotated[dict | None, "Additional data for the reminder task (optional)"] = None,
 ) -> Any:
     """Update attributes of an existing reminder"""
     try:
@@ -231,9 +226,7 @@ async def update_reminder_tool(
                 # Handle timezone based on the rules
                 if stop_after_timezone_offset:
                     # User explicitly provided timezone - create timezone from offset
-                    processed_stop_after = _apply_timezone_offset(
-                        dt, stop_after_timezone_offset
-                    )
+                    processed_stop_after = _apply_timezone_offset(dt, stop_after_timezone_offset)
                 else:
                     # Absolute time with no timezone - no timezone info
                     processed_stop_after = dt
@@ -247,14 +240,11 @@ async def update_reminder_tool(
         if payload is not None:
             update_data["payload"] = payload
 
-        success = await reminder_scheduler.update_reminder(
-            reminder_id, update_data, user_id
-        )
+        success = await reminder_scheduler.update_reminder(reminder_id, update_data, user_id)
         if success:
             return {"status": "updated"}
-        else:
-            log.error("Failed to update reminder")
-            return {"error": "Failed to update reminder"}
+        log.error("Failed to update reminder")
+        return {"error": "Failed to update reminder"}
     except Exception as e:
         log.exception("Exception occurred while updating reminder")
         return {"error": str(e)}
@@ -276,9 +266,7 @@ async def search_reminders_tool(
             log.error("Missing user_id in config")
             return {"error": "User ID is required to search reminders"}
 
-        reminders = await reminder_scheduler.list_user_reminders(
-            user_id=user_id, limit=100, skip=0
-        )
+        reminders = await reminder_scheduler.list_user_reminders(user_id=user_id, limit=100, skip=0)
 
         results = []
         for r in reminders:

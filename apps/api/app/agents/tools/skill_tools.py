@@ -8,6 +8,9 @@ manage their installed skills.
 
 from typing import Annotated
 
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+
 from app.agents.skills.installer import (
     install_from_github,
     install_from_inline,
@@ -20,8 +23,6 @@ from app.agents.skills.registry import (
     list_skills,
 )
 from shared.py.wide_events import log
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
 
 
 def _get_user_id(config: RunnableConfig) -> str:
@@ -75,9 +76,7 @@ async def install_skill_from_github(
             target_override=target if target else None,
         )
 
-        files_info = (
-            f" ({len(installed.files)} files)" if len(installed.files) > 1 else ""
-        )
+        files_info = f" ({len(installed.files)} files)" if len(installed.files) > 1 else ""
         return (
             f"Installed skill '{installed.name}' successfully{files_info}.\n"
             f"- Target: {installed.target}\n"
@@ -160,8 +159,7 @@ async def list_installed_skills(
     config: RunnableConfig,
     target: Annotated[
         str,
-        "Filter by target: 'executor', or a subagent agent_name. "
-        "Leave empty to show all skills.",
+        "Filter by target: 'executor', or a subagent agent_name. Leave empty to show all skills.",
     ] = "",
 ) -> str:
     """List all installed skills for the current user.
@@ -232,20 +230,17 @@ async def manage_skill(
             success = await enable_skill(user_id, skill.id)
             return f"Skill '{skill_name}' {'enabled' if success else 'was already enabled'}."
 
-        elif action == "disable":
+        if action == "disable":
             success = await disable_skill(user_id, skill.id)
             return f"Skill '{skill_name}' {'disabled' if success else 'was already disabled'}."
 
-        elif action == "uninstall":
+        if action == "uninstall":
             success = await uninstall_skill_full(user_id, skill.id)
             if success:
                 return f"Skill '{skill_name}' uninstalled and files removed."
             return f"Failed to uninstall skill '{skill_name}'."
 
-        else:
-            return (
-                f"Unknown action '{action}'. Use 'enable', 'disable', or 'uninstall'."
-            )
+        return f"Unknown action '{action}'. Use 'enable', 'disable', or 'uninstall'."
 
     except Exception as e:
         log.error(f"[skills] Manage error: {e}")

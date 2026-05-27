@@ -47,7 +47,7 @@ export function makeGaiaSharedMock(
 
   const BaseBotAdapter = class {
     platform = platform;
-    gaia = {};
+    gaia = { getPricingUrl: () => "https://gaia.test/pricing" };
     config = {};
     commands = new Map();
     analytics = undefined;
@@ -84,6 +84,34 @@ export function makeGaiaSharedMock(
     protected buildContext(userId: string, channelId?: string) {
       return { platform: this.platform, platformUserId: userId, channelId };
     }
+
+    // --- Base helpers added for the class-based pattern. Stubbed with real-ish
+    // behavior so adapter tests exercise the adapter's own wiring; the real
+    // implementations are covered by shared tests (media.test.ts, base behavior).
+
+    private readonly _welcomed = new Set<string>();
+    protected shouldSendWelcome(userId: string): boolean {
+      if (this._welcomed.has(userId)) return false;
+      this._welcomed.add(userId);
+      return true;
+    }
+
+    protected startTypingIndicator(
+      sendTyping: () => Promise<unknown>,
+      _refreshMs: number,
+    ): () => void {
+      void sendTyping().catch(() => {});
+      return () => {};
+    }
+
+    // Default: route media to a chat turn with no attachments. Tests that care
+    // about a specific outcome (upload, transcribe, reject) override this via
+    // (adapter as ...).resolveIncomingMedia.mockResolvedValueOnce(...).
+    resolveIncomingMedia = vi.fn(async (media: { caption?: string }) => ({
+      action: "chat" as const,
+      text: media.caption ?? "media",
+      attachments: [] as unknown[],
+    }));
   };
 
   const createBotLogger = vi.fn(() => ({
@@ -117,10 +145,39 @@ export function makeGaiaSharedMock(
     ),
     handleStreamingChat: vi.fn().mockResolvedValue(undefined),
     STREAMING_DEFAULTS: streamingDefaults,
+    // renderForPlatform is the shared non-streaming chokepoint. In adapter tests
+    // @gaia/shared is mocked, so conversion does not actually happen here — the
+    // identity mock returns RAW text and the real conversion is covered by the
+    // shared formatters tests.
+    renderForPlatform: vi.fn((text: string) => text),
     richMessageToMarkdown: vi.fn().mockReturnValue(defaultRichMarkdown),
     parseTextArgs: vi.fn((text: string) => ({
       subcommand: text.split(" ")[0] || undefined,
     })),
+    // Shared helpers the adapters import. Real-ish stubs so adapter tests can
+    // assert observable behavior (e.g. that the auth link/url is sent); the
+    // exact production copy is asserted in the shared formatters/media tests.
+    buildAuthLinkMessage: vi.fn(
+      (url: string) => `Link your account to GAIA: ${url}`,
+    ),
+    htmlToPlainText: vi.fn((html: string) =>
+      html
+        .replaceAll(/<[^>]+>/g, "")
+        .replaceAll(/&lt;/g, "<")
+        .replaceAll(/&gt;/g, ">")
+        .replaceAll(/&amp;/g, "&"),
+    ),
+    friendlyMediaError: vi.fn(
+      (kind: string) => `Couldn't process that ${kind}.`,
+    ),
+    unsupportedMediaMessage: vi.fn(
+      (kind: string) => `I can't process ${kind} yet.`,
+    ),
+    extractSubcommandArgs: vi.fn((name: string, raw?: string) =>
+      name === "todo" || name === "workflow"
+        ? { subcommand: (raw ?? "").trim().split(/\s+/)[0] || "list" }
+        : {},
+    ),
     ...converters,
   };
 }

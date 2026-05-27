@@ -67,9 +67,7 @@ class TestHealthEndpoints:
         assert data["status"] == "online"
         assert isinstance(data["status"], str)
 
-    async def test_health_when_project_info_unavailable_still_returns_200(
-        self, test_client
-    ):
+    async def test_health_when_project_info_unavailable_still_returns_200(self, test_client):
         """GET /health should still return 200 when pyproject.toml cannot be read.
 
         The get_project_info utility falls back to default values on failure,

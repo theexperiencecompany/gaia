@@ -1,8 +1,10 @@
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
+
+from bson import ObjectId
 
 from app.constants.notifications import DEFAULT_CHANNEL_PREFERENCES
 from app.db.mongodb.collections import users_collection
-from bson import ObjectId
 
 
 def normalize_channel_preferences(prefs: Mapping[str, Any] | None) -> dict[str, bool]:

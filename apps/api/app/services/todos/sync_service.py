@@ -3,11 +3,11 @@ Sync service for handling synchronization between different entities.
 This module prevents circular imports by centralizing sync logic.
 """
 
-import uuid
 from datetime import datetime
-from typing import Optional
+import uuid
 
-from shared.py.wide_events import log
+from bson import ObjectId
+
 from app.db.mongodb.collections import (
     goals_collection,
     projects_collection,
@@ -15,7 +15,7 @@ from app.db.mongodb.collections import (
 )
 from app.db.redis import delete_cache, delete_cache_by_pattern
 from app.models.todo_models import Priority, SubTask, TodoModel
-from bson import ObjectId
+from shared.py.wide_events import log
 
 
 async def sync_goal_node_completion(
@@ -84,15 +84,11 @@ async def sync_goal_node_completion(
         )
 
         if result.modified_count == 0:
-            log.warning(
-                f"No subtask updated for subtask_id {subtask_id} in todo {todo_id}"
-            )
+            log.warning(f"No subtask updated for subtask_id {subtask_id} in todo {todo_id}")
             return False
 
         # Get project_id for cache invalidation
-        todo = await todos_collection.find_one(
-            {"_id": ObjectId(todo_id)}, {"project_id": 1}
-        )
+        todo = await todos_collection.find_one({"_id": ObjectId(todo_id)}, {"project_id": 1})
         project_id = todo.get("project_id") if todo else None
 
         # Invalidate todo-related caches since we updated subtasks
@@ -107,7 +103,7 @@ async def sync_goal_node_completion(
         return True
 
     except Exception as e:
-        log.error(f"Error syncing goal node completion: {str(e)}")
+        log.error(f"Error syncing goal node completion: {e!s}")
         return False
 
 
@@ -157,9 +153,7 @@ async def sync_subtask_to_goal_completion(
         )
 
         if result.modified_count == 0:
-            log.warning(
-                f"No node updated for subtask_id {subtask_id} in goal {goal_id}"
-            )
+            log.warning(f"No node updated for subtask_id {subtask_id} in goal {goal_id}")
             return False
 
         # Invalidate goal caches
@@ -168,13 +162,11 @@ async def sync_subtask_to_goal_completion(
         # Also invalidate todo caches since this sync was triggered by a todo change
         await _invalidate_todo_caches(user_id, todo_project_id, todo_id)
 
-        log.info(
-            f"Synced subtask {subtask_id} completion back to goal {goal_id}: {is_complete}"
-        )
+        log.info(f"Synced subtask {subtask_id} completion back to goal {goal_id}: {is_complete}")
         return True
 
     except Exception as e:
-        log.error(f"Error syncing subtask to goal completion: {str(e)}")
+        log.error(f"Error syncing subtask to goal completion: {e!s}")
         return False
 
 
@@ -183,10 +175,10 @@ async def create_goal_project_and_todo(
     goal_title: str,
     roadmap_data: dict,
     user_id: str,
-    labels: Optional[list[str]] = None,
+    labels: list[str] | None = None,
     priority: Priority = Priority.NONE,
-    due_date: Optional[datetime] = None,
-    due_date_timezone: Optional[str] = None,
+    due_date: datetime | None = None,
+    due_date_timezone: str | None = None,
 ) -> str:
     """
     Create a todo in the shared 'Goals' project with subtasks for roadmap nodes.
@@ -278,7 +270,7 @@ async def create_goal_project_and_todo(
         return project_id
 
     except Exception as e:
-        log.error(f"Error creating goal todo in Goals project: {str(e)}")
+        log.error(f"Error creating goal todo in Goals project: {e!s}")
         raise
 
 
@@ -311,7 +303,7 @@ async def _get_or_create_goals_project(user_id: str) -> str:
 
 
 async def _invalidate_todo_caches(
-    user_id: str, project_id: Optional[str] = None, todo_id: Optional[str] = None
+    user_id: str, project_id: str | None = None, todo_id: str | None = None
 ):
     """
     Invalidate todo-related caches.
@@ -341,10 +333,10 @@ async def _invalidate_todo_caches(
         )
 
     except Exception as e:
-        log.error(f"Error invalidating todo caches: {str(e)}")
+        log.error(f"Error invalidating todo caches: {e!s}")
 
 
-async def _invalidate_goal_caches(user_id: str, goal_id: Optional[str] = None):
+async def _invalidate_goal_caches(user_id: str, goal_id: str | None = None):
     """
     Invalidate goal-related caches.
     """
@@ -365,10 +357,10 @@ async def _invalidate_goal_caches(user_id: str, goal_id: Optional[str] = None):
         log.info(f"Goal caches invalidated for user {user_id}, goal {goal_id}")
 
     except Exception as e:
-        log.error(f"Error invalidating goal caches: {str(e)}")
+        log.error(f"Error invalidating goal caches: {e!s}")
 
 
-async def _invalidate_project_caches(user_id: str, project_id: Optional[str] = None):
+async def _invalidate_project_caches(user_id: str, project_id: str | None = None):
     """
     Invalidate project-related caches.
     """
@@ -383,4 +375,4 @@ async def _invalidate_project_caches(user_id: str, project_id: Optional[str] = N
         log.info(f"Project caches invalidated for user {user_id}, project {project_id}")
 
     except Exception as e:
-        log.error(f"Error invalidating project caches: {str(e)}")
+        log.error(f"Error invalidating project caches: {e!s}")

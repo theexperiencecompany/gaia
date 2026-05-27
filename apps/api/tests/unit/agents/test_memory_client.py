@@ -2,7 +2,6 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-
 from app.agents.memory.client import MemoryClientManager, memory_client_manager
 
 
@@ -96,9 +95,7 @@ class TestMemoryClientManager:
 
         mock_instance = MagicMock()
         mock_instance.project = MagicMock()
-        mock_instance.project.update = AsyncMock(
-            side_effect=RuntimeError("network error")
-        )
+        mock_instance.project.update = AsyncMock(side_effect=RuntimeError("network error"))
         mock_client_cls.return_value = mock_instance
 
         mgr = MemoryClientManager()

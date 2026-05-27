@@ -1,7 +1,5 @@
 """Shared Pydantic input models used across multiple tool files."""
 
-from typing import Optional
-
 from pydantic import BaseModel, Field
 
 
@@ -12,7 +10,7 @@ class GatherContextInput(BaseModel):
     auth_credentials provided by Composio at call time.
     """
 
-    since: Optional[str] = Field(
+    since: str | None = Field(
         default=None,
         description=(
             "Optional ISO 8601 timestamp to filter results to only items updated "

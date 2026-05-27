@@ -1,103 +1,94 @@
 """ARQ cleanup tasks for stuck/failed background processes."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.db.mongodb.collections import users_collection
+from app.models.user_models import OnboardingPhase
+from app.services.onboarding.intelligence_job import (
+    enqueue_intelligence_job,
+    is_intelligence_job_live,
+)
 from shared.py.wide_events import log, wide_task
-from app.models.user_models import BioStatus
-from app.utils.redis_utils import RedisPoolManager
 
 
 async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
+    """Re-queue users stuck at personalization_pending past max_age_minutes.
+
+    Skips users whose ARQ job is still live so a slow-but-healthy pipeline is
+    never aborted. Keep max_age_minutes >= ARQ job_timeout.
     """
-    Find users stuck in PROCESSING/PENDING bio_status and re-queue personalization.
-
-    This task runs periodically to clean up stuck states caused by:
-    - Network failures during email processing
-    - LLM timeouts
-    - Mem0 API failures
-    - Process crashes
-
-    Instead of directly processing, this queues ARQ jobs to avoid blocking.
-
-    Args:
-        ctx: ARQ context
-        max_age_minutes: How long to wait before considering a status "stuck"
-
-    Returns:
-        Summary of cleanup actions
-    """
-    async with wide_task(
-        "cleanup_stuck_personalization", max_age_minutes=max_age_minutes
-    ):
+    async with wide_task("cleanup_stuck_personalization", max_age_minutes=max_age_minutes):
         try:
-            cutoff_time = datetime.now(timezone.utc) - timedelta(
-                minutes=max_age_minutes
-            )
+            cutoff_time = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
 
-            # Find users stuck in PROCESSING or PENDING for too long
-            stuck_users = await users_collection.find(
+            stuck_candidates = await users_collection.find(
                 {
-                    "onboarding.completed": True,
-                    "onboarding.bio_status": {
-                        "$in": [
-                            BioStatus.PROCESSING,
-                            "processing",
-                            BioStatus.PENDING,
-                            "pending",
-                        ]
-                    },
+                    "onboarding.phase": OnboardingPhase.PERSONALIZATION_PENDING.value,
                     "$or": [
-                        # Updated more than max_age_minutes ago
                         {"updated_at": {"$lt": cutoff_time}},
-                        # No updated_at field (old documents)
                         {"updated_at": {"$exists": False}},
                     ],
                 }
-            ).to_list(length=50)  # Limit to 50 at a time to avoid overwhelming ARQ
+            ).to_list(length=50)
 
-            if not stuck_users:
-                return f"No stuck users found (checked users older than {max_age_minutes}m)"
+            if not stuck_candidates:
+                return (
+                    f"No stuck users found "
+                    f"(checked users older than {max_age_minutes}m at "
+                    f"phase=personalization_pending)"
+                )
 
-            log.set(stuck_users_detected=len(stuck_users))
-
-            # Get ARQ pool to queue jobs
-            pool = await RedisPoolManager.get_pool()
+            log.set(stuck_candidates_detected=len(stuck_candidates))
 
             queued_count = 0
+            skipped_live_count = 0
             error_count = 0
 
-            for user in stuck_users:
+            for user in stuck_candidates:
                 user_id = str(user["_id"])
-                bio_status = user.get("onboarding", {}).get("bio_status")
                 updated_at = user.get("updated_at", "unknown")
 
                 try:
-                    # Queue personalization job instead of running directly
-                    job = await pool.enqueue_job(
-                        "process_personalization_task", user_id
-                    )
-
-                    if job:
+                    if await is_intelligence_job_live(user_id):
                         log.info(
-                            f"Re-queued personalization for stuck user {user_id} "
-                            f"(status={bio_status}, last_update={updated_at}, job_id={job.job_id})"
+                            "[cleanup] skipping live pipeline",
+                            user_id=user_id,
+                            last_update=str(updated_at),
+                        )
+                        skipped_live_count += 1
+                        continue
+
+                    job_id = await enqueue_intelligence_job(user_id)
+                    if job_id:
+                        log.info(
+                            "[cleanup] re-queued stuck user",
+                            user_id=user_id,
+                            last_update=str(updated_at),
+                            job_id=job_id,
                         )
                         queued_count += 1
                     else:
-                        log.warning(f"Failed to queue job for user {user_id}")
+                        log.warning(
+                            "[cleanup] enqueue returned no job",
+                            user_id=user_id,
+                        )
                         error_count += 1
 
                 except Exception as e:
                     log.exception(
-                        f"Error queuing personalization for user {user_id}: {e}",
+                        f"[cleanup] error re-queueing user {user_id}: {e}",
                     )
                     error_count += 1
 
-            log.set(jobs_queued=queued_count)
+            log.set(
+                jobs_queued=queued_count,
+                jobs_skipped_live=skipped_live_count,
+            )
             return (
-                f"Cleanup completed: {queued_count} users re-queued, "
-                f"{error_count} errors (found {len(stuck_users)} stuck users)"
+                f"Cleanup completed: {queued_count} re-queued, "
+                f"{skipped_live_count} skipped (live), "
+                f"{error_count} errors "
+                f"(found {len(stuck_candidates)} candidates)"
             )
 
         except Exception as e:

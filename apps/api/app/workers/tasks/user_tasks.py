@@ -2,7 +2,7 @@
 User-related ARQ tasks.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from shared.py.wide_events import log, wide_task
 
@@ -24,7 +24,7 @@ async def check_inactive_users(ctx: dict) -> str:
 
         log.info("Checking for inactive users")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         seven_days_ago = now - timedelta(days=7)
 
         # Convert to naive datetime for comparison with potentially naive database values
@@ -60,11 +60,9 @@ async def check_inactive_users(ctx: dict) -> str:
 
             except Exception as e:
                 email_failures += 1
-                log.error(f"Failed to send email to {user['email']}: {str(e)}")
+                log.error(f"Failed to send email to {user['email']}: {e!s}")
 
         log.set(emails_sent=email_count, email_failures=email_failures)
-        message = (
-            f"Processed {len(inactive_users)} inactive users, sent {email_count} emails"
-        )
+        message = f"Processed {len(inactive_users)} inactive users, sent {email_count} emails"
         log.info(message)
         return message

@@ -11,11 +11,11 @@ Contains functions for OAuth discovery per MCP specification:
 """
 
 import base64
+import ipaddress
 import json
 import re
 import time
-from typing import Any, Optional, Protocol
-import ipaddress
+from typing import Any, Protocol
 from urllib.parse import urlparse
 
 import httpx
@@ -181,9 +181,7 @@ async def extract_auth_challenge(server_url: str) -> dict:
 
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(
-                server_url, headers=headers, timeout=OAUTH_PROBE_TIMEOUT
-            )
+            response = await client.get(server_url, headers=headers, timeout=OAUTH_PROBE_TIMEOUT)
             elapsed_ms = (time.perf_counter() - start_time) * 1000
 
             if response.status_code == 401:
@@ -192,7 +190,7 @@ async def extract_auth_challenge(server_url: str) -> dict:
 
                 # Regex pattern handles escaped quotes within quoted values
                 # Matches: key="value" or key="value with \" escaped"
-                def extract_quoted_value(key: str, header: str) -> Optional[str]:
+                def extract_quoted_value(key: str, header: str) -> str | None:
                     # Match key="..." handling escaped quotes
                     pattern = rf'{key}="((?:[^"\\]|\\.)*)"'
                     match = re.search(pattern, header)
@@ -217,9 +215,7 @@ async def extract_auth_challenge(server_url: str) -> dict:
                 if error_desc_value:
                     result["error_description"] = error_desc_value
 
-                log.info(
-                    f"[TIMING] Probe {server_url}: 401 OAuth required, {elapsed_ms:.0f}ms"
-                )
+                log.info(f"[TIMING] Probe {server_url}: 401 OAuth required, {elapsed_ms:.0f}ms")
                 log.debug(f"Parsed WWW-Authenticate for {server_url}: {result}")
                 return result
 
@@ -231,16 +227,12 @@ async def extract_auth_challenge(server_url: str) -> dict:
     except httpx.ConnectError as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         # Re-raise connection errors so caller can handle them appropriately
-        log.warning(
-            f"[TIMING] Probe {server_url}: ConnectError after {elapsed_ms:.0f}ms - {e}"
-        )
+        log.warning(f"[TIMING] Probe {server_url}: ConnectError after {elapsed_ms:.0f}ms - {e}")
         raise
 
     except httpx.TimeoutException as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
-        log.warning(
-            f"[TIMING] Probe {server_url}: Timeout after {elapsed_ms:.0f}ms - {e}"
-        )
+        log.warning(f"[TIMING] Probe {server_url}: Timeout after {elapsed_ms:.0f}ms - {e}")
         return {}
 
     except Exception as e:
@@ -251,7 +243,7 @@ async def extract_auth_challenge(server_url: str) -> dict:
         return {}
 
 
-async def find_protected_resource_metadata(server_url: str) -> Optional[str]:
+async def find_protected_resource_metadata(server_url: str) -> str | None:
     """
     Find Protected Resource Metadata via well-known URIs per RFC 9728 Section 5.2.
 
@@ -278,9 +270,7 @@ async def find_protected_resource_metadata(server_url: str) -> Optional[str]:
     async with httpx.AsyncClient() as client:
         for url in candidates:
             try:
-                response = await client.get(
-                    url, headers=headers, timeout=OAUTH_DISCOVERY_TIMEOUT
-                )
+                response = await client.get(url, headers=headers, timeout=OAUTH_DISCOVERY_TIMEOUT)
                 if response.status_code == 200:
                     data = response.json()
                     if "authorization_servers" in data or "resource" in data:
@@ -291,9 +281,7 @@ async def find_protected_resource_metadata(server_url: str) -> Optional[str]:
                 log.debug(f"PRM not found at {url}: {e}")
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
-    log.debug(
-        f"[TIMING] PRM discovery failed for {server_url} after {elapsed_ms:.0f}ms"
-    )
+    log.debug(f"[TIMING] PRM discovery failed for {server_url} after {elapsed_ms:.0f}ms")
     return None
 
 
@@ -308,9 +296,7 @@ async def fetch_protected_resource_metadata(prm_url: str) -> dict:
     start_time = time.perf_counter()
 
     async with httpx.AsyncClient() as client:
-        response = await client.get(
-            prm_url, headers=headers, timeout=OAUTH_DISCOVERY_TIMEOUT
-        )
+        response = await client.get(prm_url, headers=headers, timeout=OAUTH_DISCOVERY_TIMEOUT)
         response.raise_for_status()
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         log.info(f"[TIMING] Fetched PRM from {prm_url} in {elapsed_ms:.0f}ms")
@@ -345,9 +331,7 @@ async def fetch_auth_server_metadata(auth_server_url: str) -> dict:
     if path:
         candidate_urls.append(f"{origin}/.well-known/oauth-authorization-server{path}")
         candidate_urls.append(f"{origin}/.well-known/openid-configuration{path}")
-        candidate_urls.append(
-            f"{auth_server_url.rstrip('/')}/.well-known/openid-configuration"
-        )
+        candidate_urls.append(f"{auth_server_url.rstrip('/')}/.well-known/openid-configuration")
 
     # For all URLs (with or without path), try standard root locations
     candidate_urls.append(f"{origin}/.well-known/oauth-authorization-server")
@@ -360,14 +344,10 @@ async def fetch_auth_server_metadata(auth_server_url: str) -> dict:
     async with httpx.AsyncClient() as client:
         for url in candidate_urls:
             try:
-                response = await client.get(
-                    url, headers=headers, timeout=OAUTH_DISCOVERY_TIMEOUT
-                )
+                response = await client.get(url, headers=headers, timeout=OAUTH_DISCOVERY_TIMEOUT)
                 if response.status_code == 200:
                     elapsed_ms = (time.perf_counter() - start_time) * 1000
-                    log.info(
-                        f"[TIMING] Found auth server metadata at {url} in {elapsed_ms:.0f}ms"
-                    )
+                    log.info(f"[TIMING] Found auth server metadata at {url} in {elapsed_ms:.0f}ms")
                     return response.json()
             except Exception as e:
                 log.debug(f"Auth metadata not found at {url}: {e}")
@@ -401,8 +381,8 @@ async def revoke_token(
     revocation_endpoint: str,
     token: str,
     token_type_hint: str = "access_token",
-    client_id: Optional[str] = None,
-    client_secret: Optional[str] = None,
+    client_id: str | None = None,
+    client_secret: str | None = None,
     timeout: int = 10,
 ) -> bool:
     """
@@ -472,9 +452,7 @@ async def revoke_token(
                 return True
 
             # Log error but don't raise - revocation is best-effort
-            log.warning(
-                f"Token revocation returned {response.status_code}: {response.text}"
-            )
+            log.warning(f"Token revocation returned {response.status_code}: {response.text}")
             return False
 
     except httpx.TimeoutException:
@@ -489,10 +467,10 @@ async def introspect_token(
     introspection_endpoint: str,
     token: str,
     token_type_hint: str = "access_token",
-    client_id: Optional[str] = None,
-    client_secret: Optional[str] = None,
+    client_id: str | None = None,
+    client_secret: str | None = None,
     timeout: int = 10,
-) -> Optional[dict]:
+) -> dict | None:
     """
     Introspect an OAuth token per RFC 7662.
 
@@ -560,9 +538,7 @@ async def introspect_token(
                 log.debug(f"Token introspection result: active={result.get('active')}")
                 return result
 
-            log.warning(
-                f"Token introspection returned {response.status_code}: {response.text}"
-            )
+            log.warning(f"Token introspection returned {response.status_code}: {response.text}")
             return None
 
     except httpx.TimeoutException:
@@ -622,9 +598,7 @@ def parse_oauth_error_response(response: Any) -> dict:
                 result["error_uri"] = data.get("error_uri")
             except Exception:
                 # Fall back to raw text
-                result["error_description"] = response.text[
-                    :500
-                ]  # Truncate long errors
+                result["error_description"] = response.text[:500]  # Truncate long errors
     except Exception as e:
         log.debug(f"Failed to parse OAuth error response: {e}")
         result["error_description"] = str(e)
@@ -661,16 +635,12 @@ def validate_token_response(tokens: dict, integration_id: str) -> None:
     """
     # access_token is REQUIRED
     if not tokens.get("access_token"):
-        raise ValueError(
-            f"Token response missing required 'access_token' for {integration_id}"
-        )
+        raise ValueError(f"Token response missing required 'access_token' for {integration_id}")
 
     # token_type is REQUIRED and MUST be "Bearer" for MCP
     token_type = tokens.get("token_type", "")
     if not token_type:
-        raise ValueError(
-            f"Token response missing required 'token_type' for {integration_id}"
-        )
+        raise ValueError(f"Token response missing required 'token_type' for {integration_id}")
 
     if token_type.lower() != "bearer":
         raise ValueError(
@@ -776,7 +746,7 @@ def validate_jwt_issuer(
 
 async def select_authorization_server(
     servers: list[str],
-    preferred_server: Optional[str] = None,
+    preferred_server: str | None = None,
 ) -> str:
     """
     Select an authorization server from available options.
@@ -803,7 +773,5 @@ async def select_authorization_server(
         return preferred_server
 
     # Default to first server
-    log.info(
-        f"Multiple auth servers available ({len(servers)}), using first: {servers[0]}"
-    )
+    log.info(f"Multiple auth servers available ({len(servers)}), using first: {servers[0]}")
     return servers[0]

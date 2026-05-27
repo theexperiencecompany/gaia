@@ -8,7 +8,7 @@ Adapted from notion-to-md-py with modifications for Composio integration.
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # =============================================================================
 # Markdown Formatting Functions
@@ -44,7 +44,7 @@ def _link(text: str, href: str) -> str:
     return f"[{text}]({href})"
 
 
-def _code_block(text: str, language: Optional[str] = None) -> str:
+def _code_block(text: str, language: str | None = None) -> str:
     if language == "plain text":
         language = "text"
     return f"```{language or ''}\n{text}\n```"
@@ -71,7 +71,7 @@ def _quote(text: str) -> str:
     return f"> {no_newline}"
 
 
-def _callout(text: str, icon: Optional[Dict[str, Any]] = None) -> str:
+def _callout(text: str, icon: dict[str, Any] | None = None) -> str:
     emoji = icon.get("emoji", "") if icon and icon.get("type") == "emoji" else ""
     formatted_text = text.replace("\n", "\n> ")
     formatted_emoji = emoji + " " if emoji else ""
@@ -83,7 +83,7 @@ def _callout(text: str, icon: Optional[Dict[str, Any]] = None) -> str:
     return f"> {formatted_emoji}{formatted_text}"
 
 
-def _bullet(text: str, count: Optional[int] = None) -> str:
+def _bullet(text: str, count: int | None = None) -> str:
     text = text.strip()
     return f"{count}. {text}" if count else f"- {text}"
 
@@ -111,13 +111,13 @@ def _divider() -> str:
     return "---"
 
 
-def _toggle(summary: Optional[str] = None, children: Optional[str] = None) -> str:
+def _toggle(summary: str | None = None, children: str | None = None) -> str:
     if not summary:
         return children or ""
     return f"<details><summary>{summary}</summary>{children or ''}</details>"
 
 
-def _table(cells: List[List[str]]) -> str:
+def _table(cells: list[list[str]]) -> str:
     """Convert a table to markdown format."""
     if not cells:
         return ""
@@ -145,7 +145,7 @@ def _table(cells: List[List[str]]) -> str:
 # =============================================================================
 
 
-def _apply_annotations(plain_text: str, annotations: Dict[str, Any]) -> str:
+def _apply_annotations(plain_text: str, annotations: dict[str, Any]) -> str:
     """Apply text annotations (bold, italic, etc.) to plain text."""
     if not plain_text.strip():
         return plain_text
@@ -175,7 +175,7 @@ def _apply_annotations(plain_text: str, annotations: Dict[str, Any]) -> str:
 # =============================================================================
 
 
-def rich_text_to_markdown(rich_text: List[Dict[str, Any]]) -> str:
+def rich_text_to_markdown(rich_text: list[dict[str, Any]]) -> str:
     """Convert Notion rich_text array to markdown string."""
     result = ""
 
@@ -205,7 +205,7 @@ def rich_text_to_markdown(rich_text: List[Dict[str, Any]]) -> str:
 # =============================================================================
 
 
-def block_to_markdown(block: Dict[str, Any]) -> str:
+def block_to_markdown(block: dict[str, Any]) -> str:
     """Convert a single Notion block to markdown string."""
     if not isinstance(block, dict) or "type" not in block:
         return ""
@@ -228,9 +228,7 @@ def block_to_markdown(block: Dict[str, Any]) -> str:
             link = block_content.get("file", {}).get("url", "")
 
         image_title = (
-            image_caption_plain.strip() or link.split("/")[-1]
-            if "/" in link
-            else image_title
+            image_caption_plain.strip() or link.split("/")[-1] if "/" in link else image_title
         )
 
         return _image(image_title, link)
@@ -354,7 +352,7 @@ def block_to_markdown(block: Dict[str, Any]) -> str:
 
 
 def blocks_to_markdown(
-    blocks: List[Dict[str, Any]],
+    blocks: list[dict[str, Any]],
     nesting_level: int = 0,
     include_block_ids: bool = False,
 ) -> str:
@@ -374,7 +372,7 @@ def blocks_to_markdown(
     if not blocks:
         return ""
 
-    result_lines: List[str] = []
+    result_lines: list[str] = []
     numbered_list_index = 0
 
     for block in blocks:
@@ -412,9 +410,7 @@ def blocks_to_markdown(
         # Handle children recursively if present
         children = block.get("children", [])
         if children:
-            child_md = blocks_to_markdown(
-                children, nesting_level + 1, include_block_ids
-            )
+            child_md = blocks_to_markdown(children, nesting_level + 1, include_block_ids)
             if child_md:
                 result_lines.append(child_md)
 
@@ -426,7 +422,7 @@ def blocks_to_markdown(
 # =============================================================================
 
 
-def simplify_block(block: Dict[str, Any]) -> Dict[str, Any]:
+def simplify_block(block: dict[str, Any]) -> dict[str, Any]:
     """
     Simplify a Notion block, removing formatting metadata.
 
@@ -435,7 +431,7 @@ def simplify_block(block: Dict[str, Any]) -> Dict[str, Any]:
     """
     block_type = block.get("type", "")
 
-    simplified: Dict[str, Any] = {
+    simplified: dict[str, Any] = {
         "id": block.get("id", ""),
         "type": block_type,
     }
@@ -480,14 +476,14 @@ def simplify_block(block: Dict[str, Any]) -> Dict[str, Any]:
     return simplified
 
 
-def simplify_blocks(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def simplify_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Simplify a list of blocks, removing formatting metadata."""
     return [simplify_block(block) for block in blocks]
 
 
-def extract_plain_text(blocks: List[Dict[str, Any]]) -> str:
+def extract_plain_text(blocks: list[dict[str, Any]]) -> str:
     """Extract just the plain text from blocks, no formatting."""
-    texts: List[str] = []
+    texts: list[str] = []
 
     for block in blocks:
         block_type = block.get("type", "")
@@ -514,7 +510,7 @@ def extract_plain_text(blocks: List[Dict[str, Any]]) -> str:
 # =============================================================================
 
 
-def markdown_to_notion_blocks(markdown: str) -> List[Dict[str, Any]]:
+def markdown_to_notion_blocks(markdown: str) -> list[dict[str, Any]]:
     """
     Convert markdown string to NOTION_ADD_MULTIPLE_PAGE_CONTENT format.
 
@@ -534,7 +530,7 @@ def markdown_to_notion_blocks(markdown: str) -> List[Dict[str, Any]]:
     - --- dividers
     - Inline: **bold**, *italic*, ~~strikethrough~~, `code`, [links](url)
     """
-    blocks: List[Dict[str, Any]] = []
+    blocks: list[dict[str, Any]] = []
     lines = markdown.split("\n")
     i = 0
 
@@ -563,9 +559,7 @@ def markdown_to_notion_blocks(markdown: str) -> List[Dict[str, Any]]:
                     "type": "code",
                     "code": {
                         "language": language,
-                        "rich_text": [
-                            {"type": "text", "text": {"content": "\n".join(code_lines)}}
-                        ],
+                        "rich_text": [{"type": "text", "text": {"content": "\n".join(code_lines)}}],
                     },
                 }
             )
@@ -607,9 +601,7 @@ def markdown_to_notion_blocks(markdown: str) -> List[Dict[str, Any]]:
 
         # Bulleted list
         if stripped.startswith("- ") or stripped.startswith("* "):
-            blocks.append(
-                {"block_property": "bulleted_list_item", "content": stripped[2:]}
-            )
+            blocks.append({"block_property": "bulleted_list_item", "content": stripped[2:]})
             i += 1
             continue
 
@@ -636,7 +628,7 @@ def markdown_to_notion_blocks(markdown: str) -> List[Dict[str, Any]]:
                 i += 1
 
             # Parse cells from a pipe-delimited row
-            def _parse_row(row_line: str) -> List[str]:
+            def _parse_row(row_line: str) -> list[str]:
                 return [cell.strip() for cell in row_line.strip("|").split("|")]
 
             # Filter out separator rows (e.g. |---|---| or |:---|:---:|)
@@ -663,12 +655,7 @@ def markdown_to_notion_blocks(markdown: str) -> List[Dict[str, Any]]:
                     cells.append("")
                 cells = cells[:table_width]
                 notion_rows.append(
-                    {
-                        "cells": [
-                            [{"type": "text", "text": {"content": cell}}]
-                            for cell in cells
-                        ]
-                    }
+                    {"cells": [[{"type": "text", "text": {"content": cell}}] for cell in cells]}
                 )
 
             blocks.append(

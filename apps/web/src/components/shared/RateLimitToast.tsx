@@ -100,18 +100,6 @@ export const showFeatureRestrictedToast = (
   });
 };
 
-export const showRateLimitExceededToast = (
-  feature: string,
-  resetTime?: string,
-) => {
-  showRateLimitToast({
-    title: "Rate Limit Exceeded",
-    feature,
-    resetTime,
-    showUpgradeButton: true,
-  });
-};
-
 export const showTokenLimitToast = (feature: string, planRequired?: string) => {
   showRateLimitToast({
     title: "Token Limit Exceeded",

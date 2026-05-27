@@ -5,18 +5,8 @@ This module provides functionality to suggest contextual follow-up actions
 to users based on the conversation context and tool usage patterns.
 """
 
-from typing import List, cast
+from typing import cast
 
-from app.agents.llm.client import get_free_llm_chain, invoke_with_fallback
-from app.agents.tools.core.registry import get_tool_registry
-from shared.py.wide_events import log
-from app.override.langgraph_bigtool.utils import State
-from app.services.integrations.user_integrations import (
-    get_user_integration_capabilities,
-)
-from app.templates.docstrings.follow_up_actions_tool_docs import (
-    SUGGEST_FOLLOW_UP_ACTIONS,
-)
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import RunnableConfig
@@ -24,18 +14,27 @@ from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore
 from pydantic import BaseModel, Field
 
+from app.agents.llm.client import get_free_llm_chain, invoke_with_fallback
+from app.agents.tools.core.registry import get_tool_registry
+from app.override.langgraph_bigtool.utils import State
+from app.services.integrations.user_integrations import (
+    get_user_integration_capabilities,
+)
+from app.templates.docstrings.follow_up_actions_tool_docs import (
+    SUGGEST_FOLLOW_UP_ACTIONS,
+)
+from shared.py.wide_events import log
+
 
 class FollowUpActions(BaseModel):
     """Data structure for follow-up action suggestions."""
 
-    actions: List[str] = Field(
+    actions: list[str] = Field(
         description="Array of 3-4 follow-up action suggestions for the user. Each action should be clear, actionable, contextually relevant, and under 50 characters."
     )
 
 
-async def follow_up_actions_node(
-    state: State, config: RunnableConfig, store: BaseStore
-) -> State:
+async def follow_up_actions_node(state: State, config: RunnableConfig, store: BaseStore) -> State:
     """
     Analyze conversation context and suggest relevant follow-up actions.
 
@@ -51,9 +50,7 @@ async def follow_up_actions_node(
         writer({"main_response_complete": True})
     except Exception as write_error:
         # Stream is closed (user disconnected), no need to continue
-        log.debug(
-            f"Stream already closed when sending completion marker: {write_error}"
-        )
+        log.debug(f"Stream already closed when sending completion marker: {write_error}")
         return state
 
     llm_chain = get_free_llm_chain()
@@ -116,8 +113,7 @@ async def follow_up_actions_node(
             config=cast(RunnableConfig, {**config, "silent": True}),
         )
         model_name = (
-            getattr(llm_chain[0], "model_name", None)
-            or getattr(llm_chain[0], "model", None)
+            getattr(llm_chain[0], "model_name", None) or getattr(llm_chain[0], "model", None)
             if llm_chain
             else None
         )
@@ -147,9 +143,7 @@ async def follow_up_actions_node(
         return state
 
 
-def _pretty_print_messages(
-    messages: List[AnyMessage], ignore_system_messages=True
-) -> str:
+def _pretty_print_messages(messages: list[AnyMessage], ignore_system_messages=True) -> str:
     pretty = ""
     for message in messages:
         if ignore_system_messages and isinstance(message, SystemMessage):

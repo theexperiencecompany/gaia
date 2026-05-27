@@ -1,20 +1,21 @@
 """
-Document summarization system using LlamaIndex for PDF/DOCX and LlamaCloud for images/text.
-This module integrates with ChromaDB for vector storage and retrieval.
+Document processing and summarization. LlamaParse extracts text from PDF/DOCX;
+the default LLM summarizes images, text, and parsed document pages. Summaries
+are embedded into ChromaDB for retrieval.
 """
 
 import base64
 import os
 import tempfile
-from typing import List, Union
+from typing import Union
 
 from llama_cloud_services import LlamaParse
 from llama_cloud_services.parse.utils import ResultType
 
 from app.agents.llm.client import init_llm
-from shared.py.wide_events import log
 from app.config.settings import settings
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
+from shared.py.wide_events import log
 
 
 class DocumentProcessor:
@@ -31,7 +32,7 @@ class DocumentProcessor:
 
     async def process_file(
         self, file_content: bytes, content_type: str, filename: str
-    ) -> Union[str, List[DocumentSummaryModel], DocumentSummaryModel]:
+    ) -> Union[str, list[DocumentSummaryModel], DocumentSummaryModel]:
         """
         Process and summarize a file based on its content type.
 
@@ -48,29 +49,27 @@ class DocumentProcessor:
         try:
             if content_type.startswith("image/"):
                 return await self.process_image(file_content)
-            elif content_type == "application/pdf":
+            if content_type == "application/pdf":
                 return await self.process_doc(file_content)
-            elif (
+            if (
                 content_type
                 == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             ):
                 return await self.process_doc(file_content, suffix=".docx")
-            elif content_type.startswith("text/"):
+            if content_type.startswith("text/"):
                 return await self.process_text(file_content)
-            else:
-                ext = os.path.splitext(filename)[1].lower()
-                return f"File of type {ext} (no content extraction available)"
+            ext = os.path.splitext(filename)[1].lower()
+            return f"File of type {ext} (no content extraction available)"
         except Exception as e:
-            log.error(f"Failed to process file {filename}: {str(e)}", exc_info=True)
+            log.error(f"Failed to process file {filename}: {e!s}", exc_info=True)
             return f"File processing failed for {filename}"
 
     async def process_image(self, image_data: bytes) -> str:
         """
-        Process and summarize an image using LlamaCloud's vision model.
+        Process and summarize an image using the default vision-capable LLM.
 
         Args:
             image_data: Raw image bytes
-            image_url: URL of the image
 
         Returns:
             Summary of the image content
@@ -94,9 +93,7 @@ class DocumentProcessor:
                             },
                             {
                                 "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}"
-                                },
+                                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
                             },
                         ],
                     }
@@ -109,14 +106,14 @@ class DocumentProcessor:
             return description
 
         except Exception as e:
-            log.error(f"Failed to process image: {str(e)}", exc_info=True)
+            log.error(f"Failed to process image: {e!s}", exc_info=True)
             return "Image description could not be generated."
 
     async def process_doc(
         self,
         data: bytes,
         suffix: str = ".pdf",
-    ) -> List[DocumentSummaryModel]:
+    ) -> list[DocumentSummaryModel]:
         """
         Process a PDF file using LlamaIndex, extract page images, and generate summaries.
 
@@ -176,7 +173,7 @@ class DocumentProcessor:
             ]
 
         except Exception as e:
-            log.error(f"Failed to process PDF: {str(e)}", exc_info=True)
+            log.error(f"Failed to process PDF: {e!s}", exc_info=True)
             return []
 
     async def process_text(self, text_data: bytes) -> DocumentSummaryModel:
@@ -207,11 +204,11 @@ class DocumentProcessor:
             )
 
         except Exception as e:
-            log.error(f"Failed to process text: {str(e)}", exc_info=True)
+            log.error(f"Failed to process text: {e!s}", exc_info=True)
             raise e
 
     async def _generate_text_summary(self, text: str) -> str:
-        """Generate a summary for text content using LlamaCloud."""
+        """Generate a summary for text content using the default LLM."""
         try:
             response = await self.llm.ainvoke(
                 input=[
@@ -229,14 +226,14 @@ class DocumentProcessor:
             return str(response)
 
         except Exception as e:
-            log.error(f"Failed to generate summary: {str(e)}", exc_info=True)
+            log.error(f"Failed to generate summary: {e!s}", exc_info=True)
             return "Summary could not be generated."
 
 
 # Function to implement file description generation interface compatible with existing code
 async def generate_file_summary(
     file_content: bytes, content_type: str, filename: str
-) -> Union[str, List[DocumentSummaryModel], DocumentSummaryModel]:
+) -> Union[str, list[DocumentSummaryModel], DocumentSummaryModel]:
     """
     Generate a description for a file based on its content type.
     Compatible with existing code interface.

@@ -10,16 +10,13 @@ Uses Redis for temporary state storage with automatic expiration.
 """
 
 import secrets
-from typing import Optional
 
-from shared.py.wide_events import log
 from app.constants.cache import STATE_KEY_PREFIX, STATE_TOKEN_TTL
 from app.db.redis import redis_cache
+from shared.py.wide_events import log
 
 
-async def create_oauth_state(
-    user_id: str, redirect_path: str, integration_id: str
-) -> str:
+async def create_oauth_state(user_id: str, redirect_path: str, integration_id: str) -> str:
     """
     Create a secure state token for OAuth flow.
 
@@ -40,9 +37,7 @@ async def create_oauth_state(
 
     # Validate redirect path - only allow safe paths
     if not is_safe_redirect_path(redirect_path):
-        log.warning(
-            f"Unsafe redirect path rejected for user {user_id}: {redirect_path}"
-        )
+        log.warning(f"Unsafe redirect path rejected for user {user_id}: {redirect_path}")
         # Default to safe path
         redirect_path = "/c"
 
@@ -62,15 +57,13 @@ async def create_oauth_state(
     await redis_client.hset(state_key, mapping=state_data)  # type: ignore[arg-type]
     await redis_client.expire(state_key, STATE_TOKEN_TTL)
 
-    log.info(
-        f"Created OAuth state token for user {user_id}, integration {integration_id}"
-    )
+    log.info(f"Created OAuth state token for user {user_id}, integration {integration_id}")
     return state_token
 
 
 async def validate_and_consume_oauth_state(
     state_token: str,
-) -> Optional[dict[str, str]]:
+) -> dict[str, str] | None:
     """
     Validate and consume an OAuth state token.
 
@@ -103,14 +96,10 @@ async def validate_and_consume_oauth_state(
             "integration_id": state_data.get("integration_id", ""),
         }
 
-        log.set(
-            auth={"user_id": result["user_id"], "provider": result["integration_id"]}
-        )
+        log.set(auth={"user_id": result["user_id"], "provider": result["integration_id"]})
 
         # Validate that we have all required fields
-        if not all(
-            [result["user_id"], result["redirect_path"], result["integration_id"]]
-        ):
+        if not all([result["user_id"], result["redirect_path"], result["integration_id"]]):
             log.warning(f"Incomplete OAuth state data for token: {state_token}")
             return None
 

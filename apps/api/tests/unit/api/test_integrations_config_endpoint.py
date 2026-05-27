@@ -7,8 +7,8 @@ only HTTP status codes, response shapes, and error handling are verified.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 API = "/api/v1/integrations"
 
@@ -124,9 +124,7 @@ class TestGetIntegrationsStatus:
         data = resp.json()
         assert len(data["integrations"]) == 2
 
-    async def test_status_service_error_returns_all_disconnected(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_status_service_error_returns_all_disconnected(self, client: AsyncClient) -> None:
         """When get_all_integrations_status fails, endpoint returns all
         integrations as disconnected (not 500)."""
         with patch(

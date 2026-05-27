@@ -1,6 +1,6 @@
 """Unit tests for notification channel adapters (inapp, discord, telegram, external base)."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -28,7 +28,6 @@ from app.utils.notification.channels.discord import DiscordChannelAdapter
 from app.utils.notification.channels.inapp import InAppChannelAdapter
 from app.utils.notification.channels.telegram import TelegramChannelAdapter
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -41,10 +40,10 @@ def _make_request(
     channels: Any = _SENTINEL,
     title: str = "Test Title",
     body: str = "Test body text",
-    actions: Optional[List[NotificationAction]] = None,
-    rich_content: Optional[Dict[str, Any]] = None,
+    actions: list[NotificationAction] | None = None,
+    rich_content: dict[str, Any] | None = None,
 ) -> NotificationRequest:
-    resolved_channels: List[ChannelConfig]
+    resolved_channels: list[ChannelConfig]
     if channels is _SENTINEL:
         resolved_channels = [ChannelConfig(channel_type="inapp", enabled=True)]
     else:
@@ -130,17 +129,13 @@ class TestInAppChannelAdapterProperties:
     def test_can_handle_with_inapp_channel(self) -> None:
         """Returns True when the request includes an inapp channel."""
         adapter = InAppChannelAdapter()
-        request = _make_request(
-            channels=[ChannelConfig(channel_type="inapp", enabled=True)]
-        )
+        request = _make_request(channels=[ChannelConfig(channel_type="inapp", enabled=True)])
         assert adapter.can_handle(request) is True
 
     def test_can_handle_without_inapp_channel(self) -> None:
         """Returns False when no inapp channel is present."""
         adapter = InAppChannelAdapter()
-        request = _make_request(
-            channels=[ChannelConfig(channel_type="telegram", enabled=True)]
-        )
+        request = _make_request(channels=[ChannelConfig(channel_type="telegram", enabled=True)])
         assert adapter.can_handle(request) is False
 
     def test_can_handle_empty_channels(self) -> None:
@@ -369,9 +364,7 @@ class TestExternalPlatformGetContext:
         """Returns skipped status when platform is not linked."""
         adapter = DiscordChannelAdapter()
 
-        with patch(
-            "app.utils.notification.channels.external.PlatformLinkService"
-        ) as svc:
+        with patch("app.utils.notification.channels.external.PlatformLinkService") as svc:
             svc.get_linked_platforms = AsyncMock(return_value={})
             ctx, err = await adapter._get_platform_context("user-1")
 
@@ -384,12 +377,8 @@ class TestExternalPlatformGetContext:
         """Returns skipped when linked but platformUserId is absent."""
         adapter = DiscordChannelAdapter()
 
-        with patch(
-            "app.utils.notification.channels.external.PlatformLinkService"
-        ) as svc:
-            svc.get_linked_platforms = AsyncMock(
-                return_value={"discord": {"platform": "discord"}}
-            )
+        with patch("app.utils.notification.channels.external.PlatformLinkService") as svc:
+            svc.get_linked_platforms = AsyncMock(return_value={"discord": {"platform": "discord"}})
             ctx, err = await adapter._get_platform_context("user-1")
 
         assert ctx is None
@@ -402,9 +391,7 @@ class TestExternalPlatformGetContext:
         adapter = DiscordChannelAdapter()
 
         with (
-            patch(
-                "app.utils.notification.channels.external.PlatformLinkService"
-            ) as svc,
+            patch("app.utils.notification.channels.external.PlatformLinkService") as svc,
             patch.object(adapter, "_get_bot_token", return_value=None),
         ):
             svc.get_linked_platforms = AsyncMock(
@@ -426,9 +413,7 @@ class TestExternalPlatformGetContext:
         adapter = DiscordChannelAdapter()
 
         with (
-            patch(
-                "app.utils.notification.channels.external.PlatformLinkService"
-            ) as svc,
+            patch("app.utils.notification.channels.external.PlatformLinkService") as svc,
             patch("app.utils.notification.channels.discord.settings") as mock_settings,
         ):
             mock_settings.DISCORD_BOT_TOKEN = "bot-token-123"
@@ -546,7 +531,7 @@ class TestExternalPlatformDeliverContent:
         adapter = DiscordChannelAdapter()
         call_count = 0
 
-        async def side_effect(text: str) -> Optional[str]:
+        async def side_effect(text: str) -> str | None:
             nonlocal call_count
             call_count += 1
             if call_count == 2:  # fail on second call (first message)
@@ -571,7 +556,7 @@ class TestExternalPlatformDeliverContent:
         adapter = DiscordChannelAdapter()
         call_count = 0
 
-        async def side_effect(text: str) -> Optional[str]:
+        async def side_effect(text: str) -> str | None:
             nonlocal call_count
             call_count += 1
             # Last call is footer — fail it
@@ -640,9 +625,7 @@ class TestExternalPlatformDeliver:
         """Returns skipped status when platform context is not available."""
         adapter = DiscordChannelAdapter()
 
-        with patch(
-            "app.utils.notification.channels.external.PlatformLinkService"
-        ) as svc:
+        with patch("app.utils.notification.channels.external.PlatformLinkService") as svc:
             svc.get_linked_platforms = AsyncMock(return_value={})
             status = await adapter.deliver({"text": "hello"}, "user-1")
 
@@ -1030,9 +1013,7 @@ class TestTelegramDeliver:
         """Returns skipped when user has no Telegram link."""
         adapter = TelegramChannelAdapter()
 
-        with patch(
-            "app.utils.notification.channels.external.PlatformLinkService"
-        ) as svc:
+        with patch("app.utils.notification.channels.external.PlatformLinkService") as svc:
             svc.get_linked_platforms = AsyncMock(return_value={})
             status = await adapter.deliver({"text": "hello"}, "user-1")
 

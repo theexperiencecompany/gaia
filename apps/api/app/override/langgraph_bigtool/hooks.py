@@ -5,8 +5,9 @@ Provides sync and async hook execution for pre_model, end_graph, etc.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 import inspect
-from typing import Awaitable, Callable, Union
+from typing import Union
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore

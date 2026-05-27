@@ -7,22 +7,18 @@ Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 from composio import Composio
 from composio.core.models.tools import ToolExecutionResponse
-from shared.py.wide_events import log
+
 from app.decorators import with_doc
 from app.models.common_models import GatherContextInput
 from app.models.google_docs_models import CreateTOCInput, DeleteDocInput, ShareDocInput
 from app.services.composio.proxy_client import proxy_request_sync
 from app.templates.docstrings.google_docs_tool_docs import (
     CUSTOM_CREATE_TOC as CUSTOM_CREATE_TOC_DOC,
-)
-from app.templates.docstrings.google_docs_tool_docs import (
     CUSTOM_DELETE_DOC as CUSTOM_DELETE_DOC_DOC,
-)
-from app.templates.docstrings.google_docs_tool_docs import (
     CUSTOM_SHARE_DOC as CUSTOM_SHARE_DOC_DOC,
 )
 from app.utils.errors import AppError
@@ -30,20 +26,20 @@ from app.utils.google_docs_utils import (
     extract_headings_from_document,
     generate_toc_text,
 )
-
+from shared.py.wide_events import log
 
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
 DOCS_TOOLKIT = "GOOGLEDOCS"
 
 
-def _user_id(auth_credentials: Dict[str, Any]) -> str:
+def _user_id(auth_credentials: dict[str, Any]) -> str:
     user_id = auth_credentials.get("user_id")
     if not user_id:
         raise ValueError("Missing user_id in auth_credentials")
     return user_id
 
 
-def register_google_docs_custom_tools(composio: Composio) -> List[str]:
+def register_google_docs_custom_tools(composio: Composio) -> list[str]:
     """Register Google Docs tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="GOOGLEDOCS")
@@ -51,8 +47,8 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_SHARE_DOC(
         request: ShareDocInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Share a Google Doc with one or more recipients."""
         log.set(tool={"integration": "google_docs", "action": "share_doc"})
         user_id = _user_id(auth_credentials)
@@ -72,11 +68,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
                         "role": recipient.role,
                         "emailAddress": recipient.email,
                     },
-                    query={
-                        "sendNotificationEmail": str(
-                            recipient.send_notification
-                        ).lower()
-                    },
+                    query={"sendNotificationEmail": str(recipient.send_notification).lower()},
                 )
                 shared.append(
                     {
@@ -97,9 +89,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
                 )
 
         if errors and not shared:
-            raise RuntimeError(
-                f"Failed to share document with all recipients: {errors}"
-            )
+            raise RuntimeError(f"Failed to share document with all recipients: {errors}")
 
         doc_url = f"https://docs.google.com/document/d/{request.document_id}/edit"
 
@@ -114,8 +104,8 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_CREATE_TOC(
         request: CreateTOCInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         log.set(tool={"integration": "google_docs", "action": "create_toc"})
         try:
             get_doc_result: ToolExecutionResponse = composio.tools.execute(
@@ -190,8 +180,8 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_DELETE_DOC(
         request: DeleteDocInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Delete a file permanently using Drive API."""
         log.set(tool={"integration": "google_docs", "action": "delete_doc"})
         user_id = _user_id(auth_credentials)
@@ -205,9 +195,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
             )
         except AppError as e:
             log.error(f"Error deleting doc {request.document_id}: {e}")
-            raise RuntimeError(
-                f"Failed to delete document: {e.status_code} - {e.message}"
-            )
+            raise RuntimeError(f"Failed to delete document: {e.status_code} - {e.message}")
 
         return {
             "successful": True,
@@ -218,8 +206,8 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get Google Docs context snapshot: recently viewed/modified documents.
 
         Zero required parameters. Returns user's recently accessed Google Docs.
@@ -228,7 +216,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
         user_id = _user_id(auth_credentials)
 
         mime = "application/vnd.google-apps.document"
-        files: List[Dict[str, Any]] = []
+        files: list[dict[str, Any]] = []
         try:
             data = proxy_request_sync(
                 user_id=user_id,

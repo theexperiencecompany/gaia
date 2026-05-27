@@ -14,7 +14,7 @@ const phase1Content = (
   </p>
 );
 
-export default function PMSlackDemo() {
+function PMSlackDemo() {
   return (
     <SlackDemoBase
       channel="product-team"

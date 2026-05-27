@@ -1,8 +1,9 @@
 import asyncio
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
-from shared.py.wide_events import log
+from fastapi import Request
+
 from app.constants.notifications import (
     ALL_AUTO_INJECTED_CHANNELS,
     CHANNEL_TYPE_INAPP,
@@ -25,6 +26,7 @@ from app.utils.notification.actions import (
     ModalActionHandler,
     RedirectActionHandler,
 )
+from app.utils.notification.channel_preferences import fetch_channel_preferences
 from app.utils.notification.channels import (
     ChannelAdapter,
     DiscordChannelAdapter,
@@ -32,11 +34,10 @@ from app.utils.notification.channels import (
     TelegramChannelAdapter,
     WhatsAppChannelAdapter,
 )
-from app.utils.notification.channel_preferences import fetch_channel_preferences
 from app.utils.notification.storage import (
     MongoDBNotificationStorage,
 )
-from fastapi import Request
+from shared.py.wide_events import log
 
 
 class NotificationOrchestrator:
@@ -53,8 +54,8 @@ class NotificationOrchestrator:
 
     def __init__(self, storage=None) -> None:
         self.storage = storage or MongoDBNotificationStorage()
-        self.channel_adapters: Dict[str, ChannelAdapter] = {}
-        self.action_handlers: Dict[str, ActionHandler] = {}
+        self.channel_adapters: dict[str, ChannelAdapter] = {}
+        self.action_handlers: dict[str, ActionHandler] = {}
 
         # Register default components
         self._register_default_components()
@@ -84,9 +85,7 @@ class NotificationOrchestrator:
         log.info(f"Registered action handler: {handler.action_type}")
 
     # NOTIFICATION CREATION & MANAGEMENT
-    async def create_notification(
-        self, request: NotificationRequest
-    ) -> NotificationRecord | None:
+    async def create_notification(self, request: NotificationRequest) -> NotificationRecord | None:
         """
         Create and process a new notification.
 
@@ -104,9 +103,7 @@ class NotificationOrchestrator:
                 "notification_type": request.type.value if request.type else None,
                 "source": request.source,
                 "title": request.content.title if request.content else None,
-                "body_preview": (request.content.body or "")[:80]
-                if request.content
-                else None,
+                "body_preview": (request.content.body or "")[:80] if request.content else None,
                 "channels": channels_requested,
                 "operation": "create_notification",
             }
@@ -141,9 +138,7 @@ class NotificationOrchestrator:
         log.info(f"Delivering notification {notification.id}")
 
         delivery_tasks = []
-        explicitly_requested = {
-            ch.channel_type for ch in notification.original_request.channels
-        }
+        explicitly_requested = {ch.channel_type for ch in notification.original_request.channels}
         for channel_config in notification.original_request.channels:
             adapter = self.channel_adapters.get(channel_config.channel_type)
             if adapter and adapter.can_handle(notification.original_request):
@@ -155,24 +150,18 @@ class NotificationOrchestrator:
         if not explicitly_requested:
             channel_prefs = await self._get_channel_prefs(notification.user_id)
             for platform in ALL_AUTO_INJECTED_CHANNELS:
-                if platform != CHANNEL_TYPE_INAPP and not channel_prefs.get(
-                    platform, True
-                ):
+                if platform != CHANNEL_TYPE_INAPP and not channel_prefs.get(platform, True):
                     log.info(
                         f"Skipping {platform} delivery for {notification.user_id}: disabled by preference"
                     )
                     continue
                 adapter = self.channel_adapters.get(platform)
                 if adapter and adapter.can_handle(notification.original_request):
-                    delivery_tasks.append(
-                        self._deliver_via_channel(notification, adapter)
-                    )
+                    delivery_tasks.append(self._deliver_via_channel(notification, adapter))
 
         # Execute all deliveries concurrently
         if delivery_tasks:
-            delivery_results = await asyncio.gather(
-                *delivery_tasks, return_exceptions=True
-            )
+            delivery_results = await asyncio.gather(*delivery_tasks, return_exceptions=True)
 
             # Process delivery results
             channel_statuses = []
@@ -190,9 +179,7 @@ class NotificationOrchestrator:
                 if s.status == NotificationStatus.DELIVERED and not s.skipped
             ]
             overall_status = (
-                NotificationStatus.DELIVERED
-                if delivered_channels
-                else NotificationStatus.FAILED
+                NotificationStatus.DELIVERED if delivered_channels else NotificationStatus.FAILED
             )
             log.set(
                 notification={
@@ -204,7 +191,7 @@ class NotificationOrchestrator:
                     "operation": "deliver_notification",
                 }
             )
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
             # Update the notification record with delivery results
             await self.storage.update_notification(
@@ -212,9 +199,7 @@ class NotificationOrchestrator:
                 {
                     "channels": [status.model_dump() for status in channel_statuses],
                     "status": overall_status.value,
-                    "delivered_at": now
-                    if overall_status == NotificationStatus.DELIVERED
-                    else None,
+                    "delivered_at": now if overall_status == NotificationStatus.DELIVERED else None,
                 },
             )
 
@@ -242,7 +227,7 @@ class NotificationOrchestrator:
             # Default to all DISABLED on error — better to skip delivery than
             # to spam users who have opted out when the DB is unavailable.
             log.warning(f"Failed to fetch channel prefs for {user_id}: {e}")
-            return {k: False for k in DEFAULT_CHANNEL_PREFERENCES}
+            return dict.fromkeys(DEFAULT_CHANNEL_PREFERENCES, False)
 
     async def _deliver_via_channel(
         self, notification: NotificationRecord, adapter: ChannelAdapter
@@ -274,7 +259,7 @@ class NotificationOrchestrator:
         notification_id: str,
         action_id: str,
         user_id: str,
-        request: Optional[Request],
+        request: Request | None,
     ) -> ActionResult:
         """
         Execute a notification action.
@@ -315,13 +300,9 @@ class NotificationOrchestrator:
             return ActionResult(
                 success=False,
                 message=(
-                    "Action has already been executed"
-                    if action.executed
-                    else "Action is disabled"
+                    "Action has already been executed" if action.executed else "Action is disabled"
                 ),
-                error_code=(
-                    "ACTION_ALREADY_EXECUTED" if action.executed else "ACTION_DISABLED"
-                ),
+                error_code=("ACTION_ALREADY_EXECUTED" if action.executed else "ACTION_DISABLED"),
             )
 
         # Get handler
@@ -351,12 +332,8 @@ class NotificationOrchestrator:
 
         # Update notification if needed (additional updates from handler)
         if result.update_notification:
-            await self.storage.update_notification(
-                notification_id, result.update_notification
-            )
-            log.info(
-                f"Broadcasting notification {notification.id} to user {notification.user_id}"
-            )
+            await self.storage.update_notification(notification_id, result.update_notification)
+            log.info(f"Broadcasting notification {notification.id} to user {notification.user_id}")
             # Broadcast update to user via websocket
             await websocket_manager.broadcast_to_user(
                 user_id,
@@ -370,9 +347,7 @@ class NotificationOrchestrator:
         return result
 
     # NOTIFICATION STATUS MANAGEMENT
-    async def mark_as_read(
-        self, notification_id: str, user_id: str
-    ) -> NotificationRecord | None:
+    async def mark_as_read(self, notification_id: str, user_id: str) -> NotificationRecord | None:
         """
         Mark notification as read.
 
@@ -393,14 +368,12 @@ class NotificationOrchestrator:
             notification_id,
             {
                 "status": NotificationStatus.READ.value,
-                "read_at": datetime.now(timezone.utc),
+                "read_at": datetime.now(UTC),
             },
         )
 
         # Get the updated notification
-        updated_notification = await self.storage.get_notification(
-            notification_id, user_id
-        )
+        updated_notification = await self.storage.get_notification(notification_id, user_id)
 
         # Broadcast update via websocket
         await websocket_manager.broadcast_to_user(
@@ -430,7 +403,7 @@ class NotificationOrchestrator:
             notification_id,
             {
                 "status": NotificationStatus.ARCHIVED.value,
-                "archived_at": datetime.now(timezone.utc),
+                "archived_at": datetime.now(UTC),
             },
         )
 
@@ -440,13 +413,13 @@ class NotificationOrchestrator:
     async def get_user_notifications(
         self,
         user_id: str,
-        status: Optional[NotificationStatus] = None,
+        status: NotificationStatus | None = None,
         limit: int = 50,
         offset: int = 0,
-        channel_type: Optional[str] = None,
-        notification_type: Optional[NotificationType] = None,
-        source: Optional[NotificationSourceEnum] = None,
-    ) -> List[Dict[str, Any]]:
+        channel_type: str | None = None,
+        notification_type: NotificationType | None = None,
+        source: NotificationSourceEnum | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Get notifications for a user with optional filtering.
 
@@ -467,9 +440,7 @@ class NotificationOrchestrator:
         )
         return [await self._serialize_notification(n) for n in notifications]
 
-    async def get_notification(
-        self, notification_id: str, user_id: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_notification(self, notification_id: str, user_id: str) -> dict[str, Any] | None:
         """
         Get a specific notification by ID for a user.
 
@@ -487,8 +458,8 @@ class NotificationOrchestrator:
 
     # BULK OPERATIONS
     async def bulk_actions(
-        self, notification_ids: List[str], user_id: str, action: BulkActions
-    ) -> Dict[str, bool]:
+        self, notification_ids: list[str], user_id: str, action: BulkActions
+    ) -> dict[str, bool]:
         """
         Perform bulk actions on multiple notifications.
 
@@ -520,9 +491,7 @@ class NotificationOrchestrator:
         return results
 
     # UTILITY & SERIALIZATION METHODS
-    async def _serialize_notification(
-        self, notification: NotificationRecord
-    ) -> Dict[str, Any]:
+    async def _serialize_notification(self, notification: NotificationRecord) -> dict[str, Any]:
         """
         Serialize notification for API response.
 
@@ -538,13 +507,9 @@ class NotificationOrchestrator:
             "status": notification.status.value,
             "created_at": notification.created_at.isoformat(),
             "delivered_at": (
-                notification.delivered_at.isoformat()
-                if notification.delivered_at
-                else None
+                notification.delivered_at.isoformat() if notification.delivered_at else None
             ),
-            "read_at": (
-                notification.read_at.isoformat() if notification.read_at else None
-            ),
+            "read_at": (notification.read_at.isoformat() if notification.read_at else None),
             "content": {
                 "title": notification.original_request.content.title,
                 "body": notification.original_request.content.body,
@@ -559,9 +524,7 @@ class NotificationOrchestrator:
                         "config": action.config.model_dump() if action.config else None,
                         "executed": action.executed,
                         "executed_at": (
-                            action.executed_at.isoformat()
-                            if action.executed_at
-                            else None
+                            action.executed_at.isoformat() if action.executed_at else None
                         ),
                         "disabled": action.disabled,
                     }
@@ -576,9 +539,7 @@ class NotificationOrchestrator:
                     "channel_type": ch.channel_type,
                     "status": ch.status.value,
                     "skipped": ch.skipped,
-                    "delivered_at": (
-                        ch.delivered_at.isoformat() if ch.delivered_at else None
-                    ),
+                    "delivered_at": (ch.delivered_at.isoformat() if ch.delivered_at else None),
                     "error_message": ch.error_message,
                 }
                 for ch in notification.channels

@@ -1,46 +1,45 @@
 """Unit tests for the mail service (app/services/mail/mail_service.py)."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # All public symbols imported directly from the module under test.
 # Deleting mail_service.py will break every test in this file.
 # ---------------------------------------------------------------------------
 from app.services.mail.mail_service import (
+    _process_attachments,
+    apply_labels,
+    archive_messages,
+    create_draft,
+    create_label,
+    delete_draft,
+    delete_label,
+    fetch_detailed_messages,
+    fetch_thread,
+    get_contact_list,
+    get_draft,
+    get_email_by_id,
     get_gmail_tool,
     invoke_gmail_tool,
-    send_email,
-    fetch_detailed_messages,
-    modify_message_labels,
+    list_drafts,
+    list_labels,
     mark_messages_as_read,
     mark_messages_as_unread,
-    star_messages,
-    unstar_messages,
-    trash_messages,
-    untrash_messages,
-    archive_messages,
+    modify_message_labels,
     move_to_inbox,
-    fetch_thread,
-    search_messages,
-    create_label,
-    update_label,
-    delete_label,
-    apply_labels,
     remove_labels,
-    create_draft,
-    list_drafts,
-    get_draft,
-    update_draft,
-    delete_draft,
+    search_messages,
     send_draft,
-    list_labels,
-    get_email_by_id,
-    get_contact_list,
-    _process_attachments,
+    send_email,
+    star_messages,
+    trash_messages,
+    unstar_messages,
+    untrash_messages,
+    update_draft,
+    update_label,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers / shared fixtures
@@ -257,9 +256,7 @@ class TestSendEmail:
     async def test_returns_error_dict_on_exception(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.side_effect = Exception("quota exceeded")
 
-        result = await send_email(
-            user_id=USER_ID, to="bob@example.com", subject="Hi", body="Body"
-        )
+        result = await send_email(user_id=USER_ID, to="bob@example.com", subject="Hi", body="Body")
 
         assert result["successful"] is False
         assert "quota exceeded" in result["error"]
@@ -360,9 +357,7 @@ class TestFetchDetailedMessages:
 
 @pytest.mark.unit
 class TestModifyMessageLabels:
-    async def test_returns_empty_list_when_no_labels_given(
-        self, mock_invoke_gmail_tool
-    ):
+    async def test_returns_empty_list_when_no_labels_given(self, mock_invoke_gmail_tool):
         result = await modify_message_labels(USER_ID, ["msg1"])
         assert result == []
         mock_invoke_gmail_tool.assert_not_called()
@@ -373,9 +368,7 @@ class TestModifyMessageLabels:
             "messages": [{"id": "msg1"}],
         }
 
-        result = await modify_message_labels(
-            USER_ID, ["msg1"], add_labels=["IMPORTANT"]
-        )
+        result = await modify_message_labels(USER_ID, ["msg1"], add_labels=["IMPORTANT"])
 
         args, _ = mock_invoke_gmail_tool.call_args
         assert args[1] == "GMAIL_ADD_LABEL_TO_EMAIL"
@@ -388,9 +381,7 @@ class TestModifyMessageLabels:
             "messages": [{"id": "msg1"}],
         }
 
-        result = await modify_message_labels(
-            USER_ID, ["msg1"], remove_labels=["UNREAD"]
-        )
+        result = await modify_message_labels(USER_ID, ["msg1"], remove_labels=["UNREAD"])
 
         args, _ = mock_invoke_gmail_tool.call_args
         assert args[1] == "GMAIL_REMOVE_LABEL"
@@ -499,18 +490,14 @@ class TestTrashUntrash:
         tool_names = [c[0][1] for c in mock_invoke_gmail_tool.call_args_list]
         assert all(n == "GMAIL_TRASH_MESSAGE" for n in tool_names)
 
-    async def test_trash_excludes_failed_messages_from_result(
-        self, mock_invoke_gmail_tool
-    ):
+    async def test_trash_excludes_failed_messages_from_result(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = {"successful": False, "error": "403"}
 
         result = await trash_messages(USER_ID, ["msg1"])
 
         assert result == []
 
-    async def test_untrash_calls_gmail_untrash_per_message(
-        self, mock_invoke_gmail_tool
-    ):
+    async def test_untrash_calls_gmail_untrash_per_message(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = {"successful": True}
 
         await untrash_messages(USER_ID, ["msg1", "msg2"])
@@ -682,16 +669,12 @@ class TestCreateLabel:
         assert args[2]["name"] == "Work"
         assert result == {"successful": True, "id": "label1"}
 
-    async def test_includes_color_as_json_string_when_provided(
-        self, mock_invoke_gmail_tool
-    ):
+    async def test_includes_color_as_json_string_when_provided(self, mock_invoke_gmail_tool):
         import json
 
         mock_invoke_gmail_tool.return_value = {"successful": True}
 
-        await create_label(
-            USER_ID, name="Work", background_color="#ff0000", text_color="#ffffff"
-        )
+        await create_label(USER_ID, name="Work", background_color="#ff0000", text_color="#ffffff")
 
         params = mock_invoke_gmail_tool.call_args[0][2]
         assert "color" in params
@@ -1262,15 +1245,11 @@ class TestGetContactList:
             },
             {
                 "successful": True,
-                "payload": {
-                    "headers": [{"name": "From", "value": "Zoe <zoe@example.com>"}]
-                },
+                "payload": {"headers": [{"name": "From", "value": "Zoe <zoe@example.com>"}]},
             },
             {
                 "successful": True,
-                "payload": {
-                    "headers": [{"name": "From", "value": "Alice <alice@example.com>"}]
-                },
+                "payload": {"headers": [{"name": "From", "value": "Alice <alice@example.com>"}]},
             },
         ]
 
@@ -1279,9 +1258,7 @@ class TestGetContactList:
         assert result[0]["name"] == "Alice"
         assert result[1]["name"] == "Zoe"
 
-    async def test_extracts_contacts_from_to_and_cc_headers(
-        self, mock_invoke_gmail_tool
-    ):
+    async def test_extracts_contacts_from_to_and_cc_headers(self, mock_invoke_gmail_tool):
         """All of From, To, and Cc addresses must appear in the result."""
         mock_invoke_gmail_tool.side_effect = [
             {"successful": True, "messages": [{"id": "msg1"}]},
@@ -1412,9 +1389,7 @@ class TestGetContactList:
         assert len(result) == 1
         assert result[0]["email"] == "real@example.com"
 
-    async def test_handles_multiple_addresses_in_single_header(
-        self, mock_invoke_gmail_tool
-    ):
+    async def test_handles_multiple_addresses_in_single_header(self, mock_invoke_gmail_tool):
         """Comma-separated addresses in a single header are each extracted."""
         mock_invoke_gmail_tool.side_effect = [
             {"successful": True, "messages": [{"id": "msg1"}]},

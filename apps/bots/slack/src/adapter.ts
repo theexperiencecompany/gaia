@@ -23,13 +23,14 @@
 import {
   BaseBotAdapter,
   type BotCommand,
-  convertToSlackMrkdwn,
+  buildAuthLinkMessage,
   createBotLogger,
+  extractSubcommandArgs,
   handleStreamingChat,
   type PlatformName,
-  parseTextArgs,
   type RichMessage,
   type RichMessageTarget,
+  renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
@@ -149,18 +150,8 @@ export class SlackAdapter extends BaseBotAdapter {
             command.user_name,
           );
 
-          // Parse text args for subcommand-style commands
-          const args: Record<string, string | number | boolean | undefined> =
-            {};
           const rawText = command.text || undefined;
-
-          if (
-            rawText &&
-            (commandName === "todo" || commandName === "workflow")
-          ) {
-            const parsed = parseTextArgs(rawText);
-            args.subcommand = parsed.subcommand;
-          }
+          const args = extractSubcommandArgs(commandName, rawText);
 
           await this.dispatchCommand(commandName, target, args, rawText);
         },
@@ -325,13 +316,13 @@ export class SlackAdapter extends BaseBotAdapter {
         await client.chat.update({
           channel: channelId,
           ts: currentTs,
-          text: convertToSlackMrkdwn(text),
+          text,
         });
       },
       async (text: string) => {
         const newMessage = await client.chat.postMessage({
           channel: channelId,
-          text: convertToSlackMrkdwn(text),
+          text,
         });
         if ((newMessage as { ts?: string }).ts) {
           currentTs = (newMessage as { ts: string }).ts;
@@ -340,7 +331,7 @@ export class SlackAdapter extends BaseBotAdapter {
           await client.chat.update({
             channel: channelId,
             ts: currentTs,
-            text: convertToSlackMrkdwn(updatedText),
+            text: updatedText,
           });
         };
       },
@@ -354,7 +345,7 @@ export class SlackAdapter extends BaseBotAdapter {
         await client.chat.postEphemeral({
           channel: channelId,
           user: userId,
-          text: `Please authenticate first: ${authUrl}`,
+          text: renderForPlatform(buildAuthLinkMessage(authUrl), "slack"),
         });
       },
       async (errMsg: string) => {
@@ -401,7 +392,7 @@ export class SlackAdapter extends BaseBotAdapter {
       send: async (text: string): Promise<SentMessage> => {
         const result = await client.chat.postMessage({
           channel: channelId,
-          text: convertToSlackMrkdwn(text),
+          text: renderForPlatform(text, "slack"),
         });
         const msgTs = (result as { ts?: string }).ts || "";
         return {
@@ -410,7 +401,7 @@ export class SlackAdapter extends BaseBotAdapter {
             await client.chat.update({
               channel: channelId,
               ts: msgTs,
-              text: convertToSlackMrkdwn(t),
+              text: renderForPlatform(t, "slack"),
             });
           },
         };
@@ -418,7 +409,7 @@ export class SlackAdapter extends BaseBotAdapter {
 
       sendEphemeral: async (text: string): Promise<SentMessage> => {
         await respond({
-          text: convertToSlackMrkdwn(text),
+          text: renderForPlatform(text, "slack"),
           response_type: "ephemeral",
         });
         return {

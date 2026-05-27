@@ -1,16 +1,16 @@
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import (
     notifications_collection,
 )
 from app.models.notification.notification_models import (
     NotificationRecord,
+    NotificationSourceEnum,
     NotificationStatus,
     NotificationType,
-    NotificationSourceEnum,
 )
+from shared.py.wide_events import log
 
 # class NotificationStorage(ABC):
 #     """Abstract storage interface"""
@@ -62,7 +62,7 @@ class MongoDBNotificationStorage:
 
     async def get_notification(
         self, notification_id: str, user_id: str | None
-    ) -> Optional[NotificationRecord]:
+    ) -> NotificationRecord | None:
         """Retrieve a notification by ID with optional user validation"""
         query = {"id": notification_id}
         if user_id is not None:
@@ -73,11 +73,9 @@ class MongoDBNotificationStorage:
             return NotificationRecord.model_validate(result)
         return None
 
-    async def update_notification(
-        self, notification_id: str, updates: Dict[str, Any]
-    ) -> None:
+    async def update_notification(self, notification_id: str, updates: dict[str, Any]) -> None:
         """Update a notification's fields"""
-        updates["updated_at"] = datetime.now(timezone.utc)
+        updates["updated_at"] = datetime.now(UTC)
         log.set(
             notification_id=notification_id,
             operation="update_notification",
@@ -106,13 +104,13 @@ class MongoDBNotificationStorage:
     async def get_user_notifications(
         self,
         user_id: str,
-        status: Optional[NotificationStatus] = None,
+        status: NotificationStatus | None = None,
         limit: int = 50,
         offset: int = 0,
-        channel_type: Optional[str] = None,
-        notification_type: Optional[NotificationType] = None,
-        source: Optional[NotificationSourceEnum] = None,
-    ) -> List[NotificationRecord]:
+        channel_type: str | None = None,
+        notification_type: NotificationType | None = None,
+        source: NotificationSourceEnum | None = None,
+    ) -> list[NotificationRecord]:
         """Get user's notifications with optional filtering"""
         query = {"user_id": user_id}
         if status is not None:
@@ -139,8 +137,8 @@ class MongoDBNotificationStorage:
     async def get_notification_count(
         self,
         user_id: str,
-        status: Optional[NotificationStatus] = None,
-        channel_type: Optional[str] = None,
+        status: NotificationStatus | None = None,
+        channel_type: str | None = None,
     ) -> int:
         """Get count of notifications for a user with optional status filtering"""
         query = {"user_id": user_id}

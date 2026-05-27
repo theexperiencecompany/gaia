@@ -1,140 +1,146 @@
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 
-from shared.py.wide_events import log
-from app.db.mongodb.collections import users_collection
+from bson import ObjectId
+from fastapi import BackgroundTasks, HTTPException
+from pymongo import ReturnDocument
+
+from app.db.mongodb.collections import (
+    conversations_collection,
+    todos_collection,
+    user_integrations_collection,
+    users_collection,
+)
 from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
     OnboardingPreferences,
     OnboardingRequest,
 )
-from app.utils.redis_utils import RedisPoolManager
+from app.services.integrations.integration_connection_service import (
+    disconnect_integration,
+)
+from app.services.memory_service import memory_service
+from app.services.onboarding.intelligence_job import (
+    abort_active_intelligence_job,
+    enqueue_intelligence_job,
+)
 from app.services.onboarding.post_onboarding_service import seed_initial_user_data
-from app.utils.errors import AppError
-from app.utils.user_preferences_utils import format_user_preferences_for_agent
-from bson import ObjectId
-from fastapi import BackgroundTasks, HTTPException
-from pymongo import ReturnDocument
+from app.services.workflow.service import WorkflowService
+from shared.py.wide_events import log
 
 
-async def queue_personalization(user_id: str) -> None:
-    """Queue post-onboarding personalization as an ARQ background task."""
-    try:
-        pool = await RedisPoolManager.get_pool()
-        job = await pool.enqueue_job("process_personalization_task", user_id)
-
-        if job:
-            log.info(
-                f"Queued personalization for user {user_id} with job ID {job.job_id}"
-            )
-        else:
-            log.error(f"Failed to queue personalization for user {user_id}")
-
-    except Exception as e:
-        log.error(f"Error queuing personalization for user {user_id}: {e}")
+def _serialize_user(user_doc: dict[str, Any]) -> dict[str, Any]:
+    """Stringify `_id` / `user_id` so the doc is JSON-serializable."""
+    user_doc["_id"] = str(user_doc["_id"])
+    user_doc["user_id"] = user_doc["_id"]
+    return user_doc
 
 
 async def complete_onboarding(
     user_id: str,
     onboarding_data: OnboardingRequest,
     background_tasks: BackgroundTasks,
-    user_timezone: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Complete user onboarding by storing preferences and updating user profile.
-    Uses atomic operations to prevent race conditions.
-
-    Args:
-        user_id: The user's MongoDB ID
-        onboarding_data: The onboarding data from the frontend
-
-    Returns:
-        Updated user data with onboarding status
-
-    Raises:
-        HTTPException: If user not found, already onboarded, or update fails
-    """
+) -> dict[str, Any]:
+    """Complete a user's onboarding submission. Idempotent under concurrent
+    retries via an atomic `onboarding: {$exists: false}` gate."""
     log.set(auth={"user_id": user_id})
 
     try:
-        # Convert string ID to ObjectId
         user_object_id = ObjectId(user_id)
 
-        # Prepare onboarding preferences with default values for settings page
         preferences = OnboardingPreferences(
             profession=onboarding_data.profession,
             response_style="casual",  # Default response style
             custom_instructions=None,
-            # Timezone removed from preferences - now only stored at root level
         )
 
-        # Prepare update fields
-        # Use dot notation to update specific fields without overwriting the entire onboarding object
-        # This preserves personalization data (house, bio, etc.) if it was already generated
-        update_fields = {
+        update_fields: dict[str, Any] = {
             "name": onboarding_data.name.strip(),
             "onboarding.completed": True,
-            "onboarding.completed_at": datetime.now(timezone.utc),
+            "onboarding.completed_at": datetime.now(UTC),
             "onboarding.phase": OnboardingPhase.PERSONALIZATION_PENDING,
             "onboarding.bio_status": BioStatus.PENDING,
             "onboarding.preferences": preferences.model_dump(),
-            "updated_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(UTC),
         }
 
-        # Always set timezone at root level from onboarding data
         if onboarding_data.timezone:
             update_fields["timezone"] = onboarding_data.timezone.strip()
 
-        # Atomic update with conditions to prevent race conditions and duplicate onboarding
+        if onboarding_data.focus and onboarding_data.focus.strip():
+            update_fields["onboarding.focus"] = onboarding_data.focus.strip()
+
+        if onboarding_data.clarify_answers:
+            kept = [
+                {
+                    "id": a.id,
+                    "kind": a.kind,
+                    "question": a.question,
+                    "value": (a.value or "").strip() or None,
+                }
+                for a in onboarding_data.clarify_answers
+                if a.value and a.value.strip()
+            ]
+            if kept:
+                update_fields["onboarding.clarify_answers"] = kept
+
+        # Atomic gate: only the request that creates the `onboarding` subdoc
+        # wins; concurrent POSTs and replays get None and fall through.
         updated_user = await users_collection.find_one_and_update(
-            {
-                "_id": user_object_id,
-                # Ensure user exists and hasn't completed onboarding yet
-                "$or": [
-                    {"onboarding.completed": {"$ne": True}},
-                    {"onboarding": {"$exists": False}},
-                ],
-            },
+            {"_id": user_object_id, "onboarding": {"$exists": False}},
             {"$set": update_fields},
             return_document=ReturnDocument.AFTER,
         )
 
-        if not updated_user:
-            # Check if user exists but onboarding is already complete
-            existing_user = await users_collection.find_one({"_id": user_object_id})
-            if not existing_user:
+        if updated_user is None:
+            existing = await users_collection.find_one({"_id": user_object_id})
+            if not existing:
                 raise HTTPException(status_code=404, detail="User not found")
-            elif existing_user.get("onboarding", {}).get("completed", False):
-                raise AppError(
-                    message="Onboarding already completed",
-                    status_code=409,
-                    meta={"code": "ONBOARDING_ALREADY_COMPLETED"},
+            log.info(
+                "[complete_onboarding] replay — onboarding already submitted",
+                user_id=user_id,
+                phase=(existing.get("onboarding") or {}).get("phase"),
+            )
+            return _serialize_user(existing)
+
+        # Enqueue the pipeline before any other side effects; roll back the
+        # subdoc on failure so the user isn't stuck with no worker job.
+        try:
+            await enqueue_intelligence_job(user_id)
+        except Exception as e:
+            log.error(
+                f"Enqueue failed, rolling back onboarding state for user {user_id}: {e}",
+                exc_info=True,
+            )
+            try:
+                await users_collection.update_one(
+                    {"_id": user_object_id},
+                    {"$unset": {"onboarding": ""}},
                 )
-            else:
-                raise HTTPException(status_code=500, detail="Failed to update user")
+            except Exception as rollback_error:
+                log.error(
+                    f"Rollback also failed for user {user_id}: {rollback_error}",
+                    exc_info=True,
+                )
+            raise HTTPException(
+                status_code=503,
+                detail="Could not start onboarding. Please retry.",
+            )
 
-        # Convert ObjectId to string for JSON serialization
-        updated_user["_id"] = str(updated_user["_id"])
-        updated_user["user_id"] = updated_user["_id"]
-
-        # Schedule background tasks
         background_tasks.add_task(seed_initial_user_data, user_id)
 
         log.info(f"Onboarding completed successfully for user {user_id}")
-
-        return updated_user
+        return _serialize_user(updated_user)
 
     except HTTPException:
         raise
     except Exception as e:
-        log.error(
-            f"Error completing onboarding for user {user_id}: {str(e)}", exc_info=True
-        )
+        log.error(f"Error completing onboarding for user {user_id}: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to complete onboarding")
 
 
-async def get_user_onboarding_status(user_id: str) -> Dict[str, Any]:
+async def get_user_onboarding_status(user_id: str) -> dict[str, Any]:
     """
     Get user's onboarding status and preferences.
 
@@ -156,22 +162,24 @@ async def get_user_onboarding_status(user_id: str) -> Dict[str, Any]:
         return {
             "completed": onboarding_data.get("completed", False),
             "completed_at": onboarding_data.get("completed_at"),
+            "phase": onboarding_data.get("phase"),
             "preferences": onboarding_data.get("preferences", {}),
+            "first_message_conversation_id": onboarding_data.get("first_message_conversation_id"),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         log.error(
-            f"Error getting onboarding status for user {user_id}: {str(e)}",
+            f"Error getting onboarding status for user {user_id}: {e!s}",
             exc_info=True,
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get onboarding status: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 async def update_onboarding_preferences(
     user_id: str, preferences: OnboardingPreferences
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Update user's onboarding preferences (for settings page).
     Uses atomic operations for data consistency.
@@ -206,7 +214,7 @@ async def update_onboarding_preferences(
             {
                 "$set": {
                     "onboarding.preferences": sanitized_preferences,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
             return_document=ReturnDocument.AFTER,
@@ -227,37 +235,121 @@ async def update_onboarding_preferences(
         raise
     except Exception as e:
         log.error(
-            f"Error updating onboarding preferences for user {user_id}: {str(e)}",
+            f"Error updating onboarding preferences for user {user_id}: {e!s}",
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Failed to update preferences")
 
 
-async def get_user_preferences_for_agent(user_id: str) -> Optional[str]:
-    """
-    Get formatted user preferences for agent system prompt.
+async def reset_onboarding(user_id: str) -> dict[str, int]:
+    """Fully reset a user's onboarding so they can run the flow from scratch.
+    Returns counts of what was deleted."""
+    log.set(auth={"user_id": user_id}, onboarding={"operation": "reset"})
 
-    Args:
-        user_id: The user's MongoDB ID
+    user_object_id = ObjectId(user_id)
+    user_doc = await users_collection.find_one(
+        {"_id": user_object_id},
+        {"onboarding": 1},
+    )
 
-    Returns:
-        Formatted string of user preferences or None if not available
-    """
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Abort any in-flight pipeline first so it can't emit stage events
+    # after the doc is wiped.
     try:
-        user_object_id = ObjectId(user_id)
-        user = await users_collection.find_one({"_id": user_object_id})
-
-        if not user or not user.get("onboarding", {}).get("completed", False):
-            return None
-
-        prefs = user.get("onboarding", {}).get("preferences", {})
-
-        if not prefs:
-            return None
-
-        # Use the modular utility function to format preferences
-        return format_user_preferences_for_agent(prefs)
-
+        await abort_active_intelligence_job(user_id)
     except Exception as e:
-        log.error(f"Error getting user preferences for agent: {str(e)}", exc_info=True)
-        return None
+        log.warning(f"[reset_onboarding] failed to abort intelligence job: {e}")
+
+    onboarding = user_doc.get("onboarding", {}) or {}
+    workflow_ids: list[Any] = onboarding.get("suggested_workflows", []) or []
+    first_conversation_id = onboarding.get("first_message_conversation_id")
+
+    workflows_deleted = 0
+    for wf_id in workflow_ids:
+        try:
+            # Use the service (not a direct delete) so scheduled executions
+            # and Composio triggers are cleaned up too.
+            deleted = await WorkflowService.delete_workflow(str(wf_id), user_id)
+            if deleted:
+                workflows_deleted += 1
+        except Exception as e:
+            log.warning(f"[reset_onboarding] failed to delete workflow {wf_id}: {e}")
+
+    todos_deleted = 0
+    try:
+        todo_result = await todos_collection.delete_many(
+            {"user_id": user_id, "labels": "onboarding"}
+        )
+        todos_deleted = todo_result.deleted_count
+    except Exception as e:
+        log.warning(f"[reset_onboarding] failed to delete todos: {e}")
+
+    conversation_deleted = 0
+    if first_conversation_id:
+        try:
+            convo_result = await conversations_collection.delete_one(
+                {"user_id": user_id, "conversation_id": first_conversation_id}
+            )
+            conversation_deleted = convo_result.deleted_count
+        except Exception as e:
+            log.warning(f"[reset_onboarding] failed to delete conversation: {e}")
+
+    demo_conversations_deleted = 0
+    try:
+        demo_result = await conversations_collection.delete_many(
+            {"user_id": user_id, "is_onboarding_demo": True}
+        )
+        demo_conversations_deleted = demo_result.deleted_count
+    except Exception as e:
+        log.warning(f"[reset_onboarding] failed to delete demo conversations: {e}")
+
+    integrations_disconnected = await _disconnect_user_integrations(user_id)
+    memories_cleared = await _clear_user_memories(user_id)
+
+    await users_collection.update_one(
+        {"_id": user_object_id},
+        {
+            "$unset": {"onboarding": ""},
+            "$set": {"updated_at": datetime.now(UTC)},
+        },
+    )
+
+    counts = {
+        "workflows_deleted": workflows_deleted,
+        "todos_deleted": todos_deleted,
+        "conversation_deleted": conversation_deleted,
+        "demo_conversations_deleted": demo_conversations_deleted,
+        "integrations_disconnected": integrations_disconnected,
+        "memories_cleared": memories_cleared,
+    }
+    log.set(onboarding={"operation": "reset", **counts})
+    log.info(f"Onboarding reset complete for user {user_id}")
+    return counts
+
+
+async def _disconnect_user_integrations(user_id: str) -> int:
+    try:
+        cursor = user_integrations_collection.find({"user_id": user_id}, {"integration_id": 1})
+        integration_ids = [doc["integration_id"] async for doc in cursor]
+    except Exception as e:
+        log.warning(f"[reset_onboarding] failed to list user integrations: {e}")
+        return 0
+
+    disconnected = 0
+    for integration_id in integration_ids:
+        try:
+            await disconnect_integration(user_id, integration_id)
+            disconnected += 1
+        except Exception as e:
+            log.warning(f"[reset_onboarding] failed to disconnect {integration_id}: {e}")
+    return disconnected
+
+
+async def _clear_user_memories(user_id: str) -> int:
+    try:
+        return 1 if await memory_service.delete_all_memories(user_id=user_id) else 0
+    except Exception as e:
+        log.warning(f"[reset_onboarding] failed to clear memories: {e}")
+        return 0

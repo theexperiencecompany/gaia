@@ -5,13 +5,12 @@ using ChromaDB for vector storage and retrieval.
 """
 
 import asyncio
-import pickle  # nosec B403 - Used for internal trusted data serialization only
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+import pickle  # nosec B403 - Used for internal trusted data serialization only
 from typing import Any
 
 from chromadb.api import AsyncClientAPI
-from shared.py.wide_events import log
 from chromadb.api.models.AsyncCollection import AsyncCollection
 from chromadb.api.types import EmbeddingFunction
 from langchain_core.embeddings import Embeddings
@@ -31,6 +30,8 @@ from langgraph.store.base import (
     get_text_at_path,
     tokenize_path,
 )
+
+from shared.py.wide_events import log
 
 
 class _NoOpEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
@@ -64,12 +65,12 @@ class ChromaStore(BaseStore):
     """
 
     __slots__ = (
-        "client",
-        "collection_name",
-        "index_config",
-        "embeddings",
         "_collection_cache",
         "_tokenized_fields",
+        "client",
+        "collection_name",
+        "embeddings",
+        "index_config",
     )
 
     def __init__(
@@ -242,9 +243,7 @@ class ChromaStore(BaseStore):
         """Get a single item from ChromaDB."""
         doc_id = self._namespace_to_id(namespace, key)
         try:
-            result = await collection.get(
-                ids=[doc_id], include=["metadatas", "documents"]
-            )
+            result = await collection.get(ids=[doc_id], include=["metadatas", "documents"])
 
             if not result["ids"]:
                 return None
@@ -264,18 +263,16 @@ class ChromaStore(BaseStore):
                 namespace=namespace,
                 created_at=datetime.fromisoformat(str(created_at_str))
                 if created_at_str and isinstance(created_at_str, str)
-                else datetime.now(timezone.utc),
+                else datetime.now(UTC),
                 updated_at=datetime.fromisoformat(str(updated_at_str))
                 if updated_at_str and isinstance(updated_at_str, str)
-                else datetime.now(timezone.utc),
+                else datetime.now(UTC),
             )
         except Exception as e:
             log.error(f"Error getting item {doc_id}: {e}")
             return None
 
-    async def _filter_items(
-        self, op: SearchOp, collection: AsyncCollection
-    ) -> list[str]:
+    async def _filter_items(self, op: SearchOp, collection: AsyncCollection) -> list[str]:
         """Filter items by namespace prefix and filter conditions."""
         try:
             result = await collection.get(include=["metadatas", "documents"])
@@ -347,19 +344,19 @@ class ChromaStore(BaseStore):
         """Apply comparison operator."""
         if operator == "$eq":
             return value == op_value
-        elif operator == "$ne":
+        if operator == "$ne":
             return value != op_value
-        elif operator in ("$gt", "$gte", "$lt", "$lte"):
+        if operator in ("$gt", "$gte", "$lt", "$lte"):
             try:
                 val_num = float(value) if not isinstance(value, dict) else 0
                 op_val_num = float(op_value)
                 if operator == "$gt":
                     return val_num > op_val_num
-                elif operator == "$gte":
+                if operator == "$gte":
                     return val_num >= op_val_num
-                elif operator == "$lt":
+                if operator == "$lt":
                     return val_num < op_val_num
-                elif operator == "$lte":
+                if operator == "$lte":
                     return val_num <= op_val_num
             except (ValueError, TypeError):
                 return False
@@ -426,11 +423,7 @@ class ChromaStore(BaseStore):
 
                             # Get document from search results
                             documents = search_result.get("documents")
-                            document = (
-                                documents[0][idx]
-                                if documents and documents[0]
-                                else None
-                            )
+                            document = documents[0][idx] if documents and documents[0] else None
                             value = (
                                 pickle.loads(document.encode("latin1"))  # nosec B301 - Internal trusted data only
                                 if document
@@ -448,18 +441,12 @@ class ChromaStore(BaseStore):
                                     namespace=ns,
                                     key=key,
                                     value=value,
-                                    created_at=datetime.fromisoformat(
-                                        str(created_at_str)
-                                    )
-                                    if created_at_str
-                                    and isinstance(created_at_str, str)
-                                    else datetime.now(timezone.utc),
-                                    updated_at=datetime.fromisoformat(
-                                        str(updated_at_str)
-                                    )
-                                    if updated_at_str
-                                    and isinstance(updated_at_str, str)
-                                    else datetime.now(timezone.utc),
+                                    created_at=datetime.fromisoformat(str(created_at_str))
+                                    if created_at_str and isinstance(created_at_str, str)
+                                    else datetime.now(UTC),
+                                    updated_at=datetime.fromisoformat(str(updated_at_str))
+                                    if updated_at_str and isinstance(updated_at_str, str)
+                                    else datetime.now(UTC),
                                     score=float(score) if score is not None else None,
                                 )
                             )
@@ -499,31 +486,56 @@ class ChromaStore(BaseStore):
     ) -> None:
         """Apply put operations to ChromaDB in parallel."""
         tasks = []
+        doc_ids: list[str] = []
 
         for (namespace, key), op in put_ops.items():
             doc_id = self._namespace_to_id(namespace, key)
+            doc_ids.append(doc_id)
 
             if op.value is None:
                 tasks.append(self._delete_item(doc_id, collection))
             else:
                 tasks.append(self._upsert_item(doc_id, op, collection))
 
-        # Execute all operations in parallel
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        if not tasks:
+            return
+
+        # return_exceptions=True keeps one bad doc from killing the batch, but
+        # silently swallows every failure. Surface them so we don't end up with
+        # an indexing pass that "succeeded" yet wrote zero rows (the PostHog
+        # case — 336 tools "indexed", 0 in ChromaDB, no errors anywhere).
+        results: list[None | BaseException] = await asyncio.gather(*tasks, return_exceptions=True)
+        failures: list[tuple[str, BaseException]] = [
+            (d, r) for d, r in zip(doc_ids, results) if isinstance(r, BaseException)
+        ]
+        succeeded = len(results) - len(failures)
+        log.info(
+            f"_apply_put_ops completed: total={len(results)} succeeded={succeeded} "
+            f"failed={len(failures)}"
+        )
+        if failures:
+            # Show up to 3 distinct exception classes to make patterns obvious.
+            sample = failures[: min(3, len(failures))]
+            for d, exc in sample:
+                log.error(f"_apply_put_ops failure doc_id={d}: {type(exc).__name__}: {exc}")
 
     async def _delete_item(self, doc_id: str, collection: AsyncCollection) -> None:
-        """Delete a single item."""
+        """Delete a single item.
+
+        Re-raises so the caller's asyncio.gather(return_exceptions=True) can
+        count the failure. Previously this swallowed the exception and made
+        _apply_put_ops's failure tally meaningless (succeeded count == total
+        regardless of actual ChromaDB rejections).
+        """
         try:
             await collection.delete(ids=[doc_id])
         except Exception as e:
-            log.error(f"Error deleting item {doc_id}: {e}")
+            log.error(f"Error deleting item {doc_id}: {type(e).__name__}: {e}")
+            raise
 
-    async def _upsert_item(
-        self, doc_id: str, op: PutOp, collection: AsyncCollection
-    ) -> None:
+    async def _upsert_item(self, doc_id: str, op: PutOp, collection: AsyncCollection) -> None:
         """Upsert a single item."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Store namespace in metadata for efficient filtering
         namespace_str = "::".join(op.namespace) if op.namespace else "default"
         metadata = {
@@ -559,7 +571,15 @@ class ChromaStore(BaseStore):
                 if field_texts:
                     texts.extend(field_texts)
             if texts:
-                embedding = await self.embeddings.aembed_query(" ".join(texts))
+                try:
+                    embedding = await self.embeddings.aembed_query(" ".join(texts))
+                except Exception as embed_err:
+                    log.error(
+                        f"_upsert_item embedding failed for doc_id={doc_id} "
+                        f"ns={namespace_str} text_len={sum(len(t) for t in texts)}: "
+                        f"{type(embed_err).__name__}: {embed_err}"
+                    )
+                    raise
 
         try:
             await collection.upsert(
@@ -569,7 +589,11 @@ class ChromaStore(BaseStore):
                 documents=[document],
             )
         except Exception as e:
-            log.error(f"Error upserting item {doc_id}: {e}")
+            # Re-raise so _apply_put_ops's failure count is accurate.
+            log.error(
+                f"Error upserting item {doc_id} (ns={namespace_str}): {type(e).__name__}: {e}"
+            )
+            raise
 
     async def _handle_list_namespaces(
         self, op: ListNamespacesOp, collection: AsyncCollection
@@ -587,9 +611,7 @@ class ChromaStore(BaseStore):
 
                 # Apply match conditions
                 if op.match_conditions:
-                    if not all(
-                        self._does_match(cond, ns) for cond in op.match_conditions
-                    ):
+                    if not all(self._does_match(cond, ns) for cond in op.match_conditions):
                         continue
 
                 # Apply max depth
@@ -604,9 +626,7 @@ class ChromaStore(BaseStore):
             log.error(f"Error listing namespaces: {e}")
             return []
 
-    def _does_match(
-        self, match_condition: MatchCondition, key: tuple[str, ...]
-    ) -> bool:
+    def _does_match(self, match_condition: MatchCondition, key: tuple[str, ...]) -> bool:
         """Check if namespace matches condition."""
         match_type = match_condition.match_type
         path = match_condition.path
@@ -621,12 +641,11 @@ class ChromaStore(BaseStore):
                 if k_elem != p_elem:
                     return False
             return True
-        elif match_type == "suffix":
+        if match_type == "suffix":
             for k_elem, p_elem in zip(reversed(key), reversed(path)):
                 if p_elem == "*":
                     continue
                 if k_elem != p_elem:
                     return False
             return True
-        else:
-            raise ValueError(f"Unsupported match type: {match_type}")
+        raise ValueError(f"Unsupported match type: {match_type}")

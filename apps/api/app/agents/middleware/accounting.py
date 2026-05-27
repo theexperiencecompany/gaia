@@ -15,7 +15,7 @@ Runs as a LangChain :class:`AgentMiddleware` via `create_agent(middleware=...)`.
 """
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 from langchain.agents.middleware.types import AgentMiddleware, AgentState
 from langchain_core.messages import AIMessage
@@ -73,8 +73,7 @@ def _extract_usage(message: AIMessage) -> dict[str, int]:
             resp_usage.get("prompt_token_count", resp_usage.get("input_tokens", 0)) or 0
         )
         output_tokens = output_tokens or int(
-            resp_usage.get("candidates_token_count", resp_usage.get("output_tokens", 0))
-            or 0
+            resp_usage.get("candidates_token_count", resp_usage.get("output_tokens", 0)) or 0
         )
 
     return {
@@ -84,7 +83,7 @@ def _extract_usage(message: AIMessage) -> dict[str, int]:
     }
 
 
-def _latest_ai_message(messages: list[Any]) -> Optional[AIMessage]:
+def _latest_ai_message(messages: list[Any]) -> AIMessage | None:
     for msg in reversed(messages or []):
         if isinstance(msg, AIMessage):
             return msg
@@ -107,9 +106,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
       ``@hook_config(can_jump_to=["end"])`` mechanism — no exception raising.
     """
 
-    def __init__(
-        self, agent_name: str, recursion_limit: int = AGENT_RECURSION_LIMIT
-    ) -> None:
+    def __init__(self, agent_name: str, recursion_limit: int = AGENT_RECURSION_LIMIT) -> None:
         super().__init__()
         self.agent_name = agent_name
         self.recursion_limit = recursion_limit
@@ -132,9 +129,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
 
     def _thread_id(self, config: RunnableConfig) -> str:
         configurable = config.get("configurable", {}) or {}
-        return str(
-            configurable.get("thread_id") or configurable.get("stream_id") or "unknown"
-        )
+        return str(configurable.get("thread_id") or configurable.get("stream_id") or "unknown")
 
     def _next_step(self, thread_id: str) -> int:
         n = self._step_counts.get(thread_id, 0) + 1
@@ -147,7 +142,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         self,
         state: AgentState[Any],
         runtime: Runtime[Any],
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Pre-call hook. Stub today.
 
         Credit gating will flip on here in CREDITS_PLAN.md phase 2. When
@@ -165,13 +160,11 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         self,
         state: AgentState[Any],
         runtime: Runtime[Any],
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Emit ``llm_call`` wide event after the model produces a response."""
         del runtime  # unused — config is fetched from the graph context var
         messages = (
-            state.get("messages")
-            if isinstance(state, dict)
-            else getattr(state, "messages", [])
+            state.get("messages") if isinstance(state, dict) else getattr(state, "messages", [])
         )
         ai_msg = _latest_ai_message(messages or [])
         if ai_msg is None:
@@ -185,9 +178,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         config = _current_config()
         configurable = config.get("configurable", {}) or {}
         thread_id = self._thread_id(config)
-        model_name = (
-            configurable.get("model_name") or configurable.get("model") or "unknown"
-        )
+        model_name = configurable.get("model_name") or configurable.get("model") or "unknown"
         provider = configurable.get("provider", "unknown")
         user_id = configurable.get("user_id")
 
@@ -278,17 +269,13 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
 
     # Synchronous fallbacks (LangChain middleware dispatch to the sync path
     # when the graph is compiled without an async runtime).
-    def before_model(
-        self, state: AgentState[Any], runtime: Runtime[Any]
-    ) -> Optional[dict[str, Any]]:
+    def before_model(self, state: AgentState[Any], runtime: Runtime[Any]) -> dict[str, Any] | None:
         del state, runtime
         thread_id = self._thread_id(_current_config())
         self._start_ts[thread_id] = time.monotonic()
         return None
 
-    def after_model(
-        self, state: AgentState[Any], runtime: Runtime[Any]
-    ) -> Optional[dict[str, Any]]:
+    def after_model(self, state: AgentState[Any], runtime: Runtime[Any]) -> dict[str, Any] | None:
         del state, runtime
         # Cost calc is async-only; in sync mode we still want the HWM signal.
         thread_id = self._thread_id(_current_config())

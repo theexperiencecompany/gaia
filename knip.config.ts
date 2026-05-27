@@ -25,11 +25,30 @@ const config: KnipConfig = {
       "types",
     ],
 
+    // Calendar support modules: the store/utils/date helpers live outside
+    // features/calendar/** (ignored as a parked feature) but are consumed only
+    // by it. Suppress their export/type findings so the parked feature stays
+    // intact for re-enablement. TODO(team): fold in with the calendar decision.
+    "apps/web/src/stores/calendarStore.ts": ["exports", "types"],
+    "apps/web/src/utils/calendar/**": ["exports", "types"],
+    "apps/web/src/utils/date/calendarDateUtils.ts": ["exports", "types"],
+    "apps/web/src/types/features/calendarTypes.ts": ["exports", "types"],
+
+    // Notification enums mirror the backend ActionStyle contract
+    // (apps/api/.../notification_models.py). Members like PRIMARY/SECONDARY may
+    // be unused in TS today but are valid values the API can serialize, so they
+    // must stay in the enum for correct deserialization.
+    "libs/shared/ts/src/types/notification.ts": ["enumMembers"],
+
     // i18n: exports consumed by next-intl framework wiring
     "apps/web/src/i18n/**": ["exports", "types"],
 
     // Fonts: consumed in layout via CSS variable injection
     "apps/web/src/app/fonts/index.ts": ["exports"],
+
+    // Auto-generated icon path data (DO NOT EDIT): the generator emits both
+    // `iconPaths` and `getIconPaths`; only the latter is consumed.
+    "apps/web/src/config/iconPaths.generated.ts": ["exports"],
 
     // Landing page demos: persona-specific demo data resolved by slug at runtime
     "apps/web/src/features/landing/components/demo/*-demo/*Constants*": [
@@ -60,9 +79,49 @@ const config: KnipConfig = {
     // Agent skill templates (not app code, used by Claude Code skill system)
     ".agents/skills/**",
     ".claude/skills/**",
+
+    // SEO content source-of-truth: human-edited `entries/*.ts` are read by the
+    // static-data codegen (scripts/extract-static-data*, which knip ignores) and
+    // emitted to public/data/{feature}/*.json — the runtime fetches the JSON via
+    // the Cloudflare ASSETS binding, so the .ts sources are never bundled.
+    "apps/web/src/features/alternatives/data/entries/**",
+    "apps/web/src/features/comparisons/data/entries/**",
+    "apps/web/src/features/integrations/data/combosData-*.ts",
+
+    // Parked feature: the /calendar route renders notFound() with its
+    // CalendarPage import commented out (app/[locale]/(main)/calendar/page.tsx).
+    // The components are intact for re-enablement, not dead code.
+    // TODO(team): re-enable the route or remove the feature.
+    "apps/web/src/features/calendar/**",
+    "apps/web/src/components/layout/sidebar/**/Calendar*.tsx",
+
+    // Dev-only galleries/pages: *.dev.tsx are excluded from production builds
+    // and exist for local component/tool exploration.
+    "apps/web/src/app/**/dev/**",
+    "apps/web/src/**/*.dev.tsx",
+
+    // ErrorBoundary is reusable infra; its only current consumers are the dev
+    // galleries above, so it reads as unused once those are ignored.
+    "apps/web/src/components/shared/ErrorBoundary.tsx",
+
+    // Wake-word ("Hey GAIA"): recently merged, currently wired only into the
+    // dev/wake-word gallery (ignored above). Work-in-progress, not dead.
+    "apps/web/src/features/wake-word/**",
+
+    // Date helpers consumed only by the parked calendar feature (ignored above).
+    "apps/web/src/utils/date/dateTimeLocalUtils.ts",
+
+    // One-shot maintenance scripts, not imported by app code.
+    "apps/mobile/src/scripts/**",
+    "docs/scripts/**",
+
+    // Tailwind v4 entry: knip misreads the `@source` content globs as JS
+    // imports. Tailwind scans these paths; they are not module imports.
+    "apps/web/src/app/styles/globals.css",
   ],
 
-  // Binaries provided by monorepo root, mise, or Nx (not in each package.json)
+  // Binaries provided by monorepo root, mise, Nx, or pnpm scripts (not in each
+  // package.json). Includes nx target names invoked as `nx run <target>`.
   ignoreBinaries: [
     "biome",
     "clean",
@@ -70,6 +129,7 @@ const config: KnipConfig = {
     "fix",
     "format",
     "type",
+    "type-check",
     "deploy-commands",
     "mise",
     "python3",
@@ -85,6 +145,21 @@ const config: KnipConfig = {
     "tasklist",
     "powershell",
     "iex",
+    // uv / Python toolchain (provided by mise, not npm)
+    "uv",
+    "uvx",
+    // Nx target names + build/dist scripts run via `nx run` / package scripts
+    "build",
+    "dev",
+    "dist",
+    "dist:mac",
+    "dist:win",
+    "dist:linux",
+    "lint",
+    "lint:fix",
+    "tsc",
+    "tsx",
+    "diff",
   ],
 
   // ─── Workspace definitions ───────────────────────────────────────────
@@ -99,6 +174,9 @@ const config: KnipConfig = {
         // React/ReactDOM are peer deps consumed by all workspaces
         "react",
         "react-dom",
+        // Invoked dynamically as `pnpm exec jscpd` inside
+        // scripts/ci/check-duplication.mjs, so knip can't see the usage.
+        "jscpd",
       ],
     },
 
@@ -130,7 +208,22 @@ const config: KnipConfig = {
       ],
       project: ["src/**/*.{ts,tsx}", "!src/**/*.test.{ts,tsx}"],
 
+      // @icons is a path alias to the local icon barrel, not an npm package.
+      paths: {
+        "@icons": ["src/components/shared/icons.tsx"],
+      },
+
+      // Shadcn/Radix primitives live here and are resolved dynamically; their
+      // exports/deps (radix, etc.) are consumed only inside this directory.
+      ignore: ["src/components/ui/**"],
+
       ignoreDependencies: [
+        // Path alias, not a package (see paths above).
+        "@icons",
+        // HeroUI ships per-component subpackages pulled in transitively.
+        "@heroui/.*",
+        // Workspace package resolved via pnpm workspace, not always traced.
+        "@gaia/shared",
         // Next.js image optimization (implicitly required, no direct import)
         "sharp",
         // Used by SWC compilation (no direct import in source)
@@ -139,6 +232,46 @@ const config: KnipConfig = {
         // Used by next-mdx-remote or mdx compilation pipeline
         "mdx",
         "@types/mdx",
+        // Radix primitives consumed only inside src/components/ui/** (ignored above).
+        "@radix-ui/.*",
+        // CSS imported via subpath ("katex/dist/katex.min.css"); katex is a
+        // transitive dep of rehype-katex, knip can't resolve the CSS subpath.
+        "katex",
+
+        // Consumed only inside knip-ignored directories (calendar feature,
+        // components/ui, wake-word, web scripts) — real usage knip can't see.
+        "react-day-picker", // calendar + components/ui/calendar.tsx
+        "chrono-node", // calendar natural-language date parsing
+        "little-date", // calendar date formatting
+        "input-otp", // components/ui/input-otp.tsx
+        "react-twemoji", // emoji rendering in ignored UI
+        "@types/react-twemoji", // type stub for react-twemoji
+        "@gaia/wake-word", // wake-word feature (ignored, WIP)
+        "onnxruntime-web", // wake-word ONNX runtime (dynamic/worklet load)
+        "glob", // used in apps/web/scripts/** (ignored)
+
+        // Referenced in config / type augmentation, not via a normal import.
+        "moment-timezone", // next.config.mjs serverExternalPackages
+        "@react-types/shared", // `declare module` augmentation in HeroUIProvider
+        "animated-number-react", // ambient module declaration in src/types
+
+        // TODO(team): the following have no remaining importers and look prunable
+        // from apps/web/package.json. Left ignored here to keep this dead-code PR
+        // from churning the root lockfile; remove in a dependency-cleanup pass.
+        "@composio/core",
+        "@internationalized/date",
+        "@lottiefiles/dotlottie-react",
+        "coolshapes-react",
+        "gsap",
+        "react-pdf",
+        "react-swipeable-list",
+        "string-similarity",
+        "ts-key-enum",
+        "next-themes",
+        "madge", // dev-only circular-dep tool, invoked via script
+        // Next.js CSS inliner — optimizeCss is disabled in next.config.mjs, so
+        // nothing imports it directly, but it stays a managed Next dependency.
+        "critters",
       ],
     },
 
@@ -153,9 +286,17 @@ const config: KnipConfig = {
       entry: ["metro.config.js", "src/**/*.{ts,tsx}", "app/**/*.{ts,tsx}"],
       ignoreDependencies: [
         "metro-minify-terser",
+        // Metro/Expo build config deps (used in metro.config.js / app.json).
+        "@expo/metro-config",
+        "expo-updates",
         // Expo plugins (consumed in app.json/app.config.js, not imported)
         "expo-auth-session",
         "expo-blur",
+        // Workspace package + UI deps resolved via pnpm workspace hoisting.
+        "@gaia/shared",
+        "class-variance-authority",
+        // React Native CLI — invoked as a binary by Expo/RN tooling.
+        "@react-native-community/cli",
       ],
     },
 
@@ -172,12 +313,34 @@ const config: KnipConfig = {
     // ── CLI Package ──────────────────────────────────────────────────
     "packages/cli": {
       entry: ["src/index.{ts,tsx}", "src/commands/**/*.{ts,tsx}"],
+      // Peer type package for react-dom (pulled in transitively by Ink/React).
+      ignoreDependencies: ["@types/react-dom"],
     },
 
     // ── Shared TS Library ────────────────────────────────────────────
     "libs/shared/ts": {
       entry: ["src/index.ts"],
       includeEntryExports: false, // library exports consumed by other workspaces
+      // Optional peer: zustand is a peerDependency consumed by importing apps.
+      ignoreDependencies: ["zustand"],
+    },
+
+    // ── Wake-word Library ────────────────────────────────────────────
+    "libs/wake-word": {
+      entry: ["src/index.ts"],
+      ignoreDependencies: [
+        // Audio capture used by the React Native build path.
+        "react-native-live-audio-stream",
+        // Vitest internals listed as devDeps but pulled in transitively.
+        "loupe",
+        "tinybench",
+        "tinypool",
+        "tinyrainbow",
+        // Optional peers resolved by the consuming app (web vs native).
+        "onnxruntime-react-native",
+        "onnxruntime-web",
+        "react-native",
+      ],
     },
   },
 };

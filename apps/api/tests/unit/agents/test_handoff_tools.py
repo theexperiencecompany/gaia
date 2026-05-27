@@ -153,12 +153,8 @@ class TestGetSubagentById:
                 new_callable=AsyncMock,
                 return_value=None,
             ),
-            patch(
-                "app.agents.core.subagents.handoff_tools.integrations_collection"
-            ) as mock_col,
-            patch(
-                "app.agents.core.subagents.handoff_tools.IntegrationResolver"
-            ) as mock_resolver,
+            patch("app.agents.core.subagents.handoff_tools.integrations_collection") as mock_col,
+            patch("app.agents.core.subagents.handoff_tools.IntegrationResolver") as mock_resolver,
             patch(
                 "app.agents.core.subagents.handoff_tools.set_cache",
                 new_callable=AsyncMock,
@@ -219,9 +215,7 @@ class TestGetSubagentById:
                 new_callable=AsyncMock,
                 return_value=None,
             ),
-            patch(
-                "app.agents.core.subagents.handoff_tools.integrations_collection"
-            ) as mock_col,
+            patch("app.agents.core.subagents.handoff_tools.integrations_collection") as mock_col,
             patch(
                 "app.agents.core.subagents.handoff_tools.set_cache",
                 new_callable=AsyncMock,
@@ -251,12 +245,8 @@ class TestGetSubagentById:
                 new_callable=AsyncMock,
                 return_value=None,
             ),
-            patch(
-                "app.agents.core.subagents.handoff_tools.integrations_collection"
-            ) as mock_col,
-            patch(
-                "app.agents.core.subagents.handoff_tools.IntegrationResolver"
-            ) as mock_resolver,
+            patch("app.agents.core.subagents.handoff_tools.integrations_collection") as mock_col,
+            patch("app.agents.core.subagents.handoff_tools.IntegrationResolver") as mock_resolver,
             patch(
                 "app.agents.core.subagents.handoff_tools.set_cache",
                 new_callable=AsyncMock,
@@ -385,9 +375,7 @@ class TestResolveSubagent:
 
     async def test_platform_mcp_requires_auth_connected(self):
         mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
-        subagent = _make_subagent(
-            "gmail", "gmail", "Gmail", managed_by="mcp", mcp_config=mcp_cfg
-        )
+        subagent = _make_subagent("gmail", "gmail", "Gmail", managed_by="mcp", mcp_config=mcp_cfg)
         mock_graph = MagicMock()
         with (
             patch(
@@ -395,9 +383,7 @@ class TestResolveSubagent:
                 new_callable=AsyncMock,
                 return_value=subagent,
             ),
-            patch(
-                "app.agents.core.subagents.handoff_tools.MCPTokenStore"
-            ) as mock_ts_cls,
+            patch("app.agents.core.subagents.handoff_tools.MCPTokenStore") as mock_ts_cls,
             patch(
                 "app.agents.core.subagents.handoff_tools.create_subagent_for_user",
                 new_callable=AsyncMock,
@@ -407,26 +393,20 @@ class TestResolveSubagent:
             mock_ts = AsyncMock()
             mock_ts.is_connected.return_value = True
             mock_ts_cls.return_value = mock_ts
-            graph, name, int_id, is_custom = await _resolve_subagent(
-                "subagent:gmail", "user1"
-            )
+            graph, name, int_id, is_custom = await _resolve_subagent("subagent:gmail", "user1")
         assert graph is mock_graph
         assert is_custom is False
 
     async def test_platform_mcp_requires_auth_not_connected(self):
         mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
-        subagent = _make_subagent(
-            "gmail", "gmail", "Gmail", managed_by="mcp", mcp_config=mcp_cfg
-        )
+        subagent = _make_subagent("gmail", "gmail", "Gmail", managed_by="mcp", mcp_config=mcp_cfg)
         with (
             patch(
                 "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
                 new_callable=AsyncMock,
                 return_value=subagent,
             ),
-            patch(
-                "app.agents.core.subagents.handoff_tools.MCPTokenStore"
-            ) as mock_ts_cls,
+            patch("app.agents.core.subagents.handoff_tools.MCPTokenStore") as mock_ts_cls,
         ):
             mock_ts = AsyncMock()
             mock_ts.is_connected.return_value = False
@@ -437,9 +417,7 @@ class TestResolveSubagent:
 
     async def test_platform_mcp_requires_auth_no_user(self):
         mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
-        subagent = _make_subagent(
-            "gmail", "gmail", "Gmail", managed_by="mcp", mcp_config=mcp_cfg
-        )
+        subagent = _make_subagent("gmail", "gmail", "Gmail", managed_by="mcp", mcp_config=mcp_cfg)
         with patch(
             "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
             new_callable=AsyncMock,
@@ -464,9 +442,7 @@ class TestResolveSubagent:
                 new_callable=AsyncMock,
                 return_value=subagent,
             ),
-            patch(
-                "app.agents.core.subagents.handoff_tools.providers"
-            ) as mock_providers,
+            patch("app.agents.core.subagents.handoff_tools.providers") as mock_providers,
         ):
             mock_providers.aget = AsyncMock(return_value=mock_graph)
             graph, name, int_id, is_custom = await _resolve_subagent("gcal", "user1")
@@ -498,18 +474,14 @@ class TestResolveSubagent:
         assert error == "Not connected"
 
     async def test_platform_provider_not_available(self):
-        subagent = _make_subagent(
-            "x", "x", "X", managed_by="internal", agent_name="missing_agent"
-        )
+        subagent = _make_subagent("x", "x", "X", managed_by="internal", agent_name="missing_agent")
         with (
             patch(
                 "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
                 new_callable=AsyncMock,
                 return_value=subagent,
             ),
-            patch(
-                "app.agents.core.subagents.handoff_tools.providers"
-            ) as mock_providers,
+            patch("app.agents.core.subagents.handoff_tools.providers") as mock_providers,
         ):
             mock_providers.aget = AsyncMock(return_value=None)
             graph, name, error, is_custom = await _resolve_subagent("x", "user1")
@@ -532,9 +504,7 @@ class TestResolveSubagent:
                 new_callable=AsyncMock,
                 return_value=subagent,
             ),
-            patch(
-                "app.agents.core.subagents.handoff_tools.MCPTokenStore"
-            ) as mock_ts_cls,
+            patch("app.agents.core.subagents.handoff_tools.MCPTokenStore") as mock_ts_cls,
             patch(
                 "app.agents.core.subagents.handoff_tools.create_subagent_for_user",
                 new_callable=AsyncMock,

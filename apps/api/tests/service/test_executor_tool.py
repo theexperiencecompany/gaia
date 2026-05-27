@@ -10,22 +10,19 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.runnables import RunnableConfig
+import pytest
 
 from app.agents.tools.executor_tool import call_executor, tools
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.decorators.rate_limiting import LangChainRateLimitException
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _make_config(
-    user_id: str = "user-123", stream_id: str = "stream-abc"
-) -> RunnableConfig:
+def _make_config(user_id: str = "user-123", stream_id: str = "stream-abc") -> RunnableConfig:
     return RunnableConfig(
         configurable={
             "user_id": user_id,
@@ -110,9 +107,7 @@ class TestCallExecutorTool:
         patches = _base_patches(prepare_return=(None, "Executor agent not available"))
 
         with patches[0], patches[1], patches[2], patches[3]:
-            result = await call_executor.ainvoke(
-                {"task": "do something", "config": _make_config()}
-            )
+            result = await call_executor.ainvoke({"task": "do something", "config": _make_config()})
 
         assert isinstance(result, str)
         assert result.startswith("Error:")
@@ -123,9 +118,7 @@ class TestCallExecutorTool:
         patches = _base_patches(prepare_return=(None, None))
 
         with patches[0], patches[1], patches[2], patches[3]:
-            result = await call_executor.ainvoke(
-                {"task": "do something", "config": _make_config()}
-            )
+            result = await call_executor.ainvoke({"task": "do something", "config": _make_config()})
 
         assert isinstance(result, str)
         assert "Error" in result
@@ -135,9 +128,7 @@ class TestCallExecutorTool:
         patches = _base_patches(prepare_return=(None, "DB unreachable"))
 
         with patches[0], patches[1], patches[2], patches[3]:
-            result = await call_executor.ainvoke(
-                {"task": "fetch emails", "config": _make_config()}
-            )
+            result = await call_executor.ainvoke({"task": "fetch emails", "config": _make_config()})
 
         assert isinstance(result, str)
         assert len(result) > 0
@@ -159,9 +150,7 @@ class TestCallExecutorTool:
             ),
         ):
             with pytest.raises(asyncio.CancelledError):
-                await call_executor.ainvoke(
-                    {"task": "cancel me", "config": _make_config()}
-                )
+                await call_executor.ainvoke({"task": "cancel me", "config": _make_config()})
 
     # --- rate limiting -----------------------------------------------------
 
@@ -181,9 +170,7 @@ class TestCallExecutorTool:
                 return_value=MagicMock(load_user_mcp_tools=AsyncMock(return_value={})),
             ),
         ):
-            result = await call_executor.ainvoke(
-                {"task": "send email", "config": _make_config()}
-            )
+            result = await call_executor.ainvoke({"task": "send email", "config": _make_config()})
 
         assert isinstance(result, str)
         assert "Rate limit" in result or "rate limit" in result.lower()
@@ -205,9 +192,7 @@ class TestCallExecutorTool:
                 return_value=MagicMock(load_user_mcp_tools=AsyncMock(return_value={})),
             ),
         ):
-            result = await call_executor.ainvoke(
-                {"task": "send email", "config": _make_config()}
-            )
+            result = await call_executor.ainvoke({"task": "send email", "config": _make_config()})
 
         assert isinstance(result, str)
         assert "Rate limit" in result or "rate limit" in result.lower()
@@ -229,9 +214,7 @@ class TestCallExecutorTool:
                 return_value=MagicMock(load_user_mcp_tools=AsyncMock(return_value={})),
             ),
         ):
-            result = await call_executor.ainvoke(
-                {"task": "search web", "config": _make_config()}
-            )
+            result = await call_executor.ainvoke({"task": "search web", "config": _make_config()})
 
         assert isinstance(result, str)
         assert "Rate limit" in result or "rate limit" in result.lower()
@@ -252,9 +235,7 @@ class TestCallExecutorTool:
                 return_value=MagicMock(load_user_mcp_tools=AsyncMock(return_value={})),
             ),
         ):
-            result = await call_executor.ainvoke(
-                {"task": "crash me", "config": _make_config()}
-            )
+            result = await call_executor.ainvoke({"task": "crash me", "config": _make_config()})
 
         assert isinstance(result, str)
         assert "Error executing task" in result
@@ -291,9 +272,7 @@ class TestCallExecutorTool:
                 return_value=tool_registry_mock,
             ),
         ):
-            result = await call_executor.ainvoke(
-                {"task": "list todos", "config": _make_config()}
-            )
+            result = await call_executor.ainvoke({"task": "list todos", "config": _make_config()})
 
         assert result == "task completed despite MCP failure"
 

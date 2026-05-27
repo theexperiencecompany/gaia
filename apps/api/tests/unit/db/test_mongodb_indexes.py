@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # Patch all collection imports before importing the module under test
 _COLLECTION_NAMES = [
     "ai_models_collection",
@@ -159,16 +158,11 @@ class TestIndividualIndexCreation:
         await create_workflow_indexes()
         assert mock_collections["workflows_collection"].create_index.call_count >= 10
 
-    async def test_create_workflow_execution_indexes(
-        self, mock_collections: dict
-    ) -> None:
+    async def test_create_workflow_execution_indexes(self, mock_collections: dict) -> None:
         from app.db.mongodb.indexes import create_workflow_execution_indexes
 
         await create_workflow_execution_indexes()
-        assert (
-            mock_collections["workflow_executions_collection"].create_index.call_count
-            >= 4
-        )
+        assert mock_collections["workflow_executions_collection"].create_index.call_count >= 4
 
     async def test_create_payment_indexes(self, mock_collections: dict) -> None:
         from app.db.mongodb.indexes import create_payment_indexes
@@ -182,24 +176,17 @@ class TestIndividualIndexCreation:
         )
         assert total >= 10
 
-    async def test_create_processed_webhook_indexes(
-        self, mock_collections: dict
-    ) -> None:
+    async def test_create_processed_webhook_indexes(self, mock_collections: dict) -> None:
         from app.db.mongodb.indexes import create_processed_webhook_indexes
 
         await create_processed_webhook_indexes()
-        assert (
-            mock_collections["processed_webhooks_collection"].create_index.call_count
-            >= 2
-        )
+        assert mock_collections["processed_webhooks_collection"].create_index.call_count >= 2
 
     async def test_create_usage_indexes(self, mock_collections: dict) -> None:
         from app.db.mongodb.indexes import create_usage_indexes
 
         await create_usage_indexes()
-        assert (
-            mock_collections["usage_snapshots_collection"].create_index.call_count >= 4
-        )
+        assert mock_collections["usage_snapshots_collection"].create_index.call_count >= 4
 
     async def test_create_ai_models_indexes(self, mock_collections: dict) -> None:
         from app.db.mongodb.indexes import create_ai_models_indexes
@@ -239,9 +226,7 @@ class TestCreateIndexSafe:
         from app.db.mongodb.indexes import _create_index_safe
 
         coll = AsyncMock()
-        coll.create_index = AsyncMock(
-            side_effect=Exception("IndexOptionsConflict: existing index")
-        )
+        coll.create_index = AsyncMock(side_effect=Exception("IndexOptionsConflict: existing index"))
         # Should not raise
         await _create_index_safe(coll, "field")
 
@@ -249,9 +234,7 @@ class TestCreateIndexSafe:
         from app.db.mongodb.indexes import _create_index_safe
 
         coll = AsyncMock()
-        coll.create_index = AsyncMock(
-            side_effect=Exception("Something with 'code': 85 in it")
-        )
+        coll.create_index = AsyncMock(side_effect=Exception("Something with 'code': 85 in it"))
         await _create_index_safe(coll, "field")
 
     async def test_other_errors_reraise(self) -> None:
@@ -279,9 +262,7 @@ class TestSafeIndexCreation:
         coll = mock_collections["integrations_collection"]
         assert coll.create_index.call_count >= 5
 
-    async def test_create_user_integration_indexes(
-        self, mock_collections: dict
-    ) -> None:
+    async def test_create_user_integration_indexes(self, mock_collections: dict) -> None:
         from app.db.mongodb.indexes import create_user_integration_indexes
 
         await create_user_integration_indexes()
@@ -295,9 +276,7 @@ class TestSafeIndexCreation:
         coll = mock_collections["vfs_nodes_collection"]
         assert coll.create_index.call_count >= 7
 
-    async def test_create_installed_skills_indexes(
-        self, mock_collections: dict
-    ) -> None:
+    async def test_create_installed_skills_indexes(self, mock_collections: dict) -> None:
         from app.db.mongodb.indexes import create_installed_skills_indexes
 
         await create_installed_skills_indexes()
@@ -317,9 +296,7 @@ class TestBackfillIntegrationSlugs:
 
         cursor = MagicMock()
         cursor.to_list = AsyncMock(return_value=[])
-        mock_collections["integrations_collection"].find = MagicMock(
-            return_value=cursor
-        )
+        mock_collections["integrations_collection"].find = MagicMock(return_value=cursor)
 
         await _backfill_integration_slugs()
         mock_collections["integrations_collection"].update_one.assert_not_called()
@@ -335,16 +312,12 @@ class TestBackfillIntegrationSlugs:
         cursor2 = MagicMock()
         cursor2.to_list = AsyncMock(return_value=[])
 
-        mock_collections["integrations_collection"].find = MagicMock(
-            side_effect=[cursor1, cursor2]
-        )
+        mock_collections["integrations_collection"].find = MagicMock(side_effect=[cursor1, cursor2])
 
         await _backfill_integration_slugs()
         mock_collections["integrations_collection"].update_one.assert_called_once()
 
-    async def test_backfill_handles_error_gracefully(
-        self, mock_collections: dict
-    ) -> None:
+    async def test_backfill_handles_error_gracefully(self, mock_collections: dict) -> None:
         from app.db.mongodb.indexes import _backfill_integration_slugs
 
         mock_collections["integrations_collection"].find = MagicMock(
@@ -394,9 +367,7 @@ class TestCreateAllIndexes:
         await create_all_indexes()
         # Should complete without error
 
-    async def test_partial_failure_still_completes(
-        self, mock_collections: dict
-    ) -> None:
+    async def test_partial_failure_still_completes(self, mock_collections: dict) -> None:
         from app.db.mongodb.indexes import create_all_indexes
 
         # Make users fail
@@ -408,9 +379,7 @@ class TestCreateAllIndexes:
         await create_all_indexes()
 
     @patch("app.db.mongodb.indexes.log")
-    async def test_critical_error_raises(
-        self, mock_log: MagicMock, mock_collections: dict
-    ) -> None:
+    async def test_critical_error_raises(self, mock_log: MagicMock, mock_collections: dict) -> None:
         from app.db.mongodb.indexes import create_all_indexes
 
         async def _gather_critical(*coros, **_kwargs):
@@ -446,17 +415,13 @@ class TestGetIndexStatus:
 
         idx_cursor = MagicMock()
         idx_cursor.to_list = AsyncMock(side_effect=RuntimeError("nope"))
-        mock_collections["users_collection"].list_indexes = MagicMock(
-            return_value=idx_cursor
-        )
+        mock_collections["users_collection"].list_indexes = MagicMock(return_value=idx_cursor)
 
         result = await get_index_status()
         assert "users" in result
         assert any("ERROR" in s for s in result["users"])
 
-    async def test_global_error_returns_error_dict(
-        self, mock_collections: dict
-    ) -> None:
+    async def test_global_error_returns_error_dict(self, mock_collections: dict) -> None:
         from app.db.mongodb.indexes import get_index_status
 
         async def _gather_boom(*coros, **_kwargs):
@@ -472,22 +437,16 @@ class TestGetIndexStatus:
 @pytest.mark.asyncio
 class TestLogIndexSummary:
     @patch("app.db.mongodb.indexes.log")
-    async def test_logs_summary(
-        self, mock_log: MagicMock, mock_collections: dict
-    ) -> None:
+    async def test_logs_summary(self, mock_log: MagicMock, mock_collections: dict) -> None:
         from app.db.mongodb.indexes import log_index_summary
 
         await log_index_summary()
         assert mock_log.info.call_count >= 3
 
     @patch("app.db.mongodb.indexes.log")
-    async def test_handles_error(
-        self, mock_log: MagicMock, mock_collections: dict
-    ) -> None:
+    async def test_handles_error(self, mock_log: MagicMock, mock_collections: dict) -> None:
         from app.db.mongodb.indexes import log_index_summary
 
-        with patch(
-            "app.db.mongodb.indexes.get_index_status", side_effect=RuntimeError("boom")
-        ):
+        with patch("app.db.mongodb.indexes.get_index_status", side_effect=RuntimeError("boom")):
             await log_index_summary()
         mock_log.error.assert_called()

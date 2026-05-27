@@ -3,9 +3,10 @@ Slack trigger handler.
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
-from shared.py.wide_events import log
+from composio.types import ToolExecutionResponse
+
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import (
     SlackChannelCreatedPayload,
@@ -18,7 +19,7 @@ from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
-from composio.types import ToolExecutionResponse
+from shared.py.wide_events import log
 
 
 class SlackTriggerHandler(TriggerHandler):
@@ -48,11 +49,11 @@ class SlackTriggerHandler(TriggerHandler):
     }
 
     @property
-    def trigger_names(self) -> List[str]:
+    def trigger_names(self) -> list[str]:
         return self.SUPPORTED_TRIGGERS
 
     @property
-    def event_types(self) -> Set[str]:
+    def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
     async def register(
@@ -61,7 +62,7 @@ class SlackTriggerHandler(TriggerHandler):
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-    ) -> List[str]:
+    ) -> list[str]:
         """Register Slack triggers with parallel execution and rollback.
 
         For each message type NOT excluded, registers the corresponding
@@ -80,16 +81,12 @@ class SlackTriggerHandler(TriggerHandler):
 
         # Handle channel created separately
         if trigger_name == "slack_channel_created":
-            if trigger_data is not None and not isinstance(
-                trigger_data, SlackChannelCreatedConfig
-            ):
+            if trigger_data is not None and not isinstance(trigger_data, SlackChannelCreatedConfig):
                 raise TypeError(
                     f"Expected SlackChannelCreatedConfig for trigger '{trigger_name}', "
                     f"but got {type(trigger_data).__name__}"
                 )
-            return self._register_single_trigger_sync(
-                user_id, "SLACK_CHANNEL_CREATED", {}
-            )
+            return self._register_single_trigger_sync(user_id, "SLACK_CHANNEL_CREATED", {})
 
         # Validate trigger_data type for slack_new_message
         if not isinstance(trigger_data, SlackNewMessageConfig):
@@ -106,11 +103,11 @@ class SlackTriggerHandler(TriggerHandler):
             channel_ids = [""]
 
         # Build list of all triggers to register
-        triggers_to_register: List[tuple[str, Dict[str, Any]]] = []
+        triggers_to_register: list[tuple[str, dict[str, Any]]] = []
 
         # Always register main message trigger for regular channel messages
         for channel_id in channel_ids:
-            base_config: Dict[str, Any] = {}
+            base_config: dict[str, Any] = {}
             if channel_id:
                 base_config["channel_id"] = channel_id
             triggers_to_register.append(("SLACK_RECEIVE_MESSAGE", base_config.copy()))
@@ -140,9 +137,7 @@ class SlackTriggerHandler(TriggerHandler):
             return []
 
         # Register all triggers in parallel
-        async def register_single(
-            composio_slug: str, config: Dict[str, Any]
-        ) -> List[str]:
+        async def register_single(composio_slug: str, config: dict[str, Any]) -> list[str]:
             return await asyncio.to_thread(
                 self._register_single_trigger_sync, user_id, composio_slug, config
             )
@@ -151,7 +146,7 @@ class SlackTriggerHandler(TriggerHandler):
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Collect results and check for failures
-        successful_ids: List[str] = []
+        successful_ids: list[str] = []
         has_failure = False
         failure_message = ""
 
@@ -180,8 +175,8 @@ class SlackTriggerHandler(TriggerHandler):
         return successful_ids
 
     def _register_single_trigger_sync(
-        self, user_id: str, composio_slug: str, trigger_config: Dict[str, Any]
-    ) -> List[str]:
+        self, user_id: str, composio_slug: str, trigger_config: dict[str, Any]
+    ) -> list[str]:
         """Helper to register a single Composio trigger synchronously."""
         try:
             composio = get_composio_service()
@@ -192,9 +187,7 @@ class SlackTriggerHandler(TriggerHandler):
             )
 
             if result and hasattr(result, "trigger_id"):
-                log.info(
-                    f"Registered {composio_slug} for user {user_id}: {result.trigger_id}"
-                )
+                log.info(f"Registered {composio_slug} for user {user_id}: {result.trigger_id}")
                 return [result.trigger_id]
             return []
         except Exception as e:
@@ -202,17 +195,14 @@ class SlackTriggerHandler(TriggerHandler):
             return []
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: Dict[str, Any]
-    ) -> List[Workflow]:
+        self, event_type: str, trigger_id: str, data: dict[str, Any]
+    ) -> list[Workflow]:
         """Find workflows matching a Slack trigger event."""
         log.set(trigger={"provider": "slack", "event": event_type})
         try:
             # Validate payload based on event/trigger type
             try:
-                if (
-                    "channel_created" in event_type.lower()
-                    or "channel_created" in trigger_id
-                ):
+                if "channel_created" in event_type.lower() or "channel_created" in trigger_id:
                     SlackChannelCreatedPayload.model_validate(data)
                 elif "message" in event_type.lower() or "message" in trigger_id:
                     SlackReceiveMessagePayload.model_validate(data)
@@ -227,7 +217,7 @@ class SlackTriggerHandler(TriggerHandler):
             }
 
             cursor = workflows_collection.find(query)
-            workflows: List[Workflow] = []
+            workflows: list[Workflow] = []
 
             async for workflow_doc in cursor:
                 try:
@@ -259,15 +249,10 @@ class SlackTriggerHandler(TriggerHandler):
                             message_channel = payload.channel or ""
                         except Exception:
                             # Fallback to dict access if validation fails
-                            message_channel = data.get("channel") or data.get(
-                                "channel_id", ""
-                            )
+                            message_channel = data.get("channel") or data.get("channel_id", "")
 
                         # If channels specified and message not in list, skip
-                        if (
-                            selected_channels
-                            and message_channel not in selected_channels
-                        ):
+                        if selected_channels and message_channel not in selected_channels:
                             log.debug(
                                 f"Message channel {message_channel} not in selected channels for workflow {workflow.id}"
                             )
@@ -290,9 +275,9 @@ class SlackTriggerHandler(TriggerHandler):
         field_name: str,
         user_id: str,
         integration_id: str,
-        parent_ids: Optional[List[str]] = None,
+        parent_ids: list[str] | None = None,
         **kwargs: Any,
-    ) -> List[Dict[str, str]]:
+    ) -> list[dict[str, str]]:
         """Get dynamic options for Slack trigger config fields."""
         if trigger_name == "slack_new_message" and field_name == "channel_ids":
             # Fetch Slack channels list with pagination
@@ -300,9 +285,7 @@ class SlackTriggerHandler(TriggerHandler):
                 composio_service = get_composio_service()
 
                 # Use SLACK_LIST_ALL_CHANNELS with pagination support
-                tool = composio_service.get_tool(
-                    "SLACK_LIST_ALL_CHANNELS", user_id=user_id
-                )
+                tool = composio_service.get_tool("SLACK_LIST_ALL_CHANNELS", user_id=user_id)
                 if not tool:
                     log.error("Slack list all channels tool not found")
                     return []

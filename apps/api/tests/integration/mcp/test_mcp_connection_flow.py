@@ -10,11 +10,10 @@ Principle: if MCPClient._tools dict handling logic changes, these tests break.
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.tools import BaseTool
+import pytest
 
 from app.services.mcp.mcp_client import MCPClient
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -244,12 +243,8 @@ class TestMCPConnectionFlow:
 
         await client.disconnect("integration-x")
 
-        assert "integration-x" not in client._clients, (
-            "_clients must be cleared after disconnect()"
-        )
-        assert "integration-x" not in client._tools, (
-            "_tools must be cleared after disconnect()"
-        )
+        assert "integration-x" not in client._clients, "_clients must be cleared after disconnect()"
+        assert "integration-x" not in client._tools, "_tools must be cleared after disconnect()"
         mock_base_client.close_all_sessions.assert_awaited_once()
 
     # ------------------------------------------------------------------
@@ -273,9 +268,7 @@ class TestMCPConnectionFlow:
             await asyncio.sleep(0)  # yield to let the second coroutine run
 
         mock_base_client_instance = MagicMock()
-        mock_base_client_instance.create_session = AsyncMock(
-            side_effect=_slow_create_session
-        )
+        mock_base_client_instance.create_session = AsyncMock(side_effect=_slow_create_session)
         mock_base_client_instance.close_all_sessions = AsyncMock()
 
         with (
@@ -289,9 +282,7 @@ class TestMCPConnectionFlow:
             ),
             patch(
                 "app.services.mcp.mcp_client.ResilientLangChainAdapter",
-                return_value=MagicMock(
-                    create_tools=AsyncMock(return_value=adapter_tools)
-                ),
+                return_value=MagicMock(create_tools=AsyncMock(return_value=adapter_tools)),
             ),
             patch(
                 "app.services.mcp.mcp_client.wrap_tools_with_null_filter",
@@ -374,9 +365,7 @@ class TestMCPConnectionFlow:
             ),
             patch(
                 "app.services.mcp.mcp_client.ResilientLangChainAdapter",
-                return_value=MagicMock(
-                    create_tools=AsyncMock(return_value=adapter_tools)
-                ),
+                return_value=MagicMock(create_tools=AsyncMock(return_value=adapter_tools)),
             ),
             patch(
                 "app.services.mcp.mcp_client.wrap_tools_with_null_filter",
@@ -456,9 +445,7 @@ class TestMCPConnectionFlow:
             ),
             patch(
                 "app.services.mcp.mcp_client.ResilientLangChainAdapter",
-                return_value=MagicMock(
-                    create_tools=AsyncMock(return_value=adapter_tools)
-                ),
+                return_value=MagicMock(create_tools=AsyncMock(return_value=adapter_tools)),
             ),
             patch(
                 "app.services.mcp.mcp_client.wrap_tools_with_null_filter",
@@ -612,9 +599,7 @@ class TestMCPConnectionFlow:
             ),
             patch(
                 "app.services.mcp.mcp_client.ResilientLangChainAdapter",
-                return_value=MagicMock(
-                    create_tools=AsyncMock(return_value=adapter_tools)
-                ),
+                return_value=MagicMock(create_tools=AsyncMock(return_value=adapter_tools)),
             ),
             patch(
                 "app.services.mcp.mcp_client.wrap_tools_with_null_filter",
@@ -630,9 +615,7 @@ class TestMCPConnectionFlow:
             ),
         ):
             client = _build_client_with_no_auth("user-strip-prefix")
-            client.token_store.get_bearer_token = AsyncMock(
-                return_value=stored_with_prefix
-            )
+            client.token_store.get_bearer_token = AsyncMock(return_value=stored_with_prefix)
 
             await client.connect("strip-integration")
 
@@ -702,9 +685,7 @@ class TestMCPConnectionFlow:
             ),
             patch(
                 "app.services.mcp.mcp_client.ResilientLangChainAdapter",
-                return_value=MagicMock(
-                    create_tools=AsyncMock(return_value=adapter_tools)
-                ),
+                return_value=MagicMock(create_tools=AsyncMock(return_value=adapter_tools)),
             ),
             patch(
                 "app.services.mcp.mcp_client.wrap_tools_with_null_filter",
@@ -726,9 +707,7 @@ class TestMCPConnectionFlow:
             client = _build_client_with_no_auth("user-401-retry")
             # After refresh the token store returns a valid OAuth token
             client.token_store.get_bearer_token = AsyncMock(return_value=None)
-            client.token_store.get_oauth_token = AsyncMock(
-                return_value=oauth_token_after_refresh
-            )
+            client.token_store.get_oauth_token = AsyncMock(return_value=oauth_token_after_refresh)
             client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
 
             # Patch _try_refresh_token directly on the instance to avoid the real
@@ -809,9 +788,7 @@ class TestMCPConnectionFlow:
             ),
             patch(
                 "app.services.mcp.mcp_client.ResilientLangChainAdapter",
-                return_value=MagicMock(
-                    create_tools=AsyncMock(return_value=[real_tool])
-                ),
+                return_value=MagicMock(create_tools=AsyncMock(return_value=[real_tool])),
             ),
             patch(
                 "app.services.mcp.mcp_client.get_mcp_tools_store",

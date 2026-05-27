@@ -5,11 +5,11 @@ plus pause/resume and cron validation. The reminder_scheduler service is mocked;
 only HTTP status codes, response shapes, and error handling are verified.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 from tests.conftest import FAKE_USER
 
@@ -19,7 +19,7 @@ from tests.conftest import FAKE_USER
 
 API = "/api/v1/reminders"
 USER_ID = FAKE_USER["user_id"]
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 FUTURE = NOW + timedelta(days=1)
 
 
@@ -109,21 +109,15 @@ class TestCreateReminder:
             resp = await client.post(API, json=_create_payload())
         assert resp.status_code == 500
 
-    async def test_create_reminder_validation_missing_payload(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_create_reminder_validation_missing_payload(self, client: AsyncClient) -> None:
         resp = await client.post(API, json={"agent": "static"})
         assert resp.status_code == 422
 
-    async def test_create_reminder_validation_missing_agent(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_create_reminder_validation_missing_agent(self, client: AsyncClient) -> None:
         resp = await client.post(API, json={"payload": {"title": "X", "body": "Y"}})
         assert resp.status_code == 422
 
-    async def test_create_reminder_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_create_reminder_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(API, json=_create_payload())
         assert resp.status_code == 401
 
@@ -169,9 +163,7 @@ class TestGetReminder:
             resp = await client.get(f"{API}/rem_1")
         assert resp.status_code == 500
 
-    async def test_get_reminder_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_get_reminder_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.get(f"{API}/rem_1")
         assert resp.status_code == 401
 
@@ -229,9 +221,7 @@ class TestUpdateReminder:
             )
         assert resp.status_code == 500
 
-    async def test_update_reminder_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_update_reminder_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.put(
             f"{API}/rem_1",
             json={"payload": {"title": "X", "body": "Y"}},
@@ -277,9 +267,7 @@ class TestCancelReminder:
             resp = await client.delete(f"{API}/rem_1")
         assert resp.status_code == 500
 
-    async def test_cancel_reminder_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_cancel_reminder_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.delete(f"{API}/rem_1")
         assert resp.status_code == 401
 
@@ -324,9 +312,7 @@ class TestListReminders:
             resp = await client.get(API, params={"status": "scheduled"})
         assert resp.status_code == 200
 
-    async def test_list_reminders_validation_error_bad_limit(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_list_reminders_validation_error_bad_limit(self, client: AsyncClient) -> None:
         resp = await client.get(API, params={"limit": 0})
         assert resp.status_code == 422
 
@@ -339,9 +325,7 @@ class TestListReminders:
             resp = await client.get(API)
         assert resp.status_code == 500
 
-    async def test_list_reminders_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_list_reminders_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.get(API)
         assert resp.status_code == 401
 

@@ -5,8 +5,8 @@ These are smoke tests — if the app boots and responds on these routes, the
 deployment is healthy.
 """
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 
 class TestHealthEndpoints:

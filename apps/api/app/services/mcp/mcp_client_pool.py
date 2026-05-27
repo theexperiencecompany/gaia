@@ -10,11 +10,11 @@ from __future__ import annotations
 import asyncio
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from shared.py.wide_events import log
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from shared.py.wide_events import log
 
 if TYPE_CHECKING:
     from app.services.mcp.mcp_client import MCPClient
@@ -24,12 +24,12 @@ if TYPE_CHECKING:
 class PooledClient:
     """Wrapper for pooled MCPClient with metadata."""
 
-    client: "MCPClient"
-    last_used: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    client: MCPClient
+    last_used: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def touch(self):
         """Update last used timestamp."""
-        self.last_used = datetime.now(timezone.utc)
+        self.last_used = datetime.now(UTC)
 
 
 class MCPClientPool:
@@ -54,7 +54,7 @@ class MCPClientPool:
         self._lock = asyncio.Lock()
         self._cleanup_task: asyncio.Task | None = None
 
-    async def get(self, user_id: str) -> "MCPClient":
+    async def get(self, user_id: str) -> MCPClient:
         """Get or create MCPClient for user."""
         evicted: PooledClient | None = None
         async with self._lock:
@@ -104,11 +104,9 @@ class MCPClientPool:
         """Remove clients that haven't been used within TTL."""
         to_close: list[PooledClient] = []
         async with self._lock:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             stale = [
-                uid
-                for uid, pooled in self._clients.items()
-                if now - pooled.last_used > self._ttl
+                uid for uid, pooled in self._clients.items() if now - pooled.last_used > self._ttl
             ]
             for user_id in stale:
                 pooled = self._clients.pop(user_id, None)

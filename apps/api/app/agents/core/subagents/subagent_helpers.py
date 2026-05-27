@@ -11,23 +11,27 @@ message emitted alongside the static prompt — not inside the static prompt.
 
 import asyncio
 import re
-from typing import Optional
+
+from langchain_core.messages import SystemMessage
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.agents.skills.discovery import get_available_skills_text
 from app.config.oauth_config import get_integration_by_id
-from app.helpers.message_helpers import DYNAMIC_CONTEXT_MARKER
+from app.helpers.message_helpers import (
+    BACKGROUND_EXECUTION_BANNER,
+    DYNAMIC_CONTEXT_MARKER,
+    _build_active_todo_banner,
+)
 from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
-from langchain_core.messages import SystemMessage
 from shared.py.wide_events import log
 
 
 async def build_subagent_system_prompt(
     integration_id: str,
-    user_id: Optional[str] = None,
-    base_system_prompt: Optional[str] = None,
+    user_id: str | None = None,
+    base_system_prompt: str | None = None,
 ) -> str:
     """Return the STATIC subagent system prompt.
 
@@ -55,8 +59,8 @@ async def build_subagent_system_prompt(
 async def create_subagent_system_message(
     integration_id: str,
     agent_name: str,
-    user_id: Optional[str] = None,
-    base_system_prompt: Optional[str] = None,
+    user_id: str | None = None,
+    base_system_prompt: str | None = None,
 ) -> SystemMessage:
     """Return the static subagent prompt as a SystemMessage.
 
@@ -77,9 +81,7 @@ def _mark_dynamic(msg: SystemMessage) -> SystemMessage:
     return msg
 
 
-async def _fetch_provider_metadata_block(
-    integration_id: Optional[str], user_id: Optional[str]
-) -> str:
+async def _fetch_provider_metadata_block(integration_id: str | None, user_id: str | None) -> str:
     """Return the provider-metadata lines for the dynamic context, or ''."""
     if not (integration_id and user_id):
         return ""
@@ -89,26 +91,22 @@ async def _fetch_provider_metadata_block(
     try:
         metadata = await get_provider_metadata(user_id, integration.provider)
     except Exception as e:
-        log.warning(
-            f"Failed to fetch provider metadata for {integration.provider}: {e}"
-        )
+        log.warning(f"Failed to fetch provider metadata for {integration.provider}: {e}")
         return ""
     if not metadata:
         return ""
     lines = [f"- {k}: {v}" for k, v in metadata.items()]
-    return (
-        f"\n\nUSER CONTEXT FOR {integration.name.upper()}:\n" + "\n".join(lines) + "\n"
-    )
+    return f"\n\nUSER CONTEXT FOR {integration.name.upper()}:\n" + "\n".join(lines) + "\n"
 
 
 async def create_agent_context_message(
     configurable: dict,
-    user_id: Optional[str] = None,
-    query: Optional[str] = None,
-    subagent_id: Optional[str] = None,
-    integration_id: Optional[str] = None,
-    memories_text: Optional[str] = None,
-    skills_text: Optional[str] = None,
+    user_id: str | None = None,
+    query: str | None = None,
+    subagent_id: str | None = None,
+    integration_id: str | None = None,
+    memories_text: str | None = None,
+    skills_text: str | None = None,
 ) -> SystemMessage:
     """Build the dynamic-context system message for executor/subagent runs.
 
@@ -133,6 +131,19 @@ async def create_agent_context_message(
     user_id = user_id or configurable.get("user_id")
     user_name = configurable.get("user_name")
     user_time_str = configurable.get("user_time", "")
+    execution_mode = configurable.get("execution_mode") or "interactive"
+    active_todo_id = configurable.get("active_todo_id")
+
+    # Background-execution banner — must lead so executor never asks
+    # clarifying questions when no human is on the other end.
+    if execution_mode == "background":
+        parts.append(BACKGROUND_EXECUTION_BANNER)
+
+    # Active-todo banner — pins canvas as default write target for this run.
+    if active_todo_id and user_id:
+        banner = await _build_active_todo_banner(user_id, active_todo_id)
+        if banner:
+            parts.append(banner)
 
     if user_name:
         parts.append(f"User Name: {user_name}")
@@ -158,9 +169,7 @@ async def create_agent_context_message(
         if not (user_id and query):
             return ""
         try:
-            results = await memory_service.search_memories(
-                query=query, user_id=user_id, limit=5
-            )
+            results = await memory_service.search_memories(query=query, user_id=user_id, limit=5)
             if results and (memories := getattr(results, "memories", None)):
                 log.info(f"Added {len(memories)} memories to subagent context")
                 return "\n\nBased on our previous conversations:\n" + "\n".join(
@@ -177,9 +186,7 @@ async def create_agent_context_message(
             return ""
         try:
             agent_for_skills = subagent_id or "executor"
-            text = await get_available_skills_text(
-                user_id=user_id, agent_name=agent_for_skills
-            )
+            text = await get_available_skills_text(user_id=user_id, agent_name=agent_for_skills)
             if text:
                 log.info(f"Injected installable skills for {agent_for_skills}")
                 return f"\n\n{text}"

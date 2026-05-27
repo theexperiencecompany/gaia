@@ -20,7 +20,6 @@ from app.models.mcp_config import ComposioConfig, MCPConfig, SubAgentConfig
 from app.models.oauth_models import OAuthIntegration
 from app.models.subagent_models import Subagent
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -353,9 +352,7 @@ class TestAllSubagentsCachingAndOrdering:
             name="Builtin",
             provider="builtin_for_cache_test",
             managed_by="internal",
-            config=_make_subagent_config(
-                "builtin_for_cache_test", "builtin_for_cache_test_agent"
-            ),
+            config=_make_subagent_config("builtin_for_cache_test", "builtin_for_cache_test_agent"),
         )
         _clear_registry_cache()
         with (
@@ -421,9 +418,7 @@ class TestGetSubagentByIdExtended:
 
     def test_short_name_lookup_with_real_integration(self) -> None:
         _clear_registry_cache()
-        oauth_integ = _make_real_oauth_integration(
-            integration_id="github", short_name="gh"
-        )
+        oauth_integ = _make_real_oauth_integration(integration_id="github", short_name="gh")
 
         with (
             patch(

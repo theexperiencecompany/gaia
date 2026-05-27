@@ -2,10 +2,10 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
+import pytest
 
 from tests.factories import make_config, make_state, make_user
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
@@ -64,9 +64,7 @@ def mock_mongodb():
 
     with patch("app.db.mongodb.collections._get_collection") as mock_get_collection:
         collection_mocks = {col: AsyncMock() for col in collections}
-        mock_get_collection.side_effect = lambda name: collection_mocks.get(
-            name, AsyncMock()
-        )
+        mock_get_collection.side_effect = lambda name: collection_mocks.get(name, AsyncMock())
         yield collection_mocks
 
 

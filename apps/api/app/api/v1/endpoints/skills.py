@@ -5,7 +5,7 @@ Provides REST API for installing, creating, listing, and managing
 installable agent skills (Agent Skills open standard).
 """
 
-from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 
 from app.agents.skills.github_discovery import (
     discover_skills_from_repo,
@@ -28,10 +28,8 @@ from app.agents.skills.registry import (
     list_skills,
 )
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from shared.py.wide_events import log
 from app.decorators import tiered_rate_limit
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi import status as http_status
+from shared.py.wide_events import log
 
 router = APIRouter(prefix="/skills", tags=["skills"])
 
@@ -89,13 +87,11 @@ async def discover_skills_from_github(
 )
 async def install_skill_with_auto_discover(
     repo_url: str = Query(..., description="GitHub repo (owner/repo or full URL)"),
-    skill_name: Optional[str] = Query(
+    skill_name: str | None = Query(
         None, description="Skill name to install (auto-discovers if provided)"
     ),
-    skill_path: Optional[str] = Query(
-        None, description="Explicit path to skill folder"
-    ),
-    target: Optional[str] = Query(
+    skill_path: str | None = Query(None, description="Explicit path to skill folder"),
+    target: str | None = Query(
         None, description="Override target (executor or subagent agent_name)"
     ),
     user_id: str = Depends(_get_user_id),
@@ -167,9 +163,7 @@ async def create_inline_skill_endpoint(
     user_id: str = Depends(_get_user_id),
 ):
     """Create a skill from inline components."""
-    log.set(
-        user={"id": user_id}, skill={"name": request.name, "target": request.target}
-    )
+    log.set(user={"id": user_id}, skill={"name": request.name, "target": request.target})
     try:
         installed = await install_from_inline(
             user_id=user_id,
@@ -197,7 +191,7 @@ async def create_inline_skill_endpoint(
 @router.get("", response_model=SkillListResponse)
 async def list_skills_endpoint(
     user_id: str = Depends(_get_user_id),
-    target: Optional[str] = Query(
+    target: str | None = Query(
         None, description="Filter by target (executor or subagent agent_name)"
     ),
     enabled_only: bool = Query(False, description="Only return enabled skills"),

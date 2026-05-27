@@ -1,6 +1,7 @@
+from posthog import Posthog
+
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
-from posthog import Posthog
 
 
 @lazy_provider(

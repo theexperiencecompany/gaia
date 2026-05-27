@@ -5,14 +5,12 @@ This module provides utilities to check if a user has the required integration
 permissions and stream connection prompts to the frontend when needed.
 """
 
-from typing import Optional
-
 import httpx
 from langgraph.config import get_stream_writer
 
-from shared.py.wide_events import log
 from app.config.oauth_config import get_integration_by_id, get_integration_scopes
 from app.config.token_repository import token_repository
+from shared.py.wide_events import log
 
 http_async_client = httpx.AsyncClient(timeout=10.0)
 
@@ -48,9 +46,7 @@ async def check_user_has_integration(access_token: str, integration_id: str) -> 
             log.warning(f"No scopes defined for integration: {integration_id}")
             return False
 
-        token = await token_repository.get_token_by_auth_token(
-            access_token, renew_if_expired=True
-        )
+        token = await token_repository.get_token_by_auth_token(access_token, renew_if_expired=True)
 
         if not token:
             log.warning(f"No token found for access token: {access_token}")
@@ -59,9 +55,7 @@ async def check_user_has_integration(access_token: str, integration_id: str) -> 
         authorized_scopes = str(token.get("scope", "")).split()
 
         # Check if all required scopes are present
-        missing_scopes = [
-            scope for scope in required_scopes if scope not in authorized_scopes
-        ]
+        missing_scopes = [scope for scope in required_scopes if scope not in authorized_scopes]
         return len(missing_scopes) == 0
 
     except Exception as e:
@@ -71,9 +65,9 @@ async def check_user_has_integration(access_token: str, integration_id: str) -> 
 
 async def stream_integration_connection_prompt(
     integration_id: str,
-    tool_name: Optional[str] = None,
-    tool_category: Optional[str] = None,
-    message: Optional[str] = None,
+    tool_name: str | None = None,
+    tool_category: str | None = None,
+    message: str | None = None,
 ) -> None:
     """
     Stream an integration connection prompt to the frontend.
@@ -115,7 +109,7 @@ async def stream_integration_connection_prompt(
         log.error(f"Error streaming integration connection prompt: {e}")
 
 
-def get_required_integration_for_tool_category(tool_category: str) -> Optional[str]:
+def get_required_integration_for_tool_category(tool_category: str) -> str | None:
     """
     Get the required integration ID for a given tool category.
 
@@ -129,7 +123,7 @@ def get_required_integration_for_tool_category(tool_category: str) -> Optional[s
 
 
 async def check_and_prompt_integration(
-    access_token: str, tool_category: str, tool_name: Optional[str] = None
+    access_token: str, tool_category: str, tool_name: str | None = None
 ) -> bool:
     """
     Check if user has required integration and prompt if not.
@@ -147,9 +141,7 @@ async def check_and_prompt_integration(
         # No integration required for this tool category
         return True
 
-    has_integration = await check_user_has_integration(
-        access_token, required_integration
-    )
+    has_integration = await check_user_has_integration(access_token, required_integration)
     if has_integration:
         return True
 

@@ -11,11 +11,10 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-import pytest
 from langgraph.checkpoint.base import empty_checkpoint
+import pytest
 
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
-
 
 # ---------------------------------------------------------------------------
 # Fixtures (postgres_url comes from service/conftest.py)
@@ -57,9 +56,7 @@ class TestCheckpointerManagerConnects:
         assert checkpointer is not None
         await mgr.close()
 
-    async def test_get_checkpointer_before_setup_raises(
-        self, postgres_url: str
-    ) -> None:
+    async def test_get_checkpointer_before_setup_raises(self, postgres_url: str) -> None:
         """get_checkpointer() before setup() must raise RuntimeError."""
         mgr = CheckpointerManager(conninfo=postgres_url)
         with pytest.raises(RuntimeError, match="setup"):
@@ -80,18 +77,14 @@ class TestCheckpointPersistence:
         metadata: dict = {"source": "input", "step": 0, "writes": None, "parents": {}}
         new_versions: dict = {}
 
-        saved_config = await checkpointer.aput(
-            config, checkpoint, metadata, new_versions
-        )
+        saved_config = await checkpointer.aput(config, checkpoint, metadata, new_versions)
         assert saved_config is not None
 
         result = await checkpointer.aget_tuple(config)
         assert result is not None
         assert result.checkpoint["id"] == checkpoint["id"]
 
-    async def test_missing_thread_returns_none(
-        self, manager: CheckpointerManager
-    ) -> None:
+    async def test_missing_thread_returns_none(self, manager: CheckpointerManager) -> None:
         """aget_tuple for an unknown thread_id must return None (no crash)."""
         checkpointer = manager.get_checkpointer()
         config = _thread_config(f"nonexistent-{uuid4()}")
@@ -103,9 +96,7 @@ class TestCheckpointPersistence:
 class TestThreadIsolation:
     """Checkpoints from different thread_ids must not bleed into each other."""
 
-    async def test_two_threads_store_independently(
-        self, manager: CheckpointerManager
-    ) -> None:
+    async def test_two_threads_store_independently(self, manager: CheckpointerManager) -> None:
         """
         Checkpoints written under thread_1 must not appear when querying thread_2.
 
@@ -122,12 +113,8 @@ class TestThreadIsolation:
         metadata: dict = {"source": "input", "step": 0, "writes": None, "parents": {}}
         empty_versions: dict = {}
 
-        await checkpointer.aput(
-            _thread_config(thread_1), checkpoint_1, metadata, empty_versions
-        )
-        await checkpointer.aput(
-            _thread_config(thread_2), checkpoint_2, metadata, empty_versions
-        )
+        await checkpointer.aput(_thread_config(thread_1), checkpoint_1, metadata, empty_versions)
+        await checkpointer.aput(_thread_config(thread_2), checkpoint_2, metadata, empty_versions)
 
         result_1 = await checkpointer.aget_tuple(_thread_config(thread_1))
         result_2 = await checkpointer.aget_tuple(_thread_config(thread_2))
@@ -140,9 +127,7 @@ class TestThreadIsolation:
         assert result_2.checkpoint["id"] == checkpoint_2["id"]
         assert result_1.checkpoint["id"] != result_2.checkpoint["id"]
 
-    async def test_thread_1_not_visible_from_thread_2(
-        self, manager: CheckpointerManager
-    ) -> None:
+    async def test_thread_1_not_visible_from_thread_2(self, manager: CheckpointerManager) -> None:
         """
         alist on thread_2 must not yield checkpoints belonging to thread_1.
 
@@ -158,8 +143,7 @@ class TestThreadIsolation:
         await checkpointer.aput(_thread_config(thread_1), checkpoint_1, metadata, {})
 
         ids_visible_from_thread_2 = [
-            tup.checkpoint["id"]
-            async for tup in checkpointer.alist(_thread_config(thread_2))
+            tup.checkpoint["id"] async for tup in checkpointer.alist(_thread_config(thread_2))
         ]
 
         assert checkpoint_1["id"] not in ids_visible_from_thread_2, (

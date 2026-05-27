@@ -17,12 +17,12 @@ Usage:
         pass
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Dict
+
+from pydantic import BaseModel
 
 from app.models.payment_models import PlanType
-from pydantic import BaseModel
 
 
 class RateLimitPeriod(str, Enum):
@@ -47,14 +47,12 @@ class TieredRateLimits(BaseModel):
 
 
 # RECOMMENDED FEATURE LIMITS FOR $30/MONTH
-FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
+FEATURE_LIMITS: dict[str, TieredRateLimits] = {
     # CORE COMMUNICATION
     "chat_messages": TieredRateLimits(
         free=RateLimitConfig(day=200, month=5000),  # Unchanged - good trial
         pro=RateLimitConfig(day=3000, month=60000),  # +20% / +50%
-        info=FeatureInfo(
-            title="Chat Messages", description="Send messages to AI assistants"
-        ),
+        info=FeatureInfo(title="Chat Messages", description="Send messages to AI assistants"),
     ),
     # FILE OPERATIONS (Expensive - Storage & Processing)
     "file_upload": TieredRateLimits(
@@ -65,8 +63,14 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
     "file_analysis": TieredRateLimits(
         free=RateLimitConfig(day=3, month=10),  # Keep restrictive
         pro=RateLimitConfig(day=150, month=4500),  # +50%
+        info=FeatureInfo(title="File Analysis", description="Analyze and process uploaded files"),
+    ),
+    "audio_transcription": TieredRateLimits(
+        free=RateLimitConfig(day=5, month=20),
+        pro=RateLimitConfig(day=200, month=6000),
         info=FeatureInfo(
-            title="File Analysis", description="Analyze and process uploaded files"
+            title="Audio Transcription",
+            description="Transcribe voice notes and audio clips to text",
         ),
     ),
     # SKILLS
@@ -100,24 +104,18 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
     "document_generation": TieredRateLimits(
         free=RateLimitConfig(day=1, month=3),  # Keep restrictive
         pro=RateLimitConfig(day=45, month=1350),  # +50% (30→45, 900→1350)
-        info=FeatureInfo(
-            title="Document Generation", description="Generate documents and reports"
-        ),
+        info=FeatureInfo(title="Document Generation", description="Generate documents and reports"),
     ),
     # WEB FEATURES (Moderate Cost)
     "web_search": TieredRateLimits(
         free=RateLimitConfig(day=10, month=50),  # Unchanged - good trial
         pro=RateLimitConfig(day=450, month=13500),  # +50% (300→450, 9000→13500)
-        info=FeatureInfo(
-            title="Web Search", description="Search the web for information"
-        ),
+        info=FeatureInfo(title="Web Search", description="Search the web for information"),
     ),
     "webpage_fetch": TieredRateLimits(
         free=RateLimitConfig(day=3, month=10),  # Keep restrictive
         pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
-        info=FeatureInfo(
-            title="Webpage Fetch", description="Fetch and analyze web pages"
-        ),
+        info=FeatureInfo(title="Webpage Fetch", description="Fetch and analyze web pages"),
     ),
     # AUTOMATION (High Value)
     "workflow_operations": TieredRateLimits(
@@ -140,9 +138,7 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
     "goal_tracking": TieredRateLimits(
         free=RateLimitConfig(day=3, month=10),  # Keep restrictive for trial
         pro=RateLimitConfig(day=75, month=2250),  # +50% (50→75, 1500→2250)
-        info=FeatureInfo(
-            title="Goal Tracking", description="Create and track personal goals"
-        ),
+        info=FeatureInfo(title="Goal Tracking", description="Create and track personal goals"),
     ),
     "todo_operations": TieredRateLimits(
         free=RateLimitConfig(day=50, month=1000),  # Good trial experience
@@ -162,9 +158,7 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
     "reminder_operations": TieredRateLimits(
         free=RateLimitConfig(day=3, month=10),  # Keep restrictive
         pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
-        info=FeatureInfo(
-            title="Reminder Operations", description="Create and manage reminders"
-        ),
+        info=FeatureInfo(title="Reminder Operations", description="Create and manage reminders"),
     ),
     # COMMUNICATION
     "mail_actions": TieredRateLimits(
@@ -178,16 +172,12 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
     "notes": TieredRateLimits(
         free=RateLimitConfig(day=30, month=200),  # Good trial
         pro=RateLimitConfig(day=1500, month=45000),  # +50% (1000→1500, 30000→45000)
-        info=FeatureInfo(
-            title="Notes Management", description="Create and manage notes"
-        ),
+        info=FeatureInfo(title="Notes Management", description="Create and manage notes"),
     ),
     "memory": TieredRateLimits(
         free=RateLimitConfig(day=20, month=100),  # Good trial
         pro=RateLimitConfig(day=750, month=22500),  # +50% (500→750, 15000→22500)
-        info=FeatureInfo(
-            title="Memory Operations", description="Store and retrieve memories"
-        ),
+        info=FeatureInfo(title="Memory Operations", description="Store and retrieve memories"),
     ),
     # VFS (Tool-Level)
     "vfs_write": TieredRateLimits(
@@ -210,9 +200,7 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
     "flowchart_creation": TieredRateLimits(
         free=RateLimitConfig(day=1, month=3),  # Keep restrictive
         pro=RateLimitConfig(day=30, month=900),  # +50% (20→30, 600→900)
-        info=FeatureInfo(
-            title="Flowchart Creation", description="Create flowcharts and diagrams"
-        ),
+        info=FeatureInfo(title="Flowchart Creation", description="Create flowcharts and diagrams"),
     ),
     "code_execution": TieredRateLimits(
         free=RateLimitConfig(day=3, month=10),  # Keep restrictive (security)
@@ -223,18 +211,12 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
     "weather_checks": TieredRateLimits(
         free=RateLimitConfig(day=5, month=20),  # Unchanged
         pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
-        info=FeatureInfo(
-            title="Weather Checks", description="Check weather information"
-        ),
+        info=FeatureInfo(title="Weather Checks", description="Check weather information"),
     ),
     "notification_operations": TieredRateLimits(
-        free=RateLimitConfig(
-            day=50, month=1000
-        ),  # Reduced from 100/2000 (too generous)
+        free=RateLimitConfig(day=50, month=1000),  # Reduced from 100/2000 (too generous)
         pro=RateLimitConfig(day=7500, month=225000),  # +50% (5000→7500, 150000→225000)
-        info=FeatureInfo(
-            title="Notification Operations", description="Manage user notifications"
-        ),
+        info=FeatureInfo(title="Notification Operations", description="Manage user notifications"),
     ),
     # MARKETPLACE (Community)
     "integration_publish": TieredRateLimits(
@@ -271,38 +253,33 @@ def get_limits_for_plan(feature_key: str, plan_type: PlanType) -> RateLimitConfi
 
 def get_reset_time(period: RateLimitPeriod) -> datetime:
     """Calculate reset time for a given period."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if period == RateLimitPeriod.DAY:
-        return now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(
-            days=1
+        return now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    # MONTH
+    if now.month == 12:
+        return now.replace(
+            year=now.year + 1,
+            month=1,
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
         )
-    else:  # MONTH
-        if now.month == 12:
-            return now.replace(
-                year=now.year + 1,
-                month=1,
-                day=1,
-                hour=0,
-                minute=0,
-                second=0,
-                microsecond=0,
-            )
-        else:
-            return now.replace(
-                month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0
-            )
+    return now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
 def get_time_window_key(period: RateLimitPeriod) -> str:
     """Get Redis time window key for a period."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if period == RateLimitPeriod.DAY:
         return now.strftime("%Y%m%d")
-    else:  # MONTH
-        return now.strftime("%Y%m")
+    # MONTH
+    return now.strftime("%Y%m")
 
 
-def get_feature_info(feature_key: str) -> Dict[str, str]:
+def get_feature_info(feature_key: str) -> dict[str, str]:
     """Get user-friendly feature information."""
     if feature_key in FEATURE_LIMITS:
         info = FEATURE_LIMITS[feature_key].info

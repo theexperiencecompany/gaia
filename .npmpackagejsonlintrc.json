@@ -1,0 +1,32 @@
+{
+  "rules": {
+    "name-format": "error",
+    "no-restricted-dependencies": [
+      "error",
+      ["eslint", "prettier", "eslint-config-prettier", "lint-staged"]
+    ],
+    "no-restricted-devDependencies": [
+      "error",
+      ["eslint", "prettier", "eslint-config-prettier", "lint-staged"]
+    ],
+    "prefer-property-order": [
+      "warning",
+      [
+        "name",
+        "description",
+        "version",
+        "private",
+        "type",
+        "main",
+        "types",
+        "module",
+        "exports",
+        "files",
+        "scripts",
+        "dependencies",
+        "devDependencies",
+        "peerDependencies"
+      ]
+    ]
+  }
+}

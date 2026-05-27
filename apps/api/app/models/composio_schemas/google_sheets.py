@@ -10,9 +10,7 @@ from pydantic import BaseModel, Field
 class GoogleSheetsNewRowPayload(BaseModel):
     """Payload for GOOGLESHEETS_NEW_ROWS_TRIGGER."""
 
-    detected_at: str | None = Field(
-        None, description="ISO timestamp when row was detected"
-    )
+    detected_at: str | None = Field(None, description="ISO timestamp when row was detected")
     row_data: list[str] | None = Field(None, description="Row data as list of strings")
     row_number: int | None = Field(None, description="Row number (1-indexed)")
     sheet_name: str | None = Field(None, description="Sheet name")

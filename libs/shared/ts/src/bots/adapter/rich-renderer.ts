@@ -6,7 +6,8 @@
  *
  * Slack and Telegram use different formatting syntax:
  * - **Slack**: `*bold*`, `_italic_`, `<url|label>` (mrkdwn)
- * - **Telegram**: `**bold**`, `_italic_`, `[label](url)` (Markdown)
+ * - **Telegram**: `**bold**`, `_italic_`, `[label](url)` (CommonMark — the
+ *   adapter then runs this through `renderForPlatform` to produce Telegram HTML)
  *
  * @module
  */
@@ -20,8 +21,11 @@ import type { PlatformName, RichMessage } from "../types";
  * @returns The bold-formatted text.
  */
 function bold(text: string, platform: PlatformName): string {
-  // Slack mrkdwn: *bold*, Telegram legacy Markdown: *bold*, Discord: **bold**
-  return platform === "discord" ? `**${text}**` : `*${text}*`;
+  // Discord and Telegram consume CommonMark, where ** is bold (Telegram's HTML
+  // converter turns ** into <b>). Slack mrkdwn and WhatsApp use *bold*.
+  return platform === "discord" || platform === "telegram"
+    ? `**${text}**`
+    : `*${text}*`;
 }
 
 /**
@@ -33,7 +37,12 @@ function bold(text: string, platform: PlatformName): string {
  * @returns The formatted hyperlink.
  */
 function link(label: string, url: string, platform: PlatformName): string {
-  return platform === "slack" ? `<${url}|${label}>` : `[${label}](${url})`;
+  // Slack: <url|label>. WhatsApp has no masked-link syntax — it auto-links
+  // bare URLs, so render "label (url)" (matching convertToWhatsAppMarkdown).
+  // Telegram/Discord render CommonMark "[label](url)".
+  if (platform === "slack") return `<${url}|${label}>`;
+  if (platform === "whatsapp") return `${label} (${url})`;
+  return `[${label}](${url})`;
 }
 
 /**
