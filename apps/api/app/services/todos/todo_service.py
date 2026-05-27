@@ -42,6 +42,7 @@ from app.models.todo_models import (
 from app.services.todos.sync_service import (
     sync_subtask_to_goal_completion,
 )
+from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
 from app.utils.todo_vector_utils import (
     bulk_index_todos,
@@ -376,6 +377,7 @@ class TodoService:
             log.warning("todo.index_failed", error=str(e))
 
         await cls._invalidate_cache(user_id, todo.project_id, str(result.inserted_id), "create")
+        schedule_user_todos_sync(user_id)
 
         # Return todo response without workflow (will be generated in background)
         if not created_todo:
@@ -641,6 +643,7 @@ class TodoService:
             todo_id,
             "update" if affects_visibility else "update_minor",
         )
+        schedule_user_todos_sync(user_id)
 
         return TodoResponse(**serialize_document(updated))
 
@@ -681,6 +684,7 @@ class TodoService:
 
         # Invalidate cache broadly since we don't know the project_id
         await cls._invalidate_cache(user_id, None, todo_id, "delete")
+        schedule_user_todos_sync(user_id)
 
     # Bulk Operations
     @classmethod

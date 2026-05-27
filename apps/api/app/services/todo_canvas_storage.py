@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from bson import ObjectId
 
 from app.db.mongodb.collections import todos_collection
-from app.services.tracked_todos_fs import schedule_sync
+from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from shared.py.wide_events import log
 
 
@@ -40,7 +40,7 @@ async def write_canvas(todo_id: str, user_id: str, content: str) -> bool:
         {"$set": {"canvas_content": content, "updated_at": datetime.now(UTC)}},
     )
     if result.matched_count > 0:
-        schedule_sync(user_id)
+        schedule_gaia_tasks_sync(user_id)
         return True
     return False
 
@@ -70,7 +70,7 @@ async def write_log(todo_id: str, user_id: str, content: str) -> bool:
         {"$set": {"log_content": content, "updated_at": datetime.now(UTC)}},
     )
     if result.matched_count > 0:
-        schedule_sync(user_id)
+        schedule_gaia_tasks_sync(user_id)
         return True
     return False
 

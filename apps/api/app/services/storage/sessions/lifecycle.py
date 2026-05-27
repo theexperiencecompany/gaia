@@ -47,17 +47,23 @@ async def bootstrap_user_session(
     """Idempotent + hash-gated session bootstrap for a chat turn.
 
     Combines session-dir creation, ``.meta.json`` touch, SKILL.md catalog
-    materialization, and the tracked-todos VFS sync. Steady-state turns
-    do zero writes when the library hash, connected set, and todo
-    catalog haven't changed since the last bootstrap.
+    materialization, the gaia-tasks VFS sync, and the user-todos VFS
+    sync. Steady-state turns do zero writes when the library hash, the
+    connected set, the gaia-tasks catalog, and the user-todos catalog
+    haven't changed since the last bootstrap.
+
+    Order matters: gaia-tasks runs first because it owns the legacy
+    ``/workspace/todos/`` cleanup (the prior release used that path for
+    gaia-tasks). user-todos then populates the now-empty ``/todos/``.
     """
     # Late-bound to break a structural cycle: ``app.services.storage`` re-
-    # exports ``sessions`` (which re-exports this module), and
-    # ``tracked_todos_fs`` imports ``storage.juicefs`` — which forces
-    # ``storage/__init__.py`` to run mid-import. Importing here, after the
-    # package graph is fully resolved, is the only break that does not
-    # require restructuring multiple ``__init__.py`` files.
-    from app.services.tracked_todos_fs import sync_user_todos
+    # exports ``sessions`` (which re-exports this module), and the
+    # gaia-tasks / user-todos modules import ``storage.juicefs`` — which
+    # forces ``storage/__init__.py`` to run mid-import. Importing here,
+    # after the package graph is fully resolved, is the only break that
+    # does not require restructuring multiple ``__init__.py`` files.
+    from app.services.gaia_tasks_fs import sync_user_gaia_tasks
+    from app.services.user_todos_fs import sync_user_todos
 
     connected = connected_ids or set()
     expected_hash = library_hash()
@@ -73,6 +79,7 @@ async def bootstrap_user_session(
 
     async with fs_timer(FsOps.BOOTSTRAP_USER_SESSION):
         base = await asyncio.to_thread(_go)
+        await sync_user_gaia_tasks(user_id)
         await sync_user_todos(user_id)
         return base
 

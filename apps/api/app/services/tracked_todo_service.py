@@ -20,6 +20,7 @@ from bson import ObjectId
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.mongodb.collections import todos_collection
 from app.models.todo_models import Priority, TodoModel, TodoResponse
+from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.todo_canvas_storage import (
     append_log,
     build_vfs_label,
@@ -27,7 +28,6 @@ from app.services.todo_canvas_storage import (
     write_canvas,
 )
 from app.services.todos.todo_service import TodoService
-from app.services.tracked_todos_fs import schedule_sync
 from app.utils.canvas_vector_utils import (
     mark_canvas_completed,
     store_canvas_embedding,
@@ -212,7 +212,7 @@ class TrackedTodoService:
             title=title,
             vfs_path=vfs_path,
         )
-        schedule_sync(user_id)
+        schedule_gaia_tasks_sync(user_id)
         return result
 
     @staticmethod
@@ -269,7 +269,7 @@ class TrackedTodoService:
             user_id=user_id,
             summary=summary,
         )
-        schedule_sync(user_id)
+        schedule_gaia_tasks_sync(user_id)
         return True
 
     @staticmethod
