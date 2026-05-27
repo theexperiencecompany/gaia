@@ -30,6 +30,7 @@ from app.db.chroma.public_integrations_store import search_public_integrations
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
+from app.services.mcp.mcp_client import get_mcp_client
 from shared.py.wide_events import log
 
 WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name, deep_research.name]
@@ -48,8 +49,6 @@ async def _user_mcp_tool_names(user_id: str | None) -> set[str]:
     if not user_id:
         return set()
     try:
-        from app.services.mcp.mcp_client import get_mcp_client
-
         mcp_client = await get_mcp_client(user_id=str(user_id))
         names: set[str] = set()
         for integration_tools in mcp_client._tools.values():

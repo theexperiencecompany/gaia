@@ -17,6 +17,7 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 import mcp_use.agents.adapters.langchain_adapter as _mcp_use_lc_adapter
+from pydantic import BaseModel
 
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.utils.schema_fixes import patch_tool_schema
@@ -26,18 +27,21 @@ _ORIGINAL_JSONSCHEMA_TO_PYDANTIC = _mcp_use_lc_adapter.jsonschema_to_pydantic
 
 
 @lru_cache(maxsize=10000)
-def _cached_jsonschema_to_pydantic_by_key(schema_key: str):
+def _cached_jsonschema_to_pydantic_by_key(schema_key: str) -> type[BaseModel]:
     return _ORIGINAL_JSONSCHEMA_TO_PYDANTIC(json.loads(schema_key))
 
 
-def _memoized_jsonschema_to_pydantic(schema: Any):
+def _memoized_jsonschema_to_pydantic(schema: Any) -> type[BaseModel]:
     """Drop-in replacement for mcp_use's jsonschema_to_pydantic with an LRU cache.
 
     Falls through to the original when the schema isn't JSON-serializable
     (rare, but possible if a server smuggles non-JSON types into inputSchema).
+    Do NOT pass `default=str` to json.dumps — it would silently coerce
+    non-serializable values into their string form, building a lossy cache
+    key and risking two different schemas mapping to the same Pydantic model.
     """
     try:
-        key = json.dumps(schema, sort_keys=True, default=str)
+        key = json.dumps(schema, sort_keys=True)
     except (TypeError, ValueError):
         return _ORIGINAL_JSONSCHEMA_TO_PYDANTIC(schema)
     return _cached_jsonschema_to_pydantic_by_key(key)
