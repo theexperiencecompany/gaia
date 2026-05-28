@@ -1,0 +1,31 @@
+/goal Can u please create a worktree and help me test out the cli? like all the logical flows and everything? like a user should be able to extremely easily setup gaia and it be spinned up qwith proper port fallbacks and config values there. and every ux flow should work in the cli. nothing left. and the env variables should be dynamically mapped based on requirements too. please explore deeply. and help me test everything out. you can use an orbstack vm or multipass vm. and helpig me ensure the cli works completely end to end perfectly and walk me through all bugs or broken functionality in all 3 vm's. ensure that it's setup from develop. and please explroe deeply before doing anything or assuming anything. like you gotta remove all your false assumptions and ensure its rooted in fact. you can use a team of agents to smartly do it all oif you needed. don't ask me anything. don't stop until its working 100% perfectly with new changes and everyhting can be setup perfectly like the web and the backend and the bots too and env parsing and proper configuration and start and stop commands. dont install or run anything locally. do this all in the vm you setup with orbstack or multipass so that its constrained inside it. be smart about things. do not use any work arounds or shit code that leads to tech debt, follow best practices as much as possible.
+
+---
+
+does start stop spinning up gaia and everything work perfectly?
+
+---
+
+so walk me through the user flows you tried. does env population work properly
+
+---
+
+Goal set: please try booting a real stack for developers. try using infisical creds from the ones we use in GAIA/gaia. also drive a proper wizard via proper keystroks figure out how to do this.
+
+---
+
+continue
+
+---
+
+<task-notification>
+<task-id>bro9siw38</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-aryan-Projects-GAIA-gaia/da1a1c99-4602-4447-b75a-fb4a143ced14/tasks/bro9siw38.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for Project Setup to finish or error" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+so what did we do in this branch? is all pushed?
