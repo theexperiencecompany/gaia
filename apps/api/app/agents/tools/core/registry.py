@@ -1,15 +1,12 @@
 import asyncio
-from collections import defaultdict
 from collections.abc import ItemsView, Iterator, KeysView, Mapping
 
 from langchain_core.tools import BaseTool
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.oauth_models import OAuthIntegration
 from app.services.composio.composio_service import get_composio_service
-from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from shared.py.wide_events import log
 
@@ -161,7 +158,6 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._categories: dict[str, ToolCategory] = {}
-        self._user_mcp_categories: dict[str, set[str]] = defaultdict(set)
 
     async def setup(self):
         self._initialize_categories()
@@ -337,56 +333,14 @@ class ToolRegistry:
         log.info(f"Registered {len(tools)} tools for {toolkit_name}")
         return self._categories[toolkit_name]
 
-    async def load_all_provider_tools(self):
-        """
-        Load all provider tools from OAuth integrations.
-        This method loads tools for all integrations managed by composio
-        that have subagent configurations and syncs them to the store.
-        Tools are loaded in parallel for better performance.
-        """
-
-        async def load_provider(integration):
-            toolkit_name = integration.composio_config.toolkit
-            space_name = integration.subagent_config.tool_space
-            specific_tools = integration.subagent_config.specific_tools
-
-            # Skip if already loaded
-            if toolkit_name in self._categories:
-                return
-
-            try:
-                await self.register_provider_tools(
-                    toolkit_name=toolkit_name,
-                    space_name=space_name,
-                    specific_tools=specific_tools,
-                )
-            except Exception as e:
-                log.error(f"Failed to load provider tools for {toolkit_name}: {e}")
-
-        # Collect all integrations that need loading
-        integrations_to_load = [
-            integration
-            for integration in OAUTH_INTEGRATIONS
-            if (
-                integration.managed_by == "composio"
-                and integration.composio_config
-                and integration.subagent_config
-                and integration.subagent_config.has_subagent
-            )
-        ]
-
-        # Load all providers in parallel
-        await asyncio.gather(*[load_provider(i) for i in integrations_to_load])
-
     async def populate_provider_catalog(self) -> int:
         """Index provider-tool METADATA for retrieval and the /tools catalog
         *without* materializing executable StructuredTools.
 
-        This replaces the old eager ``load_all_provider_tools()`` warmup path,
-        which wrapped every one of the ~1.6k catalog tools into a StructuredTool
-        (a Pydantic args-model + closure per tool, ~100KB each) and kept them
-        resident for the whole process lifetime — the single largest contributor
-        to backend RSS. Here we only:
+        Replaces an eager warmup that wrapped every one of the ~1.6k catalog
+        tools into a StructuredTool (a Pydantic args-model + closure per tool,
+        ~100KB each) and kept them resident for the whole process lifetime —
+        the single largest contributor to backend RSS. Here we only:
 
           1. fetch raw tool metadata (name + description) per toolkit,
           2. index name+description into ChromaDB so retrieval works, and
@@ -548,88 +502,6 @@ class ToolRegistry:
             for name, category in self._categories.items()
             if name not in ignore_categories
         }
-
-    async def load_user_mcp_tools(self, user_id: str) -> dict[str, list[BaseTool]]:
-        """
-        Load all connected MCP tools for a specific user.
-
-        Connects to each MCP server the user has authenticated with,
-        retrieves tools, and adds them to the registry.
-
-        Category naming: mcp_{integration_id} (without user_id)
-        User association is tracked via _user_mcp_categories.
-
-        Returns dict mapping integration_id -> list of tools loaded.
-        """
-        from app.config.oauth_config import get_integration_by_id
-        from app.services.mcp.mcp_client import get_mcp_client
-
-        mcp_client = await get_mcp_client(user_id=user_id)
-        all_tools = await mcp_client.get_all_connected_tools()
-
-        log.set(
-            load_user_mcp_tools={
-                "user_id": user_id,
-                "integration_count": len(all_tools),
-                "integrations": list(all_tools.keys()),
-                "tool_counts": {iid: len(t) for iid, t in all_tools.items()},
-            }
-        )
-        log.info(
-            f"load_user_mcp_tools: user={user_id} got {len(all_tools)} integrations "
-            f"with counts={ {iid: len(t) for iid, t in all_tools.items()} }"
-        )
-
-        loaded: dict[str, list[BaseTool]] = {}
-
-        for integration_id, tools in all_tools.items():
-            if not tools:
-                log.warning(
-                    f"load_user_mcp_tools: integration_id={integration_id} has empty "
-                    f"tools list, skipping"
-                )
-                continue
-
-            # Category name: mcp_{integration_id} (no user_id suffix)
-            category_name = f"mcp_{integration_id}"
-
-            # Track this category for the user
-            self._user_mcp_categories[user_id].add(category_name)
-
-            # Skip if already loaded (category already exists)
-            if category_name in self._categories:
-                existing_count = len(self._categories[category_name].tools)
-                log.info(
-                    f"load_user_mcp_tools: '{category_name}' already in registry "
-                    f"(category.tools={existing_count} from earlier load), "
-                    f"skipping re-add for user {user_id}"
-                )
-                loaded[integration_id] = tools
-                continue
-
-            # Get space from integration config
-            integration = get_integration_by_id(integration_id)
-            space = integration_id  # Default: unique namespace per integration
-            has_subagent = False
-            if integration and integration.subagent_config:
-                space = integration.subagent_config.tool_space
-                has_subagent = integration.subagent_config.has_subagent
-            else:
-                server_url = await IntegrationResolver.get_server_url(integration_id)
-                space = derive_integration_namespace(integration_id, server_url, is_custom=True)
-
-            self._add_category(
-                name=category_name,
-                tools=tools,
-                space=space,
-                integration_name=integration_id,
-                is_delegated=has_subagent,
-            )
-            await self._index_category_tools(category_name)
-            loaded[integration_id] = tools
-            log.info(f"Loaded {len(tools)} MCP tools from {integration_id} for user {user_id}")
-
-        return loaded
 
     def get_category_of_tool(self, tool_name: str) -> str:
         """Get the category of a specific tool by name."""

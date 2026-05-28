@@ -41,8 +41,8 @@ async def _get_user_tz(user_id: str) -> str:
                 ZoneInfo(tz_name)
                 return tz_name
             except Exception as tz_err:
-                log.warning(
-                    "tracked_todo.user_tz_invalid",
+                log.debug(
+                    "tracked_todo.invalid_user_tz",
                     user_id=user_id,
                     tz_name=tz_name,
                     error=str(tz_err),

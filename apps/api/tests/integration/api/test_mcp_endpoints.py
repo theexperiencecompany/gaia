@@ -295,10 +295,6 @@ class TestMCPOAuthCallbackEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.mcp.get_tool_registry",
-        new_callable=AsyncMock,
-    )
-    @patch(
         "app.api.v1.endpoints.mcp.delete_cache",
         new_callable=AsyncMock,
     )
@@ -310,7 +306,6 @@ class TestMCPOAuthCallbackEndpoint:
         self,
         mock_frontend_url,
         mock_delete_cache,
-        mock_get_registry,
         mock_invalidate,
         mock_resolve,
         mock_get_client,
@@ -324,11 +319,6 @@ class TestMCPOAuthCallbackEndpoint:
             handle_oauth_tools=[MagicMock(name="tool1"), MagicMock(name="tool2")]
         )
         mock_get_client.return_value = mock_client
-
-        # Mock the tool registry
-        mock_registry = MagicMock()
-        mock_registry.load_user_mcp_tools = AsyncMock()
-        mock_get_registry.return_value = mock_registry
 
         # state format: "token:integration_id:redirect_path"
         state = "csrf-token-abc:test-integration:/integrations"
@@ -482,10 +472,6 @@ class TestMCPOAuthCallbackEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.mcp.get_tool_registry",
-        new_callable=AsyncMock,
-    )
-    @patch(
         "app.api.v1.endpoints.mcp.delete_cache",
         new_callable=AsyncMock,
     )
@@ -497,7 +483,6 @@ class TestMCPOAuthCallbackEndpoint:
         self,
         mock_frontend_url,
         mock_delete_cache,
-        mock_get_registry,
         mock_invalidate,
         mock_resolve,
         mock_get_client,
@@ -509,10 +494,6 @@ class TestMCPOAuthCallbackEndpoint:
 
         mock_client = _make_mcp_client(handle_oauth_tools=[MagicMock()])
         mock_get_client.return_value = mock_client
-
-        mock_registry = MagicMock()
-        mock_registry.load_user_mcp_tools = AsyncMock()
-        mock_get_registry.return_value = mock_registry
 
         # State without redirect_path (only two parts)
         state = "token-xyz:some-integration"

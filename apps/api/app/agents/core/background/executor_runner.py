@@ -165,6 +165,7 @@ async def _deliver_bg_notification(
     task_id: str | None = None,
     user_message_id: str | None = None,
     tool_data: list[dict[str, Any]] | None = None,
+    is_queued: bool = False,
 ) -> None:
     """Run comms once with the executor result, then save + WS-push the message.
 
@@ -182,6 +183,10 @@ async def _deliver_bg_notification(
                          used for reply-to linking.
         tool_data: Optional tool_data entries (only set for queued tasks where
                    no live SSE consumer attached them to a comms ack message).
+        is_queued: Whether this task ran from the queue (vs live). Gates the
+                   reply-quote attach — live tasks land directly after the
+                   user's last message so quoting it is visual noise; queued
+                   tasks may have other messages between them and the original.
     """
     user_id = user.get("user_id", "")
 
@@ -201,7 +206,8 @@ async def _deliver_bg_notification(
         bot_message.tool_data = tool_data  # type: ignore[assignment]
 
     user_msg_content = ""
-    if user_message_id:
+    show_reply_quote = is_queued and bool(user_message_id)
+    if show_reply_quote:
         user_msg_content = await _lookup_user_message_content(conversation_id, user_message_id)
         bot_message.replyToMessage = ReplyToMessageData(
             id=user_message_id,
@@ -231,7 +237,7 @@ async def _deliver_bg_notification(
         ws_payload["tool_data"] = tool_data
     if task_id:
         ws_payload["task_id"] = task_id
-    if user_message_id:
+    if show_reply_quote:
         ws_payload["replyToMessage"] = {
             "id": user_message_id,
             "content": user_msg_content,
@@ -300,6 +306,7 @@ async def _dispatch_executor_result(
             task_id=task_id,
             user_message_id=user_message_id,
             tool_data=queued_tool_data,
+            is_queued=is_queued,
         )
     except Exception as e:
         log.error("Background notification delivery failed", error=str(e))

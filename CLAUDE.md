@@ -28,7 +28,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Bias toward caution 
 **3. Surgical Changes.** Touch only what you must. Clean up only your own mess.
 - Don't "improve" adjacent code, comments, or formatting. Don't refactor things that aren't broken.
 - Match existing style, even if you'd do it differently.
-- Remove imports/variables/functions that YOUR changes made unused. Don't delete pre-existing dead code unless asked, flag it instead.
+- Remove imports/variables/functions that YOUR changes made unused. Delete pre-existing dead code when you spot it.
 - The test: every changed line should trace directly to the user's request.
 
 **4. Goal-Driven Execution.** Define success criteria. Loop until verified.

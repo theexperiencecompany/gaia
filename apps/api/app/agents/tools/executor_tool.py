@@ -17,7 +17,6 @@ from langchain_core.tools import tool
 
 from app.agents.core.background.executor_runner import run_executor_background
 from app.agents.core.background.inbox import mark_executor_spawned
-from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
@@ -213,7 +212,6 @@ async def _dispatch_executor(
             "task_id": task_id,
         },
     )
-    user_id = configurable.get("user_id")
     stream_id = configurable.get("stream_id")
     user_message_id = configurable.get("user_message_id")
 
@@ -238,23 +236,12 @@ async def _dispatch_executor(
         )
         return (
             "I'm already working on a task for this conversation. "
-            f"Your request has been queued (task_id: {task_id}) "
-            "and I'll handle it right after."
+            "Your request has been queued and I'll handle it right after."
         )
 
-    # Load user's MCP tools
-    if user_id:
-        try:
-            tool_registry = await get_tool_registry()
-            loaded = await tool_registry.load_user_mcp_tools(user_id)
-            if loaded:
-                log.info(
-                    "Loaded MCP tools for user",
-                    user_id=user_id,
-                    tools=list(loaded.keys()),
-                )
-        except Exception:  # noqa: BLE001
-            log.warning("Failed to load user MCP tools", exc_info=True)
+    # MCP tools load lazily inside each subagent's first use — the old eager
+    # warmup hit get_all_connected_tools() on every executor call and
+    # dominated cold-start latency.
 
     user_time_str = configurable.get("user_time", "")
     user_time = datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
@@ -281,7 +268,7 @@ async def _dispatch_executor(
         task_id=task_id,
         stream_id=stream_id,
     )
-    return f"Task accepted (task_id: {task_id}). I'm on it — you'll get progress updates as I work."
+    return "Task accepted. I'm on it — you'll get progress updates as I work."
 
 
 @tool
@@ -295,13 +282,12 @@ async def cancel_executor(
     """Cancel background executor tasks by their task_ids.
 
     task_ids behavior:
-    - Empty list [] = cancel EVERYTHING (running task + all queued).
-      Use for: "stop everything", "cancel all", or generic "stop that".
-    - Specific task_ids = cancel only those (running or queued), keep rest.
-      Use for: "cancel the search task" / "stop the second one".
-      Match user intent to task_ids from call_executor responses in
-      conversation history (e.g. "Task accepted (task_id: abc-123)"
-      or "queued (task_id: xyz-456)").
+    - Empty list [] (default) = cancel EVERYTHING running + queued for this
+      conversation. This is the right call for every generic stop request
+      ("stop that", "cancel it", "abort", "nevermind that") — task_ids are
+      not exposed in the chat, so you don't need to track them.
+    - Specific task_ids = cancel only those. Only use when the user
+      explicitly provides a task_id string (rare).
 
     CRITICAL: NEVER use this tool unless the user EXPLICITLY asks to stop,
     cancel, or abort. Valid triggers: "stop that", "cancel it", "abort",
@@ -428,8 +414,8 @@ async def _remove_queued_by_ids(
     conversation_id: str,
 ) -> list[str]:
     """Selectively remove specific task_ids from the queue."""
-    # Type-narrowing assertion — caller guarantees redis_cache.client is not None.
-    assert redis_cache.client  # noqa: S101  # nosec B101
+    if redis_cache.client is None:
+        raise RuntimeError("redis_cache.client is not initialized")
 
     all_items = await redis_cache.client.lrange(queue_key, 0, -1)
     keep: list[str] = []

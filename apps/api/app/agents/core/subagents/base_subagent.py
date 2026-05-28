@@ -14,7 +14,7 @@ Both are stored in separate mem0 namespaces and don't interfere.
 """
 
 import asyncio
-from typing import cast
+from typing import Any, cast
 
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.tools import BaseTool
@@ -48,6 +48,50 @@ from app.override.langgraph_bigtool.hooks import HookType
 from shared.py.wide_events import log
 
 
+def _build_scoped_tool_dict(
+    tool_registry: Any,
+    tool_space: str,
+    mcp_tools: list[BaseTool] | None,
+    include_finish_task: bool,
+) -> tuple[dict, list[str]]:
+    """Assemble the scoped tool dict + initial tool IDs for a subagent.
+
+    Split out of `create_provider_subagent` to keep that function's cognitive
+    complexity below SonarQube's threshold.
+    """
+    scoped_tool_dict: dict = {}
+    initial_tool_ids: list[str] = []
+
+    if mcp_tools is not None:
+        # Live MCP tools passed in by provider_subagents — source of truth is
+        # MCPClient, not the global registry. Used for per-user MCP integrations.
+        for tool in mcp_tools:
+            scoped_tool_dict[tool.name] = tool
+            initial_tool_ids.append(tool.name)
+    else:
+        # Fallback path for non-MCP subagents (Composio, shared/_system MCPs):
+        # look up the registry category that matches this tool_space.
+        category = tool_registry.get_category_by_space(tool_space)
+        if category is not None:
+            for t in category.tools:
+                scoped_tool_dict[t.name] = t.tool
+                initial_tool_ids.append(t.name)
+
+    # Always-available tools (memory, VFS, search).
+    scoped_tool_dict[search_memory.name] = search_memory
+    scoped_tool_dict[vfs_read.name] = vfs_read
+    scoped_tool_dict[vfs_cmd.name] = vfs_cmd
+    scoped_tool_dict[web_search_tool.name] = web_search_tool
+    scoped_tool_dict[fetch_webpages.name] = fetch_webpages
+    scoped_tool_dict[deep_research.name] = deep_research
+
+    if include_finish_task:
+        scoped_tool_dict[FINISH_TASK_NAME] = finish_task
+        initial_tool_ids.append(FINISH_TASK_NAME)
+
+    return scoped_tool_dict, initial_tool_ids
+
+
 class SubAgentFactory:
     """Factory for creating provider-specific sub-agents with specialized tool registries."""
 
@@ -61,6 +105,7 @@ class SubAgentFactory:
         disable_retrieve_tools: bool = False,
         auto_bind_tools: list[str] | None = None,
         include_finish_task: bool = True,
+        mcp_tools: list[BaseTool] | None = None,
     ) -> CompiledStateGraph:
         """
         Creates a specialized sub-agent graph for a specific provider with tool registry.
@@ -94,34 +139,12 @@ class SubAgentFactory:
 
         store, tool_registry = await asyncio.gather(get_tools_store(), get_tool_registry())
 
-        # Build scoped tool_dict containing only tools for this subagent's tool_space
-        # This ensures subagents can only access their own integration's tools
-        scoped_tool_dict: dict = {}
-        initial_tool_ids: list[str] = []
-
-        # Get category by tool_space (handles dynamic category names like mcp_{integration}_{user_id})
-        category = tool_registry.get_category_by_space(tool_space)
-        if category is not None:
-            for t in category.tools:
-                scoped_tool_dict[t.name] = t.tool
-                initial_tool_ids.append(t.name)
-
-        # Add search_memory to scoped_tool_dict so subagents can access user memories
-        scoped_tool_dict[search_memory.name] = search_memory
-
-        # Add vfs_read and vfs_cmd so subagents can always access the VFS
-        scoped_tool_dict[vfs_read.name] = vfs_read
-        scoped_tool_dict[vfs_cmd.name] = vfs_cmd
-
-        # Add search tools to scoped_tool_dict so subagents can bind and execute them
-        # when retrieved (retrieve_tools may return these from the general namespace).
-        scoped_tool_dict[web_search_tool.name] = web_search_tool
-        scoped_tool_dict[fetch_webpages.name] = fetch_webpages
-        scoped_tool_dict[deep_research.name] = deep_research
-
-        if include_finish_task:
-            scoped_tool_dict[FINISH_TASK_NAME] = finish_task
-            initial_tool_ids.append(FINISH_TASK_NAME)
+        scoped_tool_dict, initial_tool_ids = _build_scoped_tool_dict(
+            tool_registry=tool_registry,
+            tool_space=tool_space,
+            mcp_tools=mcp_tools,
+            include_finish_task=include_finish_task,
+        )
 
         # Get full tool dict so spawned sub-subagents (via spawn_subagent) inherit
         # all parent tools, not just the provider's scoped tools.

@@ -145,17 +145,12 @@ export const integrationsApi = {
   },
 
   /**
-   * Disconnect an integration.
+   * Disconnect an integration. The success toast is fired by the hook caller
+   * (useIntegrations.disconnectIntegration) — don't double up here.
    */
   disconnectIntegration: async (integrationId: string): Promise<void> => {
     try {
-      await apiService.delete(
-        `/integrations/${integrationId}`,
-        {},
-        {
-          successMessage: "Integration disconnected successfully",
-        },
-      );
+      await apiService.delete(`/integrations/${integrationId}`);
     } catch (error) {
       console.error(`Failed to disconnect ${integrationId}:`, error);
       throw error;
