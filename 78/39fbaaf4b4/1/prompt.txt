@@ -1,0 +1,5 @@
+so i migrated to cloudflare pages from vercel. dns is setup but its not built latest master
+
+---
+
+do it with cli please.
