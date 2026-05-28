@@ -22,7 +22,7 @@ from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.messages import construct_langchain_messages
-from app.config.langfuse import trace_async_stream
+from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
 from app.helpers.agent_helpers import (
     build_agent_config,
@@ -48,6 +48,8 @@ async def _core_agent_logic(
     trigger_context: dict | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     source: str | None = None,
+    langfuse_trace_id: str | None = None,
+    langfuse_tags: list[str] | None = None,
 ):
     """Core agent initialization logic shared between streaming and silent execution modes.
 
@@ -61,9 +63,12 @@ async def _core_agent_logic(
         user: User information dictionary with ID, email, and name
         user_time: Current datetime in user's timezone
         user_model_config: Optional model configuration for inference
-        access_token: Optional OAuth access token for authenticated requests
-        refresh_token: Optional OAuth refresh token for token renewal
         trigger_context: Optional context data from workflow triggers
+        langfuse_trace_id: Seeded Langfuse trace ID to bind every LLM/tool call
+            on this run (and any child agent invoked via `call_executor`) to one
+            trace. Threaded through into `config["metadata"]["langfuse_trace_id"]`
+            and into the configurable so child agents inherit the same trace.
+        langfuse_tags: Tags applied to the Langfuse trace root.
 
     Returns:
         Tuple containing:
@@ -130,6 +135,8 @@ async def _core_agent_logic(
         tool_category=request.toolCategory,
         active_todo_id=active_todo_id,
         execution_mode=execution_mode,
+        langfuse_trace_id=langfuse_trace_id,
+        langfuse_tags=langfuse_tags,
     )
 
     log.set(
@@ -173,6 +180,12 @@ async def call_agent(
     Returns an AsyncGenerator that yields SSE-formatted streaming data.
     """
     try:
+        # Seed a Langfuse trace from bot_message_id so every LLM/tool call on
+        # this turn — comms + background executor + tool calls — lands on one
+        # trace, and /messages/{id}/feedback can re-derive it without storing
+        # the trace_id anywhere.
+        langfuse_trace_id = trace_id_for_message(bot_message_id) if bot_message_id else None
+
         graph, initial_state, config = await _core_agent_logic(
             request,
             conversation_id,
@@ -181,6 +194,8 @@ async def call_agent(
             user_model_config,
             usage_metadata_callback=usage_metadata_callback,
             source=source,
+            langfuse_trace_id=langfuse_trace_id,
+            langfuse_tags=["comms_agent", settings.ENV],
         )
 
         # Add stream_id to config for cancellation checking
@@ -191,14 +206,7 @@ async def call_agent(
         if user_message_id:
             config["configurable"]["user_message_id"] = user_message_id
 
-        return trace_async_stream(
-            execute_graph_streaming(graph, initial_state, config),
-            message_id=bot_message_id,
-            session_id=conversation_id,
-            user_id=user.get("user_id"),
-            user_input=request.message,
-            tags=["comms_agent", settings.ENV],
-        )
+        return execute_graph_streaming(graph, initial_state, config)
 
     except Exception as exc:
         log.error(f"Error when calling agent: {exc}")

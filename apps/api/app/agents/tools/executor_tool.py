@@ -14,13 +14,11 @@ from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langfuse.types import TraceContext
 
 from app.agents.core.background.executor_runner import run_executor_background
 from app.agents.core.background.inbox import mark_executor_spawned
 from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
-from app.config.langfuse import capture_trace_context
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
@@ -172,10 +170,6 @@ async def call_executor(
         return "Internal error: conversation context unavailable. Please try again."
 
     task_id = str(uuid4())
-    # Snapshot the comms agent's active Langfuse trace + span so the
-    # background executor can nest its spans under the chat trace instead
-    # of starting a fresh orphan trace.
-    parent_trace_context = capture_trace_context()
 
     try:
         return await _dispatch_executor(
@@ -183,7 +177,6 @@ async def call_executor(
             task_id=task_id,
             configurable=configurable,
             conversation_id=conversation_id,
-            parent_trace_context=parent_trace_context,
         )
     except (LangChainRateLimitException, RateLimitExceededException) as e:
         if isinstance(e, LangChainRateLimitException):
@@ -211,7 +204,6 @@ async def _dispatch_executor(
     task_id: str,
     configurable: dict,
     conversation_id: str,
-    parent_trace_context: TraceContext | None = None,
 ) -> str:
     """Core dispatch logic — acquire lock, queue if busy, or spawn."""
     log.set(
@@ -279,7 +271,6 @@ async def _dispatch_executor(
             conversation_id=conversation_id,
             task_id=task_id,
             user_message_id=user_message_id,
-            langfuse_trace_context=parent_trace_context,
         ),
     )
     _executor_tasks.add(bg_task)

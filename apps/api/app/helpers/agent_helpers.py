@@ -357,6 +357,8 @@ def build_agent_config(
     active_todo_id: str | None = None,
     execution_mode: str | None = None,
     source: str | None = None,
+    langfuse_trace_id: str | None = None,
+    langfuse_tags: list[str] | None = None,
 ) -> dict:
     """Build configuration for graph execution with optional authentication tokens.
 
@@ -377,6 +379,12 @@ def build_agent_config(
             and all handoff subagents it spawns. All agents in the chain resolve VFS
             paths relative to the executor workspace using this ID. When provided via
             base_configurable it is inherited automatically.
+        langfuse_trace_id: Override the Langfuse trace these spans attach to.
+            When omitted, inherits from `base_configurable["langfuse_trace_id"]`
+            so child agents (the background executor) land on the parent's trace
+            without manual span bridging.
+        langfuse_tags: Tags to attach to the Langfuse trace. Same inheritance
+            rule as `langfuse_trace_id`.
 
     Returns:
         Configuration dictionary formatted for LangGraph execution with configurable
@@ -401,6 +409,14 @@ def build_agent_config(
         },
     )
 
+    # Inherit Langfuse trace association from the parent agent's configurable
+    # (executor inheriting from comms). Explicit kwargs take precedence so the
+    # entry point (call_agent) can seed the trace from `bot_message_id`.
+    inherited_trace_id = (base_configurable or {}).get("langfuse_trace_id")
+    inherited_tags = (base_configurable or {}).get("langfuse_tags")
+    effective_trace_id = langfuse_trace_id or inherited_trace_id
+    effective_tags = langfuse_tags or inherited_tags
+
     configurable = {
         "thread_id": thread_id or conversation_id,
         "user_id": user.get("user_id"),
@@ -424,10 +440,29 @@ def build_agent_config(
         "__pinned_skills__": resolved["pinned_skills"],
     }
 
+    # Propagate Langfuse trace association via configurable so child agents
+    # running in separate asyncio tasks rebuild their own metadata around the
+    # same trace.
+    if effective_trace_id:
+        configurable["langfuse_trace_id"] = effective_trace_id
+    if effective_tags:
+        configurable["langfuse_tags"] = effective_tags
+
+    # The LangChain CallbackHandler reads these keys directly from metadata
+    # to bind the trace ID, session, user, and tags.
+    metadata: dict = {"user_id": user.get("user_id")}
+    if effective_trace_id:
+        metadata["langfuse_trace_id"] = effective_trace_id
+        metadata["langfuse_session_id"] = conversation_id
+        if user.get("user_id"):
+            metadata["langfuse_user_id"] = user["user_id"]
+        if effective_tags:
+            metadata["langfuse_tags"] = effective_tags
+
     return {
         "configurable": configurable,
         "recursion_limit": AGENT_RECURSION_LIMIT,
-        "metadata": {"user_id": user.get("user_id")},
+        "metadata": metadata,
         "callbacks": callbacks,
         "agent_name": agent_name,
     }

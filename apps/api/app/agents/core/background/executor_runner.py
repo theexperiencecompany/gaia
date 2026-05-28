@@ -18,7 +18,6 @@ from typing import Any
 from uuid import uuid4
 
 from langchain_core.messages import SystemMessage
-from langfuse.types import TraceContext
 from langsmith import traceable
 
 from app.agents.core.background.inbox import (
@@ -38,7 +37,6 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
-from app.config.langfuse import trace_child_observation
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_QUEUE_PREFIX
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
@@ -368,7 +366,6 @@ async def run_executor_background(
     conversation_id: str,
     task_id: str | None = None,
     user_message_id: str | None = None,
-    langfuse_trace_context: TraceContext | None = None,
 ) -> None:
     """Run executor agent in background and hand its result to comms for delivery.
 
@@ -382,40 +379,35 @@ async def run_executor_background(
       2. _deliver_bg_notification invokes comms with the executor result
          as internal context and posts the user-facing message via WS.
 
-    When `langfuse_trace_context` is supplied (captured at the comms→executor
-    boundary in `call_executor`), the entire run nests under the comms agent's
-    Langfuse trace. Queued executor runs pass None and start their own trace.
+    Langfuse trace association is carried through `configurable["langfuse_trace_id"]`
+    (set by `build_agent_config` on the parent comms config). The executor's
+    own `build_agent_config(base_configurable=configurable)` re-emits it into
+    the executor's `RunnableConfig.metadata`, so all child LLM/tool spans land
+    on the same trace via the standard Langfuse LangChain callback.
     """
     user = _user_from_configurable(configurable)
     result_text = ""
     result_type = "final"
 
     try:
-        with trace_child_observation(
-            langfuse_trace_context,
-            name="executor_agent",
-            input=task,
-        ) as span:
-            ctx, error = await prepare_executor_execution(
-                task=task,
-                configurable=configurable,
-                user_time=user_time,
+        ctx, error = await prepare_executor_execution(
+            task=task,
+            configurable=configurable,
+            user_time=user_time,
+            stream_id=stream_id,
+        )
+        if error or ctx is None:
+            result_text = error or "Executor agent not available"
+            result_type = "error"
+            log.error("Background executor prep failed", error=result_text)
+        else:
+            writer = make_redis_stream_writer(stream_id)
+            result_text = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
+            log.info(
+                "Background executor completed",
+                task_id=task_id,
                 stream_id=stream_id,
             )
-            if error or ctx is None:
-                result_text = error or "Executor agent not available"
-                result_type = "error"
-                log.error("Background executor prep failed", error=result_text)
-            else:
-                writer = make_redis_stream_writer(stream_id)
-                result_text = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
-                log.info(
-                    "Background executor completed",
-                    task_id=task_id,
-                    stream_id=stream_id,
-                )
-            if span is not None:
-                span.update(output=result_text)
     except Exception as e:
         log.error("Background executor failed", stream_id=stream_id, error=str(e))
         result_text = str(e)
