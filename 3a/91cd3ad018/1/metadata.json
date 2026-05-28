@@ -1,0 +1,68 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "3a91cd3ad018",
+  "session_id": "80a85529-b63a-4a70-90f0-7f5d4cca3a1e",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-28T16:12:55.201583Z",
+  "branch": "fix/web-server-build-types",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "apps/web/src/app/[locale]/(landing)/marketplace/[slug]/page.tsx",
+    "apps/web/src/lib/api/service.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "3ec5cdc9d96e",
+  "token_usage": {
+    "input_tokens": 711,
+    "cache_creation_tokens": 1302965,
+    "cache_read_tokens": 168131671,
+    "output_tokens": 376316,
+    "api_call_count": 423
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-28T16:12:55.140342Z",
+    "agent_lines": 16,
+    "agent_removed": 25,
+    "human_added": 106,
+    "human_modified": 19,
+    "human_removed": 0,
+    "total_committed": 141,
+    "total_lines_changed": 237,
+    "agent_percentage": 17.29957805907173,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 13749,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 13758,
+      "agent_lines_removed": 7
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 13766,
+      "agent_lines_removed": 9
+    }
+  ]
+}

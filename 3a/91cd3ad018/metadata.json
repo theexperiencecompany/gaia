@@ -3,7 +3,7 @@
   "checkpoint_id": "3a91cd3ad018",
   "strategy": "manual-commit",
   "branch": "fix/web-server-build-types",
-  "checkpoints_count": 1,
+  "checkpoints_count": 4,
   "files_touched": [
     "apps/web/src/app/[locale]/(landing)/marketplace/[slug]/page.tsx",
     "apps/web/src/hooks/useGitHubContributors.ts",
@@ -15,13 +15,19 @@
       "transcript": "/3a/91cd3ad018/0/full.jsonl",
       "content_hash": "/3a/91cd3ad018/0/content_hash.txt",
       "prompt": "/3a/91cd3ad018/0/prompt.txt"
+    },
+    {
+      "metadata": "/3a/91cd3ad018/1/metadata.json",
+      "transcript": "/3a/91cd3ad018/1/full.jsonl",
+      "content_hash": "/3a/91cd3ad018/1/content_hash.txt",
+      "prompt": "/3a/91cd3ad018/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 373,
-    "cache_creation_tokens": 664192,
-    "cache_read_tokens": 52965556,
-    "output_tokens": 177744,
-    "api_call_count": 268
+    "input_tokens": 1084,
+    "cache_creation_tokens": 1967157,
+    "cache_read_tokens": 221097227,
+    "output_tokens": 554060,
+    "api_call_count": 691
   }
 }
