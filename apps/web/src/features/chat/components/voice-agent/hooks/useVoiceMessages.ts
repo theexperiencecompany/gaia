@@ -3,7 +3,7 @@
 import { useRoomContext, useTranscriptions } from "@livekit/components-react";
 import { NEW_MESSAGE_BREAK_TOKEN } from "@shared/utils";
 import type { TextStreamReader } from "livekit-client";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import { VOICE_STREAM_TOPIC } from "@/features/chat/components/voice-agent/constants";
 import type { IMessage } from "@/lib/db/chatDb";
@@ -16,6 +16,8 @@ interface VoiceBotTurn {
   follow_up_actions: string[];
   loading: boolean;
   startedAt: Date;
+  /** TTS-aligned transcription stream ids already applied to this turn. */
+  consumedTranscriptionIds: Set<string>;
 }
 
 interface VoiceUserGroup {
@@ -65,15 +67,18 @@ function userGroupToIMessage(
  * Subscribes to LiveKit transcriptions + the agent's bot stream and writes
  * voice turns directly into `chatStore`. Side-effect only; returns nothing.
  *
- * User transcriptions arriving between bot turns are grouped into a single
- * message whose content is joined with `<NEW_MESSAGE_BREAK>` — `splitMessageByBreaks`
- * in the renderer turns those into paragraph breaks within one bubble.
+ * Spoken bot text flows through LiveKit's TTS-aligned transcription channel
+ * (`useTranscriptions()` filtered to the agent participant) so the bubble
+ * fills in lockstep with ElevenLabs audio. UI-only fragments of the backend
+ * response (OpenUI markup, structured tags) arrive on the data channel as
+ * `event.response_ui` and are appended immediately. Plumbing events
+ * (`tool_data`, `follow_up_actions`, `main_response_complete`) keep the
+ * immediate-delivery path established in the previous change.
  *
- * Bot turns close the active user group so the next transcription starts a
- * fresh one. Because the bot turn's `createdAt` is strictly later than the
- * user group's, the chat store's createdAt-based sort keeps the bot bubble
- * below the user bubble — even when preemptive_generation makes the bot's
- * first event arrive before the user's STT finalisation.
+ * Late-arriving TTS transcriptions are routed to the closed turn whose
+ * `startedAt` is the latest one still preceding the transcription's
+ * timestamp, so a turn that closed early (because `main_response_complete`
+ * arrived before TTS finished playing) still gets its spoken text.
  */
 export function useVoiceMessages(conversationId: string | null): void {
   const room = useRoomContext();
@@ -81,9 +86,11 @@ export function useVoiceMessages(conversationId: string | null): void {
   const addOrUpdateMessage = useChatStore((s) => s.addOrUpdateMessage);
 
   const activeTurnRef = useRef<VoiceBotTurn | null>(null);
+  /** All bot turns this session — used to route late TTS transcriptions to closed turns. */
+  const botTurnsRef = useRef<VoiceBotTurn[]>([]);
   const currentUserGroupRef = useRef<VoiceUserGroup | null>(null);
-  /** Stream ids that have been flushed as part of a closed user group. */
-  const consumedTranscriptionIdsRef = useRef<Set<string>>(new Set());
+  /** User transcription stream ids that have been flushed as part of a closed user group. */
+  const consumedUserTranscriptionIdsRef = useRef<Set<string>>(new Set());
   const botTurnIndexRef = useRef(0);
 
   // Stash the latest conversationId in a ref so the bot-stream handler
@@ -94,10 +101,41 @@ export function useVoiceMessages(conversationId: string | null): void {
   // Reset internal state on remount (new voice session).
   useEffect(() => {
     activeTurnRef.current = null;
+    botTurnsRef.current = [];
     currentUserGroupRef.current = null;
-    consumedTranscriptionIdsRef.current = new Set();
+    consumedUserTranscriptionIdsRef.current = new Set();
     botTurnIndexRef.current = 0;
   }, []);
+
+  /**
+   * Open a new bot turn. Closes the current user group (marking its
+   * transcription ids consumed) so the next user transcription opens a fresh
+   * group.
+   */
+  const openBotTurn = useCallback((): VoiceBotTurn => {
+    const group = currentUserGroupRef.current;
+    if (group) {
+      for (const id of group.transcriptionTexts.keys()) {
+        consumedUserTranscriptionIdsRef.current.add(id);
+      }
+      currentUserGroupRef.current = null;
+    }
+    botTurnIndexRef.current += 1;
+    const idx = botTurnIndexRef.current;
+    const sid = room?.name || "voice";
+    const turn: VoiceBotTurn = {
+      localId: `voice-bot-${sid}-${idx}-${Date.now()}`,
+      response: "",
+      tool_data: [],
+      follow_up_actions: [],
+      loading: true,
+      startedAt: new Date(),
+      consumedTranscriptionIds: new Set(),
+    };
+    activeTurnRef.current = turn;
+    botTurnsRef.current.push(turn);
+    return turn;
+  }, [room]);
 
   // Bot stream handler — runs when the agent emits events on VOICE_STREAM_TOPIC.
   useEffect(() => {
@@ -119,7 +157,9 @@ export function useVoiceMessages(conversationId: string | null): void {
         return;
       }
 
-      // Ignore plumbing events that don't render
+      // Ignore plumbing events that don't render in the bubble. tool_output is
+      // backend-internal; conversation_id/description are handled by a separate
+      // text stream handler in VoiceControlBarContainer.
       if (
         "tool_output" in event ||
         "conversation_id" in event ||
@@ -131,35 +171,15 @@ export function useVoiceMessages(conversationId: string | null): void {
       const cid = conversationIdRef.current;
       if (!cid) return; // no conversation yet → nowhere to write
 
-      // First content-bearing event of a new bot turn: close the active user
-      // group (mark its transcription ids as consumed) and create the turn.
-      if (activeTurnRef.current === null) {
-        const group = currentUserGroupRef.current;
-        if (group) {
-          for (const id of group.transcriptionTexts.keys()) {
-            consumedTranscriptionIdsRef.current.add(id);
-          }
-          currentUserGroupRef.current = null;
-        }
-        botTurnIndexRef.current += 1;
-        const idx = botTurnIndexRef.current;
-        const sid = room.name || "voice";
-        activeTurnRef.current = {
-          localId: `voice-bot-${sid}-${idx}-${Date.now()}`,
-          response: "",
-          tool_data: [],
-          follow_up_actions: [],
-          loading: true,
-          startedAt: new Date(),
-        };
-      }
-
-      const turn = activeTurnRef.current;
-      if (!turn) return;
+      // First content-bearing event of a new bot turn: open the turn.
+      const turn = activeTurnRef.current ?? openBotTurn();
 
       let changed = false;
-      if (typeof event.response === "string" && event.response) {
-        turn.response += event.response;
+      if (typeof event.response_ui === "string" && event.response_ui) {
+        // UI-only fragment from the worker's response split. Append to the
+        // bubble's response so the existing OpenUI parser sees it in the same
+        // string position as in text mode.
+        turn.response += event.response_ui;
         changed = true;
       } else if (event.tool_data && typeof event.tool_data === "object") {
         const entry = event.tool_data as ToolDataEntry;
@@ -182,6 +202,9 @@ export function useVoiceMessages(conversationId: string | null): void {
       addOrUpdateMessage(turnToIMessage(turn, cid));
 
       if (event.main_response_complete === true) {
+        // Close the turn so the next backend event opens a new one. Late-
+        // arriving TTS transcriptions can still patch this turn via
+        // botTurnsRef (routed by timestamp).
         activeTurnRef.current = null;
       }
     };
@@ -190,11 +213,12 @@ export function useVoiceMessages(conversationId: string | null): void {
     return () => {
       room.unregisterTextStreamHandler(VOICE_STREAM_TOPIC);
     };
-  }, [room, addOrUpdateMessage]);
+  }, [room, addOrUpdateMessage, openBotTurn]);
 
-  // Transcription effect — runs on every update of LiveKit's transcription
+  // User transcription effect — runs on every update of LiveKit's transcription
   // list. Builds or extends the current user group and upserts it into the
-  // chat store.
+  // chat store. A new group opened while a bot turn is active is timestamped
+  // strictly after the bot's startedAt so the chat sort order is preserved.
   useEffect(() => {
     const cid = conversationIdRef.current;
     if (!cid || !room) return;
@@ -205,23 +229,23 @@ export function useVoiceMessages(conversationId: string | null): void {
     );
     if (userTrans.length === 0) return;
 
-    // Filter out transcriptions already consumed by a closed group.
     const newTrans = userTrans.filter(
-      (t) => !consumedTranscriptionIdsRef.current.has(t.streamInfo.id),
+      (t) => !consumedUserTranscriptionIdsRef.current.has(t.streamInfo.id),
     );
     if (newTrans.length === 0) return;
 
-    // While a bot turn is in flight, do not open a new user group.
-    // The next transcription that arrives after the turn closes will open one.
-    if (activeTurnRef.current !== null) return;
-
-    // Open a new group if needed.
     if (currentUserGroupRef.current === null) {
       const first = newTrans[0];
+      const transcriptionTs = first.streamInfo.timestamp || Date.now();
+      const activeBotStartedAt =
+        activeTurnRef.current?.startedAt.getTime() ?? 0;
+      const startedAt = new Date(
+        Math.max(transcriptionTs, activeBotStartedAt + 1),
+      );
       currentUserGroupRef.current = {
         startStreamId: first.streamInfo.id,
         transcriptionTexts: new Map(),
-        startedAt: new Date(first.streamInfo.timestamp || Date.now()),
+        startedAt,
       };
     }
 
@@ -233,4 +257,45 @@ export function useVoiceMessages(conversationId: string | null): void {
 
     addOrUpdateMessage(userGroupToIMessage(group, cid));
   }, [transcriptions, room, addOrUpdateMessage]);
+
+  // Bot transcription effect — runs on every update of LiveKit's transcription
+  // list. Routes TTS-aligned transcriptions (from the agent participant) to
+  // the matching bot turn's response, character-aligned with audio playback.
+  useEffect(() => {
+    const cid = conversationIdRef.current;
+    if (!cid || !room) return;
+
+    const localIdentity = room.localParticipant.identity;
+    const botTrans = transcriptions.filter(
+      (t) => t.participantInfo.identity !== localIdentity && t.text,
+    );
+    if (botTrans.length === 0) return;
+
+    let anyChanged = false;
+    for (const t of botTrans) {
+      const ts = t.streamInfo.timestamp || Date.now();
+
+      // Route to the latest turn whose startedAt is <= timestamp. Falls back
+      // to the active turn (or opens one) if no prior turn matches.
+      let target: VoiceBotTurn | null = null;
+      for (let i = botTurnsRef.current.length - 1; i >= 0; i--) {
+        const candidate = botTurnsRef.current[i];
+        if (candidate.startedAt.getTime() <= ts) {
+          target = candidate;
+          break;
+        }
+      }
+      if (!target) {
+        target = activeTurnRef.current ?? openBotTurn();
+      }
+
+      if (target.consumedTranscriptionIds.has(t.streamInfo.id)) continue;
+      target.consumedTranscriptionIds.add(t.streamInfo.id);
+      target.response += t.text;
+      addOrUpdateMessage(turnToIMessage(target, cid));
+      anyChanged = true;
+    }
+
+    if (!anyChanged) return;
+  }, [transcriptions, room, addOrUpdateMessage, openBotTurn]);
 }

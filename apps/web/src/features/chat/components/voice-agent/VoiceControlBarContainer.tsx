@@ -9,7 +9,7 @@ import {
 } from "@livekit/components-react";
 import type { TextStreamReader } from "livekit-client";
 import { Room } from "livekit-client";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AgentControlBar } from "@/features/chat/components/voice-agent/agent-control-bar";
@@ -107,7 +107,7 @@ function useRoomConversationStreams({
  */
 function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
   const { id: convoIdParam } = useParams<{ id: string }>();
-  const router = useRouter();
+  const pathname = usePathname();
   const { state: agentState, audioTrack: agentAudioTrack } =
     useVoiceAssistant();
   const room = useRoomContext();
@@ -129,15 +129,23 @@ function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
     onConversationDescription: setConversationDescription,
   });
 
-  // Auto-redirect to /c/:id once a new conversation id is discovered and the
-  // URL is still on /c (no id). `router.replace` keeps the back button going
-  // home, not to the now-stale /c.
+  // Update the URL to /c/:id once a new conversation id is discovered, WITHOUT
+  // triggering a Next.js navigation. `router.replace` would remount the
+  // ChatPage (because /c and /c/:id are distinct App Router segments), which
+  // tears down the LiveKit Room mid-session and loses the first user
+  // transcription + bot response + TTS. `window.history.replaceState` updates
+  // the URL in place; the discoveredConversationId from voiceModeStore is the
+  // source of truth for the active conversation during voice mode.
   useEffect(() => {
     if (!discoveredConversationId) return;
     if (discoveredConversationId === convoIdParam) return;
     if (convoIdParam) return;
-    router.replace(`/c/${discoveredConversationId}`, { scroll: false });
-  }, [discoveredConversationId, convoIdParam, router]);
+    if (typeof window === "undefined" || !pathname) return;
+    // Preserve the [locale] prefix already present in `pathname` (e.g. /es/c).
+    const localePrefix = pathname.replace(/\/c$/, "");
+    const newUrl = `${localePrefix}/c/${discoveredConversationId}`;
+    window.history.replaceState(window.history.state, "", newUrl);
+  }, [discoveredConversationId, convoIdParam, pathname]);
 
   // Chat loadingStore fires ONLY for `thinking`. `connecting` is covered by
   // the dedicated <VoiceConnectionStatus/> chip in VoiceControlBarSlot; if

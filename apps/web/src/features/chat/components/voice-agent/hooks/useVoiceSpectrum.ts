@@ -244,6 +244,7 @@ export function useVoiceSpectrum({
   const remoteSourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const remoteFftRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const rafRef = useRef<number | null>(null);
+  const tickRef = useRef<((now: number) => void) | null>(null);
   const sourceRef = useRef<SpectrumSource>(source);
   const mutedRef = useRef(false);
   const syntheticStateRef = useRef<SynthState>({
@@ -411,6 +412,11 @@ export function useVoiceSpectrum({
     });
   }, []);
 
+  // Pause flag — toggled by the mute/visibility effect below. When true the
+  // raf loop stops scheduling itself, which eliminates GPU work and prevents
+  // the gradient from appearing to "react" to ambient audio during mute.
+  const pausedRef = useRef(false);
+
   // Single requestAnimationFrame loop that updates the spectrum buffer in
   // place every frame regardless of source. Scalar amplitude is published
   // to React state at a throttled rate so consumers can re-render lightly.
@@ -433,8 +439,12 @@ export function useVoiceSpectrum({
         return false;
       }
       if (mutedRef.current) {
-        for (let i = 0; i < SPECTRUM_BINS; i++) out[i] = out[i] * 0.85;
-        return true;
+        // Muted: zero the spectrum so the wave settles flat. The raf loop
+        // itself is cancelled by the pause effect below when mute + mic
+        // source coincide, so this branch is only hit briefly between
+        // mutedRef flipping and the pause effect cancelling the raf.
+        for (let i = 0; i < SPECTRUM_BINS; i++) out[i] = 0;
+        return false;
       }
       analyser.getByteFrequencyData(raw);
       const usableBins = Math.min(raw.length, 256);
@@ -559,14 +569,59 @@ export function useVoiceSpectrum({
         lastScalarPush = now;
       }
 
+      if (pausedRef.current) {
+        rafRef.current = null;
+        return;
+      }
       rafRef.current = requestAnimationFrame(tick);
     };
 
+    tickRef.current = tick;
     rafRef.current = requestAnimationFrame(tick);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      tickRef.current = null;
     };
   }, []);
+
+  // Pause raf when (mic-source && muted) or document.hidden.
+  // Resume on unmute / visibility return.
+  useEffect(() => {
+    const resume = () => {
+      if (rafRef.current !== null || !tickRef.current) return;
+      pausedRef.current = false;
+      rafRef.current = requestAnimationFrame(tickRef.current);
+    };
+    const pause = () => {
+      pausedRef.current = true;
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+
+    const shouldPause =
+      (source === "mic" && isMuted) ||
+      (typeof document !== "undefined" && document.hidden);
+    if (shouldPause) pause();
+    else resume();
+
+    const onVisibility = () => {
+      const nowShouldPause = (source === "mic" && isMuted) || document.hidden;
+      if (nowShouldPause) pause();
+      else resume();
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibility);
+    }
+    return () => {
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibility);
+      }
+    };
+  }, [source, isMuted]);
 
   useEffect(() => () => stop(), [stop]);
 

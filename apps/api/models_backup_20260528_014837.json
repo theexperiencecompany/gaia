@@ -1,0 +1,27 @@
+[
+  {
+    "_id": "6a085163e7423bb606e728ae",
+    "model_id": "gemini-3.1-flash-lite-preview",
+    "name": "Gemini 3.1 Flash Lite",
+    "model_provider": "gemini",
+    "inference_provider": "gemini",
+    "provider_model_name": "gemini-3.1-flash-lite-preview",
+    "description": "Google's fast and efficient Gemini model optimised for speed and cost",
+    "logo_url": "/images/icons/gemini.webp",
+    "max_tokens": 1000000,
+    "supports_streaming": true,
+    "supports_function_calling": true,
+    "available_in_plans": [
+      "free",
+      "pro"
+    ],
+    "lowest_tier": "free",
+    "is_active": true,
+    "is_default": true,
+    "pricing_per_1k_input_tokens": 0.0001,
+    "pricing_per_1k_output_tokens": 0.0004,
+    "pricing_per_1k_cached_input_tokens": 2.5e-05,
+    "created_at": "2026-05-16 11:13:39.871000+00:00",
+    "updated_at": "2026-05-16 11:13:39.871000+00:00"
+  }
+]
