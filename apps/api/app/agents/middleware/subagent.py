@@ -123,12 +123,15 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                 configurable = config.get("configurable", {})
                 parent_sa_id = configurable.get("subagent_id")
 
+                # Surface the task as the subagent's name so the UI shows
+                # what's running, not three identical "Subagent" rows.
+                spawn_name = (task[:40].rstrip() + "…") if len(task) > 40 else (task or "Subagent")
                 try:
                     writer = get_stream_writer()
                     writer(
                         {
                             "subagent_start": format_subagent_start_event(
-                                subagent_name="Subagent",
+                                subagent_name=spawn_name,
                                 agent_type="spawned",
                                 subagent_id=sa_id,
                                 tool_category="spawn_subagent",
@@ -339,7 +342,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             # Emit tool_data for each call so the frontend can show them in the
             # spawned subagent's row before results arrive.
             if stream_writer and subagent_id:
-                emit_subagent_tool_calls(stream_writer, subagent_id, regular_calls)
+                await emit_subagent_tool_calls(stream_writer, subagent_id, regular_calls)
 
             async def _invoke_tool(tc: ToolCall) -> ToolMessage:
                 name = tc["name"]

@@ -1,7 +1,6 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 import json
-import re
 from typing import Any, TypedDict, cast
 from uuid import uuid4
 
@@ -19,12 +18,6 @@ from app.models.chat_models import (
 )
 from app.services.conversation_service import update_messages
 from shared.py.wide_events import log
-
-# UUID v4 pattern for identifying user ID suffixes
-# Matches: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-UUID_PATTERN = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
-)
 
 # Type for the stream_writer callable used across agent execution paths.
 StreamWriterCallable = Callable[[dict[str, Any]], None]
@@ -126,7 +119,7 @@ def format_subagent_end_event(
     }
 
 
-def emit_subagent_tool_calls(
+async def emit_subagent_tool_calls(
     stream_writer: StreamWriterCallable,
     subagent_id: str,
     tool_calls: list[ToolCall],
@@ -135,30 +128,17 @@ def emit_subagent_tool_calls(
 
     Called from SubagentMiddleware._execute_subagent before parallel tool
     invocation so the frontend can show tools as they are dispatched.
+
+    Reuses ``format_tool_call_entry`` so categories, icons, and special-tool
+    display names match the post-execution emission path exactly — without
+    that, e.g. ``vfs_read`` would render with its raw tool name as the
+    category (wrench icon) instead of ``filesystem`` (FolderFileStorageIcon).
     """
-    now = datetime.now(UTC).isoformat()
     for tc in tool_calls:
-        tool_name_str = tc["name"]
-        stream_writer(
-            {
-                "tool_data": {
-                    "tool_name": "tool_calls_data",
-                    "tool_category": tool_name_str,
-                    "data": {
-                        "tool_name": tool_name_str,
-                        "tool_category": tool_name_str,
-                        "message": tool_name_str.replace("_", " ").title(),
-                        "show_category": True,
-                        "tool_call_id": tc.get("id"),
-                        "inputs": tc.get("args", {}),
-                        "icon_url": None,
-                        "integration_name": None,
-                    },
-                    "timestamp": now,
-                    "subagent_id": subagent_id,
-                }
-            }
-        )
+        entry = await format_tool_call_entry(tc)
+        if entry is None:
+            continue
+        stream_writer({"tool_data": {**entry, "subagent_id": subagent_id}})
 
 
 async def format_tool_call_entry(
@@ -197,6 +177,7 @@ async def format_tool_call_entry(
         "spawn_subagent": ("spawn_subagent", "Spawning subagent", False),
         "plan_tasks": ("plan_tasks", "Planning tasks", True),
         "update_tasks": ("plan_tasks", "Updating tasks", True),
+        "finish_task": ("finish_task", "Finishing task", False),
     }
 
     if tool_name_raw in special_tools:
@@ -208,23 +189,35 @@ async def format_tool_call_entry(
             display_name = await _resolve_handoff_display_name(subagent_id)
             tool_display_name = f"Handing off to {display_name}"
     else:
-        # Use provided integration_id for custom MCPs, otherwise look up from registry
-        if integration_id:
+        # General tools (vfs_cmd, web_search_tool, tracked_todo helpers, etc.)
+        # called inside an MCP subagent should keep their own category so the
+        # frontend renders the right icon — not the subagent's integration
+        # logo. Only fall back to integration_id when the tool has no known
+        # core category (i.e. it's an MCP-namespaced tool).
+        registry_category = tool_registry.get_category_of_tool(tool_name_raw)
+        is_core_tool = (
+            registry_category
+            and registry_category != "unknown"
+            and not registry_category.startswith("mcp_")
+        )
+
+        if integration_id and not is_core_tool:
             tool_category = integration_id
         else:
-            tool_category = tool_registry.get_category_of_tool(tool_name_raw)
-            # Extract integration name from MCP categories
-            # Category format: mcp_{integration_id} or mcp_{integration_id}_{user_id}
+            tool_category = registry_category
+            # Strip mcp_ prefix from MCP-namespaced categories.
             if tool_category and tool_category.startswith("mcp_"):
-                without_prefix = tool_category[4:]
-                parts = without_prefix.rsplit("_", 1)
-                if len(parts) == 2 and UUID_PATTERN.match(parts[-1]):
-                    tool_category = parts[0]
-                else:
-                    tool_category = without_prefix
+                tool_category = tool_category[4:]
 
         tool_display_name = tool_name_raw.replace("_", " ").title()
         show_category = True
+
+        # When a core tool runs inside an MCP subagent, also drop the
+        # integration's icon_url / display name so the secondary label
+        # reflects the tool's true category instead of the subagent context.
+        if integration_id and is_core_tool:
+            icon_url = None
+            integration_name = None
 
     timestamp = datetime.now(UTC).isoformat()
 

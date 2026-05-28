@@ -68,29 +68,11 @@ async def get_custom_integration_metadata(tool_name: str, user_id: str) -> dict:
     if not tool_category:
         return {}
 
-    # Extract integration_id from MCP category
-    # Category format: mcp_{integration_id} or mcp_{integration_id}_{user_id}
-    #
-    # Format assumptions for distinguishing integration_id from user_id suffix:
-    # - User IDs are UUIDs with dashes (e.g., 550e8400-e29b-41d4-a716-446655440000)
-    # - Custom integration IDs have hex suffixes WITHOUT dashes (e.g., custom_reposearch_6966a2fb964b5991c13ab887)
-    #
-    # This logic is fragile if:
-    # - UUID formats change to not include dashes
-    # - Custom IDs start using dashes
-    # A more robust approach would use a consistent delimiter or explicit marker.
+    # MCP categories are always `mcp_{integration_id}` since the per-user
+    # `mcp_{integration_id}_{user_id}` format was removed.
     if not tool_category.startswith("mcp_"):
         return {}
-
-    without_prefix = tool_category[4:]
-    parts = without_prefix.rsplit("_", 1)
-    # Only strip suffix if it looks like a UUID (contains dashes and is ~36 chars)
-    # This is more specific than just checking for dashes
-    if len(parts) == 2 and "-" in parts[-1] and len(parts[-1]) >= 32:
-        # Last part is likely a user ID (UUID with dashes)
-        integration_id = parts[0]
-    else:
-        integration_id = without_prefix
+    integration_id = tool_category[4:]
 
     # Check Redis cache first
     cache_key = f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:{integration_id}"

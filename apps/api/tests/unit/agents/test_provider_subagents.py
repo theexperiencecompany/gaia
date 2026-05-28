@@ -464,11 +464,6 @@ class TestCreateSubagentForUser:
         assert result is None
 
 
-# test_category_already_registered_skips_connect was deleted along with the
-# per-user MCP registry cache. Every call to create_subagent_for_user now
-# rebuilds from live MCPClient state — no registry pre-check to test.
-
-
 # ---------------------------------------------------------------------------
 # _create_custom_mcp_subagent
 # ---------------------------------------------------------------------------
@@ -742,10 +737,6 @@ class TestCreateCustomMcpSubagent:
             result = await _create_custom_mcp_subagent("custom_abc", "user_123")
 
         assert result is None
-
-
-# test_category_already_cached was deleted with the per-user registry cache.
-# _create_custom_mcp_subagent now reads tools live from MCPClient on every call.
 
 
 # ---------------------------------------------------------------------------

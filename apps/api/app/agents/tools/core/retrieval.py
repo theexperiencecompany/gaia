@@ -31,6 +31,7 @@ from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
 from app.services.mcp.mcp_client import get_mcp_client
+from app.utils.mcp_utils import canonical_tool_name_map
 from shared.py.wide_events import log
 
 WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name, deep_research.name]
@@ -553,6 +554,9 @@ def get_retrieve_tools_function(
             available_tool_names_set = set(available_tool_names)
 
             mcp_tool_names_set = await _user_mcp_tool_names(user_id)
+            known_by_canonical = canonical_tool_name_map(
+                available_tool_names_set | mcp_tool_names_set
+            )
 
             validated_tool_names: list[str] = []
             unknown_tool_names: list[str] = []
@@ -570,6 +574,8 @@ def get_retrieve_tools_function(
                         unknown_tool_names.append(tool_name)
                 elif tool_name in available_tool_names_set or tool_name in mcp_tool_names_set:
                     validated_tool_names.append(tool_name)
+                elif canonical := known_by_canonical.get(tool_name.replace("-", "_")):
+                    validated_tool_names.append(canonical)
                 else:
                     unknown_tool_names.append(tool_name)
 

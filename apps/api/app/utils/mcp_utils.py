@@ -6,7 +6,7 @@ PKCE generation, tool wrapping, and schema handling.
 """
 
 import base64
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from functools import wraps
 import hashlib
 import inspect
@@ -17,6 +17,17 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel
 
 from shared.py.wide_events import log
+
+
+def canonical_tool_name_map(names: Iterable[str]) -> dict[str, str]:
+    """Map underscore-canonical → original tool name.
+
+    MCP tools keep their original (often hyphenated) names because the
+    upstream server expects them, but LLMs commonly echo them with
+    underscores. Use the returned map to recover the canonical name when an
+    LLM call misses the strict bound-set membership check.
+    """
+    return {n.replace("-", "_"): n for n in names}
 
 
 def generate_pkce_pair() -> tuple[str, str]:

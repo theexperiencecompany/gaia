@@ -848,10 +848,6 @@ class TestConnectionPooling:
         # The oldest client should have been closed
         evicted_client.close_all_client_sessions.assert_awaited_once()
 
-    # test_pool_cleanup_stale_removes_expired was deleted with the TTL-based
-    # cleanup loop. Sessions now persist for the worker's lifetime; eviction
-    # only fires at the max_clients cap (LRU).
-
     async def test_pool_shutdown_closes_all(self):
         """shutdown() closes all pooled clients."""
         pool = MCPClientPool(max_clients=10)
