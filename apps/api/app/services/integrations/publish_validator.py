@@ -18,35 +18,39 @@ class PublishIntegrationValidator:
         description: str | None,
         tools: list,
     ) -> list[str]:
-        """
-        Validate integration content for publishing.
+        """Validate integration content for publishing. Returns error messages (empty if valid)."""
+        # Order matches the pre-refactor sequence so any caller that surfaces
+        # errors positionally keeps the same first / second / … messages.
+        return [
+            *cls._validate_name(name),
+            *await cls._validate_profanity(name, description),
+            *cls._validate_description(description),
+            *cls._validate_tools(tools),
+        ]
 
-        Args:
-            name: Integration name
-            description: Integration description
-            tools: List of tools
-
-        Returns:
-            List of error messages (empty if valid)
-        """
-        errors = []
-
-        # Name validation
+    @classmethod
+    def _validate_name(cls, name: str) -> list[str]:
         if not name or len(name) < cls.MIN_NAME_LENGTH:
-            errors.append(f"Name must be at least {cls.MIN_NAME_LENGTH} characters")
-        elif len(name) > cls.MAX_NAME_LENGTH:
-            errors.append(f"Name must be at most {cls.MAX_NAME_LENGTH} characters")
+            return [f"Name must be at least {cls.MIN_NAME_LENGTH} characters"]
+        if len(name) > cls.MAX_NAME_LENGTH:
+            return [f"Name must be at most {cls.MAX_NAME_LENGTH} characters"]
+        return []
 
+    @classmethod
+    def _validate_description(cls, description: str | None) -> list[str]:
+        if description and len(description) > cls.MAX_DESCRIPTION_LENGTH:
+            return [f"Description must be at most {cls.MAX_DESCRIPTION_LENGTH} characters"]
+        return []
+
+    @staticmethod
+    async def _validate_profanity(name: str, description: str | None) -> list[str]:
         # One LLM call covers all user-facing fields.
         if await contains_profanity(name=name, description=description):
-            errors.append("Content contains profanity")
+            return ["Content contains profanity"]
+        return []
 
-        # Description length
-        if description and len(description) > cls.MAX_DESCRIPTION_LENGTH:
-            errors.append(f"Description must be at most {cls.MAX_DESCRIPTION_LENGTH} characters")
-
-        # Tools requirement
+    @classmethod
+    def _validate_tools(cls, tools: list) -> list[str]:
         if not tools or len(tools) < cls.MIN_TOOLS:
-            errors.append("Integration must have at least one tool to be published")
-
-        return errors
+            return ["Integration must have at least one tool to be published"]
+        return []

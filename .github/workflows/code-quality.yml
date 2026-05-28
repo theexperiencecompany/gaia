@@ -181,13 +181,16 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
-      - name: Duplicate code detection (threshold in .jscpd.json)
+      - name: Copy-paste detection (jscpd, fails over 3% on changed lines)
         run: |
-          echo "::group::jscpd scan"
+          echo "::group::jscpd"
+          git fetch --no-tags origin "$GITHUB_BASE_REF"
           pnpm run quality:dupe
           echo "::endgroup::"
-          echo "Duplicates: OK (under threshold)"
+          echo "Duplicates: OK (<= 3% on changed lines)"
 
   # --- Type coverage ------------------------------------------------------
   type-coverage:
@@ -246,7 +249,10 @@ jobs:
           echo "::group::nx type-check"
           if [ -n "${GITHUB_BASE_REF:-}" ]; then
             git fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null || true
-            pnpm exec nx affected -t type-check --base=origin/$GITHUB_BASE_REF
+            # Exclude Python projects (api, voice-agent): their type-check
+            # runs mypy via uv, which isn't installed in this Node-only job, and
+            # Python typing is already enforced by the dedicated python-mypy lane.
+            pnpm exec nx affected -t type-check --base=origin/$GITHUB_BASE_REF --exclude=api,voice-agent
           else
             pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp
           fi
@@ -347,7 +353,7 @@ jobs:
       - name: Docstring coverage on public API surface
         run: |
           echo "::group::interrogate"
-          FILES=$(scripts/ci/changed-files.sh py)
+          FILES=$(scripts/ci/changed-py-source.sh)
           if [ "$FILES" = "__FULL__" ]; then
             uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py
           elif [ -z "$FILES" ]; then
@@ -374,7 +380,7 @@ jobs:
       - name: Complexity scan (max-absolute F, max-modules E, max-average B)
         run: |
           echo "::group::xenon"
-          FILES=$(scripts/ci/changed-files.sh py)
+          FILES=$(scripts/ci/changed-py-source.sh)
           if [ "$FILES" = "__FULL__" ]; then
             uvx xenon \
               --max-absolute F \
@@ -412,7 +418,7 @@ jobs:
       - name: Bandit security scan (zero-warning policy)
         run: |
           echo "::group::bandit (low severity, low confidence — no exclusions)"
-          FILES=$(scripts/ci/changed-files.sh py)
+          FILES=$(scripts/ci/changed-py-source.sh)
           if [ "$FILES" = "__FULL__" ]; then
             uvx bandit -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low
           elif [ -z "$FILES" ]; then

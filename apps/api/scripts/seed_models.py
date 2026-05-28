@@ -64,11 +64,11 @@ def get_models_configuration() -> list[dict[str, Any]]:
     return [
         # Default model — available to all users, model selector is disabled.
         {
-            "model_id": "gemini-3.1-flash-lite-preview",
+            "model_id": "gemini-3.1-flash-lite",
             "name": "Gemini 3.1 Flash Lite",
             "model_provider": ModelProvider.GEMINI.value,
             "inference_provider": ModelProvider.GEMINI.value,
-            "provider_model_name": "gemini-3.1-flash-lite-preview",
+            "provider_model_name": "gemini-3.1-flash-lite",
             "description": "Google's fast and efficient Gemini model optimised for speed and cost",
             "logo_url": "/images/icons/gemini.webp",
             "max_tokens": 1_000_000,

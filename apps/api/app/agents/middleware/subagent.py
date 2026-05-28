@@ -8,7 +8,9 @@ for dynamic discovery instead of binding all tools upfront.
 
 import asyncio
 from collections.abc import Mapping
+import time
 from typing import Annotated, Any, cast
+from uuid import uuid4
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -21,6 +23,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_core.messages.tool import ToolCall
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool, tool
+from langgraph.config import get_stream_writer
 from langgraph.prebuilt import InjectedState
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
@@ -33,6 +36,12 @@ from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import SUBAGENT_RECURSION_LIMIT
+from app.utils.agent_utils import (
+    StreamWriterCallable,
+    emit_subagent_tool_calls,
+    format_subagent_end_event,
+    format_subagent_start_event,
+)
 from shared.py.wide_events import log
 
 _RETRIEVE_TOOLS_NAME = "retrieve_tools"
@@ -109,12 +118,48 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                 )
 
             try:
+                # Emit subagent_start/end events for the UI
+                sa_id = str(uuid4())
+                configurable = config.get("configurable", {})
+                parent_sa_id = configurable.get("subagent_id")
+
+                try:
+                    writer = get_stream_writer()
+                    writer(
+                        {
+                            "subagent_start": format_subagent_start_event(
+                                subagent_name="Subagent",
+                                agent_type="spawned",
+                                subagent_id=sa_id,
+                                tool_category="spawn_subagent",
+                                parent_subagent_id=parent_sa_id,
+                            )
+                        }
+                    )
+                except Exception:
+                    writer = None  # type: ignore[assignment]
+
+                start_time = time.monotonic()
                 result = await middleware._execute_subagent(
                     task,
                     context,
                     config,
                     inherited_tool_names=selected_tool_ids,
+                    stream_writer=writer,
+                    subagent_id=sa_id,
                 )
+
+                if writer is not None:
+                    duration_ms = int((time.monotonic() - start_time) * 1000)
+                    writer(
+                        {
+                            "subagent_end": format_subagent_end_event(
+                                subagent_id=sa_id,
+                                duration_ms=duration_ms,
+                            )
+                        }
+                    )
+
                 return Command(
                     update={
                         "messages": [
@@ -221,6 +266,8 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         context: str,
         config: RunnableConfig,
         inherited_tool_names: list[str] | None = None,
+        stream_writer: StreamWriterCallable | None = None,
+        subagent_id: str | None = None,
     ) -> str:
         """Run a lightweight tool-calling loop for the subagent."""
         if self._llm is None:
@@ -289,6 +336,11 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             if not regular_calls:
                 continue
 
+            # Emit tool_data for each call so the frontend can show them in the
+            # spawned subagent's row before results arrive.
+            if stream_writer and subagent_id:
+                emit_subagent_tool_calls(stream_writer, subagent_id, regular_calls)
+
             async def _invoke_tool(tc: ToolCall) -> ToolMessage:
                 name = tc["name"]
                 tc_id = tc["id"]
@@ -306,7 +358,18 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     result = await tools_by_name[name].ainvoke(
                         {**tc, "type": "tool_call"}, config=config
                     )
-                    return ToolMessage(content=str(result), tool_call_id=tc_id, name=name)
+                    result_str = str(result)
+                    if stream_writer and subagent_id:
+                        stream_writer(
+                            {
+                                "tool_output": {
+                                    "tool_call_id": tc_id or "",
+                                    "output": result_str[:3000],
+                                    "subagent_id": subagent_id,
+                                }
+                            }
+                        )
+                    return ToolMessage(content=result_str, tool_call_id=tc_id, name=name)
                 except asyncio.CancelledError:
                     raise
                 except Exception:

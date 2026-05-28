@@ -43,7 +43,8 @@ from app.helpers.message_helpers import (
 )
 from app.models.models_models import ModelConfig
 from app.services.oauth.oauth_service import check_integration_status
-from app.utils.stream_utils import extract_tool_entries_from_update
+from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable
+from app.utils.stream_utils import extract_tool_entries_from_update, normalize_custom_event
 from shared.py.wide_events import log
 
 
@@ -275,8 +276,9 @@ async def prepare_subagent_execution(
 
 async def execute_subagent_stream(
     ctx: SubagentExecutionContext,
-    stream_writer=None,
-    integration_metadata: dict | None = None,
+    stream_writer: StreamWriterCallable | None = None,
+    integration_metadata: IntegrationMetadata | None = None,
+    subagent_id: str | None = None,
 ) -> str:
     """
     Execute subagent with streaming and tool tracking.
@@ -300,10 +302,21 @@ async def execute_subagent_stream(
     finish_task_result: str | None = None
     emitted_tool_calls: set[str] = set()
 
+    # Inject the UUID subagent_id into configurable so nested spawn_subagent
+    # tool calls can read the correct parent_subagent_id via
+    # configurable.get("subagent_id").
+    run_config = ctx.config
+    if subagent_id:
+        base_configurable = ctx.config.get("configurable", {})
+        run_config = {
+            **ctx.config,
+            "configurable": {**base_configurable, "subagent_id": subagent_id},
+        }
+
     async for event in ctx.subagent_graph.astream(
         ctx.initial_state,
         stream_mode=["messages", "custom", "updates"],
-        config=ctx.config,
+        config=run_config,
     ):
         # Check for cancellation
         if ctx.stream_id and await stream_manager.is_cancelled(ctx.stream_id):
@@ -317,6 +330,13 @@ async def execute_subagent_stream(
 
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
+                # Only emit tool_data from the LLM ("agent") node.
+                # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
+                # etc.) produce "updates" events containing historical AIMessages
+                # with tool_calls from previous checkpoint runs — emitting those
+                # would replay stale tool cards into the current stream.
+                if node_name != "agent":
+                    continue
                 # Use shared helper to extract and format tool entries
                 entries = await extract_tool_entries_from_update(
                     state_update=state_update,
@@ -325,7 +345,10 @@ async def execute_subagent_stream(
                 )
                 for tc_id, tool_entry in entries:
                     if stream_writer:
-                        stream_writer({"tool_data": tool_entry})
+                        chunk_data: dict = {"tool_data": tool_entry}
+                        if subagent_id:
+                            chunk_data["tool_data"] = {**tool_entry, "subagent_id": subagent_id}
+                        stream_writer(chunk_data)
             continue
 
         if stream_mode == "messages":
@@ -346,19 +369,18 @@ async def execute_subagent_stream(
                 )
                 complete_message = _capture_finish_task_content(chunk, complete_message)
                 if stream_writer:
-                    stream_writer(
-                        {
-                            "tool_output": {
-                                "tool_call_id": chunk.tool_call_id,
-                                "output": content_str[:3000],
-                            }
-                        }
-                    )
+                    tool_output_data: dict = {
+                        "tool_call_id": chunk.tool_call_id,
+                        "output": content_str[:3000],
+                    }
+                    if subagent_id:
+                        tool_output_data["subagent_id"] = subagent_id
+                    stream_writer({"tool_output": tool_output_data})
             continue
 
         if stream_mode == "custom":
             if stream_writer:
-                stream_writer(payload)
+                stream_writer(normalize_custom_event(payload))
 
     final_message = (
         finish_task_result
@@ -607,6 +629,11 @@ async def call_subagent(
 
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
+                # Only emit tool_data from the LLM ("agent") node.
+                # Pre-model hooks produce "updates" events containing historical
+                # AIMessages from previous checkpoint runs — skip them.
+                if node_name != "agent":
+                    continue
                 # Use shared helper to extract and format tool entries
                 entries = await extract_tool_entries_from_update(
                     state_update=state_update,
@@ -640,7 +667,7 @@ async def call_subagent(
             continue
 
         if stream_mode == "custom":
-            yield f"data: {json.dumps(payload)}\n\n"
+            yield f"data: {json.dumps(normalize_custom_event(payload))}\n\n"
 
     final_message = finish_task_result if finish_task_result is not None else complete_message
     # Final message for DB storage

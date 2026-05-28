@@ -19,9 +19,10 @@ Use retrieve_tools to discover and bind tools before calling them:
 - retrieve_tools(exact_tool_names=["TOOL_A"]) → bind for execution
 - Then call the tools directly
 
-—TASK MANAGEMENT
-For tasks with 2+ steps, use plan_tasks and update_tasks to stay organized.
-update_tasks handles status changes and new task additions in one call.
+—EXECUTION PLANNING
+For 2+ step work, use plan_tasks and update_tasks to organize your steps.
+These are ephemeral — your current work only, not persistent user tasks.
+You do NOT have tracked todo tools — those are executor-only.
 
 —INSTALLED SKILLS
 If context includes a skill path, read it with vfs_read before executing — it contains curated workflows.
@@ -31,9 +32,19 @@ If context includes a skill path, read it with vfs_read before executing — it 
 - Once a task succeeds, stop — don't retry what already worked
 - When you have the information needed to answer the task, you MUST call finish_task(result='your answer here') to return your result. Do not respond with plain text. Do not call any more tools after calling finish_task.
 
-—COMMUNICATION
+—COMMUNICATION & ACTIVITY REPORT
 Your output goes back to the parent agent, not the user.
-Return the essential result: what you did and what you found. Be concise.
+Your response MUST include a structured activity report:
+  • What you did (actions taken, in order)
+  • How you did it (which tools you called, key parameters)
+  • What the outcome was (IDs created, data found, errors hit)
+  • Key identifiers (thread IDs, issue URLs, etc.)
+Be concise but complete — the executor logs this in tracked todo canvases.
+
+—OUTPUT
+Return your final activity report as your last assistant message. Tool calls
+along the way already stream to the user — no need to narrate progress. Be
+factual and specific: names, counts, IDs, outcomes.
 """
 
 # Tool description for spawn_subagent

@@ -337,7 +337,7 @@ class TestCalculateTokenCost:
         )
 
         result = await calculate_token_cost(
-            "gemini-3.1-flash-lite-preview",
+            "gemini-3.1-flash-lite",
             input_tokens=15000,
             output_tokens=100,
             cached_tokens=12000,
@@ -361,7 +361,7 @@ class TestCalculateTokenCost:
         )
 
         result = await calculate_token_cost(
-            "gemini-3.1-flash-lite-preview",
+            "gemini-3.1-flash-lite",
             input_tokens=15000,
             output_tokens=100,
         )

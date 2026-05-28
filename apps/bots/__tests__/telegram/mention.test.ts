@@ -1,14 +1,20 @@
 /**
- * Tests for Telegram-specific mention detection and markdown fallback logic.
+ * Tests for Telegram-specific mention detection and the outbound HTML formatter.
  *
  * The Telegram adapter has unique behaviors:
  * 1. Mention detection/stripping via the exported `hasTelegramMention` and
  *    `stripTelegramMention` helpers (case-sensitive plain-string, NOT a regex).
- * 2. Markdown fallback: retries without parse_mode when Telegram rejects markup.
- * 3. convertToTelegramMarkdown: the formatter applied to all outbound messages.
+ * 2. `convertToTelegramHtml`: the formatter applied to every outbound message.
+ *    Telegram now sends with `parse_mode: "HTML"`, so the converter emits HTML
+ *    (`<b>`, `<a href>`, escaped `&<>`) instead of legacy Markdown.
+ * 3. Markdown/HTML error recognition: the adapter ignores "message is not
+ *    modified" edits and falls back to plain text otherwise.
+ *
+ * These tests import the REAL `@gaia/shared` (no mock) so they verify the actual
+ * conversion behavior — a test here fails if the production formatter regresses.
  */
 
-import { convertToTelegramMarkdown } from "@gaia/shared";
+import { convertToTelegramHtml } from "@gaia/shared";
 import { describe, expect, it } from "vitest";
 import {
   hasTelegramMention,
@@ -65,86 +71,133 @@ describe("Telegram mention detection", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Telegram markdown conversion
-// These verify the formatter applied to all bot responses before sending.
+// Telegram HTML conversion
+// Telegram sends with parse_mode: "HTML", so the converter emits HTML tags.
+// These verify the formatter applied to every bot response before sending.
 // ---------------------------------------------------------------------------
 
-describe("convertToTelegramMarkdown - bold conversion", () => {
-  it("converts **bold** to *bold*", () => {
-    expect(convertToTelegramMarkdown("**hello**")).toBe("*hello*");
+describe("convertToTelegramHtml - emphasis conversion", () => {
+  it("converts **bold** to <b>bold</b>", () => {
+    expect(convertToTelegramHtml("**hello**")).toBe("<b>hello</b>");
   });
 
-  it("converts ***bold italic*** to *bold italic*", () => {
-    expect(convertToTelegramMarkdown("***text***")).toBe("*text*");
+  it("converts ***bold italic*** to nested <b><i>", () => {
+    expect(convertToTelegramHtml("***text***")).toBe("<b><i>text</i></b>");
   });
 
-  it("converts heading to bold", () => {
-    expect(convertToTelegramMarkdown("## My Section")).toBe("*My Section*");
+  it("converts *italic* to <i>italic</i>", () => {
+    expect(convertToTelegramHtml("*emphasis*")).toBe("<i>emphasis</i>");
   });
 
-  it("strips blockquote prefix", () => {
-    expect(convertToTelegramMarkdown("> quoted text")).toBe("quoted text");
+  it("converts a heading to bold", () => {
+    expect(convertToTelegramHtml("## My Section")).toBe("<b>My Section</b>");
+  });
+
+  it("strips the blockquote prefix", () => {
+    expect(convertToTelegramHtml("> quoted text")).toBe("quoted text");
   });
 
   it("removes horizontal rules", () => {
-    expect(convertToTelegramMarkdown("---")).toBe("");
-    expect(convertToTelegramMarkdown("___")).toBe("");
+    expect(convertToTelegramHtml("---")).toBe("");
+    expect(convertToTelegramHtml("___")).toBe("");
+  });
+});
+
+describe("convertToTelegramHtml - links", () => {
+  it("converts [label](url) to an HTML anchor", () => {
+    expect(convertToTelegramHtml("[GAIA](https://heygaia.io)")).toBe(
+      '<a href="https://heygaia.io">GAIA</a>',
+    );
   });
 
-  it("preserves code blocks unchanged", () => {
-    const code = "```\nconst x = **not bold**\n```";
-    expect(convertToTelegramMarkdown(code)).toBe(code);
+  it("renders bold text alongside a masked link", () => {
+    expect(
+      convertToTelegramHtml("**Sign in** at [here](https://heygaia.io/auth)"),
+    ).toBe('<b>Sign in</b> at <a href="https://heygaia.io/auth">here</a>');
+  });
+});
+
+describe("convertToTelegramHtml - HTML escaping", () => {
+  it("escapes &, <, and > in narrative text so Telegram never mis-parses", () => {
+    expect(convertToTelegramHtml("Tom & Jerry <script>")).toBe(
+      "Tom &amp; Jerry &lt;script&gt;",
+    );
   });
 
-  it("handles mixed: bold outside code, code unchanged", () => {
-    const input = "**title**\n\n```\n**code**\n```";
-    const result = convertToTelegramMarkdown(input);
-    expect(result).toContain("*title*");
-    expect(result).toContain("```\n**code**\n```");
+  it("does NOT italicize underscores in snake_case identifiers", () => {
+    // Legacy Markdown turned `user_id` into `user<i>id` and dropped underscores.
+    expect(convertToTelegramHtml("the user_id field")).toBe(
+      "the user_id field",
+    );
+  });
+
+  it("preserves underscores in a URL with an auth token (the shipped bug)", () => {
+    // This is the exact regression we shipped: a masked link whose URL contains
+    // underscores (an auth token) must round-trip the URL intact — legacy
+    // Markdown italicized the `_x_` runs inside the token and silently dropped
+    // the underscores, breaking the sign-in link.
+    const url = "https://heygaia.io/auth?token=AjJD_TFC2_1Fgn";
+    const result = convertToTelegramHtml(`[Sign in](${url})`);
+    expect(result).toBe(`<a href="${url}">Sign in</a>`);
+    // The token survives byte-for-byte — no <i> tags, no missing underscores.
+    expect(result).toContain("AjJD_TFC2_1Fgn");
+    expect(result).not.toContain("<i>");
+  });
+
+  it("preserves underscores in a bare URL (no italicizing)", () => {
+    const url = "https://example.com/path/some_file_name?a=b_c_d";
+    expect(convertToTelegramHtml(url)).toBe(url);
+    expect(convertToTelegramHtml(url)).not.toContain("<i>");
+  });
+});
+
+describe("convertToTelegramHtml - code blocks", () => {
+  it("wraps fenced code in <pre> and does not convert markup inside it", () => {
+    const result = convertToTelegramHtml("```\nconst x = **not bold**\n```");
+    expect(result).toContain("<pre>");
+    expect(result).not.toContain("<b>not bold</b>");
+    // Asterisks inside code are escaped/preserved, never turned into tags.
+    expect(result).toContain("**not bold**");
+  });
+
+  it("converts bold outside code while leaving fenced code untouched", () => {
+    const result = convertToTelegramHtml("**title**\n\n```\n**code**\n```");
+    expect(result).toContain("<b>title</b>");
+    expect(result).toContain("**code**");
+    expect(result).not.toContain("<b>code</b>");
+  });
+
+  it("wraps inline code in <code>", () => {
+    expect(convertToTelegramHtml("run `npm install` now")).toBe(
+      "run <code>npm install</code> now",
+    );
   });
 });
 
 // ---------------------------------------------------------------------------
-// Telegram-specific Markdown error scenarios
-// The adapter retries with plain text when parse fails.
-// We verify the exact error substrings the adapter checks in adapter.ts.
+// Telegram edit error recognition
+// The adapter ignores "message is not modified" edits and falls back to plain
+// text on any other failure. We verify the exact substring the adapter checks.
 //
-// Production checks (adapter.ts handleTelegramStreaming):
-//   e.message.includes("can't parse entities")
+// Production check (adapter.ts editHtml):
 //   e.message.includes("message is not modified")
 // ---------------------------------------------------------------------------
 
-describe("Telegram markdown error recognition", () => {
-  // These are the exact substrings the production adapter checks.
-  // If the Telegram API changes its error format these assertions will catch it.
-  const PARSE_ERROR = "can't parse entities";
+describe("Telegram edit error recognition", () => {
   const NOT_MODIFIED_ERROR = "message is not modified";
 
-  it("parse error substring matches a real Telegram API error message", () => {
-    // Telegram returns: "Bad Request: can't parse entities: Character '@' is reserved"
-    const telegramError = new Error(
-      "Bad Request: can't parse entities: Character '@' is reserved",
-    );
-    expect(telegramError.message.includes(PARSE_ERROR)).toBe(true);
-  });
-
   it("not-modified substring matches a real Telegram API error message", () => {
-    // Telegram returns: "Bad Request: message is not modified: specified new message content
-    // and reply markup are exactly the same as a current content and reply markup of the message"
+    // Telegram returns: "Bad Request: message is not modified: specified new
+    // message content and reply markup are exactly the same ..."
     const telegramError = new Error(
       "Bad Request: message is not modified: specified new message content and reply markup are exactly the same",
     );
     expect(telegramError.message.includes(NOT_MODIFIED_ERROR)).toBe(true);
   });
 
-  it("parse error substring does not match a not-modified error", () => {
-    const notModified = new Error("Bad Request: message is not modified");
-    expect(notModified.message.includes(PARSE_ERROR)).toBe(false);
-  });
-
-  it("not-modified substring does not match a parse-entities error", () => {
+  it("not-modified substring does not match an unrelated parse error", () => {
     const parseError = new Error(
-      "Bad Request: can't parse entities: Character '@' is reserved",
+      "Bad Request: can't parse entities: Unsupported start tag",
     );
     expect(parseError.message.includes(NOT_MODIFIED_ERROR)).toBe(false);
   });

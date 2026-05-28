@@ -18,7 +18,11 @@ from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.agents.skills.discovery import get_available_skills_text
 from app.config.oauth_config import get_integration_by_id
-from app.helpers.message_helpers import DYNAMIC_CONTEXT_MARKER
+from app.helpers.message_helpers import (
+    BACKGROUND_EXECUTION_BANNER,
+    DYNAMIC_CONTEXT_MARKER,
+    _build_active_todo_banner,
+)
 from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
 from shared.py.wide_events import log
@@ -127,6 +131,19 @@ async def create_agent_context_message(
     user_id = user_id or configurable.get("user_id")
     user_name = configurable.get("user_name")
     user_time_str = configurable.get("user_time", "")
+    execution_mode = configurable.get("execution_mode") or "interactive"
+    active_todo_id = configurable.get("active_todo_id")
+
+    # Background-execution banner — must lead so executor never asks
+    # clarifying questions when no human is on the other end.
+    if execution_mode == "background":
+        parts.append(BACKGROUND_EXECUTION_BANNER)
+
+    # Active-todo banner — pins canvas as default write target for this run.
+    if active_todo_id and user_id:
+        banner = await _build_active_todo_banner(user_id, active_todo_id)
+        if banner:
+            parts.append(banner)
 
     if user_name:
         parts.append(f"User Name: {user_name}")

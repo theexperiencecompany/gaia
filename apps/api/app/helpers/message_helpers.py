@@ -11,13 +11,19 @@ from app.agents.prompts.onboarding_prompts import (
 )
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
+    SIGNAL_MATCHING_INSTRUCTIONS,
     WORKFLOW_EXECUTION_PROMPT,
 )
 from app.agents.templates.agent_template import (
     EXECUTOR_PROMPT_TEMPLATE,
     get_comms_static_prompt,
 )
-from app.db.mongodb.collections import conversations_collection, users_collection
+from app.db.mongodb.collections import (
+    conversations_collection,
+    todos_collection,
+    users_collection,
+)
+from app.db.redis import get_cache, set_cache
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -27,6 +33,7 @@ from app.models.message_models import (
 from app.models.user_models import OnboardingPhase
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.memory_service import memory_service
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow import WorkflowService
 from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
@@ -139,6 +146,80 @@ async def _get_gaia_knowledge_section(query: str) -> str:
     return ""
 
 
+async def _get_tracked_todos_section(user_id: str, active_todo_id: str | None = None) -> str:
+    """Fetch active tracked-todo summary with 60s Redis cache.
+
+    When active_todo_id is set, bypasses cache so the pinned-todo marker
+    reflects the current binding rather than a stale list.
+    """
+    if active_todo_id:
+        # Pinned view is per-run-binding — caching it would cross-pollinate
+        # other turns. Cheap call, not worth caching.
+        return await tracked_todo_service.get_active_tracked_summary(
+            user_id, active_todo_id=active_todo_id
+        )
+
+    cache_key = f"tracked_todos:summary:{user_id}"
+
+    try:
+        cached = await get_cache(cache_key)
+        if cached:
+            return cached if isinstance(cached, str) else str(cached)
+    except Exception:
+        pass  # Cache miss is fine
+
+    summary = await tracked_todo_service.get_active_tracked_summary(user_id)
+
+    if summary:
+        try:
+            await set_cache(cache_key, summary, ttl=60)
+        except Exception:
+            pass
+
+    return summary
+
+
+BACKGROUND_EXECUTION_BANNER = (
+    "🤖 BACKGROUND EXECUTION (no human is reading this turn)\n"
+    "   - You were woken by a scheduled trigger. There is no user to ask.\n"
+    "   - Do NOT ask clarifying questions, present plans for approval, or seek confirmation.\n"
+    '   - Do NOT produce conversational acknowledgements ("Sure, I\'ll…", "Let me know if…").\n'
+    "   - Just execute. If you need a decision you cannot make, write the question into "
+    "the active todo's canvas (Context section) and stop.\n"
+    "   - Your output is consumed by the system, not a human. Be terse and action-only."
+)
+
+
+def _format_active_todo_banner(todo: dict) -> str:
+    vfs_path = todo.get("vfs_path") or "(no vfs)"
+    title = todo.get("title", "Untitled")
+    todo_id = str(todo.get("_id") or todo.get("id") or "")
+    return (
+        "🎯 ACTIVE TODO (this run is bound to this todo)\n"
+        f"   id: {todo_id}\n"
+        f"   title: {title}\n"
+        f"   canvas: {vfs_path}/canvas.md\n"
+        "\n"
+        "   Default write target for this turn: this todo's canvas.\n"
+        f'   - Use `update_tracked_todo_canvas(todo_id="{todo_id}", ...)` for any progress, outcome, or learning from this run.\n'
+        "   - Use `add_memory(...)` ONLY for durable cross-cutting facts unrelated to this todo (rare).\n"
+        "   - To work on a different todo, you must reference it explicitly by id."
+    )
+
+
+async def _build_active_todo_banner(user_id: str, active_todo_id: str | None) -> str:
+    if not active_todo_id:
+        return ""
+    try:
+        doc = await todos_collection.find_one({"_id": ObjectId(active_todo_id), "user_id": user_id})
+        if not doc:
+            return ""
+        return _format_active_todo_banner(doc)
+    except Exception as e:
+        log.warning("active_todo_banner_fetch_failed", error=str(e))
+        return ""
+
+
 def _mark_dynamic_context(msg: SystemMessage) -> SystemMessage:
     """Mark a SystemMessage as dynamic context.
 
@@ -163,13 +244,16 @@ async def build_dynamic_context_message(
     include_openui: bool = False,
     memories_text: str | None = None,
     skills_text: str | None = None,
+    active_todo_id: str | None = None,
+    execution_mode: Literal["interactive", "background"] = "interactive",
 ) -> SystemMessage:
     """Build the single dynamic-context system message.
 
     This message is placed AFTER the static main prompt. It carries the
     per-user, per-turn content: user name, timezone, preferences, memories,
-    GAIA knowledge, and installable skills. OpenUI / platform restrictions
-    and the clock are NOT here any more:
+    GAIA knowledge, installable skills, the tracked-todos summary, and — on
+    bound / headless runs — the run-binding banners. OpenUI / platform
+    restrictions and the clock are NOT here any more:
 
     - Output-format addendums (OpenUI or text-only) are part of the static
       per-channel prompt so they cache across every user on that channel.
@@ -196,6 +280,11 @@ async def build_dynamic_context_message(
         memories_text: Pre-fetched memories section. If provided, skips the
             ChromaDB lookup.
         skills_text: Pre-fetched skills section. Same rationale as memories.
+        active_todo_id: When this run is bound to a tracked todo, appends the
+            active-todo banner (canvas write-target directive) LAST, so the
+            cached stable prefix is untouched and the directive gets recency.
+        execution_mode: When "background" (headless scheduled run), appends the
+            background-execution banner so the agent stays terse and action-only.
 
     Returns:
         A SystemMessage marked with ``dynamic_context=True`` in
@@ -239,6 +328,23 @@ async def build_dynamic_context_message(
         if skills_text:
             variable_parts.append(skills_text)
 
+        # Tracked-todos summary + run-binding banners — appended LAST so the
+        # cached stable prefix above is never disturbed, and so these directives
+        # land with recency right before the user's turn. The active-todo banner
+        # and background banner only appear on bound / headless runs.
+        active_todo_banner = ""
+        if user_id:
+            tracked_todos_section, active_todo_banner = await asyncio.gather(
+                _get_tracked_todos_section(user_id, active_todo_id),
+                _build_active_todo_banner(user_id, active_todo_id),
+            )
+            if tracked_todos_section:
+                variable_parts.append(tracked_todos_section.lstrip("\n"))
+        if execution_mode == "background":
+            variable_parts.append(BACKGROUND_EXECUTION_BANNER)
+        if active_todo_banner:
+            variable_parts.append(active_todo_banner)
+
         content_sections = [
             "\n".join(user_stable_parts),
             "\n\n".join(variable_parts),
@@ -252,6 +358,8 @@ async def build_dynamic_context_message(
                 "has_gaia_knowledge": bool(gaia_knowledge_section),
                 "has_skills": bool(skills_text),
                 "used_pinned_memories": memories_text is not None,
+                "has_active_todo": bool(active_todo_id),
+                "execution_mode": execution_mode,
                 "char_count": len(content),
                 "user_stable_chars": sum(len(p) for p in user_stable_parts),
                 "variable_chars": sum(len(p) for p in variable_parts),
@@ -268,41 +376,6 @@ async def build_dynamic_context_message(
         # HumanMessage built by build_current_time_message, so omitting
         # time here is safe.
         return _mark_dynamic_context(SystemMessage(content=""))
-
-
-# --- Back-compat shims -----------------------------------------------------
-# Kept so existing call sites (subagents, workflows) keep working while they
-# migrate to build_dynamic_context_message. New code MUST use the unified
-# builder above.
-
-
-async def get_memory_message(
-    user_id: str,
-    query: str,
-    user_name: str | None = None,
-    user_timezone: str | None = None,
-    user_preferences: dict | None = None,
-) -> SystemMessage:
-    """Deprecated: thin wrapper over build_dynamic_context_message."""
-    return await build_dynamic_context_message(
-        user_id=user_id,
-        query=query,
-        user_name=user_name,
-        user_timezone=user_timezone,
-        user_preferences=user_preferences,
-    )
-
-
-def get_platform_context_message(
-    source: str | None = None,
-) -> SystemMessage | None:
-    """Deprecated. Platform restrictions now live in the static per-channel
-    comms prompt selected by ``create_system_message(source=...)``. This
-    shim is kept only so older call sites don't break during migration;
-    new code should pass ``source`` to ``create_system_message``.
-    """
-    del source
-    return None
 
 
 def format_tool_selection_message(
@@ -372,10 +445,22 @@ async def format_workflow_execution_message(
         workflow_title = selected_workflow.title
         workflow_description = selected_workflow.prompt or selected_workflow.description
 
+    # Build signal matching section from tracked todos
+    tracked_todos_ctx = ""
+    if trigger_context:
+        tracked_todos_ctx = trigger_context.get("tracked_todos_context", "")
+
+    signal_matching_section = ""
+    if tracked_todos_ctx:
+        signal_matching_section = "\n" + SIGNAL_MATCHING_INSTRUCTIONS.format(
+            tracked_todos_context=tracked_todos_ctx
+        )
+
     common_args = {
         "workflow_title": workflow_title,
         "workflow_description": workflow_description,
         "workflow_steps": steps_text,
+        "signal_matching_section": signal_matching_section,
     }
 
     # Email-triggered workflows get enhanced context

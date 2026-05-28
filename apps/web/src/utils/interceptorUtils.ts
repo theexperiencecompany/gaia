@@ -20,11 +20,12 @@ interface ErrorHandlerDependencies {
  * visitors should not be interrupted by UI they did not trigger.
  */
 export const processAxiosError = (
-  error: AxiosError,
+  error: AxiosError & { handled?: boolean },
   { router }: ErrorHandlerDependencies,
 ): void => {
   if (error.code === "ERR_CONNECTION_REFUSED" || error.code === "ERR_NETWORK") {
     toast.error("Server unreachable. Try again later");
+    error.handled = true;
     return;
   }
 
@@ -35,21 +36,25 @@ export const processAxiosError = (
   switch (status) {
     case 401:
       useLoginModalStore.getState().openModal();
+      error.handled = true;
       break;
 
     case 403:
       handleForbiddenError(data, router);
+      error.handled = true;
       break;
 
     case 429:
       if (!handleRateLimitError(data)) {
         toast.error("Too many Requests!");
       }
+      error.handled = true;
       break;
 
     default:
       if (status >= 500) {
         toast.error("Server error. Please try again later.");
+        error.handled = true;
       }
       break;
   }

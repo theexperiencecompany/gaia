@@ -122,7 +122,14 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                     request.state.auth_failure = "invalid_or_expired_session"
 
             except Exception as e:
-                log.error(f"Authentication middleware error: {e}")
+                log.error(
+                    "auth_middleware_error",
+                    auth_failure=type(e).__name__,
+                    path=request.url.path,
+                    method=request.method,
+                    session_present=bool(wos_session),
+                    error=str(e),
+                )
                 # Don't block request on auth failures - routes can handle this
         if not request.state.authenticated and request.url.path in self.agent_only_paths:
             auth_header = request.headers.get("Authorization")

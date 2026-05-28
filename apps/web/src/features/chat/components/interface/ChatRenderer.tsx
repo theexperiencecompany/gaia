@@ -167,6 +167,38 @@ export default function ChatRenderer({
     }
   }, [messagesWithDeduplicatedToolCalls]);
 
+  // A bot message only renders a visible bubble when it is non-empty. Empty bot
+  // messages are skipped, so grouping must look ahead past them to the next
+  // *rendered* bot bubble — otherwise the last visible bubble wrongly loses its
+  // avatar/timestamp/follow-up actions when followed by an empty bot message.
+  const rendersAsBotBubble = useCallback(
+    (message: MessageType | undefined): boolean => {
+      if (!message || message.type !== "bot") return false;
+      const props = getMessageProps(message, "bot", messagePropsOptions);
+      return !!props && !isBotMessageEmpty(props as ChatBubbleBotProps);
+    },
+    [messagePropsOptions],
+  );
+
+  // Walk in `step` direction from `index`, skipping empty bot messages, and
+  // report whether the next/previous *rendered* bubble is a bot bubble.
+  const hasRenderedBotInDirection = useCallback(
+    (index: number, step: 1 | -1): boolean => {
+      for (
+        let i = index + step;
+        i >= 0 && i < messagesWithDeduplicatedToolCalls.length;
+        i += step
+      ) {
+        const candidate = messagesWithDeduplicatedToolCalls[i];
+        if (candidate.type !== "bot") return false;
+        if (rendersAsBotBubble(candidate)) return true;
+        // Empty bot message — skip it and keep scanning in this direction.
+      }
+      return false;
+    },
+    [messagesWithDeduplicatedToolCalls, rendersAsBotBubble],
+  );
+
   const scrollToMessage = (messageId: string) => {
     if (!messageId) return;
 
@@ -217,6 +249,15 @@ export default function ChatRenderer({
 
           if (!messageProps) return null;
 
+          // Consecutive bot bubble grouping (iMessage-style):
+          // - Only the LAST bot message in a consecutive group shows the avatar
+          // - No actions/timestamps/follow-ups on non-last messages
+          // - Tight spacing (no gap) between grouped messages
+          // Look ahead/behind past empty bot messages (which never render) so
+          // grouping reflects the actually-visible bubbles, not raw adjacency.
+          const isFollowedByBot = hasRenderedBotInDirection(index, 1);
+          const isPrecededByBot = hasRenderedBotInDirection(index, -1);
+
           if (
             message.type === "bot" &&
             !isBotMessageEmpty(messageProps as ChatBubbleBotProps)
@@ -225,6 +266,13 @@ export default function ChatRenderer({
               <ChatBubbleBot
                 key={message.message_id || index}
                 {...getMessageProps(message, "bot", messagePropsOptions)}
+                disableActions={isFollowedByBot}
+                follow_up_actions={
+                  isFollowedByBot ? undefined : messageProps.follow_up_actions
+                }
+                date={isFollowedByBot ? undefined : messageProps.date}
+                isGroupedWithNext={isFollowedByBot}
+                isGroupedWithPrev={isPrecededByBot}
               />
             );
           }

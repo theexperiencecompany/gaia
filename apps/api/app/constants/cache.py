@@ -63,3 +63,7 @@ STREAM_PROGRESS_PREFIX = "stream:progress:"
 STATE_KEY_PREFIX = "oauth_state"
 PLATFORM_LINK_TOKEN_PREFIX = "platform_link_token"  # nosec B105
 PLATFORM_LINK_TOKEN_TTL = TEN_MINUTES_TTL
+EXECUTOR_BUSY_PREFIX = "executor:busy:"
+EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
+EXECUTOR_QUEUE_PREFIX = "executor:queue:"
+EXECUTOR_QUEUE_TTL = ONE_HOUR_TTL  # Tasks expire if not picked up within 1 hour

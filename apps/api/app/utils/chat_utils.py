@@ -121,7 +121,10 @@ async def generate_and_update_description(
         last_message, selectedTool, selectedWorkflow
     )
 
-    await update_conversation_description(conversation_id, description, user)
+    try:
+        await update_conversation_description(conversation_id, description, user)
+    except Exception as e:
+        log.error(f"Failed to persist description to DB for {conversation_id}: {e}")
 
     return description
 
@@ -146,19 +149,9 @@ async def do_prompt_no_stream(
     state = State(messages=messages)
     response = await chatbot(state)
 
-    # Extract the AI's response content
+    # BaseMessage.text handles both plain-string and list-of-blocks content uniformly.
     ai_message = response["messages"][0]
-    content = ai_message.content
-
-    # content can be a list of blocks (e.g. structured tool-use responses) — extract text
-    if isinstance(content, list):
-        content = " ".join(
-            block.get("text", "") if isinstance(block, dict) else str(block) for block in content
-        ).strip()
-    elif not isinstance(content, str):
-        content = "" if content is None else str(content)
-
-    return {"response": content}
+    return {"response": ai_message.text}
 
 
 def get_user_id_from_config(config: RunnableConfig) -> str:

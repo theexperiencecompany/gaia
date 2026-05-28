@@ -14,18 +14,21 @@ from app.services.bot_service import BOT_RATE_LIMIT, BOT_RATE_WINDOW, BotService
 
 @pytest.fixture
 def mock_bot_sessions():
+    """Patch the bot_sessions_collection so session lookups/upserts are mocked."""
     with patch("app.services.bot_service.bot_sessions_collection") as mock_col:
         yield mock_col
 
 
 @pytest.fixture
 def mock_conversations():
+    """Patch the conversations_collection so conversation reads are mocked."""
     with patch("app.services.bot_service.conversations_collection") as mock_col:
         yield mock_col
 
 
 @pytest.fixture
 def mock_redis():
+    """Patch redis_cache with an async-mock Redis client for rate-limit tests."""
     with patch("app.services.bot_service.redis_cache") as mock_rc:
         mock_rc.redis = AsyncMock()
         yield mock_rc
@@ -33,6 +36,7 @@ def mock_redis():
 
 @pytest.fixture
 def mock_create_conversation():
+    """Patch create_conversation_service with an async mock for session creation."""
     with patch(
         "app.services.bot_service.create_conversation_service", new_callable=AsyncMock
     ) as mock_fn:
@@ -41,6 +45,7 @@ def mock_create_conversation():
 
 @pytest.fixture
 def sample_user():
+    """Return a sample user dict with id, email and name for session tests."""
     return {
         "_id": "507f1f77bcf86cd799439011",
         "user_id": "507f1f77bcf86cd799439011",
@@ -56,6 +61,8 @@ def sample_user():
 
 @pytest.mark.unit
 class TestEnforceRateLimit:
+    """Tests for enforce_rate_limit Redis counting, the 429 cap, and fail-open behavior."""
+
     async def test_first_request_sets_expiry(self, mock_redis):
         mock_redis.redis.incr = AsyncMock(return_value=1)
         mock_redis.redis.expire = AsyncMock()
@@ -108,6 +115,8 @@ class TestEnforceRateLimit:
 
 @pytest.mark.unit
 class TestBuildSessionKey:
+    """Tests for build_session_key formatting, including the DM fallback for missing channels."""
+
     def test_with_channel_id(self):
         key = BotService.build_session_key("discord", "user123", "channel456")
         assert key == "discord:user123:channel456"
@@ -128,14 +137,27 @@ class TestBuildSessionKey:
 
 @pytest.mark.unit
 class TestGetOrCreateSession:
+    """Tests for get_or_create_session reuse, creation, source tagging and deleted-conversation recovery."""
+
+    @staticmethod
+    def _existing_session(conversation_id: str, session_key: str = "discord:user123:dm"):
+        """find_one_and_update returns the pre-existing session unchanged on a match."""
+        return {"session_key": session_key, "conversation_id": conversation_id}
+
+    @staticmethod
+    def _inserted_session(update_filter, update, *, return_document=None, upsert=None):
+        """Simulate an upsert insert: return the doc carrying the $setOnInsert id."""
+        set_on_insert = update["$setOnInsert"]
+        return {
+            "session_key": set_on_insert["session_key"],
+            "conversation_id": set_on_insert["conversation_id"],
+        }
+
     async def test_returns_existing_session(
         self, mock_bot_sessions, mock_conversations, sample_user
     ):
-        mock_bot_sessions.find_one = AsyncMock(
-            return_value={
-                "session_key": "discord:user123:dm",
-                "conversation_id": "conv-existing",
-            }
+        mock_bot_sessions.find_one_and_update = AsyncMock(
+            return_value=self._existing_session("conv-existing")
         )
         mock_conversations.find_one = AsyncMock(return_value={"_id": "some-id"})
 
@@ -150,37 +172,77 @@ class TestGetOrCreateSession:
         mock_create_conversation,
         sample_user,
     ):
-        mock_bot_sessions.find_one = AsyncMock(return_value=None)
-        mock_bot_sessions.update_one = AsyncMock()
+        # find_one_and_update inserts a fresh session (returns the $setOnInsert id).
+        mock_bot_sessions.find_one_and_update = AsyncMock(side_effect=self._inserted_session)
+        # No conversation document exists yet for the freshly-minted id.
+        mock_conversations.find_one = AsyncMock(return_value=None)
 
         result = await BotService.get_or_create_session("discord", "user123", None, sample_user)
 
         assert result is not None
         mock_create_conversation.assert_awaited_once()
-        mock_bot_sessions.update_one.assert_awaited_once()
+        mock_bot_sessions.find_one_and_update.assert_awaited_once()
 
-    async def test_creates_new_when_conv_deleted(
+    async def test_sets_source_on_created_conversation(
         self,
         mock_bot_sessions,
         mock_conversations,
         mock_create_conversation,
         sample_user,
     ):
-        """If session exists but conversation doesn't, create new session."""
-        mock_bot_sessions.find_one = AsyncMock(
-            return_value={
-                "session_key": "discord:user123:dm",
-                "conversation_id": "conv-deleted",
-            }
+        """The created bot conversation must carry the platform as its source so the
+        web list query's $nin filter excludes it."""
+        mock_bot_sessions.find_one_and_update = AsyncMock(side_effect=self._inserted_session)
+        mock_conversations.find_one = AsyncMock(return_value=None)
+
+        await BotService.get_or_create_session("whatsapp", "user123", None, sample_user)
+
+        conversation_model = mock_create_conversation.call_args[0][0]
+        assert conversation_model.source is not None
+        assert conversation_model.source.value == "whatsapp"
+
+    async def test_recreates_with_same_id_when_conv_deleted(
+        self,
+        mock_bot_sessions,
+        mock_conversations,
+        mock_create_conversation,
+        sample_user,
+    ):
+        """If the session exists but its conversation was deleted (web UI / race),
+        the conversation is recreated with the SAME id — never a new one — so the
+        thread is not orphaned or forked."""
+        mock_bot_sessions.find_one_and_update = AsyncMock(
+            return_value=self._existing_session("conv-deleted")
         )
         mock_conversations.find_one = AsyncMock(return_value=None)
-        mock_bot_sessions.update_one = AsyncMock()
 
         result = await BotService.get_or_create_session("discord", "user123", None, sample_user)
 
-        assert result is not None
-        assert result != "conv-deleted"
+        # Same id is reused — no minting + repointing.
+        assert result == "conv-deleted"
         mock_create_conversation.assert_awaited_once()
+        recreated_model = mock_create_conversation.call_args[0][0]
+        assert recreated_model.conversation_id == "conv-deleted"
+
+    async def test_does_not_repoint_session_when_conv_deleted(
+        self,
+        mock_bot_sessions,
+        mock_conversations,
+        mock_create_conversation,
+        sample_user,
+    ):
+        """Recreation must not mint a new conversation_id that differs from the one
+        already stored on the session."""
+        mock_bot_sessions.find_one_and_update = AsyncMock(
+            return_value=self._existing_session("conv-deleted")
+        )
+        mock_conversations.find_one = AsyncMock(return_value=None)
+
+        result = await BotService.get_or_create_session("discord", "user123", None, sample_user)
+
+        # The id sent to find_one_and_update's $setOnInsert is a *candidate* only; on
+        # an existing session it is discarded, so the returned id must be the stored one.
+        assert result == "conv-deleted"
 
     async def test_normalizes_user_dict_with_underscore_id(
         self,
@@ -190,8 +252,8 @@ class TestGetOrCreateSession:
     ):
         """User dict with _id but no user_id should be normalized."""
         user = {"_id": "507f1f77bcf86cd799439011", "email": "test@example.com"}
-        mock_bot_sessions.find_one = AsyncMock(return_value=None)
-        mock_bot_sessions.update_one = AsyncMock()
+        mock_bot_sessions.find_one_and_update = AsyncMock(side_effect=self._inserted_session)
+        mock_conversations.find_one = AsyncMock(return_value=None)
 
         result = await BotService.get_or_create_session("discord", "user123", None, user)
 
@@ -205,8 +267,8 @@ class TestGetOrCreateSession:
         mock_create_conversation,
         sample_user,
     ):
-        mock_bot_sessions.find_one = AsyncMock(return_value=None)
-        mock_bot_sessions.update_one = AsyncMock()
+        mock_bot_sessions.find_one_and_update = AsyncMock(side_effect=self._inserted_session)
+        mock_conversations.find_one = AsyncMock(return_value=None)
 
         await BotService.get_or_create_session("telegram", "user123", None, sample_user)
 
@@ -222,6 +284,8 @@ class TestGetOrCreateSession:
 
 @pytest.mark.unit
 class TestResetSession:
+    """Tests for reset_session deleting the old session and minting a fresh one."""
+
     async def test_deletes_existing_and_creates_new(
         self,
         mock_bot_sessions,
@@ -230,8 +294,10 @@ class TestResetSession:
         sample_user,
     ):
         mock_bot_sessions.delete_one = AsyncMock()
-        mock_bot_sessions.find_one = AsyncMock(return_value=None)
-        mock_bot_sessions.update_one = AsyncMock()
+        mock_bot_sessions.find_one_and_update = AsyncMock(
+            side_effect=TestGetOrCreateSession._inserted_session
+        )
+        mock_conversations.find_one = AsyncMock(return_value=None)
 
         result = await BotService.reset_session("discord", "user123", None, sample_user)
 
@@ -246,8 +312,10 @@ class TestResetSession:
         sample_user,
     ):
         mock_bot_sessions.delete_one = AsyncMock()
-        mock_bot_sessions.find_one = AsyncMock(return_value=None)
-        mock_bot_sessions.update_one = AsyncMock()
+        mock_bot_sessions.find_one_and_update = AsyncMock(
+            side_effect=TestGetOrCreateSession._inserted_session
+        )
+        mock_conversations.find_one = AsyncMock(return_value=None)
 
         await BotService.reset_session("slack", "user123", "channel789", sample_user)
 
@@ -263,6 +331,8 @@ class TestResetSession:
 
 @pytest.mark.unit
 class TestLoadConversationHistory:
+    """Tests for load_conversation_history mapping stored messages to roles and applying the limit."""
+
     async def test_returns_empty_when_no_conv(self, mock_conversations):
         mock_conversations.find_one = AsyncMock(return_value=None)
 

@@ -30,7 +30,7 @@ from app.api.v1.endpoints.vfs import (
 )
 from app.models.chat_models import tool_fields
 from app.models.vfs_models import VFSNodeType
-from app.services.chat_service import extract_tool_data
+from app.utils.stream_utils import extract_tool_data
 
 # ---------------------------------------------------------------------------
 # Pure-unit tests: constants / utilities

@@ -1,7 +1,8 @@
+from collections.abc import Callable
 from datetime import UTC, datetime
 import json
 import re
-from typing import cast
+from typing import Any, TypedDict, cast
 from uuid import uuid4
 
 from langchain_core.messages import ToolCall
@@ -24,6 +25,17 @@ from shared.py.wide_events import log
 UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
 )
+
+# Type for the stream_writer callable used across agent execution paths.
+StreamWriterCallable = Callable[[dict[str, Any]], None]
+
+
+class IntegrationMetadata(TypedDict, total=False):
+    """Metadata for a custom MCP integration, used to decorate tool events."""
+
+    icon_url: str | None
+    integration_id: str | None
+    name: str | None
 
 
 def parse_subagent_id(subagent_id: str) -> tuple[str, str | None]:
@@ -75,6 +87,78 @@ async def _resolve_handoff_display_name(subagent_id: str) -> str:
         return cached_name
 
     return clean_id.replace("_", " ").title()
+
+
+def format_subagent_start_event(
+    subagent_name: str,
+    agent_type: str,
+    subagent_id: str,
+    icon_url: str | None = None,
+    tool_category: str | None = None,
+    parent_subagent_id: str | None = None,
+) -> dict:
+    """Format a subagent_start SSE payload."""
+    payload: dict = {
+        "subagent_id": subagent_id,
+        "subagent_name": subagent_name,
+        "agent_type": agent_type,
+        "started_at": datetime.now(UTC).isoformat(),
+    }
+    if icon_url:
+        payload["icon_url"] = icon_url
+    if tool_category:
+        payload["tool_category"] = tool_category
+    if parent_subagent_id:
+        payload["parent_subagent_id"] = parent_subagent_id
+    return payload
+
+
+def format_subagent_end_event(
+    subagent_id: str,
+    duration_ms: int,
+    token_count: int | None = None,
+) -> dict:
+    """Format a subagent_end SSE payload."""
+    return {
+        "subagent_id": subagent_id,
+        "duration_ms": duration_ms,
+        "token_count": token_count,
+    }
+
+
+def emit_subagent_tool_calls(
+    stream_writer: StreamWriterCallable,
+    subagent_id: str,
+    tool_calls: list[ToolCall],
+) -> None:
+    """Emit tool_data events for each tool call made inside a spawned subagent.
+
+    Called from SubagentMiddleware._execute_subagent before parallel tool
+    invocation so the frontend can show tools as they are dispatched.
+    """
+    now = datetime.now(UTC).isoformat()
+    for tc in tool_calls:
+        tool_name_str = tc["name"]
+        stream_writer(
+            {
+                "tool_data": {
+                    "tool_name": "tool_calls_data",
+                    "tool_category": tool_name_str,
+                    "data": {
+                        "tool_name": tool_name_str,
+                        "tool_category": tool_name_str,
+                        "message": tool_name_str.replace("_", " ").title(),
+                        "show_category": True,
+                        "tool_call_id": tc.get("id"),
+                        "inputs": tc.get("args", {}),
+                        "icon_url": None,
+                        "integration_name": None,
+                    },
+                    "timestamp": now,
+                    "subagent_id": subagent_id,
+                }
+            }
+        )
 
 
 async def format_tool_call_entry(
@@ -225,8 +309,8 @@ def process_custom_event_for_tools(payload) -> dict:
         extraction fails or no data is available
     """
     try:
-        # Import inside function to avoid circular imports
-        from app.services.chat_service import extract_tool_data
+        # Inline import avoids the stream_utils → agent_utils → stream_utils circular dep
+        from app.utils.stream_utils import extract_tool_data
 
         serialized = json.dumps(payload) if payload else "{}"
         new_data = extract_tool_data(serialized)

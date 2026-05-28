@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.core.stream_manager import StreamManager
-from app.services.chat_service import _process_data_chunk
+from app.utils.stream_utils import process_data_chunk as _process_data_chunk
 
 
 @pytest.mark.service

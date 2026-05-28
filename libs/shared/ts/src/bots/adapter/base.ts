@@ -50,6 +50,11 @@ import {
   hashLogIdentifier,
   sanitizeErrorForLog,
 } from "../utils/logger";
+import {
+  type IncomingMedia,
+  type MediaOutcome,
+  processBotMedia,
+} from "../utils/media";
 import { BotServer } from "./base-server";
 
 /**
@@ -371,5 +376,66 @@ export abstract class BaseBotAdapter {
       channelId,
       profile,
     };
+  }
+
+  /** Users greeted this process, so the welcome fires at most once each. */
+  private readonly welcomedUsers = new Set<string>();
+
+  /**
+   * One-shot welcome gate shared by adapters that greet a user on first
+   * contact (Discord DM embed, WhatsApp text). Returns true the first time it
+   * sees a user this process and false thereafter, so a caller can guard its
+   * platform-specific welcome with a single check instead of each adapter
+   * maintaining its own `Set`.
+   */
+  protected shouldSendWelcome(userId: string): boolean {
+    if (this.welcomedUsers.has(userId)) return false;
+    this.welcomedUsers.add(userId);
+    return true;
+  }
+
+  /**
+   * Starts a typing indicator that refreshes until stopped.
+   *
+   * Platforms expire the "typing…" state after a few seconds, so it must be
+   * re-sent periodically during long operations. Adapters supply the
+   * platform-specific send call and the refresh cadence; this owns the
+   * immediate first send, the interval, swallowing transient send failures,
+   * and cleanup. Returns a `stop` function to call from a `finally`.
+   */
+  protected startTypingIndicator(
+    sendTyping: () => Promise<unknown>,
+    refreshMs: number,
+  ): () => void {
+    void sendTyping().catch(() => {});
+    const interval = setInterval(() => {
+      void sendTyping().catch(() => {});
+    }, refreshMs);
+    return () => clearInterval(interval);
+  }
+
+  /**
+   * Routes an inbound media message to the right action — transcribe audio,
+   * upload an image/document, or reject an unsupported/oversize payload —
+   * returning a {@link MediaOutcome} the adapter then sends through its own
+   * channel APIs.
+   *
+   * The platform-agnostic decision lives in {@link processBotMedia}; this base
+   * method injects the shared GAIA client and builds the user context so every
+   * adapter calls one inherited method and stays byte-for-byte consistent.
+   * `download` is a thunk so unsupported kinds never incur a download.
+   */
+  protected resolveIncomingMedia(
+    media: IncomingMedia,
+    download: () => Promise<Uint8Array>,
+    userId: string,
+    channelId?: string,
+  ): Promise<MediaOutcome> {
+    return processBotMedia(
+      this.gaia,
+      media,
+      download,
+      this.buildContext(userId, channelId),
+    );
   }
 }

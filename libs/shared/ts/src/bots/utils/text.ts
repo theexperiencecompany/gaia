@@ -24,6 +24,25 @@ export function parseTextArgs(
   return { subcommand: tokens[0] || "list", args: tokens.slice(1) };
 }
 
+/** Text-platform commands whose first token selects a subcommand. */
+const SUBCOMMAND_COMMANDS = new Set(["todo", "workflow"]);
+
+/**
+ * Builds the args object for a text-platform command dispatch.
+ *
+ * For commands that take a subcommand it lifts the first
+ * token of `rawText` into `args.subcommand`; every other command gets an empty
+ * args object. Shared by the Slack, Telegram and WhatsApp adapters so the
+ * subcommand rule lives in one place instead of an inline `if` in each.
+ */
+export function extractSubcommandArgs(
+  commandName: string,
+  rawText: string | undefined,
+): Record<string, string | number | boolean | undefined> {
+  if (!SUBCOMMAND_COMMANDS.has(commandName)) return {};
+  return { subcommand: parseTextArgs(rawText ?? "").subcommand };
+}
+
 /** Per-platform message character limits. Used by truncateResponse. */
 export const PLATFORM_LIMITS: Record<string, number> = {
   discord: 2000,

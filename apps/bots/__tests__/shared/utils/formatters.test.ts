@@ -1,9 +1,11 @@
 import type { Conversation, Todo, Workflow } from "@gaia/shared";
 import {
+  buildAuthLinkMessage,
+  convertToDiscordMarkdown,
   convertToSlackMrkdwn,
-  convertToTelegramMarkdown,
+  convertToTelegramHtml,
   convertToWhatsAppMarkdown,
-  formatAuthRequiredMessage,
+  escapeHtml,
   formatBotError,
   formatConversation,
   formatConversationList,
@@ -12,6 +14,9 @@ import {
   formatWorkflow,
   formatWorkflowList,
   GaiaApiError,
+  htmlToPlainText,
+  PLATFORM_MARKDOWN,
+  renderForPlatform,
 } from "@gaia/shared";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
@@ -209,42 +214,116 @@ describe("formatConversationList", () => {
 });
 
 // ---------------------------------------------------------------------------
-// convertToTelegramMarkdown
+// convertToTelegramHtml — Telegram HTML parse mode
 // ---------------------------------------------------------------------------
-describe("convertToTelegramMarkdown", () => {
-  it("converts **bold** to *bold*", () => {
-    expect(convertToTelegramMarkdown("Hello **world**")).toBe("Hello *world*");
+describe("convertToTelegramHtml", () => {
+  // --- Regression guards ---------------------------------------------------
+  // These encode the exact production bug legacy Markdown caused (captured in
+  // the live DOM: an auth token's underscores were parsed as italics and
+  // silently dropped, corrupting the link). They assert OBSERVABLE output, so
+  // they fail on any parse mode that mangles URLs/underscores — which is what
+  // makes them catch the regression the old implementation-coupled tests
+  // could not.
+
+  it("keeps underscores in a bare URL intact (no italic, nothing dropped)", () => {
+    const out = convertToTelegramHtml(
+      "Open: http://localhost:3000/auth?platform=telegram&token=AjJD_TFC2_1Fgn",
+    );
+    expect(out).toContain("token=AjJD_TFC2_1Fgn");
+    expect(out).not.toContain("<i>");
   });
 
-  it("converts ***bold italic*** to *bold*", () => {
-    expect(convertToTelegramMarkdown("***text***")).toBe("*text*");
+  it("renders a markdown link with an underscored URL as a clickable anchor", () => {
+    expect(
+      convertToTelegramHtml("[docs](https://docs.heygaia.io/getting_started)"),
+    ).toBe('<a href="https://docs.heygaia.io/getting_started">docs</a>');
   });
 
-  it("converts # Heading to *Heading*", () => {
-    expect(convertToTelegramMarkdown("# My Heading")).toBe("*My Heading*");
-  });
-
-  it("strips > quote prefix", () => {
-    expect(convertToTelegramMarkdown("> quoted text")).toBe("quoted text");
-  });
-
-  it("removes --- horizontal rule", () => {
-    expect(convertToTelegramMarkdown("above\n---\nbelow")).toBe(
-      "above\n\nbelow",
+  it("does not italicize snake_case identifiers", () => {
+    expect(convertToTelegramHtml("set user_id and api_key")).toBe(
+      "set user_id and api_key",
     );
   });
 
-  it("preserves code blocks unchanged", () => {
-    const input = "```\nconst x = 1;\n```";
-    expect(convertToTelegramMarkdown(input)).toBe(input);
+  it("escapes &, <, > so user text can never break the markup", () => {
+    expect(convertToTelegramHtml("use <input> & <b> tags")).toBe(
+      "use &lt;input&gt; &amp; &lt;b&gt; tags",
+    );
   });
 
-  it("handles mixed content with code blocks and bold", () => {
-    const input = "**bold** text\n```\ncode **here**\n```\n**more bold**";
-    const result = convertToTelegramMarkdown(input);
-    expect(result).toContain("*bold*");
-    expect(result).toContain("```\ncode **here**\n```");
-    expect(result).toContain("*more bold*");
+  it("does not collide with ' N ' substrings in ordinary text", () => {
+    // The internal placeholder sentinel must never match real text.
+    expect(convertToTelegramHtml("I have 3 apples and 12 oranges")).toBe(
+      "I have 3 apples and 12 oranges",
+    );
+  });
+
+  // --- Formatting conversions ---------------------------------------------
+
+  it("converts **bold** to <b>", () => {
+    expect(convertToTelegramHtml("Hello **world**")).toBe("Hello <b>world</b>");
+  });
+
+  it("converts *italic* and _italic_ to <i>", () => {
+    expect(convertToTelegramHtml("a *b* and _c_")).toBe(
+      "a <i>b</i> and <i>c</i>",
+    );
+  });
+
+  it("converts ***bold italic*** to nested <b><i>", () => {
+    expect(convertToTelegramHtml("***x***")).toBe("<b><i>x</i></b>");
+  });
+
+  it("converts ~~strike~~ to <s>", () => {
+    expect(convertToTelegramHtml("~~gone~~")).toBe("<s>gone</s>");
+  });
+
+  it("converts a heading to bold (Telegram HTML has no headings)", () => {
+    expect(convertToTelegramHtml("# My Heading")).toBe("<b>My Heading</b>");
+  });
+
+  it("converts list bullets to • and strips horizontal rules", () => {
+    expect(convertToTelegramHtml("- one\n- two")).toBe("• one\n• two");
+    expect(convertToTelegramHtml("above\n---\nbelow")).toBe("above\n\nbelow");
+  });
+
+  it("wraps inline code in <code> with its contents escaped", () => {
+    expect(convertToTelegramHtml("run `a < b`")).toBe(
+      "run <code>a &lt; b</code>",
+    );
+  });
+
+  it("wraps a fenced block in <pre><code> with a language class, escaped", () => {
+    expect(convertToTelegramHtml("```python\nx = a < b\n```")).toBe(
+      '<pre><code class="language-python">x = a &lt; b</code></pre>',
+    );
+  });
+
+  it("does not convert markdown inside a fenced code block", () => {
+    expect(convertToTelegramHtml("```\n**not bold**\n```")).toBe(
+      "<pre>**not bold**</pre>",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// escapeHtml / htmlToPlainText — Telegram HTML helpers
+// ---------------------------------------------------------------------------
+describe("escapeHtml", () => {
+  it("escapes only the three HTML-special characters", () => {
+    expect(escapeHtml('a & b < c > d "e"')).toBe('a &amp; b &lt; c &gt; d "e"');
+  });
+});
+
+describe("htmlToPlainText", () => {
+  it("strips tags and decodes entities for the plain-text fallback", () => {
+    expect(
+      htmlToPlainText('<b>Hi</b> <a href="https://x.io/a_b">link</a> a &lt; b'),
+    ).toBe("Hi link a < b");
+  });
+
+  it("round-trips escaped ampersands without double-decoding", () => {
+    expect(htmlToPlainText("Tom &amp;amp; Jerry")).toBe("Tom &amp; Jerry");
   });
 });
 
@@ -269,6 +348,22 @@ describe("convertToSlackMrkdwn", () => {
   it("preserves code blocks unchanged", () => {
     const input = "```\nsome code\n```";
     expect(convertToSlackMrkdwn(input)).toBe(input);
+  });
+
+  it("escapes <, >, & in narrative so a stray tag can't break the message", () => {
+    expect(convertToSlackMrkdwn("compare a < b and use <script>")).toBe(
+      "compare a &lt; b and use &lt;script&gt;",
+    );
+  });
+
+  it("escapes the link label but leaves the URL (with & and _) verbatim", () => {
+    expect(convertToSlackMrkdwn("[a<b](https://x.io/a_b?x=1&y=2)")).toBe(
+      "<https://x.io/a_b?x=1&y=2|a&lt;b>",
+    );
+  });
+
+  it("converts ~~strike~~ to single-tilde ~strike~", () => {
+    expect(convertToSlackMrkdwn("~~gone~~")).toBe("~gone~");
   });
 });
 
@@ -334,38 +429,88 @@ describe("convertToWhatsAppMarkdown", () => {
 });
 
 // ---------------------------------------------------------------------------
-// formatAuthRequiredMessage
+// convertToDiscordMarkdown
 // ---------------------------------------------------------------------------
-describe("formatAuthRequiredMessage", () => {
-  it("capitalizes platform name", () => {
-    const result = formatAuthRequiredMessage(
-      "discord",
-      "https://auth.gaia.com",
+describe("convertToDiscordMarkdown", () => {
+  it("converts [label](url) masked links to label (url)", () => {
+    expect(convertToDiscordMarkdown("[Click here](https://example.com)")).toBe(
+      "Click here (https://example.com)",
     );
-    expect(result).toContain("Discord");
   });
 
-  it("includes auth URL", () => {
-    const url = "https://auth.gaia.com/link";
-    const result = formatAuthRequiredMessage("slack", url);
-    expect(result).toContain(url);
+  it("leaves native CommonMark (bold, headings) untouched", () => {
+    const input = "# Heading\n**bold** and _italic_";
+    expect(convertToDiscordMarkdown(input)).toBe(input);
   });
 
-  it("includes custom context", () => {
-    const result = formatAuthRequiredMessage(
-      "telegram",
-      "https://auth.gaia.com",
-      "manage your todos",
+  it("preserves code blocks unchanged", () => {
+    const input = "```\n[not a link](x)\n```";
+    expect(convertToDiscordMarkdown(input)).toBe(input);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PLATFORM_MARKDOWN map + renderForPlatform — the centralization chokepoint
+// ---------------------------------------------------------------------------
+describe("PLATFORM_MARKDOWN", () => {
+  it("maps each platform to its dedicated converter", () => {
+    expect(PLATFORM_MARKDOWN.discord).toBe(convertToDiscordMarkdown);
+    expect(PLATFORM_MARKDOWN.slack).toBe(convertToSlackMrkdwn);
+    expect(PLATFORM_MARKDOWN.telegram).toBe(convertToTelegramHtml);
+    expect(PLATFORM_MARKDOWN.whatsapp).toBe(convertToWhatsAppMarkdown);
+  });
+});
+
+describe("renderForPlatform", () => {
+  it("routes through the discord converter (masked link → bare)", () => {
+    expect(renderForPlatform("[GAIA](https://heygaia.io)", "discord")).toBe(
+      "GAIA (https://heygaia.io)",
     );
-    expect(result).toContain("manage your todos");
   });
 
-  it("uses default context when none provided", () => {
-    const result = formatAuthRequiredMessage(
-      "discord",
-      "https://auth.gaia.com",
+  it("routes through the slack converter (**bold** → *bold*, link → <url|label>)", () => {
+    expect(renderForPlatform("**hi** [GAIA](https://x.com)", "slack")).toBe(
+      "*hi* <https://x.com|GAIA>",
     );
-    expect(result).toContain("use this feature");
+  });
+
+  it("routes through the telegram converter (**bold** → <b>)", () => {
+    expect(renderForPlatform("**hi**", "telegram")).toBe("<b>hi</b>");
+  });
+
+  it("routes through the whatsapp converter (link → label (url))", () => {
+    expect(renderForPlatform("[GAIA](https://x.com)", "whatsapp")).toBe(
+      "GAIA (https://x.com)",
+    );
+  });
+
+  it("produces output identical to the platform's converter", () => {
+    const text = "**Heading**\n[link](https://x.com)";
+    expect(renderForPlatform(text, "slack")).toBe(convertToSlackMrkdwn(text));
+    expect(renderForPlatform(text, "whatsapp")).toBe(
+      convertToWhatsAppMarkdown(text),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildAuthLinkMessage — the single canonical auth prompt
+// ---------------------------------------------------------------------------
+describe("buildAuthLinkMessage", () => {
+  it("includes the auth URL verbatim so it stays copy-pasteable", () => {
+    // Underscores in the token must survive (real auth tokens contain them).
+    const url = "https://auth.gaia.com/link?token=ab_cd_ef";
+    const msg = buildAuthLinkMessage(url);
+    expect(msg).toContain(url);
+    expect(msg).toContain("Link your account to GAIA");
+  });
+
+  it("returns one canonical message regardless of caller", () => {
+    // Regression guard for 'hi vs /auth showed different text': a single
+    // builder means the /auth command and the chat auth-prompt cannot diverge.
+    expect(buildAuthLinkMessage("https://x")).toBe(
+      buildAuthLinkMessage("https://x"),
+    );
   });
 });
 

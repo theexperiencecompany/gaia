@@ -255,6 +255,11 @@ export const chatApi = {
       if (match) conversationId = match[1];
     }
 
+    // "new" is a UI sentinel for "create a new conversation" — backend expects null
+    if (conversationId === "new") {
+      conversationId = null;
+    }
+
     // Guard against double onClose — [DONE] in onmessage fires onClose, then
     // the SSE library fires onclose when the connection ends.  Without this
     // flag both would call onClose, causing duplicate cleanup / persistence.
@@ -333,6 +338,46 @@ export const chatApi = {
           });
           onError(err);
           throw err; // This stops any retry attempts
+        },
+      },
+    );
+  },
+
+  subscribeToExecutorStream: async (
+    streamId: string,
+    onMessage: (event: EventSourceMessage) => void,
+    onClose: () => void,
+    onError: (err: Error) => void,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    let doneReceived = false;
+
+    await fetchEventSource(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}stream/${streamId}`,
+      {
+        method: "GET",
+        openWhenHidden: true,
+        headers: {
+          Accept: "text/event-stream",
+        },
+        credentials: "include",
+        signal,
+        onmessage(event) {
+          if (event.data === "[DONE]") {
+            doneReceived = true;
+            onClose();
+            return;
+          }
+          onMessage(event);
+        },
+        onclose() {
+          if (!doneReceived) {
+            onClose();
+          }
+        },
+        onerror(err) {
+          onError(err);
+          throw err; // stops retry attempts
         },
       },
     );

@@ -1,8 +1,8 @@
 """Inspect ONNX model signatures so we can validate the TS pipeline against reality."""
 
 import json
-import sys
 from pathlib import Path
+import sys
 
 import onnx
 import onnxruntime as ort
@@ -13,14 +13,8 @@ def describe(model_path: Path) -> dict:
     return {
         "size_bytes": model_path.stat().st_size,
         "ir_version": onnx.load(str(model_path)).ir_version,
-        "inputs": [
-            {"name": i.name, "shape": i.shape, "type": i.type}
-            for i in sess.get_inputs()
-        ],
-        "outputs": [
-            {"name": o.name, "shape": o.shape, "type": o.type}
-            for o in sess.get_outputs()
-        ],
+        "inputs": [{"name": i.name, "shape": i.shape, "type": i.type} for i in sess.get_inputs()],
+        "outputs": [{"name": o.name, "shape": o.shape, "type": o.type} for o in sess.get_outputs()],
     }
 
 

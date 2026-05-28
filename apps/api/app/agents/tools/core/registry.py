@@ -1,12 +1,13 @@
 import asyncio
 from collections import defaultdict
-from collections.abc import Iterator, KeysView, Mapping
+from collections.abc import ItemsView, Iterator, KeysView, Mapping
 
 from langchain_core.tools import BaseTool
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.helpers.namespace_utils import derive_integration_namespace
+from app.models.oauth_models import OAuthIntegration
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
@@ -70,7 +71,7 @@ class DynamicToolDict(Mapping[str, BaseTool]):
         all_tools.update(self._extra_tools)
         return all_tools.keys()
 
-    def items(self):
+    def items(self) -> ItemsView[str, BaseTool]:
         """Return all (name, tool) pairs from the registry plus extras."""
         all_tools = dict(self._registry._get_tool_dict_internal())
         all_tools.update(self._extra_tools)
@@ -89,7 +90,7 @@ class _CatalogToolMeta:
 
     __slots__ = ("description", "name")
 
-    def __init__(self, name: str, description: str):
+    def __init__(self, name: str, description: str) -> None:
         self.name = name
         self.description = description
 
@@ -176,6 +177,8 @@ class ToolRegistry:
         is_delegated: bool = False,
     ):
         """Helper to create and register a category."""
+        replacing = name in self._categories
+        prior_tools_count = len(self._categories[name].tools) if replacing else 0
         category = ToolCategory(
             name=name,
             space=space,
@@ -188,6 +191,23 @@ class ToolRegistry:
         if tools:
             category.add_tools(tools)
         self._categories[name] = category
+        log.set(
+            tool_category={
+                "name": name,
+                "space": space,
+                "tools_in": len(tools) if tools else 0,
+                "core_tools_in": len(core_tools) if core_tools else 0,
+                "final_count": len(category.tools),
+                "replacing": replacing,
+                "prior_tools_count": prior_tools_count,
+            }
+        )
+        log.info(
+            f"_add_category: '{name}' space='{space}' tools_in="
+            f"{len(tools) if tools else 0} core_in="
+            f"{len(core_tools) if core_tools else 0} final="
+            f"{len(category.tools)} replacing={replacing} (was {prior_tools_count})"
+        )
 
     def _initialize_categories(self):
         """Initialize core tool categories. Provider tools are loaded lazily."""
@@ -210,6 +230,7 @@ class ToolRegistry:
             skill_tools,
             support_tool,
             todo_tool,
+            tracked_todo_tools,
             vfs_tools,
             weather_tool,
             webpage_tool,
@@ -231,6 +252,11 @@ class ToolRegistry:
         )
 
         self._add_category("notifications", tools=[*notification_tool.tools])
+        self._add_category(
+            "tracked_todos",
+            tools=[*tracked_todo_tools.tools],
+            space="tasks",
+        )
         self._add_category(
             "todos",
             tools=[*todo_tool.tools],
@@ -392,7 +418,7 @@ class ToolRegistry:
         mongo_batch: list[tuple[str, list[dict]]] = []
         total = 0
 
-        async def load_metadata(integration) -> None:
+        async def load_metadata(integration: OAuthIntegration) -> None:
             nonlocal total
             toolkit = integration.composio_config.toolkit
             space = integration.subagent_config.tool_space
@@ -468,9 +494,34 @@ class ToolRegistry:
 
         category = self._categories.get(category_name)
         if not category:
+            log.warning(
+                f"_index_category_tools: category '{category_name}' not in registry, "
+                f"known={sorted(self._categories.keys())[:20]}..."
+            )
             return
 
+        category_tools_count = len(category.tools)
+        log.set(
+            tool_index={
+                "category": category_name,
+                "space": category.space,
+                "category_tools_count": category_tools_count,
+            }
+        )
+        log.info(
+            f"_index_category_tools: '{category_name}' space='{category.space}' "
+            f"category.tools count={category_tools_count}"
+        )
+
         tools_with_space = [(tool.tool, category.space) for tool in category.tools]
+        if not tools_with_space:
+            log.warning(
+                f"_index_category_tools: category '{category_name}' has 0 tools "
+                f"(space='{category.space}'), nothing to index — caller likely passed "
+                f"empty tools to _add_category"
+            )
+            return
+
         await index_tools_to_store(tools_with_space)
 
     def get_category(self, name: str) -> ToolCategory | None:
@@ -516,10 +567,27 @@ class ToolRegistry:
         mcp_client = await get_mcp_client(user_id=user_id)
         all_tools = await mcp_client.get_all_connected_tools()
 
+        log.set(
+            load_user_mcp_tools={
+                "user_id": user_id,
+                "integration_count": len(all_tools),
+                "integrations": list(all_tools.keys()),
+                "tool_counts": {iid: len(t) for iid, t in all_tools.items()},
+            }
+        )
+        log.info(
+            f"load_user_mcp_tools: user={user_id} got {len(all_tools)} integrations "
+            f"with counts={ {iid: len(t) for iid, t in all_tools.items()} }"
+        )
+
         loaded: dict[str, list[BaseTool]] = {}
 
         for integration_id, tools in all_tools.items():
             if not tools:
+                log.warning(
+                    f"load_user_mcp_tools: integration_id={integration_id} has empty "
+                    f"tools list, skipping"
+                )
                 continue
 
             # Category name: mcp_{integration_id} (no user_id suffix)
@@ -530,6 +598,12 @@ class ToolRegistry:
 
             # Skip if already loaded (category already exists)
             if category_name in self._categories:
+                existing_count = len(self._categories[category_name].tools)
+                log.info(
+                    f"load_user_mcp_tools: '{category_name}' already in registry "
+                    f"(category.tools={existing_count} from earlier load), "
+                    f"skipping re-add for user {user_id}"
+                )
                 loaded[integration_id] = tools
                 continue
 

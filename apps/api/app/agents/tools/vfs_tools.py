@@ -17,7 +17,10 @@ Folder Structure (per user):
   - ../skills/   - Shared skills (learned and custom)
 """
 
+import asyncio
+from collections.abc import Coroutine
 import contextlib
+import re
 from typing import Annotated, Any
 
 from langchain_core.runnables import RunnableConfig
@@ -31,6 +34,7 @@ from app.agents.tools.vfs_constants import (
     is_user_visible_path,
 )
 from app.decorators import with_rate_limiting
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.vfs import MongoVFS, get_vfs
 from app.services.vfs.path_resolver import (
     get_agent_root,
@@ -39,6 +43,16 @@ from app.services.vfs.path_resolver import (
     validate_user_access,
 )
 from shared.py.wide_events import log
+
+# Module-level set to hold references to fire-and-forget tasks and prevent GC.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _fire_and_forget(coro: Coroutine[Any, Any, Any]) -> None:
+    """Schedule a coroutine without awaiting it, keeping a strong ref alive."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 def _get_context(config: RunnableConfig) -> dict[str, Any]:
@@ -314,16 +328,30 @@ async def vfs_write(
                 vfs=vfs,
                 fallback_size_bytes=len(content.encode("utf-8")),
             )
-            return f"Appended {len(content)} characters to: {resolved_path}"
+            result = f"Appended {len(content)} characters to: {resolved_path}"
+        else:
+            await vfs.write(resolved_path, content, ctx["user_id"], metadata)
+            await _emit_artifact_event(
+                path=resolved_path,
+                user_id=ctx["user_id"],
+                vfs=vfs,
+                fallback_size_bytes=len(content.encode("utf-8")),
+            )
+            result = f"Wrote {len(content)} characters to: {resolved_path}"
 
-        await vfs.write(resolved_path, content, ctx["user_id"], metadata)
-        await _emit_artifact_event(
-            path=resolved_path,
-            user_id=ctx["user_id"],
-            vfs=vfs,
-            fallback_size_bytes=len(content.encode("utf-8")),
-        )
-        return f"Wrote {len(content)} characters to: {resolved_path}"
+        # After successful write, check if this is a tracked todo canvas.
+        # Re-index ChromaDB out-of-band — never block the write on it.
+        if "/todos/" in resolved_path and resolved_path.endswith("/canvas.md"):
+            try:
+                # Extract todo_id from path: /users/{uid}/todos/{todo_id}/canvas.md
+                canvas_match = re.search(r"/todos/([^/]+)/canvas\.md$", resolved_path)
+                if canvas_match:
+                    todo_id = canvas_match.group(1)
+                    _fire_and_forget(tracked_todo_service.reindex_canvas(todo_id, ctx["user_id"]))
+            except Exception as reindex_err:
+                log.debug(f"Canvas reindex skipped: {reindex_err}", path=resolved_path)
+
+        return result
 
     except Exception as e:
         log.error(f"VFS write error: {e}")

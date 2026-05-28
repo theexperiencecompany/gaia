@@ -174,6 +174,9 @@ const config: KnipConfig = {
         // React/ReactDOM are peer deps consumed by all workspaces
         "react",
         "react-dom",
+        // Invoked dynamically as `pnpm exec jscpd` inside
+        // scripts/ci/check-duplication.mjs, so knip can't see the usage.
+        "jscpd",
       ],
     },
 

@@ -108,7 +108,13 @@ async def provision_system_workflows(
             )
         except Exception as e:
             log.error(
-                f"Failed to provision system workflow '{key}' for user {user_id}: {e}",
+                "system_workflow_provision_failed",
+                system_workflow_key=key,
+                user_id=user_id,
+                integration_display_name=integration_display_name,
+                error_type=type(e).__name__,
+                error=str(e)[:500],
+                outcome="failed",
                 exc_info=True,
             )
 

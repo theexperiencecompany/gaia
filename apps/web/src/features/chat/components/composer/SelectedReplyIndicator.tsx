@@ -15,6 +15,8 @@ interface SelectedReplyIndicatorProps {
   onNavigate?: (messageId: string) => void;
   /** When true, shows a smaller display-only version with connector line (for chat bubbles) */
   isDisplayOnly?: boolean;
+  /** When true, hides the connector line in display-only mode */
+  hideConnector?: boolean;
 }
 
 /**
@@ -56,6 +58,7 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
   onRemove,
   onNavigate,
   isDisplayOnly = false,
+  hideConnector = false,
 }) => {
   const { isSlashCommandDropdownOpen } = useComposerUI();
 
@@ -107,7 +110,7 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
             </span>
           </div>
         </div>
-        <ReplyConnectorLine />
+        {!hideConnector && <ReplyConnectorLine />}
       </div>
     );
   }

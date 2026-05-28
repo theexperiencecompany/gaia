@@ -43,6 +43,7 @@ from app.services.workflow.service import (
     ensure_public_workflow_slug,
     generate_unique_workflow_slug,
 )
+from app.utils.creator import creator_lookup_stage, format_creator
 from app.utils.exceptions import TriggerRegistrationError
 from app.utils.workflow_utils import transform_workflow_document
 from shared.py.wide_events import WorkflowContext, log
@@ -577,50 +578,50 @@ async def get_public_workflows(
 @limiter.limit("5000/hour")
 async def get_public_workflow(request: Request, workflow_ref: str):
     """Get a public workflow by ID (wf_xxx) or slug."""
+    lookup_mode = "id" if workflow_ref.startswith("wf_") else "slug"
+    log.set(
+        workflow=WorkflowContext(operation="get_public"),
+        public_workflow={"ref": workflow_ref, "lookup_mode": lookup_mode},
+    )
     try:
-        if workflow_ref.startswith("wf_"):
-            match: dict = {"_id": workflow_ref, "is_public": True}
-        else:
-            match = {"slug": workflow_ref, "is_public": True}
-
-        creator_lookup = {
-            "$lookup": {
-                "from": "users",
-                "let": {"creator_id": "$created_by"},
-                "pipeline": [
-                    {"$match": {"$expr": {"$eq": ["$_id", {"$toObjectId": "$$creator_id"}]}}},
-                    {"$project": {"name": 1, "picture": 1, "_id": 0}},
-                ],
-                "as": "creator_info",
-            }
-        }
+        match: dict = (
+            {"_id": workflow_ref, "is_public": True}
+            if lookup_mode == "id"
+            else {"slug": workflow_ref, "is_public": True}
+        )
 
         workflow_doc = None
         async for doc in workflows_collection.aggregate(
-            [{"$match": match}, creator_lookup, {"$limit": 1}]
+            [{"$match": match}, creator_lookup_stage(), {"$limit": 1}]
         ):
             workflow_doc = doc
             break
 
         if not workflow_doc:
+            log.info(f"get_public_workflow: no public workflow for ref={workflow_ref}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Public workflow not found",
             )
 
-        creator_info = (workflow_doc.get("creator_info") or [{}])[0]
+        creator = format_creator(workflow_doc)
         workflow_doc.pop("creator_info", None)
 
         await ensure_public_workflow_slug(workflow_doc)
 
         transformed_doc = transform_workflow_document(workflow_doc)
         workflow = Workflow(**transformed_doc)
-        workflow.creator = {
-            "id": workflow_doc.get("created_by"),
-            "name": creator_info.get("name") or "Unknown",
-            "avatar": creator_info.get("picture"),
-        }
+        workflow.creator = creator
 
+        log.set(
+            public_workflow={
+                "id": workflow_doc.get("_id"),
+                "slug": workflow_doc.get("slug"),
+                "creator_id": workflow_doc.get("created_by"),
+                "creator_name": creator.get("name") if isinstance(creator, dict) else None,
+                "step_count": len(workflow.steps) if getattr(workflow, "steps", None) else 0,
+            }
+        )
         return WorkflowResponse(workflow=workflow, message="Workflow retrieved successfully")
     except HTTPException:
         raise

@@ -417,3 +417,76 @@ class TestBotChatStream:
     async def test_chat_stream_validation_error(self, mock_auth: AsyncMock, client: AsyncClient):
         response = await client.post(f"{BOT_BASE}/chat-stream", json={})
         assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# POST /bot/transcribe — voice / audio transcription for bot adapters
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestBotTranscribe:
+    """POST /api/v1/bot/transcribe"""
+
+    async def test_transcribe_no_api_key(self, client: AsyncClient):
+        response = await client.post(
+            f"{BOT_BASE}/transcribe",
+            files={"file": ("voice.ogg", b"fake-audio-bytes", "audio/ogg")},
+        )
+        assert response.status_code == 401
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_transcribe_unauthenticated_user(
+        self, mock_auth: AsyncMock, unauthed_client: AsyncClient
+    ):
+        response = await unauthed_client.post(
+            f"{BOT_BASE}/transcribe",
+            files={"file": ("voice.ogg", b"fake-audio-bytes", "audio/ogg")},
+        )
+        assert response.status_code == 401
+
+    # NOTE: The deeper transcribe path (mime allowlist, Whisper invocation) is
+    # tested directly in tests/unit/services/test_audio_transcription_service.py.
+    # We cannot easily flip request.state.authenticated=True in the unit
+    # harness because the test_app strips the BotAuthMiddleware, and
+    # require_bot_api_key isn't injected via Depends. Service-level tests cover
+    # the rest; an e2e fixture would be needed to cover the full route.
+
+
+# ---------------------------------------------------------------------------
+# BotChatRequest — file attachments
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestBotChatRequestFiles:
+    """Pydantic validation for the new file_ids / file_data fields."""
+
+    def test_accepts_file_ids_and_data(self):
+        from app.models.bot_models import BotChatRequest
+
+        req = BotChatRequest(
+            message="please analyze",
+            platform="whatsapp",
+            platform_user_id="1234567890",
+            file_ids=["f1", "f2"],
+            file_data=[
+                {
+                    "fileId": "f1",
+                    "url": "https://cdn.example/a.pdf",
+                    "filename": "a.pdf",
+                    "type": "application/pdf",
+                }
+            ],
+        )
+        assert req.file_ids == ["f1", "f2"]
+        assert req.file_data is not None
+        assert req.file_data[0].fileId == "f1"
+        assert req.file_data[0].url == "https://cdn.example/a.pdf"
+
+    def test_defaults_to_none_when_omitted(self):
+        from app.models.bot_models import BotChatRequest
+
+        req = BotChatRequest(message="hi", platform="whatsapp", platform_user_id="123")
+        assert req.file_ids is None
+        assert req.file_data is None

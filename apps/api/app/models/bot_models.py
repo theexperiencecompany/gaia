@@ -5,6 +5,7 @@ Pydantic models for bot chat, sessions, and related operations.
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.models.message_models import FileData
 from app.services.platform_link_service import Platform
 
 
@@ -15,10 +16,22 @@ class BotChatRequest(BaseModel):
     platform: str = Field(..., description="Platform name (discord, slack, etc.)")
     platform_user_id: str = Field(..., description="User's ID on the platform", min_length=1)
     channel_id: str | None = Field(None, description="Channel/group ID (None for DM)")
+    file_ids: list[str] | None = Field(
+        None,
+        description="IDs of files attached to this message (uploaded via /api/v1/upload).",
+    )
+    file_data: list[FileData] | None = Field(
+        None,
+        description=(
+            "Full metadata for attached files. Mirrors the web chat payload so "
+            "the agent can resolve URL/filename without an extra DB lookup."
+        ),
+    )
 
     @field_validator("platform")
     @classmethod
     def validate_platform(cls, v: str) -> str:
+        """Reject values that are not registered platform names."""
         if not Platform.is_valid(v):
             raise ValueError(f"Invalid platform '{v}'")
         return v
@@ -43,6 +56,7 @@ class CreateLinkTokenRequest(BaseModel):
     @field_validator("platform")
     @classmethod
     def validate_platform(cls, v: str) -> str:
+        """Reject values that are not registered platform names."""
         if not Platform.is_valid(v):
             raise ValueError(f"Invalid platform '{v}'")
         return v
@@ -91,6 +105,7 @@ class ResetSessionRequest(BaseModel):
     @field_validator("platform")
     @classmethod
     def validate_platform(cls, v: str) -> str:
+        """Reject values that are not registered platform names."""
         if not Platform.is_valid(v):
             raise ValueError(f"Invalid platform '{v}'")
         return v
