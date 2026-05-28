@@ -18,6 +18,12 @@ import type {
 
 interface TodoProgressSectionProps {
   todo_progress: TodoProgressData;
+  /**
+   * When true, in_progress todos animate their spinner. Default false so
+   * historical messages with stale in_progress state (interrupted runs,
+   * crashed agents) don't spin forever on page reload.
+   */
+  isStreaming?: boolean;
 }
 
 const STATUS_ICON_MAP: Record<
@@ -52,12 +58,18 @@ function getProgressColor(
   return "default";
 }
 
-function TaskRow({ todo }: { todo: TodoProgressItem }) {
+function TaskRow({
+  todo,
+  isStreaming,
+}: {
+  todo: TodoProgressItem;
+  isStreaming?: boolean;
+}) {
   const StatusIcon = STATUS_ICON_MAP[todo.status];
-  // An in_progress todo is, by definition, still doing work — the loader
-  // should always spin. Tracked todos persist past the message stream, so
-  // gating on `isStreaming` would freeze the icon while work continues.
-  const shouldSpin = todo.status === "in_progress";
+  // Only spin while the stream is live. Historical messages may carry stale
+  // in_progress todos (interrupted runs); spinning those forever lies to the
+  // user about ongoing work.
+  const shouldSpin = todo.status === "in_progress" && isStreaming;
   return (
     <div className="flex items-start gap-2">
       <div className={`shrink-0 mt-0.5 ${shouldSpin ? "animate-spin" : ""}`}>
@@ -72,11 +84,17 @@ function TaskRow({ todo }: { todo: TodoProgressItem }) {
   );
 }
 
-function SourceTaskList({ todos }: { todos: TodoProgressItem[] }) {
+function SourceTaskList({
+  todos,
+  isStreaming,
+}: {
+  todos: TodoProgressItem[];
+  isStreaming?: boolean;
+}) {
   return (
     <div className="space-y-1.5">
       {todos.map((todo) => (
-        <TaskRow key={todo.id} todo={todo} />
+        <TaskRow key={todo.id} todo={todo} isStreaming={isStreaming} />
       ))}
     </div>
   );
@@ -84,6 +102,7 @@ function SourceTaskList({ todos }: { todos: TodoProgressItem[] }) {
 
 export default function TodoProgressSection({
   todo_progress,
+  isStreaming,
 }: TodoProgressSectionProps) {
   const sources = Object.keys(todo_progress);
   if (sources.length === 0) return null;
@@ -98,6 +117,7 @@ export default function TodoProgressSection({
       <SingleSourceCard
         source={activeSources[0]}
         todos={todo_progress[activeSources[0]].todos}
+        isStreaming={isStreaming}
       />
     );
   }
@@ -106,6 +126,7 @@ export default function TodoProgressSection({
     <MultiSourceAccordion
       activeSources={activeSources}
       todo_progress={todo_progress}
+      isStreaming={isStreaming}
     />
   );
 }
@@ -113,9 +134,11 @@ export default function TodoProgressSection({
 function SingleSourceCard({
   source,
   todos,
+  isStreaming,
 }: {
   source: string;
   todos: TodoProgressItem[];
+  isStreaming?: boolean;
 }) {
   const completedCount = todos.filter((t) => t.status === "completed").length;
   const pct = todos.length > 0 ? (completedCount / todos.length) * 100 : 0;
@@ -139,7 +162,7 @@ function SingleSourceCard({
         </Chip>
       </div>
       <Progress size="sm" value={pct} color={progressColor} className="mb-3" />
-      <SourceTaskList todos={todos} />
+      <SourceTaskList todos={todos} isStreaming={isStreaming} />
     </div>
   );
 }
@@ -147,9 +170,11 @@ function SingleSourceCard({
 function MultiSourceAccordion({
   activeSources,
   todo_progress,
+  isStreaming,
 }: {
   activeSources: string[];
   todo_progress: TodoProgressData;
+  isStreaming?: boolean;
 }) {
   const prevDataRef = useRef<TodoProgressData>({});
 
@@ -218,7 +243,7 @@ function MultiSourceAccordion({
                 </div>
               }
             >
-              <SourceTaskList todos={todos} />
+              <SourceTaskList todos={todos} isStreaming={isStreaming} />
             </AccordionItem>
           );
         })}

@@ -71,7 +71,7 @@ class TestRetrieveToolsBindingMode:
 
         with (
             patch(
-                "app.services.mcp.mcp_client.get_mcp_client",
+                "app.agents.tools.core.retrieval.get_mcp_client",
                 new=AsyncMock(return_value=_fake_mcp_client({"posthog": mcp_tools})),
             ),
             patch(
@@ -112,7 +112,7 @@ class TestRetrieveToolsDiscoveryMode:
 
         with (
             patch(
-                "app.services.mcp.mcp_client.get_mcp_client",
+                "app.agents.tools.core.retrieval.get_mcp_client",
                 new=AsyncMock(return_value=_fake_mcp_client({"posthog": mcp_tools})),
             ),
             patch(
@@ -173,7 +173,7 @@ class TestRetrieveToolsCrossUserIsolation:
 
         with (
             patch(
-                "app.services.mcp.mcp_client.get_mcp_client",
+                "app.agents.tools.core.retrieval.get_mcp_client",
                 new=AsyncMock(side_effect=per_user_get),
             ),
             patch(

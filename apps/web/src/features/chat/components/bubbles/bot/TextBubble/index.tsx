@@ -117,7 +117,10 @@ export default function TextBubble({
           const data = getTypedData(entry as ToolDataUnion, "todo_progress");
           return data ? (
             <React.Fragment key={`${baseId}-tool-${toolName}-${keyId}`}>
-              <TodoProgressSection todo_progress={data as TodoProgressData} />
+              <TodoProgressSection
+                todo_progress={data as TodoProgressData}
+                isStreaming={loading}
+              />
             </React.Fragment>
           ) : null;
         }

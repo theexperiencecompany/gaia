@@ -620,6 +620,15 @@ class MCPClient:
                 if raw_tool.metadata and raw_tool.metadata.get("mcp_ui"):
                     raw_tool.metadata["mcp_server_url"] = server_url
 
+            # Stamp integration_id onto every tool so consumers can resolve
+            # tool → integration without the global ToolRegistry. The registry
+            # no longer holds MCP tools; this metadata is the single source of
+            # truth for the tool's provenance.
+            for raw_tool in raw_tools:
+                if raw_tool.metadata is None:
+                    raw_tool.metadata = {}
+                raw_tool.metadata["integration_id"] = integration_id
+
             tools = wrap_tools_with_null_filter(
                 raw_tools,
                 on_connection_error=_make_evict_callback(integration_id),
@@ -1439,6 +1448,20 @@ class MCPClient:
     async def get_tools(self, integration_id: str) -> list[BaseTool]:
         """Get tools for a connected integration."""
         return self._tools.get(integration_id, [])
+
+    def find_integration(self, tool_name: str) -> str | None:
+        """Find which connected integration owns a given tool name.
+
+        Returns the integration_id, or None if no connected MCP exposes the tool.
+        Scans the in-memory `_tools` map; with ~N integrations × ~M tools per
+        user this is sub-millisecond and avoids needing a separate reverse
+        index (which would have to stay in sync with connect/disconnect).
+        """
+        for integration_id, tools in self._tools.items():
+            for tool in tools:
+                if tool.name == tool_name:
+                    return integration_id
+        return None
 
     async def health_check(self, integration_id: str) -> dict:
         """

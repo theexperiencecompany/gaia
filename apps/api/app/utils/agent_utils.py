@@ -123,6 +123,7 @@ async def emit_subagent_tool_calls(
     stream_writer: StreamWriterCallable,
     subagent_id: str,
     tool_calls: list[ToolCall],
+    user_id: str | None = None,
 ) -> None:
     """Emit tool_data events for each tool call made inside a spawned subagent.
 
@@ -133,9 +134,13 @@ async def emit_subagent_tool_calls(
     display names match the post-execution emission path exactly — without
     that, e.g. ``vfs_read`` would render with its raw tool name as the
     category (wrench icon) instead of ``filesystem`` (FolderFileStorageIcon).
+
+    When ``user_id`` is provided, MCP tool calls resolve their integration
+    metadata (icon, integration name) via the user's MCPClient — required
+    after the cross-user-leak fix removed MCP tools from the global registry.
     """
     for tc in tool_calls:
-        entry = await format_tool_call_entry(tc)
+        entry = await format_tool_call_entry(tc, user_id=user_id)
         if entry is None:
             continue
         stream_writer({"tool_data": {**entry, "subagent_id": subagent_id}})
@@ -146,6 +151,7 @@ async def format_tool_call_entry(
     icon_url: str | None = None,
     integration_id: str | None = None,
     integration_name: str | None = None,
+    user_id: str | None = None,
 ) -> dict | None:
     """Format tool call as tool_data entry for frontend streaming.
 
@@ -158,6 +164,9 @@ async def format_tool_call_entry(
         icon_url: Optional icon URL for custom integrations
         integration_id: Optional integration ID to use as category (for custom MCPs)
         integration_name: Optional friendly name for display (e.g., 'Researcher')
+        user_id: Optional user ID used to resolve MCP tool provenance via the
+            user's MCPClient — required for MCP-tool icons / names after the
+            cross-user-leak fix moved MCP tools out of the global registry.
 
     Returns:
         Dictionary in tool_data entry format with tool_name="tool_calls_data",
@@ -167,6 +176,8 @@ async def format_tool_call_entry(
     tool_name_raw = tool_call.get("name")
     if not tool_name_raw:
         return None
+
+    is_core_tool = False  # set inside the non-special branch; safe default for short-circuits below
 
     # Special tools with custom display names and categories
     # Format: (category, display_name, show_category)
@@ -193,13 +204,18 @@ async def format_tool_call_entry(
         # called inside an MCP subagent should keep their own category so the
         # frontend renders the right icon — not the subagent's integration
         # logo. Only fall back to integration_id when the tool has no known
-        # core category (i.e. it's an MCP-namespaced tool).
+        # core category (i.e. it's an MCP tool).
         registry_category = tool_registry.get_category_of_tool(tool_name_raw)
-        is_core_tool = (
+        is_core_tool = bool(
             registry_category
             and registry_category != "unknown"
             and not registry_category.startswith("mcp_")
         )
+
+        # MCP tools no longer live in the global registry — resolve provenance
+        # via the user's MCPClient when the caller didn't pre-supply it.
+        if not integration_id and not is_core_tool and user_id:
+            integration_id = await _resolve_mcp_integration_id(tool_name_raw, user_id)
 
         if integration_id and not is_core_tool:
             tool_category = integration_id
@@ -221,7 +237,8 @@ async def format_tool_call_entry(
 
     timestamp = datetime.now(UTC).isoformat()
 
-    # Look up mcp_ui metadata from the tool registry
+    # Look up mcp_ui metadata. Try the global registry first (covers platform
+    # tools); fall back to MCPClient._tools for per-user MCP tools.
     mcp_ui: dict | None = None
     mcp_server_url: str | None = None
     try:
@@ -236,6 +253,13 @@ async def format_tool_call_entry(
                 break
     except Exception:  # nosec B110
         pass
+
+    if mcp_ui is None and user_id:
+        mcp_ui, mcp_server_url = await _resolve_mcp_ui_metadata(tool_name_raw, user_id)
+
+    # Lazy-fill icon/name for MCP tools the caller didn't pre-resolve.
+    if integration_id and not is_core_tool and not icon_url and user_id:
+        icon_url, integration_name = await _resolve_mcp_icon_name(integration_id)
 
     return {
         "tool_name": "tool_calls_data",
@@ -254,6 +278,75 @@ async def format_tool_call_entry(
         "mcp_ui": mcp_ui,
         "mcp_server_url": mcp_server_url,
     }
+
+
+async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | None:
+    """Resolve which integration owns an MCP tool via the user's MCPClient.
+
+    MCP tools no longer live in the global ToolRegistry — each MCPClient is
+    the single source of truth. Returns None if the tool isn't an MCP tool
+    or the user has no connected MCP that exposes it.
+    """
+    from app.services.mcp.mcp_client import (
+        get_mcp_client,  # noqa: PLC0415  (lazy: avoid import cycle)
+    )
+
+    try:
+        mcp_client = await get_mcp_client(user_id)
+        return mcp_client.find_integration(tool_name)
+    except Exception as e:
+        log.warning(f"MCP integration lookup failed for {tool_name}: {e}")
+        return None
+
+
+async def _resolve_mcp_ui_metadata(tool_name: str, user_id: str) -> tuple[dict | None, str | None]:
+    """Pull mcp_ui + mcp_server_url off the user's MCPClient tool object."""
+    from app.services.mcp.mcp_client import get_mcp_client  # noqa: PLC0415
+
+    try:
+        mcp_client = await get_mcp_client(user_id)
+        for tools in mcp_client._tools.values():
+            for tool in tools:
+                if tool.name == tool_name:
+                    meta = getattr(tool, "metadata", None)
+                    if meta and isinstance(meta, dict):
+                        return meta.get("mcp_ui"), meta.get("mcp_server_url")
+                    return None, None
+    except Exception as e:
+        log.warning(f"MCP UI metadata lookup failed for {tool_name}: {e}")
+    return None, None
+
+
+async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str | None]:
+    """Fetch (icon_url, integration_name) for an integration via Redis-cached Mongo."""
+    from app.constants.cache import (  # noqa: PLC0415
+        CUSTOM_INT_METADATA_CACHE_PREFIX,
+        CUSTOM_INT_METADATA_TTL,
+    )
+    from app.db.redis import get_cache, set_cache  # noqa: PLC0415
+
+    cache_key = f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:{integration_id}"
+    cached = await get_cache(cache_key)
+    if cached:
+        return cached.get("icon_url"), cached.get("integration_name")
+
+    try:
+        integration = await integrations_collection.find_one(
+            {"integration_id": integration_id}, {"name": 1, "icon_url": 1}
+        )
+        if not integration:
+            await set_cache(cache_key, {}, ttl=CUSTOM_INT_METADATA_TTL)
+            return None, None
+        metadata = {
+            "icon_url": integration.get("icon_url"),
+            "integration_id": integration_id,
+            "integration_name": integration.get("name"),
+        }
+        await set_cache(cache_key, metadata, ttl=CUSTOM_INT_METADATA_TTL)
+        return metadata["icon_url"], metadata["integration_name"]
+    except Exception as e:
+        log.warning(f"MCP icon/name lookup failed for {integration_id}: {e}")
+        return None, None
 
 
 def format_sse_response(content: str) -> str:

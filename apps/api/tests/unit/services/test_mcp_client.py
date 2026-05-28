@@ -1509,6 +1509,7 @@ class TestResolveClientCredentials:
 class TestTryRefreshToken:
     async def test_successful_refresh(self):
         token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
         token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
         token_store.get_dcr_client = AsyncMock(return_value=None)
         token_store.store_oauth_tokens = AsyncMock()
@@ -1540,6 +1541,7 @@ class TestTryRefreshToken:
 
     async def test_no_refresh_token(self):
         token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
         token_store.get_refresh_token = AsyncMock(return_value=None)
 
         result = await try_refresh_token(
@@ -1552,6 +1554,7 @@ class TestTryRefreshToken:
 
     async def test_no_token_endpoint(self):
         token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
         token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
 
         result = await try_refresh_token(token_store, INTEGRATION_ID, _make_mcp_config(), {})
@@ -1559,6 +1562,7 @@ class TestTryRefreshToken:
 
     async def test_no_client_id(self):
         token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
         token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
         token_store.get_dcr_client = AsyncMock(return_value=None)
 
@@ -1572,6 +1576,7 @@ class TestTryRefreshToken:
 
     async def test_refresh_http_error(self):
         token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
         token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
         token_store.get_dcr_client = AsyncMock(return_value=None)
 
@@ -1596,6 +1601,7 @@ class TestTryRefreshToken:
 
     async def test_refresh_exception(self):
         token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
         token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
         token_store.get_dcr_client = AsyncMock(return_value=None)
 
@@ -1611,6 +1617,7 @@ class TestTryRefreshToken:
 
     async def test_uses_dcr_client_id(self):
         token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
         token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
         token_store.get_dcr_client = AsyncMock(
             return_value={"client_id": "dcr_cid", "client_secret": "dcr_sec"}
@@ -1642,6 +1649,7 @@ class TestTryRefreshToken:
 
     async def test_refresh_returns_empty_access_token(self):
         token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
         token_store.get_refresh_token = AsyncMock(return_value="ref")
         token_store.get_dcr_client = AsyncMock(return_value=None)
 
@@ -2667,7 +2675,15 @@ class TestMCPClientSafeConnect:
 
         assert result is None
 
-    async def test_resets_status_on_failure(self):
+    async def test_does_not_reset_status_on_transient_failure(self):
+        """Transient batch-connect blips must not wipe a still-valid integration.
+
+        PR #719 deliberately removed the eager status reset from `_safe_connect`
+        — only `_do_connect`'s own classification path resets on terminal auth
+        failures. A bare exception here represents a transient hiccup and the
+        user's tokens are still good; flipping status to 'created' would force
+        them to reconnect every blip. Assert no update happens.
+        """
         client = MCPClient(user_id=USER_ID)
         client.connect = AsyncMock(side_effect=Exception("Connection error"))
 
@@ -2677,7 +2693,7 @@ class TestMCPClientSafeConnect:
         ) as mock_update:
             await client._safe_connect(INTEGRATION_ID)
 
-        mock_update.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "created")
+        mock_update.assert_not_awaited()
 
     async def test_handles_status_reset_error(self):
         client = MCPClient(user_id=USER_ID)

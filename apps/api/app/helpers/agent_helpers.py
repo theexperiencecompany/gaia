@@ -17,11 +17,9 @@ from langsmith import traceable
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
 from app.agents.core.subagents.registry import get_subagent_by_id
-from app.agents.tools.core.registry import get_tool_registry
 from app.config.langfuse import build_langfuse_callback
 from app.config.settings import settings
 from app.constants.cache import (
-    CUSTOM_INT_METADATA_CACHE_PREFIX,
     CUSTOM_INT_METADATA_TTL,
     HANDOFF_METADATA_CACHE_PREFIX,
 )
@@ -45,66 +43,6 @@ from app.utils.agent_utils import (
     process_custom_event_for_tools,
 )
 from shared.py.wide_events import log
-
-
-async def get_custom_integration_metadata(tool_name: str, user_id: str) -> dict:
-    """Look up icon_url, integration_id, integration_name for custom MCP tools.
-
-    Uses Redis cache to avoid repeated MongoDB queries during a conversation.
-    Cache is keyed by integration_id (not tool_name) since multiple tools share
-    the same integration metadata.
-
-    Args:
-        tool_name: Name of the tool being called
-        user_id: User ID for MCP category resolution
-
-    Returns:
-        Dict with icon_url, integration_id, integration_name if found,
-        empty dict otherwise
-    """
-
-    tool_registry = await get_tool_registry()
-    tool_category = tool_registry.get_category_of_tool(tool_name)
-
-    if not tool_category:
-        return {}
-
-    # MCP categories are always `mcp_{integration_id}` since the per-user
-    # `mcp_{integration_id}_{user_id}` format was removed.
-    if not tool_category.startswith("mcp_"):
-        return {}
-    integration_id = tool_category[4:]
-
-    # Check Redis cache first
-    cache_key = f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:{integration_id}"
-    cached = await get_cache(cache_key)
-    if cached:
-        return cached
-
-    # Cache miss - query MongoDB
-    try:
-        integration = await integrations_collection.find_one(
-            {"integration_id": integration_id}, {"name": 1, "icon_url": 1}
-        )
-
-        if not integration:
-            # Cache negative result too (empty dict)
-            await set_cache(cache_key, {}, ttl=CUSTOM_INT_METADATA_TTL)
-            return {}
-
-        metadata = {
-            "icon_url": integration.get("icon_url"),
-            "integration_id": integration_id,
-            "integration_name": integration.get("name"),
-        }
-
-        # Cache for 1 hour
-        await set_cache(cache_key, metadata, ttl=CUSTOM_INT_METADATA_TTL)
-        return metadata
-
-    except Exception as e:
-        log.warning(f"Failed to lookup custom integration metadata: {e}")
-        return {}
 
 
 async def get_handoff_metadata(subagent_id: str) -> dict:
@@ -558,29 +496,28 @@ async def execute_graph_silent(
 
                             # Look up metadata based on tool type
                             tool_name = tc.get("name")
-                            tool_metadata = {}
+                            tool_metadata: dict = {}
 
                             # TODO(remove): PR492/CodeRabbit - todo tools already stream todo_progress; suppress tool_data noise.
                             # Safe: doesn't affect agent state; only avoids redundant UI events.
                             if tool_name in {"plan_tasks", "update_tasks"}:
                                 continue
 
+                            # Handoff metadata stays pre-resolved here (it's a special
+                            # subagent-display path). MCP tool metadata is now resolved
+                            # inside format_tool_call_entry when user_id is passed.
                             if tool_name == "handoff":
                                 args = tc.get("args", {})
                                 subagent_id = args.get("subagent_id", "")
                                 if subagent_id:
                                     tool_metadata = await get_handoff_metadata(subagent_id)
-                            elif tool_name and user_id:
-                                tool_metadata = await get_custom_integration_metadata(
-                                    tool_name, user_id
-                                )
 
-                            # Format tool_data entry (same as streaming)
                             tool_entry = await format_tool_call_entry(
                                 tc,
                                 icon_url=tool_metadata.get("icon_url"),
                                 integration_id=tool_metadata.get("integration_id"),
                                 integration_name=tool_metadata.get("integration_name"),
+                                user_id=user_id,
                             )
                             if tool_entry:
                                 tool_data["tool_data"].append(tool_entry)
@@ -724,17 +661,16 @@ async def execute_graph_streaming(
 
                             # Look up metadata based on tool type
                             tool_name = tc.get("name")
-                            tool_metadata = {}
+                            tool_metadata: dict = {}
 
+                            # Handoff metadata stays pre-resolved here (it's a special
+                            # subagent-display path). MCP tool metadata is now resolved
+                            # inside format_tool_call_entry when user_id is passed.
                             if tool_name == "handoff":
                                 args = tc.get("args", {})
                                 subagent_id = args.get("subagent_id", "")
                                 if subagent_id:
                                     tool_metadata = await get_handoff_metadata(subagent_id)
-                            elif tool_name and user_id:
-                                tool_metadata = await get_custom_integration_metadata(
-                                    tool_name, user_id
-                                )
 
                             # Format and emit tool_data entry
                             tool_entry = await format_tool_call_entry(
@@ -742,6 +678,7 @@ async def execute_graph_streaming(
                                 icon_url=tool_metadata.get("icon_url"),
                                 integration_id=tool_metadata.get("integration_id"),
                                 integration_name=tool_metadata.get("integration_name"),
+                                user_id=user_id,
                             )
                             if tool_entry:
                                 yield format_sse_data({"tool_data": tool_entry})
