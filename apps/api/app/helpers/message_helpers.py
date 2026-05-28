@@ -166,7 +166,8 @@ async def _get_tracked_todos_section(user_id: str, active_todo_id: str | None = 
         if cached:
             return cached if isinstance(cached, str) else str(cached)
     except Exception:
-        pass  # Cache miss is fine
+        # Cache miss or Redis hiccup — fall through to the live read.
+        pass  # nosec B110
 
     summary = await tracked_todo_service.get_active_tracked_summary(user_id)
 
@@ -174,7 +175,8 @@ async def _get_tracked_todos_section(user_id: str, active_todo_id: str | None = 
         try:
             await set_cache(cache_key, summary, ttl=60)
         except Exception:
-            pass
+            # Cache write failure must not block the summary path; next call retries.
+            pass  # nosec B110
 
     return summary
 

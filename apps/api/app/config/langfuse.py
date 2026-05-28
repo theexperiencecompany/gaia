@@ -22,8 +22,19 @@ from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 
 
 def _langfuse_configured() -> bool:
-    return bool(
-        settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY and settings.LANGFUSE_HOST
+    """True only when all three Langfuse env vars are non-blank.
+
+    Matches `LazyLoader`'s missing-value semantics — whitespace-only strings
+    count as missing, so callbacks stay disabled when the provider itself
+    skipped initialization.
+    """
+    return all(
+        isinstance(value, str) and value.strip()
+        for value in (
+            settings.LANGFUSE_PUBLIC_KEY,
+            settings.LANGFUSE_SECRET_KEY,
+            settings.LANGFUSE_HOST,
+        )
     )
 
 
@@ -39,6 +50,7 @@ def _langfuse_configured() -> bool:
     strategy=MissingKeyStrategy.SILENT,
 )
 def init_langfuse() -> Langfuse:
+    """Construct the process-wide Langfuse client used by the LangChain callback."""
     # Sentry's OTel integration (sentry-sdk[langgraph]) sets the global
     # TracerProvider before us, so the SDK's `environment` constructor kwarg
     # never reaches the OTel Resource. The env var is the path the SDK reads

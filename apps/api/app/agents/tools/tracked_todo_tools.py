@@ -41,7 +41,8 @@ async def _get_user_tz(user_id: str) -> str:
                 ZoneInfo(tz_name)
                 return tz_name
             except Exception:
-                pass
+                # Stored tz is invalid — fall through to the outer except which logs.
+                pass  # nosec B110
     except Exception as e:
         log.warning("tracked_todo.user_tz_lookup_failed", user_id=user_id, error=str(e))
     log.warning("tracked_todo.user_tz_fallback_utc", user_id=user_id)
