@@ -292,10 +292,14 @@ async function getIntegrationItems(baseUrl: string): Promise<FeedItem[]> {
           { next: { revalidate: 3600 } },
         );
         if (!response.ok) return { items: [], total: 0, hasMore: false };
-        const data = await response.json();
+        const data = (await response.json()) as {
+          integrations?: IntegrationEntry[];
+          total?: number;
+          hasMore?: boolean;
+        };
         return {
-          items: data.integrations || [],
-          total: data.total || 0,
+          items: data.integrations ?? [],
+          total: data.total ?? 0,
           hasMore: data.hasMore !== false,
         };
       },

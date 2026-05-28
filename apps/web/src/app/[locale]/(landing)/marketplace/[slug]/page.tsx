@@ -4,6 +4,12 @@ import { cache } from "react";
 
 import JsonLd from "@/components/seo/JsonLd";
 import { getComparison } from "@/features/comparisons/data/comparisonsData";
+import type { IntegrationConfigResponse } from "@/features/integrations/api/integrationsApi";
+import type {
+  CommunityIntegration,
+  CommunityIntegrationsResponse,
+  PublicIntegrationResponse,
+} from "@/features/integrations/types";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -19,31 +25,36 @@ export const revalidate = 60;
 
 // Fetch integration data for metadata and page
 // Backend accepts both slug and UUID for backward compatibility
-const getIntegration = cache(async (slug: string) => {
-  const baseUrl = getServerApiBaseUrl();
-  if (!baseUrl) return null;
+const getIntegration = cache(
+  async (slug: string): Promise<PublicIntegrationResponse | null> => {
+    const baseUrl = getServerApiBaseUrl();
+    if (!baseUrl) return null;
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-    const response = await fetch(`${baseUrl}/integrations/public/${slug}`, {
-      next: { revalidate: 60 },
-      signal: controller.signal,
-    });
+      const response = await fetch(`${baseUrl}/integrations/public/${slug}`, {
+        next: { revalidate: 60 },
+        signal: controller.signal,
+      });
 
-    clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
 
-    if (!response.ok) return null;
-    return response.json();
-  } catch (error) {
-    console.error(`[marketplace/${slug}] Failed to fetch integration:`, error);
-    return null;
-  }
-});
+      if (!response.ok) return null;
+      return (await response.json()) as PublicIntegrationResponse;
+    } catch (error) {
+      console.error(
+        `[marketplace/${slug}] Failed to fetch integration:`,
+        error,
+      );
+      return null;
+    }
+  },
+);
 
 // Fetch all integrations for static generation
-async function getAllIntegrations() {
+async function getAllIntegrations(): Promise<CommunityIntegration[]> {
   const baseUrl = getServerApiBaseUrl();
   if (!baseUrl) return [];
 
@@ -56,25 +67,28 @@ async function getAllIntegrations() {
         { next: { revalidate: 60 } },
       );
       if (!response.ok) return [];
-      const data = await response.json();
-      return data.integrations || [];
+      const data = (await response.json()) as CommunityIntegrationsResponse;
+      return data.integrations ?? [];
     }
 
     const { fetchAllPaginated } = await import("@/lib/fetchAll");
-    const allIntegrations = await fetchAllPaginated(async (limit, offset) => {
-      const response = await fetch(
-        `${baseUrl}/integrations/community?limit=${limit}&offset=${offset}`,
-        { next: { revalidate: 60 } },
-      );
-      if (!response.ok) return { items: [], total: 0, hasMore: false };
+    const allIntegrations = await fetchAllPaginated<CommunityIntegration>(
+      async (limit, offset) => {
+        const response = await fetch(
+          `${baseUrl}/integrations/community?limit=${limit}&offset=${offset}`,
+          { next: { revalidate: 60 } },
+        );
+        if (!response.ok) return { items: [], total: 0, hasMore: false };
 
-      const data = await response.json();
-      return {
-        items: data.integrations || [],
-        total: data.total || 0,
-        hasMore: data.hasMore !== false,
-      };
-    }, 100);
+        const data = (await response.json()) as CommunityIntegrationsResponse;
+        return {
+          items: data.integrations ?? [],
+          total: data.total ?? 0,
+          hasMore: data.hasMore !== false,
+        };
+      },
+      100,
+    );
 
     return allIntegrations;
   } catch (error) {
@@ -92,8 +106,8 @@ async function getNativeIntegrationSlugs(): Promise<string[]> {
       next: { revalidate: 60 },
     });
     if (!response.ok) return [];
-    const data = await response.json();
-    return (data.integrations as Array<{ id: string; available?: boolean }>)
+    const data = (await response.json()) as IntegrationConfigResponse;
+    return data.integrations
       .filter((i) => i.id && i.available !== false)
       .map((i) => i.id);
   } catch (error) {
@@ -291,7 +305,7 @@ export default async function IntegrationPage({ params }: Props) {
       price: "0",
       priceCurrency: "USD",
     },
-    ...(integration.creator && {
+    ...(integration.creator?.name && {
       author: {
         "@type": "Person" as const,
         name: integration.creator.name,
