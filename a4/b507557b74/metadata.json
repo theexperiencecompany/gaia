@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "a4b507557b74",
+  "strategy": "manual-commit",
+  "branch": "feat/rybbit-analytics",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "apps/web/.env.example",
+    "apps/web/src/layouts/AnalyticsLayout.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a4/b507557b74/0/metadata.json",
+      "transcript": "/a4/b507557b74/0/full.jsonl",
+      "content_hash": "/a4/b507557b74/0/content_hash.txt",
+      "prompt": "/a4/b507557b74/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 63,
+    "cache_creation_tokens": 97792,
+    "cache_read_tokens": 3142476,
+    "output_tokens": 20546,
+    "api_call_count": 48
+  }
+}

@@ -1,0 +1,9 @@
+https://gaia-home-server.taila76294.ts.net/previews this url is accessible. https://gaia-home-server.taila76294.ts.net:8102/ but this site doesn't work for some reason. we recently moved from porkbun to cloudflare, does this cause this? what did we mess up? see the ssh in gaiua home server to figure it out!
+
+---
+
+but what did we even mess up??? like you're over complicating it a bit for me. how do we fix this whats the best approach??
+
+---
+
+yeah but seems lke http://gaia-home-server.taila76294.ts.net:8102/ doesn't work either!!!
