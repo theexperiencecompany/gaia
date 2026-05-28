@@ -168,8 +168,7 @@ async def _get_tracked_todos_section(user_id: str, active_todo_id: str | None = 
     except Exception as cache_err:
         log.warning(
             "tracked_todos.summary_cache_read_failed",
-            user_id=user_id,
-            cache_key=cache_key,
+            cache_namespace="tracked_todos.summary",
             error=str(cache_err),
         )
 
@@ -181,8 +180,7 @@ async def _get_tracked_todos_section(user_id: str, active_todo_id: str | None = 
         except Exception as cache_err:
             log.warning(
                 "tracked_todos.summary_cache_write_failed",
-                user_id=user_id,
-                cache_key=cache_key,
+                cache_namespace="tracked_todos.summary",
                 error=str(cache_err),
             )
 

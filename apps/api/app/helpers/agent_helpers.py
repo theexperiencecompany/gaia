@@ -408,8 +408,12 @@ def build_agent_config(
     )
 
     # Explicit kwargs win over what was inherited from the parent's configurable.
-    effective_trace_id = langfuse_trace_id or (base_configurable or {}).get("langfuse_trace_id")
-    effective_tags = langfuse_tags or (base_configurable or {}).get("langfuse_tags")
+    # `is not None` (not `or`) so callers can pass [] to intentionally clear tags.
+    inherited = base_configurable or {}
+    effective_trace_id = (
+        langfuse_trace_id if langfuse_trace_id is not None else inherited.get("langfuse_trace_id")
+    )
+    effective_tags = langfuse_tags if langfuse_tags is not None else inherited.get("langfuse_tags")
 
     configurable = {
         "thread_id": thread_id or conversation_id,

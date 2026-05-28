@@ -1,11 +1,11 @@
 """Business logic for per-message chat feedback."""
 
-from fastapi import HTTPException, status
 from langfuse import get_client
 
 from app.config.langfuse import trace_id_for_message
 from app.db.mongodb.collections import conversations_collection
 from app.models.feedback_models import MessageFeedbackResponse
+from app.utils.errors import AppError
 
 SCORE_NAME = "user_feedback"
 
@@ -25,10 +25,7 @@ async def create_message_feedback_service(
         {"conversation_id": 1},
     )
     if conversation is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Message not found",
-        )
+        raise AppError(message="Message not found", status_code=404)
 
     trace_id = trace_id_for_message(message_id)
     if trace_id is None:
