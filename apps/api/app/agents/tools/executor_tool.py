@@ -428,7 +428,8 @@ async def _remove_queued_by_ids(
     conversation_id: str,
 ) -> list[str]:
     """Selectively remove specific task_ids from the queue."""
-    assert redis_cache.client  # noqa: S101 — caller checks
+    # Type-narrowing assertion — caller guarantees redis_cache.client is not None.
+    assert redis_cache.client  # noqa: S101  # nosec B101
 
     all_items = await redis_cache.client.lrange(queue_key, 0, -1)
     keep: list[str] = []

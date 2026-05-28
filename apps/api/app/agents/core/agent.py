@@ -22,6 +22,8 @@ from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.messages import construct_langchain_messages
+from app.config.langfuse import trace_id_for_message
+from app.config.settings import settings
 from app.helpers.agent_helpers import (
     build_agent_config,
     build_initial_state,
@@ -46,6 +48,8 @@ async def _core_agent_logic(
     trigger_context: dict | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     source: str | None = None,
+    langfuse_trace_id: str | None = None,
+    langfuse_tags: list[str] | None = None,
 ):
     """Core agent initialization logic shared between streaming and silent execution modes.
 
@@ -59,9 +63,10 @@ async def _core_agent_logic(
         user: User information dictionary with ID, email, and name
         user_time: Current datetime in user's timezone
         user_model_config: Optional model configuration for inference
-        access_token: Optional OAuth access token for authenticated requests
-        refresh_token: Optional OAuth refresh token for token renewal
         trigger_context: Optional context data from workflow triggers
+        langfuse_trace_id: Seed for the Langfuse trace; forwarded into the
+            config metadata + configurable so child agents inherit it.
+        langfuse_tags: Tags applied to the Langfuse trace root.
 
     Returns:
         Tuple containing:
@@ -128,6 +133,8 @@ async def _core_agent_logic(
         tool_category=request.toolCategory,
         active_todo_id=active_todo_id,
         execution_mode=execution_mode,
+        langfuse_trace_id=langfuse_trace_id,
+        langfuse_tags=langfuse_tags,
     )
 
     log.set(
@@ -153,6 +160,7 @@ async def call_agent(
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     stream_id: str | None = None,
     user_message_id: str | None = None,
+    bot_message_id: str | None = None,
     source: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
@@ -163,10 +171,15 @@ async def call_agent(
                    When provided, streaming can be cancelled via stream_manager.
         user_message_id: Optional user message ID for reply-to linking in
                          background notifications.
+        bot_message_id: Assistant message ID used to seed the Langfuse
+                        trace_id so /messages/{id}/feedback can re-derive
+                        the same trace_id to attach scores.
 
     Returns an AsyncGenerator that yields SSE-formatted streaming data.
     """
     try:
+        langfuse_trace_id = trace_id_for_message(bot_message_id) if bot_message_id else None
+
         graph, initial_state, config = await _core_agent_logic(
             request,
             conversation_id,
@@ -175,6 +188,8 @@ async def call_agent(
             user_model_config,
             usage_metadata_callback=usage_metadata_callback,
             source=source,
+            langfuse_trace_id=langfuse_trace_id,
+            langfuse_tags=["comms_agent", settings.ENV],
         )
 
         # Add stream_id to config for cancellation checking

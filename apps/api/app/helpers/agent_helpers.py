@@ -18,6 +18,7 @@ from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
+from app.config.langfuse import build_langfuse_callback
 from app.config.settings import settings
 from app.constants.cache import (
     CUSTOM_INT_METADATA_CACHE_PREFIX,
@@ -269,6 +270,10 @@ def _build_agent_callbacks(
             ),
         )
 
+    langfuse_callback = build_langfuse_callback()
+    if langfuse_callback is not None:
+        callbacks.append(langfuse_callback)
+
     if usage_metadata_callback:
         callbacks.append(usage_metadata_callback)
 
@@ -352,6 +357,8 @@ def build_agent_config(
     active_todo_id: str | None = None,
     execution_mode: str | None = None,
     source: str | None = None,
+    langfuse_trace_id: str | None = None,
+    langfuse_tags: list[str] | None = None,
 ) -> dict:
     """Build configuration for graph execution with optional authentication tokens.
 
@@ -372,6 +379,10 @@ def build_agent_config(
             and all handoff subagents it spawns. All agents in the chain resolve VFS
             paths relative to the executor workspace using this ID. When provided via
             base_configurable it is inherited automatically.
+        langfuse_trace_id: Bind spans to this Langfuse trace; inherits from
+            `base_configurable["langfuse_trace_id"]` when omitted so the
+            executor lands on the comms trace.
+        langfuse_tags: Tags for the Langfuse trace; same inheritance rule.
 
     Returns:
         Configuration dictionary formatted for LangGraph execution with configurable
@@ -396,6 +407,14 @@ def build_agent_config(
         },
     )
 
+    # Explicit kwargs win over what was inherited from the parent's configurable.
+    # `is not None` (not `or`) so callers can pass [] to intentionally clear tags.
+    inherited = base_configurable or {}
+    effective_trace_id = (
+        langfuse_trace_id if langfuse_trace_id is not None else inherited.get("langfuse_trace_id")
+    )
+    effective_tags = langfuse_tags if langfuse_tags is not None else inherited.get("langfuse_tags")
+
     configurable = {
         "thread_id": thread_id or conversation_id,
         "user_id": user.get("user_id"),
@@ -419,10 +438,26 @@ def build_agent_config(
         "__pinned_skills__": resolved["pinned_skills"],
     }
 
+    # Stash in configurable so child agents (spawned via asyncio.create_task)
+    # re-emit the same trace_id from their own build_agent_config call.
+    if effective_trace_id:
+        configurable["langfuse_trace_id"] = effective_trace_id
+    if effective_tags:
+        configurable["langfuse_tags"] = effective_tags
+
+    metadata: dict = {"user_id": user.get("user_id")}
+    if effective_trace_id:
+        metadata["langfuse_trace_id"] = effective_trace_id
+        metadata["langfuse_session_id"] = conversation_id
+        if user.get("user_id"):
+            metadata["langfuse_user_id"] = user["user_id"]
+        if effective_tags:
+            metadata["langfuse_tags"] = effective_tags
+
     return {
         "configurable": configurable,
         "recursion_limit": AGENT_RECURSION_LIMIT,
-        "metadata": {"user_id": user.get("user_id")},
+        "metadata": metadata,
         "callbacks": callbacks,
         "agent_name": agent_name,
     }

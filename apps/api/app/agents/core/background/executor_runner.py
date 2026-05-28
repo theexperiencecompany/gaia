@@ -378,6 +378,9 @@ async def run_executor_background(
          close the SSE.
       2. _deliver_bg_notification invokes comms with the executor result
          as internal context and posts the user-facing message via WS.
+
+    Inherits `langfuse_trace_id` from the parent's `configurable` so this run's
+    LLM/tool spans land on the same Langfuse trace as comms.
     """
     user = _user_from_configurable(configurable)
     result_text = ""

@@ -40,8 +40,13 @@ async def _get_user_tz(user_id: str) -> str:
             try:
                 ZoneInfo(tz_name)
                 return tz_name
-            except Exception:
-                pass
+            except Exception as tz_err:
+                log.warning(
+                    "tracked_todo.user_tz_invalid",
+                    user_id=user_id,
+                    tz_name=tz_name,
+                    error=str(tz_err),
+                )
     except Exception as e:
         log.warning("tracked_todo.user_tz_lookup_failed", user_id=user_id, error=str(e))
     log.warning("tracked_todo.user_tz_fallback_utc", user_id=user_id)

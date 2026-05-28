@@ -104,6 +104,10 @@ const config: KnipConfig = {
     // galleries above, so it reads as unused once those are ignored.
     "apps/web/src/components/shared/ErrorBoundary.tsx",
 
+    // ToolCallsSection is consumed only by the /dev/tool-gallery page
+    // (ignored above), so knip can't see the import. Kept for the gallery.
+    "apps/web/src/features/chat/components/bubbles/bot/ToolCallsSection.tsx",
+
     // Wake-word ("Hey GAIA"): recently merged, currently wired only into the
     // dev/wake-word gallery (ignored above). Work-in-progress, not dead.
     "apps/web/src/features/wake-word/**",

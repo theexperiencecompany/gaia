@@ -37,6 +37,7 @@ from app.agents.llm.client import register_llm_providers
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.store import init_embeddings
 from app.config.cloudinary import init_cloudinary
+from app.config.langfuse import init_langfuse
 from app.config.opik import init_opik
 from app.config.posthog import init_posthog
 from app.config.settings import settings
@@ -201,6 +202,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         init_vfs,
         init_posthog,
         init_opik,
+        init_langfuse,
     )
 
     for register in registrations:
