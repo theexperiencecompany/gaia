@@ -1,0 +1,41 @@
+but what even went wrong in the first place? it was working gredat before???
+
+---
+
+but what even went wrong in the first place? it was working gredat before??? how will we ensure this doesnt happen in the future
+
+---
+
+see the configuration in https://github.com/theexperiencecompany/gaia-previewctl https://github.com/theexperiencecompany/staging-infra it was wrogking great. what is changed in our current configuration? i dont want to change anything. i want to revert the bullshit we fucked up that led to this issue in the first place. bcz the default state of those 2 repos should wor
+
+---
+
+gaia sudo password is paneerpiko and aryan is theexperiencecompany. y do it yourself ensure it all works 100% perfectly
+
+---
+
+is there anything wrong with this?
+
+---
+
+no but what did we fuck up with our code changes. everything seemed to be working fine before our change.s so what messed it uo?
+
+---
+
+so i shouldnt merge the prs?
+
+---
+
+so what if i dont merge those? i dont want to merge them
+
+---
+
+dude what is the best approach. what should we do man
+
+---
+
+alirght so yes i want cert auto renewal
+
+---
+
+mate i want you to test every single thing extensively by doing it.
