@@ -233,8 +233,9 @@ class WorkflowService:
                 selected_integrations=request.selected_integrations,
             )
 
-            # creator is hydration-only on response; never persist it.
-            workflow_dict = workflow.model_dump(mode="json", exclude={"creator"})
+            # Python mode keeps datetimes native (BSON dates) so the scheduler's
+            # `scheduled_at: {"$lte": now}` scan can match. creator is response-only.
+            workflow_dict = workflow.model_dump(exclude={"creator"})
             workflow_dict["_id"] = workflow_dict["id"]
 
             if workflow_dict.get("is_public") and not workflow_dict.get("slug"):

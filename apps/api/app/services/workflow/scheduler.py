@@ -14,7 +14,7 @@ from app.models.scheduler_models import (
     ScheduledTaskStatus,
     TaskExecutionResult,
 )
-from app.models.workflow_models import Workflow
+from app.models.workflow_models import TriggerType, Workflow
 from app.services.scheduler_service import BaseSchedulerService
 from shared.py.wide_events import log
 
@@ -38,6 +38,12 @@ class WorkflowScheduler(BaseSchedulerService):
     def get_job_name(self) -> str:
         """Get the ARQ job name for workflow processing."""
         return "execute_workflow_by_id"
+
+    def _build_job_args(self, task_id: str) -> tuple:
+        """Mark scheduler-originated fires so the executor re-arms the next
+        occurrence; manual "run now" executions pass their own context and so are
+        never tagged as scheduled."""
+        return (task_id, {"trigger_type": TriggerType.SCHEDULE.value})
 
     async def get_task(self, task_id: str, user_id: str | None = None) -> Workflow | None:
         """

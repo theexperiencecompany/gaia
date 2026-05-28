@@ -41,6 +41,7 @@ from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
     TriggerType,
+    Workflow,
 )
 from app.services.notification_service import notification_service
 from app.services.todos.todo_service import TodoService
@@ -185,6 +186,22 @@ async def process_workflow_generation_task(
             raise
 
 
+async def _rearm_if_scheduled(
+    scheduler: WorkflowScheduler, workflow: Workflow | None, context: dict | None
+) -> None:
+    """Arm the next occurrence for cron-scheduled recurring workflows.
+
+    Only scheduler-originated fires (trigger_type=schedule) advance the schedule;
+    manual and integration-triggered runs must not shift it.
+    """
+    if workflow is None or not workflow.repeat:
+        return
+    trigger_type = context.get("trigger_type") if context else None
+    if trigger_type != TriggerType.SCHEDULE.value:
+        return
+    await scheduler.handle_recurring_task(workflow, (workflow.occurrence_count or 0) + 1)
+
+
 async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | None = None) -> str:
     """
     Execute a workflow by ID with proper execution count tracking.
@@ -269,6 +286,9 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                 summary=summary,
                 conversation_id=conversation_id,
             )
+
+            # Arm the next occurrence (scheduled recurring workflows only).
+            await _rearm_if_scheduled(scheduler, workflow, context)
 
             return f"Workflow {workflow_id} executed successfully with {len(execution_messages)} messages"
 
@@ -372,6 +392,13 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                     )
                 except Exception as notify_err:
                     log.debug("Failed to send failure notification: %s" % notify_err)
+
+            # Still arm the next occurrence — a transient failure (rate limit, LLM
+            # error) must not permanently kill a recurring workflow.
+            try:
+                await _rearm_if_scheduled(scheduler, workflow, context)
+            except Exception as rearm_err:
+                log.error("Failed to re-arm workflow %s: %s" % (workflow_id, rearm_err))
 
             return "Error executing workflow %s: %s" % (workflow_id, str(e))
 

@@ -138,7 +138,7 @@ class BaseSchedulerService(ABC):
 
             # Handle recurring tasks
             if task.repeat:
-                await self._handle_recurring_task(task, occurrence_count)
+                await self.handle_recurring_task(task, occurrence_count)
             else:
                 # One-time task - mark as completed
                 await self.update_task_status(
@@ -202,9 +202,13 @@ class BaseSchedulerService(ABC):
 
         log.info(f"Scheduled {scheduled_count} pending tasks")
 
-    async def _handle_recurring_task(self, task: BaseScheduledTask, occurrence_count: int):
+    async def handle_recurring_task(self, task: BaseScheduledTask, occurrence_count: int):
         """
-        Handle rescheduling logic for recurring tasks.
+        Reschedule the next occurrence of a recurring task, or mark it completed
+        once max_occurrences / stop_after is reached.
+
+        Shared by the reminder path (via process_task_execution) and the workflow
+        executor, so recurrence behaves identically for both.
 
         Args:
             task: The task to handle
@@ -233,7 +237,9 @@ class BaseSchedulerService(ABC):
             user_timezone = trigger_config.timezone
             log.debug(f"Using workflow timezone: {user_timezone}")
 
-        next_run = get_next_run_time(task.repeat, task.scheduled_at, user_timezone)
+        # Advance from now, not from a (possibly stale) scheduled_at, so a dormant
+        # task resumes at its next future occurrence instead of replaying missed runs.
+        next_run = get_next_run_time(task.repeat, datetime.now(UTC), user_timezone)
 
         # Check if we should continue scheduling
         should_continue = True
@@ -255,15 +261,14 @@ class BaseSchedulerService(ABC):
                 log.info(f"Task {task.id} reached stop_after date ({stop_after})")
 
         if should_continue:
-            # Update and reschedule
-            await self.update_task_status(
-                task.id,
-                ScheduledTaskStatus.SCHEDULED,
-                {
-                    "scheduled_at": next_run.isoformat(),
-                    "occurrence_count": occurrence_count,
-                },
-            )
+            # Store scheduled_at as a native datetime so the `$lte` scan can match it.
+            update_fields: dict[str, Any] = {
+                "scheduled_at": next_run,
+                "occurrence_count": occurrence_count,
+            }
+            if trigger_config is not None and hasattr(trigger_config, "next_run"):
+                update_fields["trigger_config.next_run"] = next_run
+            await self.update_task_status(task.id, ScheduledTaskStatus.SCHEDULED, update_fields)
             await self.reschedule_task(task.id, next_run)
             log.info(f"Rescheduled recurring task {task.id} for {next_run}")
         else:
@@ -274,6 +279,10 @@ class BaseSchedulerService(ABC):
                 {"occurrence_count": occurrence_count},
             )
             log.info(f"Completed recurring task {task.id}")
+
+    def _build_job_args(self, task_id: str) -> tuple:
+        """Positional args passed to the ARQ job. Subclasses may add context."""
+        return (task_id,)
 
     async def _enqueue_task(self, task_id: str, scheduled_at: datetime) -> bool:
         """
@@ -317,10 +326,15 @@ class BaseSchedulerService(ABC):
         )
 
         job_name = self.get_job_name()
-        job = await self.arq_pool.enqueue_job(job_name, task_id, _defer_until=scheduled_at)
+        # Deterministic job id: ARQ dedupes a task+fire-time so concurrent scans or
+        # repeated enqueues can't stack duplicate jobs for the same occurrence.
+        job_id = f"{job_name}:{task_id}:{int(scheduled_at.timestamp())}"
+        job = await self.arq_pool.enqueue_job(
+            job_name, *self._build_job_args(task_id), _job_id=job_id, _defer_until=scheduled_at
+        )
 
         if not job:
-            log.error(f"Failed to enqueue task {task_id}")
+            log.warning(f"Task {task_id} already enqueued for {scheduled_at.isoformat()}; skipping")
             return False
 
         log.set(arq_job_id=job.job_id, arq_job_name=job_name)
