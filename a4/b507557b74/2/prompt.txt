@@ -1,0 +1,1107 @@
+ssh to my home server. help me setup https://beszel.dev/guide/getting-started
+
+---
+
+OAuth 2 / OIDC support
+Beszel supports OpenID Connect and many OAuth2 authentication providers.
+
+Please see the documentation for instructions. https://beszel.dev/guide/oauth help me configure this with google workspace
+
+---
+
+public key> ssh-ed25519 REDACTED/c token: REDACTED
+
+---
+
+alright help me set this up on my hetzner production vm now. but before, why is beszel not showing my podman containers?? Command Palette
+Search for a command to run...
+
+
+Search
+Language
+
+
+Add System
+gaia-home-server
+Up
+localhost
+42 hours
+Ubuntu 24.04.4 LTS
+Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz
+47 GB
+
+1 hour
+
+CPU Usage
+Average system-wide CPU utilization
+
+CPU Usage
+0%
+4%
+8%
+15%
+4:40 PM
+4:50 PM
+5:00 PM
+5:10 PM
+5:20 PM
+5:30 PM
+Docker CPU Usage
+Average CPU utilization of containers
+
+Filter...
+0%
+0.3%
+0.6%
+1.1%
+4:40 PM
+4:50 PM
+5:00 PM
+5:10 PM
+5:20 PM
+5:30 PM
+Memory Usage
+Precise utilization at the recorded time
+
+0 B
+15 GB
+30 GB
+47 GB
+4:40 PM
+4:50 PM
+5:00 PM
+5:10 PM
+5:20 PM
+5:30 PM
+Docker Memory Usage
+Memory usage of docker containers
+
+Filter...
+0 B
+500 MB
+1 GB
+2 GB
+4:40 PM
+4:50 PM
+5:00 PM
+5:10 PM
+5:20 PM
+5:30 PM
+Disk Usage
+Usage of root partition
+
+0 B
+150 GB
+300 GB
+456 GB
+4:40 PM
+4:50 PM
+5:00 PM
+5:10 PM
+5:20 PM
+5:30 PM
+Disk I/O
+Throughput of root filesystem
+
+Disk I/O
+0 B/s
+15 MB/s
+29 MB/s
+43 MB/s
+58 MB/s
+4:40 PM
+4:50 PM
+5:00 PM
+5:10 PM
+5:20 PM
+5:30 PM
+Bandwidth
+Network traffic of public interfaces
+
+Network traffic of public interfaces
+0 B/s
+1.4 MB/s
+2.9 MB/s
+4.3 MB/s
+5.7 MB/s
+4:40 PM
+4:50 PM
+5:00 PM
+5:10 PM
+5:20 PM
+5:30 PM
+Docker Network I/O
+Network traffic of docker containers
+
+Filter...
+0 B/s
+15 KB/s
+30 KB/s
+48 KB/s
+4:40 PM
+4:50 PM
+5:00 PM
+5:10 PM
+5:20 PM
+5:30 PM
+Swap Usage
+Swap space used by the system
+
+0 B
+2 GB
+4 GB
+6 GB
+8 GB
+4:40 PM
+4:50 PM
+5:00 PM
+5:10 PM
+5:20 PM
+5:30 PM
+Load Average
+System load averages over time
+
+0
+0.45
+0.9
+1.35
+1.8
+4:40 PM
+4:50 PM
+5:00 PM
+5:10 PM
+5:20 PM
+5:30 PM
+1 min
+5 min
+15 min
+Temperature
+Temperatures of system sensors
+
+Filter...
+27 °C
+36 °C
+45 °C
+54 °C
+63 °C
+4:35 PM
+4:40 PM
+4:45 PM
+4:50 PM
+4:55 PM
+5:00 PM
+5:05 PM
+5:10 PM
+5:15 PM
+5:20 PM
+5:25 PM
+5:30 PM
+All Containers
+Click on a container to view more information.
+
+Filter...
+Name
+CPU
+Memory
+Net
+Health
+Ports
+Image
+Status
+Updated
+beszel
+0.00%    12.6 MB    
+14.0 KB/s
+None    
+8090
+henrygd/beszel:latest
+Up 18 minutes
+5:34:27 PM
+beszel-agent
+0.00%    6.83 MB    
+0.00 B/s
+None    
+-
+henrygd/beszel-agent:latest
+Up 2 minutes
+5:34:27 PM
+langfuse-clickhouse-1
+0.57%    820.6 MB    
+0.00 B/s
+Healthy    
+-
+clickhouse/clickhouse-server:25.3
+Up 40 hours
+5:34:27 PM
+langfuse-langfuse-web-1
+0.02%    592.0 MB    
+78.0 B/s
+None    
+127.0.0.1:3000
+langfuse/langfuse:3
+Up 40 hours
+5:34:27 PM
+langfuse-langfuse-worker-1
+0.06%    352.8 MB    
+16.7 KB/s
+None    
+-
+langfuse/langfuse-worker:3
+Up 40 hours
+5:34:27 PM
+langfuse-minio-1
+0.19%    75.8 MB    
+0.00 B/s
+Healthy    
+-
+minio/minio
+Up 40 hours
+5:34:27 PM
+langfuse-postgres-1
+0.08%    58.5 MB    
+0.00 B/s
+Healthy    
+-
+postgres:17
+Up 40 hours
+5:34:27 PM
+langfuse-redis-1
+0.05%    6.25 MB    
+16.8 KB/s
+Healthy    
+-
+redis:7
+Up 40 hours
+5:34:27 PM
+48 it only shows docker? i think my staging environment is setup in podman?
+
+---
+
+nah mate we are using some other containers, explore how staging is setup. and yeah please proceed with the extra file systems shit
+
+---
+
+also we dont want beszel on gaia gcp. remove that task. and add tasks about showing the staging containers in staging beszel. also test email just landed btw. [Image #1] REDACTED when i try to set this webhook up in home server beszel.
+
+---
+
+there its done. let's install on hetzner vm at the last.  first hel pme debug why staging containers aren't in beszel
+
+---
+
+also yes it is rootless docker bwt
+
+---
+
+https://gaia-home-server.taila76294.ts.net:8443/ which is the langfuse here? the rootless docker or normal docker? should we remove normal docker, only use rootless docker?
+
+---
+
+fuck me langfuse ignosis ai is completely wrong. ignore the gaia prod stuff for now. we just need to move langfuse from rootfull to rootless and then migrate beszel and shit
+
+---
+
+proceed every single thing by yourself lets do it all end to end,
+
+---
+
+public key: ssh-ed25519 REDACTED/c tokeb: 314a-5c0ba0e8e8-569-cbc76447c3c
+
+---
+
+now tell me. are there any good docker container related services for both my vms? like very easy to see logs, best way to see container performance and other stuff????
+
+---
+
+REDACTED give me  shoutrr url based on this.  and portainer vs dozzle vs komodo? we already have dozzle on my home server vm don't we? what's the url for this?
+
+---
+
+alright i'm in portainer. what next? should we have portainer on the vm or in my home server??
+
+---
+
+but lets say my home server is down, then what???
+
+---
+
+are you sure it should be docker standalone and not swarm?
+
+---
+
+<task-notification>
+<task-id>a0a8b0d7f33bce0ff</task-id>
+<tool-use-id>toolu_01J3pEumzUtUSXCDYczwWuob</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-aryan-Projects-GAIA-gaia-develop/80a85529-b63a-4a70-90f0-7f5d4cca3a1e/tasks/a0a8b0d7f33bce0ff.output</output-file>
+<status>completed</status>
+<summary>Agent "Investigate previews-dir rm+recreate cause" completed</summary>
+<result>Confirmed beyond doubt:
+
+- **Stash commit `4959aff3`** at `2026-05-27 19:01:07 IST` titled `untracked files on main` contains `previews/index.html` — proving `git stash push -u` swept up the untracked `previews/` directory.
+- `git stash push -u` removes untracked files **from the working tree** after stashing them, **including their parent directories** if those directories become empty and aren't otherwise tracked.
+- Birth time of new `previews/` inode: `2026-05-27 19:01:18 IST` — recreated 11s later by previewctl's next `mkdir(parents=True, exist_ok=True)` call on its 60s poll.
+
+I have everything needed. Let me write the report.
+
+---
+
+# Findings: previews directory recreation on 2026-05-27 ~13:31 UTC
+
+## 1. Root cause (high confidence)
+
+**`git stash push -u` in `/home/gaia/gaia-staging/staging-infra` executed by user `aryan` (as `gaia` via sudo) at 19:01:07 IST (13:31:07 UTC).**
+
+Evidence:
+
+- `/var/log/auth.log` line at `2026-05-27T19:01:07.381882+05:30`:
+  ```
+  sudo: aryan : PWD=/home/aryan ; USER=gaia ; COMMAND=/usr/bin/bash -lc
+  'cd /home/gaia/gaia-staging/staging-infra &amp;&amp; git stash push -u -m "WIP: pre-flushdb-fix stash" ...;
+   git fetch origin ...; git switch -c fix/redis-flushdb-on-provision origin/main ...'
+  ```
+- Recovered (unreachable) stash commit `4959aff37c8481c11efcf200e6a97c32306bea75` — author `git stash`, AuthorDate `2026-05-27 19:01:07 +0530`, subject `untracked files on main: 58900b7 …`, tree contains `previews/index.html`. Proves `-u` captured the entire untracked `previews/` directory and `git stash` then removed it from the working tree.
+- `previews/` is not tracked and not gitignored (`git ls-files previews/` empty; `.gitignore` has no `previews/` entry) — exactly the condition under which `git stash -u` will pick it up and delete it.
+- `previews/` inode `Birth: 2026-05-27 19:01:18 +0530` — 11s later. The next previewctl `docker-poll` tick (logged `[previews] index written` at 13:31:54 UTC under unchanged PID 465558) re-created the dir via `_write_previews_index`'s `out_dir.mkdir(parents=True, exist_ok=True)` (`cli.py:3110-3111`). The container's bind mount stayed pinned to the deleted inode → 403.
+
+## 2. Second most likely cause
+
+None viable. `gaia-staging-docker-poll.service` never restarted, no relevant script ran (no `scripts/reset*.sh` exists), and the immediately-following `git switch -c …origin/main` could not have deleted it (the dir was already gone post-stash). No other auth.log activity touches this path in the ±5min window.
+
+## 3. Prevention
+
+Add `previews/` to `staging-infra/.gitignore` so `git stash -u`, `git clean -fdx`, and `git checkout` cannot sweep runtime-only nginx artifacts — and stop bind-mounting a path that lives inside a working git tree (mount a path outside the repo, e.g. `/home/gaia/gaia-staging/.previewctl/runtime/previews-html/`).</result>
+<usage><total_tokens>86624</total_tokens><tool_uses>41</tool_uses><duration_ms>677517</duration_ms></usage>
+</task-notification>
+
+---
+
+Upgrade to Business Edition
+Logo
+
+Home
+Environment:
+None selected
+Administration
+
+User-related
+
+Users
+Teams
+Roles
+
+Environment-related
+
+Environments
+Groups
+Tags
+Registries
+
+Logs
+
+Notifications
+
+Settings
+
+©
+Portainer Community Edition
+2.39.2 LTS
+Environment Wizard
+Quick Setup
+
+
+admin
+
+1
+Docker Swarm
+Environment Wizard
+Connect to your Docker Swarm environment
+Only do this once for your environment, regardless of how many nodes are in the cluster. You do not need to add each node as an individual environment in Portainer. Adding just one node (we recommend the manager node) will allow Portainer to manage the entire cluster.
+Recommended Supports Policies
+The remote environment will initiate connections to the Portainer server, with the ability to open a secure on-demand tunnel for real-time interaction. The Portainer server must be accessible from the Edge Agent environment.
+
+More options
+These are legacy options that don't support edge features or policy management. For most use cases, the Edge Agent is recommended
+
+The Portainer Server will initiate connections to the remote environment. The agent on the remote environment must be accessible from the Portainer server environment.
+Connect to the environment directly via the Docker API.
+Connect to the environment directly via the Docker socket.
+Name
+*
+gaia-prod
+Portainer API server URL
+*
+https://gaia-home-server.taila76294.ts.net:9443
+
+More settings
+Check-in Intervals
+Poll frequency
+
+Use default interval (5 seconds)
+Metadata
+Group
+Unassigned
+Tags
+Select...
+Join token
+For those pre-staging the edge agent, use the following join token to associate the Edge agent with this environment.
+You can read more about pre-staging in the user-guide available here.
+
+REDACTED
+copied
+Environment variables
+e.g. foo=bar
+For security purposes, only environment variables prefixed with 'PORTAINER_' will be accessible.
+Allow self-signed certs
+docker network create \
+  --driver overlay \
+  portainer_agent_network;
+
+docker service create \
+  --name portainer_edge_agent \
+  --network portainer_agent_network \
+  -e EDGE=1 \
+  -e EDGE_ID=ceeddf65-85d0-45a8-9cb0-74a422cc5964 \
+  -e REDACTED \
+  -e EDGE_INSECURE_POLL=1 \
+  -e AGENT_CLUSTER_ADDR=tasks.portainer_edge_agent \
+  --mode global \
+  --constraint 'node.platform.os == linux' \
+  --mount type=bind,src=//var/run/docker.sock,dst=/var/run/docker.sock \
+  --mount type=bind,src=//var/lib/docker/volumes,dst=/var/lib/docker/volumes \
+  --mount type=bind,src=//,dst=/host \
+  --mount type=volume,src=portainer_agent_data,dst=/data \
+  portainer/agent:2.39.2
+copied
+New Environments
+gaia-prod
+URL: gaia-home-server.taila76294.ts.net
+Type: Edge Agent
+heartbeat here you go.
+
+---
+
+lets start with enabling gpu monitoring in beszel.
+
+---
+
+nvm ignore the pgu then since its irrelevant. can u tell me, what is the most feature rich but most beautiful analytics servers i can run on my home server? like really simple to use https://rybbit.com/docs/self-hosting i like rybbit. how do other solutions compare?
+
+---
+
+alright so fetch the docs i sent to you for rybbit. help me set it up with rootless docker and spin it up and let it point to as.heygaia.io. and help me setup differen projects for rybbit for different domains. lets start with aryanranderiya.com, heygaia.io ui.heygaia.io motion.heygaia.io as different projects (see theexperiencecompany github repos in GAIA folder and website folder for my custom website too and create pr's against all of them once rybbit is perfectly setup. and first to test it out, ensure it works for staging environemtnt to verify every single rybbit feature works its very feature ectensive so i want every singel thing perfectly setup)
+
+---
+
+we have caddy or traefik setup somehow. figure out how to sue it properly
+
+---
+
+or should we use the rybbit caddy configuration already given???
+
+---
+
+so whats the login pass for rybbit? i can't signup so what to do?
+
+---
+
+also first setup rybbit at the proper analytics url. before i create the projects and shit
+
+---
+
+so these are all my dns records. Toggle navigation
+Porkbun Logo
+Porkbun✕
+products
+SALE!
+About
+Resources
+Help
+ACCOUNT
+heygaia.io
+DNS Powered by Cloudflare
+Switch to classic view
+×
+Filter records
+Filter records…
+Type    Host    Answer / Value    TTL    Actions
+A    api.heygaia.io    178.104.125.59    600     
+gcp compute engine
+A    heygaia.io    216.150.1.1    600     
+vercel
+A    logs.heygaia.io    178.104.125.59    600     
+ALIAS    whatsapp.heygaia.io    uixie.porkbun.com    600     
+ALIAS    blog.heygaia.io    uixie.porkbun.com    600     
+ALIAS    discord.heygaia.io    uixie.porkbun.com    600     
+ALIAS    staging.heygaia.io    uixie.porkbun.com    600     
+CNAME    *.discord.heygaia.io    uixie.porkbun.com    600     
+CNAME    z.heygaia.io    211707a092b0632cb759.cf-prod-us-proxy.proxyhog.com.    600     
+CNAME    www.heygaia.io    dbfa3bf5c2ef0192.vercel-dns-016.com.    600     
+CNAME    ui.heygaia.io    5c9b65a6a6e674b0.vercel-dns-017.com.    600     
+CNAME    status.heygaia.io    statuspage.betteruptime.com    600     
+Better Uptime
+CNAME    roadmap.heygaia.io    customdomains.featurebase.app    600     
+CNAME    motion.heygaia.io    7f6d9858fe01d1ff.vercel-dns-017.com.    600     
+CNAME    icons.heygaia.io    ce366aeb1d0366e7.vercel-dns-017.com.    600     
+CNAME    *.blog.heygaia.io    uixie.porkbun.com    600     
+CNAME    *.staging.heygaia.io    uixie.porkbun.com    600     
+CNAME    *.whatsapp.heygaia.io    uixie.porkbun.com    600     
+CNAME    b6sgx6gwpnz5.heygaia.io    gv-vt7grrwkozh4w4.dv.googlehosted.com    600     
+gmail
+CNAME    experience.heygaia.io    experience-dng.pages.dev    600     
+CNAME    docs.heygaia.io    cname.vercel-dns.com.    600     
+MX    heygaia.io    smtp.google.com
+prio: 1    600     
+MX    send.heygaia.io    feedback-smtp.ap-northeast-1.amazonses.com
+prio: 10    600     
+resend
+TXT    send.heygaia.io    v=spf1 include:amazonses.com ~all    600     
+resend
+TXT    resend._domainkey.heygaia.io    REDACTED    600     
+resend
+TXT    heygaia.io    v=spf1 include:_spf.google.com ~all    600     
+TXT    heygaia.io    REDACTED    600     
+google search console
+TXT    _acme-challenge.heygaia.io    REDACTED    600     
+TXT    _acme-challenge.heygaia.io    REDACTED    600     
+TXT    _discord.heygaia.io    dh=7578061e6774ee6197913fa4e16d892a2dd986ac    600     
+TXT    _dmarc.heygaia.io    v=DMARC1; p=none;    600     
+resend
+TXT    _gh-hey-gaia-o.heygaia.io    28a0cf1d05    600     
+TXT    _github-pages-challenge-theexperiencecompany.ui.heygaia.io    41ab2e0c39a7e8560d2c7ccb9fa6e2    600     
+TXT    _vercel.heygaia.io    vc-domain-verify=docs.heygaia.io,d53592d4c7c666f53f77    600     
+Mintlify
+TXT    _vercel.heygaia.io    vc-domain-verify=heygaia.io,439c73c4e6e9e976ec59    600     
+TXT    _vercel.heygaia.io    vc-domain-verify=heygaia.io,5c3ad2ca9a369e90425d    600     
+TXT    _vercel.heygaia.io    vc-domain-verify=www.heygaia.io,7408a4d394d82d5924a2    600     
+37 records
+Delete all records
+Add Record
+Manual
+Quick Setup
+Type
+A – Address record
+Host
+Leave blank for root domain. Use * for wildcard.
+
+.heygaia.io
+Answer / Value
+TTL
+600
+Notes (private, optional — does not affect DNS)
+For your reference only
+ 
+Edit Authoritative Nameservers
+ ·  Switch to classic view
+×
+Enter the nameservers you would like to use for your domain in the text area below. Put one nameserver per line, please.
+
+Please note: Although we update your nameservers immediately, this change can take up to 48 hours to propagate due to DNS caching.
+
+
+
+Nameservers (one per line)
+ 
+Domain Management
+Logged in as: aryanranderiya
+
+Register a New Domain
+Find your domain...
+ 
+AI Search | Auction Search | Marketplace Search
+
+
+Search domains…
+
+
+
+
+Displaying 1 out of 1 domains in your account
+ namerenewexpires 
+
+heygaia.io 
+  
+|
+2027-02-22
+Registry Create Date 
+2025-02-22T12:33:20.629Z
+Registry Expire Date 
+2027-02-22T12:33:20.629Z
+statuses 
+clientDeleteProhibited 
+clientTransferProhibited 
+renewal 
+estimated
+$51.80 USD
+contacts 
+Registrant Contact
+Aryan Randeriya
+Surat
+Surat, Gujarat 395005, IN
++91.8980112000
+aryan.k.randeriya@gmail.com
+nameservers 
+curitiba.ns.porkbun.com
+fortaleza.ns.porkbun.com
+maceio.ns.porkbun.com
+salvador.ns.porkbun.com
+glue records 
+dns records 
+37 records set
+ssl 
+Have Certificate
+park domain 
+url forwarding 
+Configured
+api access
+toggle auto renew for heygaia.io
+registrar transfer 
+account transfer 
+registry dnssec 
+1 record
+porkbun dnssec 
+toggle domain dnssec for heygaia.io
+email hosting
+web hosting
+delete domain  
+dejigamaflipper 
+market
+none 
+Auto Renew
+toggle auto renew for heygaia.io
+Add Renewal to Cart
+Domain Lock
+toggle domain lock for heygaia.io
+Contact Privacy
+Using Privacy
+Afternic Settings▼
+These settings affect the data we put into the Afternic formated CSV file you can download from the "Bulk Actions" menu.
+
+Displaying 1 out of 1 domains in your account.
+
+
+Porkbun Footer Logo porkbun
+Porkbun is an amazingly awesome ICANN accredited domain name registrar based out of the Pacific Northwest. We're different, we're easy, and we're affordable. Use us, you won't be sorry. If you don't use us we'll be sad, but we'll still love you.
+
+Get Pork-Puns In Your Inbox
+Stay in the loop on all things Porkbun by signing up for our newsletter!
+
+sign@up.now
+
+21370 SW Langer Farms Parkway, Suite 142-429
+Sherwood, OR 97140, US
+If you're looking for support, you might be able to answer your own question using our Knowledge Base.
+
+Reach our USA-Based phone support team:
+1.855.PORKBUN (1.855.767.5286)
+9AM - 5PM Pacific Time
+
+Other Hours: Your mileage may vary, but give it a whirl 
+support@porkbun.com
+24 / 7 Email Support
+Chat Support
+Hours Vary
+
+
+Products
+
+Domain Names
+Greatest Deals
+Local Marketplace
+Local Auctions
+3rd Party Aftermarket
+Web Hosting
+Link In Bio
+Articulation Sitebuilder
+Cloud WordPress
+cPanel Hosting
+Static Hosting
+Easy PHP
+Email Hosting
+WHOIS Privacy
+DNS Management
+SSL Certificates
+Email Forwarding
+URL Forwarding
+Domain Transfer
+API Access
+
+Support
+
+Contact Us
+Knowledge Base
+Payment Options
+Report Abuse
+Tools
+
+Domain Search
+RDAP (WHOIS)
+Password Generator
+DMARC Generator
+What's My IP Address?
+Service Status
+
+
+Don't like our name?
+The Buniverse
+
+Our Company
+
+About Us
+Our Official Blog
+Careers
+Branding Guidelines
+Policies and Legal
+Data Disclosure Policy
+Bug Bounty Program
+Awesomeness
+
+PRIVACY
+
+Your Privacy Choices
+Privacy Policy
+
+Account
+
+Settings / Billing
+View Orders
+API Access
+Simple Domain List
+Logout
+
+      
+       
+ICANN LogoCopyright © Porkbun LLC. All rights reserved.
+Porkbun is a Top Level Design Company
+Made in the USA 🇺🇸
+WARNING: This site has been known to cause a mind blowing experience. We recommend you prepare yourself mentally and if possible be sitting down. Side effects may include saving money, letting out a chuckle, and sporadic oinking.
+
+Support Assistant
+Online
+
+
+
+Hi there! 👋
+I'm your hopefully not annoying AI support assistant. Ask me anything!
+
+If I can't help, you can connect with our human support team.
+
+Transfer domain
+Email forwarding
+Turn of Auto-Renew
+Enable 2FA
+Type your question
+Type your question...
+
+
+
+Talk to a real human
+Powered by Claude AI + Helpscout
+ how to migrate to cloudflare? theres no export button from porlbun but cloudflare has button for bind zone file.
+
+---
+
+download the file to downloads
+
+---
+
+Import DNS records
+Upload a BIND zone file to import DNS records.
+
+Select a file or drag it here
+
+
+Proxy imported DNS records i cant select this
+
+---
+
+i cant select the file. maybe zone file isn't a bind file at all
+
+---
+
+great they're uploaded. what all should be proxied what shouldnt be??
+
+---
+
+(Heads-up: CF often defaults A and CNAME records to orange on import — usually 5-10 of yours need flipping.) why do they? should they not be proxied? is this not the best approach?
+
+---
+
+so heygaia.io will be on cloudflare pages. should i proxy www. and normal??
+
+---
+
+great now let's do as.heygaia.io i migrated to cloudflare.
+
+---
+
+done added it
+
+---
+
+mate idk the actual password lol help me create the account
+
+---
+
+so for heygaia.io : RybbitSearch
+⌘
+K
+rybbit-io/rybbit
+
+12.2K
+
+Introduction
+Comparison
+Architecture
+Self-hosted vs Cloud
+Usage
+Tracking script
+Troubleshooting
+Track Events
+Autocapture
+Identify Users
+Tagging
+Integration Guides
+Proxy Guide
+SDKs
+API
+Hiding your own traffic
+Filter traffic
+Bot detection
+Goals
+Funnels
+Embeds
+Feature Guides
+Self-hosting
+Quick start
+Managing your installation
+Troubleshooting
+Self-Hosting Guides
+Migration to v1.0
+Settings
+Account settings
+Organization settings
+Teams
+Billing
+Inviting users
+Site settings
+Data Import
+Other
+Definitions
+
+Tracking script
+How to install and configure the Rybbit tracking script
+
+Copy Markdown
+Open
+To start tracking user activity on your website, add the Rybbit tracking script to your site's HTML.
+
+Installation
+The webpage should give you this script tag like this when you first add a website. Place it within the <head> section of your website. Include it on every page you wish to track.
+
+
+<script src="https://app.rybbit.io/api/script.js" async data-site-id="YOUR_SITE_ID"></script>
+If you are self-hosting Rybbit app.rybbit.io will be domain of your Rybbit instance.
+
+Bypass Ad Blockers: Some ad blockers may block analytics scripts regardless of privacy compliance. To improve tracking accuracy, you can proxy the tracking script through your own domain. See our Proxy Guide for setup instructions for Next.js, Nginx, Caddy, and more.
+
+Configuration
+Site Settings Configuration
+Most tracking options are configured through your site settings in the Rybbit dashboard. The script automatically fetches these settings when it loads:
+
+Automatic Initial Pageview: Track the first pageview when the script loads
+SPA Navigation: Automatically track navigation in single-page applications
+URL Parameters: Include or exclude query strings from tracked URLs
+Outbound Links: Track clicks to external websites
+Error Tracking: Capture JavaScript errors and unhandled promise rejections
+Session Replay: Record user interactions for debugging and UX analysis
+Web Vitals: Collect Core Web Vitals performance metrics
+Script Attributes
+These are the attributes you can pass to the script tag.
+
+Attribute    Type    Default    Description
+data-skip-patterns    string    []    A JSON string array of URL path patterns to ignore. Pageviews matching these patterns won't be tracked. Supports two types of wildcards: * (matches within a segment) and ** (matches across segments), plus regex patterns prefixed with re:.
+data-mask-patterns    string    []    A JSON string array of URL path patterns to mask for privacy. Pageviews matching these patterns will be tracked, but the actual URL path will be replaced with the pattern itself in analytics data. Supports the same wildcards and re: regex patterns as data-skip-patterns.
+data-debounce    string    "500"    The delay (in milliseconds) before tracking a pageview after URL changes via the History API (pushState, replaceState). Set to 0 to disable debouncing.
+data-tag    string    ""    A label applied to all events from this script instance. Useful for A/B testing, deploy versioning, or cohort segmentation. Max 256 characters. See Tagging.
+Session Replay Attributes
+These attributes configure rrweb session replay behavior. They only apply when session replay is enabled in your site settings.
+
+Attribute    Type    Default    Description
+data-replay-mask-text-selectors    string    []    A JSON string array of CSS selectors for elements whose text content should be masked. Example: '[".user-name", "#email"]'.
+data-replay-block-class    string    "rr-block"    CSS class name for elements to exclude entirely from recording. Elements with this class won't appear in replays.
+data-replay-block-selector    string    null    CSS selector for elements to exclude from recording. Example: ".sensitive-content, #private-section".
+data-replay-ignore-class    string    "rr-ignore"    CSS class name for elements whose input events should be ignored. The element appears but interactions aren't recorded.
+data-replay-ignore-selector    string    null    CSS selector for elements whose input events should be ignored. Example: "input[name='credit-card']".
+data-replay-mask-text-class    string    "rr-mask"    CSS class name for elements whose text content should be masked (shown as asterisks).
+data-replay-mask-all-inputs    boolean    true    When true, all input values are masked as asterisks for privacy. Set to "false" to disable.
+data-replay-mask-input-options    JSON object    {"password":true,"email":true}    Specify which input types to mask. Example: '{"password":true,"email":true,"tel":true}'.
+data-replay-collect-fonts    boolean    true    When true, website fonts are collected for accurate replay rendering. Set to "false" to reduce data size.
+data-replay-sampling    JSON object    See below    Configure event sampling to reduce data volume. See sampling options below.
+data-replay-slim-dom-options    JSON object    See below    Configure which DOM elements to exclude from recording. See slimDOM options below.
+Pattern Matching Details
+For data-skip-patterns and data-mask-patterns, two types of wildcards are supported:
+
+* - Matches any characters within a single path segment (doesn't match across /)
+** - Matches any characters across multiple path segments (includes /)
+Examples:
+
+/admin/* matches /admin/dashboard but not /admin/users/list
+/admin/** matches both /admin/dashboard and /admin/users/list
+/blog/*/comments matches /blog/post-123/comments but not /blog/category/post/comments
+Regex patterns are also supported when prefixed with re:. The regex is used as-is, so add ^ and $ if you want a full-path match.
+
+Examples:
+
+re:^/users/\\d+$ matches /users/123 but not /users/abc
+re:^/private/.*$ matches anything under /private/
+Example usage:
+
+
+data-skip-patterns='["/admin/**", "/blog/drafts/*", "/preview/**"]'
+data-mask-patterns='["/users/*/settings", "/accounts/**", "/orders/*/details"]'
+Regex usage:
+
+
+data-skip-patterns='["re:^/private/.*$"]'
+data-mask-patterns='["re:^/users/\\d+/settings$"]'
+Example with debugging overrides:
+
+
+<script
+  src="https://app.rybbit.io/api/script.js"
+  defer
+  data-site-id="456"
+  data-skip-patterns='["/admin/**", "/preview/*"]'
+  data-mask-patterns='["/users/*/profile", "/orders/**"]'
+  data-replay-mask-text-selectors='[".user-name", "#email"]'
+  data-debounce="300"
+></script>
+Session Replay Configuration
+When session replay is enabled in your site settings, you can fine-tune the recording behavior using the attributes above. This section covers the more complex configuration options.
+
+Privacy Controls
+Protect sensitive user information using these options:
+
+Option    Best For
+data-replay-block-*    Completely hide elements (e.g., admin panels, modals with PII)
+data-replay-ignore-*    Show elements but don't record interactions (e.g., form fields)
+data-replay-mask-*    Show element structure but hide text content (e.g., names, emails)
+Example - Comprehensive privacy setup:
+
+
+<script
+  src="https://app.rybbit.io/api/script.js"
+  defer
+  data-site-id="123"
+  data-replay-block-selector=".admin-panel, #payment-modal"
+  data-replay-ignore-selector="input[name='ssn'], input[name='credit-card']"
+  data-replay-mask-text-selectors='[".user-name", "#email", "[data-pii]"]'
+  data-replay-mask-input-options='{"password":true,"email":true,"tel":true}'
+></script>
+Sampling Configuration
+The data-replay-sampling attribute controls how frequently events are recorded. Lower sampling rates reduce data volume but may miss some interactions.
+
+Default sampling configuration:
+
+
+{
+  "mousemove": false,
+  "mouseInteraction": {
+    "MouseUp": false,
+    "MouseDown": false,
+    "Click": true,
+    "ContextMenu": false,
+    "DblClick": true,
+    "Focus": true,
+    "Blur": true,
+    "TouchStart": false,
+    "TouchEnd": false
+  },
+  "scroll": 500,
+  "input": "last",
+  "media": 800
+}
+Sampling options:
+
+mousemove: false to disable, or number (ms) for sampling interval
+scroll: Sampling interval in milliseconds (e.g., 500 = sample every 500ms)
+input: "last" to only record final value, or "all" to record every keystroke
+media: Sampling interval for media events in milliseconds
+Example - Enable mouse tracking for UX analysis:
+
+
+data-replay-sampling='{"mousemove":100,"scroll":150}'
+SlimDOM Options
+The data-replay-slim-dom-options attribute controls which DOM elements are excluded from recording to reduce data size.
+
+Default slimDOM configuration:
+
+
+{
+  "script": false,
+  "comment": true,
+  "headFavicon": true,
+  "headWhitespace": true,
+  "headMetaDescKeywords": true,
+  "headMetaSocial": true,
+  "headMetaRobots": true,
+  "headMetaHttpEquiv": true,
+  "headMetaAuthorship": true,
+  "headMetaVerification": true
+}
+Set to true to enable all slimDOM options, or false to disable all:
+
+
+data-replay-slim-dom-options="true"
+Complete Example
+
+<script
+  src="https://app.rybbit.io/api/script.js"
+  defer
+  data-site-id="456"
+  data-skip-patterns='["/admin/**", "/preview/*"]'
+  data-mask-patterns='["/users/*/profile", "/orders/**"]'
+  data-debounce="300"
+  data-replay-block-selector=".sensitive-content"
+  data-replay-mask-text-selectors='[".user-name", "#email"]'
+  data-replay-mask-all-inputs="true"
+  data-replay-collect-fonts="false"
+  data-replay-sampling='{"mousemove":false,"scroll":500}'
+></script>
+Self-hosted vs Cloud
+
+Compare self-hosted and cloud versions of Rybbit
+
+Troubleshooting
+
+Common issues and solutions when the Rybbit tracking script isn't sending traffic
+
+On this page
+Installation
+Configuration
+Site Settings Configuration
+Script Attributes
+Session Replay Attributes
+Pattern Matching Details
+Session Replay Configuration
+Privacy Controls
+Sampling Configuration
+SlimDOM Options
+Complete Example
+ these are the docs above. <script
+    src="https://as.heygaia.io/api/script.js"
+    data-site-id="8e4fe8be4f58"
+    defer
+></script> here is the script. here is for staging test: <script
+    src="https://as.heygaia.io/api/script.js"
+    data-site-id="849475a2c0f4"
+    defer
+></script> let's start with that to ensure it works!
+
+---
+
+alright yeah i can see in the rybbit dashboard everything looks like it works fine
+
+---
+
+continue?
