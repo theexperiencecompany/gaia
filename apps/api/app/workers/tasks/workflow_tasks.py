@@ -287,8 +287,12 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                 conversation_id=conversation_id,
             )
 
-            # Arm the next occurrence (scheduled recurring workflows only).
-            await _rearm_if_scheduled(scheduler, workflow, context)
+            # Arm the next occurrence (scheduled recurring workflows only). A re-arm
+            # failure must not turn a successful execution into a reported failure.
+            try:
+                await _rearm_if_scheduled(scheduler, workflow, context)
+            except Exception as rearm_err:
+                log.error("Failed to re-arm workflow %s: %s" % (workflow_id, rearm_err))
 
             return f"Workflow {workflow_id} executed successfully with {len(execution_messages)} messages"
 

@@ -139,7 +139,7 @@ async def migrate(apply: bool) -> None:
                         }
                     },
                 )
-                await scheduler.reschedule_task(workflow_id, next_run)
+                await scheduler.reschedule_task(str(workflow_id), next_run)
     finally:
         if apply:
             await scheduler.close()
