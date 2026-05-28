@@ -3,7 +3,7 @@
   "checkpoint_id": "2a4bfd68202d",
   "strategy": "manual-commit",
   "branch": "chore/test-suite-overhaul",
-  "checkpoints_count": 2,
+  "checkpoints_count": 4,
   "files_touched": [
     "apps/api/tests/unit/agents/test_agent_core.py",
     "apps/api/tests/unit/agents/test_agent_routing.py",
@@ -15,13 +15,19 @@
       "transcript": "/2a/4bfd68202d/0/full.jsonl",
       "content_hash": "/2a/4bfd68202d/0/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/2a/4bfd68202d/1/metadata.json",
+      "transcript": "/2a/4bfd68202d/1/full.jsonl",
+      "content_hash": "/2a/4bfd68202d/1/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
-    "input_tokens": 51746,
-    "cache_creation_tokens": 277491,
-    "cache_read_tokens": 10589587,
-    "output_tokens": 86689,
-    "api_call_count": 83
+    "input_tokens": 55534,
+    "cache_creation_tokens": 865382,
+    "cache_read_tokens": 15638608,
+    "output_tokens": 146994,
+    "api_call_count": 103
   }
 }
