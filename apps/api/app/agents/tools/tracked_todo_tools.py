@@ -41,12 +41,12 @@ async def _get_user_tz(user_id: str) -> str:
             try:
                 ZoneInfo(tz_name)
                 return tz_name
-            except Exception as zone_exc:
+            except Exception as tz_err:
                 log.debug(
-                    "tracked_todo.user_tz_invalid",
+                    "tracked_todo.invalid_user_tz",
                     user_id=user_id,
-                    tz=tz_name,
-                    error=str(zone_exc),
+                    tz_name=tz_name,
+                    error=str(tz_err),
                 )
     except Exception as e:
         log.warning("tracked_todo.user_tz_lookup_failed", user_id=user_id, error=str(e))

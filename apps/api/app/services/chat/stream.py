@@ -298,6 +298,7 @@ async def _consume_agent_stream(
         user_time=user_time,
         usage_metadata_callback=usage_callback,
         stream_id=stream_id,
+        bot_message_id=state.bot_message_id,
         source=source,
     ):
         if await stream_manager.is_cancelled(stream_id):

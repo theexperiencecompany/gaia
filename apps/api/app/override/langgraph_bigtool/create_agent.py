@@ -57,6 +57,7 @@ from app.override.langgraph_bigtool.utils import (
     dedupe_tool_bindings,
     format_selected_tools,
 )
+from app.utils.mcp_utils import canonical_tool_name_map
 from shared.py.wide_events import log
 
 RetrieveToolsResponse = RetrieveToolsResult | list[str]
@@ -394,6 +395,7 @@ def create_agent(
         if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
             return "end_graph_hooks" if end_graph_hooks else END
         bound_names = _get_bound_tool_names(state)
+        canonical_to_bound = canonical_tool_name_map(bound_names)
         destinations = []
         unbound_calls: list[ToolCall] = []
 
@@ -406,23 +408,28 @@ def create_agent(
         for call in last_message.tool_calls:
             if retrieve_tools is not None and call["name"] == retrieve_tools.name:
                 destinations.append(Send("select_tools", [call]))
-            elif call["name"] not in bound_names:
-                # Tool was not bound — collect for rejection
-                unbound_calls.append(call)
-            else:
-                # Wrap each tool call with ToolCallWithContext so that
-                # ToolNode receives the full state dict (including
-                # "todos") for InjectedState injection.
-                destinations.append(
-                    Send(
-                        "tools",
-                        ToolCallWithContext(
-                            __type="tool_call_with_context",
-                            tool_call=call,
-                            state=state,
-                        ),
-                    )
+                continue
+            if call["name"] not in bound_names:
+                canonical = canonical_to_bound.get(call["name"].replace("-", "_"))
+                if canonical is None:
+                    unbound_calls.append(call)
+                    continue
+                # Rewrite to the canonical name so the tools node's
+                # registry lookup hits the actual BaseTool.
+                call["name"] = canonical
+            # Wrap each tool call with ToolCallWithContext so that ToolNode
+            # receives the full state dict (including "todos") for
+            # InjectedState injection.
+            destinations.append(
+                Send(
+                    "tools",
+                    ToolCallWithContext(
+                        __type="tool_call_with_context",
+                        tool_call=call,
+                        state=state,
+                    ),
                 )
+            )
 
         if unbound_calls:
             destinations.append(Send("reject_unbound_tools", unbound_calls))

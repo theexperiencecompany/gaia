@@ -166,16 +166,16 @@ async def _get_tracked_todos_section(user_id: str, active_todo_id: str | None = 
         cached = await get_cache(cache_key)
         if cached:
             return cached if isinstance(cached, str) else str(cached)
-    except Exception as cache_exc:
-        log.debug("tracked_todos.cache_read_failed", user_id=user_id, error=str(cache_exc))
+    except Exception as cache_err:
+        log.debug("tracked_todo_summary.cache_get_failed", error=str(cache_err))
 
     summary = await tracked_todo_service.get_active_tracked_summary(user_id)
 
     if summary:
         try:
             await set_cache(cache_key, summary, ttl=60)
-        except Exception as set_exc:
-            log.debug("tracked_todos.cache_write_failed", user_id=user_id, error=str(set_exc))
+        except Exception as cache_err:
+            log.debug("tracked_todo_summary.cache_set_failed", error=str(cache_err))
 
     return summary
 

@@ -12,6 +12,7 @@ from app.api.v1.endpoints import (
     calendar,
     chat,
     conversations,
+    feedback,
     file,
     goals,
     image,
@@ -50,6 +51,7 @@ router.include_router(voice_token.router, tags=["Voice"])
 router.include_router(chat.router, tags=["Chat"])
 router.include_router(conversations.router, tags=["Conversations"])
 router.include_router(sessions.router)
+router.include_router(feedback.router, tags=["Feedback"])
 router.include_router(image.router, tags=["Image"])
 router.include_router(search.router, tags=["Search"])
 router.include_router(calendar.router, tags=["Calendar"])

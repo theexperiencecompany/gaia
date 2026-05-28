@@ -30,9 +30,34 @@ from app.db.chroma.public_integrations_store import search_public_integrations
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
+from app.services.mcp.mcp_client import get_mcp_client
+from app.utils.mcp_utils import canonical_tool_name_map
 from shared.py.wide_events import log
 
 WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name, deep_research.name]
+
+
+async def _user_mcp_tool_names(user_id: str | None) -> set[str]:
+    """Tool names exposed by the user's live MCPClient.
+
+    The resilience rewrite moved per-user MCP tool storage out of the global
+    ToolRegistry, so `retrieve_tools` can't rely on `get_tool_names()` alone
+    for discovery filtering or binding validation. This helper supplies the
+    missing slice — read straight from the MCPClient that owns the live
+    connectors for `user_id`. Returns an empty set on any failure so the
+    surrounding logic degrades cleanly.
+    """
+    if not user_id:
+        return set()
+    try:
+        mcp_client = await get_mcp_client(user_id=str(user_id))
+        names: set[str] = set()
+        for integration_tools in mcp_client._tools.values():
+            names.update(t.name for t in integration_tools)
+        return names
+    except Exception as e:
+        log.warning(f"_user_mcp_tool_names: failed for user {user_id}: {type(e).__name__}: {e}")
+        return set()
 
 
 def _is_platform_tool_space(tool_space: str) -> bool:
@@ -527,6 +552,12 @@ def get_retrieve_tools_function(
         # BINDING MODE: Validate and bind exact tool names
         if exact_tool_names:
             available_tool_names_set = set(available_tool_names)
+
+            mcp_tool_names_set = await _user_mcp_tool_names(user_id)
+            known_by_canonical = canonical_tool_name_map(
+                available_tool_names_set | mcp_tool_names_set
+            )
+
             validated_tool_names: list[str] = []
             unknown_tool_names: list[str] = []
             for tool_name in exact_tool_names:
@@ -541,8 +572,10 @@ def get_retrieve_tools_function(
                         validated_tool_names.append(tool_name)
                     else:
                         unknown_tool_names.append(tool_name)
-                elif tool_name in available_tool_names_set:
+                elif tool_name in available_tool_names_set or tool_name in mcp_tool_names_set:
                     validated_tool_names.append(tool_name)
+                elif canonical := known_by_canonical.get(tool_name.replace("-", "_")):
+                    validated_tool_names.append(canonical)
                 else:
                     unknown_tool_names.append(tool_name)
 
@@ -584,7 +617,11 @@ def get_retrieve_tools_function(
 
         results = await asyncio.gather(*search_tasks, return_exceptions=True)
 
-        available_tool_names_set = set(available_tool_names)
+        # MCP tool names don't live in the global registry anymore (resilience
+        # rewrite removed the per-user mcp_{iid}_{user_id} categories). Union
+        # the registry names with the user's live MCPClient tool names so the
+        # discovery-mode filter doesn't drop every PostHog/Notion/etc. hit.
+        available_tool_names_set = set(available_tool_names) | await _user_mcp_tool_names(user_id)
 
         chroma_hits = 0
         public_hits = 0

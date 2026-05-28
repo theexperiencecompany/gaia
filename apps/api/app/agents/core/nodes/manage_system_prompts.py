@@ -51,6 +51,17 @@ def _is_todo_context(msg: AnyMessage) -> bool:
     return _has_marker(msg, "todo_context")
 
 
+def _is_background_executor(msg: AnyMessage) -> bool:
+    """Background-executor result injected by ``_invoke_comms_graph``.
+
+    Identified by name (not a marker) because the message is built by the
+    background runner without graph-state context. Per-turn content — kept
+    in its own slot at the tail of ``system_instruction`` alongside
+    ``todo_context`` so the cacheable [static, dynamic] prefix is preserved.
+    """
+    return getattr(msg, "name", None) == "background_executor"
+
+
 def _is_time_context(msg: AnyMessage) -> bool:
     """Time-context HumanMessages carry the current clock — emitted each turn
     by ``build_current_time_message``. We keep only the latest so checkpointed
@@ -85,11 +96,15 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         latest_static_idx: int | None = None
         latest_dynamic_idx: int | None = None
         latest_todo_idx: int | None = None
+        latest_bg_exec_idx: int | None = None
         latest_time_idx: int | None = None
         for idx in range(len(messages) - 1, -1, -1):
             msg = messages[idx]
             if msg.type == "system":
-                if _is_todo_context(msg):
+                if _is_background_executor(msg):
+                    if latest_bg_exec_idx is None:
+                        latest_bg_exec_idx = idx
+                elif _is_todo_context(msg):
                     if latest_todo_idx is None:
                         latest_todo_idx = idx
                 elif _is_dynamic_context(msg):
@@ -103,6 +118,7 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
                 latest_static_idx is not None
                 and latest_dynamic_idx is not None
                 and latest_todo_idx is not None
+                and latest_bg_exec_idx is not None
                 and latest_time_idx is not None
             ):
                 break
@@ -116,9 +132,11 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         # dropped. Preserving original order on multi-turn runs leaves system
         # messages at idx > 0, which wipes out the entire system prompt and
         # kills implicit caching. So we rebuild the list as
-        # ``[static, dynamic, todo_context, time, ...non_system...]`` — the
-        # ``todo_context`` slot sits at the tail of ``system_instruction``
-        # so its per-step churn does not shift the cacheable prefix.
+        # ``[static, dynamic, todo_context, background_executor, time,
+        # ...non_system...]`` — the ``todo_context`` and
+        # ``background_executor`` slots sit at the tail of
+        # ``system_instruction`` so their per-step churn does not shift the
+        # cacheable [static, dynamic] prefix.
         #
         # The latest time HumanMessage is hoisted to the FRONT of contents
         # (right after the system block) so its byte position is constant
@@ -131,6 +149,7 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         static_msg: AnyMessage | None = None
         dynamic_msg: AnyMessage | None = None
         todo_msg: AnyMessage | None = None
+        bg_exec_msg: AnyMessage | None = None
         time_msg: AnyMessage | None = None
         non_system: list[AnyMessage] = []
         for idx, msg in enumerate(messages):
@@ -141,6 +160,8 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
                     dynamic_msg = msg
                 elif idx == latest_todo_idx:
                     todo_msg = msg
+                elif idx == latest_bg_exec_idx:
+                    bg_exec_msg = msg
                 else:
                     dropped_system += 1
             elif _is_time_context(msg):
@@ -158,6 +179,8 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
             filtered.append(dynamic_msg)
         if todo_msg is not None:
             filtered.append(todo_msg)
+        if bg_exec_msg is not None:
+            filtered.append(bg_exec_msg)
         if time_msg is not None:
             filtered.append(time_msg)
         filtered.extend(non_system)
@@ -171,6 +194,7 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
                 "kept_static": static_msg is not None,
                 "kept_dynamic": dynamic_msg is not None,
                 "kept_todo": todo_msg is not None,
+                "kept_bg_exec": bg_exec_msg is not None,
                 "kept_time": time_msg is not None,
             }
         )

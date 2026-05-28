@@ -8,7 +8,7 @@ import {
   type ToolDataMap,
   type ToolName,
 } from "@/config/registries/toolRegistry";
-import type { EnrichedSubagentGroup } from "../UnifiedToolThread";
+import type { EnrichedSubagentGroup, TimelineItem } from "../UnifiedToolThread";
 
 // ── Bucketing ────────────────────────────────────────────────────────────────
 
@@ -145,39 +145,6 @@ function attachHandoffPayload(
   if (output) group.handoff_output = output;
 }
 
-// Walk the tool-call list once; for each handoff/spawn call, find its target
-// group and attach handoff_input/output. Return the non-handoff/non-spawn
-// tool calls (these render at root level alongside the group cards).
-function attachHandoffMetadata(
-  finalToolCalls: ToolCallEntry[],
-  allGroups: EnrichedSubagentGroup[],
-): ToolCallEntry[] {
-  const remaining: ToolCallEntry[] = [];
-  const unmatchedSpawned = allGroups.filter((g) => g.agent_type === "spawned");
-  let spawnIdx = 0;
-
-  for (const tc of finalToolCalls) {
-    const msg = (tc.message || "").toLowerCase();
-    const handoff = isHandoffCall(tc, msg);
-    const spawn = isSpawnCall(tc, msg);
-    if (!handoff && !spawn) {
-      remaining.push(tc);
-      continue;
-    }
-    const task = extractTaskFromInputs(tc.inputs);
-    const output = tc.output || undefined;
-    if (handoff) {
-      const matched = matchHandoffGroupByName(allGroups, msg);
-      if (matched) attachHandoffPayload(matched, task, output);
-      continue;
-    }
-    if (spawnIdx < unmatchedSpawned.length) {
-      attachHandoffPayload(unmatchedSpawned[spawnIdx++], task, output);
-    }
-  }
-  return remaining;
-}
-
 // Frontend nesting inference: if a handoff group contains a spawn_subagent
 // call, nest the next unmatched root-level spawned group inside it. Handles
 // data persisted before parent_subagent_id was propagated correctly.
@@ -205,32 +172,103 @@ function inferNestingForRootSpawned(
   return finalGroups.filter((g) => !nestedIds.has(g.subagent_id));
 }
 
-function enrichBackendSubagentGroups(
+// Emit a backend subagent group at its originating tool call's position
+// (handoff or spawn). Attaches the call's task/output to the group and
+// records the group id so the trailing "append-unmatched" pass doesn't
+// re-emit it. Returns the matched group, or null if no match was found.
+function emitGroupForCall(
+  tc: ToolCallEntry,
+  isHandoff: boolean,
+  allGroups: EnrichedSubagentGroup[],
+  unmatchedSpawned: EnrichedSubagentGroup[],
+  spawnIdxRef: { value: number },
+  timeline: TimelineItem[],
+  emittedGroupIds: Set<string>,
+): void {
+  const matched = isHandoff
+    ? matchHandoffGroupByName(allGroups, (tc.message || "").toLowerCase())
+    : spawnIdxRef.value < unmatchedSpawned.length
+      ? unmatchedSpawned[spawnIdxRef.value++]
+      : undefined;
+  if (!matched) return;
+
+  attachHandoffPayload(
+    matched,
+    extractTaskFromInputs(tc.inputs),
+    tc.output || undefined,
+  );
+  if (emittedGroupIds.has(matched.subagent_id)) return;
+  timeline.push({ kind: "subagent", data: matched });
+  emittedGroupIds.add(matched.subagent_id);
+}
+
+// Walk the executor's tool-call stream once, interleaving backend-provided
+// subagent groups at the position of their originating handoff/spawn call so
+// the rendered timeline matches emission order. Each handoff/spawn tool call
+// is consumed (attaching its inputs.task and outputs to the matched group);
+// every other tool call passes through as a root-level timeline item.
+function buildBackendTimeline(
   toolCalls: ToolCallEntry[],
   subagentGroups: SubagentGroupData[],
-): {
-  finalToolCalls: ToolCallEntry[];
-  finalGroups: EnrichedSubagentGroup[];
-} {
+): TimelineItem[] {
   const subagentToolCallIds = collectAllSubagentToolCallIds(subagentGroups);
-  const filtered =
-    subagentToolCallIds.size > 0
-      ? toolCalls.filter(
-          (tc) => !tc.tool_call_id || !subagentToolCallIds.has(tc.tool_call_id),
-        )
-      : toolCalls;
-
-  let finalGroups = subagentGroups.map(deepEnrichGroup);
+  const finalGroups = inferNestingForRootSpawned(
+    subagentGroups.map(deepEnrichGroup),
+  );
   const allGroups = flattenEnrichedGroups(finalGroups);
-  const finalToolCalls = attachHandoffMetadata(filtered, allGroups);
-  finalGroups = inferNestingForRootSpawned(finalGroups);
+  const unmatchedSpawned = allGroups.filter((g) => g.agent_type === "spawned");
+  const spawnIdxRef = { value: 0 };
+  const emittedGroupIds = new Set<string>();
+  const timeline: TimelineItem[] = [];
 
-  return { finalToolCalls, finalGroups };
+  for (const tc of toolCalls) {
+    // Drop tool calls the backend has already nested inside a group — they
+    // render via that group's accordion, not at root level.
+    if (tc.tool_call_id && subagentToolCallIds.has(tc.tool_call_id)) continue;
+
+    const msg = (tc.message || "").toLowerCase();
+    if (isHandoffCall(tc, msg) || isSpawnCall(tc, msg)) {
+      emitGroupForCall(
+        tc,
+        isHandoffCall(tc, msg),
+        allGroups,
+        unmatchedSpawned,
+        spawnIdxRef,
+        timeline,
+        emittedGroupIds,
+      );
+      continue;
+    }
+    timeline.push({ kind: "tool", data: tc });
+  }
+
+  // Surface any backend group whose originating handoff wasn't matched
+  // (older chats, race-condition emissions) rather than drop them silently.
+  for (const g of finalGroups) {
+    if (!emittedGroupIds.has(g.subagent_id)) {
+      timeline.push({ kind: "subagent", data: g });
+    }
+  }
+
+  return timeline;
 }
 
 // ── Synthesis fallback for legacy messages ───────────────────────────────────
 // For chats persisted before subagent_group backend support was added (pre-2025-04).
-// Can be removed once all such messages are no longer surfaced in production.
+// Also handles fast-fail handoffs where _resolve_subagent returns an error
+// before subagent_start is ever emitted (so no backend group exists).
+
+function extractSubagentIdFromInputs(
+  inputs: ToolCallEntry["inputs"],
+): string | undefined {
+  if (!inputs || typeof inputs !== "object") return undefined;
+  const raw = (inputs as Record<string, unknown>).subagent_id;
+  if (typeof raw !== "string" || !raw) return undefined;
+  // Normalize "subagent:posthog" → "posthog" and "posthog_agent" → "posthog"
+  // so the icon registry resolves to the integration's logo, not a generic
+  // _agent-suffixed key that has no icon entry.
+  return raw.replace(/^subagent:/, "").replace(/_agent$/, "");
+}
 
 function makeSyntheticHandoffGroup(
   tc: ToolCallEntry,
@@ -247,7 +285,7 @@ function makeSyntheticHandoffGroup(
     started_at: "",
     completed_at: "synthetic",
     icon_url: null,
-    tool_category: null,
+    tool_category: extractSubagentIdFromInputs(tc.inputs) ?? null,
     nested_subagents: [],
     handoff_input: extractTaskFromInputs(tc.inputs),
     handoff_output: tc.output || undefined,
@@ -275,55 +313,43 @@ function makeSyntheticSpawnGroup(
   };
 }
 
-function inferHandoffToolCategory(groups: EnrichedSubagentGroup[]): void {
-  for (const g of groups) {
-    if (g.agent_type !== "handoff" || g.tool_calls.length === 0) continue;
-    const cat = g.tool_calls.find(
-      (tc) =>
-        tc.tool_category &&
-        tc.tool_category !== "unknown" &&
-        tc.tool_category !== "plan_tasks" &&
-        tc.tool_category !== "retrieve_tools",
-    )?.tool_category;
-    if (cat) g.tool_category = cat;
-  }
-}
-
-function synthesizeSubagentGroupsFromCalls(toolCalls: ToolCallEntry[]): {
-  finalToolCalls: ToolCallEntry[];
-  finalGroups: EnrichedSubagentGroup[];
-} {
-  const topLevel: ToolCallEntry[] = [];
-  const syntheticGroups: EnrichedSubagentGroup[] = [];
+// Build a timeline directly from a tool-call stream when no backend
+// subagent_group entries are present. Handoff/spawn calls become subagent
+// timeline items at their natural position; if a handoff returned
+// synchronously (output already present, i.e. the fast-fail error path), the
+// group is closed immediately so any following executor-level tool calls
+// render at root level instead of getting bundled into the failed handoff.
+function buildSyntheticTimeline(toolCalls: ToolCallEntry[]): TimelineItem[] {
+  const timeline: TimelineItem[] = [];
   let currentGroup: EnrichedSubagentGroup | null = null;
+  let synthIdx = 0;
 
   for (const tc of toolCalls) {
     const msg = (tc.message || "").toLowerCase();
+
     if (isHandoffCall(tc, msg)) {
-      if (currentGroup) syntheticGroups.push(currentGroup);
-      currentGroup = makeSyntheticHandoffGroup(tc, syntheticGroups.length);
+      currentGroup = makeSyntheticHandoffGroup(tc, synthIdx++);
+      timeline.push({ kind: "subagent", data: currentGroup });
+      if (currentGroup.handoff_output) currentGroup = null;
       continue;
     }
     if (isSpawnCall(tc, msg)) {
-      const spawnGroup = makeSyntheticSpawnGroup(tc, syntheticGroups.length);
+      const spawnGroup = makeSyntheticSpawnGroup(tc, synthIdx++);
       if (currentGroup) {
         currentGroup.nested_subagents.push(spawnGroup);
       } else {
-        syntheticGroups.push(spawnGroup);
+        timeline.push({ kind: "subagent", data: spawnGroup });
       }
       continue;
     }
     if (currentGroup) {
       currentGroup.tool_calls.push(tc);
     } else {
-      topLevel.push(tc);
+      timeline.push({ kind: "tool", data: tc });
     }
   }
-  if (currentGroup) syntheticGroups.push(currentGroup);
 
-  inferHandoffToolCategory(syntheticGroups);
-
-  return { finalToolCalls: topLevel, finalGroups: syntheticGroups };
+  return timeline;
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
@@ -331,29 +357,24 @@ function synthesizeSubagentGroupsFromCalls(toolCalls: ToolCallEntry[]): {
 export const useSubagentSynthesis = (
   tool_data: ToolDataEntry[] | null | undefined,
 ): {
-  unifiedToolCalls: ToolCallEntry[];
-  unifiedSubagentGroups: EnrichedSubagentGroup[];
+  timeline: TimelineItem[];
   processedTools: ToolDataEntry[];
 } => {
   return React.useMemo(() => {
     const { groupedEntries, individual, toolCalls, subagentGroups } =
       bucketToolData(tool_data);
 
-    let unified: {
-      finalToolCalls: ToolCallEntry[];
-      finalGroups: EnrichedSubagentGroup[];
-    };
+    let timeline: TimelineItem[];
     if (subagentGroups.length > 0) {
-      unified = enrichBackendSubagentGroups(toolCalls, subagentGroups);
+      timeline = buildBackendTimeline(toolCalls, subagentGroups);
     } else if (toolCalls.length > 0) {
-      unified = synthesizeSubagentGroupsFromCalls(toolCalls);
+      timeline = buildSyntheticTimeline(toolCalls);
     } else {
-      unified = { finalToolCalls: toolCalls, finalGroups: [] };
+      timeline = [];
     }
 
     return {
-      unifiedToolCalls: unified.finalToolCalls,
-      unifiedSubagentGroups: unified.finalGroups,
+      timeline,
       processedTools: [...groupedEntries, ...individual],
     };
   }, [tool_data]);
