@@ -19,6 +19,7 @@ from langfuse.types import TraceContext
 
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
+from shared.py.wide_events import log
 
 
 def _langfuse_configured() -> bool:
@@ -50,19 +51,44 @@ def _langfuse_configured() -> bool:
     strategy=MissingKeyStrategy.SILENT,
 )
 def init_langfuse() -> Langfuse:
-    """Construct the process-wide Langfuse client used by the LangChain callback."""
+    """Construct the process-wide Langfuse client + verify reachability.
+
+    A successful `Langfuse(...)` construction does not test the network. The
+    SDK ships traces from a background flush thread that swallows errors, so
+    bad creds / DNS / TLS failures normally surface as zero traces in the UI
+    with no log line anywhere. We run an explicit auth check here so the bad
+    case is one warning at startup instead of a silent black hole.
+    """
     # Sentry's OTel integration (sentry-sdk[langgraph]) sets the global
     # TracerProvider before us, so the SDK's `environment` constructor kwarg
     # never reaches the OTel Resource. The env var is the path the SDK reads
     # for Resource attributes; the kwarg additionally tags per-span context.
     # Both are set deliberately.
     os.environ["LANGFUSE_TRACING_ENVIRONMENT"] = settings.ENV
-    return Langfuse(
+    client = Langfuse(
         public_key=settings.LANGFUSE_PUBLIC_KEY,
         secret_key=settings.LANGFUSE_SECRET_KEY,
         host=settings.LANGFUSE_HOST,
         environment=settings.ENV,
     )
+    try:
+        if client.auth_check():
+            log.info("langfuse_ready", host=settings.LANGFUSE_HOST, environment=settings.ENV)
+        else:
+            log.warning(
+                "langfuse_auth_check_failed",
+                host=settings.LANGFUSE_HOST,
+                hint="public/secret keys rejected; traces will be dropped",
+            )
+    except Exception as exc:
+        log.warning(
+            "langfuse_reachability_check_failed",
+            host=settings.LANGFUSE_HOST,
+            error=str(exc),
+            error_type=type(exc).__name__,
+            hint="DNS/TLS/network — traces will be queued and likely dropped",
+        )
+    return client
 
 
 def build_langfuse_callback() -> CallbackHandler | None:
