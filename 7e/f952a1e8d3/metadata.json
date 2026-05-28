@@ -3,7 +3,7 @@
   "checkpoint_id": "7ef952a1e8d3",
   "strategy": "manual-commit",
   "branch": "chore/test-suite-overhaul",
-  "checkpoints_count": 6,
+  "checkpoints_count": 8,
   "files_touched": [
     "apps/api/tests/service/test_search_service.py",
     "apps/api/tests/unit/services/test_search_service.py"
@@ -14,13 +14,19 @@
       "transcript": "/7e/f952a1e8d3/0/full.jsonl",
       "content_hash": "/7e/f952a1e8d3/0/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/7e/f952a1e8d3/1/metadata.json",
+      "transcript": "/7e/f952a1e8d3/1/full.jsonl",
+      "content_hash": "/7e/f952a1e8d3/1/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
-    "input_tokens": 51178,
-    "cache_creation_tokens": 230935,
-    "cache_read_tokens": 5700746,
-    "output_tokens": 55291,
-    "api_call_count": 57
+    "input_tokens": 91505,
+    "cache_creation_tokens": 591459,
+    "cache_read_tokens": 13553819,
+    "output_tokens": 167464,
+    "api_call_count": 111
   }
 }
