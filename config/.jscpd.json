@@ -37,6 +37,6 @@
     ".agents/**",
     ".claude/**",
     ".github/**",
-    "rules/**"
+    "config/biome-rules/**"
   ]
 }

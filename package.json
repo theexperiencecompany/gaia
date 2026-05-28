@@ -6,13 +6,13 @@
     "quality:components": "node scripts/ci/check-components-per-file.mjs",
     "quality:dead": "bash scripts/dead-code-check.sh",
     "quality:dead:strict": "bash scripts/dead-code-check.sh --strict",
-    "quality:deps": "syncpack lint && manypkg check",
-    "quality:deps:fix": "syncpack fix && manypkg fix",
+    "quality:deps": "syncpack lint --config config/.syncpackrc.json && manypkg check",
+    "quality:deps:fix": "syncpack fix --config config/.syncpackrc.json && manypkg fix",
     "quality:dupe": "node scripts/ci/check-duplication.mjs",
     "quality:format": "biome format --write",
     "quality:lint": "biome check",
     "quality:lint:fix": "biome check --write",
-    "quality:pkg-json": "npmPkgJsonLint . --quiet",
+    "quality:pkg-json": "npmPkgJsonLint . --configFile config/.npmpackagejsonlintrc.json --quiet",
     "quality:publint": "pnpm --filter @heygaia/cli build && publint packages/cli",
     "quality:py:interrogate": "uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py",
     "quality:py:mypy": "uv run --project apps/api --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py --ignore-missing-imports",
@@ -31,8 +31,8 @@
     "quality:types-location": "node scripts/ci/check-types-location.mjs",
     "tokens": "pnpm run tokens:export && pnpm run tokens:build",
     "tokens:build": "style-dictionary build",
-    "tokens:check": "design.md export --format dtcg DESIGN.md | diff - design.tokens.json",
-    "tokens:export": "design.md export --format dtcg DESIGN.md > design.tokens.json"
+    "tokens:check": "design.md export --format dtcg DESIGN.md | diff - config/design.tokens.json",
+    "tokens:export": "design.md export --format dtcg DESIGN.md > config/design.tokens.json"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",

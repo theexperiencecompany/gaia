@@ -164,11 +164,11 @@
     }
   },
   "plugins": [
-    "./rules/no-direct-gaia-icons-import.grit",
-    "./rules/no-chevron-from-icons.grit",
-    "./rules/no-hugeicons-import.grit",
-    "./rules/no-motion-react-heavy-imports.grit",
-    "./rules/no-motion-full-import.grit"
+    "./config/biome-rules/no-direct-gaia-icons-import.grit",
+    "./config/biome-rules/no-chevron-from-icons.grit",
+    "./config/biome-rules/no-hugeicons-import.grit",
+    "./config/biome-rules/no-motion-react-heavy-imports.grit",
+    "./config/biome-rules/no-motion-full-import.grit"
   ],
   "overrides": [
     {
@@ -186,7 +186,7 @@
         "apps/web/src/app/**/index.ts",
         "apps/web/src/app/**/index.tsx"
       ],
-      "plugins": ["./rules/no-barrel-reexport.grit"]
+      "plugins": ["./config/biome-rules/no-barrel-reexport.grit"]
     },
     {
       "includes": [

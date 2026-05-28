@@ -20,14 +20,14 @@
 #   --preview     deploy a preview version (URL printed at end, no production)
 #
 # Usage:
-#   ./cf-build.sh                    # build + analyze, no deploy
-#   ./cf-build.sh --no-minify        # readable handler for grep/inspection
-#   ./cf-build.sh --preview          # build + push to a preview URL
-#   ./cf-build.sh --sentry --deploy  # production build + deploy
+#   ./scripts/cf-build.sh                    # build + analyze, no deploy
+#   ./scripts/cf-build.sh --no-minify        # readable handler for grep/inspection
+#   ./scripts/cf-build.sh --preview          # build + push to a preview URL
+#   ./scripts/cf-build.sh --sentry --deploy  # production build + deploy
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WEB_DIR="$ROOT/apps/web"
 SENTRY=0
 MINIFY=1
