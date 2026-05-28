@@ -19,11 +19,15 @@ import time
 from typing import Literal
 
 from dotenv import load_dotenv
-from pydantic import computed_field
+from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
+from app.constants.search import (
+    CRAWL4AI_DEFAULT_MAX_BROWSERS,
+    CRAWL4AI_MIN_MAX_BROWSERS,
+)
 from shared.py.wide_events import log
 
 load_dotenv()
@@ -98,11 +102,37 @@ class CommonSettings(BaseAppSettings):
     # scraping /metrics. Generate with: openssl rand -hex 32
     METRICS_TOKEN: str | None = None
 
+    # Langfuse — opt-in self-hosted LLM observability. Traces ship only when
+    # all three are set; missing any one is a silent no-op in every env.
+    LANGFUSE_PUBLIC_KEY: str | None = None
+    LANGFUSE_SECRET_KEY: str | None = None
+    LANGFUSE_HOST: str | None = None
+
     # ----------------------------------------------
     # Profiling & Performance Monitoring
     # ----------------------------------------------
     ENABLE_PROFILING: bool = False  # Must be explicitly enabled via .env
     PROFILING_SAMPLE_RATE: float = 1.0  # 100% of requests by default
+
+    # ----------------------------------------------
+    # Crawl4AI (headless-browser scraping)
+    # ----------------------------------------------
+    # Process-wide cap on concurrent Chromium instances (see constants/search.py
+    # for context). Falls back to the default on non-integer input; clamped to
+    # at least ``CRAWL4AI_MIN_MAX_BROWSERS`` so a misconfigured 0/negative value
+    # can't deadlock all crawler access.
+    CRAWL4AI_MAX_BROWSERS: int = CRAWL4AI_DEFAULT_MAX_BROWSERS
+
+    @field_validator("CRAWL4AI_MAX_BROWSERS", mode="before")
+    @classmethod
+    def _normalize_crawl4ai_max_browsers(cls, value: int | str | None) -> int:
+        if value is None:
+            return CRAWL4AI_DEFAULT_MAX_BROWSERS
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return CRAWL4AI_DEFAULT_MAX_BROWSERS
+        return max(CRAWL4AI_MIN_MAX_BROWSERS, parsed)
 
     # ----------------------------------------------
     # GitHub Integration (for Skill Discovery)

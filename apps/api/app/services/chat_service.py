@@ -193,6 +193,7 @@ async def _run_chat_stream(
             usage_metadata_callback=usage_metadata_callback,
             stream_id=stream_id,
             user_message_id=user_message_id,
+            bot_message_id=bot_message_id,
             source=source,
         ):
             if await stream_manager.is_cancelled(stream_id):

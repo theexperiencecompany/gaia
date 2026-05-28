@@ -363,7 +363,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.50, {service=\"gaia-backend\"} | json | message = \"http_request\" | path =~ \"$path\" | unwrap duration_ms [5m]) by (path)",
+          "expr": "quantile_over_time(0.50, {service=\"gaia-backend\"} | json message=\"message\", path=\"path\", duration_ms=\"duration_ms\" | message = \"http_request\" | path =~ \"$path\" | unwrap duration_ms [5m]) by (path)",
           "interval": "5m",
           "legendFormat": "p50 {{path}}",
           "refId": "A"
@@ -373,7 +373,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.95, {service=\"gaia-backend\"} | json | message = \"http_request\" | path =~ \"$path\" | unwrap duration_ms [5m]) by (path)",
+          "expr": "quantile_over_time(0.95, {service=\"gaia-backend\"} | json message=\"message\", path=\"path\", duration_ms=\"duration_ms\" | message = \"http_request\" | path =~ \"$path\" | unwrap duration_ms [5m]) by (path)",
           "interval": "5m",
           "legendFormat": "p95 {{path}}",
           "refId": "B"
@@ -700,7 +700,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "topk(20, quantile_over_time(0.95, {service=\"gaia-backend\"} | json | message = \"http_request\" | path =~ \"$path\" | unwrap duration_ms [$__range]) by (path))",
+          "expr": "topk(20, quantile_over_time(0.95, {service=\"gaia-backend\"} | json message=\"message\", path=\"path\", duration_ms=\"duration_ms\" | message = \"http_request\" | path =~ \"$path\" | unwrap duration_ms [$__range]) by (path))",
           "instant": true,
           "legendFormat": "{{path}}",
           "refId": "A"

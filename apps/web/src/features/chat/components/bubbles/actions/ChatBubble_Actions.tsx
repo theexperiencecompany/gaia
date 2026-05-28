@@ -99,25 +99,26 @@ export default function ChatBubble_Actions({
     }
   };
 
-  const handleThumbsUp = () => {
+  const submitFeedback = (isPositive: boolean) => {
     trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_FEEDBACK, {
       message_id,
-      is_positive: true,
+      is_positive: isPositive,
       message_role: messageRole,
       conversation_id: convoIdParam,
     });
-    toast.success("Thanks for your feedback!");
+    // Forward to Langfuse via the backend. Errors are silent — PostHog has
+    // already recorded the event so we never want to make the user feel
+    // their thumbs didn't register.
+    chatApi.submitMessageFeedback(message_id, isPositive).catch(() => {});
+    if (isPositive) {
+      toast.success("Thanks for your feedback!");
+    } else {
+      toast.info("Thanks for your feedback!");
+    }
   };
 
-  const handleThumbsDown = () => {
-    trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_FEEDBACK, {
-      message_id,
-      is_positive: false,
-      message_role: messageRole,
-      conversation_id: convoIdParam,
-    });
-    toast.info("Thanks for your feedback!");
-  };
+  const handleThumbsUp = () => submitFeedback(true);
+  const handleThumbsDown = () => submitFeedback(false);
 
   return (
     <>
