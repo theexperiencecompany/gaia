@@ -59,10 +59,17 @@ class BaseScheduledTask(BaseModel):
             v = v.replace(tzinfo=UTC)
         return v
 
-    @field_serializer("scheduled_at", "stop_after", "created_at", "updated_at", when_used="json")
-    def serialize_datetime(self, value: datetime | None) -> str | None:
-        """ISO-string datetimes for JSON only; python mode (Mongo writes) keeps
-        native datetimes so the scheduler's `scheduled_at: {"$lte": now}` scan matches."""
+    @field_serializer("scheduled_at", "stop_after", when_used="json")
+    def serialize_schedule_datetime(self, value: datetime | None) -> str | None:
+        """ISO strings for JSON only; python mode (Mongo writes) keeps native
+        datetimes so the scheduler's `scheduled_at: {"$lte": now}` scan matches."""
+        if value is not None:
+            return value.isoformat()
+        return None
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_audit_datetime(self, value: datetime | None) -> str | None:
+        """Audit fields stay ISO strings everywhere (unchanged from prior behavior)."""
         if value is not None:
             return value.isoformat()
         return None
