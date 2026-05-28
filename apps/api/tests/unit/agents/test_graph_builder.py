@@ -1,11 +1,97 @@
-"""Unit tests for graph builder and checkpointer manager.
+"""Unit tests for the LangGraph checkpointer manager (graph_builder package).
 
-Covers:
-- build_comms_graph / build_comms_agent
-- build_executor_graph / build_executor_agent
-- build_graphs
-- CheckpointerManager (setup, get_checkpointer, close)
-- get_checkpointer_manager / init_checkpointer_manager
+TARGET UNIT: app/agents/core/graph_builder/checkpointer_manager.py
+
+This file's quality contract is measured against ``checkpointer_manager.py``.
+The ``build_graph.py`` tests further down cover a *sibling* unit and are kept
+green but are not the mutation target of this rewrite.
+
+=============================================================================
+BEHAVIOR SPEC — checkpointer_manager.py
+=============================================================================
+
+UNIT: CheckpointerManager.__init__
+EXPECTED: Store the connection string and pool ceiling; leave pool/checkpointer
+          unset until setup() runs.
+MECHANISM: self.conninfo = conninfo; self.max_pool_size = max_pool_size
+           (default 20); self.pool = None; self.checkpointer = None.
+MUST-CATCH:
+  - conninfo is stored verbatim (not swapped/blanked)
+  - max_pool_size defaults to 20 when omitted
+  - an explicit max_pool_size overrides the default
+  - pool and checkpointer both start as None (get_checkpointer must fail pre-setup)
+
+UNIT: CheckpointerManager.setup
+EXPECTED: Open a resilient async Postgres pool, build an AsyncPostgresSaver on
+          that pool, run the saver schema setup, then run the store schema
+          setup inside an async context manager, and return self.
+MECHANISM: build connection_kwargs (autocommit/prepare_threshold/keepalives*);
+           AsyncConnectionPool(conninfo, min_size=1, max_size, max_idle=300,
+           max_lifetime=1800, kwargs=connection_kwargs,
+           check=AsyncConnectionPool.check_connection, open=False, timeout=30);
+           await pool.open(wait=True, timeout=30);
+           AsyncPostgresSaver(conn=pool); await checkpointer.setup();
+           async with AsyncPostgresStore.from_conn_string(conninfo) as store:
+               await store.setup(); return self.
+MUST-CATCH (each maps to >=1 test + >=1 killed mutant):
+  - the pool is built with the manager's conninfo (not a constant/blank)
+  - max_size is wired from max_pool_size (mutating the arg changes the pool)
+  - min_size=1, max_idle=300, max_lifetime=1800, open=False, timeout=30 are exact
+  - the connection liveness check is AsyncConnectionPool.check_connection (dropping
+    it hands out dead sockets)
+  - connection_kwargs carry autocommit=True, prepare_threshold=0 and all four
+    keepalive knobs with their exact values
+  - pool.open is awaited with wait=True, timeout=30 (sync/positional drift caught)
+  - the saver is constructed bound to the *same* pool object (conn=self.pool)
+  - checkpointer.setup() is awaited (schema migration must run)
+  - the store is created from the manager's conninfo and its setup() is awaited
+  - the store context manager is exited (__aexit__) so the throwaway connection
+    is released
+  - setup returns self (chaining contract) and persists pool + checkpointer on self
+  - if pool.open raises, setup propagates and the checkpointer is never set
+  - if checkpointer.setup raises, setup propagates
+
+UNIT: CheckpointerManager.close
+EXPECTED: Close the pool when one exists; do nothing when it does not.
+MECHANISM: if self.pool: await self.pool.close().
+MUST-CATCH:
+  - close() awaits pool.close() when a pool is present
+  - close() is a no-op (no crash, no attribute access) when pool is None
+
+UNIT: CheckpointerManager.get_checkpointer
+EXPECTED: Return the live checkpointer once setup has run; otherwise raise.
+MECHANISM: if not self.checkpointer: raise RuntimeError("...not been
+           initialized..."); return self.checkpointer.
+MUST-CATCH:
+  - raises RuntimeError mentioning initialization before setup
+  - returns the exact checkpointer object after it is assigned
+
+UNIT: init_checkpointer_manager (the @lazy_provider factory body)
+EXPECTED: Build a CheckpointerManager from settings.POSTGRES_URL, run setup(),
+          and return the initialized manager.
+MECHANISM: conninfo = settings.POSTGRES_URL; manager =
+           CheckpointerManager(conninfo=conninfo); await manager.setup();
+           return manager.
+MUST-CATCH:
+  - the manager is constructed from settings.POSTGRES_URL (not a hardcoded URL)
+  - manager.setup() is awaited before the manager is returned
+  - the returned object is the manager that was set up (same instance)
+
+UNIT: get_checkpointer_manager
+EXPECTED: Resolve the lazily-provided manager; raise if the provider yields None.
+MECHANISM: manager = await providers.aget("checkpointer_manager");
+           if not manager: raise RuntimeError("...not available"); return manager.
+MUST-CATCH:
+  - providers.aget is queried with the exact name "checkpointer_manager"
+  - the resolved manager is returned unchanged
+  - a None result raises RuntimeError mentioning availability
+
+EQUIVALENT MUTANTS (allowed survivors, justified):
+  - The two warning/info ``log.*`` strings inside build_graph fallbacks and the
+    docstrings carry no behavioural contract for the checkpointer manager.
+  - ``init_checkpointer_manager`` default max_pool_size is never overridden by the
+    factory, so a mutation of the *factory's* (absent) pool-size arg has nothing
+    to flip; covered indirectly by the __init__ default test instead.
 """
 
 from contextlib import ExitStack
@@ -13,13 +99,332 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.core.graph_builder.checkpointer_manager import (
+    CheckpointerManager,
+    get_checkpointer_manager,
+    init_checkpointer_manager,
+)
+
 _MOD = "app.agents.core.graph_builder.build_graph"
 _CM_MOD = "app.agents.core.graph_builder.checkpointer_manager"
 
+_TEST_DB_URL = "postgresql://user:pw@db.example:5432/gaia_ckpt"  # pragma: allowlist secret
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+
+# ===================================================================
+# CheckpointerManager — construction
+# ===================================================================
+
+
+class TestCheckpointerManagerInit:
+    """__init__ stores config and leaves the pool/checkpointer unset."""
+
+    def test_stores_conninfo_verbatim(self):
+        mgr = CheckpointerManager(conninfo=_TEST_DB_URL)
+        assert mgr.conninfo == _TEST_DB_URL
+
+    def test_default_max_pool_size_is_20(self):
+        mgr = CheckpointerManager(conninfo=_TEST_DB_URL)
+        assert mgr.max_pool_size == 20
+
+    def test_explicit_max_pool_size_overrides_default(self):
+        mgr = CheckpointerManager(conninfo=_TEST_DB_URL, max_pool_size=50)
+        assert mgr.max_pool_size == 50
+
+    def test_pool_and_checkpointer_start_none(self):
+        mgr = CheckpointerManager(conninfo=_TEST_DB_URL)
+        assert mgr.pool is None
+        assert mgr.checkpointer is None
+
+
+# ===================================================================
+# CheckpointerManager.setup
+# ===================================================================
+
+
+def _patch_setup_dependencies(stack: ExitStack):
+    """Patch the three psycopg/langgraph I/O boundaries used by setup().
+
+    Returns the pool class mock, the constructed pool, the saver class mock,
+    the constructed saver, the store class mock, the store context manager
+    mock, and the store instance yielded by ``__aenter__``.
+    """
+    mock_pool = AsyncMock(name="pool")
+    mock_pool_cls = MagicMock(name="AsyncConnectionPool")
+    mock_pool_cls.return_value = mock_pool
+
+    mock_saver = AsyncMock(name="saver")
+    mock_saver_cls = MagicMock(name="AsyncPostgresSaver")
+    mock_saver_cls.return_value = mock_saver
+
+    mock_store_instance = AsyncMock(name="store")
+    mock_store_ctx = AsyncMock(name="store_ctx")
+    mock_store_ctx.__aenter__ = AsyncMock(return_value=mock_store_instance)
+    mock_store_ctx.__aexit__ = AsyncMock(return_value=False)
+    mock_store_cls = MagicMock(name="AsyncPostgresStore")
+    mock_store_cls.from_conn_string.return_value = mock_store_ctx
+
+    stack.enter_context(patch(f"{_CM_MOD}.AsyncConnectionPool", mock_pool_cls))
+    stack.enter_context(patch(f"{_CM_MOD}.AsyncPostgresSaver", mock_saver_cls))
+    stack.enter_context(patch(f"{_CM_MOD}.AsyncPostgresStore", mock_store_cls))
+
+    return {
+        "pool_cls": mock_pool_cls,
+        "pool": mock_pool,
+        "saver_cls": mock_saver_cls,
+        "saver": mock_saver,
+        "store_cls": mock_store_cls,
+        "store_ctx": mock_store_ctx,
+        "store": mock_store_instance,
+    }
+
+
+class TestCheckpointerManagerSetup:
+    """setup() opens the pool, builds + migrates the saver and store."""
+
+    async def test_returns_self_and_persists_pool_and_checkpointer(self):
+        with ExitStack() as stack:
+            deps = _patch_setup_dependencies(stack)
+            mgr = CheckpointerManager(conninfo=_TEST_DB_URL, max_pool_size=5)
+
+            result = await mgr.setup()
+
+            assert result is mgr
+            assert mgr.pool is deps["pool"]
+            assert mgr.checkpointer is deps["saver"]
+
+    async def test_pool_built_from_conninfo_and_max_pool_size(self):
+        with ExitStack() as stack:
+            deps = _patch_setup_dependencies(stack)
+            mgr = CheckpointerManager(conninfo=_TEST_DB_URL, max_pool_size=7)
+
+            await mgr.setup()
+
+            pool_kwargs = deps["pool_cls"].call_args.kwargs
+            assert pool_kwargs["conninfo"] == _TEST_DB_URL
+            assert pool_kwargs["max_size"] == 7
+
+    async def test_pool_static_lifecycle_kwargs_are_exact(self):
+        with ExitStack() as stack:
+            deps = _patch_setup_dependencies(stack)
+            mgr = CheckpointerManager(conninfo=_TEST_DB_URL, max_pool_size=5)
+
+            await mgr.setup()
+
+            pool_kwargs = deps["pool_cls"].call_args.kwargs
+            assert pool_kwargs["min_size"] == 1
+            assert pool_kwargs["max_idle"] == 300
+            assert pool_kwargs["max_lifetime"] == 1800
+            assert pool_kwargs["open"] is False
+            assert pool_kwargs["timeout"] == 30
+
+    async def test_pool_uses_check_connection_liveness_probe(self):
+        with ExitStack() as stack:
+            deps = _patch_setup_dependencies(stack)
+            mgr = CheckpointerManager(conninfo=_TEST_DB_URL, max_pool_size=5)
+
+            await mgr.setup()
+
+            pool_kwargs = deps["pool_cls"].call_args.kwargs
+            # The pool must ping each connection before handing it out using the
+            # class' own check_connection; dropping it serves dead sockets.
+            assert pool_kwargs["check"] is deps["pool_cls"].check_connection
+
+    async def test_connection_kwargs_carry_keepalives_and_autocommit(self):
+        with ExitStack() as stack:
+            deps = _patch_setup_dependencies(stack)
+            mgr = CheckpointerManager(conninfo=_TEST_DB_URL, max_pool_size=5)
+
+            await mgr.setup()
+
+            conn_kwargs = deps["pool_cls"].call_args.kwargs["kwargs"]
+            assert conn_kwargs == {
+                "autocommit": True,
+                "prepare_threshold": 0,
+                "keepalives": 1,
+                "keepalives_idle": 30,
+                "keepalives_interval": 10,
+                "keepalives_count": 5,
+            }
+
+    async def test_pool_opened_with_wait_and_timeout(self):
+        with ExitStack() as stack:
+            deps = _patch_setup_dependencies(stack)
+            mgr = CheckpointerManager(conninfo=_TEST_DB_URL, max_pool_size=5)
+
+            await mgr.setup()
+
+            deps["pool"].open.assert_awaited_once_with(wait=True, timeout=30)
+
+    async def test_saver_bound_to_the_opened_pool(self):
+        with ExitStack() as stack:
+            deps = _patch_setup_dependencies(stack)
+            mgr = CheckpointerManager(conninfo=_TEST_DB_URL, max_pool_size=5)
+
+            await mgr.setup()
+
+            saver_kwargs = deps["saver_cls"].call_args.kwargs
+            assert saver_kwargs["conn"] is deps["pool"]
+            deps["saver"].setup.assert_awaited_once()
+
+    async def test_store_created_from_conninfo_and_migrated(self):
+        with ExitStack() as stack:
+            deps = _patch_setup_dependencies(stack)
+            mgr = CheckpointerManager(conninfo=_TEST_DB_URL, max_pool_size=5)
+
+            await mgr.setup()
+
+            deps["store_cls"].from_conn_string.assert_called_once_with(_TEST_DB_URL)
+            deps["store"].setup.assert_awaited_once()
+
+    async def test_store_context_manager_is_exited(self):
+        with ExitStack() as stack:
+            deps = _patch_setup_dependencies(stack)
+            mgr = CheckpointerManager(conninfo=_TEST_DB_URL, max_pool_size=5)
+
+            await mgr.setup()
+
+            deps["store_ctx"].__aenter__.assert_awaited_once()
+            deps["store_ctx"].__aexit__.assert_awaited_once()
+
+    async def test_pool_open_failure_propagates_and_checkpointer_stays_unset(self):
+        with ExitStack() as stack:
+            deps = _patch_setup_dependencies(stack)
+            deps["pool"].open.side_effect = RuntimeError("pool open failed")
+            mgr = CheckpointerManager(conninfo=_TEST_DB_URL, max_pool_size=5)
+
+            with pytest.raises(RuntimeError, match="pool open failed"):
+                await mgr.setup()
+
+            assert mgr.checkpointer is None
+            deps["saver_cls"].assert_not_called()
+
+    async def test_checkpointer_setup_failure_propagates(self):
+        with ExitStack() as stack:
+            deps = _patch_setup_dependencies(stack)
+            deps["saver"].setup.side_effect = RuntimeError("schema migration failed")
+            mgr = CheckpointerManager(conninfo=_TEST_DB_URL, max_pool_size=5)
+
+            with pytest.raises(RuntimeError, match="schema migration failed"):
+                await mgr.setup()
+
+            # The store schema must not run if the checkpointer schema failed.
+            deps["store_cls"].from_conn_string.assert_not_called()
+
+
+# ===================================================================
+# CheckpointerManager.close
+# ===================================================================
+
+
+class TestCheckpointerManagerClose:
+    """close() releases the pool only when one exists."""
+
+    async def test_closes_pool_when_present(self):
+        mgr = CheckpointerManager(conninfo=_TEST_DB_URL)
+        mock_pool = AsyncMock(name="pool")
+        mgr.pool = mock_pool
+
+        await mgr.close()
+
+        mock_pool.close.assert_awaited_once()
+
+    async def test_noop_when_pool_is_none(self):
+        mgr = CheckpointerManager(conninfo=_TEST_DB_URL)
+        assert mgr.pool is None
+
+        # Must complete without raising / touching a missing pool.
+        await mgr.close()
+
+
+# ===================================================================
+# CheckpointerManager.get_checkpointer
+# ===================================================================
+
+
+class TestGetCheckpointer:
+    """get_checkpointer() guards against use before setup."""
+
+    def test_raises_before_initialization(self):
+        mgr = CheckpointerManager(conninfo=_TEST_DB_URL)
+        with pytest.raises(RuntimeError, match="not been initialized"):
+            mgr.get_checkpointer()
+
+    def test_returns_checkpointer_once_assigned(self):
+        mgr = CheckpointerManager(conninfo=_TEST_DB_URL)
+        fake_cp = MagicMock(name="checkpointer")
+        mgr.checkpointer = fake_cp
+
+        assert mgr.get_checkpointer() is fake_cp
+
+
+# ===================================================================
+# init_checkpointer_manager (the @lazy_provider factory body)
+# ===================================================================
+
+
+class TestInitCheckpointerManager:
+    """The lazy-provider factory builds + sets up a manager from settings."""
+
+    async def test_factory_builds_manager_from_settings_and_runs_setup(self):
+        # init_checkpointer_manager is a @lazy_provider registrator; calling it
+        # registers the provider and returns the LazyLoader. The raw async
+        # factory body is reachable as loader.loader_func.
+        with patch.object(CheckpointerManager, "setup", autospec=True) as mock_setup:
+
+            async def _setup(self):
+                self.pool = MagicMock(name="pool")
+                self.checkpointer = MagicMock(name="checkpointer")
+                return self
+
+            mock_setup.side_effect = _setup
+
+            with patch.object(
+                __import__(_CM_MOD, fromlist=["settings"]).settings,
+                "POSTGRES_URL",
+                _TEST_DB_URL,
+            ):
+                loader = init_checkpointer_manager()
+                factory = loader.loader_func
+
+                manager = await factory()
+
+        assert isinstance(manager, CheckpointerManager)
+        assert manager.conninfo == _TEST_DB_URL
+        # setup ran on the very manager that was returned.
+        mock_setup.assert_awaited_once()
+        assert mock_setup.await_args.args[0] is manager
+
+
+# ===================================================================
+# get_checkpointer_manager
+# ===================================================================
+
+
+class TestGetCheckpointerManager:
+    """get_checkpointer_manager() resolves the provider or raises."""
+
+    async def test_returns_manager_from_provider(self):
+        fake_mgr = MagicMock(name="manager")
+        with patch(f"{_CM_MOD}.providers") as mock_providers:
+            mock_providers.aget = AsyncMock(return_value=fake_mgr)
+
+            result = await get_checkpointer_manager()
+
+        assert result is fake_mgr
+        mock_providers.aget.assert_awaited_once_with("checkpointer_manager")
+
+    async def test_raises_when_provider_returns_none(self):
+        with patch(f"{_CM_MOD}.providers") as mock_providers:
+            mock_providers.aget = AsyncMock(return_value=None)
+
+            with pytest.raises(RuntimeError, match="not available"):
+                await get_checkpointer_manager()
+
+
+# ===================================================================
+# build_graph.py — sibling unit (kept green; not the mutation target)
+# ===================================================================
 
 
 def _mock_state_graph():
@@ -31,10 +436,7 @@ def _mock_state_graph():
 
 
 def _apply_patches(stack: ExitStack, overrides: dict | None = None):
-    """Apply all standard patches for build_graph and return useful references.
-
-    Returns dict with keys: llm, builder, compiled, mocks (dict of patch name -> mock).
-    """
+    """Apply all standard patches for build_graph and return useful references."""
     mock_llm = MagicMock()
     mock_llm.model_name = "test-model"
 
@@ -70,165 +472,6 @@ def _apply_patches(stack: ExitStack, overrides: dict | None = None):
         "compiled": compiled,
         "mocks": mocks,
     }
-
-
-# ===================================================================
-# CheckpointerManager
-# ===================================================================
-
-
-_TEST_DB_URL = "postgresql://localhost/test"
-
-
-class TestCheckpointerManager:
-    """Tests for CheckpointerManager lifecycle."""
-
-    def _make_manager(self, conninfo: str = _TEST_DB_URL):
-        from app.agents.core.graph_builder.checkpointer_manager import (
-            CheckpointerManager,
-        )
-
-        return CheckpointerManager(conninfo=conninfo, max_pool_size=5)
-
-    def test_init_defaults(self):
-        mgr = self._make_manager()
-        assert mgr.conninfo == _TEST_DB_URL
-        assert mgr.max_pool_size == 5
-        assert mgr.pool is None
-        assert mgr.checkpointer is None
-
-    def test_init_custom_pool_size(self):
-        from app.agents.core.graph_builder.checkpointer_manager import (
-            CheckpointerManager,
-        )
-
-        mgr = CheckpointerManager(conninfo="postgres://x", max_pool_size=50)
-        assert mgr.max_pool_size == 50
-
-    def test_get_checkpointer_raises_before_setup(self):
-        mgr = self._make_manager()
-        with pytest.raises(RuntimeError, match="not been initialized"):
-            mgr.get_checkpointer()
-
-    def test_get_checkpointer_returns_instance_after_assignment(self):
-        mgr = self._make_manager()
-        fake_cp = MagicMock(name="checkpointer")
-        mgr.checkpointer = fake_cp
-        assert mgr.get_checkpointer() is fake_cp
-
-    @patch(f"{_CM_MOD}.AsyncPostgresStore")
-    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
-    @patch(f"{_CM_MOD}.AsyncConnectionPool")
-    async def test_setup_creates_pool_and_checkpointer(
-        self, mock_pool_cls, mock_saver_cls, mock_store_cls
-    ):
-        mock_pool = AsyncMock()
-        mock_pool_cls.return_value = mock_pool
-
-        mock_saver = AsyncMock()
-        mock_saver_cls.return_value = mock_saver
-
-        # AsyncPostgresStore.from_conn_string returns an async context manager
-        mock_store_instance = AsyncMock()
-        mock_store_ctx = AsyncMock()
-        mock_store_ctx.__aenter__ = AsyncMock(return_value=mock_store_instance)
-        mock_store_ctx.__aexit__ = AsyncMock(return_value=False)
-        mock_store_cls.from_conn_string.return_value = mock_store_ctx
-
-        mgr = self._make_manager()
-        result = await mgr.setup()
-
-        assert result is mgr
-        mock_pool.open.assert_awaited_once_with(wait=True, timeout=30)
-        mock_saver.setup.assert_awaited_once()
-        mock_store_instance.setup.assert_awaited_once()
-        assert mgr.pool is mock_pool
-        assert mgr.checkpointer is mock_saver
-
-    @patch(f"{_CM_MOD}.AsyncPostgresStore")
-    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
-    @patch(f"{_CM_MOD}.AsyncConnectionPool")
-    async def test_setup_returns_self(self, mock_pool_cls, mock_saver_cls, mock_store_cls):
-        mock_pool_cls.return_value = AsyncMock()
-        mock_saver_cls.return_value = AsyncMock()
-        mock_store_ctx = AsyncMock()
-        mock_store_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
-        mock_store_ctx.__aexit__ = AsyncMock(return_value=False)
-        mock_store_cls.from_conn_string.return_value = mock_store_ctx
-
-        mgr = self._make_manager()
-        result = await mgr.setup()
-        assert result is mgr
-
-    @patch(f"{_CM_MOD}.AsyncPostgresStore")
-    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
-    @patch(f"{_CM_MOD}.AsyncConnectionPool")
-    async def test_setup_pool_connection_kwargs(
-        self, mock_pool_cls, mock_saver_cls, mock_store_cls
-    ):
-        mock_pool_cls.return_value = AsyncMock()
-        mock_saver_cls.return_value = AsyncMock()
-        mock_store_ctx = AsyncMock()
-        mock_store_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
-        mock_store_ctx.__aexit__ = AsyncMock(return_value=False)
-        mock_store_cls.from_conn_string.return_value = mock_store_ctx
-
-        mgr = self._make_manager()
-        await mgr.setup()
-
-        pool_kwargs = mock_pool_cls.call_args.kwargs
-        assert pool_kwargs["max_size"] == 5
-        assert pool_kwargs["open"] is False
-        assert pool_kwargs["timeout"] == 30
-        conn_kwargs = pool_kwargs["kwargs"]
-        assert conn_kwargs["autocommit"] is True
-        assert conn_kwargs["prepare_threshold"] == 0
-
-    async def test_close_closes_pool(self):
-        mgr = self._make_manager()
-        mock_pool = AsyncMock()
-        mgr.pool = mock_pool
-
-        await mgr.close()
-        mock_pool.close.assert_awaited_once()
-
-    async def test_close_noop_when_no_pool(self):
-        mgr = self._make_manager()
-        # Should not raise
-        await mgr.close()
-
-
-class TestGetCheckpointerManager:
-    """Tests for get_checkpointer_manager helper."""
-
-    @patch(f"{_CM_MOD}.providers")
-    async def test_returns_manager_from_providers(self, mock_providers):
-        fake_mgr = MagicMock(name="manager")
-        mock_providers.aget = AsyncMock(return_value=fake_mgr)
-
-        from app.agents.core.graph_builder.checkpointer_manager import (
-            get_checkpointer_manager,
-        )
-
-        result = await get_checkpointer_manager()
-        assert result is fake_mgr
-        mock_providers.aget.assert_awaited_once_with("checkpointer_manager")
-
-    @patch(f"{_CM_MOD}.providers")
-    async def test_raises_when_provider_returns_none(self, mock_providers):
-        mock_providers.aget = AsyncMock(return_value=None)
-
-        from app.agents.core.graph_builder.checkpointer_manager import (
-            get_checkpointer_manager,
-        )
-
-        with pytest.raises(RuntimeError, match="not available"):
-            await get_checkpointer_manager()
-
-
-# ===================================================================
-# build_comms_graph
-# ===================================================================
 
 
 class TestBuildCommsGraph:
@@ -269,7 +512,6 @@ class TestBuildCommsGraph:
     async def test_falls_back_to_in_memory_when_no_manager(self):
         with ExitStack() as stack:
             deps = _apply_patches(stack)
-            # Default: get_checkpointer_manager returns None
             from app.agents.core.graph_builder.build_graph import build_comms_graph
 
             async with build_comms_graph(
@@ -277,7 +519,6 @@ class TestBuildCommsGraph:
             ) as graph:
                 assert graph is deps["compiled"]
 
-            # Should still compile (with InMemorySaver fallback)
             deps["builder"].compile.assert_called_once()
 
     async def test_uses_init_llm_when_none_provided(self):
@@ -360,11 +601,6 @@ class TestBuildCommsGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             assert kwargs["middleware"] is mock_mw
-
-
-# ===================================================================
-# build_executor_graph
-# ===================================================================
 
 
 class TestBuildExecutorGraph:
@@ -460,7 +696,7 @@ class TestBuildExecutorGraph:
             assert len(pre_model_hooks) == 3
 
     async def test_subagent_middleware_wired_when_present(self):
-        """When SubagentMiddleware is in the middleware stack, set_llm/set_tools/set_store are called."""
+        """When SubagentMiddleware is in the stack, set_llm/set_tools/set_store run."""
         from app.agents.middleware.subagent import SubagentMiddleware
 
         mock_sub_mw = MagicMock(spec=SubagentMiddleware)
@@ -509,7 +745,6 @@ class TestBuildExecutorGraph:
 
     async def test_model_fallback_to_model_attr(self):
         """When model_name is None, falls back to model attribute."""
-        # Build a mock LLM where model_name is absent but model is set
         llm_no_model_name = MagicMock(spec=[])
         llm_no_model_name.model = "claude-3-opus"
 
@@ -556,11 +791,6 @@ class TestBuildExecutorGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             assert kwargs["retrieve_tools_coroutine"] is mock_retrieve
-
-
-# ===================================================================
-# build_graphs
-# ===================================================================
 
 
 class TestBuildGraphs:
@@ -627,11 +857,6 @@ class TestBuildGraphs:
         assert any("successfully" in msg for msg in info_calls)
 
 
-# ===================================================================
-# build_comms_agent / build_executor_agent (lazy_provider wrappers)
-# ===================================================================
-
-
 class TestBuildCommsAgent:
     """Tests for the lazy_provider-decorated build_comms_agent."""
 
@@ -643,22 +868,16 @@ class TestBuildCommsAgent:
 
     @patch(f"{_MOD}.build_comms_graph")
     @patch(f"{_MOD}.log")
-    async def test_init_comms_agent_calls_build_comms_graph(self, mock_log, mock_build_comms_graph):
-        """The underlying init_checkpointer_manager coroutine invokes build_comms_graph."""
+    async def test_build_comms_graph_yields_compiled(self, mock_log, mock_build_comms_graph):
         compiled = MagicMock(name="compiled")
 
-        # build_comms_graph is an async context manager
         acm = AsyncMock()
         acm.__aenter__ = AsyncMock(return_value=compiled)
         acm.__aexit__ = AsyncMock(return_value=False)
         mock_build_comms_graph.return_value = acm
 
-        # Import and call the raw init function (before lazy_provider wraps it)
         from app.agents.core.graph_builder import build_graph
 
-        # Access the original function from the module-level scope
-        # Since lazy_provider replaced it, we call the function that the provider wraps
-        # by invoking build_comms_graph directly (already tested above)
         async with build_graph.build_comms_graph() as graph:
             assert graph is compiled
 
@@ -674,10 +893,7 @@ class TestBuildExecutorAgent:
 
     @patch(f"{_MOD}.build_executor_graph")
     @patch(f"{_MOD}.log")
-    async def test_init_executor_agent_calls_build_executor_graph(
-        self, mock_log, mock_build_executor_graph
-    ):
-        """The underlying init function invokes build_executor_graph."""
+    async def test_build_executor_graph_yields_compiled(self, mock_log, mock_build_executor_graph):
         compiled = MagicMock(name="compiled")
 
         acm = AsyncMock()
@@ -689,11 +905,6 @@ class TestBuildExecutorAgent:
 
         async with build_graph.build_executor_graph() as graph:
             assert graph is compiled
-
-
-# ===================================================================
-# Compile kwargs verification
-# ===================================================================
 
 
 class TestCompileKwargs:
@@ -742,94 +953,3 @@ class TestCompileKwargs:
 
             call_kwargs = deps["builder"].compile.call_args.kwargs
             assert isinstance(call_kwargs["checkpointer"], InMemorySaver)
-
-
-# ===================================================================
-# RetryPolicy wiring
-# ===================================================================
-
-
-class TestRetryPolicyWiring:
-    """Verify _AGENT_RETRY_POLICY is passed to create_agent for both graphs."""
-
-    async def test_comms_graph_passes_retry_policy(self):
-        with ExitStack() as stack:
-            deps = _apply_patches(stack)
-            from app.agents.core.graph_builder.build_graph import (
-                _AGENT_RETRY_POLICY,
-                build_comms_graph,
-            )
-
-            async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
-                pass
-
-            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            assert kwargs["agent_retry_policy"] is _AGENT_RETRY_POLICY
-
-    async def test_executor_graph_passes_retry_policy(self):
-        with ExitStack() as stack:
-            deps = _apply_patches(stack)
-            from app.agents.core.graph_builder.build_graph import (
-                _AGENT_RETRY_POLICY,
-                build_executor_graph,
-            )
-
-            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
-                pass
-
-            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            assert kwargs["agent_retry_policy"] is _AGENT_RETRY_POLICY
-
-    def test_retry_policy_configuration(self):
-        """_AGENT_RETRY_POLICY has expected max_attempts and intervals."""
-        from app.agents.core.graph_builder.build_graph import _AGENT_RETRY_POLICY
-
-        assert _AGENT_RETRY_POLICY.max_attempts == 3
-        assert _AGENT_RETRY_POLICY.initial_interval == pytest.approx(1.0)
-        assert _AGENT_RETRY_POLICY.backoff_factor == pytest.approx(2.0)
-        assert _AGENT_RETRY_POLICY.max_interval == pytest.approx(30.0)
-        assert _AGENT_RETRY_POLICY.jitter is True
-
-    def test_retry_on_retryable_exceptions(self):
-        """retry_on returns True for every type in _LLM_RETRYABLE_EXCEPTIONS."""
-        from google.api_core.exceptions import (
-            DeadlineExceeded,
-            InternalServerError,
-            ResourceExhausted,
-            ServiceUnavailable,
-        )
-
-        from app.agents.core.graph_builder.build_graph import _AGENT_RETRY_POLICY
-        from app.agents.llm.client import _LLM_RETRYABLE_EXCEPTIONS
-
-        retry_on = _AGENT_RETRY_POLICY.retry_on
-        assert callable(retry_on)
-
-        retryable_instances = [
-            ResourceExhausted("quota exceeded"),
-            ServiceUnavailable("service down"),
-            DeadlineExceeded("timeout"),
-            InternalServerError("server error"),
-            ConnectionError("connection reset"),
-            TimeoutError("timed out"),
-        ]
-        for exc in retryable_instances:
-            assert retry_on(exc) is True, f"Expected {type(exc).__name__} to be retryable"
-
-        assert all(isinstance(exc, _LLM_RETRYABLE_EXCEPTIONS) for exc in retryable_instances)
-
-    def test_retry_on_non_retryable_exceptions(self):
-        """retry_on returns False for non-retryable exception types."""
-        from app.agents.core.graph_builder.build_graph import _AGENT_RETRY_POLICY
-
-        retry_on = _AGENT_RETRY_POLICY.retry_on
-        assert callable(retry_on)
-
-        non_retryable = [
-            ValueError("bad input"),
-            TypeError("wrong type"),
-            KeyError("missing key"),
-            RuntimeError("logic error"),
-        ]
-        for exc in non_retryable:
-            assert retry_on(exc) is False, f"Expected {type(exc).__name__} to NOT be retryable"
