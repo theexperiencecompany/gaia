@@ -1,0 +1,17 @@
+so our desktop app is currently just our website wrapped in electron. how can we figure something out to make gaia always active in the notch of the user. and the hey gaia wake wrod that we already have, when it opens, a sort of bubble appears at the top of the desktop in top right for the user and i can tell gaia to do different things like computer use or fetch my emails or help me with whats on my screen by evenc ontrolling my screen. from an architectural and code perspective how can we do this, especially with electron. and different open soruce computer use resources already exist,
+
+---
+
+https://openspec.dev/ can u please create a multi page spec using openspec with every single thing we need to do for this. basically to improve the desktop app to be able to invoke gaia and talk to it and render ui component sin the top right of muy screen
+
+---
+
+it should be in gitignore btw. also open it in finder. lso i gotta understand like do we do computer use by ourselves? i don't want to. there has GOT to be really good github open source repos or resources that help me make this reaslly easy for me
+
+---
+
+i can't use anhropic acomputer use btw. we can use and take inspo from the demo but using anthropic is not feasable. also yes please do and i like th eomni parser and shit too.
+
+---
+
+i guess remove all notch related things. what i want to get right first as v0 is the hey gaia wake word for invocation, and then computer use.
