@@ -379,12 +379,10 @@ def build_agent_config(
             and all handoff subagents it spawns. All agents in the chain resolve VFS
             paths relative to the executor workspace using this ID. When provided via
             base_configurable it is inherited automatically.
-        langfuse_trace_id: Override the Langfuse trace these spans attach to.
-            When omitted, inherits from `base_configurable["langfuse_trace_id"]`
-            so child agents (the background executor) land on the parent's trace
-            without manual span bridging.
-        langfuse_tags: Tags to attach to the Langfuse trace. Same inheritance
-            rule as `langfuse_trace_id`.
+        langfuse_trace_id: Bind spans to this Langfuse trace; inherits from
+            `base_configurable["langfuse_trace_id"]` when omitted so the
+            executor lands on the comms trace.
+        langfuse_tags: Tags for the Langfuse trace; same inheritance rule.
 
     Returns:
         Configuration dictionary formatted for LangGraph execution with configurable
@@ -409,13 +407,9 @@ def build_agent_config(
         },
     )
 
-    # Inherit Langfuse trace association from the parent agent's configurable
-    # (executor inheriting from comms). Explicit kwargs take precedence so the
-    # entry point (call_agent) can seed the trace from `bot_message_id`.
-    inherited_trace_id = (base_configurable or {}).get("langfuse_trace_id")
-    inherited_tags = (base_configurable or {}).get("langfuse_tags")
-    effective_trace_id = langfuse_trace_id or inherited_trace_id
-    effective_tags = langfuse_tags or inherited_tags
+    # Explicit kwargs win over what was inherited from the parent's configurable.
+    effective_trace_id = langfuse_trace_id or (base_configurable or {}).get("langfuse_trace_id")
+    effective_tags = langfuse_tags or (base_configurable or {}).get("langfuse_tags")
 
     configurable = {
         "thread_id": thread_id or conversation_id,
@@ -440,16 +434,13 @@ def build_agent_config(
         "__pinned_skills__": resolved["pinned_skills"],
     }
 
-    # Propagate Langfuse trace association via configurable so child agents
-    # running in separate asyncio tasks rebuild their own metadata around the
-    # same trace.
+    # Stash in configurable so child agents (spawned via asyncio.create_task)
+    # re-emit the same trace_id from their own build_agent_config call.
     if effective_trace_id:
         configurable["langfuse_trace_id"] = effective_trace_id
     if effective_tags:
         configurable["langfuse_tags"] = effective_tags
 
-    # The LangChain CallbackHandler reads these keys directly from metadata
-    # to bind the trace ID, session, user, and tags.
     metadata: dict = {"user_id": user.get("user_id")}
     if effective_trace_id:
         metadata["langfuse_trace_id"] = effective_trace_id

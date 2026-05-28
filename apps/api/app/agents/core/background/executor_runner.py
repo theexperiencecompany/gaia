@@ -379,11 +379,8 @@ async def run_executor_background(
       2. _deliver_bg_notification invokes comms with the executor result
          as internal context and posts the user-facing message via WS.
 
-    Langfuse trace association is carried through `configurable["langfuse_trace_id"]`
-    (set by `build_agent_config` on the parent comms config). The executor's
-    own `build_agent_config(base_configurable=configurable)` re-emits it into
-    the executor's `RunnableConfig.metadata`, so all child LLM/tool spans land
-    on the same trace via the standard Langfuse LangChain callback.
+    Inherits `langfuse_trace_id` from the parent's `configurable` so this run's
+    LLM/tool spans land on the same Langfuse trace as comms.
     """
     user = _user_from_configurable(configurable)
     result_text = ""

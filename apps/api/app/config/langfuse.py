@@ -4,21 +4,10 @@ Activates only when LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, and
 LANGFUSE_HOST are all set; missing any one is a silent no-op so dev runs
 without keys stay quiet.
 
-Tracing model
--------------
-The LangChain `CallbackHandler` (attached in
-`agent_helpers._build_agent_callbacks`) is the only Langfuse touchpoint
-during agent execution. It captures every LLM call, tool call, and
-sub-chain handoff automatically. Trace association is driven entirely by
-`langfuse_trace_id` in `RunnableConfig.metadata` — the standard Langfuse
-LangChain integration pattern. The background executor lands on the same
-trace as comms because `build_agent_config` propagates `langfuse_trace_id`
-through `configurable`, and the executor's freshly-built config re-emits
-it.
-
-`trace_id_for_message` seeds a deterministic trace ID from the GAIA
-assistant `message_id` so `/messages/{id}/feedback` can re-derive the
-trace without persisting it anywhere.
+Trace association lives in `RunnableConfig.metadata["langfuse_trace_id"]`
+(the standard Langfuse LangChain pattern). `trace_id_for_message` seeds a
+deterministic ID from the GAIA assistant `message_id` so `/feedback` can
+re-derive it without persisting anything.
 """
 
 import os

@@ -1,9 +1,4 @@
-"""Business logic for per-message chat feedback.
-
-Verifies the caller owns the assistant reply being scored, then writes a
-Langfuse NUMERIC score on the trace whose ID is derived deterministically
-from `message_id`. No trace_id is ever persisted in MongoDB.
-"""
+"""Business logic for per-message chat feedback."""
 
 from fastapi import HTTPException, status
 from langfuse import get_client
@@ -21,12 +16,7 @@ async def create_message_feedback_service(
     message_id: str,
     is_positive: bool,
 ) -> MessageFeedbackResponse:
-    """Record thumbs-up/down on a message the caller owns.
-
-    Restricts the ownership lookup to assistant ("bot") messages so user-
-    authored messages can't be scored. Returns a no-op response when
-    Langfuse is unconfigured in this environment.
-    """
+    """Record thumbs-up/down on a message the caller owns."""
     conversation = await conversations_collection.find_one(
         {
             "user_id": user_id,

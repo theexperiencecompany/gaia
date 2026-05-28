@@ -1,10 +1,10 @@
-"""Per-message feedback endpoint — wires the chat UI's thumbs to Langfuse scores.
+"""Per-message feedback endpoint.
 
-trace_id is deterministically derived from the assistant `message_id`, so the
-score lands on the exact reply without persisting any extra state. The
-existing PostHog event continues to fire on the frontend side; this endpoint
-is additive.
+Trace IDs derive deterministically from `message_id`, so scores attach to
+the matching trace without ever persisting the ID.
 """
+
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 
@@ -18,14 +18,13 @@ router = APIRouter()
 
 @router.post(
     "/messages/{message_id}/feedback",
-    response_model=MessageFeedbackResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Submit thumbs-up / thumbs-down feedback for a message",
 )
 async def submit_message_feedback(
     message_id: str,
     payload: MessageFeedbackRequest,
-    user: dict = Depends(get_current_user),
+    user: Annotated[dict, Depends(get_current_user)],
 ) -> MessageFeedbackResponse:
     """Record a thumbs-up/down on an assistant reply owned by the caller."""
     user_id = user["user_id"]
