@@ -23,6 +23,18 @@ scrape_configs:
     static_configs:
       - targets: ["rabbitmq:15692"]
 
+  # Per-queue metrics. The default /metrics endpoint emits only AGGREGATED queue
+  # metrics (no `queue` label), so per-queue panels (e.g. "Queue Depth by Queue")
+  # render empty. The detailed endpoint's queue_coarse_metrics family exposes
+  # rabbitmq_detailed_queue_messages{vhost,queue} cheaply (vs the heavy full
+  # /metrics/per-object dump). Keep the family list minimal to bound cardinality.
+  - job_name: rabbitmq_detailed
+    metrics_path: /metrics/detailed
+    params:
+      family: ["queue_coarse_metrics"]
+    static_configs:
+      - targets: ["rabbitmq:15692"]
+
   - job_name: arq_worker
     static_configs:
       - targets: ["arq_worker:9100"]

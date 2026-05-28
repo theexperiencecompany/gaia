@@ -15,6 +15,7 @@ import traceback
 
 from crawl4ai import AsyncWebCrawler
 
+from app.utils.crawl4ai_utils import get_browser_semaphore
 from shared.py.wide_events import log
 
 
@@ -35,7 +36,10 @@ async def crawl_profile_url(url: str, platform: str, semaphore: asyncio.Semaphor
         try:
             log.info(f"Crawling {platform} profile: {url}")
 
-            async with AsyncWebCrawler(verbose=False) as crawler:
+            # Process-wide cap on live Chromium instances (shared with
+            # crawl4ai_utils) so concurrent profile crawls can't fan out into
+            # dozens of browsers.
+            async with get_browser_semaphore(), AsyncWebCrawler(verbose=False) as crawler:
                 result = await asyncio.wait_for(crawler.arun(url=url), timeout=15.0)
 
                 if not result:

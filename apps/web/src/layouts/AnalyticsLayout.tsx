@@ -2,6 +2,7 @@
 
 import { GoogleAnalytics } from "@next/third-parties/google";
 import dynamic from "next/dynamic";
+import Script from "next/script";
 import { useEffect, useState } from "react";
 
 // Lazy-load Vercel's own Analytics + Speed Insights so they don't ship on the
@@ -19,8 +20,10 @@ const SpeedInsights = dynamic(
   { ssr: false },
 );
 
-// Use NEXT_PUBLIC_GA_ID from environment variables
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
+const RYBBIT_SITE_ID = process.env.NEXT_PUBLIC_RYBBIT_SITE_ID;
+const RYBBIT_HOST =
+  process.env.NEXT_PUBLIC_RYBBIT_HOST ?? "https://as.heygaia.io";
 
 export default function AnalyticsLayout() {
   const [shouldLoad, setShouldLoad] = useState(false);
@@ -37,6 +40,13 @@ export default function AnalyticsLayout() {
 
   return (
     <>
+      {RYBBIT_SITE_ID ? (
+        <Script
+          src={`${RYBBIT_HOST}/api/script.js`}
+          data-site-id={RYBBIT_SITE_ID}
+          strategy="afterInteractive"
+        />
+      ) : null}
       {GA_ID ? <GoogleAnalytics gaId={GA_ID} /> : null}
       <VercelAnalytics />
       <SpeedInsights />
