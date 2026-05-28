@@ -33,7 +33,6 @@ from pydantic import PydanticDeprecatedSince20
 
 from app.agents.core.graph_builder.build_graph import build_graphs
 from app.agents.core.graph_builder.checkpointer_manager import init_checkpointer_manager
-from app.agents.core.subagents.cache import init_user_subagent_graph_cache
 from app.agents.llm.client import register_llm_providers
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.store import init_embeddings
@@ -58,7 +57,6 @@ from app.helpers.lifespan_helpers import (
     close_postgresql_async,
     close_publisher_async,
     close_reminder_scheduler,
-    close_user_subagent_graph_cache,
     close_websocket_async,
     close_workflow_scheduler,
     init_mongodb_async,
@@ -204,7 +202,6 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         init_juicefs_mount,
         init_sandbox_pool,
         init_posthog,
-        init_user_subagent_graph_cache,
         init_langfuse,
     )
 
@@ -307,7 +304,6 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
         (close_workflow_scheduler, "workflow_scheduler"),
         (close_checkpointer_manager, "checkpointer_manager"),
         (close_mcp_client_pool, "mcp_client_pool"),
-        (close_user_subagent_graph_cache, "user_subagent_graph_cache"),
     ]
 
     # Context-specific cleanup: additional services only for FastAPI

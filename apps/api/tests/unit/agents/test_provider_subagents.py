@@ -9,28 +9,6 @@ from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.oauth_models import OAuthIntegration
 from app.models.subagent_models import Subagent
 
-
-@pytest.fixture(autouse=True)
-def _clear_user_subagent_cache():
-    """Give each test an isolated, fresh subagent graph cache.
-
-    ``create_subagent_for_user`` memoises compiled graphs in a bounded
-    LRU+TTL cache (see ``cache.py``). Tests deliberately simulate
-    failure/success modes for the same key, so the cache must be wiped
-    between tests or the second test would read the first test's cached
-    MagicMock. We patch the resolver to return a fresh cache instance
-    (no background cleanup loop) per test.
-    """
-    from app.agents.core.subagents.cache import UserSubagentGraphCache
-
-    cache = UserSubagentGraphCache()
-    with patch(
-        "app.agents.core.subagents.provider_subagents.get_user_subagent_graph_cache",
-        AsyncMock(return_value=cache),
-    ):
-        yield
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

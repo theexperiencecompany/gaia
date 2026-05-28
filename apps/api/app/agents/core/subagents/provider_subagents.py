@@ -9,12 +9,10 @@ Subagents are built on-demand each turn. Per-user MCP tools are read live from
 MCPClient (the source of truth) rather than copied into a process-global cache.
 """
 
-import asyncio
 from collections.abc import Awaitable, Callable
 
 from langgraph.graph.state import CompiledStateGraph
 
-from app.agents.core.subagents.cache import get_user_subagent_graph_cache
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.llm.client import init_llm
 from app.agents.tools.core.registry import get_tool_registry
@@ -27,24 +25,6 @@ from app.services.mcp.mcp_client import get_mcp_client
 from shared.py.wide_events import log
 
 from .base_subagent import SubAgentFactory
-
-# Per-user compiled-graph memo lives in `cache.py` as a bounded LRU+TTL.
-# This lock only serializes the expensive build step (MCP-connect +
-# ChromaDB-indexing) so concurrent first-handoffs for the same key don't
-# duplicate the work; the cache itself has its own internal lock.
-_USER_SUBAGENT_LOCK = asyncio.Lock()
-
-
-async def invalidate_user_subagent_cache(integration_id: str, user_id: str | None = None) -> None:
-    """Drop cached subagent graphs for a given integration.
-
-    If ``user_id`` is None, invalidates every user's graph for that
-    integration (useful when an MCP config changes globally). Async because
-    the underlying cache evicts the user-scoped MCP tool category alongside
-    the graph.
-    """
-    cache = await get_user_subagent_graph_cache()
-    await cache.invalidate(integration_id, user_id=user_id)
 
 
 async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
@@ -136,55 +116,14 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
 
 
 async def create_subagent_for_user(integration_id: str, user_id: str) -> CompiledStateGraph | None:
-    """Create or retrieve from the bounded LRU+TTL cache a per-user subagent graph.
+    """Build a per-user subagent graph.
 
-    The compiled graph is memoised in-process keyed by
-    ``(integration_id, user_id)`` so repeat handoffs skip the expensive
-    MCP-connect + ChromaDB-indexing rebuild. The cache is bounded
-    (size + TTL); evicted entries also drop their MCP tool category from the
-    registry. Explicit invalidation happens on MCP config change via
-    :func:`invalidate_user_subagent_cache`.
-
-    The actual build delegates to :func:`_build_user_subagent`, which pulls
-    live tools from MCPClient (develop's persistent-session source of truth).
+    No memoization — every handoff rebuilds the graph from live MCPClient
+    state. The build itself is sub-second; the cost that used to motivate
+    caching (MCP connect + Chroma indexing) lives in MCPClient, which keeps
+    warm sessions per integration for the worker's lifetime.
     """
-    cache = await get_user_subagent_graph_cache()
-
-    cached = await cache.get(integration_id, user_id)
-    if cached is not None:
-        log.set(
-            subagent_graph_cache={
-                "integration_id": integration_id,
-                "user_id": user_id,
-                "outcome": "hit",
-            }
-        )
-        return cached
-
-    async with _USER_SUBAGENT_LOCK:
-        # Double-check: another task may have populated while we waited.
-        cached = await cache.get(integration_id, user_id)
-        if cached is not None:
-            log.set(
-                subagent_graph_cache={
-                    "integration_id": integration_id,
-                    "user_id": user_id,
-                    "outcome": "hit_after_wait",
-                }
-            )
-            return cached
-
-        graph = await _build_user_subagent(integration_id, user_id)
-        if graph is not None:
-            await cache.put(integration_id, user_id, graph)
-        log.set(
-            subagent_graph_cache={
-                "integration_id": integration_id,
-                "user_id": user_id,
-                "outcome": "miss_built" if graph is not None else "miss_failed",
-            }
-        )
-        return graph
+    return await _build_user_subagent(integration_id, user_id)
 
 
 async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledStateGraph | None:

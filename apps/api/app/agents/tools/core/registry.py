@@ -1,5 +1,4 @@
 import asyncio
-from collections import defaultdict
 from collections.abc import ItemsView, Iterator, KeysView, Mapping
 
 from langchain_core.tools import BaseTool
@@ -159,9 +158,6 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._categories: dict[str, ToolCategory] = {}
-        # Tracks which mcp_* categories each user has, so the subagent graph
-        # cache can drop a user's bound MCP tool categories on eviction.
-        self._user_mcp_categories: dict[str, set[str]] = defaultdict(set)
 
     async def setup(self):
         self._initialize_categories()
@@ -505,21 +501,6 @@ class ToolRegistry:
             for name, category in self._categories.items()
             if name not in ignore_categories
         }
-
-    def remove_user_mcp_category(self, integration_id: str, user_id: str) -> None:
-        """Drop the per-user MCP tool category created by `provider_subagents`.
-
-        Called by the subagent graph cache on eviction so the registry doesn't
-        accumulate orphaned `mcp_{integration_id}_{user_id}` categories
-        (each holds the user's bound MCP tool objects).
-        """
-        category_name = f"mcp_{integration_id}_{user_id}"
-        if self._categories.pop(category_name, None) is not None:
-            log.debug(f"Dropped user-scoped MCP category {category_name} from registry")
-        if user_id in self._user_mcp_categories:
-            self._user_mcp_categories[user_id].discard(category_name)
-            if not self._user_mcp_categories[user_id]:
-                del self._user_mcp_categories[user_id]
 
     def get_category_of_tool(self, tool_name: str) -> str:
         """Get the category of a specific tool by name."""
