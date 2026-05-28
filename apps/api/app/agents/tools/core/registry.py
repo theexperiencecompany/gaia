@@ -333,56 +333,14 @@ class ToolRegistry:
         log.info(f"Registered {len(tools)} tools for {toolkit_name}")
         return self._categories[toolkit_name]
 
-    async def load_all_provider_tools(self):
-        """
-        Load all provider tools from OAuth integrations.
-        This method loads tools for all integrations managed by composio
-        that have subagent configurations and syncs them to the store.
-        Tools are loaded in parallel for better performance.
-        """
-
-        async def load_provider(integration):
-            toolkit_name = integration.composio_config.toolkit
-            space_name = integration.subagent_config.tool_space
-            specific_tools = integration.subagent_config.specific_tools
-
-            # Skip if already loaded
-            if toolkit_name in self._categories:
-                return
-
-            try:
-                await self.register_provider_tools(
-                    toolkit_name=toolkit_name,
-                    space_name=space_name,
-                    specific_tools=specific_tools,
-                )
-            except Exception as e:
-                log.error(f"Failed to load provider tools for {toolkit_name}: {e}")
-
-        # Collect all integrations that need loading
-        integrations_to_load = [
-            integration
-            for integration in OAUTH_INTEGRATIONS
-            if (
-                integration.managed_by == "composio"
-                and integration.composio_config
-                and integration.subagent_config
-                and integration.subagent_config.has_subagent
-            )
-        ]
-
-        # Load all providers in parallel
-        await asyncio.gather(*[load_provider(i) for i in integrations_to_load])
-
     async def populate_provider_catalog(self) -> int:
         """Index provider-tool METADATA for retrieval and the /tools catalog
         *without* materializing executable StructuredTools.
 
-        This replaces the old eager ``load_all_provider_tools()`` warmup path,
-        which wrapped every one of the ~1.6k catalog tools into a StructuredTool
-        (a Pydantic args-model + closure per tool, ~100KB each) and kept them
-        resident for the whole process lifetime — the single largest contributor
-        to backend RSS. Here we only:
+        Replaces an eager warmup that wrapped every one of the ~1.6k catalog
+        tools into a StructuredTool (a Pydantic args-model + closure per tool,
+        ~100KB each) and kept them resident for the whole process lifetime —
+        the single largest contributor to backend RSS. Here we only:
 
           1. fetch raw tool metadata (name + description) per toolkit,
           2. index name+description into ChromaDB so retrieval works, and
