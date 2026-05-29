@@ -8,6 +8,7 @@ import pytest
 from app.constants.notifications import (
     CHANNEL_TYPE_DISCORD,
     CHANNEL_TYPE_INAPP,
+    CHANNEL_TYPE_SLACK,
     CHANNEL_TYPE_TELEGRAM,
 )
 from app.models.notification.notification_models import (
@@ -26,7 +27,10 @@ from app.models.notification.notification_models import (
 )
 from app.utils.notification.channels.discord import DiscordChannelAdapter
 from app.utils.notification.channels.inapp import InAppChannelAdapter
+from app.utils.notification.channels.slack import SlackChannelAdapter
 from app.utils.notification.channels.telegram import TelegramChannelAdapter
+from app.utils.notification.channels.whatsapp import WhatsAppChannelAdapter
+from app.utils.platform_markdown import convert_to_whatsapp_markdown
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1273,3 +1277,172 @@ class TestTelegramSendMarkdown:
                 result = await adapter._send_markdown(mock_session, ctx, "long text")
 
         assert result == "chunk 2 failed"
+
+
+# ========================================================================
+# SlackChannelAdapter specifics
+# ========================================================================
+
+
+def _aiohttp_cm(resp: Any) -> AsyncMock:
+    """Wrap a mock response as an async context manager (aiohttp session.post)."""
+    cm = AsyncMock()
+    cm.__aenter__ = AsyncMock(return_value=resp)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    return cm
+
+
+@pytest.mark.unit
+class TestSlackAdapterProperties:
+    def test_channel_type(self) -> None:
+        assert SlackChannelAdapter().channel_type == CHANNEL_TYPE_SLACK
+
+    def test_platform_name(self) -> None:
+        assert SlackChannelAdapter().platform_name == CHANNEL_TYPE_SLACK
+
+    def test_get_bot_token(self) -> None:
+        with patch("app.utils.notification.channels.slack.settings") as s:
+            s.SLACK_BOT_TOKEN = "xoxb-test"
+            assert SlackChannelAdapter()._get_bot_token() == "xoxb-test"
+
+    def test_session_kwargs_uses_bearer_auth(self) -> None:
+        kwargs = SlackChannelAdapter()._session_kwargs({"token": "xoxb-1"})
+        assert kwargs["headers"]["Authorization"] == "Bearer xoxb-1"
+
+
+@pytest.mark.unit
+class TestSlackSetupSender:
+    """SlackChannelAdapter._setup_sender opens a DM then yields a send fn."""
+
+    async def test_opens_dm_with_user_id_and_returns_sender(self) -> None:
+        adapter = SlackChannelAdapter()
+        ctx = {"token": "xoxb", "platform_user_id": "U123"}
+
+        open_resp = AsyncMock()
+        open_resp.status = 200
+        open_resp.json = AsyncMock(return_value={"ok": True, "channel": {"id": "D1"}})
+
+        mock_session = MagicMock()
+        mock_session.post.return_value = _aiohttp_cm(open_resp)
+
+        send_fn, err = await adapter._setup_sender(mock_session, ctx)
+
+        assert err is None
+        assert send_fn is not None
+        url, kwargs = mock_session.post.call_args.args[0], mock_session.post.call_args.kwargs
+        assert "conversations.open" in url
+        assert kwargs["json"] == {"users": "U123"}
+
+    async def test_ok_false_on_open_returns_error(self) -> None:
+        adapter = SlackChannelAdapter()
+        ctx = {"token": "xoxb", "platform_user_id": "U123"}
+
+        open_resp = AsyncMock()
+        open_resp.status = 200
+        open_resp.json = AsyncMock(return_value={"ok": False, "error": "user_not_found"})
+
+        mock_session = MagicMock()
+        mock_session.post.return_value = _aiohttp_cm(open_resp)
+
+        send_fn, err = await adapter._setup_sender(mock_session, ctx)
+
+        assert send_fn is None
+        assert err is not None
+        assert err.status == NotificationStatus.FAILED
+        assert "user_not_found" in (err.error_message or "")
+
+    async def test_missing_dm_channel_id_returns_error(self) -> None:
+        adapter = SlackChannelAdapter()
+        ctx = {"token": "xoxb", "platform_user_id": "U123"}
+
+        open_resp = AsyncMock()
+        open_resp.status = 200
+        open_resp.json = AsyncMock(return_value={"ok": True, "channel": {}})
+
+        mock_session = MagicMock()
+        mock_session.post.return_value = _aiohttp_cm(open_resp)
+
+        send_fn, err = await adapter._setup_sender(mock_session, ctx)
+
+        assert send_fn is None
+        assert err is not None
+
+
+@pytest.mark.unit
+class TestSlackSendFunction:
+    """The send fn posts to chat.postMessage, converts mrkdwn, and honours `ok`."""
+
+    async def test_send_posts_to_dm_and_converts_markdown(self) -> None:
+        adapter = SlackChannelAdapter()
+        ctx = {"token": "xoxb", "platform_user_id": "U123"}
+
+        open_resp = AsyncMock()
+        open_resp.status = 200
+        open_resp.json = AsyncMock(return_value={"ok": True, "channel": {"id": "D1"}})
+        post_resp = AsyncMock()
+        post_resp.status = 200
+        post_resp.json = AsyncMock(return_value={"ok": True})
+
+        mock_session = MagicMock()
+        mock_session.post.side_effect = [_aiohttp_cm(open_resp), _aiohttp_cm(post_resp)]
+
+        send_fn, err = await adapter._setup_sender(mock_session, ctx)
+        assert err is None
+        result = await send_fn("**bold**")
+
+        assert result is None  # success
+        post_call = mock_session.post.call_args_list[1]
+        assert "chat.postMessage" in post_call.args[0]
+        payload = post_call.kwargs["json"]
+        assert payload["channel"] == "D1"
+        # **bold** must be converted to Slack mrkdwn (*bold*), not sent raw
+        assert payload["text"] == "*bold*"
+        assert payload["text"] != "**bold**"
+
+    async def test_send_returns_error_when_ok_false(self) -> None:
+        adapter = SlackChannelAdapter()
+        ctx = {"token": "xoxb", "platform_user_id": "U123"}
+
+        open_resp = AsyncMock()
+        open_resp.status = 200
+        open_resp.json = AsyncMock(return_value={"ok": True, "channel": {"id": "D1"}})
+        post_resp = AsyncMock()
+        post_resp.status = 200
+        post_resp.json = AsyncMock(return_value={"ok": False, "error": "channel_not_found"})
+
+        mock_session = MagicMock()
+        mock_session.post.side_effect = [_aiohttp_cm(open_resp), _aiohttp_cm(post_resp)]
+
+        send_fn, _err = await adapter._setup_sender(mock_session, ctx)
+        result = await send_fn("hi")
+
+        assert result == "channel_not_found"
+
+
+# ========================================================================
+# ChannelAdapter.deliver_text (raw chat-message delivery primitive)
+# ========================================================================
+
+
+@pytest.mark.unit
+class TestDeliverText:
+    async def test_base_passes_raw_text_through(self) -> None:
+        """The base default delivers raw Markdown verbatim (Discord renders natively)."""
+        adapter = DiscordChannelAdapter()
+        adapter.deliver = AsyncMock(return_value="status-sentinel")  # boundary
+
+        out = await adapter.deliver_text("**keep raw**", "user-1")
+
+        adapter.deliver.assert_awaited_once_with({"text": "**keep raw**"}, "user-1")
+        assert out == "status-sentinel"
+
+    async def test_whatsapp_converts_markdown_before_deliver(self) -> None:
+        """WhatsApp converts to its markdown (conversion lives in transform, not send)."""
+        adapter = WhatsAppChannelAdapter()
+        adapter.deliver = AsyncMock(return_value="status-sentinel")
+
+        await adapter.deliver_text("**bold**", "user-1")
+
+        sent = adapter.deliver.await_args.args[0]
+        assert sent["text"] == convert_to_whatsapp_markdown("**bold**")
+        assert sent["text"] != "**bold**"  # proves conversion actually ran

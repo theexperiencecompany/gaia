@@ -32,6 +32,7 @@ from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
+from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.models_models import ModelConfig
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
@@ -313,6 +314,12 @@ def build_agent_config(
     )
     effective_tags = langfuse_tags if langfuse_tags is not None else inherited.get("langfuse_tags")
 
+    # Specific channel (web/mobile/whatsapp/...) and its generalized category
+    # (UI/Bot/BG). The channel falls back to "background" when unset because the
+    # only callers that omit a source are the silent background paths.
+    source_channel = resolved["source"] or ConversationSource.BACKGROUND.value
+    source_category = SourceCategory.from_source(resolved["source"]).value
+
     configurable = {
         "thread_id": thread_id or conversation_id,
         "user_id": user.get("user_id"),
@@ -332,6 +339,7 @@ def build_agent_config(
         "active_todo_id": resolved["active_todo_id"],
         "execution_mode": resolved["execution_mode"] or "interactive",
         "conversation_source": resolved["source"],
+        "source_category": source_category,
         "__pinned_memories__": resolved["pinned_memories"],
         "__pinned_skills__": resolved["pinned_skills"],
     }
@@ -343,7 +351,11 @@ def build_agent_config(
     if effective_tags:
         configurable["langfuse_tags"] = effective_tags
 
-    metadata: dict = {"user_id": user.get("user_id")}
+    metadata: dict = {
+        "user_id": user.get("user_id"),
+        "source_category": source_category,
+        "source_channel": source_channel,
+    }
     if effective_trace_id:
         metadata["langfuse_trace_id"] = effective_trace_id
         metadata["langfuse_session_id"] = conversation_id

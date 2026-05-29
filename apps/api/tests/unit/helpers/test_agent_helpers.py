@@ -11,7 +11,6 @@ from app.helpers.agent_helpers import (
     build_initial_state,
     execute_graph_silent,
     execute_graph_streaming,
-    get_custom_integration_metadata,
     get_handoff_metadata,
 )
 from app.models.mcp_config import SubAgentConfig
@@ -113,118 +112,6 @@ class TestExtractTimezoneOffset:
         tz = timezone(timedelta(hours=12, minutes=45))
         dt = datetime(2025, 1, 1, tzinfo=tz)
         assert _extract_timezone_offset(dt) == "+12:45"
-
-
-# ---------------------------------------------------------------------------
-# get_custom_integration_metadata
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-class TestGetCustomIntegrationMetadata:
-    @patch("app.helpers.agent_helpers.get_tool_registry", new_callable=AsyncMock)
-    async def test_no_category_returns_empty(self, mock_get_registry):
-        mock_registry = MagicMock()
-        mock_registry.get_category_of_tool.return_value = None
-        mock_get_registry.return_value = mock_registry
-
-        result = await get_custom_integration_metadata("some_tool", USER_ID)
-        assert result == {}
-
-    @patch("app.helpers.agent_helpers.get_tool_registry", new_callable=AsyncMock)
-    async def test_non_mcp_category_returns_empty(self, mock_get_registry):
-        mock_registry = MagicMock()
-        mock_registry.get_category_of_tool.return_value = "gmail"
-        mock_get_registry.return_value = mock_registry
-
-        result = await get_custom_integration_metadata("gmail_send", USER_ID)
-        assert result == {}
-
-    @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.integrations_collection")
-    @patch("app.helpers.agent_helpers.get_tool_registry", new_callable=AsyncMock)
-    async def test_mcp_category_cache_hit(
-        self, mock_get_registry, mock_col, mock_get_cache, mock_set_cache
-    ):
-        mock_registry = MagicMock()
-        mock_registry.get_category_of_tool.return_value = "mcp_custom_reposearch_abc123"
-        mock_get_registry.return_value = mock_registry
-        mock_get_cache.return_value = {
-            "icon_url": "https://icon.png",
-            "integration_id": "custom_reposearch_abc123",
-        }
-
-        result = await get_custom_integration_metadata("repo_search", USER_ID)
-        assert result["icon_url"] == "https://icon.png"
-
-    @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.integrations_collection")
-    @patch("app.helpers.agent_helpers.get_tool_registry", new_callable=AsyncMock)
-    async def test_mcp_category_cache_miss_found_in_db(
-        self, mock_get_registry, mock_col, mock_get_cache, mock_set_cache
-    ):
-        mock_registry = MagicMock()
-        mock_registry.get_category_of_tool.return_value = "mcp_custom_tool"
-        mock_get_registry.return_value = mock_registry
-        mock_get_cache.return_value = None
-        mock_col.find_one = AsyncMock(
-            return_value={"name": "Custom Tool", "icon_url": "https://img.png"}
-        )
-
-        result = await get_custom_integration_metadata("my_tool", USER_ID)
-        assert result["integration_name"] == "Custom Tool"
-        assert result["icon_url"] == "https://img.png"
-        mock_set_cache.assert_called_once()
-
-    @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.integrations_collection")
-    @patch("app.helpers.agent_helpers.get_tool_registry", new_callable=AsyncMock)
-    async def test_mcp_category_not_found_in_db(
-        self, mock_get_registry, mock_col, mock_get_cache, mock_set_cache
-    ):
-        mock_registry = MagicMock()
-        mock_registry.get_category_of_tool.return_value = "mcp_unknown"
-        mock_get_registry.return_value = mock_registry
-        mock_get_cache.return_value = None
-        mock_col.find_one = AsyncMock(return_value=None)
-
-        result = await get_custom_integration_metadata("unknown_tool", USER_ID)
-        assert result == {}
-        # Negative result cached
-        mock_set_cache.assert_called_once()
-
-    @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.integrations_collection")
-    @patch("app.helpers.agent_helpers.get_tool_registry", new_callable=AsyncMock)
-    async def test_mcp_category_db_error_returns_empty(
-        self, mock_get_registry, mock_col, mock_get_cache, mock_set_cache
-    ):
-        mock_registry = MagicMock()
-        mock_registry.get_category_of_tool.return_value = "mcp_broken"
-        mock_get_registry.return_value = mock_registry
-        mock_get_cache.return_value = None
-        mock_col.find_one = AsyncMock(side_effect=Exception("DB down"))
-
-        result = await get_custom_integration_metadata("broken_tool", USER_ID)
-        assert result == {}
-
-    @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.get_tool_registry", new_callable=AsyncMock)
-    async def test_mcp_category_with_uuid_suffix_stripped(self, mock_get_registry, mock_get_cache):
-        """UUID-like suffix (>= 32 chars with dashes) should be stripped from integration ID."""
-        mock_registry = MagicMock()
-        # category: mcp_{integration_id}_{uuid_user_id}
-        uuid_suffix = "550e8400-e29b-41d4-a716-446655440000"
-        mock_registry.get_category_of_tool.return_value = f"mcp_myintegration_{uuid_suffix}"
-        mock_get_registry.return_value = mock_registry
-        mock_get_cache.return_value = {"integration_id": "myintegration"}
-
-        result = await get_custom_integration_metadata("tool_x", USER_ID)
-        assert result["integration_id"] == "myintegration"
 
 
 # ---------------------------------------------------------------------------
@@ -464,6 +351,88 @@ class TestBuildAgentConfig:
         assert config["configurable"]["selected_tool"] == "search"
         assert config["configurable"]["tool_category"] == "web"
 
+    @patch("app.helpers.agent_helpers.providers")
+    @patch("app.helpers.agent_helpers.settings")
+    def test_bot_source_sets_bot_category_and_channel(self, mock_settings, mock_providers) -> None:
+        mock_settings.ENV = "development"
+        mock_settings.OPIK_API_KEY = None
+        mock_settings.OPIK_WORKSPACE = None
+        mock_providers.get.return_value = None
+
+        config = build_agent_config(
+            conversation_id=CONV_ID,
+            user=FAKE_USER,
+            user_time=_make_user_time(),
+            agent_name="comms_agent",
+            source="whatsapp",
+        )
+        # raw channel preserved in configurable; generalized category derived
+        assert config["configurable"]["conversation_source"] == "whatsapp"
+        assert config["configurable"]["source_category"] == "bot"
+        # both surfaced on trace metadata for observability
+        assert config["metadata"]["source_category"] == "bot"
+        assert config["metadata"]["source_channel"] == "whatsapp"
+
+    @patch("app.helpers.agent_helpers.providers")
+    @patch("app.helpers.agent_helpers.settings")
+    def test_web_source_sets_ui_category(self, mock_settings, mock_providers) -> None:
+        mock_settings.ENV = "development"
+        mock_settings.OPIK_API_KEY = None
+        mock_settings.OPIK_WORKSPACE = None
+        mock_providers.get.return_value = None
+
+        config = build_agent_config(
+            conversation_id=CONV_ID,
+            user=FAKE_USER,
+            user_time=_make_user_time(),
+            agent_name="comms_agent",
+            source="web",
+        )
+        assert config["configurable"]["source_category"] == "ui"
+        assert config["metadata"]["source_category"] == "ui"
+        assert config["metadata"]["source_channel"] == "web"
+
+    @patch("app.helpers.agent_helpers.providers")
+    @patch("app.helpers.agent_helpers.settings")
+    def test_missing_source_defaults_to_background(self, mock_settings, mock_providers) -> None:
+        mock_settings.ENV = "development"
+        mock_settings.OPIK_API_KEY = None
+        mock_settings.OPIK_WORKSPACE = None
+        mock_providers.get.return_value = None
+
+        config = build_agent_config(
+            conversation_id=CONV_ID,
+            user=FAKE_USER,
+            user_time=_make_user_time(),
+            agent_name="comms_agent",
+        )
+        # no source -> BG category, channel labelled "background" in metadata
+        assert config["configurable"]["conversation_source"] is None
+        assert config["configurable"]["source_category"] == "bg"
+        assert config["metadata"]["source_category"] == "bg"
+        assert config["metadata"]["source_channel"] == "background"
+
+    @patch("app.helpers.agent_helpers.providers")
+    @patch("app.helpers.agent_helpers.settings")
+    def test_source_inherited_from_base_configurable(self, mock_settings, mock_providers) -> None:
+        """A child agent (e.g. executor) inherits the channel from its parent and
+        recomputes the category — so background runs are still tagged Bot/UI."""
+        mock_settings.ENV = "development"
+        mock_settings.OPIK_API_KEY = None
+        mock_settings.OPIK_WORKSPACE = None
+        mock_providers.get.return_value = None
+
+        config = build_agent_config(
+            conversation_id=CONV_ID,
+            user=FAKE_USER,
+            user_time=_make_user_time(),
+            agent_name="executor",
+            base_configurable={"conversation_source": "telegram"},
+        )
+        assert config["configurable"]["conversation_source"] == "telegram"
+        assert config["configurable"]["source_category"] == "bot"
+        assert config["metadata"]["source_channel"] == "telegram"
+
 
 # ---------------------------------------------------------------------------
 # build_initial_state
@@ -548,7 +517,7 @@ class TestExecuteGraphSilent:
         msg, tool_data = await execute_graph_silent(
             graph,
             {"query": "test"},
-            {"configurable": {"user_id": USER_ID}},
+            {"agent_name": "comms_agent", "configurable": {"user_id": USER_ID}},
         )
 
         assert msg == "Hello world"
@@ -567,10 +536,11 @@ class TestExecuteGraphSilent:
         graph = AsyncMock()
         graph.astream = MagicMock(return_value=_async_iter(events))
 
+        # agent_name is comms_agent, so only the `silent` flag should suppress it.
         msg, _ = await execute_graph_silent(
             graph,
             {},
-            {"configurable": {"user_id": USER_ID}},
+            {"agent_name": "comms_agent", "configurable": {"user_id": USER_ID}},
         )
         assert msg == ""
 
@@ -588,10 +558,11 @@ class TestExecuteGraphSilent:
         graph = AsyncMock()
         graph.astream = MagicMock(return_value=_async_iter(events))
 
+        # Non-comms agent: content must NOT be accumulated even though it exists.
         msg, _ = await execute_graph_silent(
             graph,
             {},
-            {"configurable": {"user_id": USER_ID}},
+            {"agent_name": "executor_agent", "configurable": {"user_id": USER_ID}},
         )
         assert msg == ""
 
@@ -645,6 +616,7 @@ class TestExecuteGraphSilent:
     @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_handoff_metadata", new_callable=AsyncMock)
     async def test_updates_handoff_tool_calls(self, mock_handoff, mock_format):
+        """handoff tool calls on the agent node resolve + forward handoff metadata."""
         mock_handoff.return_value = {
             "icon_url": "https://icon.png",
             "integration_id": "github",
@@ -655,7 +627,7 @@ class TestExecuteGraphSilent:
         msg.tool_calls = [{"id": "tc1", "name": "handoff", "args": {"subagent_id": "github"}}]
 
         events = [
-            ((), "updates", {"node1": {"messages": [msg]}}),
+            ((), "updates", {"agent": {"messages": [msg]}}),
         ]
 
         graph = AsyncMock()
@@ -668,22 +640,21 @@ class TestExecuteGraphSilent:
         )
 
         mock_handoff.assert_called_once_with("github")
-        assert len(tool_data["tool_data"]) == 1
+        # The resolved handoff metadata must be forwarded into the formatted entry.
+        assert mock_format.await_args.kwargs["integration_id"] == "github"
+        assert tool_data["tool_data"] == [{"tool_name": "handoff", "data": {}}]
 
     @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
-    @patch(
-        "app.helpers.agent_helpers.get_custom_integration_metadata",
-        new_callable=AsyncMock,
-    )
-    async def test_updates_custom_tool_calls(self, mock_custom_meta, mock_format):
-        mock_custom_meta.return_value = {"icon_url": None, "integration_id": "mcp_x"}
+    async def test_updates_regular_tool_calls_thread_user_id(self, mock_format):
+        """Non-handoff tool calls are formatted with the originating user_id (so
+        format_tool_call_entry can resolve MCP metadata) and appended."""
         mock_format.return_value = {"tool_name": "custom_tool", "data": {}}
 
         msg = MagicMock()
         msg.tool_calls = [{"id": "tc2", "name": "custom_tool", "args": {}}]
 
         events = [
-            ((), "updates", {"node1": {"messages": [msg]}}),
+            ((), "updates", {"agent": {"messages": [msg]}}),
         ]
 
         graph = AsyncMock()
@@ -695,10 +666,39 @@ class TestExecuteGraphSilent:
             {"configurable": {"user_id": USER_ID}},
         )
 
-        mock_custom_meta.assert_called_once()
+        mock_format.assert_awaited_once()
+        assert mock_format.await_args.kwargs["user_id"] == USER_ID
+        assert tool_data["tool_data"] == [{"tool_name": "custom_tool", "data": {}}]
+
+    async def test_updates_ignores_non_agent_nodes(self):
+        """Tool calls from non-'agent' nodes (e.g. pre-model hooks replaying old
+        history) must not be collected."""
+        msg = MagicMock()
+        msg.tool_calls = [{"id": "tc_hook", "name": "some_tool", "args": {}}]
+
+        events = [
+            ((), "updates", {"pre_model_hook": {"messages": [msg]}}),
+        ]
+
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        with patch(
+            "app.helpers.agent_helpers.format_tool_call_entry",
+            new_callable=AsyncMock,
+            return_value={"tool_name": "some_tool"},
+        ) as mock_format:
+            _, tool_data = await execute_graph_silent(
+                graph,
+                {},
+                {"configurable": {"user_id": USER_ID}},
+            )
+
+        mock_format.assert_not_awaited()
+        assert tool_data["tool_data"] == []
 
     async def test_updates_skips_plan_tasks(self):
-        """plan_tasks and update_tasks tool calls should be skipped."""
+        """plan_tasks and update_tasks tool calls are filtered before formatting."""
         msg = MagicMock()
         msg.tool_calls = [
             {"id": "tc_plan", "name": "plan_tasks", "args": {}},
@@ -706,51 +706,51 @@ class TestExecuteGraphSilent:
         ]
 
         events = [
-            ((), "updates", {"node1": {"messages": [msg]}}),
+            ((), "updates", {"agent": {"messages": [msg]}}),
         ]
 
         graph = AsyncMock()
         graph.astream = MagicMock(return_value=_async_iter(events))
 
-        _, tool_data = await execute_graph_silent(
-            graph,
-            {},
-            {"configurable": {"user_id": USER_ID}},
-        )
-
-        assert len(tool_data["tool_data"]) == 0
-
-    async def test_updates_deduplicates_tool_calls(self):
-        """Same tool call ID should not be emitted twice."""
-        msg = MagicMock()
-        msg.tool_calls = [{"id": "tc_dup", "name": "some_tool", "args": {}}]
-
-        events = [
-            ((), "updates", {"node1": {"messages": [msg]}}),
-            ((), "updates", {"node2": {"messages": [msg]}}),
-        ]
-
-        graph = AsyncMock()
-        graph.astream = MagicMock(return_value=_async_iter(events))
-
-        with (
-            patch(
-                "app.helpers.agent_helpers.get_custom_integration_metadata",
-                new_callable=AsyncMock,
-                return_value={},
-            ),
-            patch(
-                "app.helpers.agent_helpers.format_tool_call_entry",
-                new_callable=AsyncMock,
-                return_value={"tool_name": "t"},
-            ),
-        ):
+        with patch(
+            "app.helpers.agent_helpers.format_tool_call_entry",
+            new_callable=AsyncMock,
+            return_value={"tool_name": "should_not_appear"},
+        ) as mock_format:
             _, tool_data = await execute_graph_silent(
                 graph,
                 {},
                 {"configurable": {"user_id": USER_ID}},
             )
 
+        mock_format.assert_not_awaited()
+        assert len(tool_data["tool_data"]) == 0
+
+    async def test_updates_deduplicates_tool_calls(self):
+        """Same tool call ID across multiple agent updates is emitted once."""
+        msg = MagicMock()
+        msg.tool_calls = [{"id": "tc_dup", "name": "some_tool", "args": {}}]
+
+        events = [
+            ((), "updates", {"agent": {"messages": [msg]}}),
+            ((), "updates", {"agent": {"messages": [msg]}}),
+        ]
+
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        with patch(
+            "app.helpers.agent_helpers.format_tool_call_entry",
+            new_callable=AsyncMock,
+            return_value={"tool_name": "t"},
+        ) as mock_format:
+            _, tool_data = await execute_graph_silent(
+                graph,
+                {},
+                {"configurable": {"user_id": USER_ID}},
+            )
+
+        assert mock_format.await_count == 1  # the duplicate is not formatted again
         assert len(tool_data["tool_data"]) == 1
 
 
@@ -821,7 +821,9 @@ class TestExecuteGraphStreaming:
         graph.astream = MagicMock(return_value=_async_iter(events))
 
         results = []
-        async for s in execute_graph_streaming(graph, {}, {"configurable": {}}):
+        async for s in execute_graph_streaming(
+            graph, {}, {"agent_name": "comms_agent", "configurable": {}}
+        ):
             results.append(s)
 
         assert any("Hello" in r for r in results)

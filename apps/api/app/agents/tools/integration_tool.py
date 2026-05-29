@@ -37,6 +37,7 @@ from app.templates.docstrings.integration_tool_docs import (
     CONNECT_INTEGRATION,
     LIST_INTEGRATIONS,
 )
+from app.utils.integration_checker import build_integration_connection_message
 from shared.py.wide_events import log
 
 # Stopwords to filter out from search queries
@@ -355,10 +356,7 @@ async def connect_integration(
 
             writer({"integration_connection_required": integration_data})
 
-            results.append(
-                f"🔗 Connection initiated for {integration.name}. "
-                f"Please follow the authentication flow."
-            )
+            results.append(build_integration_connection_message(integration.name))
 
         return "\n".join(results) if results else "No integrations to connect."
 

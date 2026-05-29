@@ -100,7 +100,7 @@ class TestCheckIntegrationConnection:
             result = await check_integration_connection("gmail", "user1")
 
         assert result is not None
-        assert "not connected" in result
+        assert "needs to be connected" in result
         assert mock_writer.call_count == 2  # progress + connection_required
 
     async def test_returns_none_on_exception(self):
@@ -413,7 +413,7 @@ class TestResolveSubagent:
             mock_ts_cls.return_value = mock_ts
             graph, name, error, is_custom = await _resolve_subagent("gmail", "user1")
         assert graph is None
-        assert "OAuth" in error
+        assert "needs to be connected" in error
 
     async def test_platform_mcp_requires_auth_no_user(self):
         mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
