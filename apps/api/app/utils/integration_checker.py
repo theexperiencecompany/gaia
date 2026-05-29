@@ -68,6 +68,8 @@ async def stream_integration_connection_prompt(
     tool_name: str | None = None,
     tool_category: str | None = None,
     message: str | None = None,
+    user_id: str | None = None,
+    user_email: str = "",
 ) -> None:
     """
     Stream an integration connection prompt to the frontend.
@@ -77,6 +79,9 @@ async def stream_integration_connection_prompt(
         tool_name: Optional tool name that triggered this requirement
         tool_category: Optional tool category
         message: Optional custom message to display
+        user_id: When provided, the actual connect/OAuth URL is built and
+            attached to the prompt so the chat card can offer a one-click link.
+        user_email: Used as the OAuth login hint for self-managed providers.
     """
     log.set(
         integration_id=integration_id,
@@ -92,17 +97,28 @@ async def stream_integration_connection_prompt(
             log.error(f"Integration not found: {integration_id}")
             return
 
+        # Late import: this util is pulled in (via the require_integration
+        # decorator) by the same import chain that loads the connection
+        # service, so importing it at module top level forms a cycle.
+        from app.services.integrations.integration_connection_service import build_connect_url
+
+        connect_url = (
+            await build_connect_url(user_id, integration_id, user_email=user_email)
+            if user_id
+            else None
+        )
+
         # Prepare the integration connection data
-        connection_data = {
-            "integration_connection_required": {
-                "integration_id": integration_id,
-                "message": message
-                or f"To use {str(tool_name).replace('_', ' ') or 'this feature'}, please connect your {integration.name} account.",
-            }
+        connection_payload: dict[str, str] = {
+            "integration_id": integration_id,
+            "message": message
+            or f"To use {str(tool_name).replace('_', ' ') or 'this feature'}, please connect your {integration.name} account.",
         }
+        if connect_url:
+            connection_payload["connect_url"] = connect_url
 
         # Stream the data to frontend
-        writer(connection_data)
+        writer({"integration_connection_required": connection_payload})
         log.info(f"Streamed integration connection prompt for: {integration_id}")
 
     except Exception as e:
@@ -123,7 +139,11 @@ def get_required_integration_for_tool_category(tool_category: str) -> str | None
 
 
 async def check_and_prompt_integration(
-    access_token: str, tool_category: str, tool_name: str | None = None
+    access_token: str,
+    tool_category: str,
+    tool_name: str | None = None,
+    user_id: str | None = None,
+    user_email: str = "",
 ) -> bool:
     """
     Check if user has required integration and prompt if not.
@@ -132,6 +152,8 @@ async def check_and_prompt_integration(
         access_token: User's OAuth access token
         tool_category: The tool category being accessed
         tool_name: Optional tool name for better messaging
+        user_id: When provided, the streamed prompt includes a connect URL.
+        user_email: OAuth login hint for self-managed providers.
 
     Returns:
         bool: True if user has required permissions, False if prompt was sent
@@ -150,5 +172,7 @@ async def check_and_prompt_integration(
         integration_id=required_integration,
         tool_name=tool_name,
         tool_category=tool_category,
+        user_id=user_id,
+        user_email=user_email,
     )
     return False

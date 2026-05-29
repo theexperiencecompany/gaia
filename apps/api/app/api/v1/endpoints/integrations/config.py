@@ -14,12 +14,9 @@ from app.schemas.integrations.responses import (
 )
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
-    connect_composio_integration,
-    connect_mcp_integration,
-    connect_self_integration,
     disconnect_integration,
+    resolve_and_connect_integration,
 )
-from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.oauth.oauth_service import get_all_integrations_status
 from shared.py.wide_events import log
 
@@ -103,95 +100,14 @@ async def connect_integration_endpoint(
         user={"id": user_id},
         integration={"id": integration_id},
     )
-    resolved = await IntegrationResolver.resolve(integration_id)
-    if not resolved:
+    result = await resolve_and_connect_integration(
+        user_id=str(user_id),
+        integration_id=integration_id,
+        user_email=user.get("email", ""),
+        redirect_path=request.redirect_path,
+        bearer_token=request.bearer_token,
+    )
+    if result is None:
         raise HTTPException(status_code=404, detail=f"Integration {integration_id} not found")
-
-    if resolved.source == "platform" and resolved.platform_integration:
-        if not resolved.platform_integration.available:
-            return ConnectIntegrationResponse(
-                status="error",
-                integration_id=integration_id,
-                name=resolved.name,
-                error=f"Integration {integration_id} is not available yet",
-            )
-
-    try:
-        auth_type: str | None = None
-        if resolved.mcp_config:
-            auth_type = "oauth2" if resolved.mcp_config.requires_auth else "none"
-        elif resolved.managed_by in ("composio", "self"):
-            auth_type = "oauth2"
-
-        provider: str | None = (
-            resolved.platform_integration.provider if resolved.platform_integration else None
-        )
-
-        log.set(
-            integration_name=resolved.name,
-            integration={
-                "id": integration_id,
-                "managed_by": resolved.managed_by,
-                "auth_type": auth_type,
-                "provider": provider or integration_id,
-            },
-        )
-        if resolved.managed_by == "mcp":
-            result = await connect_mcp_integration(
-                user_id=str(user_id),
-                integration_id=integration_id,
-                integration_name=resolved.name,
-                requires_auth=resolved.requires_auth,
-                redirect_path=request.redirect_path,
-                server_url=resolved.mcp_config.server_url if resolved.mcp_config else None,
-                is_platform=resolved.source == "platform",
-                bearer_token=request.bearer_token,
-            )
-            log.set(outcome="success")
-            return result
-        if resolved.managed_by == "composio":
-            provider = (
-                resolved.platform_integration.provider if resolved.platform_integration else None
-            )
-            if not provider:
-                raise HTTPException(status_code=400, detail="Provider not configured")
-            result = await connect_composio_integration(
-                user_id=str(user_id),
-                integration_id=integration_id,
-                integration_name=resolved.name,
-                provider=provider,
-                redirect_path=request.redirect_path,
-            )
-            log.set(outcome="success")
-            return result
-        if resolved.managed_by == "self":
-            provider = (
-                resolved.platform_integration.provider if resolved.platform_integration else None
-            )
-            if not provider:
-                raise HTTPException(status_code=400, detail="Provider not configured")
-            result = await connect_self_integration(
-                user_id=str(user_id),
-                user_email=user.get("email", ""),
-                integration_id=integration_id,
-                integration_name=resolved.name,
-                provider=provider,
-                redirect_path=request.redirect_path,
-            )
-            log.set(outcome="success")
-            return result
-        return ConnectIntegrationResponse(
-            status="error",
-            integration_id=integration_id,
-            name=resolved.name,
-            error=f"Unsupported integration type: {resolved.managed_by}",
-        )
-    except Exception as e:
-        log.error(f"Failed to connect {integration_id}: {e}")
-        log.set(integration={"id": integration_id, "status": "error"})
-        return ConnectIntegrationResponse(
-            status="error",
-            integration_id=integration_id,
-            name=resolved.name,
-            error=str(e),
-        )
+    log.set(outcome=result.status)
+    return result

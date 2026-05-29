@@ -3,6 +3,7 @@ import { Chip } from "@heroui/chip";
 import { AlertCircleIcon } from "@icons";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { sanitizeRedirectUrl } from "@/features/integrations/api/integrationsApi";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { IntegrationConnectionData } from "@/features/integrations/types";
 
@@ -13,7 +14,8 @@ interface IntegrationConnectionPromptProps {
 export default function IntegrationConnectionPrompt({
   integration_connection_required,
 }: IntegrationConnectionPromptProps) {
-  const { integration_id, message } = integration_connection_required;
+  const { integration_id, message, connect_url } =
+    integration_connection_required;
   const { integrations, connectIntegration } = useIntegrations();
 
   const integration = integrations.find((i) => i.id === integration_id);
@@ -27,6 +29,15 @@ export default function IntegrationConnectionPrompt({
 
   const handleConnect = async () => {
     try {
+      // Prefer the connect URL the agent already generated — saves a
+      // round-trip and uses the exact OAuth link surfaced in chat.
+      if (connect_url) {
+        const safeUrl = sanitizeRedirectUrl(connect_url);
+        if (safeUrl) {
+          window.location.href = safeUrl;
+          return;
+        }
+      }
       await connectIntegration(integration.id);
     } catch (error) {
       console.error("Failed to connect integration:", error);

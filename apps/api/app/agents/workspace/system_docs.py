@@ -72,6 +72,27 @@ your default working directory for `bash`.
                        - csv/json/code/text     → download card with preview
                        - other binaries         → download card
                      Pick a descriptive filename with a real extension.
+    tool_outputs/    SYSTEM-WRITTEN. When a tool returns more than fits in
+                     context, the full result is offloaded here as JSON and
+                     the message you saw was shortened to a preview + this
+                     path. Read the file to recover the complete output.
+    archives/        SYSTEM-WRITTEN. Before older turns get summarized away,
+                     the full message history is snapshotted to
+                     `pre_summary_<timestamp>.json` here. Read it to recover
+                     any detail the running summary dropped.
+
+## Recovering offloaded context
+
+`tool_outputs/` and `archives/` are how this conversation persists state the
+context window can't hold — they are your durable memory of the turn.
+
+- A tool result that ends with "[Full output … stored at: …]" means the full
+  payload is in `tool_outputs/`. `cat` that path (or `bash` grep/jq it) to get
+  everything; don't re-run the tool.
+- A summary message that ends with "[Full history archived at: …]" means the
+  pre-summary transcript is in `archives/`. Read it when you need a detail the
+  summary glossed over.
+- Both are READ-ONLY system files — never write or edit them yourself.
 
 ## Rules
 
@@ -144,6 +165,31 @@ Each external service the user has connected (gmail, googlecalendar, slack,
 3. **One integration per subagent.** The gmail subagent uses
    `integrations/gmail/agent/`; the googlecalendar subagent uses
    `integrations/googlecalendar/agent/`. They never cross-read.
+
+## Connecting & discovering integrations (tools you can call)
+
+This directory only shows what is *already* connected. To inspect, find, or
+connect integrations, use these tools — retrieve them with `retrieve_tools`
+when a request needs one:
+
+- **`list_integrations`** — list the user's connected integrations and the
+  available built-in ones with their connection status. Pass
+  `search_public_query` to also surface matching marketplace integrations.
+  Use for "what are you connected to?" / "what can you connect to?".
+- **`suggest_integrations`** — search the public marketplace for integrations
+  matching a natural-language query (e.g. "project management", "CRM"). Use
+  when the user wants to discover or find new integrations to add.
+- **`connect_integration`** — start the connection (OAuth) flow for one or
+  more integrations. It returns a **connect URL** the user opens to sign in
+  and grant access, and renders a "Connect" card in chat. Use this whenever
+  the user asks to connect/link/set up a service — give them the link and
+  tell them to finish authenticating in the browser.
+- **`check_integrations_status`** — check whether specific named integrations
+  are currently connected. Use for "is Gmail connected?".
+
+When a handoff to an integration subagent fails because the service is not
+connected, the same connect prompt + URL is surfaced automatically — relay
+the link to the user so they can connect, then retry the task.
 """
 
 

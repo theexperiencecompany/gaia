@@ -19,7 +19,7 @@ import type {
  * @param url - The URL to sanitize
  * @returns The sanitized URL if safe, null if dangerous
  */
-function sanitizeRedirectUrl(url: string): string | null {
+export function sanitizeRedirectUrl(url: string): string | null {
   try {
     const parsed = new URL(url);
 

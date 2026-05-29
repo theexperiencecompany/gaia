@@ -311,6 +311,123 @@ async def connect_self_integration(
     )
 
 
+async def resolve_and_connect_integration(
+    user_id: str,
+    integration_id: str,
+    *,
+    user_email: str = "",
+    redirect_path: str = "/integrations",
+    bearer_token: str | None = None,
+) -> ConnectIntegrationResponse | None:
+    """Resolve an integration and dispatch to the right connector.
+
+    Single source of truth for the connect flow, shared by the
+    ``POST /integrations/connect/{id}`` endpoint and the agent (the
+    ``connect_integration`` tool, handoff failures, and tool-gating
+    prompts). Returns ``None`` when the integration does not exist so
+    callers can map that to a 404 / "not found"; otherwise returns a
+    ``ConnectIntegrationResponse`` whose ``redirect_url`` is the URL the
+    user opens to authenticate.
+    """
+    resolved = await IntegrationResolver.resolve(integration_id)
+    if not resolved:
+        return None
+
+    def _error(message: str) -> ConnectIntegrationResponse:
+        return ConnectIntegrationResponse(
+            status="error",
+            integration_id=integration_id,
+            name=resolved.name,
+            error=message,
+        )
+
+    if (
+        resolved.source == "platform"
+        and resolved.platform_integration
+        and not resolved.platform_integration.available
+    ):
+        return _error(f"Integration {integration_id} is not available yet")
+
+    provider = resolved.platform_integration.provider if resolved.platform_integration else None
+    auth_type: str | None = None
+    if resolved.mcp_config:
+        auth_type = "oauth2" if resolved.mcp_config.requires_auth else "none"
+    elif resolved.managed_by in ("composio", "self"):
+        auth_type = "oauth2"
+    log.set(
+        integration_name=resolved.name,
+        integration={
+            "id": integration_id,
+            "managed_by": resolved.managed_by,
+            "auth_type": auth_type,
+            "provider": provider or integration_id,
+        },
+    )
+
+    try:
+        if resolved.managed_by == "mcp":
+            return await connect_mcp_integration(
+                user_id=user_id,
+                integration_id=integration_id,
+                integration_name=resolved.name,
+                requires_auth=resolved.requires_auth,
+                redirect_path=redirect_path,
+                server_url=resolved.mcp_config.server_url if resolved.mcp_config else None,
+                is_platform=resolved.source == "platform",
+                bearer_token=bearer_token,
+            )
+        if resolved.managed_by == "composio":
+            if not provider:
+                return _error("Provider not configured")
+            return await connect_composio_integration(
+                user_id=user_id,
+                integration_id=integration_id,
+                integration_name=resolved.name,
+                provider=provider,
+                redirect_path=redirect_path,
+            )
+        if resolved.managed_by == "self":
+            if not provider:
+                return _error("Provider not configured")
+            return await connect_self_integration(
+                user_id=user_id,
+                user_email=user_email,
+                integration_id=integration_id,
+                integration_name=resolved.name,
+                provider=provider,
+                redirect_path=redirect_path,
+            )
+        return _error(f"Unsupported integration type: {resolved.managed_by}")
+    except Exception as e:
+        log.error(f"Failed to connect {integration_id}: {e}")
+        log.set(integration={"id": integration_id, "status": "error"})
+        return _error(str(e))
+
+
+async def build_connect_url(
+    user_id: str,
+    integration_id: str,
+    *,
+    user_email: str = "",
+    redirect_path: str = "/integrations",
+) -> str | None:
+    """Return the OAuth/connect URL for an unconnected integration, or ``None``.
+
+    Thin convenience wrapper over ``resolve_and_connect_integration`` for the
+    UI-prompt callers (handoff failures, tool-gating prompts) that only need
+    the link to surface to the user — never the full response object.
+    """
+    result = await resolve_and_connect_integration(
+        user_id,
+        integration_id,
+        user_email=user_email,
+        redirect_path=redirect_path,
+    )
+    if result and result.status == "redirect":
+        return result.redirect_url
+    return None
+
+
 async def disconnect_integration(user_id: str, integration_id: str) -> IntegrationSuccessResponse:
     """Disconnect an integration for the user."""
     log.set(integration={"provider": integration_id, "action": "disconnect"})

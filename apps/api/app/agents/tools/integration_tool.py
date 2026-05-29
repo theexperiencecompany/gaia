@@ -28,6 +28,9 @@ from app.models.integration_models import (
     ListIntegrationsResult,
     SuggestedIntegration,
 )
+from app.services.integrations.integration_connection_service import (
+    resolve_and_connect_integration,
+)
 from app.services.oauth.oauth_service import (
     check_integration_status as check_single_integration_status,
     check_multiple_integrations_status,
@@ -298,6 +301,7 @@ async def connect_integration(
         user_id = configurable.get("user_id") if configurable else None
         if not user_id:
             return "Error: User ID not found in configuration."
+        user_email = (configurable.get("email") or "") if configurable else ""
 
         # Ensure integration_names is a list
         if isinstance(integration_names, str):
@@ -344,21 +348,46 @@ async def connect_integration(
             # Queue for connection
             connections_to_initiate.append(integration)
 
-        # Initiate connections for all queued integrations
+        # Initiate connections for all queued integrations. Each call resolves
+        # the integration and builds the real OAuth/connect URL the user opens
+        # to authenticate — the same flow the "Connect" button triggers.
         for integration in connections_to_initiate:
             writer({"progress": f"Initiating {integration.name} connection..."})
 
-            integration_data = {
-                "integration_id": integration.id,
-                "message": f"To use {integration.name} features, please connect your account.",
-            }
+            connect_response = await resolve_and_connect_integration(
+                user_id=str(user_id),
+                integration_id=integration.id,
+                user_email=user_email,
+            )
 
+            message = f"To use {integration.name} features, please connect your account."
+            connect_url = (
+                connect_response.redirect_url
+                if connect_response and connect_response.status == "redirect"
+                else None
+            )
+
+            integration_data: dict[str, str] = {
+                "integration_id": integration.id,
+                "message": message,
+            }
+            if connect_url:
+                integration_data["connect_url"] = connect_url
             writer({"integration_connection_required": integration_data})
 
-            results.append(
-                f"🔗 Connection initiated for {integration.name}. "
-                f"Please follow the authentication flow."
-            )
+            if connect_response and connect_response.status == "connected":
+                results.append(f"✅ {integration.name} is already connected!")
+            elif connect_url:
+                results.append(
+                    f"🔗 To connect {integration.name}, open this link and sign in: {connect_url}"
+                )
+            else:
+                error = connect_response.error if connect_response else None
+                results.append(
+                    f"🔗 Connection initiated for {integration.name}. "
+                    f"Ask the user to open the connection prompt to finish authenticating."
+                    + (f" ({error})" if error else "")
+                )
 
         return "\n".join(results) if results else "No integrations to connect."
 
