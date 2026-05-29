@@ -1,580 +1,324 @@
-"""Tests for app/agents/middleware/subagent.py — SubagentMiddleware."""
+"""Behavior spec for app/agents/tools/core/tool_runtime_config.py.
 
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+This module builds the tool-runtime configuration that decides which tools a
+parent provider-agent and its spawned children bind, and how create_agent is
+wired for retrieval. The exact ordering, dedup, and toggle behaviour is a
+contract relied on by base_subagent.py and build_graph.py.
 
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.tools import BaseTool
+UNIT: ToolRuntimeConfig (dataclass)
+EXPECTED: A field-default holder; default config enables retrieve tools, keeps
+          subagents out of retrieve scope, and starts with no initial tools.
+MECHANISM: dataclass(slots=True) with defaults enable_retrieve_tools=True,
+           include_subagents_in_retrieve=False, initial_tool_names=[].
+MUST-CATCH:
+  - default enable_retrieve_tools is True (not False)
+  - default include_subagents_in_retrieve is False (not True)
+  - default initial_tool_names is an independent empty list (not shared)
+
+UNIT: build_create_agent_tool_kwargs(config, *, tool_space)
+EXPECTED: Always pass initial_tool_ids through unchanged. When retrieval is
+          enabled, attach a retrieve_tools_coroutine built for the given
+          tool_space and subagent scope and DO NOT disable retrieval. When
+          disabled, set disable_retrieve_tools=True and omit the coroutine.
+MECHANISM: kwargs["initial_tool_ids"] = config.initial_tool_names; branch on
+           config.enable_retrieve_tools -> get_retrieve_tools_function(
+           tool_space=tool_space, include_subagents=...) or
+           kwargs["disable_retrieve_tools"] = True.
+MUST-CATCH:
+  - initial_tool_ids equals the config's initial_tool_names exactly
+  - enabled branch produces "retrieve_tools_coroutine" and no disable flag
+  - disabled branch produces disable_retrieve_tools=True and no coroutine
+  - the retrieval factory receives the passed tool_space (not a constant)
+  - the retrieval factory receives include_subagents from the config flag
+
+UNIT: build_provider_parent_tool_runtime_config(...)
+EXPECTED: Assemble the parent's initial tool list with the right ordering for
+          direct vs dynamic mode, append finish_task only when requested, and
+          dedup auto-bind names already covered by provider tools. enable
+          retrieve = not disable_retrieve_tools; never expose subagents in
+          retrieve.
+MECHANISM: finish branch; provider_tool_set dedup of auto_bind_tool_names;
+           direct list [provider, extra_auto_bind, todo, finish, vfs_read,
+           vfs_cmd] vs dynamic list [search_memory, vfs_read, vfs_cmd, finish,
+           todo, extra_auto_bind]; ToolRuntimeConfig(enable=not disable,
+           include_subagents_in_retrieve=False).
+MUST-CATCH:
+  - direct mode ordering and membership exactly
+  - dynamic mode ordering and membership exactly (search_memory leads)
+  - auto-bind names overlapping provider tools are dropped (dedup)
+  - None auto_bind_tool_names is treated as empty (no crash, nothing added)
+  - include_finish_task=False removes finish_task from initial
+  - disable_retrieve_tools maps to enable_retrieve_tools = not disable
+  - include_subagents_in_retrieve is always False
+
+UNIT: build_child_tool_runtime_config(parent, *, use_direct_tools, disable_retrieve_tools)
+EXPECTED: In direct+disabled mode the child inherits the parent's exact tool
+          list with retrieval off. In every other mode the child is reset to
+          the minimal vfs+finish set and retrieval follows the disable flag.
+MECHANISM: if use_direct_tools and disable_retrieve_tools -> inherit parent
+           list, enable=False; else minimal ["vfs_read","vfs_cmd",finish],
+           enable=not disable.
+MUST-CATCH:
+  - direct+disabled inherits parent.initial_tool_names and disables retrieval
+  - direct+enabled falls through to minimal set (both conditions required)
+  - dynamic+disabled falls through to minimal set, retrieval off
+  - dynamic+enabled falls through to minimal set, retrieval on
+  - the minimal set is exactly ["vfs_read","vfs_cmd","finish_task"]
+  - include_subagents_in_retrieve is always False
+
+UNIT: build_executor_child_tool_runtime_config()
+EXPECTED: Executor-spawned children always get the minimal vfs+finish toolset
+          with retrieval enabled and subagents excluded.
+MECHANISM: ToolRuntimeConfig(["vfs_read","vfs_cmd",finish], enable=True,
+           include_subagents=False).
+MUST-CATCH:
+  - initial list is exactly ["vfs_read","vfs_cmd","finish_task"]
+  - enable_retrieve_tools is True
+  - include_subagents_in_retrieve is False
+
+EQUIVALENT MUTANTS (allowed survivors, justified): none.
+"""
+
+from unittest.mock import patch
+
 import pytest
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+from app.agents.tools.core.tool_runtime_config import (
+    ToolRuntimeConfig,
+    build_child_tool_runtime_config,
+    build_create_agent_tool_kwargs,
+    build_executor_child_tool_runtime_config,
+    build_provider_parent_tool_runtime_config,
+)
+from app.constants.general import FINISH_TASK_NAME
 
+# The single I/O boundary: a factory that (later) hits the tool store. Patched
+# at the module under test so we assert the args it receives without touching
+# ChromaDB / the store.
+_RETRIEVAL_FACTORY = "app.agents.tools.core.tool_runtime_config.get_retrieve_tools_function"
 
-def _make_middleware(**kwargs):
-    """Create SubagentMiddleware with patched dependencies."""
-    with patch(
-        "app.agents.middleware.subagent.get_retrieve_tools_function",
-        return_value=AsyncMock(return_value={"tools_to_bind": [], "response": []}),
-    ):
-        from app.agents.middleware.subagent import SubagentMiddleware
-
-        defaults = {
-            "llm": None,
-            "available_tools": [],
-            "tool_registry": None,
-            "max_turns": 5,
-        }
-        defaults.update(kwargs)
-        return SubagentMiddleware(**defaults)
-
-
-def _make_tool(name: str) -> MagicMock:
-    """Create a mock BaseTool."""
-    tool = MagicMock(spec=BaseTool)
-    tool.name = name
-    tool.ainvoke = AsyncMock(return_value=f"{name} result")
-    return tool
-
-
-def _make_config(user_id: str = "u1") -> dict:
-    return {"configurable": {"user_id": user_id}}
+_MINIMAL_CHILD_TOOLS = ["vfs_read", "vfs_cmd", FINISH_TASK_NAME]
 
 
 # ---------------------------------------------------------------------------
-# SubagentMiddleware.__init__
+# ToolRuntimeConfig dataclass defaults
 # ---------------------------------------------------------------------------
 
 
-class TestSubagentMiddlewareInit:
-    def test_default_init(self):
-        mw = _make_middleware()
-        assert mw._llm is None
-        assert mw._available_tools == []
-        assert "spawn_subagent" in mw._excluded_tools
-        assert len(mw.tools) == 1  # spawn_subagent tool
+class TestToolRuntimeConfigDefaults:
+    def test_defaults(self):
+        config = ToolRuntimeConfig()
+        assert config.initial_tool_names == []
+        assert config.enable_retrieve_tools is True
+        assert config.include_subagents_in_retrieve is False
 
-    def test_excluded_tools_include_spawn_subagent(self):
-        mw = _make_middleware(excluded_tool_names={"some_tool"})
-        assert "spawn_subagent" in mw._excluded_tools
-        assert "some_tool" in mw._excluded_tools
+    def test_default_list_is_not_shared_between_instances(self):
+        first = ToolRuntimeConfig()
+        second = ToolRuntimeConfig()
+        first.initial_tool_names.append("leak")
+        assert second.initial_tool_names == []
 
-    def test_custom_tool_runtime_config(self):
-        from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 
+# ---------------------------------------------------------------------------
+# build_create_agent_tool_kwargs
+# ---------------------------------------------------------------------------
+
+
+class TestBuildCreateAgentToolKwargs:
+    def test_enabled_attaches_retrieve_coroutine_and_passes_through_initial(self):
+        sentinel = object()
         config = ToolRuntimeConfig(
-            initial_tool_names=["my_tool"],
-            enable_retrieve_tools=False,
+            initial_tool_names=["vfs_read", "todo_add"],
+            enable_retrieve_tools=True,
             include_subagents_in_retrieve=True,
         )
-        mw = _make_middleware(tool_runtime_config=config)
-        assert mw._tool_runtime_config.initial_tool_names == ["my_tool"]
-        assert mw._tool_runtime_config.enable_retrieve_tools is False
+        with patch(_RETRIEVAL_FACTORY, return_value=sentinel) as factory:
+            kwargs = build_create_agent_tool_kwargs(config, tool_space="gmail_space")
 
-    def test_default_tool_runtime_config(self):
-        mw = _make_middleware()
-        assert mw._tool_runtime_config.enable_retrieve_tools is True
-        assert mw._tool_runtime_config.include_subagents_in_retrieve is False
-        assert "vfs_read" in mw._tool_runtime_config.initial_tool_names
+        assert kwargs["initial_tool_ids"] == ["vfs_read", "todo_add"]
+        assert kwargs["retrieve_tools_coroutine"] is sentinel
+        assert "disable_retrieve_tools" not in kwargs
+        # Factory is configured for the caller's space and subagent scope, not constants.
+        factory.assert_called_once_with(tool_space="gmail_space", include_subagents=True)
+
+    def test_enabled_forwards_include_subagents_false(self):
+        config = ToolRuntimeConfig(enable_retrieve_tools=True, include_subagents_in_retrieve=False)
+        with patch(_RETRIEVAL_FACTORY, return_value=object()) as factory:
+            build_create_agent_tool_kwargs(config, tool_space="general")
+        factory.assert_called_once_with(tool_space="general", include_subagents=False)
+
+    def test_disabled_sets_disable_flag_and_no_coroutine(self):
+        config = ToolRuntimeConfig(initial_tool_names=["vfs_read"], enable_retrieve_tools=False)
+        with patch(_RETRIEVAL_FACTORY) as factory:
+            kwargs = build_create_agent_tool_kwargs(config, tool_space="general")
+
+        assert kwargs["disable_retrieve_tools"] is True
+        assert "retrieve_tools_coroutine" not in kwargs
+        assert kwargs["initial_tool_ids"] == ["vfs_read"]
+        factory.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# set_llm / set_store / set_tools
+# build_provider_parent_tool_runtime_config
 # ---------------------------------------------------------------------------
 
 
-class TestSetters:
-    def test_set_llm(self):
-        mw = _make_middleware()
-        mock_llm = MagicMock()
-        mw.set_llm(mock_llm)
-        assert mw._llm is mock_llm
-
-    def test_set_store(self):
-        mw = _make_middleware()
-        mock_store = MagicMock()
-        mw.set_store(mock_store)
-        assert mw._store is mock_store
-
-    def test_set_tools_updates_all(self):
-        mw = _make_middleware()
-        tools = [_make_tool("t1")]
-        registry = {"r1": _make_tool("r1")}
-        mw.set_tools(
-            tools=tools,
-            registry=registry,
-            excluded_tool_names={"bad_tool"},
-            tool_space="gmail",
+class TestBuildProviderParentToolRuntimeConfig:
+    def test_direct_mode_ordering_and_membership(self):
+        config = build_provider_parent_tool_runtime_config(
+            provider_tool_names=["p1", "p2"],
+            todo_tool_names=["todo_add"],
+            auto_bind_tool_names=["auto1"],
+            use_direct_tools=True,
+            disable_retrieve_tools=False,
         )
-        assert mw._available_tools == tools
-        assert mw._tool_registry == registry
-        assert "bad_tool" in mw._excluded_tools
-        assert "spawn_subagent" in mw._excluded_tools
-        assert mw._tool_space == "gmail"
+        assert config.initial_tool_names == [
+            "p1",
+            "p2",
+            "auto1",
+            "todo_add",
+            FINISH_TASK_NAME,
+            "vfs_read",
+            "vfs_cmd",
+        ]
+        assert config.enable_retrieve_tools is True
+        assert config.include_subagents_in_retrieve is False
 
-    def test_set_tools_partial(self):
-        mw = _make_middleware()
-        original_tools = mw._available_tools
-        mw.set_tools(tool_space="slack")
-        assert mw._tool_space == "slack"
-        assert mw._available_tools is original_tools
-
-    def test_set_tools_with_runtime_config(self):
-        from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
-
-        mw = _make_middleware()
-        new_config = ToolRuntimeConfig(initial_tool_names=["x"], enable_retrieve_tools=False)
-        mw.set_tools(tool_runtime_config=new_config)
-        assert mw._tool_runtime_config is new_config
-
-
-# ---------------------------------------------------------------------------
-# _collect_tools
-# ---------------------------------------------------------------------------
-
-
-class TestCollectTools:
-    def test_filters_excluded_tools(self):
-        t1 = _make_tool("allowed")
-        t2 = _make_tool("spawn_subagent")
-        mw = _make_middleware(available_tools=[t1, t2])
-        collected = mw._collect_tools()
-        names = [t.name for t in collected]
-        assert "allowed" in names
-        assert "spawn_subagent" not in names
-
-    def test_includes_registry_tools(self):
-        t1 = _make_tool("from_avail")
-        reg_tool = _make_tool("from_registry")
-        mw = _make_middleware(
-            available_tools=[t1],
-            tool_registry={"from_registry": reg_tool},
+    def test_dynamic_mode_ordering_and_membership(self):
+        config = build_provider_parent_tool_runtime_config(
+            provider_tool_names=["p1"],
+            todo_tool_names=["todo_add"],
+            auto_bind_tool_names=["auto1"],
+            use_direct_tools=False,
+            disable_retrieve_tools=False,
         )
-        collected = mw._collect_tools()
-        names = [t.name for t in collected]
-        assert "from_avail" in names
-        assert "from_registry" in names
-
-    def test_excludes_registry_tools_in_excluded(self):
-        reg_tool = _make_tool("excluded_reg")
-        mw = _make_middleware(
-            tool_registry={"excluded_reg": reg_tool},
-            excluded_tool_names={"excluded_reg"},
-        )
-        collected = mw._collect_tools()
-        names = [t.name for t in collected]
-        assert "excluded_reg" not in names
-
-
-# ---------------------------------------------------------------------------
-# _bind_tools_from_registry
-# ---------------------------------------------------------------------------
-
-
-class TestBindToolsFromRegistry:
-    def test_binds_from_registry(self):
-        reg_tool = _make_tool("tool_a")
-        mw = _make_middleware(tool_registry={"tool_a": reg_tool})
-        tools_by_name: dict[str, Any] = {}
-        bound: set[str] = set()
-        newly = mw._bind_tools_from_registry(["tool_a"], tools_by_name, bound)
-        assert newly == ["tool_a"]
-        assert "tool_a" in tools_by_name
-        assert "tool_a" in bound
-
-    def test_skips_already_bound(self):
-        reg_tool = _make_tool("tool_a")
-        mw = _make_middleware(tool_registry={"tool_a": reg_tool})
-        tools_by_name: dict[str, Any] = {"tool_a": reg_tool}
-        bound: set[str] = {"tool_a"}
-        newly = mw._bind_tools_from_registry(["tool_a"], tools_by_name, bound)
-        assert newly == []
-
-    def test_skips_excluded(self):
-        reg_tool = _make_tool("spawn_subagent")
-        mw = _make_middleware(tool_registry={"spawn_subagent": reg_tool})
-        tools_by_name: dict[str, Any] = {}
-        bound: set[str] = set()
-        newly = mw._bind_tools_from_registry(["spawn_subagent"], tools_by_name, bound)
-        assert newly == []
-
-    def test_no_registry_returns_empty(self):
-        mw = _make_middleware(tool_registry=None)
-        tools_by_name: dict[str, Any] = {}
-        bound: set[str] = set()
-        newly = mw._bind_tools_from_registry(["tool_a"], tools_by_name, bound)
-        assert newly == []
-
-    def test_skips_unknown_tools(self):
-        mw = _make_middleware(tool_registry={"tool_a": _make_tool("tool_a")})
-        tools_by_name: dict[str, Any] = {}
-        bound: set[str] = set()
-        newly = mw._bind_tools_from_registry(["unknown"], tools_by_name, bound)
-        assert newly == []
-
-
-# ---------------------------------------------------------------------------
-# _build_retrieve_tool
-# ---------------------------------------------------------------------------
-
-
-class TestBuildRetrieveTool:
-    def test_returns_none_when_no_store(self):
-        mw = _make_middleware(store=None)
-        result = mw._build_retrieve_tool(_make_config())
-        assert result is None
-
-    def test_returns_none_when_disabled(self):
-        from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
-
-        config = ToolRuntimeConfig(enable_retrieve_tools=False)
-        mw = _make_middleware(store=MagicMock(), tool_runtime_config=config)
-        result = mw._build_retrieve_tool(_make_config())
-        assert result is None
-
-    def test_returns_structured_tool_when_configured(self):
-        mw = _make_middleware(store=MagicMock())
-        result = mw._build_retrieve_tool(_make_config())
-        assert result is not None
-        assert result.name == "retrieve_tools"
-
-
-# ---------------------------------------------------------------------------
-# _build_child_toolset
-# ---------------------------------------------------------------------------
-
-
-class TestBuildChildToolset:
-    def test_dynamic_mode_with_store_and_registry(self):
-        reg_tool = _make_tool("vfs_read")
-        mw = _make_middleware(
-            store=MagicMock(),
-            tool_registry={"vfs_read": reg_tool, "vfs_cmd": _make_tool("vfs_cmd")},
-        )
-        tools_by_name, dynamic, retrieve_tool = mw._build_child_toolset(config=_make_config())
-        assert dynamic is True
-        assert retrieve_tool is not None
-        assert "retrieve_tools" in tools_by_name
-
-    def test_inherits_parent_tools(self):
-        reg_tool = _make_tool("parent_tool")
-        mw = _make_middleware(
-            store=MagicMock(),
-            tool_registry={
-                "parent_tool": reg_tool,
-                "vfs_read": _make_tool("vfs_read"),
-                "vfs_cmd": _make_tool("vfs_cmd"),
-            },
-        )
-        tools_by_name, _, _ = mw._build_child_toolset(
-            config=_make_config(),
-            inherited_tool_names=["parent_tool"],
-        )
-        assert "parent_tool" in tools_by_name
-
-    def test_fallback_when_empty(self):
-        t1 = _make_tool("fallback_tool")
-        from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
-
-        config = ToolRuntimeConfig(
-            initial_tool_names=[],
-            enable_retrieve_tools=False,
-        )
-        mw = _make_middleware(
-            available_tools=[t1],
-            tool_runtime_config=config,
-            store=None,
-            tool_registry=None,
-        )
-        tools_by_name, dynamic, retrieve_tool = mw._build_child_toolset(config=_make_config())
-        assert dynamic is False
-        assert retrieve_tool is None
-        assert "fallback_tool" in tools_by_name
-
-
-# ---------------------------------------------------------------------------
-# _execute_subagent
-# ---------------------------------------------------------------------------
-
-
-class TestExecuteSubagent:
-    @pytest.mark.asyncio
-    async def test_raises_when_no_llm(self):
-        mw = _make_middleware(llm=None)
-        with pytest.raises(ValueError, match="LLM not configured"):
-            await mw._execute_subagent("task", "", _make_config())
-
-    @pytest.mark.asyncio
-    async def test_simple_text_response(self):
-        """LLM returns text without tool calls."""
-        mock_llm = MagicMock()
-        response = AIMessage(content="Done!")
-        response.tool_calls = []
-        mock_llm.with_config.return_value = mock_llm
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.ainvoke = AsyncMock(return_value=response)
-
-        mw = _make_middleware(llm=mock_llm)
-        result = await mw._execute_subagent("do something", "", _make_config())
-        assert result == "Done!"
-
-    @pytest.mark.asyncio
-    async def test_empty_content_returns_task_completed(self):
-        mock_llm = MagicMock()
-        response = AIMessage(content="")
-        response.tool_calls = []
-        mock_llm.with_config.return_value = mock_llm
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.ainvoke = AsyncMock(return_value=response)
-
-        mw = _make_middleware(llm=mock_llm)
-        result = await mw._execute_subagent("task", "", _make_config())
-        assert result == "Task completed."
-
-    @pytest.mark.asyncio
-    async def test_tool_call_flow(self):
-        """LLM calls a tool, then returns final answer."""
-        mock_llm = MagicMock()
-        mock_llm.with_config.return_value = mock_llm
-
-        tool_call_response = AIMessage(content="")
-        tool_call_response.tool_calls = [{"name": "my_tool", "args": {"x": 1}, "id": "tc1"}]
-
-        final_response = AIMessage(content="All done.")
-        final_response.tool_calls = []
-
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.ainvoke = AsyncMock(side_effect=[tool_call_response, final_response])
-
-        my_tool = _make_tool("my_tool")
-        mw = _make_middleware(
-            llm=mock_llm,
-            tool_registry={
-                "my_tool": my_tool,
-                "vfs_read": _make_tool("vfs_read"),
-                "vfs_cmd": _make_tool("vfs_cmd"),
-            },
-            store=MagicMock(),
-        )
-
-        result = await mw._execute_subagent(
-            "do task", "", _make_config(), inherited_tool_names=["my_tool"]
-        )
-        assert result == "All done."
-        my_tool.ainvoke.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_unknown_tool_returns_error_message(self):
-        """LLM calls a tool that doesn't exist."""
-        mock_llm = MagicMock()
-        mock_llm.with_config.return_value = mock_llm
-
-        tool_call_response = AIMessage(content="")
-        tool_call_response.tool_calls = [{"name": "unknown_tool", "args": {}, "id": "tc1"}]
-
-        final_response = AIMessage(content="Sorry.")
-        final_response.tool_calls = []
-
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.ainvoke = AsyncMock(side_effect=[tool_call_response, final_response])
-
-        mw = _make_middleware(
-            llm=mock_llm,
-            tool_registry={
-                "vfs_read": _make_tool("vfs_read"),
-                "vfs_cmd": _make_tool("vfs_cmd"),
-            },
-            store=MagicMock(),
-        )
-
-        result = await mw._execute_subagent("task", "", _make_config())
-        assert result == "Sorry."
-
-    @pytest.mark.asyncio
-    async def test_retrieve_tools_call_rebinds(self):
-        """When LLM calls retrieve_tools, new tools get bound."""
-        mock_llm = MagicMock()
-        mock_llm.with_config.return_value = mock_llm
-
-        retrieve_call = AIMessage(content="")
-        retrieve_call.tool_calls = [
-            {"name": "retrieve_tools", "args": {"query": "email"}, "id": "tc1"}
+        # Dynamic mode does NOT bind provider tools directly; search_memory leads.
+        assert config.initial_tool_names == [
+            "search_memory",
+            "vfs_read",
+            "vfs_cmd",
+            FINISH_TASK_NAME,
+            "todo_add",
+            "auto1",
         ]
 
-        final_response = AIMessage(content="Found tools.")
-        final_response.tool_calls = []
-
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.ainvoke = AsyncMock(side_effect=[retrieve_call, final_response])
-
-        new_tool = _make_tool("new_tool")
-        registry = {
-            "vfs_read": _make_tool("vfs_read"),
-            "vfs_cmd": _make_tool("vfs_cmd"),
-            "new_tool": new_tool,
-        }
-
-        with patch(
-            "app.agents.middleware.subagent.get_retrieve_tools_function",
-            return_value=AsyncMock(
-                return_value={"tools_to_bind": ["new_tool"], "response": ["new_tool"]}
-            ),
-        ):
-            from app.agents.middleware.subagent import SubagentMiddleware
-
-            mw = SubagentMiddleware(
-                llm=mock_llm,
-                tool_registry=registry,
-                store=MagicMock(),
-                max_turns=5,
-            )
-
-        result = await mw._execute_subagent("task", "", _make_config())
-        assert result == "Found tools."
-        # bind_tools called more than once (initial + after retrieve)
-        assert mock_llm.bind_tools.call_count >= 2
-
-    @pytest.mark.asyncio
-    async def test_tool_invocation_error_returns_error_message(self):
-        """Tool invocation that raises an exception."""
-        mock_llm = MagicMock()
-        mock_llm.with_config.return_value = mock_llm
-
-        tool_call_response = AIMessage(content="")
-        tool_call_response.tool_calls = [{"name": "fail_tool", "args": {}, "id": "tc1"}]
-
-        final_response = AIMessage(content="Recovered.")
-        final_response.tool_calls = []
-
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.ainvoke = AsyncMock(side_effect=[tool_call_response, final_response])
-
-        fail_tool = _make_tool("fail_tool")
-        fail_tool.ainvoke = AsyncMock(side_effect=RuntimeError("tool broke"))
-
-        mw = _make_middleware(
-            llm=mock_llm,
-            tool_registry={
-                "fail_tool": fail_tool,
-                "vfs_read": _make_tool("vfs_read"),
-                "vfs_cmd": _make_tool("vfs_cmd"),
-            },
-            store=MagicMock(),
+    def test_auto_bind_overlapping_provider_is_deduped_direct(self):
+        config = build_provider_parent_tool_runtime_config(
+            provider_tool_names=["shared", "p2"],
+            todo_tool_names=[],
+            auto_bind_tool_names=["shared", "unique"],
+            use_direct_tools=True,
+            disable_retrieve_tools=False,
         )
+        # "shared" is already a provider tool, so it must not be re-added as auto-bind.
+        assert config.initial_tool_names == [
+            "shared",
+            "p2",
+            "unique",
+            FINISH_TASK_NAME,
+            "vfs_read",
+            "vfs_cmd",
+        ]
 
-        result = await mw._execute_subagent("task", "", _make_config())
-        assert result == "Recovered."
-
-    @pytest.mark.asyncio
-    async def test_max_turns_reached(self):
-        """Subagent exhausts max turns and gets final response."""
-        mock_llm = MagicMock()
-        mock_llm.with_config.return_value = mock_llm
-
-        # Every response has a tool call, never stops
-        tool_call_response = AIMessage(content="")
-        tool_call_response.tool_calls = [{"name": "vfs_read", "args": {}, "id": "tc1"}]
-
-        final_msg = AIMessage(content="Max turns hit.")
-
-        vfs_read = _make_tool("vfs_read")
-        vfs_cmd = _make_tool("vfs_cmd")
-
-        # max_turns=2: 2 tool-calling iterations + 1 final
-        call_count = [0]
-
-        async def mock_ainvoke(messages, config=None):
-            call_count[0] += 1
-            if call_count[0] <= 2:
-                resp = AIMessage(content="")
-                resp.tool_calls = [{"name": "vfs_read", "args": {}, "id": f"tc{call_count[0]}"}]
-                return resp
-            return final_msg
-
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.ainvoke = AsyncMock(side_effect=mock_ainvoke)
-
-        from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
-
-        mw = _make_middleware(
-            llm=mock_llm,
-            tool_registry={"vfs_read": vfs_read, "vfs_cmd": vfs_cmd},
-            store=MagicMock(),
-            max_turns=2,
-            tool_runtime_config=ToolRuntimeConfig(
-                initial_tool_names=["vfs_read", "vfs_cmd"],
-                enable_retrieve_tools=False,
-            ),
+    def test_none_auto_bind_treated_as_empty(self):
+        config = build_provider_parent_tool_runtime_config(
+            provider_tool_names=["p1"],
+            todo_tool_names=[],
+            auto_bind_tool_names=None,
+            use_direct_tools=True,
+            disable_retrieve_tools=False,
         )
+        assert config.initial_tool_names == [
+            "p1",
+            FINISH_TASK_NAME,
+            "vfs_read",
+            "vfs_cmd",
+        ]
 
-        result = await mw._execute_subagent("task", "", _make_config())
-        assert result == "Max turns hit."
+    def test_include_finish_task_false_omits_finish(self):
+        config = build_provider_parent_tool_runtime_config(
+            provider_tool_names=["p1"],
+            todo_tool_names=[],
+            auto_bind_tool_names=None,
+            use_direct_tools=True,
+            disable_retrieve_tools=False,
+            include_finish_task=False,
+        )
+        assert FINISH_TASK_NAME not in config.initial_tool_names
+        assert config.initial_tool_names == ["p1", "vfs_read", "vfs_cmd"]
 
-    @pytest.mark.asyncio
-    async def test_context_included_in_messages(self):
-        """Context string is prepended to the user message."""
-        mock_llm = MagicMock()
-        mock_llm.with_config.return_value = mock_llm
-
-        response = AIMessage(content="ok")
-        response.tool_calls = []
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.ainvoke = AsyncMock(return_value=response)
-
-        mw = _make_middleware(llm=mock_llm)
-        await mw._execute_subagent("task", "my context", _make_config())
-
-        call_args = mock_llm.ainvoke.call_args[0][0]
-        user_msg = [m for m in call_args if isinstance(m, HumanMessage)][0]
-        assert "my context" in user_msg.content
-        assert "task" in user_msg.content
-
-    @pytest.mark.asyncio
-    async def test_retrieve_tools_error_handled(self):
-        """retrieve_tools call that raises is caught gracefully."""
-        mock_llm = MagicMock()
-        mock_llm.with_config.return_value = mock_llm
-
-        retrieve_call = AIMessage(content="")
-        retrieve_call.tool_calls = [{"name": "retrieve_tools", "args": {"query": "x"}, "id": "tc1"}]
-
-        final_response = AIMessage(content="Handled error.")
-        final_response.tool_calls = []
-
-        mock_llm.bind_tools.return_value = mock_llm
-        mock_llm.ainvoke = AsyncMock(side_effect=[retrieve_call, final_response])
-
-        failing_retrieve = AsyncMock(side_effect=RuntimeError("retrieve fail"))
-
-        with patch(
-            "app.agents.middleware.subagent.get_retrieve_tools_function",
-            return_value=failing_retrieve,
-        ):
-            from app.agents.middleware.subagent import SubagentMiddleware
-
-            mw = SubagentMiddleware(
-                llm=mock_llm,
-                tool_registry={
-                    "vfs_read": _make_tool("vfs_read"),
-                    "vfs_cmd": _make_tool("vfs_cmd"),
-                },
-                store=MagicMock(),
-                max_turns=5,
-            )
-
-        result = await mw._execute_subagent("task", "", _make_config())
-        assert result == "Handled error."
+    def test_disable_retrieve_tools_maps_to_enable_false(self):
+        config = build_provider_parent_tool_runtime_config(
+            provider_tool_names=[],
+            todo_tool_names=[],
+            auto_bind_tool_names=None,
+            use_direct_tools=False,
+            disable_retrieve_tools=True,
+        )
+        assert config.enable_retrieve_tools is False
 
 
 # ---------------------------------------------------------------------------
-# spawn_subagent tool (integration-style)
+# build_child_tool_runtime_config
 # ---------------------------------------------------------------------------
 
 
-class TestSpawnSubagentTool:
-    def test_tool_created(self):
-        mw = _make_middleware()
-        assert len(mw.tools) == 1
-        tool = mw.tools[0]
-        assert tool.name == "spawn_subagent"
+class TestBuildChildToolRuntimeConfig:
+    def _parent(self) -> ToolRuntimeConfig:
+        return ToolRuntimeConfig(
+            initial_tool_names=["p1", "p2", "vfs_read"],
+            enable_retrieve_tools=True,
+        )
+
+    def test_direct_and_disabled_inherits_parent_tools_and_disables_retrieve(self):
+        parent = self._parent()
+        child = build_child_tool_runtime_config(
+            parent, use_direct_tools=True, disable_retrieve_tools=True
+        )
+        assert child.initial_tool_names == ["p1", "p2", "vfs_read"]
+        assert child.enable_retrieve_tools is False
+        assert child.include_subagents_in_retrieve is False
+
+    def test_direct_but_retrieve_enabled_falls_through_to_minimal(self):
+        # use_direct_tools=True but disable_retrieve_tools=False -> NOT the inherit branch.
+        parent = self._parent()
+        child = build_child_tool_runtime_config(
+            parent, use_direct_tools=True, disable_retrieve_tools=False
+        )
+        assert child.initial_tool_names == _MINIMAL_CHILD_TOOLS
+        assert child.enable_retrieve_tools is True
+
+    def test_dynamic_and_disabled_falls_through_to_minimal_retrieve_off(self):
+        # disable_retrieve_tools=True but use_direct_tools=False -> NOT the inherit branch.
+        parent = self._parent()
+        child = build_child_tool_runtime_config(
+            parent, use_direct_tools=False, disable_retrieve_tools=True
+        )
+        assert child.initial_tool_names == _MINIMAL_CHILD_TOOLS
+        assert child.enable_retrieve_tools is False
+
+    def test_dynamic_and_enabled_minimal_retrieve_on(self):
+        parent = self._parent()
+        child = build_child_tool_runtime_config(
+            parent, use_direct_tools=False, disable_retrieve_tools=False
+        )
+        assert child.initial_tool_names == _MINIMAL_CHILD_TOOLS
+        assert child.enable_retrieve_tools is True
+        assert child.include_subagents_in_retrieve is False
+
+
+# ---------------------------------------------------------------------------
+# build_executor_child_tool_runtime_config
+# ---------------------------------------------------------------------------
+
+
+class TestBuildExecutorChildToolRuntimeConfig:
+    def test_minimal_toolset_retrieve_on_no_subagents(self):
+        config = build_executor_child_tool_runtime_config()
+        assert config.initial_tool_names == _MINIMAL_CHILD_TOOLS
+        assert config.enable_retrieve_tools is True
+        assert config.include_subagents_in_retrieve is False
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(pytest.main([__file__, "-v"]))

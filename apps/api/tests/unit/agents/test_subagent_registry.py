@@ -1,9 +1,42 @@
-"""Unit tests for the subagent registry (`app.agents.core.subagents.registry`).
+"""Unit tests for the subagent registry and its builtin data dependency.
 
-These tests cover `all_subagents()` (OAuth-derived + builtins) and
-`get_subagent_by_id()`. Moved here from `test_subagent_runner.py` after the
-refactor that introduced the `Subagent` dataclass and centralized lookups in
-the registry module.
+Two production units are covered here:
+
+UNIT: app/agents/core/subagents/builtin_subagents.py :: BUILTIN_SUBAGENTS
+EXPECTED: A frozen tuple holding exactly the GAIA Knowledge Guide builtin.
+          Every field is a production contract read by a concrete consumer,
+          so each field value is asserted (not just `id`).
+MECHANISM: a module-level `Subagent(... config=SubAgentConfig(...))` literal.
+MUST-CATCH (each maps to >=1 test + >=1 killed mutant):
+  - id == "gaia_knowledge_guide"            [lookup key; handoff/runner resolve by it]
+  - provider == "gaia_knowledge_guide"      [subagent_runner stamps provider; handoff metadata]
+  - name == "GAIA Knowledge Guide"          [handoff progress / "connect" UX strings]
+  - managed_by == "internal"                [retrieval.py filters internal subagents by this exact str]
+  - config.agent_name == "gaia_knowledge_guide_agent"  [provider_registration registers the graph by it]
+  - config.tool_space == "gaia_knowledge_guide"        [retrieval.py maps namespace -> subagent id]
+  - config.handoff_tool_name == "call_gaia_knowledge_guide"  [handoff tool wiring]
+  - config.domain / capabilities / use_cases are the real (non-empty) routing copy
+  - config.system_prompt is GAIA_AGENT_SYSTEM_PROMPT          [subagent_helpers system message]
+  - config.has_subagent is True             [declares this entry IS a subagent]
+  - config.use_direct_tools is True         [base_subagent binds all tools directly]
+  - config.disable_retrieve_tools is True   [base_subagent disables retrieve mechanism]
+  - config.auto_bind_tools == ["fetch_webpages"]  [base_subagent auto-binds this exact tool]
+  - config.include_finish_task is False     [doc fetcher terminates via AIMessage, no finish_task]
+EQUIVALENT MUTANTS (allowed survivors, justified):
+  - line 1, the module docstring `str -> ''`: a docstring has no runtime consumer;
+    blanking it cannot change any observable behaviour. Proven below by
+    `test_module_docstring_is_not_a_behaviour_contract` documenting why it is excluded.
+
+UNIT: app/agents/core/subagents/registry.py :: _from_oauth / all_subagents / get_subagent_by_id
+EXPECTED: combine OAuth-derived subagents (filtered to has_subagent) with the
+          builtins, cache the union, and resolve by id or short_name
+          (case-insensitive, whitespace-trimmed).
+MECHANISM: tuple comprehension over OAUTH_INTEGRATIONS + BUILTIN_SUBAGENTS,
+           @cache on all_subagents, linear scan in get_subagent_by_id.
+MUST-CATCH: filtering of no-subagent integrations, ordering (oauth then builtin),
+            field-for-field _from_oauth passthrough, identity caching,
+            id/short_name lookup, case-insensitivity, whitespace strip,
+            agent_name is NOT a lookup key, ValueError on None config.
 """
 
 from unittest.mock import MagicMock, patch
@@ -16,6 +49,7 @@ from app.agents.core.subagents.registry import (
     all_subagents,
     get_subagent_by_id,
 )
+from app.agents.prompts.subagent_prompts import GAIA_AGENT_SYSTEM_PROMPT
 from app.models.mcp_config import ComposioConfig, MCPConfig, SubAgentConfig
 from app.models.oauth_models import OAuthIntegration
 from app.models.subagent_models import Subagent
@@ -130,13 +164,95 @@ def _clear_registry_cache() -> None:
 
 
 # ---------------------------------------------------------------------------
+# BUILTIN_SUBAGENTS — the GAIA Knowledge Guide data contract
+#
+# Every field below is read by a concrete production consumer. The asserted
+# value is the byte-for-byte contract that consumer relies on, so blanking
+# the literal (mutate.py's `str -> ''` / bool flips) breaks one of these.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestBuiltinSubagentsContract:
+    def test_holds_exactly_the_gaia_knowledge_guide(self) -> None:
+        assert len(BUILTIN_SUBAGENTS) == 1
+        assert isinstance(BUILTIN_SUBAGENTS[0], Subagent)
+
+    def test_identity_fields_match_lookup_and_routing_contracts(self) -> None:
+        builtin = BUILTIN_SUBAGENTS[0]
+        # id/provider are the keys handoff_tools + subagent_runner resolve by;
+        # name is rendered in the "connect your account" UX strings.
+        assert builtin.id == "gaia_knowledge_guide"
+        assert builtin.provider == "gaia_knowledge_guide"
+        assert builtin.name == "GAIA Knowledge Guide"
+
+    def test_managed_by_is_internal(self) -> None:
+        # retrieval.py selects internal subagents with `managed_by == "internal"`.
+        # Any other value (or "") drops the builtin from the internal set.
+        assert BUILTIN_SUBAGENTS[0].managed_by == "internal"
+
+    def test_config_routing_keys_match_consumer_contracts(self) -> None:
+        config = BUILTIN_SUBAGENTS[0].config
+        # provider_registration registers the LangGraph graph under agent_name.
+        assert config.agent_name == "gaia_knowledge_guide_agent"
+        # retrieval.py builds {tool_space -> subagent_id}; "" would alias the
+        # empty namespace to this subagent.
+        assert config.tool_space == "gaia_knowledge_guide"
+        # handoff tool wiring exposes this exact callable name to the LLM.
+        assert config.handoff_tool_name == "call_gaia_knowledge_guide"
+
+    def test_config_routing_copy_is_present_and_specific(self) -> None:
+        config = BUILTIN_SUBAGENTS[0].config
+        # domain/capabilities/use_cases feed the handoff tool description and
+        # routing prompt. They must be the real GAIA copy, not blank.
+        assert config.domain.startswith("any question about GAIA itself")
+        assert "exploring GAIA's own documentation" in config.capabilities
+        assert "any meta question about GAIA the product" in config.use_cases
+
+    def test_config_system_prompt_is_the_gaia_agent_prompt(self) -> None:
+        # subagent_helpers builds the system message from config.system_prompt.
+        assert BUILTIN_SUBAGENTS[0].config.system_prompt is GAIA_AGENT_SYSTEM_PROMPT
+
+    def test_config_declares_itself_a_subagent(self) -> None:
+        # The module exists to register subagent capabilities; the entry must
+        # declare has_subagent=True.
+        assert BUILTIN_SUBAGENTS[0].config.has_subagent is True
+
+    def test_config_tool_binding_flags_are_direct_and_retrieve_disabled(self) -> None:
+        config = BUILTIN_SUBAGENTS[0].config
+        # base_subagent / tool_runtime_config branch on these: direct binding
+        # of the full tool set with the retrieve mechanism off.
+        assert config.use_direct_tools is True
+        assert config.disable_retrieve_tools is True
+
+    def test_config_auto_binds_only_fetch_webpages(self) -> None:
+        # base_subagent auto-binds exactly the tools in this list at startup.
+        assert BUILTIN_SUBAGENTS[0].config.auto_bind_tools == ["fetch_webpages"]
+
+    def test_config_omits_finish_task(self) -> None:
+        # A read-only doc fetcher terminates via a natural AIMessage; flipping
+        # this to True would re-introduce the finish_task tool it must not have.
+        assert BUILTIN_SUBAGENTS[0].config.include_finish_task is False
+
+    def test_module_docstring_is_not_a_behaviour_contract(self) -> None:
+        # Documents the one justified equivalent mutant: blanking the module
+        # docstring (mutate.py line-1 `str -> ''`) changes no runtime behaviour
+        # because nothing reads `builtin_subagents.__doc__`. The registry import
+        # and the builtin data are unaffected, so it cannot be killed without a
+        # hollow `__doc__` assertion. Proven: re-import yields the same object.
+        import app.agents.core.subagents.builtin_subagents as mod
+
+        assert mod.BUILTIN_SUBAGENTS is BUILTIN_SUBAGENTS
+
+
+# ---------------------------------------------------------------------------
 # all_subagents — OAuth-derived filtering
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestAllSubagents:
-    def test_filters_integrations_with_subagent(self):
+    def test_filters_integrations_with_subagent(self) -> None:
         _clear_registry_cache()
         with (
             patch(
@@ -153,7 +269,7 @@ class TestAllSubagents:
         assert "gmail" in ids
         assert "stripe" not in ids
 
-    def test_empty_integrations(self):
+    def test_empty_integrations(self) -> None:
         _clear_registry_cache()
         with (
             patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []),
@@ -169,7 +285,7 @@ class TestAllSubagents:
 
 @pytest.mark.unit
 class TestGetSubagentById:
-    def test_find_by_id(self):
+    def test_find_by_id(self) -> None:
         _clear_registry_cache()
         with (
             patch(
@@ -182,7 +298,7 @@ class TestGetSubagentById:
         assert result is not None
         assert result.id == "github"
 
-    def test_find_by_short_name(self):
+    def test_find_by_short_name(self) -> None:
         _clear_registry_cache()
         with (
             patch(
@@ -195,7 +311,7 @@ class TestGetSubagentById:
         assert result is not None
         assert result.id == "github"
 
-    def test_case_insensitive(self):
+    def test_case_insensitive(self) -> None:
         _clear_registry_cache()
         with (
             patch(
@@ -206,8 +322,9 @@ class TestGetSubagentById:
         ):
             result = get_subagent_by_id("GITHUB")
         assert result is not None
+        assert result.id == "github"
 
-    def test_not_found(self):
+    def test_not_found(self) -> None:
         _clear_registry_cache()
         with (
             patch(
@@ -219,7 +336,7 @@ class TestGetSubagentById:
             result = get_subagent_by_id("nonexistent")
         assert result is None
 
-    def test_integration_without_subagent_not_returned(self):
+    def test_integration_without_subagent_not_returned(self) -> None:
         _clear_registry_cache()
         with (
             patch(
@@ -231,7 +348,7 @@ class TestGetSubagentById:
             result = get_subagent_by_id("stripe")
         assert result is None
 
-    def test_strips_whitespace(self):
+    def test_strips_whitespace(self) -> None:
         _clear_registry_cache()
         with (
             patch(
