@@ -22,6 +22,8 @@ from app.agents.workspace.system_docs import (
     INTEGRATIONS_GUIDE_MD,
     SESSIONS_GUIDE_MD,
 )
+from app.services.storage.juicefs import ensure_safe_path_id
+from shared.py.wide_events import log
 
 SKILLS_HASH_MARKER = ".gaia/skills.v"
 
@@ -137,6 +139,15 @@ def materialize_instructions(user_root: Path, instructions: dict[str, str]) -> i
     integrations_root = user_root / "integrations"
     for iid, content in instructions.items():
         if not content:
+            continue
+        # Backstop: iid is user/agent-supplied. Refuse anything that isn't a
+        # single safe path component so a crafted id (e.g. "../../<victim>")
+        # cannot escape the user's integrations/ root and write elsewhere on the
+        # shared mount. Skip the bad entry rather than aborting the bootstrap.
+        try:
+            ensure_safe_path_id(iid, label="integration_id")
+        except ValueError:
+            log.warning(f"Skipping unsafe integration_id in instructions projection: {iid!r}")
             continue
         agent_dir = integrations_root / iid / "agent"
         agent_dir.mkdir(parents=True, exist_ok=True)

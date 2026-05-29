@@ -26,6 +26,7 @@ from app.services.integrations.user_integrations import (
     get_user_integrations,
     remove_user_integration,
 )
+from app.services.storage.juicefs import ensure_safe_path_id
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -147,6 +148,7 @@ async def update_integration_instructions(
             user={"id": user_id},
             integration={"id": integration_id},
         )
+        ensure_safe_path_id(integration_id, label="integration_id")
         record = await upsert_instructions(
             user_id=user_id,
             integration_id=integration_id,
@@ -160,6 +162,8 @@ async def update_integration_instructions(
             updated_by=record.updated_by,
             updated_at=record.updated_at,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         log.error(f"Error updating integration instructions: {e}")
         raise HTTPException(status_code=500, detail="Failed to update integration instructions")

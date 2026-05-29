@@ -22,6 +22,7 @@ from app.services.integration_instructions_service import (
     get_instructions,
     upsert_instructions,
 )
+from app.services.storage.juicefs import ensure_safe_path_id
 from shared.py.wide_events import log
 
 
@@ -82,6 +83,14 @@ async def update_integration_instructions(
 
     if not integration_id:
         return "Error: integration_id is required."
+
+    try:
+        ensure_safe_path_id(integration_id, label="integration_id")
+    except ValueError:
+        return (
+            f"Error: invalid integration_id '{integration_id}'. Use a connected "
+            "integration's id (letters, numbers, hyphens, and underscores only)."
+        )
 
     log.set(tool={"name": "update_integration_instructions"}, integration={"id": integration_id})
     await upsert_instructions(
