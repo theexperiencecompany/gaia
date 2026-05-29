@@ -1,0 +1,51 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "fda2a0bb0add",
+  "session_id": "d7f2b55c-81fb-4ce1-8239-3a848177b26c",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-29T19:19:31.447209Z",
+  "branch": "chore/test-suite-overhaul",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "apps/api/tests/unit/tools/test_registry.py",
+    "apps/api/tests/unit/tools/test_research_tool.py",
+    "apps/api/tests/unit/utils/test_email_utils.py",
+    "apps/api/tests/unit/utils/test_internet_utils.py",
+    "apps/api/tests/unit/utils/test_mcp_utils.py",
+    "apps/api/tests/unit/workers/test_cleanup_tasks.py"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "67850e261fd0",
+  "token_usage": {
+    "input_tokens": 124775,
+    "cache_creation_tokens": 3614791,
+    "cache_read_tokens": 139154499,
+    "output_tokens": 548607,
+    "api_call_count": 299
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-29T19:19:31.3735Z",
+    "agent_lines": 201,
+    "agent_removed": 178,
+    "human_added": 360,
+    "human_modified": 2,
+    "human_removed": 0,
+    "total_committed": 563,
+    "total_lines_changed": 948,
+    "agent_percentage": 39.9789029535865,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

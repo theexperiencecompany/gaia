@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "fda2a0bb0add",
+  "strategy": "manual-commit",
+  "branch": "chore/test-suite-overhaul",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "apps/api/tests/unit/tools/test_registry.py",
+    "apps/api/tests/unit/tools/test_research_tool.py",
+    "apps/api/tests/unit/utils/test_email_utils.py",
+    "apps/api/tests/unit/utils/test_internet_utils.py",
+    "apps/api/tests/unit/utils/test_mcp_utils.py",
+    "apps/api/tests/unit/workers/test_cleanup_tasks.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/fd/a2a0bb0add/0/metadata.json",
+      "transcript": "/fd/a2a0bb0add/0/full.jsonl",
+      "content_hash": "/fd/a2a0bb0add/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 124775,
+    "cache_creation_tokens": 3614791,
+    "cache_read_tokens": 139154499,
+    "output_tokens": 548607,
+    "api_call_count": 299
+  }
+}
