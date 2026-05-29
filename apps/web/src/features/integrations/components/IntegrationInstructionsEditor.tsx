@@ -31,6 +31,7 @@ export const IntegrationInstructionsEditor = ({
         variant="flat"
         radius="full"
         isLoading={isLoading}
+        isDisabled={isLoading}
         onPress={onOpen}
         startContent={
           !isLoading &&

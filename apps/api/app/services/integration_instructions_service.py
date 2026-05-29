@@ -44,7 +44,7 @@ async def get_all_instructions(user_id: str) -> dict[str, str]:
         {"user_id": user_id, "content": {"$ne": ""}},
         {"integration_id": 1, "content": 1, "_id": 0},
     )
-    docs = await cursor.to_list(length=500)
+    docs = await cursor.to_list(length=None)
     return {d["integration_id"]: d["content"] for d in docs if d.get("content")}
 
 

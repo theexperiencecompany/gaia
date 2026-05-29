@@ -23,6 +23,7 @@ from app.services.integration_instructions_service import (
 )
 from app.services.integrations.user_integrations import (
     add_user_integration as add_user_integration_service,
+    check_user_has_integration,
     get_user_integrations,
     remove_user_integration,
 )
@@ -158,6 +159,8 @@ async def update_integration_instructions(
             integration={"id": integration_id},
         )
         ensure_safe_path_id(integration_id, label="integration_id")
+        if not await check_user_has_integration(user_id, integration_id):
+            raise HTTPException(status_code=404, detail="Integration not found in workspace")
         record = await upsert_instructions(
             user_id=user_id,
             integration_id=integration_id,
@@ -171,6 +174,8 @@ async def update_integration_instructions(
             updated_by=record.updated_by,
             updated_at=record.updated_at,
         )
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

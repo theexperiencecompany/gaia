@@ -22,6 +22,7 @@ from app.services.integration_instructions_service import (
     get_instructions,
     upsert_instructions,
 )
+from app.services.integrations.user_integrations import check_user_has_integration
 from app.services.storage.juicefs import ensure_safe_path_id
 from shared.py.wide_events import log
 
@@ -90,6 +91,13 @@ async def update_integration_instructions(
         return (
             f"Error: invalid integration_id '{integration_id}'. Use a connected "
             "integration's id (letters, numbers, hyphens, and underscores only)."
+        )
+
+    if not await check_user_has_integration(user_id, integration_id):
+        return (
+            f"Error: '{integration_id}' is not one of this user's connected integrations, "
+            "so it has no instructions to update. Only set instructions for an integration "
+            "the user has actually added."
         )
 
     log.set(tool={"name": "update_integration_instructions"}, integration={"id": integration_id})

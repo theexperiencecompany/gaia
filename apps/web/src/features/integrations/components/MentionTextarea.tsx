@@ -27,7 +27,9 @@ const buildSegments = (value: string, toolNames: string[]): Segment[] => {
     .sort((a, b) => b.length - a.length)
     .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("|");
-  const re = new RegExp(`@(?:${alternation})`, "g");
+  // Trailing boundary so a prefix doesn't highlight inside a longer token
+  // (e.g. "@Send" must not light up inside "@Sender").
+  const re = new RegExp(`@(?:${alternation})(?!\\w)`, "g");
   const segments: Segment[] = [];
   let last = 0;
   for (const match of value.matchAll(re)) {

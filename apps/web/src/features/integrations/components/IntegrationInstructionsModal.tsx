@@ -9,7 +9,7 @@ import {
   ModalHeader,
 } from "@heroui/modal";
 import { Tab, Tabs } from "@heroui/tabs";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { MentionTextarea } from "@/features/integrations/components/MentionTextarea";
 
@@ -37,16 +37,22 @@ export const IntegrationInstructionsModal = ({
 }: IntegrationInstructionsModalProps) => {
   const [value, setValue] = useState(savedContent);
   const [tab, setTab] = useState("write");
+  const wasOpenRef = useRef(false);
 
-  // Reset the draft to the persisted content every time the modal opens.
+  // Reset the draft to the persisted content only on the closed->open
+  // transition — not on every savedContent change, which would clobber
+  // in-progress edits if the query refetches while the modal is open.
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
       setValue(savedContent);
       setTab("write");
     }
+    wasOpenRef.current = isOpen;
   }, [isOpen, savedContent]);
 
-  const isDirty = value.trim() !== savedContent.trim();
+  // Raw compare: leading/trailing whitespace can be meaningful in Markdown,
+  // and the backend already normalizes whitespace-only content to empty.
+  const isDirty = value !== savedContent;
   const canMention = toolNames.length > 0;
 
   const handleSave = async () => {

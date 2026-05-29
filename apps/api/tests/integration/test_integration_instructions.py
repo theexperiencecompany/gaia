@@ -98,6 +98,14 @@ def _uid() -> str:
     return f"itest-{uuid4().hex}"
 
 
+async def _always_connected(*_args: Any, **_kwargs: Any) -> bool:
+    return True
+
+
+async def _never_connected(*_args: Any, **_kwargs: Any) -> bool:
+    return False
+
+
 # --------------------------------------------------------------------------- #
 # 1. Security — the path-traversal guard (the materializer backstop).          #
 # --------------------------------------------------------------------------- #
@@ -240,7 +248,10 @@ async def test_tool_rejects_unsafe_integration_id(
     assert fake_collection.docs == [], "unsafe id was persisted"
 
 
-async def test_tool_persists_and_is_readable(fake_collection: FakeCollection) -> None:
+async def test_tool_persists_and_is_readable(
+    fake_collection: FakeCollection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(tool_mod, "check_user_has_integration", _always_connected)
     uid = _uid()
     cfg = {"metadata": {"user_id": uid}}
     await tool_mod.update_integration_instructions.coroutine(
@@ -251,6 +262,19 @@ async def test_tool_persists_and_is_readable(fake_collection: FakeCollection) ->
         config=cfg, integration_id="slack"
     )
     assert "always cc me" in read_back
+
+
+async def test_tool_rejects_unconnected_integration(
+    fake_collection: FakeCollection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A safe slug that the user has not added must not create an orphan record,
+    # even though it passes the path-safety guard.
+    monkeypatch.setattr(tool_mod, "check_user_has_integration", _never_connected)
+    result = await tool_mod.update_integration_instructions.coroutine(
+        config={"metadata": {"user_id": _uid()}}, integration_id="slack", content="hi"
+    )
+    assert "not one of" in result.lower()
+    assert fake_collection.docs == [], "instructions persisted for an unconnected integration"
 
 
 async def test_tool_requires_user_id(fake_collection: FakeCollection) -> None:
