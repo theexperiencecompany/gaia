@@ -295,6 +295,11 @@ async def connect_integration(
     ],
     config: RunnableConfig,
 ) -> str:
+    """Initiate the connection flow for one or more integrations.
+
+    For each not-yet-connected integration, builds the OAuth/connect URL and
+    streams a connect prompt so the user can authenticate.
+    """
     try:
         log.set(tool={"name": "connect_integration", "action": "connect"})
         configurable = config.get("configurable", {})
@@ -405,6 +410,7 @@ async def check_integrations_status(
     ],
     config: RunnableConfig,
 ) -> str:
+    """Report the connection status of the named integrations for the user."""
     try:
         log.set(tool={"name": "check_integrations_status", "action": "check"})
         configurable = config.get("configurable", {})
