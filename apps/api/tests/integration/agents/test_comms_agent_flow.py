@@ -86,9 +86,9 @@ def _common_patches(store_mock, checkpointer_return=None, memory_mock=None):
             return_value=lambda _: None,
         ),
         patch(
-            "app.agents.tools.executor_tool.prepare_executor_execution",
+            "app.agents.tools.executor_tool._dispatch_executor",
             new_callable=AsyncMock,
-            return_value=(None, "executor not available in tests"),
+            return_value="executor not available in tests",
         ),
         patch(
             "app.agents.tools.memory_tools.memory_service",
