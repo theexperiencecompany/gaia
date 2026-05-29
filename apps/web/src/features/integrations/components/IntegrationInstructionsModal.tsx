@@ -95,9 +95,13 @@ export const IntegrationInstructionsModal = ({
                   minRows={10}
                   maxRows={18}
                   maxLength={MAX_CHARS}
-                  variant="bordered"
                   placeholder={`e.g. Focus on #eng, #design, and #pm.\nNever post to #general.\nDefault to a friendly, concise tone.`}
-                  classNames={{ input: "font-mono text-sm leading-relaxed" }}
+                  classNames={{
+                    input:
+                      "font-mono text-sm leading-relaxed placeholder:text-zinc-600",
+                    inputWrapper:
+                      "rounded-2xl border border-zinc-800 bg-zinc-800/40 shadow-none transition-colors hover:bg-zinc-800/40 group-data-[focus=true]:border-zinc-700 group-data-[focus=true]:bg-zinc-800/40 group-data-[focus-visible=true]:ring-transparent group-data-[focus-visible=true]:ring-offset-0",
+                  }}
                   {...mention.textareaHandlers}
                 />
 
