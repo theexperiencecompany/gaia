@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Textarea } from "@heroui/input";
 import {
   Modal,
   ModalBody,
@@ -12,7 +11,7 @@ import {
 import { Tab, Tabs } from "@heroui/tabs";
 import { useEffect, useState } from "react";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
-import { useToolMention } from "@/features/integrations/hooks/useToolMention";
+import { MentionTextarea } from "@/features/integrations/components/MentionTextarea";
 
 // Matches the backend cap in integration_instructions_models.py
 const MAX_CHARS = 8000;
@@ -38,7 +37,6 @@ export const IntegrationInstructionsModal = ({
 }: IntegrationInstructionsModalProps) => {
   const [value, setValue] = useState(savedContent);
   const [tab, setTab] = useState("write");
-  const mention = useToolMention({ onChange: setValue, toolNames });
 
   // Reset the draft to the persisted content every time the modal opens.
   useEffect(() => {
@@ -86,50 +84,14 @@ export const IntegrationInstructionsModal = ({
             classNames={{ tabList: "bg-zinc-800/60", cursor: "bg-zinc-700" }}
           >
             <Tab key="write" title="Write">
-              <div className="relative">
-                <Textarea
-                  autoFocus
-                  value={value}
-                  onValueChange={setValue}
-                  minRows={10}
-                  maxRows={18}
-                  maxLength={MAX_CHARS}
-                  placeholder={`e.g. Focus on #eng, #design, and #pm.\nNever post to #general.\nDefault to a friendly, concise tone.`}
-                  classNames={{
-                    input:
-                      "font-mono text-sm leading-relaxed placeholder:text-zinc-600",
-                    inputWrapper:
-                      "rounded-2xl border border-zinc-800 bg-zinc-800/40 shadow-none transition-colors hover:bg-zinc-800/40 group-data-[focus=true]:border-zinc-700 group-data-[focus=true]:bg-zinc-800/40 group-data-[focus-visible=true]:ring-transparent group-data-[focus-visible=true]:ring-offset-0",
-                  }}
-                  {...mention.textareaHandlers}
-                />
-
-                {mention.isOpen && (
-                  <div className="mt-2 max-h-52 overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900 p-1 shadow-xl">
-                    <p className="px-3 py-1.5 text-xs font-light text-zinc-500">
-                      Mention a tool
-                    </p>
-                    {mention.matches.map((name, idx) => (
-                      <button
-                        type="button"
-                        key={name}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          mention.insert(name);
-                        }}
-                        onMouseEnter={() => mention.setHighlight(idx)}
-                        className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition-colors ${
-                          idx === mention.highlight
-                            ? "bg-zinc-800 text-zinc-100"
-                            : "text-zinc-300"
-                        }`}
-                      >
-                        <span className="truncate">{name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <MentionTextarea
+                value={value}
+                onChange={setValue}
+                toolNames={toolNames}
+                maxLength={MAX_CHARS}
+                rows={10}
+                placeholder={`e.g. Focus on #eng, #design, and #pm.\nNever post to #general.\nDefault to a friendly, concise tone.`}
+              />
 
               <div className="mt-1 flex items-center justify-between text-xs font-light text-zinc-500">
                 <span>

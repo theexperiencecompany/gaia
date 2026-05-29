@@ -1,7 +1,6 @@
 import {
-  type FormEvent,
   type KeyboardEvent,
-  type MouseEvent,
+  type RefObject,
   useCallback,
   useEffect,
   useMemo,
@@ -15,28 +14,27 @@ const MENTION_RE = /(?:^|\s)(@)([^\s@]*)$/;
 const MAX_SUGGESTIONS = 8;
 
 interface MentionState {
-  trigger: string;
   query: string;
-  start: number; // index of the trigger char in the text
+  start: number; // index of the `@` in the text
 }
 
 /**
- * Inline `@`/`#` tool-mention autocomplete for a textarea, modeled on the
- * chat composer's slash-command detection. Reads the live DOM element captured
- * from events (so it doesn't depend on how HeroUI forwards refs) and rewrites
- * the controlled value on insert.
+ * Inline `@` tool-mention autocomplete for a textarea. Detection is driven by
+ * the live DOM element (via the passed ref) so it stays correct regardless of
+ * how the text was entered, and inserting rewrites the controlled value.
  */
 export const useToolMention = ({
+  taRef,
   onChange,
   toolNames,
 }: {
+  taRef: RefObject<HTMLTextAreaElement | null>;
   onChange: (value: string) => void;
   toolNames: string[];
 }) => {
-  const elRef = useRef<HTMLInputElement | null>(null);
-  const caretToApply = useRef<number | null>(null);
   const [mention, setMention] = useState<MentionState | null>(null);
   const [highlight, setHighlight] = useState(0);
+  const caretToApply = useRef<number | null>(null);
 
   const matches = useMemo(() => {
     if (!mention) return [];
@@ -49,8 +47,8 @@ export const useToolMention = ({
 
   const close = useCallback(() => setMention(null), []);
 
-  const detect = useCallback(() => {
-    const el = elRef.current;
+  const refresh = useCallback(() => {
+    const el = taRef.current;
     if (!el) return;
     const caret = el.selectionStart ?? 0;
     const match = el.value.slice(0, caret).match(MENTION_RE);
@@ -58,32 +56,28 @@ export const useToolMention = ({
       setMention(null);
       return;
     }
-    setMention({
-      trigger: match[1],
-      query: match[2],
-      start: caret - match[2].length - 1,
-    });
+    setMention({ query: match[2], start: caret - match[2].length - 1 });
     setHighlight(0);
-  }, []);
+  }, [taRef]);
 
   const insert = useCallback(
     (name: string) => {
-      const el = elRef.current;
+      const el = taRef.current;
       if (!el || !mention) return;
       const caret = el.selectionStart ?? el.value.length;
-      const token = `${mention.trigger}${name} `;
+      const token = `@${name} `;
       const next =
         el.value.slice(0, mention.start) + token + el.value.slice(caret);
       caretToApply.current = mention.start + token.length;
       onChange(next);
       setMention(null);
     },
-    [mention, onChange],
+    [mention, onChange, taRef],
   );
 
   // Restore the caret after a mention insert re-renders the controlled value.
   useEffect(() => {
-    const el = elRef.current;
+    const el = taRef.current;
     if (caretToApply.current === null || !el) return;
     const pos = caretToApply.current;
     caretToApply.current = null;
@@ -94,8 +88,7 @@ export const useToolMention = ({
   });
 
   const onKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLInputElement>) => {
-      elRef.current = e.currentTarget;
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (!mention || matches.length === 0) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -114,32 +107,6 @@ export const useToolMention = ({
     [mention, matches, highlight, insert, close],
   );
 
-  const onKeyUp = useCallback(
-    (e: KeyboardEvent<HTMLInputElement>) => {
-      elRef.current = e.currentTarget;
-      detect();
-    },
-    [detect],
-  );
-
-  const onClick = useCallback(
-    (e: MouseEvent<HTMLInputElement>) => {
-      elRef.current = e.currentTarget;
-      detect();
-    },
-    [detect],
-  );
-
-  // `input` fires for every value change (typing, paste, IME, autofill), so
-  // the suggestions stay correct regardless of how the text was entered.
-  const onInput = useCallback(
-    (e: FormEvent<HTMLInputElement>) => {
-      elRef.current = e.currentTarget;
-      detect();
-    },
-    [detect],
-  );
-
   return {
     isOpen: mention !== null && matches.length > 0,
     matches,
@@ -147,6 +114,7 @@ export const useToolMention = ({
     setHighlight,
     insert,
     close,
-    textareaHandlers: { onKeyDown, onKeyUp, onClick, onInput },
+    refresh,
+    onKeyDown,
   };
 };
