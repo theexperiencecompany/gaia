@@ -54,6 +54,8 @@ _CONFIGURABLE_SCALAR_KEYS = frozenset(
         "user_message_id",
         "active_todo_id",
         "execution_mode",
+        "conversation_source",
+        "source_category",
     }
 )
 

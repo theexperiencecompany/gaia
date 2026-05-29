@@ -35,6 +35,16 @@ class ChannelAdapter(ABC):
         """Deliver notification via this channel."""
         pass
 
+    async def deliver_text(self, text: str, user_id: str) -> ChannelDeliveryStatus:
+        """Deliver a single plain chat message (raw Markdown) to ``user_id``.
+
+        Bypasses the notification ``transform`` step — used to push agent-generated
+        chat messages (not notifications) to a user's linked platform. The default
+        passes the text straight through; adapters whose Markdown conversion lives
+        in ``transform`` (rather than at send time) override this to convert first.
+        """
+        return await self.deliver({"text": text}, user_id)
+
     # -- Status helpers -----------------------------------------------------
 
     def _success(self) -> ChannelDeliveryStatus:

@@ -40,6 +40,7 @@ from app.templates.docstrings.integration_tool_docs import (
     CONNECT_INTEGRATION,
     LIST_INTEGRATIONS,
 )
+from app.utils.integration_checker import build_integration_connection_message
 from shared.py.wide_events import log
 
 # Stopwords to filter out from search queries
@@ -382,17 +383,9 @@ async def connect_integration(
 
             if connect_response and connect_response.status == "connected":
                 results.append(f"✅ {integration.name} is already connected!")
-            elif connect_url:
-                results.append(
-                    f"🔗 To connect {integration.name}, open this link and sign in: {connect_url}"
-                )
             else:
-                error = connect_response.error if connect_response else None
-                results.append(
-                    f"🔗 Connection initiated for {integration.name}. "
-                    f"Ask the user to open the connection prompt to finish authenticating."
-                    + (f" ({error})" if error else "")
-                )
+                # Source-aware message (develop) carrying the real connect URL (ours).
+                results.append(build_integration_connection_message(integration.name, connect_url))
 
         return "\n".join(results) if results else "No integrations to connect."
 

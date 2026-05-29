@@ -53,6 +53,7 @@ from app.utils.agent_utils import (
     format_subagent_start_event,
     parse_subagent_id,
 )
+from app.utils.integration_checker import build_integration_connection_message
 from shared.py.wide_events import log
 
 SUBAGENTS_NAMESPACE = ("subagents",)
@@ -140,12 +141,8 @@ async def check_integration_connection(
             subagent.id, subagent.name, user_id, user_email
         )
 
-        if connect_url:
-            return (
-                f"Integration {subagent.name} is not connected. Share this link with the "
-                f"user to connect it: {connect_url}"
-            )
-        return f"Integration {subagent.name} is not connected. Please connect it first."
+        # Source-aware message (develop) carrying the real connect URL (ours).
+        return build_integration_connection_message(subagent.name, connect_url)
 
     except Exception as e:
         log.error(f"Error checking integration status for {integration_id}: {e}")
@@ -360,23 +357,10 @@ async def _resolve_subagent(
             connect_url = await _prompt_integration_connection(
                 int_id, subagent.name, user_id, user_email
             )
-            if connect_url:
-                return (
-                    None,
-                    None,
-                    (
-                        f"Error: {agent_name} requires an OAuth connection. Share this link "
-                        f"with the user to connect {subagent.name}: {connect_url}"
-                    ),
-                    False,
-                )
             return (
                 None,
                 None,
-                (
-                    f"Error: {agent_name} requires OAuth connection. "
-                    f"Please connect {subagent.name} first via settings."
-                ),
+                build_integration_connection_message(subagent.name, connect_url),
                 False,
             )
 

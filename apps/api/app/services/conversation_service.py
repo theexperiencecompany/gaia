@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 
 from app.db.mongodb.collections import conversations_collection
 from app.models.chat_models import (
+    BOT_CONVERSATION_SOURCES,
     BatchSyncRequest,
     ConversationModel,
     SystemPurpose,
@@ -88,8 +89,7 @@ async def get_conversations(user: dict, page: int = 1, limit: int = 10) -> dict:
     }
 
     # Exclude conversations originating from bots (they are accessible via direct URL)
-    _BOT_SOURCES = ["telegram", "discord", "slack", "whatsapp"]
-    _source_filter = {"source": {"$nin": _BOT_SOURCES}}
+    _source_filter = {"source": {"$nin": [s.value for s in BOT_CONVERSATION_SOURCES]}}
 
     starred_filter = {"user_id": user_id, "starred": True, **_source_filter}
     non_starred_filter = {

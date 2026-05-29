@@ -43,9 +43,10 @@ from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import conversations_collection
 from app.db.redis import redis_cache
 from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
-from app.models.chat_models import MessageModel, UpdateMessagesRequest
+from app.models.chat_models import ConversationSource, MessageModel, UpdateMessagesRequest
 from app.models.message_models import ReplyToMessageData
 from app.services.conversation_service import update_messages
+from app.services.platform_message_service import deliver_message_to_platform, is_bot_platform
 from app.utils.stream_utils import (
     absorb_collector_event,
     apply_outputs_to_tool_data,
@@ -119,6 +120,25 @@ async def _lookup_user_message_content(
     return ""
 
 
+async def _get_conversation_source(conversation_id: str, user_id: str) -> ConversationSource | None:
+    """Return the conversation's persisted originating source (web/whatsapp/...).
+
+    This is the authoritative delivery-routing key: it says which channel the
+    conversation belongs to, independent of the run that produced the message
+    (so a scheduled/workflow run posting into a bot conversation still routes to
+    that platform). Returns None on miss/error — treated as a non-bot conversation.
+    """
+    try:
+        doc = await conversations_collection.find_one(
+            {"conversation_id": conversation_id, "user_id": user_id},
+            {"source": 1},
+        )
+    except Exception as e:
+        log.warning("_get_conversation_source: lookup failed", error=str(e))
+        return None
+    return ConversationSource.coerce(doc.get("source")) if doc else None
+
+
 def _collect_queued_tool_events(
     stream_id: str,
 ) -> list[dict[str, Any]] | None:
@@ -167,11 +187,19 @@ async def _deliver_bg_notification(
     tool_data: list[dict[str, Any]] | None = None,
     is_queued: bool = False,
 ) -> None:
-    """Run comms once with the executor result, then save + WS-push the message.
+    """Run comms once with the executor result, then save + deliver the message.
 
     Comms is invoked silently — no SSE stream. Its generated text becomes the
     user-visible bot message. The executor's terminal text is NOT shown to the
     user directly; it's internal context for comms.
+
+    The message is always saved to the conversation, then delivered over EXACTLY
+    ONE transport chosen by the conversation's own ``source``:
+      - bot conversations (whatsapp/telegram/discord/slack) → that platform's
+        API (bots have no WebSocket — it's their only inbound path)
+      - everything else (web/mobile/system) → the WebSocket push web/mobile listen on
+    Routing keys on the conversation, not the run that produced the message, so a
+    background/scheduled run posting into a bot conversation still reaches it.
 
     Args:
         result_text: Executor's terminal text (or error message).
@@ -227,35 +255,54 @@ async def _deliver_bg_notification(
         log.error("_deliver_bg_notification: failed to save message", error=str(e))
         return
 
-    ws_payload: dict[str, Any] = {
-        "type": "bot",
-        "response": notification_text,
-        "message_id": bot_message.message_id,
-        "date": bot_message.date,
-    }
-    if tool_data:
-        ws_payload["tool_data"] = tool_data
-    if task_id:
-        ws_payload["task_id"] = task_id
-    if show_reply_quote:
-        ws_payload["replyToMessage"] = {
-            "id": user_message_id,
-            "content": user_msg_content,
-            "role": "user",
+    # Deliver over exactly one transport, decided by the conversation's source.
+    # Bot conversations go to their platform's API; web/mobile/system go to the
+    # WebSocket push. (The web conversation list excludes bot sources, so a
+    # WebSocket push for a bot conversation would be dropped anyway.)
+    conversation_source = await _get_conversation_source(conversation_id, user_id)
+    if is_bot_platform(conversation_source):
+        delivered = await deliver_message_to_platform(
+            conversation_source,
+            user_id,
+            notification_text,
+        )
+        transport = "platform"
+    else:
+        ws_payload: dict[str, Any] = {
+            "type": "bot",
+            "response": notification_text,
+            "message_id": bot_message.message_id,
+            "date": bot_message.date,
         }
-    await _broadcast_message(
-        user_id,
-        {
-            "type": "conversation.new_message",
-            "conversation_id": conversation_id,
-            "message": ws_payload,
-        },
-    )
+        if tool_data:
+            ws_payload["tool_data"] = tool_data
+        if task_id:
+            ws_payload["task_id"] = task_id
+        if show_reply_quote:
+            ws_payload["replyToMessage"] = {
+                "id": user_message_id,
+                "content": user_msg_content,
+                "role": "user",
+            }
+        await _broadcast_message(
+            user_id,
+            {
+                "type": "conversation.new_message",
+                "conversation_id": conversation_id,
+                "message": ws_payload,
+            },
+        )
+        delivered = True
+        transport = "websocket"
+
     log.info(
         "_deliver_bg_notification: delivered message",
         message_id=bot_message.message_id,
         task_id=task_id,
         conversation_id=conversation_id,
+        conversation_source=conversation_source.value if conversation_source else None,
+        transport=transport,
+        delivered=delivered,
     )
 
 

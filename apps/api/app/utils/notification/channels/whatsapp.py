@@ -69,6 +69,15 @@ class WhatsAppChannelAdapter(ExternalPlatformAdapter):
             payload["text"] = convert_to_whatsapp_markdown(text)
         return payload
 
+    async def deliver_text(self, text: str, user_id: str) -> ChannelDeliveryStatus:
+        """Convert Markdown to WhatsApp formatting before delivery.
+
+        WhatsApp's Markdown conversion lives in ``transform`` (not at send time),
+        so the plain-text path must convert here or ``**bold**`` would render
+        literally.
+        """
+        return await self.deliver({"text": convert_to_whatsapp_markdown(text)}, user_id)
+
     def _get_bot_token(self) -> str | None:
         # For WhatsApp via Kapso, authentication is the API key, not a bot token.
         # We return the API key so _get_platform_context's token-check passes.
