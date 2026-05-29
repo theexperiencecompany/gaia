@@ -325,12 +325,14 @@ class WideEventLogger:
 
     # --- Private helpers ---
 
-    def _append(self, key: str, message: str, **kwargs: Any) -> None:
+    def _append(self, bucket: str, message: str, **kwargs: Any) -> None:
+        # `bucket` is positional ("warnings"/"errors"); using a non-reserved name
+        # lets callers pass a `key=` field (e.g. redis ops) without a TypeError.
         current = _wide_event.get() or {}
         entry: dict[str, Any] = {"msg": message, **kwargs}
-        items = list(current.get(key, []))
+        items = list(current.get(bucket, []))
         items.append(entry)
-        _wide_event.set({**current, key: items})
+        _wide_event.set({**current, bucket: items})
 
     def _bump(self, level: str) -> None:
         current = _max_level.get()

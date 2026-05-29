@@ -206,7 +206,11 @@ class TestWrapToolWithNullFilter:
         assert "bug in the MCP server" in result
 
     async def test_timeout_error_message(self) -> None:
-        original = AsyncMock(side_effect=Exception("Request timeout after 30s"))
+        # The timeout branch is matched by exception TYPE (TimeoutError /
+        # *TimeoutError subclass), not by the word "timeout" in the message —
+        # a generic Exception mentioning "timeout" is a connection-error
+        # pattern, so we use a real TimeoutError to hit the timeout branch.
+        original = AsyncMock(side_effect=TimeoutError("Request timeout after 30s"))
         tool = _make_tool(arun=original)
 
         wrapped = wrap_tool_with_null_filter(tool)

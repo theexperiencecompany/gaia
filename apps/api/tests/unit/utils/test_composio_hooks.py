@@ -467,8 +467,11 @@ class TestGmailSchemaModifiers:
         result = gmail_fetch_emails_schema_modifier("GMAIL_FETCH_EMAILS", "GMAIL", schema)
         props = result.input_parameters["properties"]
         assert props["max_results"]["default"] == 10
-        assert props["label_ids"]["default"] == ["INBOX"]
         assert props["format"]["default"] == "full"
+        # label_ids is intentionally NOT defaulted to ["INBOX"]: Gmail ANDs it
+        # with the query, so a stale default silently zeroes out folder-scoped
+        # searches (e.g. in:sent). The modifier must leave it untouched.
+        assert "default" not in props["label_ids"]
         assert "GMAIL SEARCH SYNTAX" in result.description
 
     def test_fetch_emails_schema_adds_hard_limit_note(self) -> None:

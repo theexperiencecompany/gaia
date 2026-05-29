@@ -150,6 +150,7 @@ class TestFeatureLimits:
         "chat_messages",
         "file_upload",
         "file_analysis",
+        "audio_transcription",
         "skill_operations",
         "generate_image",
         "deep_research",

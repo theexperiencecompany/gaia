@@ -45,27 +45,39 @@ class TestIsValidUrl:
         [
             ("ftp://example.com", "ftp_scheme"),
             ("https://", "no_netloc"),
-            ("https://192.168.1.1", "ip_address"),
             ("", "empty_string"),
             ("not-a-url", "plain_string_no_scheme"),
             ("://missing-scheme.com", "missing_scheme"),
-            ("https://10.0.0.1", "private_ip"),
-            ("https://255.255.255.255", "broadcast_ip"),
         ],
         ids=[
             "ftp_scheme",
             "no_netloc",
-            "ip_address",
             "empty_string",
             "plain_string_no_scheme",
             "missing_scheme",
-            "private_ip",
-            "broadcast_ip",
         ],
     )
     def test_invalid_urls(self, url: str, reason: str) -> None:
-        """URLs with wrong scheme, missing netloc, or IP addresses return False."""
+        """URLs with a non-http(s) scheme or a missing hostname return False.
+
+        Note: is_valid_url is a lightweight shape/scheme check only — IP-literal
+        hosts pass here. SSRF/IP rejection lives in _validate_url_for_fetch."""
         assert is_valid_url(url) is False
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://192.168.1.1",
+            "https://10.0.0.1",
+            "https://255.255.255.255",
+        ],
+        ids=["ip_address", "private_ip", "broadcast_ip"],
+    )
+    def test_ip_literal_hosts_pass_shape_check(self, url: str) -> None:
+        """is_valid_url only validates scheme + hostname presence, so IP-literal
+        hosts are accepted here. The SSRF guard (_validate_url_for_fetch) is what
+        actually rejects private/reserved IPs at fetch time."""
+        assert is_valid_url(url) is True
 
     def test_none_input(self) -> None:
         """None input returns False (caught by the except branch)."""
@@ -76,15 +88,11 @@ class TestIsValidUrl:
         """Malformed input that lacks scheme returns False."""
         assert is_valid_url("ht!tp://bad url with spaces") is False
 
-    def test_ip_with_port_rejected(self) -> None:
-        """IP address with a port — the netloc includes the port so the regex
-        won't match the bare IP pattern.  This is an edge case in the current
-        implementation (IP:port is NOT rejected).  Documenting actual behavior."""
-        # netloc = "192.168.1.1:8080" — the regex r"^\d+\.\d+\.\d+\.\d+$"
-        # does not match because of the :8080, so this passes.
+    def test_ip_with_port_passes_shape_check(self) -> None:
+        """IP-literal host with a port passes the lightweight shape check.
+        is_valid_url does not reject IPs at all (that's the fetch-time SSRF
+        guard's job); it only requires an http(s) scheme and a hostname."""
         result = is_valid_url("https://192.168.1.1:8080")
-        # The current implementation allows this because the regex only matches
-        # bare IP addresses.  We test the actual behavior, not the ideal.
         assert result is True
 
 
@@ -205,10 +213,17 @@ HTML_EMPTY = """
 
 
 def _mock_response(text: str, status_code: int = 200) -> MagicMock:
-    """Create a mock httpx.Response."""
+    """Create a mock httpx.Response.
+
+    The real scraper reads ``response.content`` (bytes) and feeds it to
+    BeautifulSoup, follows redirects manually via ``response.is_redirect`` /
+    ``response.headers``, and calls ``response.raise_for_status()``."""
     response = MagicMock(spec=httpx.Response)
     response.text = text
+    response.content = text.encode("utf-8")
     response.status_code = status_code
+    response.is_redirect = False
+    response.headers = {}
     response.raise_for_status = MagicMock()
     if status_code >= 400:
         response.raise_for_status.side_effect = httpx.HTTPStatusError(
@@ -439,7 +454,7 @@ class TestFetchUrlMetadata:
     """Tests for fetch_url_metadata."""
 
     async def test_invalid_url_raises_http_exception(self) -> None:
-        """Invalid URL raises HTTPException with 400 status."""
+        """Non-http(s) scheme raises HTTPException(400) from the SSRF guard."""
         with pytest.raises(Exception) as exc_info:
             await fetch_url_metadata("ftp://bad.example.com")
 
@@ -447,8 +462,9 @@ class TestFetchUrlMetadata:
 
         assert isinstance(exc_info.value, HTTPException)
         assert exc_info.value.status_code == 400
-        assert "Invalid URL" in exc_info.value.detail
+        assert exc_info.value.detail == "Only http(s) URLs are allowed."
 
+    @patch("app.utils.internet_utils._validate_url_for_fetch", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.search_urls_collection")
     @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
@@ -457,6 +473,7 @@ class TestFetchUrlMetadata:
         mock_get_cache: AsyncMock,
         mock_collection: MagicMock,
         mock_set_cache: AsyncMock,
+        mock_validate: AsyncMock,
     ) -> None:
         """When cache has the URL metadata, it is returned directly without DB or scrape."""
         cached_data = {
@@ -478,6 +495,7 @@ class TestFetchUrlMetadata:
         assert result.title == "Cached Title"
         assert str(result.url) == "https://example.com/"
 
+    @patch("app.utils.internet_utils._validate_url_for_fetch", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.search_urls_collection")
     @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
@@ -486,6 +504,7 @@ class TestFetchUrlMetadata:
         mock_get_cache: AsyncMock,
         mock_collection: MagicMock,
         mock_set_cache: AsyncMock,
+        mock_validate: AsyncMock,
     ) -> None:
         """When cache misses but DB has the data, it is returned from DB."""
         mock_get_cache.return_value = None
@@ -508,6 +527,7 @@ class TestFetchUrlMetadata:
         mock_set_cache.assert_not_awaited()
         assert result.title == "DB Title"
 
+    @patch("app.utils.internet_utils._validate_url_for_fetch", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.serialize_document")
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.search_urls_collection")
@@ -520,6 +540,7 @@ class TestFetchUrlMetadata:
         mock_collection: MagicMock,
         mock_set_cache: AsyncMock,
         mock_serialize: MagicMock,
+        mock_validate: AsyncMock,
     ) -> None:
         """When both cache and DB miss, scrapes the URL, stores in DB, caches, and returns."""
         mock_get_cache.return_value = None
@@ -569,6 +590,7 @@ class TestFetchUrlMetadata:
         assert isinstance(exc_info.value, HTTPException)
         assert exc_info.value.status_code == 400
 
+    @patch("app.utils.internet_utils._validate_url_for_fetch", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.search_urls_collection")
     @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
@@ -577,6 +599,7 @@ class TestFetchUrlMetadata:
         mock_get_cache: AsyncMock,
         mock_collection: MagicMock,
         mock_set_cache: AsyncMock,
+        mock_validate: AsyncMock,
     ) -> None:
         """Cache key follows the 'url_metadata:{url}' format."""
         cached_data = {
@@ -595,6 +618,7 @@ class TestFetchUrlMetadata:
             "url_metadata:https://specific.example.com/path?q=1"
         )
 
+    @patch("app.utils.internet_utils._validate_url_for_fetch", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.serialize_document")
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.search_urls_collection")
@@ -607,6 +631,7 @@ class TestFetchUrlMetadata:
         mock_collection: MagicMock,
         mock_set_cache: AsyncMock,
         mock_serialize: MagicMock,
+        mock_validate: AsyncMock,
     ) -> None:
         """Cache TTL is set to 864000 seconds (10 days)."""
         mock_get_cache.return_value = None

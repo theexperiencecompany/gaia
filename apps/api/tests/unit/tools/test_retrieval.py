@@ -7,13 +7,19 @@ import pytest
 
 
 def _make_subagent_mock(
-    id: str, managed_by: str = "internal", name: str | None = None
+    id: str,
+    managed_by: str = "internal",
+    name: str | None = None,
+    tool_space: str | None = None,
 ) -> MagicMock:
     """Build a Subagent-shaped MagicMock for retrieval tests."""
     sa = MagicMock()
     sa.id = id
     sa.name = name or id.title()
     sa.managed_by = managed_by
+    # _get_user_context maps a namespace back to a subagent id via
+    # `sa.config.tool_space`, so default it to the subagent id.
+    sa.config.tool_space = tool_space if tool_space is not None else id
     return sa
 
 
@@ -113,9 +119,12 @@ class TestGetUserContext:
             ns, connected, internal = await _get_user_context(
                 "user1", "myspace", include_subagents=True
             )
-        # Falls back to initial defaults
-        assert "myspace" in ns
-        assert "general" in ns
+        # On failure, falls back to the seeded namespaces. "general" is always
+        # seeded; a non-platform tool_space ("myspace") is NOT seeded, so it must
+        # not appear after the exception.
+        assert ns == {"general"}
+        assert "myspace" not in ns
+        assert connected == set()
 
     @pytest.mark.asyncio
     async def test_connected_integrations_with_subagent_config(self):

@@ -920,25 +920,30 @@ class TestHandleOAuthConnection:
         mock_update_user_integration_status,
         mock_redis_pool_manager,
     ):
-        """Gmail integration should queue email processing via ARQ."""
+        """Gmail integration queues email processing via ARQ once onboarding is complete.
+
+        During onboarding the pipeline enqueues the job itself, so handle_oauth_connection
+        only queues process_gmail_emails_to_memory when onboarding.completed is True.
+        """
+        user_id = "507f1f77bcf86cd799439011"
         mock_users_collection.find_one = AsyncMock(
             return_value={
-                "_id": ObjectId("507f1f77bcf86cd799439011"),
-                "onboarding": {"completed": False},
+                "_id": ObjectId(user_id),
+                "onboarding": {"completed": True},
             }
         )
         config = _make_integration_config(integration_id="gmail")
         background_tasks = MagicMock()
 
         await handle_oauth_connection(
-            user_id="user123",
+            user_id=user_id,
             integration_config=config,
             connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
         mock_redis_pool_manager.enqueue_job.assert_awaited_once_with(
-            "process_gmail_emails_to_memory", "user123"
+            "process_gmail_emails_to_memory", user_id
         )
 
     async def test_gmail_connection_updates_bio_status_when_no_gmail(

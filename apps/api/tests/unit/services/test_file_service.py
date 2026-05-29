@@ -29,6 +29,12 @@ PATCH_DELETE_CACHE = "app.decorators.caching.delete_cache"
 PATCH_GET_CACHE = "app.decorators.caching.get_cache"
 PATCH_SET_CACHE = "app.decorators.caching.set_cache"
 
+# validate_upload() runs magic-byte sniffing: a body claiming
+# Content-Type application/pdf must actually start with the PDF signature
+# (see app.utils.upload_validation._ALLOWED_TYPES). Bodies built for these
+# tests must carry a real PDF header.
+PDF_MAGIC = b"%PDF-"
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -124,7 +130,7 @@ class TestUploadFileService:
             file = MagicMock()
             file.filename = "report.pdf"
             file.content_type = "application/pdf"
-            file.read = AsyncMock(return_value=b"x" * 100)
+            file.read = AsyncMock(return_value=PDF_MAGIC + b"x" * 100)
 
             result = await upload_file_service(
                 file=file,
@@ -177,7 +183,7 @@ class TestUploadFileService:
         assert exc_info.value.status_code == 400
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_file_too_large_raises_400(self, mock_del_cache):
+    async def test_file_too_large_raises_413(self, mock_del_cache):
         file = MagicMock()
         file.filename = "huge.pdf"
         file.content_type = "application/pdf"
@@ -186,7 +192,7 @@ class TestUploadFileService:
 
         with pytest.raises(HTTPException) as exc_info:
             await upload_file_service(file=file, user_id="user-abc")
-        assert exc_info.value.status_code == 400
+        assert exc_info.value.status_code == 413
         assert "10 MB" in exc_info.value.detail
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
@@ -213,7 +219,9 @@ class TestUploadFileService:
             file = MagicMock()
             file.filename = "big.pdf"
             file.content_type = "application/pdf"
-            file.read = AsyncMock(return_value=b"x" * (10 * 1024 * 1024))
+            file.read = AsyncMock(
+                return_value=PDF_MAGIC + b"x" * (10 * 1024 * 1024 - len(PDF_MAGIC))
+            )
 
             result = await upload_file_service(file=file, user_id="user-abc")
         assert "file_id" in result
@@ -234,7 +242,7 @@ class TestUploadFileService:
             file = MagicMock()
             file.filename = "test.pdf"
             file.content_type = "application/pdf"
-            file.read = AsyncMock(return_value=b"small content")
+            file.read = AsyncMock(return_value=PDF_MAGIC + b"small content")
 
             with pytest.raises(HTTPException) as exc_info:
                 await upload_file_service(file=file, user_id="user-abc")
@@ -257,7 +265,7 @@ class TestUploadFileService:
             file = MagicMock()
             file.filename = "test.pdf"
             file.content_type = "application/pdf"
-            file.read = AsyncMock(return_value=b"small content")
+            file.read = AsyncMock(return_value=PDF_MAGIC + b"small content")
 
             with pytest.raises(HTTPException) as exc_info:
                 await upload_file_service(file=file, user_id="user-abc")
@@ -289,7 +297,7 @@ class TestUploadFileService:
             file = MagicMock()
             file.filename = "test.pdf"
             file.content_type = "application/pdf"
-            file.read = AsyncMock(return_value=b"content")
+            file.read = AsyncMock(return_value=PDF_MAGIC + b"content")
 
             with pytest.raises(HTTPException) as exc_info:
                 await upload_file_service(file=file, user_id="user-abc")
@@ -318,7 +326,7 @@ class TestUploadFileService:
             file = MagicMock()
             file.filename = "report.pdf"
             file.content_type = "application/pdf"
-            file.read = AsyncMock(return_value=b"x" * 100)
+            file.read = AsyncMock(return_value=PDF_MAGIC + b"x" * 100)
 
             result = await upload_file_service(
                 file=file,
@@ -353,7 +361,7 @@ class TestUploadFileService:
             file = MagicMock()
             file.filename = "multipage.pdf"
             file.content_type = "application/pdf"
-            file.read = AsyncMock(return_value=b"x" * 100)
+            file.read = AsyncMock(return_value=PDF_MAGIC + b"x" * 100)
 
             result = await upload_file_service(
                 file=file,

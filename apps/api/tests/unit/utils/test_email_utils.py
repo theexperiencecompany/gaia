@@ -521,6 +521,14 @@ class TestSendWelcomeEmail:
 
 @pytest.mark.unit
 class TestAddContactToResend:
+    @pytest.fixture(autouse=True)
+    def _enable_audience(self):
+        """add_contact_to_resend early-returns when RESEND_AUDIENCE_ID is falsy
+        (the default in DevelopmentSettings). Set it so the contact-creation
+        path actually runs."""
+        with patch("app.utils.email_utils.settings.RESEND_AUDIENCE_ID", "aud_test"):
+            yield
+
     @patch("app.utils.email_utils.resend.Contacts.create")
     async def test_with_full_name(self, mock_create):
         await add_contact_to_resend("alice@example.com", "Alice Smith")

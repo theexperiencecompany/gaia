@@ -7,6 +7,29 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def bypass_cache():
+    """Bypass the @Cacheable / @CacheInvalidator decorators.
+
+    store_provider_metadata is wrapped with @CacheInvalidator (delete_cache) and
+    get_provider_metadata with @Cacheable (get_cache / set_cache). All three close
+    over the redis_cache singleton in app.db.redis. Patching the singleton's
+    methods routes every cached call straight through to the wrapped function and
+    keeps the redis I/O boundary out of these unit tests.
+    """
+    with (
+        patch("app.db.redis.redis_cache.get", new_callable=AsyncMock, return_value=None),
+        patch("app.db.redis.redis_cache.set", new_callable=AsyncMock),
+        patch("app.db.redis.redis_cache.delete", new_callable=AsyncMock),
+    ):
+        yield
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

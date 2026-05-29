@@ -599,13 +599,15 @@ class TestPutOps:
         await store._upsert_item("ns::k", op, col)
         mock_emb.aembed_query.assert_called_once()
 
-    async def test_upsert_error_handled(self):
+    async def test_upsert_error_propagates(self):
         col = AsyncMock()
         col.upsert = AsyncMock(side_effect=Exception("upsert fail"))
         store = _make_store(collection=col)
         op = PutOp(namespace=("ns",), key="k", value={"data": 1})
-        # Should not raise
-        await store._upsert_item("ns::k", op, col)
+        # Re-raises so _apply_put_ops's gather(return_exceptions=True) can
+        # count the failure instead of silently reporting success.
+        with pytest.raises(Exception, match="upsert fail"):
+            await store._upsert_item("ns::k", op, col)
 
     async def test_delete_item(self):
         col = _make_collection()
@@ -613,11 +615,14 @@ class TestPutOps:
         await store._delete_item("ns::k", col)
         col.delete.assert_called_once_with(ids=["ns::k"])
 
-    async def test_delete_item_error_handled(self):
+    async def test_delete_item_error_propagates(self):
         col = AsyncMock()
         col.delete = AsyncMock(side_effect=Exception("delete fail"))
         store = _make_store(collection=col)
-        await store._delete_item("ns::k", col)
+        # Re-raises so _apply_put_ops's gather(return_exceptions=True) can
+        # count the failure instead of silently reporting success.
+        with pytest.raises(Exception, match="delete fail"):
+            await store._delete_item("ns::k", col)
 
     async def test_apply_put_ops_delete(self):
         col = _make_collection()

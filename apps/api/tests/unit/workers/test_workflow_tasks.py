@@ -841,9 +841,9 @@ class TestExecuteWorkflowAsChat:
         assert bot_msg.type == "bot"
         assert bot_msg.response == agent_text
 
-    async def test_exception_in_agent_returns_error_message_not_reraise(self):
-        """When call_agent_silent raises, the function catches and returns a single
-        error MessageModel rather than propagating the exception.
+    async def test_exception_in_agent_re_raises(self):
+        """When call_agent_silent raises, the function logs and re-raises so the
+        caller marks the execution as failed instead of recording a fake success.
         """
         workflow = self._make_workflow()
 
@@ -864,14 +864,8 @@ class TestExecuteWorkflowAsChat:
                 side_effect=RuntimeError("Agent crashed"),
             ),
         ):
-            # Must NOT raise — internal exception handling returns an error message
-            messages = await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
-
-        assert len(messages) == 1
-        error_msg = messages[0]
-        assert error_msg.type == "bot"
-        assert "Workflow Execution Failed" in error_msg.response
-        assert workflow.title in error_msg.response
+            with pytest.raises(RuntimeError, match="Agent crashed"):
+                await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
 
     async def test_get_user_by_id_failure_falls_back_to_utc(self):
         """When get_user_by_id raises, the function falls back gracefully and still

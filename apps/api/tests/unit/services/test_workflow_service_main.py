@@ -240,42 +240,61 @@ class TestWorkflowValidator:
 
 
 class TestGenerateUniqueWorkflowSlug:
-    """Tests for generate_unique_workflow_slug."""
+    """Tests for generate_unique_workflow_slug.
 
+    The slug is `slugify(title)` (or "workflow") plus a short random hex suffix.
+    The suffix makes collisions vanishingly unlikely; uniqueness is verified
+    against existing PUBLIC workflows (`is_public: True`), retrying with a fresh
+    suffix on collision and raising after _SLUG_MAX_RETRIES.
+    """
+
+    @patch("app.services.workflow.service._slug_suffix", return_value="abc123")
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_unique_slug_first_try(self, mock_collection):
+    async def test_unique_slug_first_try(self, mock_collection, _mock_suffix):
         mock_collection.find_one = AsyncMock(return_value=None)
         slug = await generate_unique_workflow_slug("My Test Workflow")
-        assert slug == "mytestworkflow"
+        assert slug == "mytestworkflow-abc123"
 
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_slug_collision_appends_suffix(self, mock_collection):
-        # First call returns existing, second returns None
-        mock_collection.find_one = AsyncMock(side_effect=[{"slug": "myworkflow"}, None])
-        slug = await generate_unique_workflow_slug("My Workflow")
-        assert slug == "myworkflow-1"
+    async def test_slug_collision_retries_with_new_suffix(self, mock_collection):
+        # First candidate collides, second is free → the second suffix is used.
+        mock_collection.find_one = AsyncMock(side_effect=[{"slug": "myworkflow-aaa"}, None])
+        with patch(
+            "app.services.workflow.service._slug_suffix",
+            side_effect=["aaa", "bbb"],
+        ):
+            slug = await generate_unique_workflow_slug("My Workflow")
+        assert slug == "myworkflow-bbb"
 
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_slug_multiple_collisions(self, mock_collection):
-        mock_collection.find_one = AsyncMock(
-            side_effect=[
-                {"slug": "myworkflow"},
-                {"slug": "myworkflow-1"},
-                None,
-            ]
-        )
-        slug = await generate_unique_workflow_slug("My Workflow")
-        assert slug == "myworkflow-2"
+    async def test_slug_exhausts_retries_raises(self, mock_collection):
+        # Every candidate collides → RuntimeError after _SLUG_MAX_RETRIES.
+        mock_collection.find_one = AsyncMock(return_value={"slug": "myworkflow-x"})
+        with pytest.raises(RuntimeError, match="unique slug"):
+            await generate_unique_workflow_slug("My Workflow")
 
+    @patch("app.services.workflow.service._slug_suffix", return_value="zzz999")
     @patch("app.services.workflow.service.slugify", return_value="")
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_empty_title_falls_back_to_workflow(self, mock_collection, _mock_slugify):
+    async def test_empty_title_falls_back_to_workflow(
+        self, mock_collection, _mock_slugify, _mock_suffix
+    ):
         mock_collection.find_one = AsyncMock(return_value=None)
         slug = await generate_unique_workflow_slug("")
-        assert slug == "workflow"
+        assert slug == "workflow-zzz999"
 
+    @patch("app.services.workflow.service._slug_suffix", return_value="abc123")
     @patch("app.services.workflow.service.workflows_collection")
-    async def test_exclude_id_passed_to_query(self, mock_collection):
+    async def test_uniqueness_query_scoped_to_public_workflows(self, mock_collection, _mock_suffix):
+        mock_collection.find_one = AsyncMock(return_value=None)
+        await generate_unique_workflow_slug("Test")
+        query = mock_collection.find_one.call_args[0][0]
+        assert query["slug"] == "test-abc123"
+        assert query["is_public"] is True
+
+    @patch("app.services.workflow.service._slug_suffix", return_value="abc123")
+    @patch("app.services.workflow.service.workflows_collection")
+    async def test_exclude_id_passed_to_query(self, mock_collection, _mock_suffix):
         mock_collection.find_one = AsyncMock(return_value=None)
         await generate_unique_workflow_slug("Test", exclude_id="wf_existing")
         call_args = mock_collection.find_one.call_args[0][0]
@@ -391,9 +410,9 @@ class TestCreateWorkflow:
         mock_scheduler.schedule_workflow_execution.assert_awaited_once()
 
     @patch(
-        "app.services.workflow.service.TriggerService.register_triggers",
+        "app.services.workflow.service.WorkflowService._register_integration_triggers",
         new_callable=AsyncMock,
-        return_value=["trigger_1"],
+        return_value=(["trigger_1"], True),
     )
     @patch("app.services.workflow.service.workflow_scheduler")
     @patch("app.services.workflow.service.ChromaClient")
@@ -416,7 +435,9 @@ class TestCreateWorkflow:
         result = await WorkflowService.create_workflow(request, USER_ID)
 
         mock_register.assert_awaited_once()
+        # Integration connected => workflow is activated and trigger IDs stored
         assert result.activated is True
+        assert result.trigger_config.composio_trigger_ids == ["trigger_1"]
 
     @patch(
         "app.services.workflow.service.TriggerService.register_triggers",
@@ -770,7 +791,7 @@ class TestUpdateWorkflow:
     @patch(
         "app.services.workflow.service.WorkflowService._register_integration_triggers",
         new_callable=AsyncMock,
-        return_value=["new_trigger_id"],
+        return_value=(["new_trigger_id"], True),
     )
     @patch("app.services.workflow.service.workflow_scheduler")
     @patch(
@@ -1479,10 +1500,12 @@ class TestGenerateWorkflowSteps:
 class TestRegisterIntegrationTriggers:
     """Tests for WorkflowService._register_integration_triggers."""
 
-    async def test_non_integration_trigger_returns_empty(self):
+    async def test_non_integration_trigger_returns_empty_and_connected(self):
+        """Non-integration triggers need no registration: returns ([], True) so
+        the caller still activates the workflow."""
         trigger = _make_trigger_config(trigger_type=TriggerType.MANUAL)
         result = await WorkflowService._register_integration_triggers(WORKFLOW_ID, USER_ID, trigger)
-        assert result == []
+        assert result == ([], True)
 
     async def test_integration_trigger_without_name_raises(self):
         trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION, trigger_name=None)
@@ -1490,17 +1513,42 @@ class TestRegisterIntegrationTriggers:
             await WorkflowService._register_integration_triggers(WORKFLOW_ID, USER_ID, trigger)
 
     @patch(
+        "app.services.oauth.oauth_service.check_integration_status",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    @patch(
         "app.services.workflow.service.TriggerService.register_triggers",
         new_callable=AsyncMock,
         return_value=["tid_1"],
     )
-    async def test_integration_trigger_success(self, mock_register):
+    async def test_integration_trigger_success(self, mock_register, _mock_status):
+        """A connected integration registers triggers and reports connected=True."""
         trigger = _make_trigger_config(
-            trigger_type=TriggerType.INTEGRATION, trigger_name="calendar_event"
+            trigger_type=TriggerType.INTEGRATION, trigger_name="calendar_event_created"
         )
         result = await WorkflowService._register_integration_triggers(WORKFLOW_ID, USER_ID, trigger)
-        assert result == ["tid_1"]
+        assert result == (["tid_1"], True)
         mock_register.assert_awaited_once()
+
+    @patch(
+        "app.services.oauth.oauth_service.check_integration_status",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    @patch(
+        "app.services.workflow.service.TriggerService.register_triggers",
+        new_callable=AsyncMock,
+    )
+    async def test_integration_not_connected_skips_registration(self, mock_register, _mock_status):
+        """When the integration isn't connected, no triggers are registered and
+        connected=False so the caller leaves the workflow inactive."""
+        trigger = _make_trigger_config(
+            trigger_type=TriggerType.INTEGRATION, trigger_name="calendar_event_created"
+        )
+        result = await WorkflowService._register_integration_triggers(WORKFLOW_ID, USER_ID, trigger)
+        assert result == ([], False)
+        mock_register.assert_not_awaited()
 
 
 # ===========================================================================
@@ -2485,16 +2533,19 @@ class TestTriggerService:
         assert result == ["tid_1", "tid_2"]
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
-    async def test_register_triggers_empty_result_raise_on_failure(self, mock_get_handler):
+    async def test_register_triggers_empty_result_is_success(self, mock_get_handler):
+        """An empty trigger-id list from the handler is a legitimate success
+        (e.g. account-level Gmail has no per-workflow IDs), NOT a failure — even
+        with raise_on_failure=True the call returns [] rather than raising."""
         mock_handler = MagicMock()
         mock_handler.register = AsyncMock(return_value=[])
         mock_get_handler.return_value = mock_handler
 
         trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION)
-        with pytest.raises(TriggerRegistrationError, match="Failed to register"):
-            await TriggerService.register_triggers(
-                USER_ID, WORKFLOW_ID, "calendar_event", trigger, raise_on_failure=True
-            )
+        result = await TriggerService.register_triggers(
+            USER_ID, WORKFLOW_ID, "calendar_event", trigger, raise_on_failure=True
+        )
+        assert result == []
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
     async def test_register_triggers_type_error_re_raised(self, mock_get_handler):

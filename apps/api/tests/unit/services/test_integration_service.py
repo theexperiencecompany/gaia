@@ -30,7 +30,7 @@ from app.models.integration_models import (
     UpdateCustomIntegrationRequest,
     UserIntegrationsListResponse,
 )
-from app.models.mcp_config import MCPConfig, SubAgentConfig
+from app.models.mcp_config import ComposioConfig, MCPConfig, SubAgentConfig
 from app.models.oauth_models import OAuthIntegration
 from app.schemas.integrations.responses import (
     CommunityIntegrationItem,
@@ -181,8 +181,6 @@ class TestIntegrationResolverResolve:
     @patch("app.services.integrations.integration_resolver.integrations_collection")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
     async def test_resolve_platform_with_composio_config(self, mock_get_by_id, mock_collection):
-        from app.models.mcp_config import ComposioConfig
-
         composio_cfg = ComposioConfig(auth_config_id="auth_123", toolkit="slack_toolkit")
         oauth_int = _make_oauth_integration(
             id="slack", managed_by="composio", composio_config=composio_cfg
@@ -2493,7 +2491,12 @@ class TestDisconnectIntegration:
     async def test_disconnect_composio_integration(
         self, mock_resolve, mock_get_composio, mock_invalidate
     ):
-        platform_int = _make_oauth_integration(id="slack", managed_by="composio", provider="slack")
+        platform_int = _make_oauth_integration(
+            id="slack",
+            managed_by="composio",
+            provider="slack",
+            composio_config=ComposioConfig(auth_config_id="auth_slack", toolkit="slack"),
+        )
         mock_resolve.return_value = ResolvedIntegration(
             integration_id="slack",
             name="Slack",
@@ -2697,6 +2700,11 @@ class TestInvalidateCaches:
         from app.services.integrations.integration_connection_service import (
             _invalidate_caches,
         )
+
+        # MCP integrations are not in oauth_config, so there is no platform
+        # integration / provider-metadata cache to clear — only the OAuth status
+        # cache is invalidated.
+        mock_get_by_id.return_value = None
 
         await _invalidate_caches(USER_ID, INTEGRATION_ID, "mcp")
 

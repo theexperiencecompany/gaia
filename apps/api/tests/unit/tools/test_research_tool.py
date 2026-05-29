@@ -131,7 +131,7 @@ class TestDeepResearch:
             {"query": "obscure topic", "scope": "", "depth": 1, "focus_areas": None},
             config=_make_config(),
         )
-        assert "No sources found" in result["error"]
+        assert "No URLs were found" in result["error"]
         assert result["data"] is None
 
     @pytest.mark.asyncio
