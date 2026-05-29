@@ -86,15 +86,18 @@ async def upsert_instructions(
     """Create or replace one integration's instructions (full-content write).
 
     Truncates to ``MAX_INSTRUCTIONS_CHARS`` so a runaway agent write can't bloat
-    every subsequent context window. Invalidates the per-user cache; the VFS
-    projection re-syncs on the next session bootstrap via the staleness gate.
+    every subsequent context window. Whitespace-only content is stored as ""
+    (i.e. cleared) so it never surfaces as a noisy, empty instructions block.
+    Invalidates the per-user cache; the VFS projection re-syncs on the next
+    session bootstrap via the staleness gate.
     """
     log.set(
         user_id=user_id,
         integration={"id": integration_id, "op": "upsert_instructions"},
         updated_by=updated_by.value,
     )
-    trimmed = content[:MAX_INSTRUCTIONS_CHARS]
+    truncated = content[:MAX_INSTRUCTIONS_CHARS]
+    trimmed = truncated if truncated.strip() else ""
     now = datetime.now(UTC)
     await integration_instructions_collection.update_one(
         {"user_id": user_id, "integration_id": integration_id},
