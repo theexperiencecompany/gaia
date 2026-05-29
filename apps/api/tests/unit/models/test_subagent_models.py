@@ -1,7 +1,33 @@
 """Unit tests for `app.models.subagent_models`.
 
-Covers the `Subagent` frozen dataclass: required-field construction, default
-values, immutability, equality, and hashability.
+UNIT: app/models/subagent_models.py :: Subagent
+EXPECTED: `Subagent` is the canonical, value-semantic handle for a delegated
+    agent. It carries five required identity fields (id, name, provider,
+    managed_by, config) and two optional ones (short_name, mcp_config). It is
+    immutable, compared by value, and memory-compact.
+MECHANISM: a `@dataclass(frozen=True, slots=True)`. `frozen=True` blocks
+    attribute reassignment (raises FrozenInstanceError) and synthesises a
+    value-based `__eq__` + `__hash__`. `slots=True` gives instances `__slots__`
+    instead of a per-instance `__dict__`. `short_name` / `mcp_config` default to
+    `None`. The `config` field is a Pydantic `SubAgentConfig`, which is not
+    hashable, so `hash(Subagent)` propagates a TypeError.
+MUST-CATCH:
+    - Required fields are stored verbatim (id/name/provider/managed_by/config).
+    - Optional fields default to None, and accept supplied values.
+    - frozen=True: reassigning ANY field raises FrozenInstanceError.
+      (kills the `frozen=True -> False` mutant.)
+    - slots=True: instances have no __dict__ / the class declares __slots__.
+      (kills the `slots=True -> False` mutant.)
+    - Value equality: same field values compare equal; differing id compares
+      unequal (exercises the synthesised __eq__).
+    - Unhashable config propagates TypeError on hash().
+EQUIVALENT MUTANTS: the four `const_str -> ''` mutants on the
+    `managed_by: Literal["self", "composio", "mcp", "internal"]` annotation
+    survive and are PROVEN EQUIVALENT. A plain `@dataclass` performs ZERO
+    runtime validation of `Literal` annotations — `managed_by` accepts any
+    string at runtime (verified: `Subagent(..., managed_by="bogus")` constructs
+    fine). Blanking a Literal member changes only static type-checker info, never
+    any runtime behaviour a test could assert. No test can or should kill them.
 """
 
 import dataclasses
@@ -39,20 +65,20 @@ def _make_subagent(**overrides: object) -> Subagent:
 
 @pytest.mark.unit
 class TestSubagentConstruction:
-    def test_constructs_with_required_fields_only(self) -> None:
+    def test_required_fields_are_stored_verbatim(self) -> None:
         config = _make_config()
         subagent = Subagent(
-            id="test",
-            name="Test",
-            provider="test",
-            managed_by="internal",
+            id="sub-1",
+            name="Display Name",
+            provider="github",
+            managed_by="composio",
             config=config,
         )
 
-        assert subagent.id == "test"
-        assert subagent.name == "Test"
-        assert subagent.provider == "test"
-        assert subagent.managed_by == "internal"
+        assert subagent.id == "sub-1"
+        assert subagent.name == "Display Name"
+        assert subagent.provider == "github"
+        assert subagent.managed_by == "composio"
         assert subagent.config is config
 
     def test_optional_fields_default_to_none(self) -> None:
@@ -61,7 +87,7 @@ class TestSubagentConstruction:
         assert subagent.short_name is None
         assert subagent.mcp_config is None
 
-    def test_optional_fields_accept_values(self) -> None:
+    def test_optional_fields_accept_supplied_values(self) -> None:
         mcp_config = MCPConfig(server_url="https://example.com/mcp")
         subagent = _make_subagent(short_name="t", mcp_config=mcp_config)
 
@@ -71,17 +97,44 @@ class TestSubagentConstruction:
 
 @pytest.mark.unit
 class TestSubagentImmutability:
-    def test_is_frozen(self) -> None:
+    """`frozen=True` is the value-semantics guarantee: a Subagent cannot be
+    mutated after construction. Reassigning any field must raise."""
+
+    def test_reassigning_required_field_raises(self) -> None:
         subagent = _make_subagent()
 
         with pytest.raises(dataclasses.FrozenInstanceError):
             subagent.id = "mutated"  # type: ignore[misc]
 
-    def test_frozen_blocks_optional_field_assignment(self) -> None:
+    def test_reassigning_optional_field_raises(self) -> None:
         subagent = _make_subagent()
 
         with pytest.raises(dataclasses.FrozenInstanceError):
             subagent.short_name = "x"  # type: ignore[misc]
+
+
+@pytest.mark.unit
+class TestSubagentSlots:
+    """`slots=True` makes instances memory-compact: they get `__slots__` and no
+    per-instance `__dict__`. Without slots, dataclass instances carry a
+    `__dict__`. Asserting its absence pins the `slots=True` decorator argument."""
+
+    def test_instance_has_no_instance_dict(self) -> None:
+        subagent = _make_subagent()
+
+        assert not hasattr(subagent, "__dict__")
+
+    def test_class_declares_slots_for_every_field(self) -> None:
+        assert hasattr(Subagent, "__slots__")
+        assert set(Subagent.__slots__) == {
+            "id",
+            "name",
+            "provider",
+            "managed_by",
+            "config",
+            "short_name",
+            "mcp_config",
+        }
 
 
 @pytest.mark.unit
