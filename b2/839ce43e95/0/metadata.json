@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "b2839ce43e95",
+  "session_id": "d7f2b55c-81fb-4ce1-8239-3a848177b26c",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-29T20:44:46.961334Z",
+  "branch": "chore/test-suite-overhaul",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "e64412b7fb79",
+  "token_usage": {
+    "input_tokens": 135191,
+    "cache_creation_tokens": 4629242,
+    "cache_read_tokens": 182253609,
+    "output_tokens": 625081,
+    "api_call_count": 347
+  },
+  "session_metrics": {
+    "turn_count": 16
+  }
+}

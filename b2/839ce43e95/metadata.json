@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "b2839ce43e95",
+  "strategy": "manual-commit",
+  "branch": "chore/test-suite-overhaul",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/b2/839ce43e95/0/metadata.json",
+      "transcript": "/b2/839ce43e95/0/full.jsonl",
+      "content_hash": "/b2/839ce43e95/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 135191,
+    "cache_creation_tokens": 4629242,
+    "cache_read_tokens": 182253609,
+    "output_tokens": 625081,
+    "api_call_count": 347
+  }
+}
