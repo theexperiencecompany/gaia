@@ -67,6 +67,8 @@ STREAM_CHANNEL_PREFIX = "stream:channel:"
 STREAM_SIGNAL_PREFIX = "stream:signal:"
 STREAM_PROGRESS_PREFIX = "stream:progress:"
 STATE_KEY_PREFIX = "oauth_state"
+# Single-use marker for login-free integration-connect links (keyed by jti).
+CONNECT_LINK_USED_PREFIX = "connect_link_used"
 PLATFORM_LINK_TOKEN_PREFIX = "platform_link_token"  # nosec B105
 PLATFORM_LINK_TOKEN_TTL = TEN_MINUTES_TTL
 EXECUTOR_BUSY_PREFIX = "executor:busy:"

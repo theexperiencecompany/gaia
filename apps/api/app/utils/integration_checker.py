@@ -42,24 +42,30 @@ def _current_source_category() -> str | None:
     return config.get("configurable", {}).get("source_category")
 
 
-def build_integration_connection_message(integration_name: str) -> str:
+def build_integration_connection_message(
+    integration_name: str, connect_url: str | None = None
+) -> str:
     """Agent-facing instruction for getting an integration connected.
 
     On UI clients a connect card/button is rendered alongside the reply, so the
     agent just points the user at it. On non-UI clients (bots / background) that
     card is not visible, so the agent is told to put the connect URL directly in
     its reply — otherwise the user has no way to act on it.
+
+    ``connect_url`` is the login-free, single-use connect link minted by the
+    caller (see ``connect_link_service``). When absent we fall back to the
+    generic integrations page (which requires a GAIA login).
     """
     if _current_source_category() == SourceCategory.UI.value:
         return (
             f"{integration_name} needs to be connected. A connect card has been shown to the "
             f"user — ask them to connect it, then try again."
         )
-    connect_url = f"{settings.FRONTEND_URL.rstrip('/')}{INTEGRATIONS_CONNECT_PATH}"
+    url = connect_url or f"{settings.FRONTEND_URL.rstrip('/')}{INTEGRATIONS_CONNECT_PATH}"
     return (
         f"{integration_name} needs to be connected. The user is on a platform that can't show "
         f"connect buttons — include this link directly in your reply and ask them to open it in a "
-        f"browser to connect {integration_name}, then try again: {connect_url}"
+        f"browser to connect {integration_name}, then try again: {url}"
     )
 
 

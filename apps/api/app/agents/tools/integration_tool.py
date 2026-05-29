@@ -28,6 +28,7 @@ from app.models.integration_models import (
     ListIntegrationsResult,
     SuggestedIntegration,
 )
+from app.services.connect_link_service import build_connect_link_url
 from app.services.oauth.oauth_service import (
     check_integration_status as check_single_integration_status,
     check_multiple_integrations_status,
@@ -356,7 +357,8 @@ async def connect_integration(
 
             writer({"integration_connection_required": integration_data})
 
-            results.append(build_integration_connection_message(integration.name))
+            connect_url = build_connect_link_url(str(user_id), integration.id)
+            results.append(build_integration_connection_message(integration.name, connect_url))
 
         return "\n".join(results) if results else "No integrations to connect."
 

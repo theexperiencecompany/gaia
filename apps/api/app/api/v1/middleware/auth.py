@@ -53,6 +53,9 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/api/v1/bot",
             "/api/v1/webhook",
             "/metrics",
+            # Login-free connect link — self-authenticates via a signed,
+            # single-use, connect-scoped token (see connect_link_service).
+            "/api/v1/integrations/connect-link",
         ]
         # Routes that also accept an "Authorization: Bearer <agent JWT>" in
         # addition to a WorkOS session cookie. No prefix-scoped routes are
