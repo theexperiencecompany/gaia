@@ -54,3 +54,13 @@ class ConnectIntegrationRequest(BaseModel):
         description="Frontend path to redirect after OAuth completes",
     )
     bearer_token: str | None = Field(None)
+
+
+class UpdateIntegrationInstructionsRequest(BaseModel):
+    """Request to set a user's custom instructions for one integration."""
+
+    content: str = Field(
+        default="",
+        max_length=8000,
+        description="Markdown instructions the agent should honor for this integration",
+    )

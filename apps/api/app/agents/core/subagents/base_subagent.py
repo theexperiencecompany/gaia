@@ -38,6 +38,7 @@ from app.agents.tools.core.tool_runtime_config import (
     build_provider_parent_tool_runtime_config,
 )
 from app.agents.tools.finish_task_tool import finish_task
+from app.agents.tools.integration_instructions_tools import update_integration_instructions
 from app.agents.tools.memory_tools import search_memory
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
@@ -86,6 +87,10 @@ def _build_scoped_tool_dict(
     scoped_tool_dict[web_search_tool.name] = web_search_tool
     scoped_tool_dict[fetch_webpages.name] = fetch_webpages
     scoped_tool_dict[deep_research.name] = deep_research
+    # Always-on so a subagent can persist a user's durable preference for its
+    # own integration the moment it hears one (its instructions are already in
+    # context, so it can rewrite the full block without a separate read).
+    scoped_tool_dict[update_integration_instructions.name] = update_integration_instructions
 
     if include_finish_task:
         scoped_tool_dict[FINISH_TASK_NAME] = finish_task

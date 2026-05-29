@@ -7,6 +7,7 @@ import type {
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
   Integration,
+  IntegrationInstructions,
   PublicIntegrationResponse,
   UserIntegrationsResponse,
 } from "../types";
@@ -90,6 +91,32 @@ export const integrationsApi = {
       console.error("Failed to get user integrations:", error);
       return { integrations: [], total: 0 };
     }
+  },
+
+  /**
+   * Get the user's custom instructions for one integration.
+   */
+  getIntegrationInstructions: async (
+    integrationId: string,
+  ): Promise<IntegrationInstructions> => {
+    return (await apiService.get(
+      `/integrations/users/me/integrations/${integrationId}/instructions`,
+      { silent: true },
+    )) as IntegrationInstructions;
+  },
+
+  /**
+   * Save the user's custom instructions for one integration.
+   */
+  updateIntegrationInstructions: async (
+    integrationId: string,
+    content: string,
+  ): Promise<IntegrationInstructions> => {
+    return (await apiService.put(
+      `/integrations/users/me/integrations/${integrationId}/instructions`,
+      { content },
+      { silent: true },
+    )) as IntegrationInstructions;
   },
 
   /**

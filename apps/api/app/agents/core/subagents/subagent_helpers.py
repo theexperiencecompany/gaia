@@ -23,6 +23,7 @@ from app.helpers.message_helpers import (
     DYNAMIC_CONTEXT_MARKER,
     _build_active_todo_banner,
 )
+from app.services.integration_instructions_service import get_instructions
 from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
 from shared.py.wide_events import log
@@ -97,6 +98,31 @@ async def _fetch_provider_metadata_block(integration_id: str | None, user_id: st
         return ""
     lines = [f"- {k}: {v}" for k, v in metadata.items()]
     return f"\n\nUSER CONTEXT FOR {integration.name.upper()}:\n" + "\n".join(lines) + "\n"
+
+
+async def _fetch_instructions_block(integration_id: str | None, user_id: str | None) -> str:
+    """Return the user's custom-instructions block for this integration, or ''.
+
+    Injected directly (full text, always-on) rather than as a read-on-demand
+    pointer: the whole point is the subagent acts on "focus on #eng" without an
+    extra file read. Sourced from MongoDB so a UI or agent edit is reflected on
+    the next turn.
+    """
+    if not (integration_id and user_id):
+        return ""
+    try:
+        content = await get_instructions(user_id, integration_id)
+    except Exception as e:
+        log.warning(f"Failed to fetch custom instructions for {integration_id}: {e}")
+        return ""
+    if not content:
+        return ""
+    integration = get_integration_by_id(integration_id)
+    label = integration.name if integration else integration_id
+    return (
+        f"\n\nCUSTOM INSTRUCTIONS FOR {label.upper()} (set by the user — honor these):\n"
+        f"{content.strip()}\n"
+    )
 
 
 async def create_agent_context_message(
@@ -202,11 +228,20 @@ async def create_agent_context_message(
 
         return f"\n\n{block}" if block else ""
 
-    memories_section, skills_section, metadata_section = await asyncio.gather(
-        _fetch_memories(),
-        _fetch_skills(),
-        _fetch_provider_metadata_block(integration_id, user_id),
+    memories_section, skills_section, metadata_section, instructions_section = (
+        await asyncio.gather(
+            _fetch_memories(),
+            _fetch_skills(),
+            _fetch_provider_metadata_block(integration_id, user_id),
+            _fetch_instructions_block(integration_id or subagent_id, user_id),
+        )
     )
 
-    content = "\n".join(parts) + memories_section + skills_section + metadata_section
+    content = (
+        "\n".join(parts)
+        + memories_section
+        + skills_section
+        + metadata_section
+        + instructions_section
+    )
     return _mark_dynamic(SystemMessage(content=content))

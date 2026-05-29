@@ -25,6 +25,7 @@ from app.db.mongodb.collections import (
     e2b_warm_pool_collection,
     files_collection,
     goals_collection,
+    integration_instructions_collection,
     integrations_collection,
     mail_collection,
     notes_collection,
@@ -83,6 +84,7 @@ async def create_all_indexes():
             create_ai_models_indexes(),
             create_integration_indexes(),
             create_user_integration_indexes(),
+            create_integration_instructions_indexes(),
             create_device_token_indexes(),
             create_installed_skills_indexes(),
             create_workflow_execution_indexes(),
@@ -113,6 +115,7 @@ async def create_all_indexes():
             "ai_models",
             "integrations",
             "user_integrations",
+            "integration_instructions",
             "device_tokens",
             "skills",
             "workflow_executions",
@@ -847,6 +850,27 @@ async def create_user_integration_indexes():
 
     except Exception as e:
         log.error(f"Error creating user integration indexes: {e!s}")
+        raise
+
+
+async def create_integration_instructions_indexes():
+    """
+    Create indexes for integration_instructions collection.
+
+    Query patterns:
+    - Read one integration's instructions: user_id + integration_id (unique)
+    - List all of a user's instructions for materialization
+    """
+    try:
+        await _create_index_safe(
+            integration_instructions_collection,
+            [("user_id", 1), ("integration_id", 1)],
+            unique=True,
+            name="user_integration_instructions_unique",
+        )
+
+    except Exception as e:
+        log.error(f"Error creating integration instructions indexes: {e!s}")
         raise
 
 

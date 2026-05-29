@@ -217,6 +217,7 @@ class ToolRegistry:
             flowchart_tool,
             goal_tool,
             image_tool,
+            integration_instructions_tools,
             integration_tool,
             memory_tools,
             notification_tool,
@@ -286,6 +287,10 @@ class ToolRegistry:
         self._add_category("support", tools=[support_tool.create_support_ticket])
         self._add_category("memory", tools=memory_tools.tools)
         self._add_category("integrations", tools=integration_tool.tools)
+        self._add_category(
+            "integration_instructions",
+            tools=[*integration_instructions_tools.tools],
+        )
         from app.agents.tools import coding
 
         self._add_category(

@@ -127,6 +127,9 @@ Each external service the user has connected (gmail, googlecalendar, slack,
         <integration>/
             agent/
                 prompt.md           the subagent's persona + behavioral rules
+                instructions.md     the USER's custom instructions for this
+                                    integration (e.g. "focus on #eng, #design").
+                                    May be absent if the user hasn't set any.
                 skills/<slug>/
                     skill.md        a single named capability — when to use
                                     it and how. Read these on demand; the
@@ -135,13 +138,20 @@ Each external service the user has connected (gmail, googlecalendar, slack,
 
 ## Rules
 
-1. **Everything here is read-only.** These files are materialized by the
-   runtime when the user connects an integration. Edits won't persist — and
-   wouldn't be honored by the subagent's prompt builder anyway.
-2. **Skills are addressable docs, not code.** Each `skill.md` is a
+1. **These files are read-only on disk.** They are materialized by the runtime
+   from MongoDB. A direct `Write` / `Edit` / `sed -i` either fails or is
+   silently clobbered on the next sync — never edit them in place.
+2. **`instructions.md` is editable, but only through its tool.** It is a
+   projection of the user's saved custom instructions. To change it, call
+   `update_integration_instructions(integration_id, content)` — that updates
+   the source of truth and the projection re-syncs. The matching subagent also
+   receives this content directly in its context, so it acts on the guidance
+   without having to `cat` the file. Persist only durable preferences (focus
+   areas, defaults, conventions) — never one-off, task-specific corrections.
+3. **Skills are addressable docs, not code.** Each `skill.md` is a
    self-contained recipe. The subagent decides which one applies and `cat`s
    it before acting.
-3. **One integration per subagent.** The gmail subagent uses
+4. **One integration per subagent.** The gmail subagent uses
    `integrations/gmail/agent/`; the googlecalendar subagent uses
    `integrations/googlecalendar/agent/`. They never cross-read.
 """

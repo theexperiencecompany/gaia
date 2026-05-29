@@ -19,6 +19,7 @@ from app.agents.templates.agent_template import (
     get_comms_static_prompt,
 )
 from app.agents.workspace.paths import safe_upload_filename
+from app.config.oauth_config import get_integration_by_id
 from app.db.mongodb.collections import (
     conversations_collection,
     todos_collection,
@@ -33,6 +34,7 @@ from app.models.message_models import (
 )
 from app.models.user_models import OnboardingPhase
 from app.services.gaia_knowledge_service import gaia_knowledge_service
+from app.services.integrations.user_integrations import get_user_connected_integrations
 from app.services.memory_service import memory_service
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow import WorkflowService
@@ -234,6 +236,33 @@ def _mark_dynamic_context(msg: SystemMessage) -> SystemMessage:
     return msg
 
 
+async def _get_connected_integrations_manifest(user_id: str) -> str:
+    """One line per connected integration so the agent knows what it can reach.
+
+    Capability awareness only — the agent learns Slack/Linear/GitHub/etc. are
+    available without first running tool retrieval. Detailed tool schemas still
+    come from ``retrieve_tools`` at inference time. Names resolve from the
+    in-memory OAuth config (no extra DB calls); unknown ids fall back to the id.
+    """
+    try:
+        docs = await get_user_connected_integrations(user_id)
+    except Exception as e:
+        log.warning(f"Error building connected-integrations manifest: {e}")
+        return ""
+    connected = sorted(
+        str(d["integration_id"])
+        for d in docs
+        if d.get("status") == "connected" and d.get("integration_id")
+    )
+    if not connected:
+        return ""
+    lines = ["Connected integrations (hand off to the matching subagent to use them):"]
+    for iid in connected:
+        integration = get_integration_by_id(iid)
+        lines.append(f"- {integration.name} ({iid})" if integration else f"- {iid}")
+    return "\n".join(lines)
+
+
 async def build_dynamic_context_message(
     user_id: str | None,
     query: str | None,
@@ -306,6 +335,11 @@ async def build_dynamic_context_message(
                 user_preferences or {}, writing_style=writing_style
             ):
                 user_stable_parts.append(f"User Preferences:\n{formatted}")
+        # Connected-integrations manifest sits with the stable prefix: it only
+        # changes when the user connects/disconnects an integration, not per turn.
+        if user_id:
+            if manifest := await _get_connected_integrations_manifest(user_id):
+                user_stable_parts.append(manifest)
 
         # --- Fetches (may change turn-to-turn) -----------------------------
         if memories_text is not None:

@@ -117,6 +117,7 @@ _COLLECTION_MAPPINGS = {
     "ai_models_collection": "ai_models",
     "integrations_collection": "integrations",
     "user_integrations_collection": "user_integrations",
+    "integration_instructions_collection": "integration_instructions",
     "device_tokens_collection": "device_tokens",
     "skills_collection": "skills",
     "workflow_executions_collection": "workflow_executions",

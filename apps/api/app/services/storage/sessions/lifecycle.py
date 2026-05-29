@@ -20,6 +20,10 @@ from app.agents.workspace.paths import (
     USER_UPLOADED_DIRNAME,
 )
 from app.agents.workspace.skill_loader import library_hash
+from app.services.integration_instructions_service import (
+    get_all_instructions,
+    instructions_signature,
+)
 from app.services.storage.juicefs import _is_mounted, _mount_root, session_root
 from app.services.storage.metrics import FsOps, fs_timer
 from app.services.storage.sessions._paths import session_base, user_root
@@ -31,6 +35,7 @@ from app.services.storage.sessions.meta import (
     write_session_meta,
 )
 from app.services.storage.sessions.skills import (
+    materialize_instructions,
     materialize_skills,
     read_skills_marker,
     read_text_or_none,
@@ -67,6 +72,8 @@ async def bootstrap_user_session(
 
     connected = connected_ids or set()
     expected_hash = library_hash()
+    instructions = await get_all_instructions(user_id)
+    instructions_sig = instructions_signature(instructions)
 
     def _go() -> Path:
         base = session_base(user_id, conv_id)
@@ -74,7 +81,7 @@ async def bootstrap_user_session(
         _ensure_session_subdirs(base)
         _stamp_meta_on_bootstrap(base / SESSION_META_FILENAME)
         write_user_root_docs(u_root)
-        _materialize_if_stale(u_root, expected_hash, connected)
+        _materialize_if_stale(u_root, expected_hash, connected, instructions, instructions_sig)
         return base
 
     async with fs_timer(FsOps.BOOTSTRAP_USER_SESSION):
@@ -100,18 +107,38 @@ def _stamp_meta_on_bootstrap(meta: Path) -> None:
     write_session_meta(meta, data)
 
 
-def _materialize_if_stale(u_root: Path, expected_hash: str, connected: set[str]) -> None:
-    """Rewrite the SKILL.md catalog iff the hash or connected-set changed."""
+def _materialize_if_stale(
+    u_root: Path,
+    expected_hash: str,
+    connected: set[str],
+    instructions: dict[str, str],
+    instructions_sig: str,
+) -> None:
+    """Rewrite the SKILL.md catalog + instructions projection iff anything changed.
+
+    Gated on three signatures: the global skill-library hash, the connected-set,
+    and the per-user instructions hash. A change in any one triggers a rewrite;
+    the per-file ``matches_text`` checks inside the materializers keep untouched
+    files at zero I/O.
+    """
     current = read_skills_marker(u_root)
     connected_marker_path = u_root / ".gaia" / "connected.v"
+    instructions_marker_path = u_root / ".gaia" / "instructions.v"
     connected_signature = ",".join(sorted(connected))
     previous_connected = read_text_or_none(connected_marker_path)
-    if current == expected_hash and previous_connected == connected_signature:
+    previous_instructions = read_text_or_none(instructions_marker_path)
+    if (
+        current == expected_hash
+        and previous_connected == connected_signature
+        and previous_instructions == instructions_sig
+    ):
         return
     materialize_skills(u_root, connected)
+    materialize_instructions(u_root, instructions)
     write_skills_marker(u_root, expected_hash)
     connected_marker_path.parent.mkdir(parents=True, exist_ok=True)
     connected_marker_path.write_text(connected_signature, encoding="utf-8")
+    instructions_marker_path.write_text(instructions_sig, encoding="utf-8")
 
 
 async def ensure_session_dirs(user_id: str, conv_id: str) -> Path:
@@ -138,16 +165,15 @@ async def materialize_user_integrations(user_id: str, connected_ids: set[str]) -
     """
     expected = library_hash()
     connected = set(connected_ids)
+    instructions = await get_all_instructions(user_id)
+    instructions_sig = instructions_signature(instructions)
 
     def _go() -> int:
         if not _is_mounted():
             return 0
         u_root = user_root(user_id)
-        if read_skills_marker(u_root) == expected:
-            return 0
-        written = materialize_skills(u_root, connected)
-        write_skills_marker(u_root, expected)
-        return written
+        _materialize_if_stale(u_root, expected, connected, instructions, instructions_sig)
+        return 0
 
     async with fs_timer(FsOps.MATERIALIZE_INTEGRATIONS):
         await asyncio.to_thread(_go)
