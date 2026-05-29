@@ -20,10 +20,6 @@ from app.agents.workspace.paths import (
     USER_UPLOADED_DIRNAME,
 )
 from app.agents.workspace.skill_loader import library_hash
-from app.services.integration_instructions_service import (
-    get_all_instructions,
-    instructions_signature,
-)
 from app.services.storage.juicefs import _is_mounted, _mount_root, session_root
 from app.services.storage.metrics import FsOps, fs_timer
 from app.services.storage.sessions._paths import session_base, user_root
@@ -68,6 +64,10 @@ async def bootstrap_user_session(
     # after the package graph is fully resolved, is the only break that
     # does not require restructuring multiple ``__init__.py`` files.
     from app.services.gaia_tasks_fs import sync_user_gaia_tasks
+    from app.services.integration_instructions_service import (
+        get_all_instructions,
+        instructions_signature,
+    )
     from app.services.user_todos_fs import sync_user_todos
 
     connected = connected_ids or set()
@@ -163,6 +163,14 @@ async def materialize_user_integrations(user_id: str, connected_ids: set[str]) -
 
     Soft-fails if the JuiceFS mount is missing (dev mode).
     """
+    # Late-bound to break the same structural import cycle as in
+    # ``bootstrap_user_session`` (storage -> sessions -> lifecycle -> service,
+    # where the service transitively re-enters storage via the decorators pkg).
+    from app.services.integration_instructions_service import (
+        get_all_instructions,
+        instructions_signature,
+    )
+
     expected = library_hash()
     connected = set(connected_ids)
     instructions = await get_all_instructions(user_id)
