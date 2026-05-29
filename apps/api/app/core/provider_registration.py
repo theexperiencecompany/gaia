@@ -50,6 +50,7 @@ from app.db.chroma.chroma_triggers_store import initialize_chroma_triggers_store
 from app.db.chroma.chromadb import init_chroma
 from app.db.postgresql import init_postgresql_engine
 from app.db.rabbitmq import init_rabbitmq_publisher
+from app.db.redis import redis_cache
 from app.helpers.lifespan_helpers import (
     _process_results,
     close_checkpointer_manager,
@@ -215,6 +216,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     # In production FastAPI we schedule them to initialize in the background.
     eager_services = [
         (init_mongodb_async, "mongodb"),
+        (redis_cache.verify_connection, "redis"),
         (init_reminder_service, "reminder_service"),
         (init_workflow_service, "workflow_service"),
         # JuiceFS mount must be live before any tool call touches /mnt/jfs.

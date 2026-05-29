@@ -325,12 +325,15 @@ class WideEventLogger:
 
     # --- Private helpers ---
 
-    def _append(self, key: str, message: str, **kwargs: Any) -> None:
+    def _append(self, category: str, message: str, **kwargs: Any) -> None:
+        # NB: the first parameter is `category` (not `key`) on purpose — callers
+        # routinely pass a `key=` field (e.g. redis ops log the cache key), and a
+        # parameter named `key` would collide with it ("multiple values for 'key'").
         current = _wide_event.get() or {}
         entry: dict[str, Any] = {"msg": message, **kwargs}
-        items = list(current.get(key, []))
+        items = list(current.get(category, []))
         items.append(entry)
-        _wide_event.set({**current, key: items})
+        _wide_event.set({**current, category: items})
 
     def _bump(self, level: str) -> None:
         current = _max_level.get()
