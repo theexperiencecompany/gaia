@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "29a9142a163e",
+  "strategy": "manual-commit",
+  "branch": "chore/test-suite-overhaul",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "apps/api/tests/unit/api/test_skills_endpoint.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/29/a9142a163e/0/metadata.json",
+      "transcript": "/29/a9142a163e/0/full.jsonl",
+      "content_hash": "/29/a9142a163e/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 30557,
+    "cache_creation_tokens": 418555,
+    "cache_read_tokens": 9447373,
+    "output_tokens": 118854,
+    "api_call_count": 67
+  }
+}
