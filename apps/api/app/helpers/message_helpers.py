@@ -563,6 +563,7 @@ async def get_onboarding_system_prompt_if_applicable(
     conversation_id: str,
     latest_user_message: str | None = None,
 ) -> str | None:
+    """Return the onboarding system prompt for onboarding/demo turns, else ``None``."""
     try:
         conv = await conversations_collection.find_one(
             {"conversation_id": conversation_id},

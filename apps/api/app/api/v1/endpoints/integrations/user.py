@@ -36,6 +36,7 @@ router = APIRouter()
 async def list_user_integrations(
     user_id: str = Depends(get_user_id),
 ) -> UserIntegrationsListResponseModel:
+    """List the integrations the current user has added to their workspace."""
     try:
         log.set(operation="list_user_integrations", user={"id": user_id})
         result = await get_user_integrations(user_id)
@@ -52,6 +53,7 @@ async def add_integration_to_workspace(
     request: AddUserIntegrationRequest,
     user_id: str = Depends(get_user_id),
 ) -> AddUserIntegrationResponse:
+    """Add an integration to the current user's workspace."""
     try:
         log.set(
             operation="add_integration_to_workspace",
@@ -77,6 +79,7 @@ async def remove_integration_from_workspace(
     integration_id: str,
     user_id: str = Depends(get_user_id),
 ) -> IntegrationSuccessResponse:
+    """Remove an integration from the current user's workspace."""
     try:
         log.set(
             operation="remove_integration_from_workspace",
@@ -107,6 +110,11 @@ async def get_integration_instructions(
     integration_id: str,
     user_id: str = Depends(get_user_id),
 ) -> IntegrationInstructionsResponse:
+    """Return the current user's custom instructions for an integration.
+
+    Responds with empty content (not 404) when none are set, so the editor can
+    always render against a stable shape.
+    """
     try:
         log.set(
             operation="get_integration_instructions",
@@ -142,6 +150,7 @@ async def update_integration_instructions(
     request: UpdateIntegrationInstructionsRequest,
     user_id: str = Depends(get_user_id),
 ) -> IntegrationInstructionsResponse:
+    """Create or replace the current user's custom instructions for an integration."""
     try:
         log.set(
             operation="update_integration_instructions",

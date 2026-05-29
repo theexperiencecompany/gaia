@@ -30,6 +30,7 @@ class CreateCustomIntegrationRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_auth_type(self):
+        """Require an explicit ``auth_type`` whenever ``requires_auth`` is set."""
         if self.requires_auth and not self.auth_type:
             raise ValueError("auth_type must be specified when requires_auth is True")
         return self

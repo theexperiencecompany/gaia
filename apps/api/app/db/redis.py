@@ -93,6 +93,13 @@ def deserialize_any(json_str: str, model: type | None = None) -> Any:
 
 
 class RedisCache:
+    """Async Redis wrapper with type-safe (de)serialization and graceful degradation.
+
+    The client is created lazily (``redis.from_url`` does not connect on
+    construction); call ``verify_connection`` at startup to assert reachability.
+    When Redis is unavailable, read/write helpers no-op instead of raising.
+    """
+
     def __init__(self, redis_url="redis://localhost:6379", default_ttl=3600):
         self.redis_url = settings.REDIS_URL or redis_url
         self.default_ttl = default_ttl
