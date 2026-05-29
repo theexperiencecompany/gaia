@@ -1,0 +1,16 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "50ab7d625b77",
+  "strategy": "manual-commit",
+  "branch": "chore/test-suite-overhaul",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/api/tests/unit/agents/test_provider_subagents.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/50/ab7d625b77/0/metadata.json",
+      "prompt": ""
+    }
+  ]
+}

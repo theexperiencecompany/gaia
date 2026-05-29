@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "50ab7d625b77",
+  "session_id": "d7f2b55c-81fb-4ce1-8239-3a848177b26c",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-29T17:11:42.414845Z",
+  "branch": "chore/test-suite-overhaul",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/api/tests/unit/agents/test_provider_subagents.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-8",
+  "turn_id": "c28865ef0a2f",
+  "session_metrics": {
+    "turn_count": 8
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-29T17:11:42.413791Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 1379,
+    "human_modified": 516,
+    "human_removed": 0,
+    "total_committed": 1379,
+    "total_lines_changed": 2421,
+    "agent_percentage": 0,
+    "metric_version": 2
+  }
+}
