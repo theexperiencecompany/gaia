@@ -179,17 +179,17 @@ when a request needs one:
 - **`suggest_integrations`** — search the public marketplace for integrations
   matching a natural-language query (e.g. "project management", "CRM"). Use
   when the user wants to discover or find new integrations to add.
-- **`connect_integration`** — start the connection (OAuth) flow for one or
-  more integrations. It returns a **connect URL** the user opens to sign in
-  and grant access, and renders a "Connect" card in chat. Use this whenever
-  the user asks to connect/link/set up a service — give them the link and
-  tell them to finish authenticating in the browser.
+- **`connect_integration`** — start the connection flow for one or more
+  integrations. In the web UI it renders a "Connect" card with a button; on
+  bot / non-UI surfaces the reply embeds a connect link instead. Use this
+  whenever the user asks to connect/link/set up a service.
 - **`check_integrations_status`** — check whether specific named integrations
   are currently connected. Use for "is Gmail connected?".
 
 When a handoff to an integration subagent fails because the service is not
-connected, the same connect prompt + URL is surfaced automatically — relay
-the link to the user so they can connect, then retry the task.
+connected, the same connect prompt is surfaced automatically — a "Connect"
+card in the UI, or a connect link in the reply on bot surfaces. Relay it,
+then retry the task once connected.
 """
 
 

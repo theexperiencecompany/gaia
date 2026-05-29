@@ -304,55 +304,6 @@ class TestConnectIntegration:
         assert "http" not in result
         assert "card" in result.lower()
 
-    @patch(f"{MODULE}.resolve_and_connect_integration", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_stream_writer")
-    @patch(
-        f"{MODULE}.check_single_integration_status",
-        new_callable=AsyncMock,
-        return_value=False,
-    )
-    @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
-        [_make_integration("gmail", "Gmail", short_name="gmail")],
-    )
-    async def test_bot_context_uses_real_oauth_url_not_generic_page(
-        self, mock_check: AsyncMock, mock_gsw: MagicMock, mock_connect: AsyncMock
-    ) -> None:
-        """When the dispatcher yields a real per-integration OAuth URL, the bot
-        reply AND the streamed card must carry THAT url, not the generic page."""
-        real_url = "https://accounts.google.com/o/oauth2/auth?client_id=abc&state=xyz"
-        resp = MagicMock()
-        resp.status = "redirect"
-        resp.redirect_url = real_url
-        mock_connect.return_value = resp
-        writer = _writer()
-        mock_gsw.return_value = writer
-
-        from app.agents.tools.integration_tool import connect_integration
-
-        with (
-            patch(
-                "app.utils.integration_checker.get_config",
-                return_value={"configurable": {"source_category": "bot"}},
-            ),
-            patch("app.utils.integration_checker.settings") as s,
-        ):
-            s.FRONTEND_URL = "https://app.example.com"
-            result = await connect_integration.coroutine(  # type: ignore[attr-defined]
-                config=_cfg(), integration_names=["gmail"]
-            )
-
-        # agent reply carries the real URL, not the generic /integrations page
-        assert real_url in result
-        assert "https://app.example.com/integrations" not in result
-        # the streamed connect card payload also carries the real URL
-        payloads = [
-            c.args[0]["integration_connection_required"]
-            for c in writer.call_args_list
-            if "integration_connection_required" in c.args[0]
-        ]
-        assert payloads and payloads[0]["connect_url"] == real_url
-
     @patch(f"{MODULE}.get_stream_writer")
     @patch(
         f"{MODULE}.check_single_integration_status",

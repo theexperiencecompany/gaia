@@ -361,8 +361,6 @@ class TestCheckAndPromptIntegration:
             integration_id="gmail",
             tool_name="send_email",
             tool_category="gmail",
-            user_id=None,
-            user_email="",
         )
 
     @patch(
@@ -411,8 +409,6 @@ class TestCheckAndPromptIntegration:
             integration_id="gmail",
             tool_name=None,
             tool_category="gmail",
-            user_id=None,
-            user_email="",
         )
 
     @pytest.mark.parametrize(
@@ -507,99 +503,3 @@ class TestBuildIntegrationConnectionMessage:
             mock_settings.FRONTEND_URL = _FAKE_FRONTEND
             msg = build_integration_connection_message("Slack")
         assert f"{_FAKE_FRONTEND}/integrations" in msg
-
-    def test_non_ui_prefers_real_connect_url_over_generic(self) -> None:
-        """The whole point of the merge: a real per-integration OAuth URL must
-        win over the generic /integrations page for bot/bg replies."""
-        real_url = "https://accounts.google.com/o/oauth2/auth?client_id=abc&state=xyz"
-        with (
-            patch(
-                "app.utils.integration_checker.get_config",
-                return_value={"configurable": {"source_category": "bot"}},
-            ),
-            patch("app.utils.integration_checker.settings") as mock_settings,
-        ):
-            mock_settings.FRONTEND_URL = _FAKE_FRONTEND
-            msg = build_integration_connection_message("Gmail", real_url)
-        assert real_url in msg
-        # the generic page must NOT be substituted when a real URL exists
-        assert f"{_FAKE_FRONTEND}/integrations" not in msg
-
-    def test_ui_ignores_connect_url_even_when_provided(self) -> None:
-        """On UI the card carries the link; the agent text must stay URL-free
-        even if a real connect URL was generated."""
-        with patch(
-            "app.utils.integration_checker.get_config",
-            return_value={"configurable": {"source_category": "ui"}},
-        ):
-            msg = build_integration_connection_message(
-                "Gmail", "https://accounts.google.com/o/oauth2/auth?x=1"
-            )
-        assert "http" not in msg
-        assert "card" in msg.lower()
-
-
-# ---------------------------------------------------------------------------
-# stream_integration_connection_prompt — connect-URL enrichment
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestStreamPromptConnectUrlEnrichment:
-    """The streamed card payload carries a real connect URL only when a user is
-    known (so it can be built); never otherwise, and never for unknown ids."""
-
-    async def test_includes_connect_url_when_user_id_present(self) -> None:
-        writer = MagicMock()
-        integration = MagicMock()
-        integration.name = "Gmail"
-        with (
-            patch("app.utils.integration_checker.get_stream_writer", return_value=writer),
-            patch(
-                "app.utils.integration_checker.get_integration_by_id",
-                return_value=integration,
-            ),
-            patch(
-                "app.services.integrations.integration_connection_service.build_connect_url",
-                new_callable=AsyncMock,
-                return_value="https://connect.example.com/oauth",
-            ),
-        ):
-            await stream_integration_connection_prompt("gmail", user_id="u1")
-
-        writer.assert_called_once()
-        payload = writer.call_args.args[0]["integration_connection_required"]
-        assert payload["integration_id"] == "gmail"
-        assert payload["connect_url"] == "https://connect.example.com/oauth"
-
-    async def test_omits_connect_url_without_user_id(self) -> None:
-        """No user → cannot build a URL → must NOT call the builder or attach one."""
-        writer = MagicMock()
-        integration = MagicMock()
-        integration.name = "Gmail"
-        with (
-            patch("app.utils.integration_checker.get_stream_writer", return_value=writer),
-            patch(
-                "app.utils.integration_checker.get_integration_by_id",
-                return_value=integration,
-            ),
-            patch(
-                "app.services.integrations.integration_connection_service.build_connect_url",
-                new_callable=AsyncMock,
-            ) as mock_build,
-        ):
-            await stream_integration_connection_prompt("gmail", user_id=None)
-
-        mock_build.assert_not_awaited()
-        payload = writer.call_args.args[0]["integration_connection_required"]
-        assert "connect_url" not in payload
-
-    async def test_no_emit_for_unknown_integration(self) -> None:
-        writer = MagicMock()
-        with (
-            patch("app.utils.integration_checker.get_stream_writer", return_value=writer),
-            patch("app.utils.integration_checker.get_integration_by_id", return_value=None),
-        ):
-            await stream_integration_connection_prompt("does-not-exist", user_id="u1")
-
-        writer.assert_not_called()

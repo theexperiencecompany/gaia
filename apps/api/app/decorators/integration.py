@@ -50,8 +50,9 @@ def require_integration(tool_category: str, tool_name: str | None = None):
 
             # Extract access token from config
             configurable = config.get("configurable", {})
-            user_id = configurable.get("user_id")
-            access_token, refresh_token, _ = await get_tokens_by_user_id(user_id)
+            access_token, refresh_token, _ = await get_tokens_by_user_id(
+                configurable.get("user_id")
+            )
 
             if not access_token:
                 log.warning(f"No access token found for tool: {tool_name or func.__name__}")
@@ -62,8 +63,6 @@ def require_integration(tool_category: str, tool_name: str | None = None):
                 access_token=access_token,
                 tool_category=tool_category,
                 tool_name=tool_name or func.__name__,
-                user_id=user_id,
-                user_email=configurable.get("email") or "",
             )
 
             if not has_permission:

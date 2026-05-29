@@ -40,7 +40,6 @@ from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.namespace_utils import derive_integration_namespace
-from app.services.integrations.integration_connection_service import build_connect_url
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_service import (
@@ -95,54 +94,32 @@ def _sanitize_task_user_reference(
     return updated
 
 
-async def _prompt_integration_connection(
-    integration_id: str,
-    integration_name: str,
-    user_id: str,
-    user_email: str,
-) -> str | None:
-    """Stream an ``integration_connection_required`` prompt and return its URL.
-
-    Builds the actual connect/OAuth URL (so the chat card and the LLM-facing
-    message can both offer a one-click link) and streams the prompt. Shared by
-    the two handoff paths that surface a "connect first" prompt.
-    """
-    connect_url = await build_connect_url(user_id, integration_id, user_email=user_email)
-    payload: dict[str, str] = {
-        "integration_id": integration_id,
-        "message": f"To use {integration_name} features, please connect your account first.",
-    }
-    if connect_url:
-        payload["connect_url"] = connect_url
-    get_stream_writer()({"integration_connection_required": payload})
-    return connect_url
-
-
 async def check_integration_connection(
     integration_id: str,
     user_id: str,
-    user_email: str = "",
 ) -> str | None:
-    """Check if integration is connected and return an error message if not.
-
-    On a miss, streams a connect prompt (with URL) and returns an error string
-    for the handoff caller — including the link when one is available.
-    """
+    """Check if integration is connected and return error message if not."""
     try:
         subagent = get_subagent_by_id(integration_id)
         if not subagent:
             return None
 
-        if await check_integration_status(integration_id, user_id):
+        is_connected = await check_integration_status(integration_id, user_id)
+
+        if is_connected:
             return None
 
-        get_stream_writer()({"progress": f"Checking {subagent.name} connection..."})
-        connect_url = await _prompt_integration_connection(
-            subagent.id, subagent.name, user_id, user_email
-        )
+        writer = get_stream_writer()
+        writer({"progress": f"Checking {subagent.name} connection..."})
 
-        # Source-aware message (develop) carrying the real connect URL (ours).
-        return build_integration_connection_message(subagent.name, connect_url)
+        integration_data = {
+            "integration_id": subagent.id,
+            "message": f"To use {subagent.name} features, please connect your account first.",
+        }
+
+        writer({"integration_connection_required": integration_data})
+
+        return build_integration_connection_message(subagent.name)
 
     except Exception as e:
         log.error(f"Error checking integration status for {integration_id}: {e}")
@@ -278,7 +255,6 @@ async def index_custom_mcp_as_subagent(
 async def _resolve_subagent(
     subagent_id: str,
     user_id: str | None,
-    user_email: str = "",
 ) -> tuple[object | None, str | None, str | None, bool]:
     """
     Resolve subagent from ID and get the graph.
@@ -354,13 +330,10 @@ async def _resolve_subagent(
         token_store = MCPTokenStore(user_id=user_id)
         is_connected = await token_store.is_connected(int_id)
         if not is_connected:
-            connect_url = await _prompt_integration_connection(
-                int_id, subagent.name, user_id, user_email
-            )
             return (
                 None,
                 None,
-                build_integration_connection_message(subagent.name, connect_url),
+                build_integration_connection_message(subagent.name),
                 False,
             )
 
@@ -377,7 +350,7 @@ async def _resolve_subagent(
         # Non-MCP or non-auth-required MCP integrations
         # Skip connection check for internal integrations (always available)
         if subagent.managed_by not in ("mcp", "internal") and user_id:
-            error_message = await check_integration_connection(int_id, user_id, user_email)
+            error_message = await check_integration_connection(int_id, user_id)
             if error_message:
                 return None, None, error_message, False
 
@@ -524,7 +497,6 @@ async def handoff(
                 config["configurable"]["user_id"] = user_id
 
         stream_id = configurable.get("stream_id")  # Extract stream_id for cancellation
-        user_email = configurable.get("email") or ""
 
         # Resolve subagent and get graph
         (
@@ -532,7 +504,7 @@ async def handoff(
             resolved_agent_name,
             int_id_or_error,
             is_custom,
-        ) = await _resolve_subagent(subagent_id, user_id, user_email)
+        ) = await _resolve_subagent(subagent_id, user_id)
 
         if subagent_graph is None or resolved_agent_name is None or int_id_or_error is None:
             return int_id_or_error or "Unknown error resolving subagent"

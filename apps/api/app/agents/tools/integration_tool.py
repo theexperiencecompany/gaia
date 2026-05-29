@@ -28,9 +28,6 @@ from app.models.integration_models import (
     ListIntegrationsResult,
     SuggestedIntegration,
 )
-from app.services.integrations.integration_connection_service import (
-    resolve_and_connect_integration,
-)
 from app.services.oauth.oauth_service import (
     check_integration_status as check_single_integration_status,
     check_multiple_integrations_status,
@@ -296,18 +293,12 @@ async def connect_integration(
     ],
     config: RunnableConfig,
 ) -> str:
-    """Initiate the connection flow for one or more integrations.
-
-    For each not-yet-connected integration, builds the OAuth/connect URL and
-    streams a connect prompt so the user can authenticate.
-    """
     try:
         log.set(tool={"name": "connect_integration", "action": "connect"})
         configurable = config.get("configurable", {})
         user_id = configurable.get("user_id") if configurable else None
         if not user_id:
             return "Error: User ID not found in configuration."
-        user_email = (configurable.get("email") or "") if configurable else ""
 
         # Ensure integration_names is a list
         if isinstance(integration_names, str):
@@ -354,38 +345,18 @@ async def connect_integration(
             # Queue for connection
             connections_to_initiate.append(integration)
 
-        # Initiate connections for all queued integrations. Each call resolves
-        # the integration and builds the real OAuth/connect URL the user opens
-        # to authenticate — the same flow the "Connect" button triggers.
+        # Initiate connections for all queued integrations
         for integration in connections_to_initiate:
             writer({"progress": f"Initiating {integration.name} connection..."})
 
-            connect_response = await resolve_and_connect_integration(
-                user_id=str(user_id),
-                integration_id=integration.id,
-                user_email=user_email,
-            )
-
-            message = f"To use {integration.name} features, please connect your account."
-            connect_url = (
-                connect_response.redirect_url
-                if connect_response and connect_response.status == "redirect"
-                else None
-            )
-
-            integration_data: dict[str, str] = {
+            integration_data = {
                 "integration_id": integration.id,
-                "message": message,
+                "message": f"To use {integration.name} features, please connect your account.",
             }
-            if connect_url:
-                integration_data["connect_url"] = connect_url
+
             writer({"integration_connection_required": integration_data})
 
-            if connect_response and connect_response.status == "connected":
-                results.append(f"✅ {integration.name} is already connected!")
-            else:
-                # Source-aware message (develop) carrying the real connect URL (ours).
-                results.append(build_integration_connection_message(integration.name, connect_url))
+            results.append(build_integration_connection_message(integration.name))
 
         return "\n".join(results) if results else "No integrations to connect."
 
@@ -403,7 +374,6 @@ async def check_integrations_status(
     ],
     config: RunnableConfig,
 ) -> str:
-    """Report the connection status of the named integrations for the user."""
     try:
         log.set(tool={"name": "check_integrations_status", "action": "check"})
         configurable = config.get("configurable", {})
