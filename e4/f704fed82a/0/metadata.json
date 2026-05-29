@@ -1,0 +1,123 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "e4f704fed82a",
+  "session_id": "d7f2b55c-81fb-4ce1-8239-3a848177b26c",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-29T20:40:47.420737Z",
+  "branch": "chore/test-suite-overhaul",
+  "checkpoints_count": 8,
+  "files_touched": [
+    "apps/api/tests/unit/agents/test_subagent_runner.py",
+    "apps/api/tests/unit/core/test_bot_auth_middleware.py",
+    "apps/api/tests/unit/core/test_lazy_loader.py",
+    "apps/api/tests/unit/middleware/test_middleware_executor.py",
+    "apps/api/tests/unit/models/test_subagent_models.py"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "e64412b7fb79",
+  "token_usage": {
+    "input_tokens": 133593,
+    "cache_creation_tokens": 4613841,
+    "cache_read_tokens": 173548525,
+    "output_tokens": 613471,
+    "api_call_count": 338
+  },
+  "session_metrics": {
+    "turn_count": 16
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-29T20:40:47.326015Z",
+    "agent_lines": 967,
+    "agent_removed": 563,
+    "human_added": 984,
+    "human_modified": 544,
+    "human_removed": 0,
+    "total_committed": 2495,
+    "total_lines_changed": 3058,
+    "agent_percentage": 50.03270111183781,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 599,
+      "agent_lines_removed": 254
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 67,
+      "user_lines_removed": 14,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/api/tests/unit/models/test_subagent_models.py": 67
+      },
+      "user_removed_per_file": {
+        "apps/api/tests/unit/models/test_subagent_models.py": 14
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 750,
+      "user_lines_removed": 236,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/api/tests/unit/core/test_lazy_loader.py": 750
+      },
+      "user_removed_per_file": {
+        "apps/api/tests/unit/core/test_lazy_loader.py": 236
+      }
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 490,
+      "user_lines_removed": 288,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/api/tests/unit/core/test_bot_auth_middleware.py": 490
+      },
+      "user_removed_per_file": {
+        "apps/api/tests/unit/core/test_bot_auth_middleware.py": 288
+      }
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 422,
+      "user_lines_removed": 40,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/api/tests/service/test_call_agent_real.py": 422
+      },
+      "user_removed_per_file": {
+        "apps/api/tests/service/test_call_agent_real.py": 40
+      }
+    }
+  ]
+}

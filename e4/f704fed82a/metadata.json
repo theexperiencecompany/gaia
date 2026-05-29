@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "e4f704fed82a",
+  "strategy": "manual-commit",
+  "branch": "chore/test-suite-overhaul",
+  "checkpoints_count": 8,
+  "files_touched": [
+    "apps/api/tests/unit/agents/test_subagent_runner.py",
+    "apps/api/tests/unit/core/test_bot_auth_middleware.py",
+    "apps/api/tests/unit/core/test_lazy_loader.py",
+    "apps/api/tests/unit/middleware/test_middleware_executor.py",
+    "apps/api/tests/unit/models/test_subagent_models.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e4/f704fed82a/0/metadata.json",
+      "transcript": "/e4/f704fed82a/0/full.jsonl",
+      "content_hash": "/e4/f704fed82a/0/content_hash.txt",
+      "prompt": "/e4/f704fed82a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 133593,
+    "cache_creation_tokens": 4613841,
+    "cache_read_tokens": 173548525,
+    "output_tokens": 613471,
+    "api_call_count": 338
+  }
+}
