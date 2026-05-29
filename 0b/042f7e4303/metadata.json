@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "0b042f7e4303",
+  "strategy": "manual-commit",
+  "branch": "chore/test-suite-overhaul",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "apps/api/tests/unit/agents/test_graph_builder.py",
+    "apps/api/tests/unit/api/test_agent_auth.py",
+    "apps/api/tests/unit/helpers/test_agent_helpers.py",
+    "apps/api/tests/unit/services/test_payment_webhook_service.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0b/042f7e4303/0/metadata.json",
+      "transcript": "/0b/042f7e4303/0/full.jsonl",
+      "content_hash": "/0b/042f7e4303/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 3567,
+    "cache_creation_tokens": 44484,
+    "cache_read_tokens": 12604700,
+    "output_tokens": 39637,
+    "api_call_count": 16
+  }
+}
