@@ -126,9 +126,7 @@ class TestAdapterRegistryConsistency:
         # versa), this fails — a bot user would otherwise silently get nothing.
         assert set(pms._PLATFORM_ADAPTERS) == BOT_CONVERSATION_SOURCES
 
-    @pytest.mark.parametrize(
-        "source", sorted(BOT_CONVERSATION_SOURCES, key=lambda s: s.value)
-    )
+    @pytest.mark.parametrize("source", sorted(BOT_CONVERSATION_SOURCES, key=lambda s: s.value))
     def test_every_bot_source_is_routable_and_categorised(self, source) -> None:
         assert pms.is_bot_platform(source) is True
         assert SourceCategory.from_source(source) is SourceCategory.BOT
@@ -149,9 +147,7 @@ class TestDeliverMessageEndToEnd:
     @pytest.mark.parametrize("source", list(_EXPECTED_ADAPTER))
     async def test_unlinked_user_returns_false(self, source) -> None:
         # dispatcher -> real adapter -> _get_platform_context -> PlatformLinkService
-        with patch(
-            "app.utils.notification.channels.external.PlatformLinkService"
-        ) as svc:
+        with patch("app.utils.notification.channels.external.PlatformLinkService") as svc:
             svc.get_linked_platforms = AsyncMock(return_value={})
             ok = await pms.deliver_message_to_platform(source, "user-1", "hello")
         assert ok is False

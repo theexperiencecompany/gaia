@@ -59,9 +59,7 @@ class TestDeliverBgNotificationRouting:
         ws.assert_not_awaited()  # exclusive: no WebSocket fan-out for bots
         save.assert_awaited_once()  # always persisted to history
 
-    @pytest.mark.parametrize(
-        "src", [ConversationSource.WEB, ConversationSource.MOBILE, None]
-    )
+    @pytest.mark.parametrize("src", [ConversationSource.WEB, ConversationSource.MOBILE, None])
     async def test_non_bot_conversation_broadcasts_over_websocket_only(self, src) -> None:
         save, platform, ws = await _deliver(src)
 

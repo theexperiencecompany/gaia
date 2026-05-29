@@ -384,9 +384,7 @@ class TestBuildAgentConfig:
 
     @patch("app.helpers.agent_helpers.providers")
     @patch("app.helpers.agent_helpers.settings")
-    def test_bot_source_sets_bot_category_and_channel(
-        self, mock_settings, mock_providers
-    ) -> None:
+    def test_bot_source_sets_bot_category_and_channel(self, mock_settings, mock_providers) -> None:
         mock_settings.ENV = "development"
         mock_settings.OPIK_API_KEY = None
         mock_settings.OPIK_WORKSPACE = None
@@ -427,9 +425,7 @@ class TestBuildAgentConfig:
 
     @patch("app.helpers.agent_helpers.providers")
     @patch("app.helpers.agent_helpers.settings")
-    def test_missing_source_defaults_to_background(
-        self, mock_settings, mock_providers
-    ) -> None:
+    def test_missing_source_defaults_to_background(self, mock_settings, mock_providers) -> None:
         mock_settings.ENV = "development"
         mock_settings.OPIK_API_KEY = None
         mock_settings.OPIK_WORKSPACE = None
@@ -449,9 +445,7 @@ class TestBuildAgentConfig:
 
     @patch("app.helpers.agent_helpers.providers")
     @patch("app.helpers.agent_helpers.settings")
-    def test_source_inherited_from_base_configurable(
-        self, mock_settings, mock_providers
-    ) -> None:
+    def test_source_inherited_from_base_configurable(self, mock_settings, mock_providers) -> None:
         """A child agent (e.g. executor) inherits the channel from its parent and
         recomputes the category — so background runs are still tagged Bot/UI."""
         mock_settings.ENV = "development"

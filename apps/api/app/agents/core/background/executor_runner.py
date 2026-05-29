@@ -120,9 +120,7 @@ async def _lookup_user_message_content(
     return ""
 
 
-async def _get_conversation_source(
-    conversation_id: str, user_id: str
-) -> ConversationSource | None:
+async def _get_conversation_source(conversation_id: str, user_id: str) -> ConversationSource | None:
     """Return the conversation's persisted originating source (web/whatsapp/...).
 
     This is the authoritative delivery-routing key: it says which channel the
