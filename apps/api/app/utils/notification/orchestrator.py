@@ -31,6 +31,7 @@ from app.utils.notification.channels import (
     ChannelAdapter,
     DiscordChannelAdapter,
     InAppChannelAdapter,
+    SlackChannelAdapter,
     TelegramChannelAdapter,
     WhatsAppChannelAdapter,
 )
@@ -68,6 +69,7 @@ class NotificationOrchestrator:
         self.register_channel_adapter(TelegramChannelAdapter())
         self.register_channel_adapter(DiscordChannelAdapter())
         self.register_channel_adapter(WhatsAppChannelAdapter())
+        self.register_channel_adapter(SlackChannelAdapter())
 
         # Action handlers
         self.register_action_handler(ApiCallActionHandler())

@@ -16,6 +16,7 @@ CHANNEL_TYPE_EMAIL = "email"
 CHANNEL_TYPE_TELEGRAM = "telegram"
 CHANNEL_TYPE_DISCORD = "discord"
 CHANNEL_TYPE_WHATSAPP = "whatsapp"
+CHANNEL_TYPE_SLACK = "slack"
 
 # External channel types that are auto-injected based on platform links
 EXTERNAL_NOTIFICATION_CHANNELS = (
@@ -44,3 +45,4 @@ DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
 DISCORD_API_BASE = "https://discord.com/api/v10"
 TELEGRAM_BOT_API_BASE = "https://api.telegram.org/bot"
 KAPSO_API_BASE_URL = "https://api.kapso.ai"
+SLACK_API_BASE = "https://slack.com/api"
