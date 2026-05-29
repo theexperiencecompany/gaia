@@ -218,12 +218,12 @@ class TestConnectIntegration:
         )
         with (
             patch(
-                "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+                "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
                 new_callable=AsyncMock,
                 return_value=resolved,
             ),
             patch(
-                "app.api.v1.endpoints.integrations.config.connect_mcp_integration",
+                "app.services.integrations.integration_connection_service.connect_mcp_integration",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -247,12 +247,12 @@ class TestConnectIntegration:
         )
         with (
             patch(
-                "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+                "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
                 new_callable=AsyncMock,
                 return_value=resolved,
             ),
             patch(
-                "app.api.v1.endpoints.integrations.config.connect_composio_integration",
+                "app.services.integrations.integration_connection_service.connect_composio_integration",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -276,12 +276,12 @@ class TestConnectIntegration:
         )
         with (
             patch(
-                "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+                "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
                 new_callable=AsyncMock,
                 return_value=resolved,
             ),
             patch(
-                "app.api.v1.endpoints.integrations.config.connect_self_integration",
+                "app.services.integrations.integration_connection_service.connect_self_integration",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -294,7 +294,7 @@ class TestConnectIntegration:
 
     async def test_connect_not_found(self, client: AsyncClient) -> None:
         with patch(
-            "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+            "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -307,7 +307,7 @@ class TestConnectIntegration:
     async def test_connect_unavailable_platform(self, client: AsyncClient) -> None:
         resolved = _resolved(managed_by="mcp", available=False)
         with patch(
-            "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+            "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
             new_callable=AsyncMock,
             return_value=resolved,
         ):
@@ -324,7 +324,7 @@ class TestConnectIntegration:
         Exception handler, so response is 200 with status='error'."""
         resolved = _resolved(managed_by="composio", provider=None)
         with patch(
-            "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+            "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
             new_callable=AsyncMock,
             return_value=resolved,
         ):
@@ -338,7 +338,7 @@ class TestConnectIntegration:
     async def test_connect_self_no_provider(self, client: AsyncClient) -> None:
         resolved = _resolved(managed_by="self", provider=None)
         with patch(
-            "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+            "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
             new_callable=AsyncMock,
             return_value=resolved,
         ):
@@ -352,7 +352,7 @@ class TestConnectIntegration:
     async def test_connect_unsupported_type(self, client: AsyncClient) -> None:
         resolved = _resolved(managed_by="unknown")
         with patch(
-            "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+            "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
             new_callable=AsyncMock,
             return_value=resolved,
         ):
@@ -370,12 +370,12 @@ class TestConnectIntegration:
         resolved = _resolved(managed_by="mcp")
         with (
             patch(
-                "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+                "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
                 new_callable=AsyncMock,
                 return_value=resolved,
             ),
             patch(
-                "app.api.v1.endpoints.integrations.config.connect_mcp_integration",
+                "app.services.integrations.integration_connection_service.connect_mcp_integration",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("conn failed"),
             ),

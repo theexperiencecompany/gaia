@@ -360,6 +360,8 @@ class TestCheckAndPromptIntegration:
             integration_id="gmail",
             tool_name="send_email",
             tool_category="gmail",
+            user_id=None,
+            user_email="",
         )
 
     @patch(
@@ -408,6 +410,8 @@ class TestCheckAndPromptIntegration:
             integration_id="gmail",
             tool_name=None,
             tool_category="gmail",
+            user_id=None,
+            user_email="",
         )
 
     @pytest.mark.parametrize(

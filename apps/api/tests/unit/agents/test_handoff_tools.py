@@ -407,6 +407,15 @@ class TestResolveSubagent:
                 return_value=subagent,
             ),
             patch("app.agents.core.subagents.handoff_tools.MCPTokenStore") as mock_ts_cls,
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_connect_url",
+                new_callable=AsyncMock,
+                return_value="https://connect.example.com/oauth",
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                return_value=MagicMock(),
+            ),
         ):
             mock_ts = AsyncMock()
             mock_ts.is_connected.return_value = False
@@ -414,6 +423,8 @@ class TestResolveSubagent:
             graph, name, error, is_custom = await _resolve_subagent("gmail", "user1")
         assert graph is None
         assert "OAuth" in error
+        # the generated connect URL is surfaced to the LLM-facing error
+        assert "https://connect.example.com/oauth" in error
 
     async def test_platform_mcp_requires_auth_no_user(self):
         mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
