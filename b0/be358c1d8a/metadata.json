@@ -3,9 +3,11 @@
   "checkpoint_id": "b0be358c1d8a",
   "strategy": "manual-commit",
   "branch": "chore/test-suite-overhaul",
-  "checkpoints_count": 3,
+  "checkpoints_count": 6,
   "files_touched": [
-    "apps/api/tests/unit/agents/test_email_processor.py"
+    "apps/api/tests/unit/agents/test_email_processor.py",
+    "apps/api/tests/unit/services/test_device_token_service.py",
+    "apps/api/tests/unit/services/test_mail_importance.py"
   ],
   "sessions": [
     {
@@ -13,13 +15,19 @@
       "transcript": "/b0/be358c1d8a/0/full.jsonl",
       "content_hash": "/b0/be358c1d8a/0/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/b0/be358c1d8a/1/metadata.json",
+      "transcript": "/b0/be358c1d8a/1/full.jsonl",
+      "content_hash": "/b0/be358c1d8a/1/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
-    "input_tokens": 31138,
-    "cache_creation_tokens": 461854,
-    "cache_read_tokens": 14041452,
-    "output_tokens": 155114,
-    "api_call_count": 85
+    "input_tokens": 148935,
+    "cache_creation_tokens": 3987936,
+    "cache_read_tokens": 127265753,
+    "output_tokens": 637161,
+    "api_call_count": 352
   }
 }
