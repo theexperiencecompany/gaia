@@ -228,13 +228,11 @@ async def create_agent_context_message(
 
         return f"\n\n{block}" if block else ""
 
-    memories_section, skills_section, metadata_section, instructions_section = (
-        await asyncio.gather(
-            _fetch_memories(),
-            _fetch_skills(),
-            _fetch_provider_metadata_block(integration_id, user_id),
-            _fetch_instructions_block(integration_id or subagent_id, user_id),
-        )
+    memories_section, skills_section, metadata_section, instructions_section = await asyncio.gather(
+        _fetch_memories(),
+        _fetch_skills(),
+        _fetch_provider_metadata_block(integration_id, user_id),
+        _fetch_instructions_block(integration_id or subagent_id, user_id),
     )
 
     content = (
