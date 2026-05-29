@@ -1,0 +1,66 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "d1b6dba1e6d1",
+  "session_id": "9fa0db43-8190-4b32-beb9-246e462e369f",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-29T16:21:15.626488Z",
+  "branch": "master",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "apps/web/src/app/[locale]/(landing)/marketplace/[slug]/page.tsx",
+    "apps/web/src/app/[locale]/(landing)/thanks/page.tsx",
+    "apps/web/src/app/api/og/use-case/route.tsx",
+    "apps/web/src/app/feed.xml/route.ts",
+    "apps/web/src/hooks/useGitHubContributors.ts",
+    "apps/web/src/lib/api/service.ts",
+    "apps/web/src/lib/sitemapData.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-8[1m]",
+  "turn_id": "e89e59c3cc5c",
+  "token_usage": {
+    "input_tokens": 29543,
+    "cache_creation_tokens": 355290,
+    "cache_read_tokens": 3754886,
+    "output_tokens": 69773,
+    "api_call_count": 37
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-29T16:21:15.614603Z",
+    "agent_lines": 160,
+    "agent_removed": 115,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 160,
+    "total_lines_changed": 275,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

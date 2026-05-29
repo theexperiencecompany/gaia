@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "d1b6dba1e6d1",
+  "strategy": "manual-commit",
+  "branch": "master",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "apps/web/src/app/[locale]/(landing)/marketplace/[slug]/page.tsx",
+    "apps/web/src/app/[locale]/(landing)/thanks/page.tsx",
+    "apps/web/src/app/api/og/use-case/route.tsx",
+    "apps/web/src/app/feed.xml/route.ts",
+    "apps/web/src/hooks/useGitHubContributors.ts",
+    "apps/web/src/lib/api/service.ts",
+    "apps/web/src/lib/sitemapData.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d1/b6dba1e6d1/0/metadata.json",
+      "transcript": "/d1/b6dba1e6d1/0/full.jsonl",
+      "content_hash": "/d1/b6dba1e6d1/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 29543,
+    "cache_creation_tokens": 355290,
+    "cache_read_tokens": 3754886,
+    "output_tokens": 69773,
+    "api_call_count": 37
+  }
+}
