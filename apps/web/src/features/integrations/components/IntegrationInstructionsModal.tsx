@@ -72,8 +72,7 @@ export const IntegrationInstructionsModal = ({
           </span>
           <span className="text-sm font-light text-zinc-400">
             Standing guidance GAIA follows whenever it uses {integrationName}.
-            {canMention ? " Type @ or # to mention a tool." : ""} Markdown
-            supported.
+            {canMention ? " Type @ to mention a tool." : ""} Markdown supported.
           </span>
         </ModalHeader>
 
@@ -135,7 +134,7 @@ export const IntegrationInstructionsModal = ({
               <div className="mt-1 flex items-center justify-between text-xs font-light text-zinc-500">
                 <span>
                   {canMention
-                    ? "Type @ or # to mention a tool"
+                    ? "Type @ to mention a tool"
                     : "Markdown supported"}
                 </span>
                 <span>

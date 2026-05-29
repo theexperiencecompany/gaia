@@ -1,4 +1,5 @@
 import {
+  type FormEvent,
   type KeyboardEvent,
   type MouseEvent,
   useCallback,
@@ -8,9 +9,9 @@ import {
   useState,
 } from "react";
 
-// A mention starts at `@` or `#` placed at the start of input or after
-// whitespace, followed by the query (no spaces / no further triggers).
-const MENTION_RE = /(?:^|\s)([@#])([^\s@#]*)$/;
+// A mention starts at `@` placed at the start of input or after whitespace,
+// followed by the query (no spaces / no further `@`).
+const MENTION_RE = /(?:^|\s)(@)([^\s@]*)$/;
 const MAX_SUGGESTIONS = 8;
 
 interface MentionState {
@@ -129,6 +130,16 @@ export const useToolMention = ({
     [detect],
   );
 
+  // `input` fires for every value change (typing, paste, IME, autofill), so
+  // the suggestions stay correct regardless of how the text was entered.
+  const onInput = useCallback(
+    (e: FormEvent<HTMLInputElement>) => {
+      elRef.current = e.currentTarget;
+      detect();
+    },
+    [detect],
+  );
+
   return {
     isOpen: mention !== null && matches.length > 0,
     matches,
@@ -136,6 +147,6 @@ export const useToolMention = ({
     setHighlight,
     insert,
     close,
-    textareaHandlers: { onKeyDown, onKeyUp, onClick },
+    textareaHandlers: { onKeyDown, onKeyUp, onClick, onInput },
   };
 };
