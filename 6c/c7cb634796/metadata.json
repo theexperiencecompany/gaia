@@ -1,0 +1,16 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "6cc7cb634796",
+  "strategy": "manual-commit",
+  "branch": "chore/test-suite-overhaul",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/api/tests/unit/agents/test_github_discovery.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/6c/c7cb634796/0/metadata.json",
+      "prompt": ""
+    }
+  ]
+}
