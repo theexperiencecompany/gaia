@@ -1,0 +1,84 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "1cca0f6cc941",
+  "session_id": "d7f2b55c-81fb-4ce1-8239-3a848177b26c",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-29T06:49:14.874464Z",
+  "branch": "chore/test-suite-overhaul",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "apps/api/tests/unit/agents/nodes/test_memory_node.py",
+    "apps/api/tests/unit/agents/test_llm_client.py",
+    "apps/api/tests/unit/agents/test_memory_client.py",
+    "apps/api/tests/unit/agents/test_messages.py",
+    "apps/api/tests/unit/agents/test_middleware_executor.py",
+    "apps/api/tests/unit/agents/test_profile_extractor.py",
+    "apps/api/tests/unit/agents/test_skill_installer.py",
+    "apps/api/tests/unit/agents/test_skill_parser.py",
+    "apps/api/tests/unit/agents/test_state.py",
+    "apps/api/tests/unit/agents/test_subagent_middleware.py",
+    "apps/api/tests/unit/agents/test_subagent_registry.py",
+    "apps/api/tests/unit/agents/test_token_counter.py",
+    "apps/api/tests/unit/override/test_langgraph_bigtool.py",
+    "apps/api/tests/unit/services/test_chat_service.py",
+    "apps/api/tests/unit/services/test_conversation_service.py",
+    "apps/api/tests/unit/utils/test_stream_utils.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-8[1m]",
+  "turn_id": "c28865ef0a2f",
+  "checkpoint_transcript_start": 644,
+  "transcript_lines_at_start": 644,
+  "token_usage": {
+    "input_tokens": 5755,
+    "cache_creation_tokens": 509536,
+    "cache_read_tokens": 11793986,
+    "output_tokens": 89157,
+    "api_call_count": 36
+  },
+  "session_metrics": {
+    "turn_count": 8
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-29T06:49:14.836634Z",
+    "agent_lines": 7661,
+    "agent_removed": 4797,
+    "human_added": 1,
+    "human_modified": 6,
+    "human_removed": 0,
+    "total_committed": 7668,
+    "total_lines_changed": 12475,
+    "agent_percentage": 99.86372745490982,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
