@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "daba7ee35d57",
+  "session_id": "d7f2b55c-81fb-4ce1-8239-3a848177b26c",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-29T18:55:03.295836Z",
+  "branch": "chore/test-suite-overhaul",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/api/tests/service/test_postgres_checkpointer.py"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "67850e261fd0",
+  "session_metrics": {
+    "turn_count": 8
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-29T18:55:03.295309Z",
+    "agent_lines": 347,
+    "agent_removed": 100,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 347,
+    "total_lines_changed": 447,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
