@@ -6,8 +6,9 @@
  * so a malformed or renamed payload is rejected to the DLQ with a clear reason,
  * rather than failing deep in the platform send path with an undefined field.
  *
- * The schema is the single source of truth: the type is derived via ``z.infer``
- * so the runtime validation and the static type cannot drift apart.
+ * The schema is the single source of truth; consumers derive the static type via
+ * ``z.infer<typeof outboundMessageEnvelopeSchema>`` so runtime validation and the
+ * static type cannot drift apart.
  */
 
 import { z } from "zod";
@@ -24,7 +25,3 @@ export const outboundMessageEnvelopeSchema = z.object({
   /** ISO-8601 enqueue timestamp. */
   enqueued_at: z.string(),
 });
-
-export type OutboundMessageEnvelope = z.infer<
-  typeof outboundMessageEnvelopeSchema
->;

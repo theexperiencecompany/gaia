@@ -26,7 +26,9 @@ class TestPublishOutboundMessage:
         with patch.object(
             od.PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
         ) as linked:
-            ok = await od.publish_outbound_message(ConversationSource.WHATSAPP, "user-1", ["  ", ""])
+            ok = await od.publish_outbound_message(
+                ConversationSource.WHATSAPP, "user-1", ["  ", ""]
+            )
         assert ok is False
         linked.assert_not_awaited()  # short-circuits before the link lookup
 

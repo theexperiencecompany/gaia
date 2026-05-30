@@ -29,17 +29,13 @@ def connected_publisher() -> tuple[RabbitMQPublisher, MagicMock]:
 
 @pytest.mark.unit
 class TestPublishWithRetry:
-    async def test_publish_outbound_does_not_declare_the_queue(
-        self, connected_publisher
-    ) -> None:
+    async def test_publish_outbound_does_not_declare_the_queue(self, connected_publisher) -> None:
         pub, channel = connected_publisher
         await pub.publish_outbound("outbound.whatsapp", b"{}")
         channel.default_exchange.publish.assert_awaited_once()
         channel.declare_queue.assert_not_awaited()  # topology is pre-declared
 
-    async def test_publish_outbound_retries_once_then_succeeds(
-        self, connected_publisher
-    ) -> None:
+    async def test_publish_outbound_retries_once_then_succeeds(self, connected_publisher) -> None:
         pub, channel = connected_publisher
         channel.default_exchange.publish.side_effect = [RuntimeError("boom"), None]
         await pub.publish_outbound("outbound.whatsapp", b"{}")
