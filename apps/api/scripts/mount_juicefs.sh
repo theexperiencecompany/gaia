@@ -56,6 +56,7 @@ set -uo pipefail
 
 JFS_MOUNT=/mnt/jfs            # primary mount: scoped to /users/$USER_ID
 JFS_SKILLS_MOUNT=/mnt/jfs-skills  # secondary mount: scoped to /skills/$USER_ID, ro
+JFS_SYSTEM_MOUNT=/mnt/jfs-system  # shared mount: scoped to /_system (all users), ro
 WORKSPACE=/workspace
 SANDBOX_USER="${SANDBOX_USER:-user}"
 SANDBOX_UID="$(id -u "$SANDBOX_USER" 2>/dev/null || echo 1000)"
@@ -184,6 +185,25 @@ mount_skills_subdir() {
         "$JFS_META_URL" "$JFS_SKILLS_MOUNT" 2>&1
 }
 
+mount_system_subdir() {
+    if mountpoint -q "$JFS_SYSTEM_MOUNT"; then
+        return 0
+    fi
+    mkdir -p "$JFS_SYSTEM_MOUNT"
+    # Read-only mount of the SHARED /_system subtree (same for every user) —
+    # backs /workspace/.system. Per-user workspaces symlink INDEX.md / GUIDE.md
+    # / builtin skills into here instead of holding their own copies.
+    "$JFS_LAUNCHER" mount \
+        --subdir "/_system" \
+        --read-only \
+        --backup-meta=0 \
+        --cache-dir=/var/cache/juicefs \
+        --cache-size=1024 \
+        --buffer-size=300 \
+        --background \
+        "$JFS_META_URL" "$JFS_SYSTEM_MOUNT" 2>&1
+}
+
 # The per-user subtrees ``/users/$USER_ID`` and ``/skills/$USER_ID`` are
 # pre-created on the HOST side before any sandbox command runs — see
 # ``ensure_user_workspace`` / ``ensure_user_skills_dir`` in
@@ -226,6 +246,18 @@ if mount_skills_subdir; then
     # surface is consistent at every layer.
     if mount --bind "$JFS_SKILLS_MOUNT" "$WORKSPACE/skills"; then
         mount -o remount,bind,ro "$WORKSPACE/skills" 2>/dev/null || true
+    fi
+fi
+
+# Optional shared-system overlay — best-effort. Backs /workspace/.system with the
+# single /_system subtree (INDEX.md, GUIDE.md docs, builtin skills). Per-user
+# symlinks point here so the bodies aren't copied per user. If /_system doesn't
+# exist or the mount fails, per-user workspaces simply keep their own copies.
+mkdir -p "$WORKSPACE/.system"
+chown "$SANDBOX_UID:$SANDBOX_GID" "$WORKSPACE/.system" 2>/dev/null || true
+if mount_system_subdir; then
+    if mount --bind "$JFS_SYSTEM_MOUNT" "$WORKSPACE/.system"; then
+        mount -o remount,bind,ro "$WORKSPACE/.system" 2>/dev/null || true
     fi
 fi
 

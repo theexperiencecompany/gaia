@@ -68,6 +68,10 @@ async def bootstrap_user_session(
         get_all_instructions,
         instructions_signature,
     )
+    from app.services.storage.system_workspace import (
+        ensure_system_subtree,
+        link_system_files_into_workspace,
+    )
     from app.services.user_todos_fs import sync_user_todos
 
     connected = connected_ids or set()
@@ -85,6 +89,13 @@ async def bootstrap_user_session(
         return base
 
     async with fs_timer(FsOps.BOOTSTRAP_USER_SESSION):
+        # System files (INDEX/GUIDE/builtin skills) are de-duplicated: one shared
+        # `_system` copy + per-user symlinks. Run this BEFORE the copy-writers so
+        # they see the symlinks (matches_text treats a symlink as "matches") and
+        # skip rewriting them. If the shared subtree is unavailable, the linker
+        # no-ops and the copy-writers transparently fall back to per-user copies.
+        await ensure_system_subtree()
+        await link_system_files_into_workspace(user_id)
         base = await asyncio.to_thread(_go)
         await sync_user_gaia_tasks(user_id)
         await sync_user_todos(user_id)

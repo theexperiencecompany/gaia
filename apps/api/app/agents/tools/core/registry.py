@@ -219,6 +219,7 @@ class ToolRegistry:
             image_tool,
             integration_instructions_tools,
             integration_tool,
+            manual_tool,
             memory_tools,
             notification_tool,
             reminder_tool,
@@ -285,6 +286,7 @@ class ToolRegistry:
         self._add_category("workflows", tools=workflow_tool.tools)
         self._add_category("control", tools=[finish_task_tool.finish_task])
         self._add_category("support", tools=[support_tool.create_support_ticket])
+        self._add_category("manual", tools=[*manual_tool.tools])
         self._add_category("memory", tools=memory_tools.tools)
         self._add_category("integrations", tools=integration_tool.tools)
         self._add_category(
