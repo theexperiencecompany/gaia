@@ -71,6 +71,12 @@ export interface BotConfig {
    * disabled when absent (safe for local development).
    */
   posthogApiKey?: string;
+  /**
+   * RabbitMQ connection URL for consuming backend-originated outbound
+   * messages. Optional — the outbound consumer is disabled when absent (safe
+   * for local development without a broker).
+   */
+  rabbitmqUrl?: string;
 }
 
 /**

@@ -40,9 +40,3 @@ DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
     CHANNEL_TYPE_DISCORD: True,
     CHANNEL_TYPE_WHATSAPP: True,
 }
-
-# External API base URLs
-DISCORD_API_BASE = "https://discord.com/api/v10"
-TELEGRAM_BOT_API_BASE = "https://api.telegram.org/bot"
-KAPSO_API_BASE_URL = "https://api.kapso.ai"
-SLACK_API_BASE = "https://slack.com/api"

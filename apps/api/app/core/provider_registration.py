@@ -49,7 +49,7 @@ from app.db.chroma.chroma_tools_store import initialize_chroma_tools_store
 from app.db.chroma.chroma_triggers_store import initialize_chroma_triggers_store
 from app.db.chroma.chromadb import init_chroma
 from app.db.postgresql import init_postgresql_engine
-from app.db.rabbitmq import init_rabbitmq_publisher
+from app.db.rabbitmq import declare_outbound_topology_on_startup, init_rabbitmq_publisher
 from app.db.redis import redis_cache
 from app.helpers.lifespan_helpers import (
     _process_results,
@@ -224,6 +224,10 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         # this is safe to include unconditionally.
         (lambda: providers.aget("juicefs_mount"), "juicefs_mount"),
     ]
+
+    # Outbound bot-message queues must exist before any executor reply or
+    # reminder is published — declared in both the API and the ARQ worker.
+    eager_services.append((declare_outbound_topology_on_startup, "outbound_topology"))
 
     # Context-specific services: WebSocket only needed for web interface
     if context == "main_app":

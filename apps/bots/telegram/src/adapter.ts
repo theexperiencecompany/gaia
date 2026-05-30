@@ -371,6 +371,17 @@ export class TelegramAdapter extends BaseBotAdapter {
     }
   }
 
+  protected async deliverOutbound(
+    destinationId: string,
+    text: string,
+  ): Promise<void> {
+    const chatId = Number(destinationId);
+    await this.sendHtml(
+      (t, opts) => this.bot.api.sendMessage(chatId, t, opts),
+      text,
+    );
+  }
+
   /**
    * Edits a message as Telegram HTML. A "message is not modified" error (thrown
    * when the new text equals the current text) is ignored; any other failure

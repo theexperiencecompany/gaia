@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
@@ -8,9 +7,6 @@ from app.models.notification.notification_models import (
     NotificationRequest,
     NotificationStatus,
 )
-
-# Type alias for a platform send function: async (text) -> error_string | None
-SendFn = Callable[[str], Coroutine[Any, Any, str | None]]
 
 
 class ChannelAdapter(ABC):
@@ -34,16 +30,6 @@ class ChannelAdapter(ABC):
     async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
         """Deliver notification via this channel."""
         pass
-
-    async def deliver_text(self, text: str, user_id: str) -> ChannelDeliveryStatus:
-        """Deliver a single plain chat message (raw Markdown) to ``user_id``.
-
-        Bypasses the notification ``transform`` step — used to push agent-generated
-        chat messages (not notifications) to a user's linked platform. The default
-        passes the text straight through; adapters whose Markdown conversion lives
-        in ``transform`` (rather than at send time) override this to convert first.
-        """
-        return await self.deliver({"text": text}, user_id)
 
     # -- Status helpers -----------------------------------------------------
 

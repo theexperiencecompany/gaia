@@ -223,6 +223,22 @@ export class SlackAdapter extends BaseBotAdapter {
     await this.app.stop();
   }
 
+  protected async deliverOutbound(
+    destinationId: string,
+    text: string,
+  ): Promise<void> {
+    // platform_links stores the Slack user id; open (or fetch) the DM channel
+    // before posting, since chat.postMessage needs a channel id.
+    const dm = await this.app.client.conversations.open({
+      users: destinationId,
+    });
+    const channel = dm.channel?.id;
+    if (!channel) {
+      throw new Error("Slack conversations.open returned no channel id");
+    }
+    await this.app.client.chat.postMessage({ channel, text });
+  }
+
   // ---------------------------------------------------------------------------
   // Gaia streaming
   // ---------------------------------------------------------------------------

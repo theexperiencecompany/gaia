@@ -338,6 +338,14 @@ export class DiscordAdapter extends BaseBotAdapter {
     return this.client;
   }
 
+  protected async deliverOutbound(
+    destinationId: string,
+    text: string,
+  ): Promise<void> {
+    const user = await this.client.users.fetch(destinationId);
+    await user.send(text);
+  }
+
   // ---------------------------------------------------------------------------
   // Presence rotation
   // ---------------------------------------------------------------------------

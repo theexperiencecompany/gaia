@@ -3,6 +3,12 @@ from aio_pika import Message
 from aio_pika.abc import AbstractChannel, AbstractRobustConnection
 
 from app.config.settings import settings
+from app.constants.outbound import (
+    OUTBOUND_DLX,
+    OUTBOUND_QUEUES,
+    dlq_name,
+    work_queue_arguments,
+)
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
 
@@ -59,28 +65,66 @@ class RabbitMQPublisher:
             await self.connect()
             log.info("RabbitMQ reconnected successfully")
 
-    async def publish(self, queue_name: str, body: bytes):
-        """Publish message to queue with automatic reconnection."""
-        # Ensure we're connected (handles idle timeout in ARQ workers)
-        await self.ensure_connected()
+    async def _publish_with_retry(self, queue_name: str, body: bytes, *, declare: bool) -> None:
+        """Publish to the default exchange, reconnecting and retrying once.
 
+        The reconnect path handles ARQ-worker idle timeouts (workers publish
+        sporadically). ``declare`` controls whether the queue is declared first:
+        the WebSocket relay queue is declared on demand, while outbound work
+        queues are pre-declared by ``declare_outbound_topology`` and pass False.
+        """
+        await self.ensure_connected()
         if not self.channel:
             raise RuntimeError("Failed to establish RabbitMQ connection")
 
+        message = Message(body, delivery_mode=aio_pika.DeliveryMode.PERSISTENT)
         try:
-            await self.declare_queue(queue_name)
-            message = Message(body, delivery_mode=aio_pika.DeliveryMode.PERSISTENT)
+            if declare:
+                await self.declare_queue(queue_name)
             await self.channel.default_exchange.publish(message, routing_key=queue_name)
         except Exception as e:
             log.error(f"Failed to publish to RabbitMQ: {e}. Attempting recovery...")
-            # One more attempt after reconnecting
             await self.ensure_connected()
             if not self.channel:
                 raise RuntimeError("Failed to re-establish RabbitMQ connection")
-            await self.declare_queue(queue_name)
-            message = Message(body, delivery_mode=aio_pika.DeliveryMode.PERSISTENT)
+            if declare:
+                await self.declare_queue(queue_name)
             await self.channel.default_exchange.publish(message, routing_key=queue_name)
             log.info("Successfully published after reconnection")
+
+    async def publish(self, queue_name: str, body: bytes) -> None:
+        """Publish to ``queue_name`` (declared on demand) with one retry."""
+        await self._publish_with_retry(queue_name, body, declare=True)
+
+    async def declare_outbound_topology(self) -> None:
+        """Idempotently declare the outbound DLX, work queues, and DLQs.
+
+        Declaration arguments MUST match the bot consumer's (see
+        ``libs/shared/ts/src/bots/consumer/topology.ts``) or RabbitMQ rejects
+        the redeclare with PRECONDITION_FAILED. Safe to call on every startup;
+        the durable queues persist so messages survive while a bot is offline.
+        """
+        await self.ensure_connected()
+        if not self.channel:
+            raise RuntimeError("Failed to establish RabbitMQ connection")
+
+        dlx = await self.channel.declare_exchange(
+            OUTBOUND_DLX, aio_pika.ExchangeType.DIRECT, durable=True
+        )
+        for queue_name in OUTBOUND_QUEUES.values():
+            dlq = await self.channel.declare_queue(dlq_name(queue_name), durable=True)
+            await dlq.bind(dlx, routing_key=dlq_name(queue_name))
+            await self.channel.declare_queue(
+                queue_name, durable=True, arguments=work_queue_arguments(queue_name)
+            )
+
+    async def publish_outbound(self, queue_name: str, body: bytes) -> None:
+        """Publish to a pre-declared outbound work queue with one retry.
+
+        Unlike ``publish``, the queue is NOT declared here — the topology is
+        declared once at startup by ``declare_outbound_topology``.
+        """
+        await self._publish_with_retry(queue_name, body, declare=False)
 
     async def close(self):
         """Close RabbitMQ connection and channel."""
@@ -129,3 +173,17 @@ async def get_rabbitmq_publisher() -> RabbitMQPublisher:
     if publisher_instance is None:
         raise RuntimeError("RabbitMQ publisher not available")
     return publisher_instance
+
+
+async def declare_outbound_topology_on_startup() -> None:
+    """Declare the outbound bot-message queue topology at startup.
+
+    No-op when RabbitMQ is unconfigured (e.g. local dev without a broker).
+    """
+    try:
+        publisher = await get_rabbitmq_publisher()
+    except RuntimeError:
+        log.warning("Outbound topology not declared: RabbitMQ unavailable")
+        return
+    await publisher.declare_outbound_topology()
+    log.info("Outbound message topology declared")

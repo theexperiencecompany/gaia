@@ -761,4 +761,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       },
     };
   }
+
+  protected async deliverOutbound(
+    destinationId: string,
+    text: string,
+  ): Promise<void> {
+    await this.sendWhatsAppText(destinationId, text);
+  }
 }
