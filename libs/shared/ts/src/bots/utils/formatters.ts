@@ -16,6 +16,7 @@ import type {
   BotWorkflow,
   PlatformName,
 } from "../types";
+import { isTableRow, isTableSeparator } from "./text";
 
 /**
  * Formats a workflow for display in a bot message.
@@ -194,27 +195,14 @@ function renderTelegramTable(block: string): string {
  * super-linear runtime (Telegram HTML has no `<table>` tag).
  */
 function stashTables(text: string, hold: (html: string) => string): string {
-  const isRow = (line: string): boolean => {
-    const t = line.trim();
-    return t.length >= 2 && t.startsWith("|") && t.endsWith("|");
-  };
-  const isSeparator = (line: string): boolean => {
-    const t = line.trim();
-    return (
-      isRow(t) &&
-      t.includes("-") &&
-      [...t].every((c) => c === "|" || c === "-" || c === ":" || c === " ")
-    );
-  };
-
   const lines = text.split("\n");
   const out: string[] = [];
   for (let i = 0; i < lines.length; i += 1) {
     const header = lines[i] ?? "";
-    if (isRow(header) && isSeparator(lines[i + 1] ?? "")) {
+    if (isTableRow(header) && isTableSeparator(lines[i + 1] ?? "")) {
       const block = [header, lines[i + 1] ?? ""];
       let j = i + 2;
-      while (j < lines.length && isRow(lines[j] ?? "")) {
+      while (j < lines.length && isTableRow(lines[j] ?? "")) {
         block.push(lines[j] ?? "");
         j += 1;
       }

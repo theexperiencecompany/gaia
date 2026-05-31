@@ -247,7 +247,15 @@ export class SlackAdapter extends BaseBotAdapter {
       }
       this.dmChannelCache.set(destinationId, channel);
     }
-    await this.app.client.chat.postMessage({ channel, text });
+    try {
+      await this.app.client.chat.postMessage({ channel, text });
+    } catch (err) {
+      // A cached DM channel id can go stale (conversation archived, user
+      // deactivated). Drop it so the next delivery re-resolves instead of
+      // failing forever against a dead channel.
+      this.dmChannelCache.delete(destinationId);
+      throw err;
+    }
   }
 
   // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import aio_pika
 from aio_pika import Message
 from aio_pika.abc import AbstractChannel, AbstractRobustConnection
+from aio_pika.exceptions import ChannelPreconditionFailed
 
 from app.config.settings import settings
 from app.constants.outbound import (
@@ -75,23 +76,21 @@ class RabbitMQPublisher:
         the WebSocket relay queue is declared on demand, while outbound work
         queues are pre-declared by ``declare_outbound_topology`` and pass False.
         """
-        await self.ensure_connected()
-        if not self.channel:
-            raise RuntimeError("Failed to establish RabbitMQ connection")
-
         message = Message(body, delivery_mode=aio_pika.DeliveryMode.PERSISTENT)
-        try:
-            if declare:
-                await self.declare_queue(queue_name)
-            await self.channel.default_exchange.publish(message, routing_key=queue_name)
-        except Exception as e:
-            log.error(f"Failed to publish to RabbitMQ: {e}. Attempting recovery...")
+
+        async def _attempt() -> None:
             await self.ensure_connected()
             if not self.channel:
-                raise RuntimeError("Failed to re-establish RabbitMQ connection")
+                raise RuntimeError("Failed to establish RabbitMQ connection")
             if declare:
                 await self.declare_queue(queue_name)
             await self.channel.default_exchange.publish(message, routing_key=queue_name)
+
+        try:
+            await _attempt()
+        except Exception as e:
+            log.error(f"Failed to publish to RabbitMQ: {e}. Attempting recovery...")
+            await _attempt()
             log.info("Successfully published after reconnection")
 
     async def publish(self, queue_name: str, body: bytes) -> None:
@@ -190,9 +189,20 @@ async def declare_outbound_topology_on_startup() -> None:
     try:
         publisher = await get_rabbitmq_publisher()
         await publisher.declare_outbound_topology()
+    except ChannelPreconditionFailed as e:
+        # A queue already exists with divergent arguments. Unlike a missing
+        # broker, the lazy first-publish re-declare CANNOT self-heal this —
+        # every outbound publish keeps failing until an operator deletes or
+        # migrates the queue, so surface it loudly instead of as a warning.
+        log.error(
+            "Outbound topology rejected: a queue exists with divergent arguments. "
+            "Delete or migrate it — outbound delivery will fail until resolved.",
+            error=str(e),
+        )
+        return
     except Exception as e:
-        # Best-effort: a missing broker or a pre-existing queue with divergent
-        # arguments must not crash-loop startup — the first publish self-heals.
+        # Best-effort: a missing/unreachable broker must not crash-loop startup —
+        # the first publish reconnects and re-declares the topology.
         log.warning("Outbound topology not declared at startup", error=str(e))
         return
     log.info("Outbound message topology declared")

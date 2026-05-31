@@ -170,10 +170,12 @@ export class OutboundConsumer {
       // Chunk the raw markdown by the platform limit, then render each chunk so
       // every sent message is valid platform markdown.
       for (const chunk of chunkResponse(env.text, this.platform)) {
-        await this.deliver(
-          env.destination_id,
-          renderForPlatform(chunk, this.platform),
-        );
+        const rendered = renderForPlatform(chunk, this.platform);
+        // A chunk made up solely of strippable markup (e.g. a lone horizontal
+        // rule) renders to nothing; platform send APIs reject empty text, so
+        // skip it instead of throwing and dead-lettering the whole envelope.
+        if (!rendered.trim()) continue;
+        await this.deliver(env.destination_id, rendered);
         delivered += 1;
       }
       this.settle(channel, () => channel.ack(msg));

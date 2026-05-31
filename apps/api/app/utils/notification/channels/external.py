@@ -63,13 +63,16 @@ class ExternalPlatformAdapter(ChannelAdapter):
         body = content.body or ""
         header = _join_nonempty(f"**{title}**" if title else "", body)
 
+        # Stripping and empty-part filtering happen once, in
+        # ``publish_outbound_message``; here we only build the parts (guarding
+        # the untyped ``rich.messages`` entries against non-strings).
         if rich.get("type") == "workflow_execution":
             conversation_id = rich.get("conversation_id", "")
             footer = (
                 f"[View full results]({app_url}/c/{conversation_id})" if conversation_id else ""
             )
             parts = [header, *rich.get("messages", []), footer]
-            return {"parts": [p for p in parts if isinstance(p, str) and p.strip()]}
+            return {"parts": [p for p in parts if isinstance(p, str)]}
 
         text = header
         if content.actions:
@@ -81,7 +84,7 @@ class ExternalPlatformAdapter(ChannelAdapter):
             if links:
                 text = _join_nonempty(text, " · ".join(links), sep="\n\n")
 
-        return {"parts": [text] if text.strip() else []}
+        return {"parts": [text]}
 
     async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
         parts = content.get("parts", [])
