@@ -745,6 +745,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
       to: `+${waId}`,
       body: text,
+      previewUrl: false,
     });
 
     const messageId = response.messages[0]?.id ?? "";
@@ -757,6 +758,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
           to: `+${waId}`,
           body: updatedText,
+          previewUrl: false,
         });
       },
     };

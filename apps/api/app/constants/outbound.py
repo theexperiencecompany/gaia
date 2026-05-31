@@ -13,18 +13,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.models.chat_models import ConversationSource
+from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 
 # Dead-letter exchange every outbound work queue routes failed messages to.
 OUTBOUND_DLX = "outbound.dlx"
 
-# Per-platform durable work queues, keyed by conversation source so routing
-# never compares raw strings.
+# Per-platform durable work queues, derived from BOT_CONVERSATION_SOURCES (the
+# single source of truth for which sources are bots) so the queue set can never
+# drift from it. The ``outbound.<source>`` names MUST stay byte-identical to
+# ``libs/shared/ts/src/bots/consumer/topology.ts``.
+OUTBOUND_QUEUE_PREFIX = "outbound."
 OUTBOUND_QUEUES: dict[ConversationSource, str] = {
-    ConversationSource.WHATSAPP: "outbound.whatsapp",
-    ConversationSource.SLACK: "outbound.slack",
-    ConversationSource.TELEGRAM: "outbound.telegram",
-    ConversationSource.DISCORD: "outbound.discord",
+    src: f"{OUTBOUND_QUEUE_PREFIX}{src.value}" for src in BOT_CONVERSATION_SOURCES
 }
 
 

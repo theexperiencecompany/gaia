@@ -4,17 +4,12 @@ Publishes the message to the Slack outbound queue; the Slack bot process
 consumes it, converts to Slack mrkdwn, and posts to the user's DM.
 """
 
-from app.constants.notifications import CHANNEL_TYPE_SLACK
 from app.models.chat_models import ConversationSource
 from app.utils.notification.channels.external import ExternalPlatformAdapter
 
 
 class SlackChannelAdapter(ExternalPlatformAdapter):
     """Publishes notifications to the user's linked Slack account's queue."""
-
-    @property
-    def channel_type(self) -> str:
-        return CHANNEL_TYPE_SLACK
 
     @property
     def platform(self) -> ConversationSource:

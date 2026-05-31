@@ -38,6 +38,12 @@ class ExternalPlatformAdapter(ChannelAdapter):
         """Conversation source whose outbound queue this adapter publishes to."""
         ...
 
+    @property
+    def channel_type(self) -> str:
+        # CHANNEL_TYPE_X and ConversationSource.X.value are the same string, so
+        # derive the channel type from the platform instead of restating it.
+        return self.platform.value
+
     def can_handle(self, notification: NotificationRequest) -> bool:
         # External adapters are auto-injected by the orchestrator regardless of
         # the explicit channel list. The orchestrator's preference check and the

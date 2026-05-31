@@ -68,11 +68,8 @@ class TestDeliverMessageToPlatform:
 
 @pytest.mark.unit
 class TestBotPlatformConsistency:
-    """Guard against wiring drift: the dispatcher's platform set, the domain
-    bot-source set, is_bot_platform, and SourceCategory must all agree."""
-
-    def test_bot_platforms_match_domain_bot_sources(self) -> None:
-        assert pms._BOT_PLATFORMS == BOT_CONVERSATION_SOURCES
+    """Every bot source must be routable by is_bot_platform and categorised as
+    a BOT by SourceCategory."""
 
     @pytest.mark.parametrize("source", sorted(BOT_CONVERSATION_SOURCES, key=lambda s: s.value))
     def test_every_bot_source_is_routable_and_categorised(self, source) -> None:

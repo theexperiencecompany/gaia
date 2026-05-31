@@ -162,6 +162,41 @@ export function htmlToPlainText(html: string): string {
 }
 
 /**
+ * GFM table block: a header row, a `|---|` separator, then 0+ body rows.
+ * Telegram HTML has no `<table>` tag, so {@link renderTelegramTable} renders
+ * these as a column-aligned monospace `<pre>` block (what the old
+ * telegramify-markdown path produced).
+ */
+const TELEGRAM_TABLE_RE =
+  /^[ \t]*\|.*\|[ \t]*\r?\n[ \t]*\|[ \t:|-]+\|[ \t]*\r?\n(?:[ \t]*\|.*\|[ \t]*\r?\n?)*/gm;
+
+/** Renders a GFM table as a column-aligned monospace `<pre>` block. */
+function renderTelegramTable(block: string): string {
+  const cells = (line: string): string[] =>
+    line
+      .trim()
+      .replace(/^\|/, "")
+      .replace(/\|$/, "")
+      .split("|")
+      .map((c) => c.trim());
+  const lines = block.trim().split(/\r?\n/);
+  const header = cells(lines[0] ?? "");
+  const body = lines.slice(2).map(cells); // lines[1] is the |---| separator
+  const colCount = Math.max(header.length, ...body.map((r) => r.length));
+  const widths = Array.from({ length: colCount }, (_, i) =>
+    Math.max(header[i]?.length ?? 0, ...body.map((r) => r[i]?.length ?? 0), 0),
+  );
+  const fmt = (row: string[]): string =>
+    widths
+      .map((w, i) => (row[i] ?? "").padEnd(w))
+      .join("  ")
+      .trimEnd();
+  const rule = widths.map((w) => "─".repeat(w)).join("  ");
+  const rendered = [fmt(header), rule, ...body.map(fmt)].join("\n");
+  return `<pre>${escapeHtml(rendered)}</pre>`;
+}
+
+/**
  * Converts the CommonMark the agent emits for Telegram into Telegram's **HTML**
  * parse mode (https://core.telegram.org/bots/api#html-style).
  *
@@ -204,7 +239,9 @@ export function convertToTelegramHtml(text: string): string {
       hold(
         `<a href="${escapeHtmlAttr(url as string)}">${escapeHtml(label as string)}</a>`,
       ),
-    );
+    )
+    // GFM tables → monospace <pre> (Telegram HTML has no table tags).
+    .replaceAll(TELEGRAM_TABLE_RE, (block) => hold(renderTelegramTable(block)));
 
   out = escapeHtml(out)
     // Block structure (line-anchored). `>` is `&gt;` now, after escaping.
@@ -220,7 +257,16 @@ export function convertToTelegramHtml(text: string): string {
     .replaceAll(/(?<!\w)_([^_\n]+?)_(?!\w)/g, "<i>$1</i>") // _x_ (skips snake_case)
     .replaceAll(/~~([^~\n]+?)~~/g, "<s>$1</s>"); // ~~x~~
 
-  return out.replaceAll(/\uE000(\d+)\uE000/g, (_m, i) => stash[Number(i)]);
+  // Resolve placeholders, looping so a stashed table that contains a stashed
+  // link (a nested placeholder) is fully spliced back in.
+  let result = out;
+  while (result.includes("\uE000")) {
+    result = result.replaceAll(
+      /\uE000(\d+)\uE000/g,
+      (_m, i) => stash[Number(i)] ?? "",
+    );
+  }
+  return result;
 }
 
 /**

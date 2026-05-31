@@ -10,17 +10,13 @@ RabbitMQ queue, which the bot process consumes and sends to the user's stored
 bots — there is no Python copy.
 """
 
-from app.constants.outbound import OUTBOUND_QUEUES
-from app.models.chat_models import ConversationSource
+from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.services.outbound_delivery import publish_outbound_message
-
-# Conversation sources that map to a messaging-platform bot we can deliver to.
-_BOT_PLATFORMS: set[ConversationSource] = set(OUTBOUND_QUEUES.keys())
 
 
 def is_bot_platform(source: ConversationSource | str | None) -> bool:
     """Whether ``source`` is a messaging-platform bot we can deliver to."""
-    return ConversationSource.coerce(source) in _BOT_PLATFORMS
+    return ConversationSource.coerce(source) in BOT_CONVERSATION_SOURCES
 
 
 async def deliver_message_to_platform(
@@ -34,7 +30,7 @@ async def deliver_message_to_platform(
     side channel, never raising into the caller's flow.
     """
     platform = ConversationSource.coerce(source)
-    if platform is None or platform not in _BOT_PLATFORMS:
+    if platform is None or platform not in BOT_CONVERSATION_SOURCES:
         return False
     if not text.strip():
         return False
