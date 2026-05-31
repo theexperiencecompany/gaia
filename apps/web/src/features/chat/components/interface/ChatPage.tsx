@@ -171,7 +171,7 @@ const ChatPage = React.memo(function MainChat() {
         voice_mode_enabled: true,
         conversation_id: convoIdParam,
       });
-      enterVoiceMode();
+      enterVoiceMode(convoIdParam || undefined);
     },
   };
 
@@ -194,7 +194,8 @@ const ChatPage = React.memo(function MainChat() {
   // Voice mode forces the messages layout so the gradient + bar always have
   // a stable container; the user can speak from a fresh /c without flipping
   // layouts mid-call.
-  const useMessagesLayout = voiceModeActive || hasMessages || isWelcomeConversation;
+  const useMessagesLayout =
+    voiceModeActive || hasMessages || isWelcomeConversation;
 
   if (voiceModeActive) {
     return (

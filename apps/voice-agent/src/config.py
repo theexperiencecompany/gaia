@@ -2,7 +2,6 @@
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
 from pydantic_settings import SettingsConfigDict
@@ -22,12 +21,12 @@ class VoiceAgentSettings(BaseAppSettings):
 
     GAIA_BACKEND_URL: str = "http://localhost:8000"
 
-    ELEVENLABS_API_KEY: Optional[str] = None
-    ELEVENLABS_VOICE_ID: Optional[str] = None
+    ELEVENLABS_API_KEY: str | None = None
+    ELEVENLABS_VOICE_ID: str | None = None
     ELEVENLABS_TTS_MODEL: str = "eleven_turbo_v2_5"
 
     # Consumed by livekit-plugins-deepgram via env var — not passed explicitly in code
-    DEEPGRAM_API_KEY: Optional[str] = None
+    DEEPGRAM_API_KEY: str | None = None
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
@@ -46,7 +45,7 @@ def bootstrap_settings() -> VoiceAgentSettings:
     Build settings from the inherited process environment. No network I/O.
 
     Infisical is contacted exactly once in the worker host process from start_worker()
-    (and download_files()) before LiveKit's forkserver is initialised. Forkserver
+    before LiveKit's forkserver is initialised. Forkserver
     children inherit the parent's os.environ, so each JobProcess's prewarm() reads
     its config from the inherited env without re-fetching from Infisical.
     """

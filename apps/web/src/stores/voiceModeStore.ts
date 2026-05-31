@@ -6,7 +6,7 @@ interface VoiceModeState {
   voiceModeActive: boolean;
   voiceSessionId: string | null;
   discoveredConversationId: string | null;
-  enterVoiceMode: () => void;
+  enterVoiceMode: (existingConversationId?: string) => void;
   exitVoiceMode: () => void;
   setDiscoveredConversationId: (id: string | null) => void;
 }
@@ -18,18 +18,24 @@ export const useVoiceModeStore = create<VoiceModeState>()(
       voiceSessionId: null,
       discoveredConversationId: null,
 
-      enterVoiceMode: () =>
+      enterVoiceMode: (existingConversationId?: string) => {
+        const newUUID =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
         set(
           {
             voiceModeActive: true,
-            voiceSessionId:
-              typeof crypto !== "undefined" && "randomUUID" in crypto
-                ? crypto.randomUUID()
-                : `voice-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            voiceSessionId: newUUID,
+            // Seed with an existing conversation ID so the first turn is captured
+            // under the correct ID. For new conversations, generate a provisional
+            // UUID so the token API can pass it to the agent before any speech.
+            discoveredConversationId: existingConversationId ?? newUUID,
           },
           false,
           "enterVoiceMode",
-        ),
+        );
+      },
 
       exitVoiceMode: () =>
         set(

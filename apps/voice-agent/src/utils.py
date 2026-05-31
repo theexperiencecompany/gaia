@@ -1,13 +1,12 @@
 """Pure utility functions for the voice agent — sanitization, metadata extraction, timing."""
 
+from datetime import datetime
 import json
 import time
-from datetime import datetime
-from typing import Optional
 
 from livekit.agents.llm import ChatContext
-from shared.py.logging import get_contextual_logger
 
+from shared.py.logging import get_contextual_logger
 from src.constants import (
     DIRECTIVE_PREFIX_RE,
     MARKDOWN_RE,
@@ -78,7 +77,7 @@ def has_open_openui_fence_at_tail(s: str) -> bool:
     return OPEN_OPENUI_FENCE_TAIL_RE.search(s) is not None
 
 
-def extract_meta_data(md: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+def extract_meta_data(md: str | None) -> tuple[str | None, str | None]:
     """Extract agentToken and conversationId from participant metadata JSON."""
     if not md:
         return None, None
@@ -93,24 +92,43 @@ def extract_meta_data(md: Optional[str]) -> tuple[Optional[str], Optional[str]]:
         return None, None
 
 
+def _extract_text_from_content(content: list) -> str:  # type: ignore[type-arg]
+    """Extract plain text from a LiveKit ChatContext content list."""
+    parts = []
+    for c in content:
+        if hasattr(c, "model_dump"):
+            d = c.model_dump()
+            if isinstance(d, dict):
+                parts.append(d.get("text", ""))
+        else:
+            parts.append(str(c))
+    return " ".join(p for p in parts if p)
+
+
 def extract_latest_user_text(chat_ctx: ChatContext) -> str:
     """Best-effort extraction of the latest user text string from ChatContext."""
     for item in reversed(chat_ctx.items):
         role = getattr(item, "role", item.__class__.__name__.lower())
         if role == "user":
             content = getattr(item, "content", [getattr(item, "output", "")])
-            parts = []
-            for c in content:
-                if hasattr(c, "model_dump"):
-                    d = c.model_dump()
-                    if isinstance(d, dict):
-                        parts.append(d.get("text", ""))
-                else:
-                    parts.append(str(c))
-            out = " ".join(p for p in parts if p)
+            out = _extract_text_from_content(content)
             if out:
                 return out
     return ""
+
+
+def build_messages_from_ctx(chat_ctx: ChatContext) -> list[dict[str, str]]:
+    """Build a [{role, content}] list from LiveKit's ChatContext for backend API."""
+    messages = []
+    for item in chat_ctx.items:
+        role = getattr(item, "role", item.__class__.__name__.lower())
+        if role not in ("user", "assistant"):
+            continue
+        content = getattr(item, "content", [getattr(item, "output", "")])
+        text = _extract_text_from_content(content)
+        if text:
+            messages.append({"role": role, "content": text})
+    return messages
 
 
 def now_ts() -> str:
@@ -131,6 +149,7 @@ __all__ = [
     "has_open_openui_fence_at_tail",
     "extract_meta_data",
     "extract_latest_user_text",
+    "build_messages_from_ctx",
     "now_ts",
     "ms_since",
 ]

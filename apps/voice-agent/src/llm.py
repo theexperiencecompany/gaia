@@ -1,16 +1,16 @@
 """CustomLLM — streams SSE from the GAIA backend and yields ChatChunks for ElevenLabs TTS."""
 
-import json
-import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any, Optional
+import json
+import time
+from typing import Any
 
 import aiohttp
 from livekit import rtc  # type: ignore[attr-defined]
 from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
-from shared.py.logging import get_contextual_logger
 
+from shared.py.logging import get_contextual_logger
 from src.constants import (
     DONE_SENTINEL,
     FRONTEND_STREAM_TOPIC,
@@ -25,6 +25,7 @@ from src.constants import (
     TTS_MIN_SENTENCE_CHARS,
 )
 from src.utils import (
+    build_messages_from_ctx,
     extract_latest_user_text,
     has_open_openui_fence_at_tail,
     has_open_tag_at_tail,
@@ -51,7 +52,7 @@ PLUMBING_EVENT_KEYS = frozenset(
 logger = get_contextual_logger("voice")
 
 
-class CustomLLM(LLM):  # type: ignore[type-arg]
+class CustomLLM(LLM):
     """LLM adapter that streams SSE from POST /api/v1/chat-stream on the GAIA backend."""
 
     def __init__(
@@ -62,13 +63,13 @@ class CustomLLM(LLM):  # type: ignore[type-arg]
     ) -> None:
         super().__init__()
         self.base_url = base_url
-        self.agent_token: Optional[str] = None
-        self.conversation_id: Optional[str] = None
-        self.conversation_description: Optional[str] = None
+        self.agent_token: str | None = None
+        self.conversation_id: str | None = None
+        self.conversation_description: str | None = None
         self.request_timeout_s = request_timeout_s
         self.room: rtc.Room | None = room
         # Reused across turns to avoid TCP reconnect overhead per turn
-        self._http_session: Optional[aiohttp.ClientSession] = None
+        self._http_session: aiohttp.ClientSession | None = None
 
     def _get_http_session(self) -> aiohttp.ClientSession:
         """Return the shared HTTP session, creating it on first call."""
@@ -120,6 +121,7 @@ class CustomLLM(LLM):  # type: ignore[type-arg]
                 f"[{now_ts()}] → FRONTEND | topic={FRONTEND_STREAM_TOPIC} len={len(raw_event)}",
                 phase="forward_frontend",
                 payload_len=len(raw_event),
+                payload_preview=raw_event[:300],
             )
         except Exception as e:
             logger.warning(
@@ -130,12 +132,11 @@ class CustomLLM(LLM):  # type: ignore[type-arg]
 
     # The base class declares chat() -> LLMStream, but the LiveKit pipeline calls it as
     # `async with llm.chat(...) as stream: async for chunk in stream:`, which is exactly
-    # what @asynccontextmanager + yield gen() provides. The type: ignore suppresses the
-    # return-type mismatch; runtime behaviour is fully compatible with livekit-agents 1.x.
-    @asynccontextmanager  # type: ignore[override]
+    # what @asynccontextmanager + yield gen() provides
+    @asynccontextmanager
     async def chat(
         self, *, chat_ctx: ChatContext, **kwargs: Any
-    ) -> AsyncGenerator[AsyncGenerator[ChatChunk, None], None]:  # type: ignore[override]
+    ) -> AsyncGenerator[AsyncGenerator[ChatChunk, None], None]:
         """Stream SSE from the backend and yield ChatChunks for TTS."""
 
         async def gen() -> AsyncGenerator[ChatChunk, None]:
@@ -166,9 +167,14 @@ class CustomLLM(LLM):  # type: ignore[type-arg]
             if self.agent_token:
                 headers["Authorization"] = f"Bearer {self.agent_token}"
 
+            # Build full message history from the LiveKit context so the backend
+            # LLM has the complete conversation rather than just the latest turn.
+            history = build_messages_from_ctx(chat_ctx)
+            messages = history if history else [{"role": "user", "content": user_message}]
+
             payload: dict[str, Any] = {
                 "message": user_message,
-                "messages": [{"role": "user", "content": user_message}],
+                "messages": messages,
             }
             if self.conversation_id:
                 payload["conversation_id"] = self.conversation_id
@@ -178,6 +184,8 @@ class CustomLLM(LLM):  # type: ignore[type-arg]
                 phase="backend_request",
                 elapsed_ms=ms_since(turn_start),
                 conversation_id=self.conversation_id,
+                user_message=user_message,
+                history_turns=len(messages),
             )
 
             session = self._get_http_session()
@@ -259,9 +267,10 @@ class CustomLLM(LLM):  # type: ignore[type-arg]
                             await self._forward_stream_event_to_frontend(data)
 
                         logger.debug(
-                            f"[{now_ts()}] ~ BACKEND EVENT",
+                            f"[{now_ts()}] ~ BACKEND EVENT | keys={list(event_keys)} plumbing={is_plumbing} response_only={is_response_only}",
                             phase="backend_event",
                             event_keys=list(event_keys),
+                            event_data=data[:300],
                             is_plumbing=is_plumbing,
                             is_response_only=is_response_only,
                             elapsed_ms=ms_since(turn_start),
@@ -315,6 +324,14 @@ class CustomLLM(LLM):  # type: ignore[type-arg]
                         if not ui_only and not tts_text:
                             continue
 
+                        logger.debug(
+                            f"[{now_ts()}] ✂ SPLIT | raw='{piece[:80]}' ui_only='{ui_only[:60]}' tts='{tts_text[:60]}'",
+                            phase="split_response",
+                            raw_piece=piece,
+                            ui_only=ui_only,
+                            tts_text=tts_text,
+                        )
+
                         if ui_only:
                             ui_event = json.dumps({RESPONSE_UI_KEY: ui_only})
                             await self._forward_stream_event_to_frontend(ui_event)
@@ -326,7 +343,7 @@ class CustomLLM(LLM):  # type: ignore[type-arg]
 
                         total_tokens += 1
                         logger.debug(
-                            f"[{now_ts()}] ≈ TOKEN #{total_tokens}",
+                            f"[{now_ts()}] ≈ TOKEN #{total_tokens} | raw='{piece[:60]}'",
                             phase="token",
                             token_index=total_tokens,
                             token=piece,
@@ -364,27 +381,26 @@ class CustomLLM(LLM):  # type: ignore[type-arg]
                                 logger.debug(
                                     f"[{now_ts()}] 🔊 TTS FLUSH ({len(out)} chars) elapsed={ms_since(turn_start):.0f}ms",
                                     phase="tts_flush",
-                                    text=out,
+                                    text_before_sanitize=joined,
+                                    text_after_sanitize=out,
                                     char_count=len(out),
                                     elapsed_ms=ms_since(turn_start),
                                 )
-                                yield ChatChunk(
-                                    id="custom", delta=ChoiceDelta(content=out)
-                                )
+                                yield ChatChunk(id="custom", delta=ChoiceDelta(content=out))
 
                     if tts_enabled and text_buffer:
-                        tail = sanitize_for_tts("".join(text_buffer))
+                        raw_tail = "".join(text_buffer)
+                        tail = sanitize_for_tts(raw_tail)
                         if len(tail) >= TTS_FINAL_MIN_CHARS:
                             logger.debug(
                                 f"[{now_ts()}] 🔊 TTS FINAL ({len(tail)} chars) elapsed={ms_since(turn_start):.0f}ms",
                                 phase="tts_final",
-                                text=tail,
+                                text_before_sanitize=raw_tail,
+                                text_after_sanitize=tail,
                                 char_count=len(tail),
                                 elapsed_ms=ms_since(turn_start),
                             )
-                            yield ChatChunk(
-                                id="custom", delta=ChoiceDelta(content=tail)
-                            )
+                            yield ChatChunk(id="custom", delta=ChoiceDelta(content=tail))
 
                     logger.info(
                         f"[{now_ts()}] ✓ TURN COMPLETE | tokens={total_tokens} total={ms_since(turn_start):.0f}ms",

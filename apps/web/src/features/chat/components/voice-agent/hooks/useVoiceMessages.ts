@@ -256,7 +256,9 @@ export function useVoiceMessages(conversationId: string | null): void {
     if (group.transcriptionTexts.size === 0) return;
 
     addOrUpdateMessage(userGroupToIMessage(group, cid));
-  }, [transcriptions, room, addOrUpdateMessage]);
+    // conversationId in deps: re-run when the ID arrives so transcriptions
+    // buffered during the null window are flushed immediately.
+  }, [transcriptions, room, addOrUpdateMessage, conversationId]);
 
   // Bot transcription effect — runs on every update of LiveKit's transcription
   // list. Routes TTS-aligned transcriptions (from the agent participant) to
@@ -297,5 +299,7 @@ export function useVoiceMessages(conversationId: string | null): void {
     }
 
     if (!anyChanged) return;
-  }, [transcriptions, room, addOrUpdateMessage, openBotTurn]);
+    // conversationId in deps: re-run when the ID arrives so TTS transcriptions
+    // that arrived while cid was null get routed to the correct turn.
+  }, [transcriptions, room, addOrUpdateMessage, openBotTurn, conversationId]);
 }

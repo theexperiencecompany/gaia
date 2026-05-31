@@ -1,31 +1,31 @@
 """Voice agent entrypoint — prewarm, room session lifecycle, and worker startup."""
 
 import asyncio
-import time
 from pathlib import Path
-from typing import Any, Optional
+import time
+from typing import Any
 
-from livekit import rtc  # type: ignore[attr-defined]
+from livekit import rtc
 from livekit.agents import (
     Agent,
     AgentFalseInterruptionEvent,
     AgentSession,
+    AgentStateChangedEvent,
     JobContext,
     JobProcess,
     MetricsCollectedEvent,
     RoomInputOptions,
     UserInputTranscribedEvent,
     UserStateChangedEvent,
-    AgentStateChangedEvent,
     WorkerOptions,
     cli,
     metrics,
 )
-from livekit.plugins import deepgram, elevenlabs, noise_cancellation, silero  # type: ignore[attr-defined]
+from livekit.plugins import deepgram, elevenlabs, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
+
 from shared.py.logging import configure_file_logging, get_contextual_logger
 from shared.py.secrets import inject_infisical_secrets
-
 from src.config import bootstrap_settings
 from src.constants import VOICE_SYSTEM_PROMPT
 from src.llm import CustomLLM
@@ -97,8 +97,6 @@ async def entrypoint(ctx: JobContext) -> None:
         preemptive_generation=True,
         use_tts_aligned_transcript=True,
     )
-
-    # ── Debug timeline hooks ──────────────────────────────────────────────────
 
     _speaking_start: dict[str, float] = {}
 
@@ -180,10 +178,8 @@ async def entrypoint(ctx: JobContext) -> None:
 
     ctx.add_shutdown_callback(log_usage)
 
-    # ── Participant credential extraction ─────────────────────────────────────
-
     async def _apply_participant_credentials(
-        md: Optional[str], origin: str, who: str
+        md: str | None, origin: str, who: str
     ) -> None:
         token, conv_id = extract_meta_data(md)
         if token:
@@ -274,20 +270,10 @@ async def entrypoint(ctx: JobContext) -> None:
         ),
     )
 
-
-def download_files() -> None:
-    """Download required model files (VAD, turn detection)."""
-    inject_infisical_secrets()
-    logger.info("Downloading model files...")
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
-
-
 def start_worker() -> None:
     """Start the voice agent worker."""
-    # Inject secrets in the main process so LIVEKIT_URL is set before the worker
-    # connects. Each forked JobProcess still calls bootstrap_settings() in prewarm().
     inject_infisical_secrets()
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
 
 
-__all__ = ["prewarm", "entrypoint", "download_files", "start_worker"]
+__all__ = ["prewarm", "entrypoint", "start_worker"]

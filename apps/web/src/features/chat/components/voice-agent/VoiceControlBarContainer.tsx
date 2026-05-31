@@ -290,8 +290,13 @@ export function VoiceControlBarContainer({
   const { id: convoIdParam } = useParams<{ id: string }>();
   const room = useMemo(() => new Room(), []);
   const [sessionStarted, setSessionStarted] = useState(false);
+  // Use the store's discoveredConversationId (seeded by enterVoiceMode) so the
+  // token request always carries the right conversation ID from the very first
+  // fetch — even for new conversations where convoIdParam is undefined.
+  const storeConversationId = useDiscoveredConversationId();
+  const voiceConversationId = storeConversationId ?? convoIdParam ?? undefined;
   const { existingOrRefreshConnectionDetails } =
-    useConnectionDetails(convoIdParam);
+    useConnectionDetails(voiceConversationId);
 
   const connectionDetailsRef = useRef(existingOrRefreshConnectionDetails);
   useEffect(() => {
