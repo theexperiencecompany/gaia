@@ -26,7 +26,8 @@ Invalidation is handled by @CacheInvalidator decorators in registry.py.
 from app.agents.skills.models import Skill
 from app.agents.skills.registry import get_skills_for_agent
 from app.agents.workspace.paths import WORKSPACE_ROOT
-from app.agents.workspace.skill_loader import SKILL_BODY_FILENAME, load_builtin_skills
+from app.agents.workspace.skill_loader import load_builtin_skills
+from app.agents.workspace.system_files import builtin_skill_rel_path
 from app.constants.cache import (
     SKILLS_TEXT_CACHE_KEY,
     SKILLS_TEXT_CACHE_TTL,
@@ -52,11 +53,9 @@ def _builtin_entries(agent_name: str) -> list[tuple[str, str, str]]:
     for skill in load_builtin_skills():
         if skill.subagent_id != agent_name:
             continue
-        if skill.subagent_id == "executor":
-            rel = f"skills/{skill.slug}"
-        else:
-            rel = f"integrations/{skill.subagent_id}/agent/skills/{skill.slug}"
-        location = f"{WORKSPACE_ROOT}/{rel}/{SKILL_BODY_FILENAME}"
+        # Built from the same helper the materializer uses, so the location the
+        # agent is told to read() always matches the file actually on disk.
+        location = f"{WORKSPACE_ROOT}/{builtin_skill_rel_path(skill)}"
         entries.append((skill.name, skill.description, location))
     return entries
 

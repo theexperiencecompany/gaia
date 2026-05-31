@@ -290,9 +290,14 @@ export function convertToTelegramHtml(text: string): string {
     .replaceAll(/~~([^~\n]+?)~~/g, "<s>$1</s>"); // ~~x~~
 
   // Resolve placeholders, looping so a stashed table that contains a stashed
-  // link (a nested placeholder) is fully spliced back in.
+  // link (a nested placeholder) is fully spliced back in. Loop only while a
+  // real placeholder token remains AND each pass makes progress, so a stray
+  // U+E000 in the source text (not a valid \uE000<index>\uE000 token) can never
+  // spin the loop forever and wedge the bot's event loop.
   let result = out;
-  while (result.includes("\uE000")) {
+  let previous = "";
+  while (result !== previous && /\uE000\d+\uE000/.test(result)) {
+    previous = result;
     result = result.replaceAll(
       /\uE000(\d+)\uE000/g,
       (_m, i) => stash[Number(i)] ?? "",

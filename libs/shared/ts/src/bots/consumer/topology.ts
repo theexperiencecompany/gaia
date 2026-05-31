@@ -11,12 +11,23 @@ import type { PlatformName } from "../types";
 /** Dead-letter exchange every outbound work queue routes failed messages to. */
 export const OUTBOUND_DLX = "outbound.dlx";
 
-/** Per-platform durable work queues. */
+/**
+ * Queue-name prefix — mirrors ``OUTBOUND_QUEUE_PREFIX`` in
+ * ``apps/api/app/constants/outbound.py``. Both sides build ``outbound.<platform>``
+ * from it, so only the platform token can differ across the two files.
+ */
+const OUTBOUND_QUEUE_PREFIX = "outbound.";
+
+/**
+ * Per-platform durable work queues. The ``Record<PlatformName, …>`` type makes
+ * this exhaustive — adding a PlatformName fails to compile until it is listed
+ * here — and each name is derived from the shared prefix.
+ */
 export const OUTBOUND_QUEUES: Record<PlatformName, string> = {
-  whatsapp: "outbound.whatsapp",
-  slack: "outbound.slack",
-  telegram: "outbound.telegram",
-  discord: "outbound.discord",
+  whatsapp: `${OUTBOUND_QUEUE_PREFIX}whatsapp`,
+  slack: `${OUTBOUND_QUEUE_PREFIX}slack`,
+  telegram: `${OUTBOUND_QUEUE_PREFIX}telegram`,
+  discord: `${OUTBOUND_QUEUE_PREFIX}discord`,
 };
 
 /** Dead-letter queue name for a work queue. */

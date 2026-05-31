@@ -223,18 +223,29 @@ export class SlackAdapter extends BaseBotAdapter {
     await this.app.stop();
   }
 
+  /**
+   * Cache of resolved DM channel ids, keyed by Slack user id. conversations.open
+   * is idempotent but rate-limited, so resolve each user's DM once instead of on
+   * every outbound send (which could 429 under a burst and livelock requeues).
+   */
+  private readonly dmChannelCache = new Map<string, string>();
+
   protected async deliverOutbound(
     destinationId: string,
     text: string,
   ): Promise<void> {
-    // platform_links stores the Slack user id; open (or fetch) the DM channel
-    // before posting, since chat.postMessage needs a channel id.
-    const dm = await this.app.client.conversations.open({
-      users: destinationId,
-    });
-    const channel = dm.channel?.id;
+    // platform_links stores the Slack user id; resolve it to a DM channel id
+    // (cached) since chat.postMessage needs a channel id.
+    let channel = this.dmChannelCache.get(destinationId);
     if (!channel) {
-      throw new Error("Slack conversations.open returned no channel id");
+      const dm = await this.app.client.conversations.open({
+        users: destinationId,
+      });
+      channel = dm.channel?.id;
+      if (!channel) {
+        throw new Error("Slack conversations.open returned no channel id");
+      }
+      this.dmChannelCache.set(destinationId, channel);
     }
     await this.app.client.chat.postMessage({ channel, text });
   }

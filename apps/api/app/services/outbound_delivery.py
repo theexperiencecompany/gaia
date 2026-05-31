@@ -48,22 +48,36 @@ async def publish_outbound_message(
         log.warning("publish_outbound_message: RabbitMQ unavailable", platform=platform.value)
         return False
 
-    try:
-        for part in parts:
-            envelope = OutboundMessageEnvelope(
-                platform=platform.value,
-                destination_id=str(destination_id),
-                text=part,
-            )
+    published = 0
+    for part in parts:
+        envelope = OutboundMessageEnvelope(
+            platform=platform.value,
+            destination_id=str(destination_id),
+            text=part,
+        )
+        try:
             await publisher.publish_outbound(queue_name, envelope.model_dump_json().encode())
-    except Exception as e:
-        log.error("publish_outbound_message: publish failed", platform=platform.value, error=str(e))
-        return False
+            published += 1
+        except Exception as e:
+            # Parts already on the queue will be delivered. Reporting the whole
+            # send as failed would make the caller re-enqueue and duplicate the
+            # parts already sent, so stop here but still report success for what
+            # got through (the documented "True if at least one was published").
+            log.error(
+                "publish_outbound_message: publish failed",
+                platform=platform.value,
+                error=str(e),
+                published=published,
+                total=len(parts),
+            )
+            break
 
-    log.info(
-        "outbound_message_published",
-        platform=platform.value,
-        queue=queue_name,
-        parts=len(parts),
-    )
-    return True
+    if published:
+        log.info(
+            "outbound_message_published",
+            platform=platform.value,
+            queue=queue_name,
+            parts=published,
+            total=len(parts),
+        )
+    return published > 0

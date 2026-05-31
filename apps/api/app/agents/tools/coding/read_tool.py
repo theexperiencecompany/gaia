@@ -26,6 +26,7 @@ from app.agents.workspace.system_files import system_file_body
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, JuiceFSUnavailable, fs_timer, read_user_file
+from app.services.storage.juicefs import user_owns_regular_file
 from app.templates.docstrings.coding_tools_docs import READ_TOOL
 from shared.py.wide_events import log
 
@@ -65,7 +66,7 @@ async def read(
     # the sandbox OR JuiceFS. The per-user on-disk copy (a symlink, once the
     # _system mount lands) exists only so in-sandbox `bash` can see them.
     body = system_file_body(rel)
-    if body is not None:
+    if body is not None and not await user_owns_regular_file(user_id, rel):
         log.set(read_via="memory")
         return _format_memory_read(abs_path, body, offset, limit, session_id)
 

@@ -97,6 +97,12 @@ export class OutboundConsumer {
 
   private scheduleReconnect(): void {
     if (this.stopped) return;
+    // Already scheduled — don't stack a second timer. The conn.close() below
+    // emits another 'close' event that re-enters here, and connect()'s own
+    // catch block also calls us; without this guard each path would add its own
+    // setTimeout and we'd spawn duplicate concurrent connect() calls, leaking
+    // duplicate connections/consumers on a flapping broker.
+    if (this.reconnectTimer) return;
     // Close the (possibly still-open) connection before dropping the reference,
     // so a channel-level failure after connect() succeeded does not leak it.
     void this.channel?.close().catch(() => undefined);
@@ -106,7 +112,10 @@ export class OutboundConsumer {
     const delay = this.reconnectDelayMs;
     this.reconnectDelayMs = Math.min(delay * 2, RECONNECT_MAX_MS);
     this.logger.warn("outbound_consumer_reconnecting", { wait_ms: delay });
-    this.reconnectTimer = setTimeout(() => void this.connect(), delay);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.connect();
+    }, delay);
   }
 
   /**
@@ -156,6 +165,7 @@ export class OutboundConsumer {
     }
     const env = parsed.data;
 
+    let delivered = 0;
     try {
       // Chunk the raw markdown by the platform limit, then render each chunk so
       // every sent message is valid platform markdown.
@@ -164,18 +174,22 @@ export class OutboundConsumer {
           env.destination_id,
           renderForPlatform(chunk, this.platform),
         );
+        delivered += 1;
       }
       this.settle(channel, () => channel.ack(msg));
     } catch (err) {
       this.logger.error(
         "outbound_delivery_failed",
-        { id: env.id, redelivered: msg.fields.redelivered },
+        { id: env.id, delivered, redelivered: msg.fields.redelivered },
         err,
       );
-      // One retry via requeue, then dead-letter on the second failure.
-      this.settle(channel, () =>
-        channel.nack(msg, false, !msg.fields.redelivered),
-      );
+      // Requeue for one retry ONLY if nothing was sent yet. Requeue re-delivers
+      // the WHOLE envelope, so once any chunk is out, retrying would re-send the
+      // already-delivered chunks. After a partial send (or on the second
+      // attempt) dead-letter instead — the message lands in the DLQ for
+      // inspection rather than spamming the user with duplicates.
+      const requeue = delivered === 0 && !msg.fields.redelivered;
+      this.settle(channel, () => channel.nack(msg, false, requeue));
     }
   }
 }

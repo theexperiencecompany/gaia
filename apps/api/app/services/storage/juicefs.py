@@ -213,6 +213,31 @@ async def read_user_file(
     return await asyncio.to_thread(_read)
 
 
+async def user_owns_regular_file(user_id: str, workspace_rel_path: str) -> bool:
+    """True iff the user has a real (non-symlink) regular file at this path.
+
+    The ``read`` tool serves system-owned files (INDEX.md, the GUIDE.md docs,
+    builtin skill bodies) from process memory. This lets it skip that fast-path
+    when the user has created their OWN file at the same workspace path, so a
+    user file is never shadowed by the in-memory system copy. A symlink (the
+    de-duplicated system projection) does not count as an override. Never raises;
+    returns ``False`` when the mount is absent (native dev) so the memory
+    fast-path still applies there.
+    """
+    if not _is_mounted():
+        return False
+
+    def _check() -> bool:
+        try:
+            base, rel = _host_base_and_rel(user_id, workspace_rel_path)
+            target = base / rel
+            return target.is_file() and not target.is_symlink()
+        except Exception:
+            return False
+
+    return await asyncio.to_thread(_check)
+
+
 async def delete_user_workspace(user_id: str) -> None:
     """Delete the user's workspace and skills trees (account deletion / GDPR)."""
 
