@@ -161,15 +161,6 @@ export function htmlToPlainText(html: string): string {
     .replaceAll(/&amp;/g, "&");
 }
 
-/**
- * GFM table block: a header row, a `|---|` separator, then 0+ body rows.
- * Telegram HTML has no `<table>` tag, so {@link renderTelegramTable} renders
- * these as a column-aligned monospace `<pre>` block (what the old
- * telegramify-markdown path produced).
- */
-const TELEGRAM_TABLE_RE =
-  /^[ \t]*\|.*\|[ \t]*\r?\n[ \t]*\|[ \t:|-]+\|[ \t]*\r?\n(?:[ \t]*\|.*\|[ \t]*\r?\n?)*/gm;
-
 /** Renders a GFM table as a column-aligned monospace `<pre>` block. */
 function renderTelegramTable(block: string): string {
   const cells = (line: string): string[] =>
@@ -194,6 +185,46 @@ function renderTelegramTable(block: string): string {
   const rule = widths.map((w) => "─".repeat(w)).join("  ");
   const rendered = [fmt(header), rule, ...body.map(fmt)].join("\n");
   return `<pre>${escapeHtml(rendered)}</pre>`;
+}
+
+/**
+ * Stashes GFM table blocks (a header row, a `|---|` separator, then body rows)
+ * as monospace `<pre>` placeholders. Detection is line-by-line with plain string
+ * checks — no backtracking-prone regex — so adversarial input can never cause
+ * super-linear runtime (Telegram HTML has no `<table>` tag).
+ */
+function stashTables(text: string, hold: (html: string) => string): string {
+  const isRow = (line: string): boolean => {
+    const t = line.trim();
+    return t.length >= 2 && t.startsWith("|") && t.endsWith("|");
+  };
+  const isSeparator = (line: string): boolean => {
+    const t = line.trim();
+    return (
+      isRow(t) &&
+      t.includes("-") &&
+      [...t].every((c) => c === "|" || c === "-" || c === ":" || c === " ")
+    );
+  };
+
+  const lines = text.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const header = lines[i] ?? "";
+    if (isRow(header) && isSeparator(lines[i + 1] ?? "")) {
+      const block = [header, lines[i + 1] ?? ""];
+      let j = i + 2;
+      while (j < lines.length && isRow(lines[j] ?? "")) {
+        block.push(lines[j] ?? "");
+        j += 1;
+      }
+      out.push(hold(renderTelegramTable(block.join("\n"))));
+      i = j - 1;
+    } else {
+      out.push(header);
+    }
+  }
+  return out.join("\n");
 }
 
 /**
@@ -239,9 +270,10 @@ export function convertToTelegramHtml(text: string): string {
       hold(
         `<a href="${escapeHtmlAttr(url as string)}">${escapeHtml(label as string)}</a>`,
       ),
-    )
-    // GFM tables → monospace <pre> (Telegram HTML has no table tags).
-    .replaceAll(TELEGRAM_TABLE_RE, (block) => hold(renderTelegramTable(block)));
+    );
+
+  // GFM tables → monospace <pre> placeholders (Telegram HTML has no table tags).
+  out = stashTables(out, hold);
 
   out = escapeHtml(out)
     // Block structure (line-anchored). `>` is `&gt;` now, after escaping.
