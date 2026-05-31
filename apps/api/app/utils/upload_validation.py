@@ -18,7 +18,7 @@ _ALLOWED_TYPES: dict[str, tuple[str, tuple[bytes, ...]]] = {
     "image/png": ("image", (b"\x89PNG\r\n\x1a\n",)),
     "image/jpeg": ("image", (b"\xff\xd8\xff",)),
     "image/gif": ("image", (b"GIF87a", b"GIF89a")),
-    "image/webp": ("image", (b"RIFF",)),  # RIFF....WEBP — we only check prefix
+    "image/webp": ("image", (b"RIFF",)),
     "image/bmp": ("image", (b"BM",)),
     "image/svg+xml": ("image", (b"<?xml", b"<svg", b"<SVG")),
     "application/pdf": ("raw", (b"%PDF-",)),
@@ -167,6 +167,15 @@ def verify_magic_bytes(content: bytes, signatures: tuple[bytes, ...]) -> None:
         )
 
 
+def verify_webp_container(content: bytes) -> None:
+    """Confirm RIFF payloads are actually WebP containers."""
+    if len(content) < 12 or content[8:12] != b"WEBP":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File content does not match the claimed content type.",
+        )
+
+
 async def validate_upload(file: UploadFile, content_length: int | None) -> tuple[bytes, str, str]:
     """
     Full upload validation pipeline. Raises HTTPException on any failure.
@@ -178,4 +187,6 @@ async def validate_upload(file: UploadFile, content_length: int | None) -> tuple
     normalized, resource_type, signatures = validate_content_type(file.content_type)
     content = await read_bounded(file)
     verify_magic_bytes(content, signatures)
+    if normalized == "image/webp":
+        verify_webp_container(content)
     return content, normalized, resource_type
