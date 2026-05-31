@@ -19,6 +19,7 @@ class RabbitMQPublisher:
         self.connection: AbstractRobustConnection | None = None
         self.channel: AbstractChannel | None = None
         self.declared_queues: set[str] = set()
+        self._outbound_topology_declared: bool = False
 
     async def connect(self):
         """Connect to RabbitMQ and create channel."""
@@ -61,6 +62,7 @@ class RabbitMQPublisher:
             self.connection = None
             self.channel = None
             self.declared_queues.clear()
+            self._outbound_topology_declared = False
             # Reconnect
             await self.connect()
             log.info("RabbitMQ reconnected successfully")
@@ -117,13 +119,18 @@ class RabbitMQPublisher:
             await self.channel.declare_queue(
                 queue_name, durable=True, arguments=work_queue_arguments(queue_name)
             )
+        self._outbound_topology_declared = True
 
     async def publish_outbound(self, queue_name: str, body: bytes) -> None:
-        """Publish to a pre-declared outbound work queue with one retry.
+        """Publish to an outbound work queue with one retry.
 
-        Unlike ``publish``, the queue is NOT declared here — the topology is
-        declared once at startup by ``declare_outbound_topology``.
+        Declares the outbound topology once (lazily) before the first publish so
+        a message can never outrun the startup declaration and be silently
+        dropped on the default exchange. The flag resets on reconnect so a fresh
+        channel re-declares.
         """
+        if not self._outbound_topology_declared:
+            await self.declare_outbound_topology()
         await self._publish_with_retry(queue_name, body, declare=False)
 
     async def close(self):
@@ -182,8 +189,10 @@ async def declare_outbound_topology_on_startup() -> None:
     """
     try:
         publisher = await get_rabbitmq_publisher()
-    except RuntimeError:
-        log.warning("Outbound topology not declared: RabbitMQ unavailable")
+        await publisher.declare_outbound_topology()
+    except Exception as e:
+        # Best-effort: a missing broker or a pre-existing queue with divergent
+        # arguments must not crash-loop startup — the first publish self-heals.
+        log.warning("Outbound topology not declared at startup", error=str(e))
         return
-    await publisher.declare_outbound_topology()
     log.info("Outbound message topology declared")

@@ -97,12 +97,35 @@ export class OutboundConsumer {
 
   private scheduleReconnect(): void {
     if (this.stopped) return;
+    // Close the (possibly still-open) connection before dropping the reference,
+    // so a channel-level failure after connect() succeeded does not leak it.
+    void this.channel?.close().catch(() => undefined);
+    void this.conn?.close().catch(() => undefined);
     this.channel = null;
     this.conn = null;
     const delay = this.reconnectDelayMs;
     this.reconnectDelayMs = Math.min(delay * 2, RECONNECT_MAX_MS);
     this.logger.warn("outbound_consumer_reconnecting", { wait_ms: delay });
     this.reconnectTimer = setTimeout(() => void this.connect(), delay);
+  }
+
+  /**
+   * ack/nack a message on the channel that delivered it. A delivery tag is
+   * scoped to its channel; if a reconnect has since replaced the channel the
+   * broker already requeued the message, so settling on the old (closed)
+   * channel would throw — skip it. The try/catch is a final backstop so a
+   * stale-channel error never escapes the fire-and-forget consume callback as
+   * an unhandled rejection.
+   */
+  private settle(channel: Channel, action: () => void): void {
+    if (this.channel !== channel) return;
+    try {
+      action();
+    } catch {
+      this.logger.warn("outbound_settle_skipped", {
+        reason: "channel replaced mid-handle",
+      });
+    }
   }
 
   private async handle(msg: ConsumeMessage | null): Promise<void> {
@@ -120,7 +143,7 @@ export class OutboundConsumer {
     try {
       raw = JSON.parse(msg.content.toString());
     } catch {
-      channel.nack(msg, false, false); // unparseable → straight to DLQ
+      this.settle(channel, () => channel.nack(msg, false, false)); // unparseable → DLQ
       return;
     }
     const parsed = outboundMessageEnvelopeSchema.safeParse(raw);
@@ -128,7 +151,7 @@ export class OutboundConsumer {
       this.logger.warn("outbound_envelope_invalid", {
         issues: parsed.error.issues.length,
       });
-      channel.nack(msg, false, false); // schema mismatch → DLQ, no retry
+      this.settle(channel, () => channel.nack(msg, false, false)); // schema mismatch → DLQ
       return;
     }
     const env = parsed.data;
@@ -142,7 +165,7 @@ export class OutboundConsumer {
           renderForPlatform(chunk, this.platform),
         );
       }
-      channel.ack(msg);
+      this.settle(channel, () => channel.ack(msg));
     } catch (err) {
       this.logger.error(
         "outbound_delivery_failed",
@@ -150,7 +173,9 @@ export class OutboundConsumer {
         err,
       );
       // One retry via requeue, then dead-letter on the second failure.
-      channel.nack(msg, false, !msg.fields.redelivered);
+      this.settle(channel, () =>
+        channel.nack(msg, false, !msg.fields.redelivered),
+      );
     }
   }
 }

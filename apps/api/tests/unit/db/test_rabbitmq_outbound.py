@@ -24,6 +24,9 @@ def connected_publisher() -> tuple[RabbitMQPublisher, MagicMock]:
     channel.declare_queue = AsyncMock()
     channel.declare_exchange = AsyncMock()
     pub.channel = channel
+    # Simulate the startup topology declaration already having run, so the
+    # publish tests isolate the publish path (self-heal is exercised separately).
+    pub._outbound_topology_declared = True
     return pub, channel
 
 
