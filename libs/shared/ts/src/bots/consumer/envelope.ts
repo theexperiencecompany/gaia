@@ -15,9 +15,9 @@ import { z } from "zod";
 
 export const outboundMessageEnvelopeSchema = z.object({
   /** Unique id (idempotency + tracing). */
-  id: z.string(),
+  id: z.string().min(1),
   /** Target platform — informational; each queue is already platform-specific. */
-  platform: z.string(),
+  platform: z.string().min(1),
   /** Platform-native destination id (wa_id, Discord/Telegram/Slack user id). */
   destination_id: z.string().min(1),
   /** Raw CommonMark message body. */

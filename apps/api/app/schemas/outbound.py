@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 class OutboundMessageEnvelope(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
-    platform: str
-    destination_id: str
-    text: str
+    platform: str = Field(min_length=1)
+    destination_id: str = Field(min_length=1)
+    text: str = Field(min_length=1)
     enqueued_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

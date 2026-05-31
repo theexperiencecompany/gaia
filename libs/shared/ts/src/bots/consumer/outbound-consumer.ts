@@ -35,6 +35,7 @@ export class OutboundConsumer {
   private channel: Channel | null = null;
   private stopped = false;
   private reconnectDelayMs = RECONNECT_BASE_MS;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly logger: BotLogger;
 
   constructor(
@@ -51,6 +52,10 @@ export class OutboundConsumer {
 
   async stop(): Promise<void> {
     this.stopped = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     await this.channel?.close().catch(() => undefined);
     await this.conn?.close().catch(() => undefined);
     this.channel = null;
@@ -97,7 +102,7 @@ export class OutboundConsumer {
     const delay = this.reconnectDelayMs;
     this.reconnectDelayMs = Math.min(delay * 2, RECONNECT_MAX_MS);
     this.logger.warn("outbound_consumer_reconnecting", { wait_ms: delay });
-    setTimeout(() => void this.connect(), delay);
+    this.reconnectTimer = setTimeout(() => void this.connect(), delay);
   }
 
   private async handle(msg: ConsumeMessage | null): Promise<void> {

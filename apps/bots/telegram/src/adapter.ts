@@ -375,9 +375,10 @@ export class TelegramAdapter extends BaseBotAdapter {
     destinationId: string,
     text: string,
   ): Promise<void> {
-    const chatId = Number(destinationId);
+    // grammY accepts a string chat_id; passing the id through avoids the NaN
+    // that Number() would produce for any non-numeric destination.
     await this.sendHtml(
-      (t, opts) => this.bot.api.sendMessage(chatId, t, opts),
+      (t, opts) => this.bot.api.sendMessage(destinationId, t, opts),
       text,
     );
   }

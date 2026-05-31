@@ -310,16 +310,14 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
         (close_workflow_scheduler, "workflow_scheduler"),
         (close_checkpointer_manager, "checkpointer_manager"),
         (close_mcp_client_pool, "mcp_client_pool"),
+        # Both contexts open a RabbitMQ connection at startup (outbound topology
+        # declaration + publishing), so close the publisher unconditionally.
+        (close_publisher_async, "publisher"),
     ]
 
-    # Context-specific cleanup: additional services only for FastAPI
+    # Context-specific cleanup: the WebSocket event consumer only runs in FastAPI.
     if context == "main_app":
-        shutdown_services.extend(
-            [
-                (close_websocket_async, "websocket"),  # WebSocket event consumer
-                (close_publisher_async, "publisher"),  # Message queue publisher
-            ]
-        )
+        shutdown_services.append((close_websocket_async, "websocket"))
 
     if not shutdown_services:
         log.info(f"No shutdown tasks for {context}")
