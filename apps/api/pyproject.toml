@@ -128,7 +128,6 @@ backend = [
   "pymupdf>=1.25.5",
   "pypandoc>=1.15",
   "markdown2>=2.5.3",
-  "telegramify-markdown==1.0.0rc4",
   "pillow==12.1.1",
   "pandas>=2.3.0",
   "beautifulsoup4==4.12.3",

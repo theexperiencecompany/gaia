@@ -49,7 +49,7 @@ from app.db.chroma.chroma_tools_store import initialize_chroma_tools_store
 from app.db.chroma.chroma_triggers_store import initialize_chroma_triggers_store
 from app.db.chroma.chromadb import init_chroma
 from app.db.postgresql import init_postgresql_engine
-from app.db.rabbitmq import init_rabbitmq_publisher
+from app.db.rabbitmq import declare_outbound_topology_on_startup, init_rabbitmq_publisher
 from app.db.redis import redis_cache
 from app.helpers.lifespan_helpers import (
     _process_results,
@@ -225,6 +225,10 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         (lambda: providers.aget("juicefs_mount"), "juicefs_mount"),
     ]
 
+    # Outbound bot-message queues must exist before any executor reply or
+    # reminder is published — declared in both the API and the ARQ worker.
+    eager_services.append((declare_outbound_topology_on_startup, "outbound_topology"))
+
     # Context-specific services: WebSocket only needed for web interface
     if context == "main_app":
         eager_services.append((init_websocket_consumer, "websocket_consumer"))
@@ -306,16 +310,14 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
         (close_workflow_scheduler, "workflow_scheduler"),
         (close_checkpointer_manager, "checkpointer_manager"),
         (close_mcp_client_pool, "mcp_client_pool"),
+        # Both contexts open a RabbitMQ connection at startup (outbound topology
+        # declaration + publishing), so close the publisher unconditionally.
+        (close_publisher_async, "publisher"),
     ]
 
-    # Context-specific cleanup: additional services only for FastAPI
+    # Context-specific cleanup: the WebSocket event consumer only runs in FastAPI.
     if context == "main_app":
-        shutdown_services.extend(
-            [
-                (close_websocket_async, "websocket"),  # WebSocket event consumer
-                (close_publisher_async, "publisher"),  # Message queue publisher
-            ]
-        )
+        shutdown_services.append((close_websocket_async, "websocket"))
 
     if not shutdown_services:
         log.info(f"No shutdown tasks for {context}")

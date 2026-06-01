@@ -31,6 +31,11 @@ import re
 # server all pick up the same library.
 _BUILTIN_ROOT = Path(__file__).resolve().parent.parent / "skills" / "builtin"
 
+# Filename of the materialized skill body inside each slug dir. Shared by the
+# materializer (storage.sessions.skills) and the index (skills.discovery) so the
+# path the agent is told to read always matches the file actually on disk.
+SKILL_BODY_FILENAME = "skill.md"
+
 # Frontmatter `target` values use a `<provider>_agent` convention plus the
 # special "executor" target for general-purpose skills. Map them to the
 # subagent id used by the registry/integrations service so the FS layout
@@ -106,6 +111,12 @@ def load_builtin_skills() -> tuple[BuiltinSkill, ...]:
 
     Cached because the directory contents don't change at runtime — a code
     deploy is required to add/edit a builtin skill.
+
+    Scale note: these bodies live in process memory (one copy per API replica).
+    At the current scale (~30 builtin SKILL.md files, a few hundred KB) that is
+    negligible and the fastest possible read. If the library ever grows to
+    thousands of skills, switch to a Redis(TTL) -> Mongo/JuiceFS read-through
+    cache instead of holding every body in each replica's RAM.
     """
     if not _BUILTIN_ROOT.is_dir():
         return ()
@@ -160,6 +171,7 @@ def library_hash() -> str:
 
 
 __all__ = [
+    "SKILL_BODY_FILENAME",
     "BuiltinSkill",
     "integration_subagent_ids",
     "library_hash",

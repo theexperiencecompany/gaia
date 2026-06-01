@@ -61,6 +61,23 @@ def user_workspace_path(user_id: str) -> Path:
     return _mount_root() / "users" / user_id
 
 
+def _host_base_and_rel(user_id: str, workspace_rel_path: str) -> tuple[Path, str]:
+    """Map a ``/workspace``-relative path to its host ``(base_root, rel_under_base)``.
+
+    ``/workspace/skills`` is a SEPARATE JuiceFS subtree — the read-only overlay of
+    ``/skills/<uid>`` (see ``mount_juicefs.sh``) — while everything else lives under
+    ``/users/<uid>``. Built-in skill bodies are served from process memory
+    (``system_files``), so the only host reads under ``skills/`` are user-installed
+    skills, which live in the ``/skills/<uid>`` subtree. Routing them here keeps the
+    host read consistent with what the sandbox sees at ``/workspace/skills``.
+    """
+    mount = _require_mount()
+    if workspace_rel_path == "skills" or workspace_rel_path.startswith("skills/"):
+        rel = workspace_rel_path[len("skills/") :] if workspace_rel_path != "skills" else ""
+        return mount / "skills" / user_id, rel
+    return mount / "users" / user_id, workspace_rel_path
+
+
 def user_skills_path(user_id: str) -> Path:
     """Absolute path on the host for a user's skills directory."""
     return _mount_root() / "skills" / user_id
@@ -152,6 +169,84 @@ async def write_session_file(
         result = await asyncio.to_thread(_write)
     add_fs_bytes(FsOps.WRITE_SESSION_FILE, _content_size(content))
     return result
+
+
+def page_bounds(offset: int, limit: int) -> tuple[int, int]:
+    """1-indexed inclusive ``(start, end)`` line range for a paged read.
+
+    ``offset`` is the 1-indexed start line (0 and 1 both mean line 1); ``limit``
+    is clamped to at least one line. Shared by every read path (memory, JuiceFS,
+    sandbox) so their slices stay byte-for-byte consistent.
+    """
+    start = max(1, offset) if offset > 0 else 1
+    end = start + max(1, limit) - 1
+    return start, end
+
+
+async def read_user_file(
+    user_id: str,
+    workspace_rel_path: str,
+    *,
+    offset: int = 0,
+    limit: int = 2000,
+) -> tuple[list[str], int]:
+    """Read a workspace file straight from the host JuiceFS mount — no sandbox.
+
+    ``/workspace`` inside the sandbox is a bind-mount of ``/mnt/jfs/users/<id>``,
+    so the same bytes are readable host-side without paying an E2B spin-up.
+    ``workspace_rel_path`` is relative to ``/workspace`` (e.g.
+    ``sessions/<conv>/scratch/out.txt``); it is resolved under the user's OWN
+    root via ``_contained`` and cannot escape it — this defeats ``..`` traversal
+    and symlink escape (``.resolve()`` + ``relative_to``), so a model-supplied
+    path can only ever reach this user's files.
+
+    Returns ``(lines, total_line_count)`` where ``lines`` is the 1-indexed slice
+    ``[start, start + limit)`` with trailing newlines stripped. Raises
+    ``FileNotFoundError`` if the target is missing or not a regular file, and
+    ``JuiceFSUnavailable`` if the host mount is absent (e.g. native dev).
+    """
+    start, end = page_bounds(offset, limit)
+
+    def _read() -> tuple[list[str], int]:
+        base, rel = _host_base_and_rel(user_id, workspace_rel_path)
+        target = _contained(base, rel, root_label="workspace root")
+        if not target.is_file():
+            raise FileNotFoundError(workspace_rel_path)
+        sliced: list[str] = []
+        total = 0
+        with target.open("r", encoding="utf-8", errors="replace") as handle:
+            for idx, line in enumerate(handle, start=1):
+                total = idx
+                if start <= idx <= end:
+                    sliced.append(line.rstrip("\n"))
+        return sliced, total
+
+    return await asyncio.to_thread(_read)
+
+
+async def user_owns_regular_file(user_id: str, workspace_rel_path: str) -> bool:
+    """True iff the user has a real (non-symlink) regular file at this path.
+
+    The ``read`` tool serves system-owned files (INDEX.md, the GUIDE.md docs,
+    builtin skill bodies) from process memory. This lets it skip that fast-path
+    when the user has created their OWN file at the same workspace path, so a
+    user file is never shadowed by the in-memory system copy. A symlink (the
+    de-duplicated system projection) does not count as an override. Never raises;
+    returns ``False`` when the mount is absent (native dev) so the memory
+    fast-path still applies there.
+    """
+    if not _is_mounted():
+        return False
+
+    def _check() -> bool:
+        try:
+            base, rel = _host_base_and_rel(user_id, workspace_rel_path)
+            target = base / rel
+            return target.is_file() and not target.is_symlink()
+        except Exception:
+            return False
+
+    return await asyncio.to_thread(_check)
 
 
 async def delete_user_workspace(user_id: str) -> None:

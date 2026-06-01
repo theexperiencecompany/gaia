@@ -79,11 +79,17 @@ export async function loadConfig(): Promise<BotConfig> {
     warn("POSTHOG_API_KEY not set — bot analytics will be disabled");
   }
 
+  const rabbitmqUrl = process.env.RABBITMQ_URL;
+  if (!rabbitmqUrl) {
+    warn("RABBITMQ_URL not set — outbound message consumer will be disabled");
+  }
+
   log("Configuration loaded successfully");
   return {
     gaiaApiUrl: gaiaApiUrl!,
     gaiaApiKey: gaiaApiKey!,
     gaiaFrontendUrl: gaiaFrontendUrl!,
     posthogApiKey,
+    rabbitmqUrl,
   };
 }

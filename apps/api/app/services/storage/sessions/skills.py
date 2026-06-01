@@ -16,28 +16,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.agents.workspace.skill_loader import skills_by_subagent
+from app.agents.workspace.skill_loader import SKILL_BODY_FILENAME, skills_by_subagent
 from app.agents.workspace.system_docs import (
     INDEX_MD,
     INTEGRATIONS_GUIDE_MD,
     SESSIONS_GUIDE_MD,
 )
+from app.services.storage._vfs_common import matches_text
 from app.services.storage.juicefs import ensure_safe_path_id
 from shared.py.wide_events import log
 
 SKILLS_HASH_MARKER = ".gaia/skills.v"
-
-
-def matches_text(path: Path, expected: str) -> bool:
-    """Cheap "do we need to rewrite this file?" check.
-
-    Treats decode errors as "doesn't match" so corrupted bytes get rewritten
-    rather than silently kept.
-    """
-    try:
-        return path.read_text(encoding="utf-8") == expected
-    except (OSError, UnicodeDecodeError):
-        return False
 
 
 def read_text_or_none(path: Path) -> str | None:
@@ -102,7 +91,7 @@ def materialize_skills(user_root: Path, connected_ids: set[str]) -> int:
         for skill in skills:
             slug_dir = skills_dir / skill.slug
             slug_dir.mkdir(parents=True, exist_ok=True)
-            target = slug_dir / "skill.md"
+            target = slug_dir / SKILL_BODY_FILENAME
             if not matches_text(target, skill.body):
                 target.write_text(skill.body, encoding="utf-8")
                 written += 1
@@ -113,13 +102,11 @@ def materialize_skills(user_root: Path, connected_ids: set[str]) -> int:
         elif marker.exists():
             marker.unlink()
 
-    for skill in grouped.get("executor", []):
-        slug_dir = user_root / "skills" / skill.slug
-        slug_dir.mkdir(parents=True, exist_ok=True)
-        target = slug_dir / "skill.md"
-        if not matches_text(target, skill.body):
-            target.write_text(skill.body, encoding="utf-8")
-            written += 1
+    # Executor (general) skill bodies are NOT written here: they belong in the
+    # /skills/<uid> overlay subtree (what the sandbox shows at /workspace/skills),
+    # and link_system_files_into_workspace places them there as symlinks into the
+    # shared _system copy. Writing them under /users/<uid>/skills would only land
+    # in the shadowed subtree.
     return written
 
 

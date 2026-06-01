@@ -99,6 +99,7 @@ async def build_executor_graph(
             "bash",
             "deep_research",
             "wait_for_subagents",
+            "read_manual",
             "create_tracked_todo",
             "update_tracked_todo",
             "update_tracked_todo_canvas",

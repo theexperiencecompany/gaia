@@ -170,8 +170,12 @@ def matches_text(path: Path, expected: str) -> bool:
     """Cheap "do we need to rewrite this file?" check.
 
     Treats decode errors as "doesn't match" so corrupted bytes get
-    rewritten rather than silently kept.
+    rewritten rather than silently kept. A symlink is treated as "matches"
+    so the de-duplicated system-file symlinks (which point at the read-only
+    ``_system`` mount and don't resolve host-side) are never clobbered.
     """
+    if path.is_symlink():
+        return True
     try:
         return path.read_text(encoding="utf-8") == expected
     except (OSError, UnicodeDecodeError):
