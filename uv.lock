@@ -2223,7 +2223,7 @@ backend = [
     { name = "tldextract", specifier = ">=5.1.3" },
     { name = "tomli", specifier = ">=2.2.1" },
     { name = "uvicorn", specifier = ">=0.34.1" },
-    { name = "workos", specifier = ">=5.24.0" },
+    { name = "workos", specifier = "==5.24.0" },
 ]
 dev = [
     { name = "cfgv", specifier = ">=3.4.0" },
@@ -8540,16 +8540,17 @@ wheels = [
 
 [[package]]
 name = "workos"
-version = "8.0.0"
+version = "5.24.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
+    { name = "pydantic" },
     { name = "pyjwt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c6/9b/507d66afdde7edf644fd3f1b92ebcd5f1dbbb2ba5139a40fd1bfcf0c2221/workos-8.0.0.tar.gz", hash = "sha256:7bfe686488415304740c12345a38582b7c7599a7257411b77f53c89520956c29", size = 193000, upload-time = "2026-05-26T19:55:38.165Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4c/96/83f1448ea290663bd352b7381079c349b0fb86cb009f1be729d45dbe9466/workos-5.24.0.tar.gz", hash = "sha256:b4f09a6b11951cbe3ea71d4fd7f924314ddbf913debebf5146e60cb0fd664a9c", size = 80186, upload-time = "2025-07-08T14:38:06.297Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ee/b3/d87d3819d093035bd233cd9b95ad32ce30c9e41b8750349621b6037cc464/workos-8.0.0-py3-none-any.whl", hash = "sha256:07251009348905d840fb0ef8601ba6e466a4f49d9c9e6e5cf53eaddad6bf40d2", size = 566640, upload-time = "2026-05-26T19:55:36.831Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/e7/23d081a34b97121998afb0cb03cd7ae098334fc6a29b5f1261bed4dfc41f/workos-5.24.0-py3-none-any.whl", hash = "sha256:223af02b488e4cbef6ec66998b634129aae09df04b5a85b771772c97f4c43c70", size = 89252, upload-time = "2025-07-08T14:38:04.945Z" },
 ]
 
 [[package]]
