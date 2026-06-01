@@ -1,20 +1,24 @@
 """
-One-time, idempotent migration: repair workflow scheduling state.
+One-time, idempotent migration: repair workflow + reminder scheduling state.
 
-Two defects left existing workflows stuck:
+Two defects left existing documents stuck:
 
-1. ``scheduled_at`` / ``stop_after`` / ``trigger_config.next_run`` were persisted as
-   ISO **strings** instead of native datetimes. The scheduler selects due work with
-   ``scheduled_at: {"$lte": now}``, which never matches a string — so those workflows
-   are invisible to the recovery scan.
-2. The executor never re-armed recurrence, so a recurring workflow fired once and then
-   sat at a stale ``scheduled_at`` forever.
+1. ``scheduled_at`` / ``stop_after`` / ``trigger_config.next_run`` (and the audit
+   fields ``created_at`` / ``updated_at``) were persisted as ISO **strings** instead
+   of native datetimes. The scheduler selects due work with
+   ``scheduled_at: {"$lte": now}``, which never matches a string — so those tasks are
+   invisible to the recovery scan — and date-range/sort queries on the audit fields
+   behave inconsistently across the mixed string/date population.
+2. The workflow executor never re-armed recurrence, so a recurring workflow fired
+   once and then sat at a stale ``scheduled_at`` forever.
 
-This script converts the scheduling timestamps to datetimes and, for every active
-recurring workflow, recomputes the next *future* run, marks it scheduled, and enqueues
-it in ARQ. It advances from now (never replays missed runs) and honours
-``max_occurrences`` / ``stop_after``. Cancelled, paused and one-time workflows are left
-untouched.
+For workflows this script converts the scheduling/audit timestamps to datetimes and,
+for every active recurring workflow, recomputes the next *future* run, marks it
+scheduled, and enqueues it in ARQ. It advances from now (never replays missed runs)
+and honours ``max_occurrences`` / ``stop_after``. Cancelled, paused and one-time
+workflows are left untouched. For reminders it converts the same string timestamps to
+datetimes — no re-arm is needed, the (now ``$lte``) recovery scan recovers overdue
+reminders once their dates are native.
 
 Idempotent: re-running recomputes a future run and the deterministic ARQ job id dedupes
 the enqueue, so it is safe to run repeatedly.
@@ -32,12 +36,16 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db.mongodb.collections import workflows_collection  # noqa: E402
+from app.db.mongodb.collections import (  # noqa: E402
+    reminders_collection,
+    workflows_collection,
+)
 from app.models.scheduler_models import ScheduledTaskStatus  # noqa: E402
 from app.services.workflow.scheduler import WorkflowScheduler  # noqa: E402
 from app.utils.cron_utils import get_next_run_time  # noqa: E402
 
-_DATE_FIELDS = ("scheduled_at", "stop_after")
+# Scheduling + audit datetimes that were historically persisted as ISO strings.
+_DATE_FIELDS = ("scheduled_at", "stop_after", "created_at", "updated_at")
 
 
 def _to_datetime(value: object) -> datetime | None:
@@ -56,7 +64,13 @@ def _to_datetime(value: object) -> datetime | None:
 
 
 def _build_type_fixes(doc: dict) -> dict:
-    """$set payload that converts string-typed scheduling fields to datetimes."""
+    """$set payload that converts string-typed datetime fields to datetimes.
+
+    Covers the top-level scheduling/audit fields and (for workflows) the nested
+    ``trigger_config.next_run``. The nested field is only set when ``trigger_config``
+    is an object, so a missing/null ``trigger_config`` is never turned into a malformed
+    subdocument (``TriggerConfig.type`` is required).
+    """
     fixes: dict[str, datetime] = {}
     for field in _DATE_FIELDS:
         if isinstance(doc.get(field), str):
@@ -64,17 +78,34 @@ def _build_type_fixes(doc: dict) -> dict:
             if coerced is not None:
                 fixes[field] = coerced
 
-    trigger_config = doc.get("trigger_config") or {}
-    if isinstance(trigger_config.get("next_run"), str):
+    trigger_config = doc.get("trigger_config")
+    if isinstance(trigger_config, dict) and isinstance(trigger_config.get("next_run"), str):
         coerced = _to_datetime(trigger_config["next_run"])
         if coerced is not None:
             fixes["trigger_config.next_run"] = coerced
     return fixes
 
 
+async def _migrate_reminder_types(apply: bool) -> int:
+    """Type-repair reminder scheduling/audit datetimes.
+
+    No re-arm is needed: once the dates are native, the recovery scan
+    (``scheduled_at: {"$lte": now}``) recovers any overdue reminder.
+    """
+    fixed = 0
+    async for doc in reminders_collection.find({}):
+        fixes = _build_type_fixes(doc)
+        if fixes:
+            fixed += 1
+            print(f"  reminder {doc.get('_id')}: type-fix {sorted(fixes)}")
+            if apply:
+                await reminders_collection.update_one({"_id": doc["_id"]}, {"$set": fixes})
+    return fixed
+
+
 async def migrate(apply: bool) -> None:
     mode = "APPLY" if apply else "DRY RUN"
-    print(f"[{mode}] Repairing workflow scheduling state...\n")
+    print(f"[{mode}] Repairing workflow + reminder scheduling state...\n")
 
     scheduler = WorkflowScheduler()
     if apply:
@@ -84,13 +115,14 @@ async def migrate(apply: bool) -> None:
     rearmed = 0
     completed = 0
     skipped = 0
+    reminder_fixed = 0
 
     try:
         async for doc in workflows_collection.find({}):
             workflow_id = doc.get("_id")
             now = datetime.now(UTC)
 
-            # 1. Type repair for the scheduling timestamps.
+            # 1. Type repair for the scheduling + audit timestamps.
             fixes = _build_type_fixes(doc)
             if fixes:
                 type_fixed += 1
@@ -128,25 +160,28 @@ async def migrate(apply: bool) -> None:
             rearmed += 1
             print(f"  {workflow_id}: re-arm -> {next_run.isoformat()}")
             if apply:
-                await workflows_collection.update_one(
-                    {"_id": workflow_id},
-                    {
-                        "$set": {
-                            "scheduled_at": next_run,
-                            "trigger_config.next_run": next_run,
-                            "status": ScheduledTaskStatus.SCHEDULED.value,
-                            "updated_at": now,
-                        }
-                    },
-                )
+                set_fields: dict[str, datetime | str] = {
+                    "scheduled_at": next_run,
+                    "status": ScheduledTaskStatus.SCHEDULED.value,
+                    "updated_at": now,
+                }
+                # Only touch the nested field when the parent object exists, so a
+                # missing/null trigger_config is never auto-created as a malformed
+                # subdocument.
+                if isinstance(doc.get("trigger_config"), dict):
+                    set_fields["trigger_config.next_run"] = next_run
+                await workflows_collection.update_one({"_id": workflow_id}, {"$set": set_fields})
                 await scheduler.reschedule_task(str(workflow_id), next_run)
+
+        # 3. Type repair for reminders (same string->datetime defect, no re-arm).
+        reminder_fixed = await _migrate_reminder_types(apply)
     finally:
         if apply:
             await scheduler.close()
 
     print(
-        f"\n[{mode}] Done. type-fixed={type_fixed} re-armed={rearmed} "
-        f"completed={completed} skipped={skipped}"
+        f"\n[{mode}] Done. workflow type-fixed={type_fixed} re-armed={rearmed} "
+        f"completed={completed} skipped={skipped} | reminder type-fixed={reminder_fixed}"
     )
     if not apply:
         print("Re-run with --apply to write these changes.")
