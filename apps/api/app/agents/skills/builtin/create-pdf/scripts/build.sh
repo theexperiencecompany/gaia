@@ -41,8 +41,19 @@ ensure_typst() {
 ensure_tectonic() {
   command -v tectonic >/dev/null 2>&1 && return 0
   [ -x "$BIN/tectonic" ] && return 0
-  ( cd "$BIN" && curl -fsSL https://drop-sh.fullyjustified.net | sh ) \
-    || fail "0:0: tectonic install failed"
+  # Use the STATIC musl build, not the drop-sh installer's linux-gnu build: the
+  # gnu binary needs a newer GLIBC (2.38+) than the sandbox base (Debian
+  # bookworm, GLIBC 2.36) provides, so it fails to even start. musl is static.
+  local ver="0.15.0" arch tgt
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64 | amd64) tgt="x86_64-unknown-linux-musl" ;;
+    aarch64 | arm64) tgt="aarch64-unknown-linux-musl" ;;
+    *) fail "0:0: unsupported arch for tectonic: $arch" ;;
+  esac
+  curl -fsSL "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40${ver}/tectonic-${ver}-${tgt}.tar.gz" \
+    | tar -xz -C "$BIN" 2>/dev/null || fail "0:0: tectonic download failed (arch $arch)"
+  [ -x "$BIN/tectonic" ] || fail "0:0: tectonic binary missing after download"
 }
 
 # pymupdf (fitz) gives an accurate page count; falls back to a %PDF/grep check.
@@ -62,9 +73,18 @@ except Exception:
 PY
 )"
   fi
-  [ -z "$pages" ] && pages="$(grep -a -c '/Type[[:space:]]*/Page[^s]' "$out" 2>/dev/null || echo 0)"
-  [ "${pages:-0}" -ge 1 ] 2>/dev/null || fail "0:0: PDF has no pages"
-  echo "OK: $OUT (pages=$pages)"
+  # Typst writes compressed PDFs (page objects live inside object streams), so a
+  # plaintext grep frequently finds nothing. Page count is therefore BEST-EFFORT:
+  # report it when known, but never fail a PDF the compiler already produced
+  # (exit 0) with a valid %PDF header — that is the real success signal.
+  if [ -z "$pages" ]; then
+    pages="$(grep -a -c '/Type[[:space:]]*/Page[^s]' "$out" 2>/dev/null || echo "")"
+  fi
+  if [ -n "$pages" ] && [ "$pages" -ge 1 ] 2>/dev/null; then
+    echo "OK: $OUT (pages=$pages)"
+  else
+    echo "OK: $OUT"
+  fi
 }
 # --- end SEAM ------------------------------------------------------------------
 
@@ -90,11 +110,19 @@ case "$ext" in
     ensure_tectonic
     if ! tectonic -X compile --outdir "$(dirname "$OUT")" "$SRC" 2>"$err"; then
       msg="$(grep -m1 -iE 'error|! ' "$err" | sed 's/^[[:space:]]*//' | cut -c1-200)"
+      # Tectonic's failure line doesn't always contain "error"/"!" (e.g. bundle
+      # fetch issues) — fall back to the last non-empty stderr line so the agent
+      # sees the real reason instead of a generic message.
+      [ -z "$msg" ] && msg="$(grep -v '^[[:space:]]*$' "$err" | tail -1 | cut -c1-200)"
       fail "$SRC:0: ${msg:-tectonic compile failed}"
     fi
     # tectonic names output after the source stem; move to requested OUT.
+    # Guard with `if` (not `[ ] && [ ] && mv`) — a false leading test would
+    # return non-zero and abort under `set -e` when no move is needed.
     produced="$(dirname "$OUT")/$(basename "${SRC%.*}").pdf"
-    [ "$produced" != "$OUT" ] && [ -f "$produced" ] && mv -f "$produced" "$OUT"
+    if [ "$produced" != "$OUT" ] && [ -f "$produced" ]; then
+      mv -f "$produced" "$OUT"
+    fi
     ;;
   *)
     fail "0:0: unsupported source extension '.$ext' (use .typ or .tex)"

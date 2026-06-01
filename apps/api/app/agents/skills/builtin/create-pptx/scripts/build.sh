@@ -54,9 +54,14 @@ PY
 [ -f "$SRC" ] || fail "source not found: $SRC"
 mkdir -p "$(dirname "$OUT")"
 ensure_node_pkg pptxgenjs
+# ESM bare imports ("pptxgenjs") resolve by walking up from the SOURCE file's
+# dir — NODE_PATH applies only to CommonJS require(), not ESM. Symlink the
+# shared install next to the source (the session scratch dir is writable) so
+# `import pptxgen from "pptxgenjs"` resolves without a per-job npm install.
+ln -sfn "$NODE_HOME/node_modules" "$(dirname "$SRC")/node_modules"
 
 err="$(mktemp)"; trap 'rm -f "$err"' EXIT
-if ! NODE_PATH="$NODE_HOME/node_modules" node "$SRC" "$OUT" 2>"$err"; then
+if ! node "$SRC" "$OUT" 2>"$err"; then
   msg="$(grep -m1 -E 'Error|error' "$err" | sed 's/^[[:space:]]*//' | cut -c1-200)"
   fail "${msg:-node failed to run $SRC (see source)}"
 fi
