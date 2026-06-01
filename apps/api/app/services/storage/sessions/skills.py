@@ -95,6 +95,17 @@ def materialize_skills(user_root: Path, connected_ids: set[str]) -> int:
             if not matches_text(target, skill.body):
                 target.write_text(skill.body, encoding="utf-8")
                 written += 1
+            # Also write the skill's bundled resources (templates/, reference.md,
+            # scripts/, …) so multi-file skills work when the shared _system
+            # subtree + symlinks are unavailable (the linker replaces these with
+            # symlinks once the subtree exists). `rel` is always contained within
+            # the skill dir (see skill_loader._load_resources), so no traversal.
+            for rel, content in skill.resources:
+                res = slug_dir / rel
+                if not matches_text(res, content):
+                    res.parent.mkdir(parents=True, exist_ok=True)
+                    res.write_text(content, encoding="utf-8")
+                    written += 1
         marker = agent_dir / ".connected"
         if iid in connected_ids:
             if not marker.exists():

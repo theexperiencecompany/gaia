@@ -13,7 +13,7 @@ The deliverable is a PDF. For Word use `create-docx`, for slides `create-pptx`, 
 
 ## Engine decision
 - **Default: Typst.** Fast, single-pass, and its errors are short and point at a line — you can fix them quickly. Templates here are `.typ`.
-- **Fallback: LaTeX via tectonic.** Switch only when you need a LaTeX-only package, a specific journal/publisher class file, or Typst fails the same way twice. Write a `.tex` file and the build script compiles it with tectonic. See `reference.md` for when each applies.
+- **Fallback: LaTeX via tectonic.** Switch when you need a LaTeX-only package, a specific journal/publisher/thesis format, or Typst fails the same way twice. Adapt `thesis.tex` (a complete academic thesis) or write your own `.tex`; the same `build.sh` compiles `.tex` with tectonic. See `reference.md` for when each applies.
 
 **Skill directory:** `/workspace/integrations/docgen/agent/skills/create-pdf` — the templates, `reference.md`, and `scripts/` referenced below live here. Read them by absolute path (the `read` tool serves them instantly from memory); your own work goes in `./scratch/` (relative to the session).
 
@@ -42,7 +42,13 @@ The build script provisions Typst + tectonic on first use; the very first PDF ma
 - Never loop past 5 fix attempts on one engine — fall back to LaTeX or report the blocking error.
 
 ## Templates
-- `report.typ` — multi-section report with title block, headings, a table.
-- `letter.typ` — formal/business letter.
-- `invoice.typ` — itemized invoice with totals.
-- `resume.typ` — single-column resume / CV.
+These are comprehensive, feature-rich starting points — adapt one rather than authoring from scratch. They double as a feature reference, so read the closest fit even just to learn the syntax.
+
+**Typst (default engine — `.typ`):**
+- `report.typ` — technical/research report: title page, abstract, auto TOC, numbered headings, figures (a drawn bar chart + tables), code block, inline/block math, footnotes, a callout box, block quote, cross-references, running header/footer, references list.
+- `letter.typ` — business letter with a drawn letterhead, sender/recipient blocks, subject, signature, enclosures/cc, per-page footer.
+- `invoice.typ` — itemized invoice with a styled line-items table and subtotal/discount/tax/total **computed in Typst** from an items array.
+- `resume.typ` — modern two-column resume: accent header, sidebar, categorized skill chips + proficiency bars, experience/projects/education/certifications.
+
+**LaTeX (tectonic fallback — `.tex`):**
+- `thesis.tex` — complete single-file academic thesis: cover/certificate/declaration/acknowledgement/abstract, TOC + list of figures/tables, roman→arabic page numbering, fancyhdr headers, 6 chapters, a TikZ diagram + a pgfplots chart, booktabs/tabularx tables, numbered equations, and an embedded `thebibliography`. No external files/images. Build with the same `build.sh` (pass the `.tex`).
