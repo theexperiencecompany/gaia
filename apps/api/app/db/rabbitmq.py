@@ -129,7 +129,22 @@ class RabbitMQPublisher:
         channel re-declares.
         """
         if not self._outbound_topology_declared:
-            await self.declare_outbound_topology()
+            try:
+                await self.declare_outbound_topology()
+            except ChannelPreconditionFailed as e:
+                # A queue already exists with divergent arguments. The redeclare
+                # is rejected (and closes the channel), but the queue IS present,
+                # so publishing to it via the default exchange still works.
+                # Mark the topology declared so we stop re-attempting the failing
+                # redeclare on every publish (which would otherwise wedge all
+                # outbound delivery), and surface the drift loudly for an
+                # operator to reconcile.
+                self._outbound_topology_declared = True
+                log.error(
+                    "Outbound topology redeclare rejected (divergent queue arguments); "
+                    "publishing to the existing queue. Delete or migrate it to reconcile.",
+                    error=str(e),
+                )
         await self._publish_with_retry(queue_name, body, declare=False)
 
     async def close(self):

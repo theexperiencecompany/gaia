@@ -7,6 +7,7 @@ reconnect-retry, declare-or-not, and dead-letter topology code.
 from unittest.mock import AsyncMock, MagicMock
 
 import aio_pika
+from aio_pika.exceptions import ChannelPreconditionFailed
 import pytest
 
 from app.constants.outbound import OUTBOUND_DLX, OUTBOUND_QUEUES, dlq_name
@@ -95,3 +96,60 @@ class TestDeclareOutboundTopology:
 
         # Every DLQ is bound to the DLX.
         assert queue_mock.bind.await_count == len(OUTBOUND_QUEUES)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestLazyOutboundTopologyDeclare:
+    """The first publish_outbound declares the topology lazily so a message
+    never outruns the declaration; a divergent-args redeclare must not wedge
+    delivery forever."""
+
+    async def test_first_publish_declares_topology_then_publishes(
+        self, connected_publisher
+    ) -> None:
+        pub, channel = connected_publisher
+        pub._outbound_topology_declared = False  # nothing declared yet
+        channel.declare_exchange = AsyncMock(return_value=MagicMock())
+        queue_mock = MagicMock(bind=AsyncMock())
+        channel.declare_queue = AsyncMock(return_value=queue_mock)
+
+        await pub.publish_outbound("outbound.whatsapp", b"{}")
+
+        channel.declare_exchange.assert_awaited_once()  # topology declared lazily
+        channel.default_exchange.publish.assert_awaited_once()  # then the message
+        assert pub._outbound_topology_declared is True
+
+    async def test_precondition_failed_marks_declared_and_still_publishes(
+        self, connected_publisher
+    ) -> None:
+        # A queue already exists with divergent arguments: the redeclare is
+        # rejected, but the queue IS present, so the publish must still go
+        # through. The flag is set so we stop re-attempting the failing declare
+        # on every publish (the wedge this guards against).
+        pub, channel = connected_publisher
+        pub._outbound_topology_declared = False
+        channel.declare_exchange = AsyncMock(
+            side_effect=ChannelPreconditionFailed("inequivalent arg 'x-dead-letter-exchange'")
+        )
+
+        await pub.publish_outbound("outbound.whatsapp", b"{}")
+
+        assert pub._outbound_topology_declared is True  # no infinite re-declare
+        channel.default_exchange.publish.assert_awaited_once()  # message still sent
+
+    async def test_precondition_failed_does_not_redeclare_on_next_publish(
+        self, connected_publisher
+    ) -> None:
+        pub, channel = connected_publisher
+        pub._outbound_topology_declared = False
+        channel.declare_exchange = AsyncMock(
+            side_effect=ChannelPreconditionFailed("inequivalent arg")
+        )
+
+        await pub.publish_outbound("outbound.whatsapp", b"{}")
+        await pub.publish_outbound("outbound.whatsapp", b"{}")
+
+        # Declared-attempt happened once; the second publish skips it entirely.
+        channel.declare_exchange.assert_awaited_once()
+        assert channel.default_exchange.publish.await_count == 2

@@ -21,6 +21,7 @@ import {
   BaseBotAdapter,
   type BotCommand,
   type BotFileData,
+  type BotUserContext,
   buildAuthLinkMessage,
   createBotLogger,
   formatBotError,
@@ -29,6 +30,7 @@ import {
   type IncomingMedia,
   type MediaOutcome,
   mediaKindFromMime,
+  type OutboundAttachment,
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
@@ -344,6 +346,31 @@ export class DiscordAdapter extends BaseBotAdapter {
   ): Promise<void> {
     const user = await this.client.users.fetch(destinationId);
     await user.send(text);
+  }
+
+  /**
+   * Delivers an agent-generated file artifact to a Discord user. Fetches the
+   * bytes from GAIA (bot-authenticated) and DMs them as a message attachment.
+   * The destination is the stored Discord user id.
+   */
+  protected override async deliverOutboundFile(
+    destinationId: string,
+    attachment: OutboundAttachment,
+  ): Promise<void> {
+    const ctx: BotUserContext = {
+      platform: "discord",
+      platformUserId: destinationId,
+    };
+    const { data } = await this.gaia.downloadArtifact(
+      attachment.conversation_id,
+      attachment.path,
+      ctx,
+    );
+    const user = await this.client.users.fetch(destinationId);
+    await user.send({
+      content: attachment.caption ?? undefined,
+      files: [{ attachment: data, name: attachment.filename }],
+    });
   }
 
   // ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@ bots — there is no Python copy.
 """
 
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
-from app.services.outbound_delivery import publish_outbound_message
+from app.services.outbound_delivery import OutboundResult, publish_outbound_message
 
 
 def is_bot_platform(source: ConversationSource | str | None) -> bool:
@@ -34,4 +34,5 @@ async def deliver_message_to_platform(
         return False
     if not text.strip():
         return False
-    return await publish_outbound_message(platform, user_id, [text])
+    result = await publish_outbound_message(platform, user_id, [text])
+    return result is OutboundResult.PUBLISHED

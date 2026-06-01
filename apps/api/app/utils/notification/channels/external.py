@@ -20,7 +20,7 @@ from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRequest,
 )
-from app.services.outbound_delivery import publish_outbound_message
+from app.services.outbound_delivery import OutboundResult, publish_outbound_message
 from app.utils.notification.channels.base import ChannelAdapter
 
 
@@ -90,7 +90,11 @@ class ExternalPlatformAdapter(ChannelAdapter):
 
     async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
         parts = content.get("parts", [])
-        published = await publish_outbound_message(self.platform, user_id, parts)
-        if published:
+        result = await publish_outbound_message(self.platform, user_id, parts)
+        if result is OutboundResult.PUBLISHED:
             return self._success()
-        return self._skipped(f"{self.channel_type}: not linked or not published")
+        if result is OutboundResult.FAILED:
+            # Broker unavailable or a publish error — a real failure, not a skip,
+            # so retries/alerting that key off FAILED still fire during an outage.
+            return self._error(f"{self.channel_type}: outbound publish failed")
+        return self._skipped(f"{self.channel_type}: not linked or nothing to publish")

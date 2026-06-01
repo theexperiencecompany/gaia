@@ -190,10 +190,8 @@ export class OutboundConsumer {
     // File attachment: hand the artifact reference to the platform's file
     // sender (it fetches the bytes and uploads them). No chunking/rendering.
     if (env.attachment) {
-      let fileSent = false;
       try {
         await this.deliverFile(env.destination_id, env.attachment);
-        fileSent = true;
         this.settle(channel, () => channel.ack(msg));
       } catch (err) {
         this.logger.error(
@@ -201,9 +199,13 @@ export class OutboundConsumer {
           { id: env.id, redelivered: msg.fields.redelivered },
           err,
         );
-        // Retry once if nothing was sent; otherwise DLQ (avoid duplicate sends).
-        const requeue = !fileSent && !msg.fields.redelivered;
-        this.settle(channel, () => channel.nack(msg, false, requeue));
+        // Never requeue a file: deliverFile fetches the bytes AND uploads +
+        // sends them, and a failure can surface AFTER the platform already
+        // accepted the upload (e.g. a timeout reading the response). We can't
+        // tell a pre-send fetch failure from a post-send one, so requeueing
+        // risks delivering the file to the user twice. Dead-letter it instead —
+        // the envelope is preserved in the DLQ for inspection/manual replay.
+        this.settle(channel, () => channel.nack(msg, false, false));
       }
       return;
     }
@@ -218,15 +220,29 @@ export class OutboundConsumer {
     let delivered = 0;
     try {
       // Chunk the raw markdown by the platform limit, then render each chunk so
-      // every sent message is valid platform markdown.
-      for (const chunk of chunkResponse(env.text, this.platform)) {
-        const rendered = renderForPlatform(chunk, this.platform);
+      // every sent message is valid platform markdown. The renderer is passed
+      // into chunkResponse so chunks are sized by their RENDERED length —
+      // otherwise markdown that expands when rendered (e.g. Telegram tables
+      // padded into <pre> blocks) can overflow the platform's message limit and
+      // be rejected.
+      const render = (chunk: string): string =>
+        renderForPlatform(chunk, this.platform);
+      for (const chunk of chunkResponse(env.text, this.platform, render)) {
+        const rendered = render(chunk);
         // A chunk made up solely of strippable markup (e.g. a lone horizontal
         // rule) renders to nothing; platform send APIs reject empty text, so
         // skip it instead of throwing and dead-lettering the whole envelope.
         if (!rendered.trim()) continue;
         await this.deliver(env.destination_id, rendered);
         delivered += 1;
+      }
+      // Non-empty source text that rendered to nothing on every chunk: don't
+      // silently ack it away (the backend recorded it DELIVERED). Dead-letter
+      // it so the dropped message is visible for inspection.
+      if (delivered === 0) {
+        this.logger.warn("outbound_text_rendered_empty", { id: env.id });
+        this.settle(channel, () => channel.nack(msg, false, false));
+        return;
       }
       this.settle(channel, () => channel.ack(msg));
     } catch (err) {

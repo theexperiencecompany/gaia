@@ -14,6 +14,7 @@ from app.models.chat_models import (
     SourceCategory,
 )
 from app.services import platform_message_service as pms
+from app.services.outbound_delivery import OutboundResult
 
 
 @pytest.mark.unit
@@ -39,15 +40,19 @@ class TestDeliverMessageToPlatform:
     async def test_publishes_to_resolved_platform(self, source: ConversationSource) -> None:
         """Each bot source is published with the coerced enum, user id, and text."""
         with patch.object(
-            pms, "publish_outbound_message", new_callable=AsyncMock, return_value=True
+            pms,
+            "publish_outbound_message",
+            new_callable=AsyncMock,
+            return_value=OutboundResult.PUBLISHED,
         ) as pub:
             ok = await pms.deliver_message_to_platform(source, "user-1", "hello")
         assert ok is True
         pub.assert_awaited_once_with(source, "user-1", ["hello"])
 
-    async def test_returns_publish_result(self) -> None:
+    @pytest.mark.parametrize("result", [OutboundResult.SKIPPED, OutboundResult.FAILED])
+    async def test_non_published_result_returns_false(self, result: OutboundResult) -> None:
         with patch.object(
-            pms, "publish_outbound_message", new_callable=AsyncMock, return_value=False
+            pms, "publish_outbound_message", new_callable=AsyncMock, return_value=result
         ):
             ok = await pms.deliver_message_to_platform("whatsapp", "user-1", "hello")
         assert ok is False

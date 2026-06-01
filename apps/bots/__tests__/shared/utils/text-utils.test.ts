@@ -1,5 +1,18 @@
-import { parseTextArgs, truncateResponse } from "@gaia/shared";
+import {
+  chunkResponse,
+  parseTextArgs,
+  renderForPlatform,
+  truncateResponse,
+} from "@gaia/shared";
 import { describe, expect, it } from "vitest";
+
+/** A wide GFM table — renders to a Telegram <pre> block whose column padding
+ *  and ─ rule line make the visible output longer than the raw markdown. */
+const WIDE_TABLE = [
+  `| ${Array.from({ length: 6 }, (_, i) => `c${i}`.padEnd(40, "x")).join(" | ")} |`,
+  `|${"---|".repeat(6)}`,
+  `| ${Array.from({ length: 6 }, (_, i) => `v${i}`.padEnd(40, "y")).join(" | ")} |`,
+].join("\n");
 
 // ---------------------------------------------------------------------------
 // parseTextArgs
@@ -56,10 +69,10 @@ describe("truncateResponse", () => {
     expect(result.length).toBeLessThanOrEqual(2000);
   });
 
-  it("truncates at Slack limit (4000 chars)", () => {
+  it("truncates at Slack limit (3000 chars)", () => {
     const long = "word ".repeat(1000); // 5000 chars
     const result = truncateResponse(long, "slack");
-    expect(result.length).toBeLessThanOrEqual(4000);
+    expect(result.length).toBeLessThanOrEqual(3000);
   });
 
   it("truncates at Telegram limit (4096 chars)", () => {
@@ -105,5 +118,52 @@ describe("truncateResponse", () => {
     const closeBrackets = (result.match(/\]/g) || []).length;
     // Either the link is fully included or fully excluded
     expect(openBrackets).toBe(closeBrackets);
+  });
+});
+
+describe("chunkResponse", () => {
+  it("returns the text unchanged when it already fits", () => {
+    expect(chunkResponse("short message", "telegram")).toEqual([
+      "short message",
+    ]);
+  });
+
+  it("splits over-limit text into in-order pieces that reconstruct the original", () => {
+    const text = "word ".repeat(1000); // 5000 chars, > telegram 4096
+    const chunks = chunkResponse(text, "telegram");
+    expect(chunks.length).toBeGreaterThan(1);
+    // No information is lost across the split (whitespace at cut points aside).
+    expect(chunks.join(" ").replace(/\s+/g, " ").trim()).toBe(text.trim());
+  });
+
+  it("keeps each RENDERED chunk within the platform limit when a renderer is given", () => {
+    // Many wide tables: chunking by RAW length packs ~4096 chars per chunk, but
+    // the Telegram renderer pads tables into <pre> blocks that overflow 4096.
+    const text = `${WIDE_TABLE}\n\n`.repeat(40);
+    const render = (c: string) => renderForPlatform(c, "telegram");
+
+    const chunks = chunkResponse(text, "telegram", render);
+    for (const chunk of chunks) {
+      expect(render(chunk).length).toBeLessThanOrEqual(4096);
+    }
+
+    // The renderer-aware shrink is doing real work: raw-only chunking (no
+    // renderer) WOULD emit a chunk that overflows once rendered. If this is
+    // ever false the test above would pass vacuously.
+    const rawChunks = chunkResponse(text, "telegram");
+    expect(rawChunks.some((c) => render(c).length > 4096)).toBe(true);
+  });
+
+  it("never splits a GFM table across chunks", () => {
+    // Place a table so it straddles Discord's 2000-char cut window.
+    const filler = `${"sentence words here. ".repeat(95)}\n\n`; // ~1900 chars
+    const text = `${filler}${WIDE_TABLE}\n\ntail text after the table`;
+
+    const chunks = chunkResponse(text, "discord");
+
+    expect(chunks.length).toBeGreaterThan(1);
+    // Exactly one chunk contains the whole table block, contiguous and intact.
+    const withTable = chunks.filter((c) => c.includes(WIDE_TABLE));
+    expect(withTable).toHaveLength(1);
   });
 });

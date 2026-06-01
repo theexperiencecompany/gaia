@@ -25,6 +25,7 @@ import {
   BaseBotAdapter,
   type BotCommand,
   type BotFileData,
+  type BotUserContext,
   buildAuthLinkMessage,
   createBotLogger,
   extractSubcommandArgs,
@@ -34,6 +35,7 @@ import {
   htmlToPlainText,
   type IncomingMedia,
   type MediaKind,
+  type OutboundAttachment,
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
@@ -44,7 +46,7 @@ import {
   sanitizeErrorForLog,
 } from "@gaia/shared";
 import type { Message } from "@grammyjs/types";
-import { Bot, type Context } from "grammy";
+import { Bot, type Context, InputFile } from "grammy";
 
 /**
  * Telegram-specific implementation of the GAIA bot adapter.
@@ -381,6 +383,35 @@ export class TelegramAdapter extends BaseBotAdapter {
       (t, opts) => this.bot.api.sendMessage(destinationId, t, opts),
       text,
     );
+  }
+
+  /**
+   * Delivers an agent-generated file artifact to a Telegram user. Fetches the
+   * bytes from GAIA (bot-authenticated) and uploads them as a photo (for
+   * images) or a document. The chat id is the stored Telegram user id.
+   */
+  protected override async deliverOutboundFile(
+    destinationId: string,
+    attachment: OutboundAttachment,
+  ): Promise<void> {
+    const ctx: BotUserContext = {
+      platform: "telegram",
+      platformUserId: destinationId,
+    };
+    const { data, contentType } = await this.gaia.downloadArtifact(
+      attachment.conversation_id,
+      attachment.path,
+      ctx,
+    );
+    const mime =
+      attachment.content_type ?? contentType ?? "application/octet-stream";
+    const file = new InputFile(data, attachment.filename);
+    const caption = attachment.caption ?? undefined;
+    if (mime.startsWith("image/")) {
+      await this.bot.api.sendPhoto(destinationId, file, { caption });
+    } else {
+      await this.bot.api.sendDocument(destinationId, file, { caption });
+    }
   }
 
   /**

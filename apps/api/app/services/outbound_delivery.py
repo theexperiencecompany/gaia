@@ -9,12 +9,28 @@ formatting and sending now live in the bots — there is no Python copy.
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from app.constants.outbound import OUTBOUND_QUEUES
-from app.db.rabbitmq import get_rabbitmq_publisher
+from app.db.rabbitmq import RabbitMQPublisher, get_rabbitmq_publisher
 from app.models.chat_models import ConversationSource
 from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope
 from app.services.platform_link_service import PlatformLinkService
 from shared.py.wide_events import log
+
+
+class OutboundResult(StrEnum):
+    """Outcome of an outbound publish.
+
+    Distinguishes a genuine *skip* (unsupported platform, unlinked account,
+    nothing to send) from a real *failure* (broker unavailable, publish error)
+    so callers can record the correct delivery status — a broker outage must
+    not be recorded as "skipped".
+    """
+
+    PUBLISHED = "published"
+    SKIPPED = "skipped"
+    FAILED = "failed"
 
 
 async def _resolve_destination(platform: ConversationSource, user_id: str) -> str | None:
@@ -24,42 +40,61 @@ async def _resolve_destination(platform: ConversationSource, user_id: str) -> st
     return info.get("platformUserId") if info else None
 
 
-async def publish_outbound_message(
-    platform: ConversationSource, user_id: str, text_parts: list[str]
-) -> bool:
-    """Resolve ``user_id`` to its ``platform`` id and enqueue one envelope per
-    non-empty text part.
+async def _prepare(
+    platform: ConversationSource, user_id: str, log_label: str
+) -> tuple[str, str, RabbitMQPublisher] | OutboundResult:
+    """Resolve the queue, destination, and publisher shared by every outbound
+    publish.
 
-    Returns True only if every part was published. A partial send returns
-    False so the orchestrator does not record a half-delivered notification as
-    DELIVERED. Best-effort: unknown platforms, unlinked accounts, an unavailable
-    broker, and publish errors all return False and never raise into the
-    caller's flow.
+    Returns ``(queue_name, destination_id, publisher)`` on success, or the
+    :class:`OutboundResult` to report when the message can't be enqueued
+    (``SKIPPED`` for unsupported/unlinked, ``FAILED`` for an unavailable broker).
     """
     queue_name = OUTBOUND_QUEUES.get(platform)
     if queue_name is None:
-        return False
-
-    parts = [p for p in (s.strip() for s in text_parts) if p]
-    if not parts:
-        return False
+        return OutboundResult.SKIPPED
 
     destination_id = await _resolve_destination(platform, user_id)
     if not destination_id:
-        log.warning("publish_outbound_message: account not linked", platform=platform.value)
-        return False
+        log.warning(f"{log_label}: account not linked", platform=platform.value)
+        return OutboundResult.SKIPPED
 
     try:
         publisher = await get_rabbitmq_publisher()
     except RuntimeError:
-        log.warning("publish_outbound_message: RabbitMQ unavailable", platform=platform.value)
-        return False
+        log.warning(f"{log_label}: RabbitMQ unavailable", platform=platform.value)
+        return OutboundResult.FAILED
+
+    return queue_name, str(destination_id), publisher
+
+
+async def publish_outbound_message(
+    platform: ConversationSource, user_id: str, text_parts: list[str]
+) -> OutboundResult:
+    """Resolve ``user_id`` to its ``platform`` id and enqueue one envelope per
+    non-empty text part.
+
+    Returns ``PUBLISHED`` only if every part was published. ``SKIPPED`` when the
+    platform is unsupported, the account is unlinked, or there is nothing to
+    send. ``FAILED`` when the broker is unavailable or a publish errored (a
+    partial send is also ``FAILED`` so the orchestrator never records a
+    half-delivered notification as delivered). Best-effort: never raises into
+    the caller's flow.
+    """
+    parts = [p for p in (s.strip() for s in text_parts) if p]
+    if not parts:
+        return OutboundResult.SKIPPED
+
+    prep = await _prepare(platform, user_id, "publish_outbound_message")
+    if isinstance(prep, OutboundResult):
+        return prep
+    queue_name, destination_id, publisher = prep
 
     published = 0
     for part in parts:
         envelope = OutboundMessageEnvelope(
             platform=platform.value,
-            destination_id=str(destination_id),
+            destination_id=destination_id,
             text=part,
         )
         try:
@@ -68,10 +103,10 @@ async def publish_outbound_message(
         except Exception as e:
             # Stop on the first failure: a downed broker will reject the rest
             # too. Already-published parts can't be unsent, but the caller does
-            # NOT retry on a False result (the notification orchestrator records
-            # the status once and never re-enqueues), so reporting failure can't
-            # duplicate them — it just keeps a partial send from being recorded
-            # as a fully delivered notification (see the `== len(parts)` return).
+            # NOT retry on a failure result (the notification orchestrator
+            # records the status once and never re-enqueues), so reporting
+            # failure can't duplicate them — it just keeps a partial send from
+            # being recorded as a fully delivered notification.
             log.error(
                 "publish_outbound_message: publish failed",
                 platform=platform.value,
@@ -89,7 +124,7 @@ async def publish_outbound_message(
             parts=published,
             total=len(parts),
         )
-    return published == len(parts)
+    return OutboundResult.PUBLISHED if published == len(parts) else OutboundResult.FAILED
 
 
 async def publish_outbound_file(
@@ -108,24 +143,14 @@ async def publish_outbound_file(
     unknown platform, unlinked account, unavailable broker, and publish errors
     all return False without raising.
     """
-    queue_name = OUTBOUND_QUEUES.get(platform)
-    if queue_name is None:
+    prep = await _prepare(platform, user_id, "publish_outbound_file")
+    if isinstance(prep, OutboundResult):
         return False
-
-    destination_id = await _resolve_destination(platform, user_id)
-    if not destination_id:
-        log.warning("publish_outbound_file: account not linked", platform=platform.value)
-        return False
-
-    try:
-        publisher = await get_rabbitmq_publisher()
-    except RuntimeError:
-        log.warning("publish_outbound_file: RabbitMQ unavailable", platform=platform.value)
-        return False
+    queue_name, destination_id, publisher = prep
 
     envelope = OutboundMessageEnvelope(
         platform=platform.value,
-        destination_id=str(destination_id),
+        destination_id=destination_id,
         attachment=OutboundAttachment(
             conversation_id=conversation_id,
             path=path,
