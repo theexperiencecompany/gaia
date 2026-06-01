@@ -26,9 +26,8 @@ Also covers:
   - WorkflowScheduler (schedule, cancel, reschedule, get_task, get_pending_task,
     update_task_status, get_workflow_status)
   - WorkflowQueueService (queue_workflow_generation, queue_workflow_execution,
-    queue_scheduled_workflow_execution, queue_workflow_regeneration,
-    queue_todo_workflow_generation, is_workflow_generating,
-    clear_workflow_generating_flag)
+    queue_workflow_regeneration, queue_todo_workflow_generation,
+    is_workflow_generating, clear_workflow_generating_flag)
   - TriggerService (get_all_workflow_triggers, get_trigger_by_slug,
     register_triggers, unregister_triggers, reference counting)
   - WorkflowValidator (validate_for_execution: pass, deactivated, no steps,
@@ -2257,35 +2256,6 @@ class TestWorkflowQueueService:
         mock_redis.get_pool = AsyncMock(return_value=mock_pool)
 
         result = await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID)
-        assert result is False
-
-    @patch("app.services.workflow.queue_service.RedisPoolManager")
-    async def test_queue_scheduled_execution_success(self, mock_redis):
-        mock_pool = AsyncMock()
-        mock_job = MagicMock()
-        mock_job.job_id = "job_sched"
-        mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
-        mock_redis.get_pool = AsyncMock(return_value=mock_pool)
-
-        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
-        result = await WorkflowQueueService.queue_scheduled_workflow_execution(
-            WORKFLOW_ID, scheduled_at
-        )
-        assert result is True
-        mock_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id", WORKFLOW_ID, {}, _defer_until=scheduled_at
-        )
-
-    @patch("app.services.workflow.queue_service.RedisPoolManager")
-    async def test_queue_scheduled_execution_failure(self, mock_redis):
-        mock_pool = AsyncMock()
-        mock_pool.enqueue_job = AsyncMock(return_value=None)
-        mock_redis.get_pool = AsyncMock(return_value=mock_pool)
-
-        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
-        result = await WorkflowQueueService.queue_scheduled_workflow_execution(
-            WORKFLOW_ID, scheduled_at
-        )
         assert result is False
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")

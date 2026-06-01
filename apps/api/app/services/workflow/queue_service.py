@@ -1,7 +1,5 @@
 """Unified workflow queue service for background job management."""
 
-from datetime import UTC, datetime
-
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import log
 
@@ -52,51 +50,6 @@ class WorkflowQueueService:
 
         except Exception as e:
             log.error(f"Error queuing workflow execution for {workflow_id}: {e!s}")
-            return False
-
-    @staticmethod
-    async def queue_scheduled_workflow_execution(
-        workflow_id: str, scheduled_at: datetime, context: dict | None = None
-    ) -> bool:
-        """Queue a scheduled workflow execution with defer_until."""
-        try:
-            pool = await RedisPoolManager.get_pool()
-
-            tz_was_naive = scheduled_at.tzinfo is None
-            if tz_was_naive:
-                log.warning(
-                    f"queue_scheduled_workflow_execution: naive scheduled_at for "
-                    f"{workflow_id}, assuming UTC — check caller",
-                )
-                scheduled_at = scheduled_at.replace(tzinfo=UTC)
-            now = datetime.now(UTC)
-            defer_seconds = int((scheduled_at - now).total_seconds())
-
-            job = await pool.enqueue_job(
-                "execute_workflow_by_id",
-                workflow_id,
-                context or {},
-                _defer_until=scheduled_at,
-            )
-
-            if job:
-                log.set(
-                    workflow={"id": workflow_id, "status": "scheduled_queued"},
-                    arq_job_id=job.job_id,
-                    queue_mode="scheduled",
-                    scheduled_at_utc=scheduled_at.isoformat(),
-                    scheduled_at_was_naive=tz_was_naive,
-                    defer_seconds=defer_seconds,
-                )
-                log.info(
-                    f"Queued scheduled workflow execution for {workflow_id} at {scheduled_at} with job ID {job.job_id}"
-                )
-                return True
-            log.error(f"Failed to queue scheduled workflow execution for {workflow_id}")
-            return False
-
-        except Exception as e:
-            log.error(f"Error queuing scheduled workflow execution for {workflow_id}: {e!s}")
             return False
 
     @staticmethod

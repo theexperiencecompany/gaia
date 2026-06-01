@@ -898,31 +898,6 @@ class TestQueueService:
 
         assert result is False
 
-    async def test_queue_scheduled_workflow_execution(self):
-        """queue_scheduled_workflow_execution passes defer_until."""
-        mock_pool = AsyncMock()
-        mock_job = MagicMock()
-        mock_job.job_id = "job_sched_789"
-        mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
-        scheduled_at = datetime(2026, 6, 1, 9, 0, 0, tzinfo=UTC)
-
-        with patch(
-            "app.services.workflow.queue_service.RedisPoolManager.get_pool",
-            new_callable=AsyncMock,
-            return_value=mock_pool,
-        ):
-            result = await WorkflowQueueService.queue_scheduled_workflow_execution(
-                FAKE_WORKFLOW_ID, scheduled_at
-            )
-
-        assert result is True
-        mock_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id",
-            FAKE_WORKFLOW_ID,
-            {},
-            _defer_until=scheduled_at,
-        )
-
     async def test_queue_regeneration(self):
         """queue_workflow_regeneration enqueues with reason and force flag."""
         mock_pool = AsyncMock()
