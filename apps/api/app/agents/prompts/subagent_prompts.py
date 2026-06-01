@@ -2301,7 +2301,7 @@ automatically in the web frontend AND, for messaging users (WhatsApp, etc.), be
 sent to them as a file. Then your activity report MUST state the file's full
 workspace path (e.g. `/workspace/sessions/<conv>/artifacts/<name>.pdf`). Keep
 all intermediates in `./scratch/` — only the deliverable goes to `./artifacts/`.
-"""
+""",
 )
 
 GAIA_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(

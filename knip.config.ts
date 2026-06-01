@@ -80,6 +80,12 @@ const config: KnipConfig = {
     ".agents/skills/**",
     ".claude/skills/**",
 
+    // Builtin docgen skill templates: .mjs/.typ/.py/.tex files materialized into
+    // the agent workspace and executed by the skills' build.sh scripts (e.g.
+    // `node report.mjs`), never imported as modules — so knip reads them as
+    // unused files.
+    "apps/api/app/agents/skills/builtin/**",
+
     // SEO content source-of-truth: human-edited `entries/*.ts` are read by the
     // static-data codegen (scripts/extract-static-data*, which knip ignores) and
     // emitted to public/data/{feature}/*.json — the runtime fetches the JSON via
