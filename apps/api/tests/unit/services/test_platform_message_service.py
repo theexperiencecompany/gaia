@@ -22,21 +22,21 @@ class TestIsBotPlatform:
         "source",
         ["whatsapp", "telegram", "discord", "slack", ConversationSource.WHATSAPP],
     )
-    def test_bot_sources_are_true(self, source) -> None:
+    def test_bot_sources_are_true(self, source: str | ConversationSource) -> None:
         assert pms.is_bot_platform(source) is True
 
     @pytest.mark.parametrize(
         "source",
         ["web", "mobile", "workflow_system", "background", "nonsense", None],
     )
-    def test_non_bot_sources_are_false(self, source) -> None:
+    def test_non_bot_sources_are_false(self, source: str | None) -> None:
         assert pms.is_bot_platform(source) is False
 
 
 @pytest.mark.unit
 class TestDeliverMessageToPlatform:
     @pytest.mark.parametrize("source", sorted(BOT_CONVERSATION_SOURCES, key=lambda s: s.value))
-    async def test_publishes_to_resolved_platform(self, source) -> None:
+    async def test_publishes_to_resolved_platform(self, source: ConversationSource) -> None:
         """Each bot source is published with the coerced enum, user id, and text."""
         with patch.object(
             pms, "publish_outbound_message", new_callable=AsyncMock, return_value=True
@@ -53,7 +53,7 @@ class TestDeliverMessageToPlatform:
         assert ok is False
 
     @pytest.mark.parametrize("source", ["web", "mobile", "workflow_system", None])
-    async def test_non_bot_source_publishes_nothing(self, source) -> None:
+    async def test_non_bot_source_publishes_nothing(self, source: str | None) -> None:
         with patch.object(pms, "publish_outbound_message", new_callable=AsyncMock) as pub:
             ok = await pms.deliver_message_to_platform(source, "user-1", "hello")
         assert ok is False

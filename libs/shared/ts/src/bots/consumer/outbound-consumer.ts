@@ -165,6 +165,18 @@ export class OutboundConsumer {
     }
     const env = parsed.data;
 
+    // The queue is platform-specific, so a mismatched `platform` means the
+    // topology/routing key drifted (or a misrouted publish). Dead-letter it
+    // rather than send through the wrong adapter.
+    if (env.platform !== this.platform) {
+      this.logger.warn("outbound_platform_mismatch", {
+        expected: this.platform,
+        got: env.platform,
+      });
+      this.settle(channel, () => channel.nack(msg, false, false)); // wrong platform → DLQ
+      return;
+    }
+
     let delivered = 0;
     try {
       // Chunk the raw markdown by the platform limit, then render each chunk so

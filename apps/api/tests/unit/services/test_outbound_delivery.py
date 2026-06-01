@@ -74,7 +74,7 @@ class TestPublishOutboundMessage:
         assert b"15551234567" in body  # envelope carries the resolved destination
 
 
-def _linked(platform: str, platform_user_id: object) -> dict:
+def _linked(platform: str, platform_user_id: object) -> dict[str, dict[str, object]]:
     return {platform: {"platformUserId": platform_user_id}}
 
 
