@@ -52,7 +52,6 @@ tool_fields = [
     "notification_data",
     "memory_data",
     "todo_data",
-    "document_data",
     "goal_data",
     "code_data",
     "google_docs_data",

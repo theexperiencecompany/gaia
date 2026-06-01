@@ -225,7 +225,7 @@ FORBIDDEN STEP TYPES (DO NOT CREATE):
 - Do NOT create steps for "understanding context," "extracting information," or "making connections" - the LLM is inherently intelligent
 - Do NOT create steps that involve only text processing, data analysis, or content generation without external tool usage
 - Do NOT create generic steps like "gather requirements," "evaluate options," or "make recommendations" - these are LLM capabilities
-- If content analysis is needed, the LLM will do it while using actual tools like web_search_tool or generate_document
+- If content analysis is needed, the LLM will do it while using actual tools like web_search_tool
 - Do NOT use `category: "notifications"` for any step. GAIA automatically sends the user a notification after every workflow run — you never need to explicitly deliver an alert or push message. If a step needs to prepare a summary or message for the user (e.g. "summarize findings to surface to the user"), use `category: "gaia"` instead.
 
 FOCUS ON EXTERNAL TOOL ACTIONS:
@@ -245,9 +245,9 @@ TRIGGER-AWARE STEP GENERATION:
 
 BAD WORKFLOW EXAMPLES (DO NOT CREATE):
 ❌ "Analyze project requirements" → LLM does this inherently, no external tool needed
-❌ "Generate summary of findings" → LLM will summarize naturally, use generate_document only if saving to external file
+❌ "Generate summary of findings" → LLM will summarize naturally; only add a step if it performs a concrete external action
 ❌ "Review and prioritize tasks" → LLM handles prioritization, use list_todos to get external data
-❌ "Create analysis report" → Vague, use generate_document with specific content creation
+❌ "Create analysis report" → Vague; specify the concrete external action (e.g. compose_gmail_message to send it)
 ❌ "Evaluate meeting feedback" → LLM evaluates naturally, use search_gmail_messages to get external feedback data
 ❌ "Process email content" → LLM processes inherently, focus on external actions like reply, forward, archive
 ❌ "Understand user requirements" → LLM understands context naturally, no step needed
@@ -260,7 +260,7 @@ GOOD WORKFLOW EXAMPLES (OPTIMIZED EXTERNAL TOOL ACTIONS):
 ✅ "Plan vacation to Europe" → 1) web_search_tool (comprehensive Europe travel research), 2) get_weather (multi-city forecast), 3) create_calendar_event (complete trip with all dates)
 ✅ "Organize project emails" → 1) search_gmail_messages (all project-related), 2) create_gmail_labels_and_apply (batch organize in one step)
 ✅ "Prepare for client meeting" → 1) search_gmail_messages (client history + recent context), 2) create_calendar_event (meeting + prep time + follow-up)
-✅ "Submit quarterly report" → 1) query_file (get all quarterly data), 2) generate_document (complete report with analysis)
+✅ "Email quarterly report" → 1) query_file (get all quarterly data), 2) compose_gmail_message (report with analysis)
 ✅ "Follow up on email chain" → 1) search_gmail_messages (entire conversation), 2) compose_gmail_message (contextual reply with action items)
 ✅ "Email trigger: Customer support response" → 1) web_search_tool (research issue + solution), 2) compose_email (complete resolution + follow-up)
 ✅ "Email trigger: Meeting request" → 1) create_calendar_event (auto-find time + send invites), 2) compose_email (confirmation + agenda)

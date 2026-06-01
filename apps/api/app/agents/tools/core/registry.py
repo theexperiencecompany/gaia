@@ -211,7 +211,6 @@ class ToolRegistry:
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
         from app.agents.tools import (
             context_tool,
-            document_tool,
             file_tools,
             finish_task_tool,
             flowchart_tool,
@@ -244,7 +243,7 @@ class ToolRegistry:
 
         self._add_category(
             "documents",
-            tools=[file_tools.query_file, document_tool.generate_document],
+            tools=[file_tools.query_file],
         )
 
         self._add_category("notifications", tools=[*notification_tool.tools])

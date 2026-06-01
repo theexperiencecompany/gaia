@@ -1950,7 +1950,6 @@ backend = [
     { name = "pyjwt" },
     { name = "pymongo" },
     { name = "pymupdf" },
-    { name = "pypandoc" },
     { name = "redis" },
     { name = "resend" },
     { name = "sentry-sdk", extra = ["langgraph"] },
@@ -2103,7 +2102,6 @@ backend = [
     { name = "pyjwt", specifier = ">=2.10.0" },
     { name = "pymongo", specifier = "==4.9.2" },
     { name = "pymupdf", specifier = ">=1.25.5" },
-    { name = "pypandoc", specifier = ">=1.15" },
     { name = "redis", specifier = "==5.2.1" },
     { name = "resend", specifier = ">=2.10.0" },
     { name = "sentry-sdk", extras = ["langgraph"], specifier = ">=2.44.0" },
@@ -5708,15 +5706,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/8e/11/a62e1d33b373da2b2c2cd9eb508147871c80f12b1cacde3c5d314922afdd/pyopenssl-26.0.0.tar.gz", hash = "sha256:f293934e52936f2e3413b89c6ce36df66a0b34ae1ea3a053b8c5020ff2f513fc", size = 185534, upload-time = "2026-03-15T14:28:26.353Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fb/7d/d4f7d908fa8415571771b30669251d57c3cf313b36a856e6d7548ae01619/pyopenssl-26.0.0-py3-none-any.whl", hash = "sha256:df94d28498848b98cc1c0ffb8ef1e71e40210d3b0a8064c9d29571ed2904bf81", size = 57969, upload-time = "2026-03-15T14:28:24.864Z" },
-]
-
-[[package]]
-name = "pypandoc"
-version = "1.16.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/0b/18/9f5f70567b97758625335209b98d5cb857e19aa1a9306e9749567a240634/pypandoc-1.16.2.tar.gz", hash = "sha256:7a72a9fbf4a5dc700465e384c3bb333d22220efc4e972cb98cf6fc723cdca86b", size = 31477, upload-time = "2025-11-13T16:30:29.608Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bb/e9/b145683854189bba84437ea569bfa786f408c8dc5bc16d8eb0753f5583bf/pypandoc-1.16.2-py3-none-any.whl", hash = "sha256:c200c1139c8e3247baf38d1e9279e85d9f162499d1999c6aa8418596558fe79b", size = 19451, upload-time = "2025-11-13T16:30:07.66Z" },
 ]
 
 [[package]]

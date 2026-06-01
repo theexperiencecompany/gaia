@@ -126,7 +126,6 @@ backend = [
   "mem0ai>=0.1.118",
   "llama-cloud-services>=0.6.15",
   "pymupdf>=1.25.5",
-  "pypandoc>=1.15",
   "markdown2>=2.5.3",
   "pillow==12.1.1",
   "pandas>=2.3.0",

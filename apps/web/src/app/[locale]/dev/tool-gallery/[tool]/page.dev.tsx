@@ -12,7 +12,6 @@ import CalendarEventSection from "@/features/chat/components/bubbles/bot/Calenda
 import CodeExecutionSection from "@/features/chat/components/bubbles/bot/CodeExecutionSection";
 import ContactListSection from "@/features/chat/components/bubbles/bot/ContactListSection";
 import DeepResearchResultsTabs from "@/features/chat/components/bubbles/bot/DeepResearchResultsTabs";
-import DocumentSection from "@/features/chat/components/bubbles/bot/DocumentSection";
 import EmailComposeSection from "@/features/chat/components/bubbles/bot/EmailComposeSection";
 import EmailSentSection from "@/features/chat/components/bubbles/bot/EmailSentSection";
 import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadCard";
@@ -124,9 +123,6 @@ function GalleryRenderer({ fixture }: { fixture: ToolFixture }): JSX.Element {
         />
       );
     }
-    case "document_data":
-      // biome-ignore lint/suspicious/noExplicitAny: gallery-only
-      return <DocumentSection document_data={data as any} />;
     case "google_docs_data":
       // biome-ignore lint/suspicious/noExplicitAny: gallery-only
       return <GoogleDocsSection google_docs_data={data as any} />;
