@@ -17,7 +17,6 @@ from src.constants import (
     MAIN_RESPONSE_COMPLETE_KEY,
     OPEN_TAG_DEFER_CAP,
     RESPONSE_KEY,
-    RESPONSE_UI_KEY,
     SSE_DATA_PREFIX,
     TTS_FINAL_MIN_CHARS,
     TTS_HARD_FLUSH_CHARS,
@@ -32,7 +31,6 @@ from src.utils import (
     ms_since,
     now_ts,
     sanitize_for_tts,
-    split_response_for_ui_and_tts,
 )
 
 # Plumbing event keys that must never reach TTS.
@@ -254,17 +252,12 @@ class CustomLLM(LLM):
 
                         event_keys = set(event_payload.keys())
                         is_plumbing = bool(event_keys & PLUMBING_EVENT_KEYS)
-                        # Response-only events are split into a UI fragment
-                        # (forwarded immediately) and a TTS fragment (delivered
-                        # via LiveKit's TTS-aligned transcription channel). The
-                        # raw event is NOT forwarded for response-only events so
-                        # the chat bubble's spoken text fills in lockstep with
-                        # ElevenLabs playback instead of racing ahead of audio.
                         is_response_only = event_keys == {RESPONSE_KEY}
 
-                        if not is_response_only:
-                            # Plumbing, multi-key, or anything else: forward as-is.
-                            await self._forward_stream_event_to_frontend(data)
+                        # Forward all events to the frontend as-is. Response-only
+                        # events carry the full unsanitized text so the chat bubble
+                        # fills immediately; TTS separately gets a sanitized copy.
+                        await self._forward_stream_event_to_frontend(data)
 
                         logger.debug(
                             f"[{now_ts()}] ~ BACKEND EVENT | keys={list(event_keys)} plumbing={is_plumbing} response_only={is_response_only}",
@@ -316,27 +309,7 @@ class CustomLLM(LLM):
                         elif not isinstance(piece, str):
                             piece = str(piece)
 
-                        # Split: UI-only fragments forward immediately so OpenUI
-                        # cards render now; TTS-spoken text is buffered for
-                        # ElevenLabs and reaches the frontend later via the
-                        # TTS-aligned transcription channel.
-                        ui_only, tts_text = split_response_for_ui_and_tts(piece)
-                        if not ui_only and not tts_text:
-                            continue
-
-                        logger.debug(
-                            f"[{now_ts()}] ✂ SPLIT | raw='{piece[:80]}' ui_only='{ui_only[:60]}' tts='{tts_text[:60]}'",
-                            phase="split_response",
-                            raw_piece=piece,
-                            ui_only=ui_only,
-                            tts_text=tts_text,
-                        )
-
-                        if ui_only:
-                            ui_event = json.dumps({RESPONSE_UI_KEY: ui_only})
-                            await self._forward_stream_event_to_frontend(ui_event)
-
-                        if not tts_enabled or not tts_text:
+                        if not tts_enabled:
                             continue
 
                         text_buffer.append(piece)

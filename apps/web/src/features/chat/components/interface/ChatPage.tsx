@@ -28,6 +28,7 @@ import {
   usePendingPrompt,
 } from "@/stores/composerStore";
 import {
+  useDiscoveredConversationId,
   useVoiceModeActions,
   useVoiceModeActive,
 } from "@/stores/voiceModeStore";
@@ -36,6 +37,7 @@ import ScrollToBottomButton from "./ScrollToBottomButton";
 
 const ChatPage = React.memo(function MainChat() {
   const voiceModeActive = useVoiceModeActive();
+  const storeDiscoveredId = useDiscoveredConversationId();
   const { enterVoiceMode, exitVoiceMode } = useVoiceModeActions();
   const { convoMessages } = useConversation();
   const pendingPrompt = usePendingPrompt();
@@ -93,9 +95,16 @@ const ChatPage = React.memo(function MainChat() {
     convoIdParam,
   } = useChatLayout();
 
-  // Set active conversation ID and mark as read when opening
+  // Set active conversation ID and mark as read when opening.
+  // During a new voice session (no URL param), use the store's provisional
+  // UUID so the chat store points at the correct in-flight conversation —
+  // prevents this parent effect from overwriting VoiceSessionInner's ID with null.
   useEffect(() => {
-    setActiveConversationId(convoIdParam || null);
+    if (voiceModeActive && !convoIdParam && storeDiscoveredId) {
+      setActiveConversationId(storeDiscoveredId);
+    } else {
+      setActiveConversationId(convoIdParam || null);
+    }
 
     if (convoIdParam) {
       const conversations = useChatStore.getState().conversations;
@@ -117,6 +126,8 @@ const ChatPage = React.memo(function MainChat() {
   }, [
     convoIdParam,
     setActiveConversationId,
+    voiceModeActive,
+    storeDiscoveredId,
     // NOTE: Not including conversations or upsertConversation in deps
     // to avoid re-triggering when manually toggling read/unread status
   ]);
