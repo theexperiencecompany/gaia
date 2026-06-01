@@ -19,7 +19,7 @@ The deliverable is a PDF. For Word use `create-docx`, for slides `create-pptx`, 
 
 ## Workflow (every job)
 1. **Work in a job dir:** `mkdir -p ./scratch/pdf-<short-name>` and do everything there. Never build in `./artifacts/`.
-2. **Adapt a template — do not start blank.** `read /workspace/integrations/docgen/agent/skills/create-pdf/templates/report.typ` (or `letter.typ`, `invoice.typ`, `resume.typ`), then `write` the filled-in version to `./scratch/pdf-<name>/main.typ`. Read `/workspace/integrations/docgen/agent/skills/create-pdf/reference.md` for syntax and the common-error → fix table.
+2. **Adapt the closest template — do not start blank.** `read` the best-fit file from `templates/` (see the list below — e.g. `report.typ`, `report-consulting.typ`, `resume.typ`, `resume-classic.typ`, `invoice.typ`), then `write` the filled-in version to `./scratch/pdf-<name>/main.typ`. Read `/workspace/integrations/docgen/agent/skills/create-pdf/reference.md` for syntax and the common-error → fix table.
 3. **Put data in a file** if there's a lot of it, and reference it from the source, rather than inlining giant blobs.
 4. **Build + validate** with the bundled script (absolute path):
    ```
@@ -45,10 +45,13 @@ The build script provisions Typst + tectonic on first use; the very first PDF ma
 These are comprehensive, feature-rich starting points — adapt one rather than authoring from scratch. They double as a feature reference, so read the closest fit even just to learn the syntax.
 
 **Typst (default engine — `.typ`):**
-- `report.typ` — technical/research report: title page, abstract, auto TOC, numbered headings, figures (a drawn bar chart + tables), code block, inline/block math, footnotes, a callout box, block quote, cross-references, running header/footer, references list.
+- `report.typ` — formal technical/research report: title page, abstract, auto TOC, numbered headings, figures (a drawn bar chart + tables), code block, inline/block math, footnotes, a callout box, block quote, cross-references, running header/footer, references list.
+- `report-consulting.typ` — modern management-consulting deliverable: full-bleed cover band, executive-summary callout, KPI metric cards, drawn column chart, two-column findings/implications, styled table, numbered recommendation cards, next-steps box.
 - `letter.typ` — business letter with a drawn letterhead, sender/recipient blocks, subject, signature, enclosures/cc, per-page footer.
 - `invoice.typ` — itemized invoice with a styled line-items table and subtotal/discount/tax/total **computed in Typst** from an items array.
 - `resume.typ` — modern two-column resume: accent header, sidebar, categorized skill chips + proficiency bars, experience/projects/education/certifications.
+- `resume-classic.typ` — conservative single-column ATS-friendly resume: centered name, hairline section rules, right-aligned dates, no color (bank/law-firm safe, maximal compatibility).
+- `resume-modern.typ` — design-forward single-column resume: full-width colored header band, accent section dividers, drawn skill chips, a timeline rail on experience entries.
 
 **LaTeX (tectonic fallback — `.tex`):**
 - `thesis.tex` — complete single-file academic thesis: cover/certificate/declaration/acknowledgement/abstract, TOC + list of figures/tables, roman→arabic page numbering, fancyhdr headers, 6 chapters, a TikZ diagram + a pgfplots chart, booktabs/tabularx tables, numbered equations, and an embedded `thebibliography`. No external files/images. Build with the same `build.sh` (pass the `.tex`).
