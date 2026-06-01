@@ -139,6 +139,15 @@ class RabbitMQPublisher:
                 # redeclare on every publish (which would otherwise wedge all
                 # outbound delivery), and surface the drift loudly for an
                 # operator to reconcile.
+                #
+                # Residual: declare_outbound_topology declares the exchange then
+                # each queue in a loop, so if the FIRST declaration is the one
+                # that diverges, later queues in the same call are skipped and the
+                # flag still flips. That's acceptable here because
+                # declare_outbound_topology_on_startup eagerly declares the full
+                # topology at boot for both the API and the worker — this lazy
+                # path only runs as a post-reconnect fallback, by which point the
+                # durable queues already exist.
                 self._outbound_topology_declared = True
                 log.error(
                     "Outbound topology redeclare rejected (divergent queue arguments); "

@@ -25,7 +25,6 @@ import {
   BaseBotAdapter,
   type BotCommand,
   type BotFileData,
-  type BotUserContext,
   buildAuthLinkMessage,
   createBotLogger,
   extractSubcommandArgs,
@@ -47,6 +46,9 @@ import {
 } from "@gaia/shared";
 import type { Message } from "@grammyjs/types";
 import { Bot, type Context, InputFile } from "grammy";
+
+/** Telegram's sendPhoto byte cap; larger images are sent as documents. */
+const TELEGRAM_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 
 /**
  * Telegram-specific implementation of the GAIA bot adapter.
@@ -394,20 +396,19 @@ export class TelegramAdapter extends BaseBotAdapter {
     destinationId: string,
     attachment: OutboundAttachment,
   ): Promise<void> {
-    const ctx: BotUserContext = {
-      platform: "telegram",
-      platformUserId: destinationId,
-    };
-    const { data, contentType } = await this.gaia.downloadArtifact(
-      attachment.conversation_id,
-      attachment.path,
-      ctx,
+    const artifact = await this.fetchOutboundArtifact(
+      destinationId,
+      attachment,
     );
+    if (!artifact) return; // too large — fetchOutboundArtifact already replied
+    const { data, contentType } = artifact;
     const mime =
       attachment.content_type ?? contentType ?? "application/octet-stream";
     const file = new InputFile(data, attachment.filename);
     const caption = attachment.caption ?? undefined;
-    if (mime.startsWith("image/")) {
+    // sendPhoto caps around 10 MB; deliver larger images as a document so they
+    // still arrive instead of being rejected.
+    if (mime.startsWith("image/") && data.length <= TELEGRAM_PHOTO_MAX_BYTES) {
       await this.bot.api.sendPhoto(destinationId, file, { caption });
     } else {
       await this.bot.api.sendDocument(destinationId, file, { caption });

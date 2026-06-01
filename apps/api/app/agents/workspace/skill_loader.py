@@ -101,6 +101,11 @@ def _load_resources(skill_dir: Path) -> tuple[tuple[str, str], ...]:
     for path in sorted(skill_dir.rglob("*")):
         if not path.is_file() or path.name == "SKILL.md":
             continue
+        # Skip build/junk artifacts (e.g. __pycache__/*.pyc, dotfiles) so a stray
+        # local file never gets materialized + symlinked as a skill "resource".
+        rel_parts = path.relative_to(skill_dir).parts
+        if any(part == "__pycache__" or part.startswith(".") for part in rel_parts):
+            continue
         try:
             content = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):

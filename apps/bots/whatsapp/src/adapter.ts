@@ -19,7 +19,6 @@ import {
   BaseBotAdapter,
   type BotCommand,
   type BotFileData,
-  type BotUserContext,
   buildAuthLinkMessage,
   createBotLogger,
   extractSubcommandArgs,
@@ -53,6 +52,9 @@ import type {
 } from "./webhook.types";
 
 // ─── WhatsApp-specific config ─────────────────────────────────────────────────
+
+/** WhatsApp image-message byte cap; larger images are sent as documents. */
+const WHATSAPP_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 interface WhatsAppConfig {
   kapsoApiKey: string;
@@ -782,15 +784,12 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     destinationId: string,
     attachment: OutboundAttachment,
   ): Promise<void> {
-    const ctx: BotUserContext = {
-      platform: "whatsapp",
-      platformUserId: destinationId,
-    };
-    const { data, contentType } = await this.gaia.downloadArtifact(
-      attachment.conversation_id,
-      attachment.path,
-      ctx,
+    const artifact = await this.fetchOutboundArtifact(
+      destinationId,
+      attachment,
     );
+    if (!artifact) return; // too large — fetchOutboundArtifact already replied
+    const { data, contentType } = artifact;
     const mime =
       attachment.content_type ?? contentType ?? "application/octet-stream";
     const phoneNumberId = this.whatsAppConfig.kapsoPhoneNumberId;
@@ -805,7 +804,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
     const to = `+${destinationId}`;
     const caption = attachment.caption ?? undefined;
-    if (mime.startsWith("image/")) {
+    // WhatsApp image messages cap around 5 MB; deliver larger images as a
+    // document so they still arrive instead of being rejected.
+    if (mime.startsWith("image/") && data.length <= WHATSAPP_IMAGE_MAX_BYTES) {
       await this.whatsAppClient.messages.sendImage({
         phoneNumberId,
         to,

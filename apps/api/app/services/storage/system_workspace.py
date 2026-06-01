@@ -80,12 +80,12 @@ async def ensure_system_subtree() -> bool:
         marker = root / _SYSTEM_HASH_MARKER
         if marker.is_file() and marker.read_text(encoding="utf-8").strip() == signature:
             return True
+        root.mkdir(parents=True, exist_ok=True)
         for f in files:
             target = root / f.rel_path
             target.parent.mkdir(parents=True, exist_ok=True)
             if not (target.is_file() and target.read_text(encoding="utf-8") == f.body):
                 target.write_text(f.body, encoding="utf-8")
-        root.mkdir(parents=True, exist_ok=True)
         marker.write_text(signature, encoding="utf-8")
         return True
 

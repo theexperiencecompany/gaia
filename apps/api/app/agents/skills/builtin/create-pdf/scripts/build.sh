@@ -27,13 +27,16 @@ ensure_dirs() { mkdir -p "$BIN" "$DOCGEN_HOME/venv" 2>/dev/null || true; }
 ensure_typst() {
   command -v typst >/dev/null 2>&1 && return 0
   [ -x "$BIN/typst" ] && return 0
-  local arch; arch="$(uname -m)"; local tgt
+  # Pin the version (like tectonic below) so the fallback download is
+  # reproducible — `latest` could pull a release with breaking syntax/CLI changes.
+  local ver="0.13.1" arch tgt
+  arch="$(uname -m)"
   case "$arch" in
     x86_64|amd64) tgt="x86_64-unknown-linux-musl" ;;
     aarch64|arm64) tgt="aarch64-unknown-linux-musl" ;;
     *) fail "0:0: unsupported arch for typst: $arch" ;;
   esac
-  curl -fsSL "https://github.com/typst/typst/releases/latest/download/typst-${tgt}.tar.xz" \
+  curl -fsSL "https://github.com/typst/typst/releases/download/v${ver}/typst-${tgt}.tar.xz" \
     | tar -xJ -C "$BIN" --strip-components=1 "typst-${tgt}/typst" || fail "0:0: typst download failed"
   chmod +x "$BIN/typst"
 }
@@ -99,7 +102,10 @@ trap 'rm -f "$err"' EXIT
 case "$ext" in
   typ)
     ensure_typst
-    if ! typst compile --root / "$SRC" "$OUT" 2>"$err"; then
+    # Scope reads (#read/#include/image) to the source's own job directory, not
+    # the whole filesystem. The .typ is LLM-generated, so --root / would let a
+    # crafted document read arbitrary host files into the PDF.
+    if ! typst compile --root "$(dirname "$SRC")" "$SRC" "$OUT" 2>"$err"; then
       # Typst errors look like: error: <msg>\n  ┌─ file:LINE:COL
       msg="$(grep -m1 '^error:' "$err" | sed 's/^error:[[:space:]]*//')"
       loc="$(grep -m1 -oE '[^ ]+:[0-9]+:[0-9]+' "$err" | head -1)"

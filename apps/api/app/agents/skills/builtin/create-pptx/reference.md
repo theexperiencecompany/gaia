@@ -32,13 +32,11 @@ await pptx.writeFile({ fileName: out });
 - **Background:** `slide.background = { color: "1A4D8F" };`
 - **Shape:** `slide.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: "EEEEEE" } });`
 - **Table:** `slide.addTable(rows, { x, y, w, fontSize, border: { pt: 0.5, color: "CCCCCC" } });` where `rows` is an array of arrays of cell strings/objects.
-- **Native chart:**
-  ```js
-  slide.addChart(pptx.ChartType.bar,
-    [{ name: "Revenue", labels: ["Q1","Q2","Q3"], values: [1.0, 1.2, 1.5] }],
-    { x: 0.7, y: 1.6, w: 12, h: 5, showLegend: true });
-  ```
-  Types: `pptx.ChartType.bar | line | pie | area | doughnut`.
+- **Charts — do NOT use `slide.addChart(...)`.** Native pptxgenjs charts render
+  **blank in Apple Keynote / Quick Look** (they rely on an OOXML chart part many
+  viewers don't render). Build charts from primitives instead — `addShape`
+  rectangles for bars, `addTable` for data, `addText` for labels — as the
+  `deck.mjs` template does. This renders identically in every viewer.
 - **Image:** `slide.addImage({ path: "logo.png", x, y, w, h });` (path relative to the program).
 
 ## Common error → fix

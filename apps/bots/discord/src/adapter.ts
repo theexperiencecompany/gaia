@@ -21,7 +21,6 @@ import {
   BaseBotAdapter,
   type BotCommand,
   type BotFileData,
-  type BotUserContext,
   buildAuthLinkMessage,
   createBotLogger,
   formatBotError,
@@ -357,19 +356,15 @@ export class DiscordAdapter extends BaseBotAdapter {
     destinationId: string,
     attachment: OutboundAttachment,
   ): Promise<void> {
-    const ctx: BotUserContext = {
-      platform: "discord",
-      platformUserId: destinationId,
-    };
-    const { data } = await this.gaia.downloadArtifact(
-      attachment.conversation_id,
-      attachment.path,
-      ctx,
+    const artifact = await this.fetchOutboundArtifact(
+      destinationId,
+      attachment,
     );
+    if (!artifact) return; // too large — fetchOutboundArtifact already replied
     const user = await this.client.users.fetch(destinationId);
     await user.send({
       content: attachment.caption ?? undefined,
-      files: [{ attachment: data, name: attachment.filename }],
+      files: [{ attachment: artifact.data, name: attachment.filename }],
     });
   }
 

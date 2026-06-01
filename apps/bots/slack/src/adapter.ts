@@ -23,7 +23,6 @@
 import {
   BaseBotAdapter,
   type BotCommand,
-  type BotUserContext,
   buildAuthLinkMessage,
   createBotLogger,
   extractSubcommandArgs,
@@ -277,20 +276,16 @@ export class SlackAdapter extends BaseBotAdapter {
     destinationId: string,
     attachment: OutboundAttachment,
   ): Promise<void> {
-    const ctx: BotUserContext = {
-      platform: "slack",
-      platformUserId: destinationId,
-    };
-    const { data } = await this.gaia.downloadArtifact(
-      attachment.conversation_id,
-      attachment.path,
-      ctx,
+    const artifact = await this.fetchOutboundArtifact(
+      destinationId,
+      attachment,
     );
+    if (!artifact) return; // too large — fetchOutboundArtifact already replied
     const channel = await this.resolveDmChannel(destinationId);
     try {
       await this.app.client.files.uploadV2({
         channel_id: channel,
-        file: data,
+        file: artifact.data,
         filename: attachment.filename,
         initial_comment: attachment.caption ?? undefined,
       });
