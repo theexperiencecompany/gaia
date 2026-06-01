@@ -19,6 +19,7 @@ import {
   BaseBotAdapter,
   type BotCommand,
   type BotFileData,
+  type BotUserContext,
   buildAuthLinkMessage,
   createBotLogger,
   extractSubcommandArgs,
@@ -26,6 +27,7 @@ import {
   handleStreamingChat,
   hashLogIdentifier,
   type IncomingMedia,
+  type OutboundAttachment,
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
@@ -769,5 +771,52 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     text: string,
   ): Promise<void> {
     await this.sendWhatsAppText(destinationId, text);
+  }
+
+  /**
+   * Delivers an agent-generated file artifact to a WhatsApp user. Fetches the
+   * bytes from GAIA (bot-authenticated), uploads them to WhatsApp via the Kapso
+   * media API, then sends an image or document message referencing the media id.
+   */
+  protected override async deliverOutboundFile(
+    destinationId: string,
+    attachment: OutboundAttachment,
+  ): Promise<void> {
+    const ctx: BotUserContext = {
+      platform: "whatsapp",
+      platformUserId: destinationId,
+    };
+    const { data, contentType } = await this.gaia.downloadArtifact(
+      attachment.conversation_id,
+      attachment.path,
+      ctx,
+    );
+    const mime =
+      attachment.content_type ?? contentType ?? "application/octet-stream";
+    const phoneNumberId = this.whatsAppConfig.kapsoPhoneNumberId;
+
+    const uploaded = (await this.whatsAppClient.media.upload({
+      phoneNumberId,
+      type: mime,
+      file: new Blob([new Uint8Array(data)], { type: mime }),
+      fileName: attachment.filename,
+    })) as { id?: string };
+    if (!uploaded.id) throw new Error("Kapso media upload returned no id");
+
+    const to = `+${destinationId}`;
+    const caption = attachment.caption ?? undefined;
+    if (mime.startsWith("image/")) {
+      await this.whatsAppClient.messages.sendImage({
+        phoneNumberId,
+        to,
+        image: { id: uploaded.id, caption },
+      });
+    } else {
+      await this.whatsAppClient.messages.sendDocument({
+        phoneNumberId,
+        to,
+        document: { id: uploaded.id, filename: attachment.filename, caption },
+      });
+    }
   }
 }

@@ -12,9 +12,16 @@ from __future__ import annotations
 from app.constants.outbound import OUTBOUND_QUEUES
 from app.db.rabbitmq import get_rabbitmq_publisher
 from app.models.chat_models import ConversationSource
-from app.schemas.outbound import OutboundMessageEnvelope
+from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope
 from app.services.platform_link_service import PlatformLinkService
 from shared.py.wide_events import log
+
+
+async def _resolve_destination(platform: ConversationSource, user_id: str) -> str | None:
+    """Resolve a GAIA ``user_id`` to its platform-native destination id, or None."""
+    linked = await PlatformLinkService.get_linked_platforms(user_id)
+    info = linked.get(platform.value)
+    return info.get("platformUserId") if info else None
 
 
 async def publish_outbound_message(
@@ -37,9 +44,7 @@ async def publish_outbound_message(
     if not parts:
         return False
 
-    linked = await PlatformLinkService.get_linked_platforms(user_id)
-    info = linked.get(platform.value)
-    destination_id = info.get("platformUserId") if info else None
+    destination_id = await _resolve_destination(platform, user_id)
     if not destination_id:
         log.warning("publish_outbound_message: account not linked", platform=platform.value)
         return False
@@ -85,3 +90,60 @@ async def publish_outbound_message(
             total=len(parts),
         )
     return published == len(parts)
+
+
+async def publish_outbound_file(
+    platform: ConversationSource,
+    user_id: str,
+    conversation_id: str,
+    path: str,
+    filename: str,
+    content_type: str | None = None,
+    caption: str | None = None,
+) -> bool:
+    """Enqueue a file (artifact) for the bot to deliver to ``user_id``.
+
+    The bytes are not enqueued — the envelope references the artifact by
+    ``(conversation_id, path)`` and the bot fetches + uploads it. Best-effort:
+    unknown platform, unlinked account, unavailable broker, and publish errors
+    all return False without raising.
+    """
+    queue_name = OUTBOUND_QUEUES.get(platform)
+    if queue_name is None:
+        return False
+
+    destination_id = await _resolve_destination(platform, user_id)
+    if not destination_id:
+        log.warning("publish_outbound_file: account not linked", platform=platform.value)
+        return False
+
+    try:
+        publisher = await get_rabbitmq_publisher()
+    except RuntimeError:
+        log.warning("publish_outbound_file: RabbitMQ unavailable", platform=platform.value)
+        return False
+
+    envelope = OutboundMessageEnvelope(
+        platform=platform.value,
+        destination_id=str(destination_id),
+        attachment=OutboundAttachment(
+            conversation_id=conversation_id,
+            path=path,
+            filename=filename,
+            content_type=content_type,
+            caption=caption,
+        ),
+    )
+    try:
+        await publisher.publish_outbound(queue_name, envelope.model_dump_json().encode())
+    except Exception as e:
+        log.error("publish_outbound_file: publish failed", platform=platform.value, error=str(e))
+        return False
+
+    log.info(
+        "outbound_file_published",
+        platform=platform.value,
+        queue=queue_name,
+        filename=filename,
+    )
+    return True

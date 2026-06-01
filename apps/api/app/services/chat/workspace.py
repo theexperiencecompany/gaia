@@ -17,14 +17,29 @@ from datetime import UTC, datetime
 import json
 from typing import Any
 
+from app.constants.outbound import OUTBOUND_QUEUES
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
+from app.models.chat_models import ConversationSource
 from app.services.artifact_events import artifact_channel
 from app.services.integrations.user_integrations import (
     get_user_connected_integrations,
 )
+from app.services.outbound_delivery import publish_outbound_file
 from app.services.storage import JuiceFSUnavailable, bootstrap_user_session
 from shared.py.wide_events import log
+
+
+def _bot_source(source: str | None) -> ConversationSource | None:
+    """Return the bot ``ConversationSource`` for ``source`` if it has an outbound
+    queue (whatsapp/telegram/discord/slack), else None (web/mobile/unknown)."""
+    if not source:
+        return None
+    try:
+        cs = ConversationSource(source)
+    except ValueError:
+        return None
+    return cs if cs in OUTBOUND_QUEUES else None
 
 
 async def prepare_user_workspace(user_id: str, conversation_id: str) -> None:
@@ -57,6 +72,7 @@ async def forward_artifact_events(
     conversation_id: str,
     stream_id: str,
     tool_data: dict[str, Any],
+    source: str | None = None,
 ) -> None:
     """Forward this conversation's artifact events to the chat SSE stream
     *and* record them into the conversation's ``tool_data`` so they persist.
@@ -76,6 +92,12 @@ async def forward_artifact_events(
     channel = artifact_channel(user_id)
     pubsub = redis_cache.redis.pubsub()
     seen: dict[str, tuple[str | None, str | None, int | None, str | None]] = {}
+    # Bot file delivery: on a messaging-platform turn, each generated artifact is
+    # also pushed to the platform's outbound queue (the SSE card the web UI gets
+    # isn't visible to a bot user). Publish each path at most once per turn.
+    bot_platform = _bot_source(source)
+    published_files: set[str] = set()
+    publish_tasks: set[asyncio.Task[bool]] = set()
     try:
         await pubsub.subscribe(channel)
         async for message in pubsub.listen():
@@ -102,6 +124,27 @@ async def forward_artifact_events(
                     seen.pop(path, None)
                 else:
                     seen[path] = sig
+            # Deliver agent-generated artifacts (event == "upsert") to bot users.
+            # User uploads (event == "upload") are skipped — the user already has them.
+            if (
+                bot_platform is not None
+                and event == "upsert"
+                and path
+                and path not in published_files
+            ):
+                published_files.add(path)
+                pub_task = asyncio.create_task(
+                    publish_outbound_file(
+                        platform=bot_platform,
+                        user_id=user_id,
+                        conversation_id=conversation_id,
+                        path=path,
+                        filename=path.rsplit("/", 1)[-1],
+                        content_type=payload.get("content_type"),
+                    )
+                )
+                publish_tasks.add(pub_task)
+                pub_task.add_done_callback(publish_tasks.discard)
             entry = {
                 "tool_name": "artifact_data",
                 "data": payload,

@@ -14,7 +14,10 @@ import type { PlatformName } from "../types";
 import { renderForPlatform } from "../utils/formatters";
 import { type BotLogger, createBotLogger } from "../utils/logger";
 import { chunkResponse } from "../utils/text";
-import { outboundMessageEnvelopeSchema } from "./envelope";
+import {
+  type OutboundAttachment,
+  outboundMessageEnvelopeSchema,
+} from "./envelope";
 import {
   dlqName,
   OUTBOUND_DLX,
@@ -30,6 +33,12 @@ const RECONNECT_MAX_MS = 30_000;
 /** Sends one already-rendered message to a platform destination. */
 type DeliverFn = (destinationId: string, text: string) => Promise<void>;
 
+/** Sends one file attachment to a platform destination. */
+type DeliverFileFn = (
+  destinationId: string,
+  attachment: OutboundAttachment,
+) => Promise<void>;
+
 export class OutboundConsumer {
   private conn: Awaited<ReturnType<typeof connect>> | null = null;
   private channel: Channel | null = null;
@@ -42,6 +51,7 @@ export class OutboundConsumer {
     private readonly platform: PlatformName,
     private readonly url: string,
     private readonly deliver: DeliverFn,
+    private readonly deliverFile: DeliverFileFn,
   ) {
     this.logger = createBotLogger(platform, "outbound-consumer");
   }
@@ -174,6 +184,34 @@ export class OutboundConsumer {
         got: env.platform,
       });
       this.settle(channel, () => channel.nack(msg, false, false)); // wrong platform → DLQ
+      return;
+    }
+
+    // File attachment: hand the artifact reference to the platform's file
+    // sender (it fetches the bytes and uploads them). No chunking/rendering.
+    if (env.attachment) {
+      let fileSent = false;
+      try {
+        await this.deliverFile(env.destination_id, env.attachment);
+        fileSent = true;
+        this.settle(channel, () => channel.ack(msg));
+      } catch (err) {
+        this.logger.error(
+          "outbound_file_delivery_failed",
+          { id: env.id, redelivered: msg.fields.redelivered },
+          err,
+        );
+        // Retry once if nothing was sent; otherwise DLQ (avoid duplicate sends).
+        const requeue = !fileSent && !msg.fields.redelivered;
+        this.settle(channel, () => channel.nack(msg, false, requeue));
+      }
+      return;
+    }
+
+    // Text path. The schema's refine guarantees text when there is no
+    // attachment; narrow it here for the type checker.
+    if (!env.text) {
+      this.settle(channel, () => channel.nack(msg, false, false)); // nothing to send → DLQ
       return;
     }
 

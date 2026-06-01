@@ -36,6 +36,7 @@
 import { Analytics, BOT_EVENTS } from "../../analytics";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
+import type { OutboundAttachment } from "../consumer/envelope";
 import { OutboundConsumer } from "../consumer/outbound-consumer";
 import type {
   BotCommand,
@@ -234,6 +235,7 @@ export abstract class BaseBotAdapter {
       this.platform,
       url,
       (id, text) => this.deliverOutbound(id, text),
+      (id, attachment) => this.deliverOutboundFile(id, attachment),
     );
     void this._outboundConsumer.start();
   }
@@ -292,6 +294,26 @@ export abstract class BaseBotAdapter {
     destinationId: string,
     text: string,
   ): Promise<void>;
+
+  /**
+   * Delivers a file artifact to `destinationId`. Called by the outbound consumer
+   * when an envelope carries an `attachment`. The default sends a short text note
+   * via {@link deliverOutbound}; platforms that support attachments (e.g.
+   * WhatsApp) override this to fetch the artifact bytes and upload them.
+   */
+  protected async deliverOutboundFile(
+    destinationId: string,
+    attachment: OutboundAttachment,
+  ): Promise<void> {
+    this.logger.warn("outbound_file_fallback_text", {
+      platform: this.platform,
+      filename: attachment.filename,
+    });
+    await this.deliverOutbound(
+      destinationId,
+      `I created *${attachment.filename}*, but I can't send files on ${this.platform} yet.`,
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Shared helpers — used by adapter subclasses

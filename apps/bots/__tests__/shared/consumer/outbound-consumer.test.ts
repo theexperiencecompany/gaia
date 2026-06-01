@@ -25,6 +25,7 @@ vi.mock("amqplib", () => ({
   connect: vi.fn().mockResolvedValue(connection),
 }));
 
+import type { OutboundAttachment } from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
 import { OutboundConsumer } from "../../../../../libs/shared/ts/src/bots/consumer/outbound-consumer";
 
 type Handler = (msg: unknown) => unknown;
@@ -42,8 +43,17 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 async function startAndCaptureHandler(
   platform: "whatsapp" | "discord",
   deliver: (id: string, text: string) => Promise<void>,
+  deliverFile: (
+    id: string,
+    attachment: OutboundAttachment,
+  ) => Promise<void> = async () => undefined,
 ): Promise<Handler> {
-  const consumer = new OutboundConsumer(platform, "amqp://test", deliver);
+  const consumer = new OutboundConsumer(
+    platform,
+    "amqp://test",
+    deliver,
+    deliverFile,
+  );
   await consumer.start();
   const calls = channel.consume.mock.calls;
   const last = calls[calls.length - 1];
