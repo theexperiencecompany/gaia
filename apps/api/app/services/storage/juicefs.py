@@ -171,6 +171,18 @@ async def write_session_file(
     return result
 
 
+def page_bounds(offset: int, limit: int) -> tuple[int, int]:
+    """1-indexed inclusive ``(start, end)`` line range for a paged read.
+
+    ``offset`` is the 1-indexed start line (0 and 1 both mean line 1); ``limit``
+    is clamped to at least one line. Shared by every read path (memory, JuiceFS,
+    sandbox) so their slices stay byte-for-byte consistent.
+    """
+    start = max(1, offset) if offset > 0 else 1
+    end = start + max(1, limit) - 1
+    return start, end
+
+
 async def read_user_file(
     user_id: str,
     workspace_rel_path: str,
@@ -193,8 +205,7 @@ async def read_user_file(
     ``FileNotFoundError`` if the target is missing or not a regular file, and
     ``JuiceFSUnavailable`` if the host mount is absent (e.g. native dev).
     """
-    start = max(1, offset) if offset > 0 else 1
-    end = start + max(1, limit) - 1
+    start, end = page_bounds(offset, limit)
 
     def _read() -> tuple[list[str], int]:
         base, rel = _host_base_and_rel(user_id, workspace_rel_path)

@@ -23,9 +23,11 @@ async def publish_outbound_message(
     """Resolve ``user_id`` to its ``platform`` id and enqueue one envelope per
     non-empty text part.
 
-    Returns True if at least one envelope was published. Best-effort: unknown
-    platforms, unlinked accounts, an unavailable broker, and publish errors all
-    return False and never raise into the caller's flow.
+    Returns True only if every part was published. A partial send returns
+    False so the orchestrator does not record a half-delivered notification as
+    DELIVERED. Best-effort: unknown platforms, unlinked accounts, an unavailable
+    broker, and publish errors all return False and never raise into the
+    caller's flow.
     """
     queue_name = OUTBOUND_QUEUES.get(platform)
     if queue_name is None:
@@ -59,10 +61,12 @@ async def publish_outbound_message(
             await publisher.publish_outbound(queue_name, envelope.model_dump_json().encode())
             published += 1
         except Exception as e:
-            # Parts already on the queue will be delivered. Reporting the whole
-            # send as failed would make the caller re-enqueue and duplicate the
-            # parts already sent, so stop here but still report success for what
-            # got through (the documented "True if at least one was published").
+            # Stop on the first failure: a downed broker will reject the rest
+            # too. Already-published parts can't be unsent, but the caller does
+            # NOT retry on a False result (the notification orchestrator records
+            # the status once and never re-enqueues), so reporting failure can't
+            # duplicate them — it just keeps a partial send from being recorded
+            # as a fully delivered notification (see the `== len(parts)` return).
             log.error(
                 "publish_outbound_message: publish failed",
                 platform=platform.value,
@@ -80,4 +84,4 @@ async def publish_outbound_message(
             parts=published,
             total=len(parts),
         )
-    return published > 0
+    return published == len(parts)

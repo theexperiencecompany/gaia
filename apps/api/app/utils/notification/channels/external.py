@@ -63,16 +63,18 @@ class ExternalPlatformAdapter(ChannelAdapter):
         body = content.body or ""
         header = _join_nonempty(f"**{title}**" if title else "", body)
 
-        # Stripping and empty-part filtering happen once, in
-        # ``publish_outbound_message``; here we only build the parts (guarding
-        # the untyped ``rich.messages`` entries against non-strings).
+        # Build clean parts here: drop blank/whitespace-only entries and guard
+        # the untyped ``rich.messages`` against non-strings, so a workflow with
+        # empty result messages never emits an empty bubble. ``publish_outbound_message``
+        # also strips defensively for callers (e.g. deliver_message_to_platform)
+        # that bypass ``transform``.
         if rich.get("type") == "workflow_execution":
             conversation_id = rich.get("conversation_id", "")
             footer = (
                 f"[View full results]({app_url}/c/{conversation_id})" if conversation_id else ""
             )
             parts = [header, *rich.get("messages", []), footer]
-            return {"parts": [p for p in parts if isinstance(p, str)]}
+            return {"parts": [p for p in parts if isinstance(p, str) and p.strip()]}
 
         text = header
         if content.actions:

@@ -22,26 +22,11 @@ from app.agents.workspace.system_docs import (
     INTEGRATIONS_GUIDE_MD,
     SESSIONS_GUIDE_MD,
 )
+from app.services.storage._vfs_common import matches_text
 from app.services.storage.juicefs import ensure_safe_path_id
 from shared.py.wide_events import log
 
 SKILLS_HASH_MARKER = ".gaia/skills.v"
-
-
-def matches_text(path: Path, expected: str) -> bool:
-    """Cheap "do we need to rewrite this file?" check.
-
-    Treats decode errors as "doesn't match" so corrupted bytes get rewritten
-    rather than silently kept. A symlink is treated as "matches" so the
-    de-duplicated system-file symlinks (which point at the read-only `_system`
-    mount and don't resolve host-side) are never clobbered back into copies.
-    """
-    if path.is_symlink():
-        return True
-    try:
-        return path.read_text(encoding="utf-8") == expected
-    except (OSError, UnicodeDecodeError):
-        return False
 
 
 def read_text_or_none(path: Path) -> str | None:

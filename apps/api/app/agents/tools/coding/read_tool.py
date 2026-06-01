@@ -26,7 +26,7 @@ from app.agents.workspace.system_files import system_file_body
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, JuiceFSUnavailable, fs_timer, read_user_file
-from app.services.storage.juicefs import user_owns_regular_file
+from app.services.storage.juicefs import page_bounds, user_owns_regular_file
 from app.templates.docstrings.coding_tools_docs import READ_TOOL
 from shared.py.wide_events import log
 
@@ -101,8 +101,7 @@ def _format_memory_read(
 ) -> str:
     """Slice + format an in-memory system file the same way a host read would."""
     all_lines = body.splitlines()
-    start = max(1, offset) if offset > 0 else 1
-    end = start + limit - 1
+    start, end = page_bounds(offset, limit)
     sliced = all_lines[start - 1 : end]
     return _format_read(abs_path, sliced, len(all_lines), offset, limit, session_id)
 
@@ -116,8 +115,7 @@ def _format_read(
     session_id: str | None,
 ) -> str:
     """Number the sliced lines and append a paging footer (shared by both paths)."""
-    start = max(1, offset) if offset > 0 else 1
-    end = start + limit - 1
+    start, end = page_bounds(offset, limit)
     numbered = "\n".join(f"{start + i:>6}\t{line}" for i, line in enumerate(lines))
 
     footer = ""
@@ -152,8 +150,7 @@ async def _read_file_sandbox(
     # `awk`. Signal "file missing" via a distinct exit code rather than an
     # in-band marker — a file whose selected line range happens to equal the
     # sentinel would otherwise be misreported as missing.
-    start = max(1, offset) if offset > 0 else 1
-    end = start + limit - 1
+    start, end = page_bounds(offset, limit)
     cmd = (
         f"if [ ! -f {sh_quote(abs_path)} ]; then exit 44; "
         f"else awk 'NR>={start} && NR<={end}' {sh_quote(abs_path)}; fi"

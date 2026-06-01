@@ -38,6 +38,7 @@ from pathlib import Path
 from app.agents.workspace.system_files import SystemFile, system_files
 from app.services.storage.juicefs import (
     JuiceFSUnavailable,
+    _host_base_and_rel,
     _mount_root,
     _require_mount,
 )
@@ -47,9 +48,6 @@ from shared.py.wide_events import log
 SYSTEM_SUBDIR = "_system"
 # In-sandbox mount point for the shared copy (see mount_juicefs.sh).
 SANDBOX_SYSTEM_DIR = "/workspace/.system"
-# Skill bodies live under the /skills/<uid> overlay subtree in the sandbox, not
-# /users/<uid>; their symlinks must be written there to be visible.
-_SKILLS_PREFIX = "skills/"
 
 _SYSTEM_HASH_MARKER = ".gaia_system.v"
 
@@ -110,13 +108,13 @@ def _link_target(rel_path: str) -> str:
 def _link_location(user_id: str, rel_path: str) -> Path:
     """Host path where the per-user symlink for ``rel_path`` must be written.
 
-    Skill bodies map to the /skills/<uid> overlay subtree (what the sandbox shows
-    at /workspace/skills); everything else lives under /users/<uid>.
+    Reuses ``_host_base_and_rel`` — the single source of the workspace-rel →
+    host-path routing (skill bodies live in the /skills/<uid> overlay subtree,
+    everything else under /users/<uid>) — so the symlink placement can never
+    disagree with where the read fast-path looks for the same file.
     """
-    mount = _mount_root()
-    if rel_path.startswith(_SKILLS_PREFIX):
-        return mount / "skills" / user_id / rel_path[len(_SKILLS_PREFIX) :]
-    return mount / "users" / user_id / rel_path
+    base, rel = _host_base_and_rel(user_id, rel_path)
+    return base / rel
 
 
 def _place_symlink(link: Path, target: str) -> bool:
