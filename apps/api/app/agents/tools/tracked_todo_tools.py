@@ -15,11 +15,12 @@ from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.mongodb.collections import todos_collection
 from app.models.todo_models import Priority, TodoResponse
-from app.services.tracked_todo_service import GAIA_TRACKED_LABEL, tracked_todo_service
+from app.services.todo_canvas_storage import append_canvas, read_canvas, write_canvas
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
-from app.services.vfs.mongo_vfs import MongoVFS
 from app.utils.canvas_vector_utils import search_canvas_context
 from shared.py.wide_events import log
 
@@ -40,8 +41,13 @@ async def _get_user_tz(user_id: str) -> str:
             try:
                 ZoneInfo(tz_name)
                 return tz_name
-            except Exception:
-                pass
+            except Exception as tz_err:
+                log.debug(
+                    "tracked_todo.invalid_user_tz",
+                    user_id=user_id,
+                    tz_name=tz_name,
+                    error=str(tz_err),
+                )
     except Exception as e:
         log.warning("tracked_todo.user_tz_lookup_failed", user_id=user_id, error=str(e))
     log.warning("tracked_todo.user_tz_fallback_utc", user_id=user_id)
@@ -602,26 +608,21 @@ async def update_tracked_todo_canvas(
     if mode == "section" and not section:
         return "Error: 'section' mode requires a section name."
 
-    vfs = MongoVFS()
-
-    doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
+    doc = await todos_collection.find_one(
+        {"_id": ObjectId(todo_id), "user_id": user_id},
+        {"_id": 1},
+    )
     if not doc:
         return f"Error: tracked todo {todo_id} not found"
-    vfs_path = doc.get("vfs_path")
-    if not vfs_path:
-        return f"Error: todo {todo_id} has no vfs_path"
-
-    canvas_path = f"{vfs_path}/canvas.md"
 
     if mode == "replace":
-        await vfs.write(path=canvas_path, content=content, user_id=user_id)
+        await write_canvas(todo_id, user_id, content)
     elif mode == "append":
-        suffix = content if content.startswith("\n") else f"\n{content}"
-        await vfs.append(path=canvas_path, content=suffix, user_id=user_id)
+        await append_canvas(todo_id, user_id, content)
     else:  # section
-        current = await vfs.read(path=canvas_path, user_id=user_id) or ""
+        current = await read_canvas(todo_id, user_id) or ""
         new_canvas = _patch_canvas_section(current, section or "", content)
-        await vfs.write(path=canvas_path, content=new_canvas, user_id=user_id)
+        await write_canvas(todo_id, user_id, new_canvas)
 
     _fire_and_forget(tracked_todo_service.reindex_canvas(todo_id=todo_id, user_id=user_id))
     section_suffix = f", section={section}" if section else ""

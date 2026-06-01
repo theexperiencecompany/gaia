@@ -25,7 +25,7 @@ These are ephemeral — your current work only, not persistent user tasks.
 You do NOT have tracked todo tools — those are executor-only.
 
 —INSTALLED SKILLS
-If context includes a skill path, read it with vfs_read before executing — it contains curated workflows.
+If context includes a skill path, read it with `read("/workspace/skills/<name>/SKILL.md")` before executing — it contains curated workflows.
 
 —EXECUTION
 - Try alternative approaches if something doesn't work before concluding it's not possible
@@ -52,8 +52,8 @@ SPAWN_SUBAGENT_DESCRIPTION = """Spawn a focused subagent for parallel or isolate
 
 Use when:
 - Multiple independent subtasks can run concurrently (issue multiple spawn_subagent calls in one turn)
-- A tool output was stored to VFS ("[Full output stored at: ...]") and you need to process it
-  without polluting your context
+- A tool output was saved to a workspace file ("[Full output stored at: ...]") and you need
+  to process it without polluting your context
 - Heavy extraction/summarization from large responses
 
 Do NOT use when:
@@ -64,10 +64,10 @@ The subagent has full access to your currently bound tools (except handoff and s
 Trust it — give a clear objective and context, not a prescriptive list of tool calls.
 
 Args:
-    task: Clear objective for the subagent. Include VFS paths if processing stored outputs.
+    task: Clear objective for the subagent. Include workspace file paths if processing stored outputs.
     context: Background data or context the subagent needs. If a skill applies to this task,
-             include its VFS path here (e.g. "Skill path: /skills/gmail-find-contacts") so the
-             subagent can read and activate it.
+             include its workspace path here (e.g. "Skill path: /workspace/skills/gmail-find-contacts")
+             so the subagent can read and activate it.
 
 Returns:
     The subagent's result/findings"""

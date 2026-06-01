@@ -5,6 +5,7 @@ import uuid
 
 from bson import ObjectId
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
+from fastapi.responses import JSONResponse
 from pymongo import ReturnDocument
 
 from app.api.v1.dependencies.oauth_dependencies import (
@@ -32,6 +33,7 @@ from app.models.todo_models import (
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
+from app.services.todo_canvas_storage import read_canvas
 from app.services.todos.sync_service import sync_subtask_to_goal_completion
 from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.tracked_todo_service import tracked_todo_service
@@ -322,6 +324,16 @@ async def get_todo(todo_id: str, user: dict = Depends(get_current_user)):
         )
 
 
+@router.get("/todos/{todo_id}/canvas")
+async def get_todo_canvas(todo_id: str, user: dict = Depends(get_current_user)) -> JSONResponse:
+    """Return the canvas markdown for a tracked todo."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "get_canvas", "id": todo_id})
+    content = await read_canvas(todo_id, user["user_id"])
+    if content is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo not found")
+    return JSONResponse(content={"content": content})
+
+
 @router.put("/todos/{todo_id}", response_model=TodoResponse)
 @tiered_rate_limit("todo_operations")
 async def update_todo(
@@ -344,9 +356,7 @@ async def update_todo(
         # If this is a tracked todo and scheduled_at changed, reschedule ARQ job
         if updates.scheduled_at is not None and updated_todo.vfs_path:
             try:
-                await tracked_todo_service.reschedule_execution(
-                    todo_id, updates.scheduled_at
-                )
+                await tracked_todo_service.reschedule_execution(todo_id, updates.scheduled_at)
             except Exception as e:
                 log.warning(f"Failed to reschedule todo {todo_id} after update: {e}")
 

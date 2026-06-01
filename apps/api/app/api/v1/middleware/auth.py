@@ -1,7 +1,4 @@
-"""
-This is a simplified version of the auth middleware that avoids complex type checking issues
-with the WorkOS SDK. It implements the same functionality but with a more dynamic approach.
-"""
+"""WorkOS session auth middleware + ``get_current_user`` dependency."""
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -21,20 +18,16 @@ from shared.py.wide_events import log
 
 
 def get_current_user(request: Request) -> dict[str, Any] | None:
-    """
-    FastAPI dependency to get the current authenticated user from request state.
-
-    Returns None if user is not authenticated.
-    """
+    """Return the authenticated user dict on ``request.state``, or ``None``."""
     return getattr(request.state, "user", None)
 
 
 class WorkOSAuthMiddleware(BaseHTTPMiddleware):
-    """
-    Middleware for handling WorkOS authentication sessions.
+    """Authenticate WorkOS session cookies; populate ``request.state.user``.
 
-    This middleware processes authentication cookies, validates sessions,
-    handles session refreshes, and stores authenticated user data in request.state.
+    Handles cookie refresh and an agent-token fallback for the chat-stream
+    endpoint. Unauthenticated requests still pass through — route handlers
+    are responsible for enforcing auth via :func:`get_current_user`.
     """
 
     def __init__(
@@ -44,12 +37,10 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         exclude_paths: list[str] | None = None,
     ):
         super().__init__(app)
-        # Initialize WorkOS client or use provided one
         self.workos = workos_client or AsyncWorkOSClient(
             api_key=settings.WORKOS_API_KEY,
             client_id=settings.WORKOS_CLIENT_ID,
         )
-        # Paths that don't need authentication
         self.exclude_paths = exclude_paths or [
             "/docs",
             "/redoc",
@@ -59,66 +50,53 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/oauth/google/callback",
             "/user/logout",
             "/health",
-            "/api/v1/bot",  # Bot endpoints use separate auth middleware
-            "/api/v1/webhook",  # Webhook endpoints use signature verification
+            "/api/v1/bot",
+            "/api/v1/webhook",
             "/metrics",
+            # Login-free connect link — self-authenticates via a signed,
+            # single-use, connect-scoped token (see connect_link_service).
+            "/api/v1/integrations/connect-link",
         ]
-        # agent only paths
+        # Routes that also accept an "Authorization: Bearer <agent JWT>" in
+        # addition to a WorkOS session cookie. No prefix-scoped routes are
+        # currently configured — the legacy `/api/v1/dev/*` smoke-test prefix
+        # was removed when those routes were deleted.
         self.agent_only_paths = ["/api/v1/chat-stream"]
-        # Cache expiry time
-        self.user_cache_expiry = 3600  # 1 hour
+        self.agent_only_path_prefixes: tuple[str, ...] = ()
+        self.user_cache_expiry = 3600
 
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        """
-        Process the request through the authentication middleware.
-
-        Args:
-            request: The incoming request
-            call_next: Callable to process the request through the next middleware/route
-
-        Returns:
-            Response: The response from the route handler with any updated auth cookies
-        """
-        # Skip authentication for excluded paths
+        """Authenticate, then invoke the next handler. Refresh cookies on the way out."""
         if any(request.url.path.startswith(path) for path in self.exclude_paths):
             return await call_next(request)
 
-        # Extract authentication cookies
         wos_session = request.cookies.get("wos_session")
-
-        # Fallback to Authorization header (for mobile/API clients)
         if not wos_session:
             auth_header = request.headers.get("Authorization")
             if auth_header and auth_header.startswith("Bearer "):
                 wos_session = auth_header.split(" ", 1)[1]
 
-        # Initialize state
         request.state.user = None
         request.state.authenticated = False
         request.state.new_session = None
 
-        # Process authentication if we have a session cookie
         if wos_session:
             try:
-                # Authenticate and possibly refresh session
                 user_info, new_session = await self._authenticate_session(wos_session)
-
                 if user_info:
-                    # Store in request state for dependency injection
                     request.state.user = user_info
                     request.state.authenticated = True
-
-                    # If session was refreshed, store new session token
                     if new_session:
                         request.state.new_session = new_session
                 else:
-                    # Session token was present but authentication failed (expired, invalid, etc.)
-                    # Store failure reason in request state so route handlers can log it.
-                    # NOTE: log.set() cannot be used here because WorkOSAuthMiddleware runs
-                    # outside LoggingMiddleware's context (Starlette copies context at call_next),
-                    # so any wide event fields set here would be wiped by log.reset() below.
+                    # Session was present but rejected. We can't call
+                    # ``log.set()`` here — WorkOSAuthMiddleware runs outside
+                    # LoggingMiddleware's context (Starlette copies context at
+                    # call_next), so any wide event fields would be wiped by
+                    # ``log.reset()``. Stash the reason on request.state so the
+                    # route layer can log it inside the right context.
                     request.state.auth_failure = "invalid_or_expired_session"
 
             except Exception as e:
@@ -131,16 +109,18 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                     error=str(e),
                 )
                 # Don't block request on auth failures - routes can handle this
-        if not request.state.authenticated and request.url.path in self.agent_only_paths:
+
+        accepts_agent_token = request.url.path in self.agent_only_paths or any(
+            request.url.path.startswith(p) for p in self.agent_only_path_prefixes
+        )
+        if not request.state.authenticated and accepts_agent_token:
             auth_header = request.headers.get("Authorization")
             agent_info = None
             if auth_header and auth_header.startswith("Bearer "):
                 token = auth_header.split(" ", 1)[1]
                 agent_info = verify_agent_token(token)
             if agent_info:
-                # fetch user from db
                 user_id = agent_info["user_id"]
-                # Ensure user_id is an ObjectId
                 if not isinstance(user_id, ObjectId):
                     try:
                         user_id = ObjectId(user_id)
@@ -162,10 +142,8 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                     }
                     request.state.authenticated = True
 
-        # Process the request
         response = await call_next(request)
 
-        # Update session cookie if session was refreshed
         if hasattr(request.state, "new_session") and request.state.new_session:
             response.set_cookie(
                 key="wos_session",
@@ -173,7 +151,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 httponly=True,
                 secure=settings.ENV == "production",
                 samesite="lax",
-                max_age=60 * 60 * 24 * 7,  # 7 days
+                max_age=60 * 60 * 24 * 7,
             )
 
         return response
@@ -181,34 +159,23 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
     async def _authenticate_session(
         self, wos_session: str
     ) -> tuple[dict[str, Any] | None, str | None]:
+        """Authenticate a WorkOS sealed session and bump ``last_active_at``.
+
+        Returns ``(user_info, new_session)`` where ``new_session`` is the
+        refreshed token when WorkOS rotates the cookie. Either field may be
+        ``None`` on failure; raises if WorkOS itself errors.
         """
-        Authenticate a WorkOS session and refresh if needed.
-
-        Args:
-            wos_session: WorkOS sealed session from cookie
-
-        Returns:
-            tuple: (user_info, new_session_token) - Both can be None if authentication fails
-
-        Raises:
-            Exception: On authentication failure
-        """
-
         user_info, new_session = await authenticate_workos_session(
             session_token=wos_session, workos_client=self.workos
         )
-
-        if user_info:  # If authentication successful, add additional processing
-            try:
-                # Update user's last activity
-                await users_collection.update_one(
-                    {"email": user_info["email"]},
-                    {"$set": {"last_active_at": datetime.now(UTC)}},
-                )
-
-                return user_info, new_session
-            except Exception as e:
-                log.error(f"Error in middleware additional processing: {e}")
-                return None, new_session
-
-        return None, new_session
+        if not user_info:
+            return None, new_session
+        try:
+            await users_collection.update_one(
+                {"email": user_info["email"]},
+                {"$set": {"last_active_at": datetime.now(UTC)}},
+            )
+            return user_info, new_session
+        except Exception as e:
+            log.error(f"Error in middleware additional processing: {e}")
+            return None, new_session

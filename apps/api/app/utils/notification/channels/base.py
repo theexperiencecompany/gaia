@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
@@ -8,9 +7,6 @@ from app.models.notification.notification_models import (
     NotificationRequest,
     NotificationStatus,
 )
-
-# Type alias for a platform send function: async (text) -> error_string | None
-SendFn = Callable[[str], Coroutine[Any, Any, str | None]]
 
 
 class ChannelAdapter(ABC):

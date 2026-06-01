@@ -4,7 +4,7 @@ import type {
 } from "@/config/registries/toolRegistry";
 
 /** Recursively find and update a SubagentGroupData by ID anywhere in the tree. */
-export const updateSubagentGroup = (
+const updateSubagentGroup = (
   group: SubagentGroupData,
   targetId: string,
   updater: (g: SubagentGroupData) => SubagentGroupData,

@@ -1,9 +1,14 @@
 """Integration config, status, and connection routes."""
 
+from bson import ObjectId
+from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import RedirectResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.settings import settings
+from app.db.mongodb.collections import users_collection
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
@@ -12,12 +17,14 @@ from app.schemas.integrations.responses import (
     IntegrationStatusItem,
     IntegrationSuccessResponse,
 )
+from app.services.connect_link_service import verify_and_consume_connect_link_token
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
     connect_composio_integration,
     connect_mcp_integration,
     connect_self_integration,
     disconnect_integration,
+    initiate_integration_connection,
 )
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.oauth.oauth_service import get_all_integrations_status
@@ -195,3 +202,51 @@ async def connect_integration_endpoint(
             name=resolved.name,
             error=str(e),
         )
+
+
+# Where a login-free connect link sends the user on a bad token. Public-ish so a
+# logged-out bot user isn't bounced to a login wall.
+_CONNECT_ERROR_REDIRECT = "/integrations?connect_error=invalid_or_expired_link"
+
+
+@router.get("/connect-link")
+async def connect_link_endpoint(t: str) -> RedirectResponse:
+    """Login-free entry point for bot / non-UI users.
+
+    Verifies the signed, single-use, connect-scoped token (no session required —
+    identity is in the token) and bounces the user straight into the provider
+    OAuth flow. Invalid/expired/used tokens redirect to a friendly page.
+    Excluded from auth in WorkOSAuthMiddleware; it self-authenticates.
+    """
+    log.set(operation="connect_link")
+    verified = await verify_and_consume_connect_link_token(t)
+    if not verified:
+        return RedirectResponse(url=f"{settings.FRONTEND_URL.rstrip('/')}{_CONNECT_ERROR_REDIRECT}")
+
+    user_id, integration_id = verified
+    log.set(user={"id": user_id}, integration={"id": integration_id})
+
+    # Self-managed (Google) connectors use email as an OAuth login hint; others
+    # ignore it. user_id is trusted (it came from a signature-verified token).
+    user_email = ""
+    try:
+        user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
+    except InvalidId:
+        return RedirectResponse(url=f"{settings.FRONTEND_URL.rstrip('/')}{_CONNECT_ERROR_REDIRECT}")
+    if user_doc:
+        user_email = user_doc.get("email", "")
+
+    result = await initiate_integration_connection(
+        user_id=user_id,
+        integration_id=integration_id,
+        user_email=user_email,
+        redirect_path="/integrations",
+    )
+    if result and result.status == "redirect" and result.redirect_url:
+        log.set(outcome="redirect")
+        return RedirectResponse(url=result.redirect_url)
+
+    log.set(outcome="error")
+    return RedirectResponse(
+        url=f"{settings.FRONTEND_URL.rstrip('/')}/integrations?connect_error=could_not_start"
+    )

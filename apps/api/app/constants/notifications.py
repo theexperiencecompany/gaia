@@ -16,21 +16,24 @@ CHANNEL_TYPE_EMAIL = "email"
 CHANNEL_TYPE_TELEGRAM = "telegram"
 CHANNEL_TYPE_DISCORD = "discord"
 CHANNEL_TYPE_WHATSAPP = "whatsapp"
+CHANNEL_TYPE_SLACK = "slack"
 
 # External channel types that are auto-injected based on platform links
 EXTERNAL_NOTIFICATION_CHANNELS = (
     CHANNEL_TYPE_TELEGRAM,
     CHANNEL_TYPE_DISCORD,
     CHANNEL_TYPE_WHATSAPP,
+    CHANNEL_TYPE_SLACK,
 )
 
 # All channel types that are auto-injected when no channels are explicitly specified.
-# inapp is always available; telegram/discord/whatsapp respect user preferences.
+# inapp is always available; telegram/discord/whatsapp/slack respect user preferences.
 ALL_AUTO_INJECTED_CHANNELS = (
     CHANNEL_TYPE_INAPP,
     CHANNEL_TYPE_TELEGRAM,
     CHANNEL_TYPE_DISCORD,
     CHANNEL_TYPE_WHATSAPP,
+    CHANNEL_TYPE_SLACK,
 )
 
 # Default enabled state for external channels
@@ -38,9 +41,5 @@ DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
     CHANNEL_TYPE_TELEGRAM: True,
     CHANNEL_TYPE_DISCORD: True,
     CHANNEL_TYPE_WHATSAPP: True,
+    CHANNEL_TYPE_SLACK: True,
 }
-
-# External API base URLs
-DISCORD_API_BASE = "https://discord.com/api/v10"
-TELEGRAM_BOT_API_BASE = "https://api.telegram.org/bot"
-KAPSO_API_BASE_URL = "https://api.kapso.ai"

@@ -371,6 +371,18 @@ export class TelegramAdapter extends BaseBotAdapter {
     }
   }
 
+  protected async deliverOutbound(
+    destinationId: string,
+    text: string,
+  ): Promise<void> {
+    // grammY accepts a string chat_id; passing the id through avoids the NaN
+    // that Number() would produce for any non-numeric destination.
+    await this.sendHtml(
+      (t, opts) => this.bot.api.sendMessage(destinationId, t, opts),
+      text,
+    );
+  }
+
   /**
    * Edits a message as Telegram HTML. A "message is not modified" error (thrown
    * when the new text equals the current text) is ignored; any other failure

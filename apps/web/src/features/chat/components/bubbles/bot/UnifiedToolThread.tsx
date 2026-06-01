@@ -24,15 +24,13 @@ export interface EnrichedSubagentGroup extends SubagentGroupData {
   handoff_output?: string;
 }
 
-type TimelineItem =
+export type TimelineItem =
   | { kind: "tool"; data: ToolCallEntry }
   | { kind: "subagent"; data: EnrichedSubagentGroup };
 
 interface UnifiedToolThreadProps {
-  /** Top-level (non-subagent) tool calls */
-  tool_calls: ToolCallEntry[];
-  /** Subagent groups (handoff + spawned), enriched with input/output */
-  subagent_groups: EnrichedSubagentGroup[];
+  /** Ordered timeline of tool calls and subagent groups, in emission order. */
+  timeline: TimelineItem[];
 }
 
 const SHOW_ICONS = 10;
@@ -40,8 +38,7 @@ const SHOW_ICONS = 10;
 // ── Component ───────────────────────────────────────────────────────────────
 
 export default function UnifiedToolThread({
-  tool_calls,
-  subagent_groups,
+  timeline,
 }: Readonly<UnifiedToolThreadProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { integrations } = useIntegrations();
@@ -70,29 +67,19 @@ export default function UnifiedToolThread({
     [integrationLookup],
   );
 
-  // Build interleaved timeline — tools first, then subagents (matching emission order)
-  const timeline = useMemo<TimelineItem[]>(() => {
-    const items: TimelineItem[] = [];
-    for (const tc of tool_calls) {
-      items.push({ kind: "tool", data: tc });
-    }
-    for (const sg of subagent_groups) {
-      items.push({ kind: "subagent", data: sg });
-    }
-    return items;
-  }, [tool_calls, subagent_groups]);
-
-  // Total tool count (top-level + all subagent tool calls)
+  // Total tool count (root-level + all nested subagent tool calls)
   const totalToolCount = useMemo(() => {
-    let count = tool_calls.length;
     const countSubagent = (sg: EnrichedSubagentGroup): number => {
       let n = sg.tool_calls.length;
       for (const nested of sg.nested_subagents) n += countSubagent(nested);
       return n;
     };
-    for (const sg of subagent_groups) count += countSubagent(sg);
+    let count = 0;
+    for (const item of timeline) {
+      count += item.kind === "tool" ? 1 : countSubagent(item.data);
+    }
     return count;
-  }, [tool_calls, subagent_groups]);
+  }, [timeline]);
 
   // Stacked icons — deduplicated by category across all items
   const stackedIcons = useMemo(() => {

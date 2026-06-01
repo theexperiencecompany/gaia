@@ -73,6 +73,15 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
             description="Transcribe voice notes and audio clips to text",
         ),
     ),
+    "session_files": TieredRateLimits(
+        # Static-ish artifact fetches + tab-focus reconcile polling — generous.
+        free=RateLimitConfig(day=5000, month=100000),
+        pro=RateLimitConfig(day=50000, month=1000000),
+        info=FeatureInfo(
+            title="Session Files",
+            description="Fetch workspace artifacts and uploaded files",
+        ),
+    ),
     # SKILLS
     "skill_operations": TieredRateLimits(
         free=RateLimitConfig(day=5, month=20),
@@ -179,21 +188,37 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         pro=RateLimitConfig(day=750, month=22500),  # +50% (500→750, 15000→22500)
         info=FeatureInfo(title="Memory Operations", description="Store and retrieve memories"),
     ),
-    # VFS (Tool-Level)
-    "vfs_write": TieredRateLimits(
-        free=RateLimitConfig(day=200, month=5000),
-        pro=RateLimitConfig(day=5000, month=150000),
+    # Coding tools (persistent E2B workspace)
+    "bash_execution": TieredRateLimits(
+        free=RateLimitConfig(day=20, month=200),  # Restrictive: sandbox cost
+        pro=RateLimitConfig(day=1500, month=45000),
         info=FeatureInfo(
-            title="VFS Write",
-            description="Write files to the virtual filesystem",
+            title="Shell Execution",
+            description="Run shell commands in the persistent coding sandbox",
         ),
     ),
-    "vfs_cmd": TieredRateLimits(
+    "workspace_read": TieredRateLimits(
         free=RateLimitConfig(day=500, month=15000),
         pro=RateLimitConfig(day=20000, month=600000),
         info=FeatureInfo(
-            title="VFS Commands",
-            description="Run shell-like commands against the virtual filesystem",
+            title="Workspace Read",
+            description="Read files from the persistent coding workspace",
+        ),
+    ),
+    "workspace_write": TieredRateLimits(
+        free=RateLimitConfig(day=200, month=5000),
+        pro=RateLimitConfig(day=5000, month=150000),
+        info=FeatureInfo(
+            title="Workspace Write",
+            description="Write files to the persistent coding workspace",
+        ),
+    ),
+    "workspace_edit": TieredRateLimits(
+        free=RateLimitConfig(day=200, month=5000),
+        pro=RateLimitConfig(day=5000, month=150000),
+        info=FeatureInfo(
+            title="Workspace Edit",
+            description="Edit files in the persistent coding workspace",
         ),
     ),
     # CREATIVE TOOLS
@@ -201,11 +226,6 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         free=RateLimitConfig(day=1, month=3),  # Keep restrictive
         pro=RateLimitConfig(day=30, month=900),  # +50% (20→30, 600→900)
         info=FeatureInfo(title="Flowchart Creation", description="Create flowcharts and diagrams"),
-    ),
-    "code_execution": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=10),  # Keep restrictive (security)
-        pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
-        info=FeatureInfo(title="Code Execution", description="Execute code snippets"),
     ),
     # UTILITY
     "weather_checks": TieredRateLimits(

@@ -1,6 +1,6 @@
 """Validation for integration publishing."""
 
-from profanity_check import predict
+from app.services.integrations.profanity import contains_profanity
 
 
 class PublishIntegrationValidator:
@@ -12,7 +12,7 @@ class PublishIntegrationValidator:
     MIN_TOOLS = 1
 
     @classmethod
-    def validate_for_publish(
+    async def validate_for_publish(
         cls,
         name: str,
         description: str | None,
@@ -23,7 +23,7 @@ class PublishIntegrationValidator:
         # errors positionally keeps the same first / second / … messages.
         return [
             *cls._validate_name(name),
-            *cls._validate_profanity(name, description),
+            *await cls._validate_profanity(name, description),
             *cls._validate_description(description),
             *cls._validate_tools(tools),
         ]
@@ -43,11 +43,9 @@ class PublishIntegrationValidator:
         return []
 
     @staticmethod
-    def _validate_profanity(name: str, description: str | None) -> list[str]:
-        # predict() returns an array of 0s and 1s (1 = profane)
-        if predict([name])[0] == 1:
-            return ["Content contains profanity"]
-        if description and predict([description])[0] == 1:
+    async def _validate_profanity(name: str, description: str | None) -> list[str]:
+        # One LLM call covers all user-facing fields.
+        if await contains_profanity(name=name, description=description):
             return ["Content contains profanity"]
         return []
 

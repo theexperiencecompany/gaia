@@ -30,9 +30,9 @@ from app.models.notification.notification_models import (
 )
 from app.services.model_service import get_default_model
 from app.services.notification_service import notification_service
+from app.services.todo_canvas_storage import read_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
-from app.services.vfs.mongo_vfs import MongoVFS
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import log, wide_task
 
@@ -243,19 +243,16 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict, user_t
     except Exception as exc:
         log.warning("tracked_todo.model_config_failed", todo_id=todo_id, error=str(exc))
 
-    # Read canvas content from VFS if a path is stored on the todo
+    # Read canvas content from the todo's Mongo-backed canvas field
     canvas_content: str | None = None
-    vfs_path: str | None = doc.get("vfs_path")
-    if vfs_path:
-        try:
-            canvas_content = await MongoVFS().read(path=f"{vfs_path}/canvas.md", user_id=user_id)
-        except Exception as exc:
-            log.warning(
-                "tracked_todo.canvas_read_failed",
-                todo_id=todo_id,
-                vfs_path=vfs_path,
-                error=str(exc),
-            )
+    try:
+        canvas_content = await read_canvas(todo_id, user_id)
+    except Exception as exc:
+        log.warning(
+            "tracked_todo.canvas_read_failed",
+            todo_id=todo_id,
+            error=str(exc),
+        )
 
     # Read referenced canvases for institutional memory
     reference_context = ""
@@ -265,10 +262,8 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict, user_t
         for ref_id in ref_ids[:5]:  # Cap at 5 to avoid context bloat
             try:
                 ref_doc = await todos_collection.find_one({"_id": ObjectId(ref_id)})
-                if ref_doc and ref_doc.get("vfs_path"):
-                    ref_canvas = await MongoVFS().read(
-                        path=f"{ref_doc['vfs_path']}/canvas.md", user_id=user_id
-                    )
+                if ref_doc:
+                    ref_canvas = await read_canvas(ref_id, user_id)
                     if ref_canvas and "## Learnings" in ref_canvas:
                         learnings_start = ref_canvas.index("## Learnings")
                         next_section = ref_canvas.find("\n## ", learnings_start + 1)

@@ -153,6 +153,23 @@ export const chatApi = {
     );
   },
 
+  // Submit thumbs-up / thumbs-down feedback for an assistant message.
+  // Lands as a Langfuse score on the trace deterministically derived from
+  // message_id. Best-effort: failures don't surface to the user.
+  submitMessageFeedback: async (
+    messageId: string,
+    isPositive: boolean,
+  ): Promise<void> => {
+    return apiService.post(
+      `/messages/${messageId}/feedback`,
+      { is_positive: isPositive },
+      {
+        silent: true,
+        errorMessage: "Failed to record feedback",
+      },
+    );
+  },
+
   // Fetch messages for a conversation
   fetchMessages: async (conversationId: string): Promise<MessageType[]> => {
     const response = await apiService.get<ConversationWithMessages>(

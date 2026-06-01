@@ -223,6 +223,41 @@ export class SlackAdapter extends BaseBotAdapter {
     await this.app.stop();
   }
 
+  /**
+   * Cache of resolved DM channel ids, keyed by Slack user id. conversations.open
+   * is idempotent but rate-limited, so resolve each user's DM once instead of on
+   * every outbound send (which could 429 under a burst and livelock requeues).
+   */
+  private readonly dmChannelCache = new Map<string, string>();
+
+  protected async deliverOutbound(
+    destinationId: string,
+    text: string,
+  ): Promise<void> {
+    // platform_links stores the Slack user id; resolve it to a DM channel id
+    // (cached) since chat.postMessage needs a channel id.
+    let channel = this.dmChannelCache.get(destinationId);
+    if (!channel) {
+      const dm = await this.app.client.conversations.open({
+        users: destinationId,
+      });
+      channel = dm.channel?.id;
+      if (!channel) {
+        throw new Error("Slack conversations.open returned no channel id");
+      }
+      this.dmChannelCache.set(destinationId, channel);
+    }
+    try {
+      await this.app.client.chat.postMessage({ channel, text });
+    } catch (err) {
+      // A cached DM channel id can go stale (conversation archived, user
+      // deactivated). Drop it so the next delivery re-resolves instead of
+      // failing forever against a dead channel.
+      this.dmChannelCache.delete(destinationId);
+      throw err;
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Gaia streaming
   // ---------------------------------------------------------------------------

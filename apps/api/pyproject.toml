@@ -31,6 +31,7 @@ dependencies = [
   "livekit-api>=1.1.0",
   "favicon>=0.7.0",
   "alt-profanity-check>=1.6.1",
+  "e2b>=2.10.2",
   "playwright>=1.58.0",
 ]
 
@@ -127,7 +128,6 @@ backend = [
   "pymupdf>=1.25.5",
   "pypandoc>=1.15",
   "markdown2>=2.5.3",
-  "telegramify-markdown==1.0.0rc4",
   "pillow==12.1.1",
   "pandas>=2.3.0",
   "beautifulsoup4==4.12.3",
@@ -168,6 +168,7 @@ backend = [
   "pyinstrument>=5.1.1",
   "posthog>=7.4.2",
   "sentry-sdk[langgraph]>=2.44.0",
+  "langfuse>=3.7.0",
   "opik>=1.10.0",
   "litellm>=1.83.4,<1.90",
   "prometheus-fastapi-instrumentator>=7.0.0",

@@ -49,7 +49,7 @@ function ReplyQuote({
   return (
     <button
       type="button"
-      className="-mx-5 mb-2 flex w-[calc(100%+40px)] cursor-pointer items-start rounded-md border-l-2 border-zinc-400 bg-zinc-700/50 py-1.5 pl-2.5 pr-3 text-left"
+      className="group/quote relative -ml-2 mb-2 flex w-full cursor-pointer items-start rounded-xl bg-zinc-700/50 py-2 pl-4 pr-3 text-left transition-colors hover:bg-zinc-700"
       onClick={() => {
         const el = document.getElementById(replyToMessage.id);
         if (el) {
@@ -62,6 +62,10 @@ function ReplyQuote({
         }
       }}
     >
+      <span
+        aria-hidden
+        className="absolute inset-y-2 left-1.5 w-1 rounded-full bg-zinc-400 transition-colors group-hover/quote:bg-primary"
+      />
       <div className="flex flex-col overflow-hidden">
         <span className="text-[11px] font-semibold text-zinc-400">
           {replyToMessage.role === "user" ? "You" : "GAIA"}
@@ -88,10 +92,9 @@ export default function TextBubble({
     return parseThinkingFromText(text?.toString() || "");
   }, [text]);
 
-  // Separate tool_calls_data + subagent_group from other tool_data entries.
-  // The former are merged into a single UnifiedToolThread component.
-  const { unifiedToolCalls, unifiedSubagentGroups, processedTools } =
-    useSubagentSynthesis(tool_data);
+  // Single ordered timeline of tool calls + subagent groups (emission order)
+  // and the remaining tool_data entries that render via TOOL_RENDERERS.
+  const { timeline, processedTools } = useSubagentSynthesis(tool_data);
 
   return (
     <>
@@ -99,12 +102,10 @@ export default function TextBubble({
         <ThinkingBubble thinkingContent={parsedContent.thinking} />
       )}
 
-      {/* Unified tool thread — merges tool_calls_data + subagent_group */}
-      {(unifiedToolCalls.length > 0 || unifiedSubagentGroups.length > 0) && (
+      {timeline.length > 0 && (
         <UnifiedToolThread
           key={`${baseId}-unified-tools`}
-          tool_calls={unifiedToolCalls}
-          subagent_groups={unifiedSubagentGroups}
+          timeline={timeline}
         />
       )}
 

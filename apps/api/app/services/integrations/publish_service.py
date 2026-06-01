@@ -58,7 +58,7 @@ async def publish_custom_integration(
     if not tools:
         raise PublishError("Integration must be connected with tools before publishing")
 
-    validation_errors = PublishIntegrationValidator.validate_for_publish(
+    validation_errors = await PublishIntegrationValidator.validate_for_publish(
         name=integration.get("name", ""),
         description=integration.get("description"),
         tools=tools,

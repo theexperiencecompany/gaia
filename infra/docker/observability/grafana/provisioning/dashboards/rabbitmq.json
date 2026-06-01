@@ -643,7 +643,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rabbitmq_queue_messages{queue!=\"\"}",
+          "expr": "rabbitmq_detailed_queue_messages{queue!=\"\"}",
           "legendFormat": "{{queue}}",
           "refId": "A"
         }

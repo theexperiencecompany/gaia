@@ -6,13 +6,18 @@ permissions and stream connection prompts to the frontend when needed.
 """
 
 import httpx
-from langgraph.config import get_stream_writer
+from langgraph.config import get_config, get_stream_writer
 
 from app.config.oauth_config import get_integration_by_id, get_integration_scopes
+from app.config.settings import settings
 from app.config.token_repository import token_repository
+from app.models.chat_models import SourceCategory
 from shared.py.wide_events import log
 
 http_async_client = httpx.AsyncClient(timeout=10.0)
+
+# Frontend path where a user connects any integration.
+INTEGRATIONS_CONNECT_PATH = "/integrations"
 
 # Mapping of tool categories to required integrations
 TOOL_INTEGRATION_MAPPING = {
@@ -22,6 +27,46 @@ TOOL_INTEGRATION_MAPPING = {
     "google_drive": "google_drive",
     # Add more mappings as needed
 }
+
+
+def _current_source_category() -> str | None:
+    """Read the generalized source category (ui/bot/bg) from the active graph run.
+
+    Uses LangGraph's ambient config (same mechanism as ``get_stream_writer``), so
+    no config threading is needed. Returns None outside a runnable context.
+    """
+    try:
+        config = get_config()
+    except RuntimeError:
+        return None
+    return config.get("configurable", {}).get("source_category")
+
+
+def build_integration_connection_message(
+    integration_name: str, connect_url: str | None = None
+) -> str:
+    """Agent-facing instruction for getting an integration connected.
+
+    On UI clients a connect card/button is rendered alongside the reply, so the
+    agent just points the user at it. On non-UI clients (bots / background) that
+    card is not visible, so the agent is told to put the connect URL directly in
+    its reply — otherwise the user has no way to act on it.
+
+    ``connect_url`` is the login-free, single-use connect link minted by the
+    caller (see ``connect_link_service``). When absent we fall back to the
+    generic integrations page (which requires a GAIA login).
+    """
+    if _current_source_category() == SourceCategory.UI.value:
+        return (
+            f"{integration_name} needs to be connected. A connect card has been shown to the "
+            f"user — ask them to connect it, then try again."
+        )
+    url = connect_url or f"{settings.FRONTEND_URL.rstrip('/')}{INTEGRATIONS_CONNECT_PATH}"
+    return (
+        f"{integration_name} needs to be connected. The user is on a platform that can't show "
+        f"connect buttons — include this link directly in your reply and ask them to open it in a "
+        f"browser to connect {integration_name}, then try again: {url}"
+    )
 
 
 async def check_user_has_integration(access_token: str, integration_id: str) -> bool:

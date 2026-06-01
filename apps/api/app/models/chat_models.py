@@ -105,6 +105,65 @@ class ConversationSource(str, Enum):
     SLACK = "slack"
     WHATSAPP = "whatsapp"
     WORKFLOW_SYSTEM = "workflow_system"
+    BACKGROUND = "background"
+
+    @classmethod
+    def coerce(cls, value: "ConversationSource | str | None") -> "ConversationSource | None":
+        """Parse a raw source value (e.g. a stored string) into the enum.
+
+        Returns None for blank or unrecognised values so callers can compare on
+        enum members instead of raw strings.
+        """
+        if value is None or isinstance(value, cls):
+            return value
+        try:
+            return cls(value)
+        except ValueError:
+            return None
+
+
+class SourceCategory(str, Enum):
+    """Generalized origin of a graph invocation.
+
+    Coarser than ``ConversationSource``: every specific channel rolls up to one
+    of these so traces and tools can branch on "where did this run come from"
+    without enumerating every platform.
+    """
+
+    BG = "bg"  # autonomous background work (workflows, scheduled todos, sweeps)
+    UI = "ui"  # first-party clients (web, mobile, desktop)
+    BOT = "bot"  # messaging-platform bots (whatsapp, telegram, discord, slack)
+
+    @classmethod
+    def from_source(cls, source: "ConversationSource | str | None") -> "SourceCategory":
+        """Map a specific ``ConversationSource`` to its category.
+
+        Unknown / unset sources fall back to ``BG`` — the only callers that
+        leave the source blank are the silent background paths.
+        """
+        channel = ConversationSource.coerce(source)
+        if channel in _UI_SOURCES:
+            return cls.UI
+        if channel in BOT_CONVERSATION_SOURCES:
+            return cls.BOT
+        return cls.BG
+
+
+# Specific channels that belong to each generalized category. Single source of
+# truth for "which conversation sources are messaging-platform bots" — reused by
+# delivery routing and the web conversation-list filter. Members are enums so all
+# comparisons happen on ConversationSource, never raw strings.
+_UI_SOURCES: frozenset[ConversationSource] = frozenset(
+    {ConversationSource.WEB, ConversationSource.MOBILE}
+)
+BOT_CONVERSATION_SOURCES: frozenset[ConversationSource] = frozenset(
+    {
+        ConversationSource.WHATSAPP,
+        ConversationSource.TELEGRAM,
+        ConversationSource.DISCORD,
+        ConversationSource.SLACK,
+    }
+)
 
 
 class ConversationModel(BaseModel):

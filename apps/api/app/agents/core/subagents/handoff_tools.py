@@ -40,6 +40,7 @@ from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.namespace_utils import derive_integration_namespace
+from app.services.connect_link_service import build_connect_link_url
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_service import (
@@ -52,6 +53,7 @@ from app.utils.agent_utils import (
     format_subagent_start_event,
     parse_subagent_id,
 )
+from app.utils.integration_checker import build_integration_connection_message
 from shared.py.wide_events import log
 
 SUBAGENTS_NAMESPACE = ("subagents",)
@@ -118,7 +120,8 @@ async def check_integration_connection(
 
         writer({"integration_connection_required": integration_data})
 
-        return f"Integration {subagent.name} is not connected. Please connect it first."
+        connect_url = build_connect_link_url(user_id, subagent.id)
+        return build_integration_connection_message(subagent.name, connect_url)
 
     except Exception as e:
         log.error(f"Error checking integration status for {integration_id}: {e}")
@@ -329,13 +332,11 @@ async def _resolve_subagent(
         token_store = MCPTokenStore(user_id=user_id)
         is_connected = await token_store.is_connected(int_id)
         if not is_connected:
+            connect_url = build_connect_link_url(user_id, int_id)
             return (
                 None,
                 None,
-                (
-                    f"Error: {agent_name} requires OAuth connection. "
-                    f"Please connect {subagent.name} first via settings."
-                ),
+                build_integration_connection_message(subagent.name, connect_url),
                 False,
             )
 

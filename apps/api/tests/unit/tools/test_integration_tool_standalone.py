@@ -236,12 +236,73 @@ class TestConnectIntegration:
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]
             config=_cfg(), integration_names=["gmail"]
         )
-        assert "Connection initiated" in result
+        assert "needs to be connected" in result
         # Writer should be called with integration_connection_required
         integration_calls = [
             c for c in w.call_args_list if "integration_connection_required" in c[0][0]
         ]
         assert len(integration_calls) == 1
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(
+        f"{MODULE}.check_single_integration_status",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    @patch(
+        f"{MODULE}.OAUTH_INTEGRATIONS",
+        [_make_integration("gmail", "Gmail", short_name="gmail")],
+    )
+    async def test_bot_context_includes_connect_url(
+        self, mock_check: AsyncMock, mock_gsw: MagicMock
+    ) -> None:
+        """On a bot platform the agent reply must carry the connect URL inline."""
+        mock_gsw.return_value = _writer()
+
+        from app.agents.tools.integration_tool import connect_integration
+
+        with (
+            patch(
+                "app.utils.integration_checker.get_config",
+                return_value={"configurable": {"source_category": "bot"}},
+            ),
+            patch("app.utils.integration_checker.settings") as s,
+        ):
+            s.FRONTEND_URL = "https://app.example.com"
+            result = await connect_integration.coroutine(  # type: ignore[attr-defined]
+                config=_cfg(), integration_names=["gmail"]
+            )
+
+        assert "https://app.example.com/integrations" in result
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(
+        f"{MODULE}.check_single_integration_status",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    @patch(
+        f"{MODULE}.OAUTH_INTEGRATIONS",
+        [_make_integration("gmail", "Gmail", short_name="gmail")],
+    )
+    async def test_ui_context_points_to_card_without_url(
+        self, mock_check: AsyncMock, mock_gsw: MagicMock
+    ) -> None:
+        """On UI the reply points at the rendered card, never a raw URL."""
+        mock_gsw.return_value = _writer()
+
+        from app.agents.tools.integration_tool import connect_integration
+
+        with patch(
+            "app.utils.integration_checker.get_config",
+            return_value={"configurable": {"source_category": "ui"}},
+        ):
+            result = await connect_integration.coroutine(  # type: ignore[attr-defined]
+                config=_cfg(), integration_names=["gmail"]
+            )
+
+        assert "http" not in result
+        assert "card" in result.lower()
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(

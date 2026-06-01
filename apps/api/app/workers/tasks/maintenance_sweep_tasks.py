@@ -380,22 +380,21 @@ async def _send_dormant_digest(todos: list[dict]) -> None:
 
 
 async def _read_canvas(doc: dict) -> str:
-    """Read canvas.md from VFS for the given todo. Returns empty string on failure."""
-    # Deferred import to avoid circular dependency
-    from app.services.vfs.mongo_vfs import MongoVFS
+    """Read canvas content for the given todo. Returns empty string on failure."""
+    from app.services.todo_canvas_storage import read_canvas
 
-    vfs_path: str | None = doc.get("vfs_path")
     user_id: str = doc.get("user_id", "")
-    if not vfs_path or not user_id:
+    todo_id = str(doc.get("_id") or "")
+    if not user_id or not todo_id:
         return ""
 
     try:
-        content = await MongoVFS().read(path=f"{vfs_path}/canvas.md", user_id=user_id)
+        content = await read_canvas(todo_id, user_id)
         return content or ""
     except Exception as exc:
         log.warning(
             "maintenance_sweep.canvas_read_failed",
-            todo_id=str(doc.get("_id")),
+            todo_id=todo_id,
             error=str(exc),
         )
         return ""

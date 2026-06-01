@@ -16,7 +16,7 @@ from bson import ObjectId
 import pytest
 
 from app.models.message_models import MessageRequestWithHistory
-from app.services.chat_service import run_chat_stream_background
+from app.services.chat.stream import run_chat_stream_background
 
 
 def _fake_stream(*chunks):
@@ -62,11 +62,11 @@ class TestChatPipelineReal:
 
         with (
             patch(
-                "app.services.chat_service.call_agent",
+                "app.services.chat.stream.call_agent",
                 new=AsyncMock(return_value=agent_stream()),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler",
+                "app.services.chat.stream.UsageMetadataCallbackHandler",
                 _make_usage_mock(),
             ),
         ):
@@ -108,11 +108,11 @@ class TestChatPipelineReal:
 
         with (
             patch(
-                "app.services.chat_service.call_agent",
+                "app.services.chat.stream.call_agent",
                 new=AsyncMock(return_value=agent_stream()),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler",
+                "app.services.chat.stream.UsageMetadataCallbackHandler",
                 _make_usage_mock(),
             ),
         ):
@@ -143,11 +143,11 @@ class TestChatPipelineReal:
 
         with (
             patch(
-                "app.services.chat_service.call_agent",
+                "app.services.chat.stream.call_agent",
                 new=AsyncMock(side_effect=RuntimeError("agent exploded")),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler",
+                "app.services.chat.stream.UsageMetadataCallbackHandler",
                 _make_usage_mock(),
             ),
         ):

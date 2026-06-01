@@ -311,7 +311,7 @@ unfixable = [
   "PT015",
 ]
 "**/conftest.py" = ["ANN", "INP001", "ARG", "S101"]
-"**/scripts/**/*.py" = ["T20", "INP001", "PLR2004", "S603", "S607"]
+"**/scripts/**/*.py" = ["T20", "INP001", "PLR2004", "S603", "S606", "S607"]
 "**/migrations/**/*.py" = ["INP001", "N999", "ANN"]
 "**/__init__.py" = ["F401"]
 "**/patches.py" = ["F401", "PLC", "ANN", "ARG"]

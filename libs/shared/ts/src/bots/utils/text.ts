@@ -237,10 +237,65 @@ function findOrphanSingleAsterisk(text: string, scan: "tail" | "head"): number {
 }
 
 /**
+ * A pipe-delimited GFM table row — trimmed, starting and ending with ``|``
+ * (e.g. ``| a | b |``). Exported so {@link formatters} can share one definition
+ * instead of re-deriving the same check.
+ */
+export function isTableRow(line: string): boolean {
+  const t = line.trim();
+  return t.length >= 2 && t.startsWith("|") && t.endsWith("|");
+}
+
+/**
+ * A GFM table separator row — a table row made up only of ``|``, ``-``, ``:``
+ * and spaces (e.g. ``|---|:--:|``).
+ */
+export function isTableSeparator(line: string): boolean {
+  const t = line.trim();
+  return (
+    isTableRow(t) &&
+    t.includes("-") &&
+    [...t].every((c) => c === "|" || c === "-" || c === ":" || c === " ")
+  );
+}
+
+/**
+ * Char-offset ranges ``[start, end)`` of every GFM table block in ``text`` (a
+ * header row, a ``|---|`` separator, then contiguous body rows). Used by
+ * {@link pickCutBoundary} to reject a cut that lands inside a table — the
+ * per-chunk renderer needs the whole block contiguous, so a split table is
+ * emitted to the user as raw ``| a | b |`` pipe rows.
+ */
+function findTableRanges(text: string): [number, number][] {
+  const lines = text.split("\n");
+  let offset = 0;
+  const lineStarts = lines.map((line) => {
+    const start = offset;
+    offset += line.length + 1; // + the "\n" join char
+    return start;
+  });
+
+  const ranges: [number, number][] = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    if (isTableRow(lines[i] ?? "") && isTableSeparator(lines[i + 1] ?? "")) {
+      let j = i + 2;
+      while (j < lines.length && isTableRow(lines[j] ?? "")) j += 1;
+      const last = j - 1;
+      ranges.push([
+        lineStarts[i],
+        lineStarts[last] + (lines[last]?.length ?? 0),
+      ]);
+      i = last;
+    }
+  }
+  return ranges;
+}
+
+/**
  * Picks the best cut index ≤ ``limit`` for a chunk of ``text``. Prefers
  * paragraph (`\n\n`), then sentence enders, then word boundary, then a hard
  * cut at ``limit`` as a last resort. Boundaries that would split a markdown
- * link are skipped.
+ * link or a GFM table block are skipped.
  *
  * The 50 %-of-limit floor avoids producing tiny fragments — if no decent
  * boundary exists in the second half of the window, we accept the hard cut
@@ -249,10 +304,14 @@ function findOrphanSingleAsterisk(text: string, scan: "tail" | "head"): number {
 function pickCutBoundary(text: string, limit: number): number {
   const window = text.slice(0, limit);
   const floor = limit * 0.5;
+  const tableRanges = findTableRanges(text);
+  const unsafe = (idx: number): boolean =>
+    cutsInsideMarkdown(text, idx) ||
+    tableRanges.some(([start, end]) => idx > start && idx < end);
 
   // 1. Paragraph break
   const paragraph = window.lastIndexOf("\n\n");
-  if (paragraph >= floor && !cutsInsideMarkdown(text, paragraph)) {
+  if (paragraph >= floor && !unsafe(paragraph)) {
     return paragraph;
   }
 
@@ -262,7 +321,7 @@ function pickCutBoundary(text: string, limit: number): number {
     const idx = window.lastIndexOf(sep);
     if (idx < floor) continue;
     const cut = idx + sep.length;
-    if (cut > bestSentence && !cutsInsideMarkdown(text, cut)) {
+    if (cut > bestSentence && !unsafe(cut)) {
       bestSentence = cut;
     }
   }
@@ -271,7 +330,7 @@ function pickCutBoundary(text: string, limit: number): number {
   // 3. Word boundary
   let space = window.lastIndexOf(" ");
   while (space >= floor) {
-    if (!cutsInsideMarkdown(text, space + 1)) return space + 1;
+    if (!unsafe(space + 1)) return space + 1;
     space = window.lastIndexOf(" ", space - 1);
   }
 

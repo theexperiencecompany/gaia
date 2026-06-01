@@ -16,6 +16,7 @@ import type {
   BotWorkflow,
   PlatformName,
 } from "../types";
+import { isTableRow, isTableSeparator } from "./text";
 
 /**
  * Formats a workflow for display in a bot message.
@@ -161,6 +162,59 @@ export function htmlToPlainText(html: string): string {
     .replaceAll(/&amp;/g, "&");
 }
 
+/** Renders a GFM table as a column-aligned monospace `<pre>` block. */
+function renderTelegramTable(block: string): string {
+  const cells = (line: string): string[] =>
+    line
+      .trim()
+      .replace(/^\|/, "")
+      .replace(/\|$/, "")
+      .split("|")
+      .map((c) => c.trim());
+  const lines = block.trim().split(/\r?\n/);
+  const header = cells(lines[0] ?? "");
+  const body = lines.slice(2).map(cells); // lines[1] is the |---| separator
+  const colCount = Math.max(header.length, ...body.map((r) => r.length));
+  const widths = Array.from({ length: colCount }, (_, i) =>
+    Math.max(header[i]?.length ?? 0, ...body.map((r) => r[i]?.length ?? 0), 0),
+  );
+  const fmt = (row: string[]): string =>
+    widths
+      .map((w, i) => (row[i] ?? "").padEnd(w))
+      .join("  ")
+      .trimEnd();
+  const rule = widths.map((w) => "─".repeat(w)).join("  ");
+  const rendered = [fmt(header), rule, ...body.map(fmt)].join("\n");
+  return `<pre>${escapeHtml(rendered)}</pre>`;
+}
+
+/**
+ * Stashes GFM table blocks (a header row, a `|---|` separator, then body rows)
+ * as monospace `<pre>` placeholders. Detection is line-by-line with plain string
+ * checks — no backtracking-prone regex — so adversarial input can never cause
+ * super-linear runtime (Telegram HTML has no `<table>` tag).
+ */
+function stashTables(text: string, hold: (html: string) => string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const header = lines[i] ?? "";
+    if (isTableRow(header) && isTableSeparator(lines[i + 1] ?? "")) {
+      const block = [header, lines[i + 1] ?? ""];
+      let j = i + 2;
+      while (j < lines.length && isTableRow(lines[j] ?? "")) {
+        block.push(lines[j] ?? "");
+        j += 1;
+      }
+      out.push(hold(renderTelegramTable(block.join("\n"))));
+      i = j - 1;
+    } else {
+      out.push(header);
+    }
+  }
+  return out.join("\n");
+}
+
 /**
  * Converts the CommonMark the agent emits for Telegram into Telegram's **HTML**
  * parse mode (https://core.telegram.org/bots/api#html-style).
@@ -206,6 +260,9 @@ export function convertToTelegramHtml(text: string): string {
       ),
     );
 
+  // GFM tables → monospace <pre> placeholders (Telegram HTML has no table tags).
+  out = stashTables(out, hold);
+
   out = escapeHtml(out)
     // Block structure (line-anchored). `>` is `&gt;` now, after escaping.
     .replaceAll(/^(\s*)[-*+][ \t]+/gm, "$1• ") // bullets → •
@@ -220,7 +277,21 @@ export function convertToTelegramHtml(text: string): string {
     .replaceAll(/(?<!\w)_([^_\n]+?)_(?!\w)/g, "<i>$1</i>") // _x_ (skips snake_case)
     .replaceAll(/~~([^~\n]+?)~~/g, "<s>$1</s>"); // ~~x~~
 
-  return out.replaceAll(/\uE000(\d+)\uE000/g, (_m, i) => stash[Number(i)]);
+  // Resolve placeholders, looping so a stashed table that contains a stashed
+  // link (a nested placeholder) is fully spliced back in. Loop only while a
+  // real placeholder token remains AND each pass makes progress, so a stray
+  // U+E000 in the source text (not a valid \uE000<index>\uE000 token) can never
+  // spin the loop forever and wedge the bot's event loop.
+  let result = out;
+  let previous = "";
+  while (result !== previous && /\uE000\d+\uE000/.test(result)) {
+    previous = result;
+    result = result.replaceAll(
+      /\uE000(\d+)\uE000/g,
+      (_m, i) => stash[Number(i)] ?? "",
+    );
+  }
+  return result;
 }
 
 /**

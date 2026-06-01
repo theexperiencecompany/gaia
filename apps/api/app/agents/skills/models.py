@@ -156,8 +156,9 @@ class Skill(BaseModel):
         description="Markdown body from SKILL.md (cached for discovery)",
     )
 
-    # VFS location
-    vfs_path: str = Field(..., description="VFS directory path for this skill")
+    # Logical storage path (JuiceFS: /skills/{user_id}/{name}).
+    # Field name kept as vfs_path for MongoDB doc back-compat.
+    vfs_path: str = Field(..., description="Logical storage path for this skill")
 
     # Installation tracking
     enabled: bool = Field(default=True, description="Whether skill is active")

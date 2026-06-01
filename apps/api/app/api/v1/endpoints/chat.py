@@ -1,12 +1,8 @@
-"""
-Chat endpoints with Redis-backed background streaming.
+"""Chat endpoints with Redis-backed background streaming.
 
-The streaming architecture is decoupled from HTTP request lifecycle:
-1. Endpoint starts background task for LangGraph execution
-2. Background task publishes chunks to Redis channel
-3. Endpoint subscribes to channel and forwards to HTTP response
-4. If client disconnects, stream continues in background
-5. Conversation is always saved to MongoDB on completion
+The background task publishes chunks to a Redis channel and the HTTP response
+subscribes to that channel — so if the client disconnects, the stream still
+runs to completion and the conversation lands in MongoDB.
 """
 
 import asyncio
@@ -25,10 +21,10 @@ from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.decorators import tiered_rate_limit
 from app.models.message_models import MessageRequestWithHistory
-from app.services.chat_service import run_chat_stream_background
+from app.services.chat.stream import run_chat_stream_background
 from shared.py.wide_events import ChatContext, log
 
-# Set to hold references to background tasks to prevent garbage collection
+# asyncio.create_task only keeps a weakref; without this set the task can be GC'd mid-flight.
 _background_tasks: set[asyncio.Task] = set()
 
 router = APIRouter()
@@ -39,7 +35,6 @@ def _build_chat_context(
     conversation_id: str,
     stream_id: str,
 ) -> ChatContext:
-    """Build a ChatContext from the request body."""
     return ChatContext(
         conversation_id=conversation_id,
         stream_id=stream_id,
@@ -57,7 +52,6 @@ def _build_chat_context(
 async def _stream_from_redis(
     stream_id: str, request: Request, start_event: asyncio.Event | None = None
 ) -> AsyncGenerator[str, None]:
-    """Subscribe to Redis channel and forward chunks to HTTP response."""
     if not redis_cache.redis:
         log.error(f"Redis unavailable for stream {stream_id}")
         if start_event and not start_event.is_set():
@@ -72,7 +66,6 @@ async def _stream_from_redis(
                 break
             yield chunk
     except asyncio.CancelledError:
-        # Client disconnected - stream continues in background
         log.info(f"Stream {stream_id}: client connection cancelled")
     except Exception as e:
         log.error(f"Error streaming to client: {e}")
@@ -90,12 +83,7 @@ async def chat_stream_endpoint(
     user: dict = Depends(get_current_user),
     tz_info: GET_USER_TZ_TYPE = Depends(get_user_timezone),
 ) -> StreamingResponse:
-    """
-    Stream chat messages with background execution.
-
-    The streaming runs in a background task independent of the HTTP connection.
-    If the client disconnects, the stream continues and saves to MongoDB.
-    """
+    """Stream a chat turn. Continues in the background if the client disconnects."""
     stream_id = str(uuid4())
     conversation_id = body.conversation_id or str(uuid4())
     user_id = user.get("user_id")
@@ -111,14 +99,12 @@ async def chat_stream_endpoint(
         selected_tool=body.selectedTool,
     )
 
-    # Initialize stream tracking in Redis
     await stream_manager.start_stream(
         stream_id=stream_id,
         conversation_id=conversation_id,
         user_id=user_id,
     )
 
-    # Start background streaming task (continues even if client disconnects)
     start_event = asyncio.Event()
     task = asyncio.create_task(
         run_chat_stream_background(
@@ -134,20 +120,17 @@ async def chat_stream_endpoint(
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
-    # CORS is intentionally NOT set here — CORSMiddleware echoes the request's
-    # Origin against the allowlist in get_allowed_origins() (FRONTEND_URL, the
-    # production heygaia.* domains, and the localhost ports the desktop app
-    # uses). Hardcoding a single origin here would break desktop and any
-    # additional allowed domains. Mobile and bots use native HTTP / a separate
-    # /api/v1/bot/chat-stream endpoint and are not subject to browser CORS.
+    # Don't set Access-Control-Allow-Origin here — CORSMiddleware echoes the
+    # request Origin per-request against the allowlist; hardcoding it would
+    # pin a single origin and break the desktop app + alternate domains.
     return StreamingResponse(
         _stream_from_redis(stream_id, request, start_event=start_event),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable Nginx buffering
-            "X-Stream-Id": stream_id,  # Send stream ID for cancellation
+            "X-Accel-Buffering": "no",
+            "X-Stream-Id": stream_id,
         },
     )
 
@@ -157,12 +140,7 @@ async def cancel_stream_endpoint(
     stream_id: str,
     user: dict = Depends(get_current_user),
 ) -> dict:
-    """
-    Cancel a running stream.
-
-    Called from frontend when user clicks the Stop button.
-    Verifies that the requesting user owns the stream before cancelling.
-    """
+    """Cancel a running stream owned by the requesting user."""
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(
@@ -171,7 +149,6 @@ async def cancel_stream_endpoint(
         )
     log.set(user={"id": user_id}, chat={"stream_id": stream_id})
 
-    # Verify stream ownership
     progress = await stream_manager.get_progress(stream_id)
     if not progress:
         return {

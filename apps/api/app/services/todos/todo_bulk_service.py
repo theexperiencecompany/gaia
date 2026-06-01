@@ -12,7 +12,6 @@ from app.db.redis import delete_cache
 from app.db.utils import serialize_document
 from app.models.todo_models import TodoResponse
 from app.services.tracked_todo_service import tracked_todo_service
-from app.services.vfs.mongo_vfs import MongoVFS
 from app.utils.canvas_vector_utils import delete_canvas_embedding
 from shared.py.wide_events import log
 
@@ -242,6 +241,8 @@ async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> None:
             {"_id": 1, "vfs_path": 1},
         )
         tracked_docs = await tracked_cursor.to_list(length=None)
+        # Canvas/log content lives on each todo doc and is removed by the
+        # delete_many below — only the ChromaDB embedding needs explicit cleanup.
         for doc in tracked_docs:
             tid = str(doc["_id"])
             try:
@@ -252,11 +253,6 @@ async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> None:
                     todo_id=tid,
                     error=str(e),
                 )
-            try:
-                vfs = MongoVFS()
-                await vfs.delete(path=doc["vfs_path"], user_id=user_id, recursive=True)
-            except Exception as e:
-                log.warning("tracked_todo.bulk_delete_vfs_failed", todo_id=tid, error=str(e))
 
         # Perform bulk delete
         result = await todos_collection.delete_many(

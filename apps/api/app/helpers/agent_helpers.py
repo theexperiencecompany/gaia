@@ -17,10 +17,8 @@ from langsmith import traceable
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
 from app.agents.core.subagents.registry import get_subagent_by_id
-from app.agents.tools.core.registry import get_tool_registry
-from app.config.settings import settings
+from app.config.langfuse import build_langfuse_callback
 from app.constants.cache import (
-    CUSTOM_INT_METADATA_CACHE_PREFIX,
     CUSTOM_INT_METADATA_TTL,
     HANDOFF_METADATA_CACHE_PREFIX,
 )
@@ -34,6 +32,7 @@ from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
+from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.models_models import ModelConfig
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
@@ -44,84 +43,6 @@ from app.utils.agent_utils import (
     process_custom_event_for_tools,
 )
 from shared.py.wide_events import log
-
-
-async def get_custom_integration_metadata(tool_name: str, user_id: str) -> dict:
-    """Look up icon_url, integration_id, integration_name for custom MCP tools.
-
-    Uses Redis cache to avoid repeated MongoDB queries during a conversation.
-    Cache is keyed by integration_id (not tool_name) since multiple tools share
-    the same integration metadata.
-
-    Args:
-        tool_name: Name of the tool being called
-        user_id: User ID for MCP category resolution
-
-    Returns:
-        Dict with icon_url, integration_id, integration_name if found,
-        empty dict otherwise
-    """
-
-    tool_registry = await get_tool_registry()
-    tool_category = tool_registry.get_category_of_tool(tool_name)
-
-    if not tool_category:
-        return {}
-
-    # Extract integration_id from MCP category
-    # Category format: mcp_{integration_id} or mcp_{integration_id}_{user_id}
-    #
-    # Format assumptions for distinguishing integration_id from user_id suffix:
-    # - User IDs are UUIDs with dashes (e.g., 550e8400-e29b-41d4-a716-446655440000)
-    # - Custom integration IDs have hex suffixes WITHOUT dashes (e.g., custom_reposearch_6966a2fb964b5991c13ab887)
-    #
-    # This logic is fragile if:
-    # - UUID formats change to not include dashes
-    # - Custom IDs start using dashes
-    # A more robust approach would use a consistent delimiter or explicit marker.
-    if not tool_category.startswith("mcp_"):
-        return {}
-
-    without_prefix = tool_category[4:]
-    parts = without_prefix.rsplit("_", 1)
-    # Only strip suffix if it looks like a UUID (contains dashes and is ~36 chars)
-    # This is more specific than just checking for dashes
-    if len(parts) == 2 and "-" in parts[-1] and len(parts[-1]) >= 32:
-        # Last part is likely a user ID (UUID with dashes)
-        integration_id = parts[0]
-    else:
-        integration_id = without_prefix
-
-    # Check Redis cache first
-    cache_key = f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:{integration_id}"
-    cached = await get_cache(cache_key)
-    if cached:
-        return cached
-
-    # Cache miss - query MongoDB
-    try:
-        integration = await integrations_collection.find_one(
-            {"integration_id": integration_id}, {"name": 1, "icon_url": 1}
-        )
-
-        if not integration:
-            # Cache negative result too (empty dict)
-            await set_cache(cache_key, {}, ttl=CUSTOM_INT_METADATA_TTL)
-            return {}
-
-        metadata = {
-            "icon_url": integration.get("icon_url"),
-            "integration_id": integration_id,
-            "integration_name": integration.get("name"),
-        }
-
-        # Cache for 1 hour
-        await set_cache(cache_key, metadata, ttl=CUSTOM_INT_METADATA_TTL)
-        return metadata
-
-    except Exception as e:
-        log.warning(f"Failed to lookup custom integration metadata: {e}")
-        return {}
 
 
 async def get_handoff_metadata(subagent_id: str) -> dict:
@@ -231,29 +152,8 @@ def _build_agent_callbacks(
     agent_name: str,
     usage_metadata_callback: UsageMetadataCallbackHandler | None,
 ) -> list[BaseCallbackHandler]:
-    """Assemble the LangChain callback list for an agent run (Opik, PostHog, usage)."""
+    """Assemble the LangChain callback list for an agent run (PostHog, usage)."""
     callbacks: list[BaseCallbackHandler] = []
-
-    # Add OpikTracer in production, or in development only if configured.
-    # Import is deferred to avoid paying the cost when Opik is unused and to
-    # sidestep import-time litellm shadowing (crawl4ai installs unclecode-litellm
-    # which conflicts with the real litellm at module load time).
-    is_opik_configured = settings.OPIK_API_KEY and settings.OPIK_WORKSPACE
-    if settings.ENV == "production" or is_opik_configured:
-        from opik.integrations.langchain import OpikTracer  # noqa: PLC0415
-
-        callbacks.append(
-            OpikTracer(
-                tags=["langchain", settings.ENV],
-                thread_id=conversation_id,
-                metadata={
-                    "user_id": user.get("user_id"),
-                    "conversation_id": conversation_id,
-                    "agent_name": agent_name,
-                },
-                project_name="GAIA",
-            )
-        )
 
     posthog_client = providers.get("posthog") if providers.is_available("posthog") else None
     if posthog_client is not None:
@@ -268,6 +168,10 @@ def _build_agent_callbacks(
                 privacy_mode=False,
             ),
         )
+
+    langfuse_callback = build_langfuse_callback()
+    if langfuse_callback is not None:
+        callbacks.append(langfuse_callback)
 
     if usage_metadata_callback:
         callbacks.append(usage_metadata_callback)
@@ -352,6 +256,8 @@ def build_agent_config(
     active_todo_id: str | None = None,
     execution_mode: str | None = None,
     source: str | None = None,
+    langfuse_trace_id: str | None = None,
+    langfuse_tags: list[str] | None = None,
 ) -> dict:
     """Build configuration for graph execution with optional authentication tokens.
 
@@ -372,6 +278,10 @@ def build_agent_config(
             and all handoff subagents it spawns. All agents in the chain resolve VFS
             paths relative to the executor workspace using this ID. When provided via
             base_configurable it is inherited automatically.
+        langfuse_trace_id: Bind spans to this Langfuse trace; inherits from
+            `base_configurable["langfuse_trace_id"]` when omitted so the
+            executor lands on the comms trace.
+        langfuse_tags: Tags for the Langfuse trace; same inheritance rule.
 
     Returns:
         Configuration dictionary formatted for LangGraph execution with configurable
@@ -396,6 +306,20 @@ def build_agent_config(
         },
     )
 
+    # Explicit kwargs win over what was inherited from the parent's configurable.
+    # `is not None` (not `or`) so callers can pass [] to intentionally clear tags.
+    inherited = base_configurable or {}
+    effective_trace_id = (
+        langfuse_trace_id if langfuse_trace_id is not None else inherited.get("langfuse_trace_id")
+    )
+    effective_tags = langfuse_tags if langfuse_tags is not None else inherited.get("langfuse_tags")
+
+    # Specific channel (web/mobile/whatsapp/...) and its generalized category
+    # (UI/Bot/BG). The channel falls back to "background" when unset because the
+    # only callers that omit a source are the silent background paths.
+    source_channel = resolved["source"] or ConversationSource.BACKGROUND.value
+    source_category = SourceCategory.from_source(resolved["source"]).value
+
     configurable = {
         "thread_id": thread_id or conversation_id,
         "user_id": user.get("user_id"),
@@ -415,14 +339,35 @@ def build_agent_config(
         "active_todo_id": resolved["active_todo_id"],
         "execution_mode": resolved["execution_mode"] or "interactive",
         "conversation_source": resolved["source"],
+        "source_category": source_category,
         "__pinned_memories__": resolved["pinned_memories"],
         "__pinned_skills__": resolved["pinned_skills"],
     }
 
+    # Stash in configurable so child agents (spawned via asyncio.create_task)
+    # re-emit the same trace_id from their own build_agent_config call.
+    if effective_trace_id:
+        configurable["langfuse_trace_id"] = effective_trace_id
+    if effective_tags:
+        configurable["langfuse_tags"] = effective_tags
+
+    metadata: dict = {
+        "user_id": user.get("user_id"),
+        "source_category": source_category,
+        "source_channel": source_channel,
+    }
+    if effective_trace_id:
+        metadata["langfuse_trace_id"] = effective_trace_id
+        metadata["langfuse_session_id"] = conversation_id
+        if user.get("user_id"):
+            metadata["langfuse_user_id"] = user["user_id"]
+        if effective_tags:
+            metadata["langfuse_tags"] = effective_tags
+
     return {
         "configurable": configurable,
         "recursion_limit": AGENT_RECURSION_LIMIT,
-        "metadata": {"user_id": user.get("user_id")},
+        "metadata": metadata,
         "callbacks": callbacks,
         "agent_name": agent_name,
     }
@@ -541,29 +486,28 @@ async def execute_graph_silent(
 
                             # Look up metadata based on tool type
                             tool_name = tc.get("name")
-                            tool_metadata = {}
+                            tool_metadata: dict = {}
 
                             # TODO(remove): PR492/CodeRabbit - todo tools already stream todo_progress; suppress tool_data noise.
                             # Safe: doesn't affect agent state; only avoids redundant UI events.
                             if tool_name in {"plan_tasks", "update_tasks"}:
                                 continue
 
+                            # Handoff metadata stays pre-resolved here (it's a special
+                            # subagent-display path). MCP tool metadata is now resolved
+                            # inside format_tool_call_entry when user_id is passed.
                             if tool_name == "handoff":
                                 args = tc.get("args", {})
                                 subagent_id = args.get("subagent_id", "")
                                 if subagent_id:
                                     tool_metadata = await get_handoff_metadata(subagent_id)
-                            elif tool_name and user_id:
-                                tool_metadata = await get_custom_integration_metadata(
-                                    tool_name, user_id
-                                )
 
-                            # Format tool_data entry (same as streaming)
                             tool_entry = await format_tool_call_entry(
                                 tc,
                                 icon_url=tool_metadata.get("icon_url"),
                                 integration_id=tool_metadata.get("integration_id"),
                                 integration_name=tool_metadata.get("integration_name"),
+                                user_id=user_id,
                             )
                             if tool_entry:
                                 tool_data["tool_data"].append(tool_entry)
@@ -707,17 +651,16 @@ async def execute_graph_streaming(
 
                             # Look up metadata based on tool type
                             tool_name = tc.get("name")
-                            tool_metadata = {}
+                            tool_metadata: dict = {}
 
+                            # Handoff metadata stays pre-resolved here (it's a special
+                            # subagent-display path). MCP tool metadata is now resolved
+                            # inside format_tool_call_entry when user_id is passed.
                             if tool_name == "handoff":
                                 args = tc.get("args", {})
                                 subagent_id = args.get("subagent_id", "")
                                 if subagent_id:
                                     tool_metadata = await get_handoff_metadata(subagent_id)
-                            elif tool_name and user_id:
-                                tool_metadata = await get_custom_integration_metadata(
-                                    tool_name, user_id
-                                )
 
                             # Format and emit tool_data entry
                             tool_entry = await format_tool_call_entry(
@@ -725,6 +668,7 @@ async def execute_graph_streaming(
                                 icon_url=tool_metadata.get("icon_url"),
                                 integration_id=tool_metadata.get("integration_id"),
                                 integration_name=tool_metadata.get("integration_name"),
+                                user_id=user_id,
                             )
                             if tool_entry:
                                 yield format_sse_data({"tool_data": tool_entry})

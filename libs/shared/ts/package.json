@@ -48,6 +48,7 @@
   "dependencies": {
     "@hono/node-server": "^1.19.13",
     "@infisical/sdk": "^4.0.0",
+    "amqplib": "^0.10.5",
     "axios": "^1.13.5",
     "dotenv": "^16.4.5",
     "hono": "^4.12.12",
@@ -56,6 +57,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@types/amqplib": "^0.10.5",
     "@types/node": "^24.3.0",
     "@types/string-similarity": "^4.0.2",
     "typescript": "^5.9.3",
