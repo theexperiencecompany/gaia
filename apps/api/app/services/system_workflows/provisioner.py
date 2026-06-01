@@ -252,7 +252,9 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
                 f"Failed to unregister old triggers during reset of {workflow_id} (non-fatal): {e}"
             )
 
-    trigger_doc = trigger_config.model_dump(mode="json")
+    # Python mode keeps trigger_config.next_run a native datetime (BSON date),
+    # consistent with the create and re-arm paths.
+    trigger_doc = trigger_config.model_dump()
     trigger_doc["composio_trigger_ids"] = new_trigger_ids
 
     await workflows_collection.update_one(

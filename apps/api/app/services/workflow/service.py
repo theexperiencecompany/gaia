@@ -557,8 +557,10 @@ class WorkflowService:
                             user_id, old_trigger_name, old_trigger_ids, workflow_id
                         )
 
-                # Convert TriggerConfig back to dict for MongoDB storage
-                update_fields["trigger_config"] = new_trigger_config.model_dump(mode="json")
+                # Python mode keeps trigger_config.next_run a native datetime (BSON
+                # date), consistent with the create and re-arm paths — json mode here
+                # would flip it back to a string.
+                update_fields["trigger_config"] = new_trigger_config.model_dump()
 
                 # Add new trigger IDs if triggers were registered
                 if registered_trigger_ids is not None:

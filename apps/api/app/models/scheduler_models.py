@@ -67,9 +67,11 @@ class BaseScheduledTask(BaseModel):
             return value.isoformat()
         return None
 
-    @field_serializer("created_at", "updated_at")
+    @field_serializer("created_at", "updated_at", when_used="json")
     def serialize_audit_datetime(self, value: datetime | None) -> str | None:
-        """Audit fields stay ISO strings everywhere (unchanged from prior behavior)."""
+        """ISO strings for JSON only; python mode (Mongo writes) keeps native
+        datetimes so these match the same type as status-update/migration writes
+        and sort correctly alongside them."""
         if value is not None:
             return value.isoformat()
         return None
