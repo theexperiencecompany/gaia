@@ -153,3 +153,39 @@ class TestLazyOutboundTopologyDeclare:
         # Declared-attempt happened once; the second publish skips it entirely.
         channel.declare_exchange.assert_awaited_once()
         assert channel.default_exchange.publish.await_count == 2
+
+    async def test_non_precondition_declare_error_propagates_and_leaves_flag_false(
+        self, connected_publisher
+    ) -> None:
+        # Only PRECONDITION_FAILED is self-healed. A transient declare failure
+        # (broker blip, connection error) must NOT be swallowed: it propagates,
+        # nothing is published, and the flag stays False so the NEXT publish
+        # retries the declare instead of assuming a broken topology is fine.
+        pub, channel = connected_publisher
+        pub._outbound_topology_declared = False
+        channel.declare_exchange = AsyncMock(side_effect=RuntimeError("broker blip"))
+
+        with pytest.raises(RuntimeError, match="broker blip"):
+            await pub.publish_outbound("outbound.whatsapp", b"{}")
+
+        assert pub._outbound_topology_declared is False  # will retry next time
+        channel.default_exchange.publish.assert_not_awaited()  # never published
+
+    async def test_precondition_self_heal_still_surfaces_a_publish_failure(
+        self, connected_publisher
+    ) -> None:
+        # Self-healing the declare must not mask a genuine publish failure: after
+        # marking the topology declared, a failing publish (both attempts) still
+        # raises so the caller records it as FAILED rather than delivered.
+        pub, channel = connected_publisher
+        pub._outbound_topology_declared = False
+        channel.declare_exchange = AsyncMock(
+            side_effect=ChannelPreconditionFailed("inequivalent arg")
+        )
+        channel.default_exchange.publish = AsyncMock(side_effect=RuntimeError("down"))
+
+        with pytest.raises(RuntimeError, match="down"):
+            await pub.publish_outbound("outbound.whatsapp", b"{}")
+
+        assert pub._outbound_topology_declared is True  # declare won't be retried
+        assert channel.default_exchange.publish.await_count == 2  # tried + retried

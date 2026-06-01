@@ -483,7 +483,11 @@ export function chunkResponse(
   const chunks: string[] = [];
   let remaining = text;
 
-  while (measure(remaining) > limit) {
+  // `remaining.length > 0` guards termination: each iteration consumes a
+  // non-empty prefix so `remaining` strictly shrinks. Looping on `measure()`
+  // alone would spin forever for a renderer whose fixed overhead keeps even an
+  // empty string over the limit.
+  while (remaining.length > 0 && measure(remaining) > limit) {
     let rawLimit = cutLimit;
     let [chunk, next] = splitAtBoundary(remaining, rawLimit);
 

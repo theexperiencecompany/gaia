@@ -143,6 +143,31 @@ class TestPublishOutboundMessageBrutalEdges:
         assert ok is od.OutboundResult.FAILED
         assert publisher.publish_outbound.await_count == 2
 
+    async def test_stops_publishing_at_the_first_failed_part(self) -> None:
+        # 5 parts; the 3rd publish fails. A downed broker will reject the rest
+        # too, so the function must STOP at the failure (not fire parts 4 and 5)
+        # and report FAILED for the partial send.
+        publisher = AsyncMock()
+        publisher.publish_outbound = AsyncMock(
+            side_effect=[None, None, RuntimeError("boom"), None, None]
+        )
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value=_linked("whatsapp", "15551234567"),
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            ok = await od.publish_outbound_message(
+                ConversationSource.WHATSAPP, "u1", ["a", "b", "c", "d", "e"]
+            )
+        assert ok is od.OutboundResult.FAILED
+        assert publisher.publish_outbound.await_count == 3  # stopped at the failure
+
 
 @pytest.mark.unit
 class TestPublishOutboundFile:

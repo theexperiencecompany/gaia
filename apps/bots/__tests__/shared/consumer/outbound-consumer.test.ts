@@ -265,4 +265,63 @@ describe("OutboundConsumer message handling", () => {
     expect(channel.nack).toHaveBeenCalledWith(msg, false, false); // DLQ, no requeue
     expect(channel.ack).not.toHaveBeenCalled();
   });
+
+  it("dead-letters a PARTIALLY-sent multi-chunk message without requeue", async () => {
+    // First chunk delivers, the second throws. Requeue re-delivers the WHOLE
+    // envelope, so once any chunk is out, requeueing would re-send the delivered
+    // chunk(s). Policy: requeue only when delivered === 0; here it must DLQ.
+    const deliver = vi
+      .fn()
+      .mockResolvedValueOnce(undefined) // chunk 1 sent
+      .mockRejectedValueOnce(new Error("send failed")); // chunk 2 fails
+    const handle = await startAndCaptureHandler("discord", deliver); // 2000-char limit
+    const big = "word ".repeat(800); // ~4000 chars → multiple chunks
+    const msg = msgFor(
+      {
+        id: "1",
+        platform: "discord",
+        destination_id: "d1",
+        text: big,
+        enqueued_at: "t",
+      },
+      false, // first attempt — but delivered>0 must still prevent requeue
+    );
+
+    await deliverMessage(handle, msg);
+
+    expect(deliver.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(channel.nack).toHaveBeenCalledWith(msg, false, false); // DLQ, NOT requeue
+    expect(channel.ack).not.toHaveBeenCalled();
+  });
+
+  it("when an envelope carries BOTH text and attachment, the file path wins (text not double-sent)", async () => {
+    // Our producers never set both (file envelopes have no text), but pin the
+    // precedence so a future change that starts setting both is a visible
+    // decision rather than a silent double-send.
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const deliverFile = vi.fn().mockResolvedValue(undefined);
+    const handle = await startAndCaptureHandler(
+      "whatsapp",
+      deliver,
+      deliverFile,
+    );
+    const msg = msgFor({
+      id: "1",
+      platform: "whatsapp",
+      destination_id: "1555",
+      text: "some caption-ish text",
+      attachment: {
+        conversation_id: "c",
+        path: "a/f.pdf",
+        filename: "f.pdf",
+      },
+      enqueued_at: "t",
+    });
+
+    await deliverMessage(handle, msg);
+
+    expect(deliverFile).toHaveBeenCalledTimes(1);
+    expect(deliver).not.toHaveBeenCalled(); // text is not also sent as a message
+    expect(channel.ack).toHaveBeenCalledWith(msg);
+  });
 });

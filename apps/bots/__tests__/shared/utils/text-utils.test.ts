@@ -167,3 +167,64 @@ describe("chunkResponse", () => {
     expect(withTable).toHaveLength(1);
   });
 });
+
+describe("chunkResponse — brutal edges", () => {
+  // 5s default vitest timeout: if this regresses to an infinite loop the test
+  // FAILS by timeout rather than passing, which is the whole point.
+  it("terminates with a renderer that has fixed overhead (renders '' over the limit)", () => {
+    // A renderer that ALWAYS returns >limit chars, even for "". Looping on the
+    // rendered length alone would never let `remaining` empty out → infinite
+    // loop. Production must terminate by consuming the raw input.
+    const evil = () => "X".repeat(9999);
+    const text = "real content ".repeat(500); // ~6500 raw chars
+
+    const chunks = chunkResponse(text, "telegram", evil);
+
+    expect(Array.isArray(chunks)).toBe(true);
+    expect(chunks.length).toBeGreaterThan(0);
+    // It must have actually consumed the input, not spun on empties.
+    expect(chunks.join("").replace(/\s+/g, "")).toBe(text.replace(/\s+/g, ""));
+  });
+
+  it("degrades a table too wide to ever fit into sendable chunks (no hang, no loss)", () => {
+    // One table row whose rendered form already exceeds the limit. It can't be
+    // kept intact AND fit, so the last-resort hard cut splits it — better than
+    // emitting one mega-chunk the platform would reject. The contract that
+    // matters: terminate, every chunk is sendable, and no content is lost.
+    const monsterRow = `| ${Array.from({ length: 20 }, (_, i) => `col${i}`.padEnd(300, "z")).join(" | ")} |`;
+    const table = [monsterRow, `|${"---|".repeat(20)}`, monsterRow].join("\n");
+    const render = (c: string) => renderForPlatform(c, "telegram");
+
+    const chunks = chunkResponse(table, "telegram", render);
+
+    expect(chunks.length).toBeGreaterThan(1); // too big to keep whole → it split
+    for (const c of chunks) {
+      expect(render(c).length).toBeLessThanOrEqual(4096); // each piece is sendable
+    }
+    // Nothing is dropped: every non-whitespace char of the table survives.
+    expect(chunks.join("").replace(/\s+/g, "")).toBe(table.replace(/\s+/g, ""));
+  });
+
+  it("does not lose or duplicate content under heavy emphasis + fences at cut points", () => {
+    // Force cuts to land near bold/italic/code spans and fence boundaries.
+    const block = "**bold** and *italic* and `code` text here. ";
+    const fenced = "```python\nprint('x' * 100)\n```\n\n";
+    const text = (block.repeat(20) + fenced).repeat(8); // > telegram limit
+    const render = (c: string) => renderForPlatform(c, "telegram");
+
+    const chunks = chunkResponse(text, "telegram", render);
+
+    // Every fence is balanced within its own chunk (even count of ```).
+    for (const c of chunks) {
+      expect((c.match(/```/g) ?? []).length % 2).toBe(0);
+    }
+    // No content atoms are dropped: the bold word survives once per source copy
+    // (fence balancing may strip an orphaned ** at a cut, never a whole word).
+    const srcBold = (text.match(/bold/g) ?? []).length;
+    const outBold = chunks.reduce(
+      (n, c) => n + (c.match(/bold/g) ?? []).length,
+      0,
+    );
+    expect(outBold).toBe(srcBold);
+  });
+});
