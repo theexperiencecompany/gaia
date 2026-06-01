@@ -266,7 +266,7 @@ export function isTableSeparator(line: string): boolean {
  * per-chunk renderer needs the whole block contiguous, so a split table is
  * emitted to the user as raw ``| a | b |`` pipe rows.
  */
-function findTableRanges(text: string): Array<[number, number]> {
+function findTableRanges(text: string): [number, number][] {
   const lines = text.split("\n");
   let offset = 0;
   const lineStarts = lines.map((line) => {
@@ -275,7 +275,7 @@ function findTableRanges(text: string): Array<[number, number]> {
     return start;
   });
 
-  const ranges: Array<[number, number]> = [];
+  const ranges: [number, number][] = [];
   for (let i = 0; i < lines.length; i += 1) {
     if (isTableRow(lines[i] ?? "") && isTableSeparator(lines[i + 1] ?? "")) {
       let j = i + 2;
