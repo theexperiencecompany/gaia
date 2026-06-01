@@ -367,6 +367,10 @@ disallow_any_generics = false
 warn_return_any = false
 warn_unreachable = false
 warn_unused_ignores = false
+# Builtin-skill resource files (templates/, scripts/) are sandbox-executed assets,
+# not importable API modules — they run in the docgen sandbox toolchain (Typst,
+# openpyxl, docx-js), so they are not type-checked against the API environment.
+exclude = "app/agents/skills/builtin/[^/]+/(templates|scripts)/"
 
 # Shared library code: ratchet stricter than apps once legacy gaps are closed.
 # Today it inherits the global baseline; the per-module override exists so

@@ -19,12 +19,14 @@ There is **no spreadsheet recalc engine** in the sandbox. If you write a formula
 ## How it works
 A template here is a **Python program** (openpyxl + pandas) that writes the workbook. You adapt the data and structure, then the build script runs it and validates the file.
 
+**Skill directory:** `/workspace/integrations/docgen/agent/skills/create-spreadsheet` — `templates/`, `reference.md`, and `scripts/` live here; read them by absolute path. Your work goes in `./scratch/`.
+
 ## Workflow (.xlsx)
 1. **Work in a job dir:** `mkdir -p ./scratch/xlsx-<short-name>`.
-2. **Adapt the template — don't start blank.** `read` `templates/report.py` and replace the data/columns/formatting. Read `reference.md` for openpyxl building blocks and the values rule.
+2. **Adapt the template — don't start blank.** `read /workspace/integrations/docgen/agent/skills/create-spreadsheet/templates/report.py`, then `write` the edited program to `./scratch/xlsx-<name>/sheet.py`. Read `/workspace/integrations/docgen/agent/skills/create-spreadsheet/reference.md` for openpyxl building blocks and the values rule.
 3. **Build + validate:**
    ```
-   bash scripts/build.sh ./scratch/xlsx-<name>/sheet.py ./scratch/xlsx-<name>/out.xlsx
+   bash /workspace/integrations/docgen/agent/skills/create-spreadsheet/scripts/build.sh ./scratch/xlsx-<name>/sheet.py ./scratch/xlsx-<name>/out.xlsx
    ```
    Prints `OK: <path> (sheets=N)` or `ERROR: ...`.
 4. **Fix loop:** on `ERROR`, read the message, fix, re-run. Cap at 5 attempts.

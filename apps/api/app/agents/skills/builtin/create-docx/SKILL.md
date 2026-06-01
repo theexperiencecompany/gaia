@@ -14,12 +14,14 @@ The deliverable is an editable `.docx`. For a fixed PDF use `create-pdf`; for Go
 ## How it works
 A `.docx` template here is a small **Node program** (using the `docx` library) that, when run, writes the Word file. You adapt the program's content, then the build script runs it and validates the output. You do **not** hand-edit XML.
 
+**Skill directory:** `/workspace/integrations/docgen/agent/skills/create-docx` — templates, `reference.md`, and `scripts/` live here; read them by absolute path. Your work goes in `./scratch/`.
+
 ## Workflow (every job)
 1. **Work in a job dir:** `mkdir -p ./scratch/docx-<short-name>`.
-2. **Adapt a template — don't start blank.** `read` the closest file in `templates/` (`report.mjs`, `letter.mjs`) and replace its content (headings, paragraphs, table rows) with the real material. Read `reference.md` for the docx-js building blocks.
+2. **Adapt a template — don't start blank.** `read /workspace/integrations/docgen/agent/skills/create-docx/templates/report.mjs` (or `letter.mjs`), then `write` the edited program to `./scratch/docx-<name>/doc.mjs`. Read `/workspace/integrations/docgen/agent/skills/create-docx/reference.md` for the docx-js building blocks.
 3. **Build + validate:**
    ```
-   bash scripts/build.sh ./scratch/docx-<name>/doc.mjs ./scratch/docx-<name>/out.docx
+   bash /workspace/integrations/docgen/agent/skills/create-docx/scripts/build.sh ./scratch/docx-<name>/doc.mjs ./scratch/docx-<name>/out.docx
    ```
    Prints `OK: <path>` on success or `ERROR: ...` (the Node error) on failure.
 4. **Fix loop:** on `ERROR`, read the message, fix the program, re-run. Cap at 5 attempts.

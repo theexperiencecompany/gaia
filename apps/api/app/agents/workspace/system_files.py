@@ -54,19 +54,26 @@ _STATIC_DOCS: list[tuple[str, str]] = [
 ]
 
 
+def builtin_skill_root_rel(skill: BuiltinSkill) -> str:
+    """``/workspace``-relative directory of a builtin skill — matches materialize_skills."""
+    if skill.subagent_id == _EXECUTOR_SUBAGENT:
+        return f"skills/{skill.slug}"
+    return f"integrations/{skill.subagent_id}/agent/skills/{skill.slug}"
+
+
 def builtin_skill_rel_path(skill: BuiltinSkill) -> str:
     """``/workspace``-relative path of a builtin skill body — matches materialize_skills."""
-    if skill.subagent_id == _EXECUTOR_SUBAGENT:
-        return f"skills/{skill.slug}/{SKILL_BODY_FILENAME}"
-    return f"integrations/{skill.subagent_id}/agent/skills/{skill.slug}/{SKILL_BODY_FILENAME}"
+    return f"{builtin_skill_root_rel(skill)}/{SKILL_BODY_FILENAME}"
 
 
 def system_files() -> list[SystemFile]:
-    """Every system-owned file (static docs + builtin skill bodies)."""
+    """Every system-owned file: static docs + builtin skill bodies + the skills'
+    bundled resources (templates/, reference.md, scripts/…)."""
     files = [SystemFile(path, body) for path, body in _STATIC_DOCS]
-    files.extend(
-        SystemFile(builtin_skill_rel_path(skill), skill.body) for skill in load_builtin_skills()
-    )
+    for skill in load_builtin_skills():
+        root = builtin_skill_root_rel(skill)
+        files.append(SystemFile(f"{root}/{SKILL_BODY_FILENAME}", skill.body))
+        files.extend(SystemFile(f"{root}/{rel}", content) for rel, content in skill.resources)
     return files
 
 

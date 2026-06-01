@@ -14,12 +14,14 @@ The deliverable is a `.pptx` slide deck.
 ## How it works
 A deck template here is a **Node program** (using `pptxgenjs`) that writes the `.pptx`. You adapt the slides' content, then the build script runs it and validates the output. Slides and charts are native and editable in PowerPoint/Google Slides.
 
+**Skill directory:** `/workspace/integrations/docgen/agent/skills/create-pptx` — `templates/`, `reference.md`, and `scripts/` live here; read them by absolute path. Your work goes in `./scratch/`.
+
 ## Workflow (every job)
 1. **Work in a job dir:** `mkdir -p ./scratch/pptx-<short-name>`.
-2. **Adapt the template — don't start blank.** `read` `templates/deck.mjs` and replace the slide content (title, bullets, table rows, chart data). Read `reference.md` for the slide-building blocks.
+2. **Adapt the template — don't start blank.** `read /workspace/integrations/docgen/agent/skills/create-pptx/templates/deck.mjs`, then `write` the edited deck to `./scratch/pptx-<name>/deck.mjs` (title, bullets, table rows, chart data). Read `/workspace/integrations/docgen/agent/skills/create-pptx/reference.md` for the slide-building blocks.
 3. **Build + validate:**
    ```
-   bash scripts/build.sh ./scratch/pptx-<name>/deck.mjs ./scratch/pptx-<name>/out.pptx
+   bash /workspace/integrations/docgen/agent/skills/create-pptx/scripts/build.sh ./scratch/pptx-<name>/deck.mjs ./scratch/pptx-<name>/out.pptx
    ```
    Prints `OK: <path> (slides=N)` or `ERROR: ...`.
 4. **Fix loop:** on `ERROR`, read the message, fix, re-run. Cap at 5 attempts.
