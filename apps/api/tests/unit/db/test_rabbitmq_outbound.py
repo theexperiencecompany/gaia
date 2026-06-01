@@ -31,6 +31,7 @@ def connected_publisher() -> tuple[RabbitMQPublisher, MagicMock]:
 
 
 @pytest.mark.unit
+@pytest.mark.asyncio
 class TestPublishWithRetry:
     async def test_publish_outbound_does_not_declare_the_queue(self, connected_publisher) -> None:
         pub, channel = connected_publisher
@@ -61,6 +62,7 @@ class TestPublishWithRetry:
 
 
 @pytest.mark.unit
+@pytest.mark.asyncio
 class TestDeclareOutboundTopology:
     async def test_declares_dlx_work_queues_and_bound_dlqs(self, connected_publisher) -> None:
         pub, channel = connected_publisher

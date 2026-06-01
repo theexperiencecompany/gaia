@@ -110,6 +110,7 @@ class TestChannelAdapterBaseHelpers:
 
 
 @pytest.mark.unit
+@pytest.mark.asyncio
 class TestInAppChannelAdapter:
     def test_channel_type(self) -> None:
         assert InAppChannelAdapter().channel_type == CHANNEL_TYPE_INAPP
@@ -151,6 +152,7 @@ class TestInAppChannelAdapter:
 
 
 @pytest.mark.unit
+@pytest.mark.asyncio
 class TestExternalPlatformTransform:
     async def test_standard_message_parts(self) -> None:
         request = _make_request(title="My Title", body="My body")
@@ -211,6 +213,7 @@ class TestExternalPlatformTransform:
 
 
 @pytest.mark.unit
+@pytest.mark.asyncio
 class TestExternalPlatformDeliver:
     async def test_deliver_publishes_and_maps_success(self) -> None:
         with patch(
@@ -255,6 +258,7 @@ class TestExternalAdapterIdentity:
 
 
 @pytest.mark.unit
+@pytest.mark.asyncio
 class TestExternalTransformBrutalEdges:
     """Pin the exact CommonMark output: no stray leading/trailing whitespace,
     and no platform-specific markdown leaking back into the Python side."""
