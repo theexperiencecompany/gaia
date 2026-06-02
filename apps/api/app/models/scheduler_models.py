@@ -31,7 +31,11 @@ class BaseScheduledTask(BaseModel):
     id: str | None = Field(None, alias="_id")
     user_id: str = Field(..., description="User ID who owns this task")
     repeat: str | None = Field(None, description="Cron expression for recurring tasks")
-    scheduled_at: datetime = Field(..., description="Next scheduled execution time")
+    scheduled_at: datetime | None = Field(
+        default=None,
+        description="Next scheduled execution time; None when the task has no schedule "
+        "(e.g. a manual/integration workflow). A null value never matches the due-scan.",
+    )
     status: ScheduledTaskStatus = Field(
         default=ScheduledTaskStatus.SCHEDULED, description="Current status"
     )

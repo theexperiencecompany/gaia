@@ -313,10 +313,10 @@ class Workflow(BaseScheduledTask):
                 ):
                     data["repeat"] = trigger_config.cron_expression
 
-        # Set default scheduled_at if still not provided
-        if "scheduled_at" not in data:
-            data["scheduled_at"] = datetime.now(UTC)
-
+        # A workflow only has a scheduled_at when it is a schedule-triggered (cron)
+        # workflow with a next_run (mapped above). Manual / integration / todo
+        # workflows have no scheduled run — leave scheduled_at as None rather than
+        # fabricating "now", which would make them look due to the recovery scan.
         super().__init__(**data)
 
     @model_validator(mode="before")

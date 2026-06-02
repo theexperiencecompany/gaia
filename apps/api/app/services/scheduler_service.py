@@ -197,7 +197,7 @@ class BaseSchedulerService(ABC):
 
         scheduled_count = 0
         for task in tasks:
-            if task.id:
+            if task.id and task.scheduled_at:
                 await self._enqueue_task(task.id, task.scheduled_at)
                 scheduled_count += 1
 
