@@ -123,42 +123,42 @@ class BaseSchedulerService(ABC):
 
         log.info(f"Processing task {task_id}")
 
+        occurrence_count = task.occurrence_count + 1
+
         try:
-            # Mark task as executing
             await self.update_task_status(
                 task_id,
                 ScheduledTaskStatus.EXECUTING,
                 {"updated_at": datetime.now(UTC)},
             )
-
-            # Execute the task
             execution_result = await self.execute_task(task)
-
-            # Increment occurrence count
-            occurrence_count = task.occurrence_count + 1
-
-            # Handle recurring tasks
-            if task.repeat:
-                await self.handle_recurring_task(task, occurrence_count)
-            else:
-                # One-time task - mark as completed
-                await self.update_task_status(
-                    task_id,
-                    ScheduledTaskStatus.COMPLETED,
-                    {"occurrence_count": occurrence_count},
-                )
-                log.info(f"Completed one-time task {task_id}")
-
-            return execution_result
-
         except Exception as e:
-            log.error(f"Failed to process task {task_id}: {e!s}")
+            log.error(f"Failed to execute task {task_id}: {e!s}")
+            execution_result = TaskExecutionResult(
+                success=False, message=f"Task execution failed: {e!s}"
+            )
+
+        if task.repeat:
+            # Recurring tasks advance to the next occurrence on success AND failure:
+            # a transient error must not silently kill the series (mirrors the workflow
+            # executor). max_occurrences / stop_after still terminate the series.
+            await self.handle_recurring_task(task, occurrence_count)
+        elif execution_result.success:
+            await self.update_task_status(
+                task_id,
+                ScheduledTaskStatus.COMPLETED,
+                {"occurrence_count": occurrence_count},
+            )
+            log.info(f"Completed one-time task {task_id}")
+        else:
             await self.update_task_status(
                 task_id,
                 ScheduledTaskStatus.FAILED,
-                {"updated_at": datetime.now(UTC)},
+                {"occurrence_count": occurrence_count, "updated_at": datetime.now(UTC)},
             )
-            return TaskExecutionResult(success=False, message=f"Task execution failed: {e!s}")
+            log.warning(f"One-time task {task_id} failed: {execution_result.message}")
+
+        return execution_result
 
     async def cancel_task(self, task_id: str, user_id: str) -> bool:
         """
