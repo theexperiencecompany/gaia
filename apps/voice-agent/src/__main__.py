@@ -7,17 +7,13 @@ def main():
     """Main entrypoint for voice-agent CLI."""
     if len(sys.argv) < 2:
         print("Usage: python -m src <command>")
-        print("Commands: start, download-files")
+        print("Commands: start")
         sys.exit(1)
 
     command = sys.argv[1]
 
     try:
-        if command == "download-files":
-            from src.worker import download_files
-
-            download_files()
-        elif command == "start":
+        if command == "start":
             from src.worker import start_worker
 
             start_worker()

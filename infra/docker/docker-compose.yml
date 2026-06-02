@@ -182,7 +182,7 @@ services:
 
   # MongoDB Service
   mongo:
-    image: mongo:8
+    image: mongo:7
     container_name: mongo
     volumes:
       - mongo_data:/data/db

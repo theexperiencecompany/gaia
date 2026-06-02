@@ -40,7 +40,7 @@ const nextConfig = {
           }
         : false,
   },
-  reactStrictMode: true,
+  reactStrictMode: false,
   // Enable standalone output for Electron desktop app bundling
   // This creates a minimal production server with all dependencies
   output: "standalone",

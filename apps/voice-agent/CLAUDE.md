@@ -26,17 +26,21 @@ cd apps/voice-agent && uv run python -m src download-files
 ```
 src/
   __main__.py   — CLI entrypoint; dispatches `start` or `download-files`
-  worker.py     — Core agent logic: CustomLLM, prewarm, entrypoint
-  config.py     — VoiceAgentSettings (pydantic-settings + Infisical injection)
+  worker.py     — Thin re-export shim (backward compat for __main__.py)
+  agent.py      — prewarm(), entrypoint(), start_worker(), download_files()
+  llm.py        — CustomLLM class (SSE streaming + TTS chunking)
+  config.py     — VoiceAgentSettings + bootstrap_settings() for Infisical
+  constants.py  — SSE tokens, TTS thresholds, compiled regexes, system prompt
+  utils.py      — sanitize_for_tts, extract_meta_data, now_ts, ms_since
 ```
 
-**CustomLLM** (`worker.py`): A `livekit.agents.llm.LLM` subclass that streams SSE from `POST /api/v1/chat-stream` on the GAIA backend. It flushes text to ElevenLabs TTS in sentence-sized chunks (flush at sentence boundary ≥40 chars, or hard flush at 120 chars) to minimize latency.
+**CustomLLM** (`llm.py`): A `livekit.agents.llm.LLM` subclass that streams SSE from `POST /api/v1/chat-stream` on the GAIA backend. It reuses a single `aiohttp.ClientSession` across turns and flushes text to ElevenLabs TTS in sentence-sized chunks (flush at sentence boundary ≥40 chars, or hard flush at 120 chars) to minimize latency.
 
-**Startup sequence**: `prewarm()` preloads the Silero VAD model in the worker process → `entrypoint()` is called per room → credentials (agent token + conversation ID) are extracted from LiveKit participant metadata JSON.
+**Startup sequence**: `start_worker()` (and `download_files()`) call `inject_infisical_secrets()` once in the main process before `cli.run_app()`. Each forked `JobProcess` inherits the resulting env vars and calls `prewarm()`, which calls `bootstrap_settings()` to build `VoiceAgentSettings` from the inherited environment (no network I/O) and loads the Silero VAD model into `proc.userdata`. `MultilingualModel` is constructed per room inside `entrypoint()` because its `__init__` needs a job context. `entrypoint()` reads settings + VAD from `ctx.proc.userdata` — zero Infisical calls per room.
 
-**Settings**: `VoiceAgentSettings` extends `BaseAppSettings` from `gaia-shared`. Secrets are injected via Infisical on first load. The voice agent loads `apps/api/.env` for shared Infisical bootstrap variables before loading its own config.
+**Settings**: `VoiceAgentSettings` extends `BaseAppSettings` from `gaia-shared`. `bootstrap_settings()` is pure: it just constructs the cached settings object. Infisical lives in the main process only because LiveKit's `forkserver` on Linux inherits the parent's env vars into every child.
 
-**Logging**: Structured JSON logs written to `./logs/` via `shared.py.logging.configure_file_logging` (picked up by Promtail in local dev).
+**Logging**: Structured JSON logs written to `apps/voice-agent/logs/` (absolute path) via `shared.py.logging.configure_file_logging` (picked up by Promtail in local dev). Set `LOG_LEVEL=DEBUG` to enable full per-token, per-TTS-flush, per-STT, and per-participant debug timeline logs with `HH:MM:SS.mmm` timestamps and millisecond latency measurements.
 
 ## Code Style
 
