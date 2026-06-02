@@ -106,6 +106,15 @@ def materialize_skills(user_root: Path, connected_ids: set[str]) -> int:
                     res.parent.mkdir(parents=True, exist_ok=True)
                     res.write_text(content, encoding="utf-8")
                     written += 1
+            # Drop fallback copies of resources that left the manifest (renamed or
+            # removed) so a stale template can't outlive the registry change. Only
+            # real files are pruned — symlinks are owned by link_system_files.
+            expected = {SKILL_BODY_FILENAME, *(rel for rel, _ in skill.resources)}
+            for existing in slug_dir.rglob("*"):
+                if existing.is_symlink() or not existing.is_file():
+                    continue
+                if existing.relative_to(slug_dir).as_posix() not in expected:
+                    existing.unlink(missing_ok=True)
         marker = agent_dir / ".connected"
         if iid in connected_ids:
             if not marker.exists():

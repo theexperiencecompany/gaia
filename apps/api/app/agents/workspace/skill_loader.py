@@ -26,6 +26,8 @@ import hashlib
 from pathlib import Path
 import re
 
+from shared.py.wide_events import log
+
 # Skills live as siblings in source: apps/api/app/agents/skills/builtin/<slug>/SKILL.md.
 # Resolved relative to this file so prod (the docker image), tests, and the dev
 # server all pick up the same library.
@@ -108,7 +110,15 @@ def _load_resources(skill_dir: Path) -> tuple[tuple[str, str], ...]:
             continue
         try:
             content = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
+        except UnicodeDecodeError:
+            # Binary asset — the in-memory system-file model is text only, so
+            # skipping it is by design (see the docstring), not an error.
+            continue
+        except OSError as exc:
+            # A repo-owned template/script that can't be read signals broken
+            # packaging or image contents — surface it so the gap is detectable
+            # at load time instead of as an opaque downstream docgen failure.
+            log.warning(f"skill_loader: skipping unreadable resource {path}: {exc}")
             continue
         resources.append((path.relative_to(skill_dir).as_posix(), content))
     return tuple(resources)

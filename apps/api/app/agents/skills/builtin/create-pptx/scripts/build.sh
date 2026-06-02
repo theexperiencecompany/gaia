@@ -62,7 +62,9 @@ ln -sfn "$NODE_HOME/node_modules" "$(dirname "$SRC")/node_modules"
 
 err="$(mktemp)"; trap 'rm -f "$err"' EXIT
 if ! node "$SRC" "$OUT" 2>"$err"; then
-  msg="$(grep -m1 -E 'Error|error' "$err" | sed 's/^[[:space:]]*//' | cut -c1-200)"
+  # `|| true`: under `set -euo pipefail` a no-match grep exits 1, which would
+  # abort the script before `fail` runs and swallow the error message.
+  msg="$(grep -m1 -E 'Error|error' "$err" | sed 's/^[[:space:]]*//' | cut -c1-200 || true)"
   fail "${msg:-node failed to run $SRC (see source)}"
 fi
 

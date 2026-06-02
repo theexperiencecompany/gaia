@@ -906,8 +906,11 @@ export class GaiaClient {
         {
           responseType: "arraybuffer",
           headers: this.userHeaders(ctx),
-          maxContentLength: 50 * 1024 * 1024,
-          maxBodyLength: 50 * 1024 * 1024,
+          // 100 MB = the largest per-platform outbound cap (WhatsApp). A lower
+          // cap here would reject 50–100 MB artifacts as transport errors before
+          // OUTBOUND_FILE_LIMITS can apply the platform limit or graceful note.
+          maxContentLength: 100 * 1024 * 1024,
+          maxBodyLength: 100 * 1024 * 1024,
         },
       );
       const contentType = String(

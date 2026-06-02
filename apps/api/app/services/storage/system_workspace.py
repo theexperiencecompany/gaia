@@ -86,6 +86,16 @@ async def ensure_system_subtree() -> bool:
             target.parent.mkdir(parents=True, exist_ok=True)
             if not (target.is_file() and target.read_text(encoding="utf-8") == f.body):
                 target.write_text(f.body, encoding="utf-8")
+        # Prune files dropped from the manifest (e.g. a removed builtin skill) so
+        # stale bodies don't linger in the shared subtree after the signature
+        # says it's current. `system_files()` is the authoritative complete set.
+        expected = {f.rel_path for f in files}
+        for existing in root.rglob("*"):
+            if not existing.is_file():
+                continue
+            rel = existing.relative_to(root).as_posix()
+            if rel != _SYSTEM_HASH_MARKER and rel not in expected:
+                existing.unlink(missing_ok=True)
         marker.write_text(signature, encoding="utf-8")
         return True
 

@@ -22,6 +22,7 @@ Run via: bash scripts/build.sh report.py out.xlsx
 import sys
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import Cell
 from openpyxl.chart import BarChart, LineChart, Reference
 from openpyxl.formatting.rule import ColorScaleRule, DataBarRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -70,7 +71,7 @@ ASSUMPTIONS = {
 
 
 # --- DRY styling helpers ------------------------------------------------------
-def style_title(cell, text: str) -> None:
+def style_title(cell: Cell, text: str) -> None:
     """Large brand-colored title used for merged header blocks."""
     cell.value = text
     cell.font = Font(name="Calibri", size=16, bold=True, color=WHITE)
@@ -78,7 +79,7 @@ def style_title(cell, text: str) -> None:
     cell.alignment = Alignment(horizontal="left", vertical="center", indent=1)
 
 
-def style_header(cell, text: str) -> None:
+def style_header(cell: Cell, text: str) -> None:
     """Column / section header — white bold text on the brand fill."""
     cell.value = text
     cell.font = Font(bold=True, color=WHITE)
@@ -87,7 +88,7 @@ def style_header(cell, text: str) -> None:
     cell.border = BORDER_ALL
 
 
-def style_label(cell, text: str, *, bold: bool = False, indent: int = 0) -> None:
+def style_label(cell: Cell, text: str, *, bold: bool = False, indent: int = 0) -> None:
     """Left-aligned row label in the first column."""
     cell.value = text
     cell.font = Font(bold=bold)
@@ -95,7 +96,7 @@ def style_label(cell, text: str, *, bold: bool = False, indent: int = 0) -> None
     cell.border = BORDER_ALL
 
 
-def style_number(cell, value, fmt: str = FMT_CURRENCY, *, bold: bool = False) -> None:
+def style_number(cell: Cell, value: float, fmt: str = FMT_CURRENCY, *, bold: bool = False) -> None:
     """Right-aligned numeric cell with a number format. Value is pre-computed."""
     cell.value = value
     cell.number_format = fmt
@@ -248,7 +249,7 @@ def build_assumptions(ws: Worksheet) -> None:
 
 
 # --- Sheet 2: Model (the P&L) -------------------------------------------------
-def build_model(ws: Worksheet, model: dict) -> int:
+def build_model(ws: Worksheet, model: dict) -> tuple[int, int]:
     """Render the P&L. Returns the 1-based row index of the Revenue row so the
     dashboard charts can build References into it."""
     years = model["years"]

@@ -19,8 +19,17 @@ import { z } from "zod";
  */
 export const outboundAttachmentSchema = z.object({
   conversation_id: z.string().min(1),
-  /** Artifact path relative to the session's artifacts/ dir. */
-  path: z.string().min(1),
+  /**
+   * Artifact path relative to the session's artifacts/ dir. Rejected at the
+   * queue boundary if absolute or containing a `..` segment, so a malformed
+   * envelope can't turn into arbitrary-file access in the artifact fetch.
+   */
+  path: z
+    .string()
+    .min(1)
+    .refine((p) => !p.startsWith("/") && !p.split("/").includes(".."), {
+      message: "path must be relative to artifacts/ (no leading '/' or '..')",
+    }),
   filename: z.string().min(1),
   content_type: z.string().nullish(),
   caption: z.string().nullish(),

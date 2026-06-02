@@ -49,6 +49,9 @@ import { Bot, type Context, InputFile } from "grammy";
 
 /** Telegram's sendPhoto byte cap; larger images are sent as documents. */
 const TELEGRAM_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+// Telegram caps media captions (sendPhoto/sendDocument) at 1024 chars; an
+// over-limit caption rejects the whole upload, so the file would never arrive.
+const TELEGRAM_CAPTION_MAX_CHARS = 1024;
 
 /**
  * Telegram-specific implementation of the GAIA bot adapter.
@@ -405,7 +408,9 @@ export class TelegramAdapter extends BaseBotAdapter {
     const mime =
       attachment.content_type ?? contentType ?? "application/octet-stream";
     const file = new InputFile(data, attachment.filename);
-    const caption = attachment.caption ?? undefined;
+    const caption = attachment.caption
+      ? attachment.caption.slice(0, TELEGRAM_CAPTION_MAX_CHARS)
+      : undefined;
     // sendPhoto caps around 10 MB; deliver larger images as a document so they
     // still arrive instead of being rejected.
     if (mime.startsWith("image/") && data.length <= TELEGRAM_PHOTO_MAX_BYTES) {

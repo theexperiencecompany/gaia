@@ -31,9 +31,9 @@ export const BOT_MEDIA_LIMITS = {
  * Max bytes a backend-originated artifact may be to deliver on each platform.
  * Conservative per-platform document caps — over these, the bot sends a short
  * "too large" note instead of attempting an upload the platform would reject
- * (which would dead-letter with no user feedback). Note the artifact download
- * itself is capped at 50 MB (GaiaClient.downloadArtifact), so values above that
- * are effectively bounded by the download cap.
+ * (which would dead-letter with no user feedback). The artifact download itself
+ * is capped at 100 MB (GaiaClient.downloadArtifact) to match the largest cap
+ * below, so every per-platform limit here is fully effective.
  */
 export const OUTBOUND_FILE_LIMITS: Record<PlatformName, number> = {
   discord: 8 * MB, // non-boosted server upload limit (safe floor)

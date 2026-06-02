@@ -107,19 +107,23 @@ case "$ext" in
     # crafted document read arbitrary host files into the PDF.
     if ! typst compile --root "$(dirname "$SRC")" "$SRC" "$OUT" 2>"$err"; then
       # Typst errors look like: error: <msg>\n  ┌─ file:LINE:COL
-      msg="$(grep -m1 '^error:' "$err" | sed 's/^error:[[:space:]]*//')"
-      loc="$(grep -m1 -oE '[^ ]+:[0-9]+:[0-9]+' "$err" | head -1)"
+      # `|| true`: a no-match grep exits 1 under `set -euo pipefail`, which would
+      # abort before `fail` runs and swallow the diagnostic.
+      msg="$(grep -m1 '^error:' "$err" | sed 's/^error:[[:space:]]*//' || true)"
+      loc="$(grep -m1 -oE '[^ ]+:[0-9]+:[0-9]+' "$err" | head -1 || true)"
       fail "${loc:-$SRC:0}: ${msg:-typst compile failed (see source)}"
     fi
     ;;
   tex)
     ensure_tectonic
     if ! tectonic -X compile --outdir "$(dirname "$OUT")" "$SRC" 2>"$err"; then
-      msg="$(grep -m1 -iE 'error|! ' "$err" | sed 's/^[[:space:]]*//' | cut -c1-200)"
+      # `|| true`: a no-match grep exits 1 under `set -euo pipefail`, which would
+      # abort before `fail` runs and swallow the diagnostic.
+      msg="$(grep -m1 -iE 'error|! ' "$err" | sed 's/^[[:space:]]*//' | cut -c1-200 || true)"
       # Tectonic's failure line doesn't always contain "error"/"!" (e.g. bundle
       # fetch issues) — fall back to the last non-empty stderr line so the agent
       # sees the real reason instead of a generic message.
-      [ -z "$msg" ] && msg="$(grep -v '^[[:space:]]*$' "$err" | tail -1 | cut -c1-200)"
+      [ -z "$msg" ] && msg="$(grep -v '^[[:space:]]*$' "$err" | tail -1 | cut -c1-200 || true)"
       fail "$SRC:0: ${msg:-tectonic compile failed}"
     fi
     # tectonic names output after the source stem; move to requested OUT.
