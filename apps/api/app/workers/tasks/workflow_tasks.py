@@ -239,6 +239,19 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                 )
             )
 
+            # Scheduler-originated fires: atomically claim the occurrence (scheduled ->
+            # executing) so a concurrent recovery scan can't double-execute a workflow
+            # whose previous fire is still running. Manual/integration "run now" fires
+            # don't go through the scan and must not be status-gated.
+            if trigger_type == TriggerType.SCHEDULE.value and not (
+                await scheduler.claim_scheduled_for_execution(workflow_id)
+            ):
+                log.warning(
+                    f"Workflow {workflow_id} not in scheduled state "
+                    f"(already claimed or running); skipping duplicate scheduled fire"
+                )
+                return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
+
             scheduled_at = getattr(workflow, "scheduled_at", None)
             if isinstance(scheduled_at, datetime):
                 if scheduled_at.tzinfo is None:

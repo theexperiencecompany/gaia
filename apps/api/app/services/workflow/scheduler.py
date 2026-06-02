@@ -45,6 +45,27 @@ class WorkflowScheduler(BaseSchedulerService):
         never tagged as scheduled."""
         return (task_id, {"trigger_type": TriggerType.SCHEDULE.value})
 
+    async def claim_scheduled_for_execution(self, workflow_id: str) -> bool:
+        """Atomically transition a SCHEDULED workflow to EXECUTING.
+
+        Returns False if the workflow was not in scheduled state — meaning a
+        concurrent recovery scan already claimed it (or it isn't scheduler-managed).
+        The caller must then skip execution: this is what prevents the recovery scan
+        from double-running a workflow whose previous fire is still in flight (the
+        scan selects status="scheduled", so a claimed row is excluded). The re-arm at
+        the end of execution returns the row to "scheduled" with its next run time.
+        """
+        result = await workflows_collection.find_one_and_update(
+            {"_id": workflow_id, "status": ScheduledTaskStatus.SCHEDULED.value},
+            {
+                "$set": {
+                    "status": ScheduledTaskStatus.EXECUTING.value,
+                    "updated_at": datetime.now(UTC),
+                }
+            },
+        )
+        return result is not None
+
     async def get_task(self, task_id: str, user_id: str | None = None) -> Workflow | None:
         """
         Get a workflow by ID.
@@ -173,16 +194,21 @@ class WorkflowScheduler(BaseSchedulerService):
             return False
 
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
-        """Workflows that are scheduled, due, and activated.
+        """Recurring (cron) workflows that are due and activated.
 
-        Delegates the due-query to the shared base implementation so the
-        ``scheduled_at <= now`` semantics stay identical to the reminder scan.
+        The ``repeat`` filter is load-bearing: ``Workflow`` extends
+        ``BaseScheduledTask``, so EVERY workflow defaults to status="scheduled" and
+        gets ``scheduled_at = now`` at creation when it has no ``next_run`` (manual,
+        integration and todo workflows all do). Without ``repeat``, the recovery scan
+        would match those non-scheduled workflows and re-run the agent on every pass.
+        ``repeat`` (the cron the scheduler actually re-arms on) is the precise,
+        serialization-robust discriminator for "scheduler-managed".
         """
         return await self._query_pending_tasks(
             workflows_collection,
             current_time,
             self._doc_to_workflow,
-            extra_filter={"activated": True},
+            extra_filter={"activated": True, "repeat": {"$nin": [None, ""]}},
         )
 
     @staticmethod
