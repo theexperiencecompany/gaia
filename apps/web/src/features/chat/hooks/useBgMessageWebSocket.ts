@@ -20,6 +20,7 @@ interface BgMessageEvent {
     date: string;
     task_id?: string;
     tool_data?: ToolDataEntry[];
+    follow_up_actions?: string[];
     replyToMessage?: {
       id: string;
       content: string;
@@ -71,6 +72,7 @@ export function useBgMessageWebSocket() {
       updatedAt: new Date(message.date),
       messageId: message.message_id,
       tool_data: message.tool_data ?? null,
+      follow_up_actions: message.follow_up_actions ?? null,
       replyToMessageData: message.replyToMessage ?? null,
     };
 
@@ -85,6 +87,15 @@ export function useBgMessageWebSocket() {
     const activeConvoId = useChatStore.getState().activeConversationId;
     if (conversation_id === activeConvoId) {
       useChatStore.getState().addOrUpdateMessage(iMessage);
+    }
+
+    // Clear the executor-pending bridge AFTER the result message is in the store,
+    // so loading hands off to the rendered result in the same frame — no flash of
+    // "loading gone + follow-ups on the old message" before the result appears.
+    if (
+      useChatStore.getState().executorPendingConversationId === conversation_id
+    ) {
+      useChatStore.getState().setExecutorPendingConversationId(null);
     }
   }, []);
 

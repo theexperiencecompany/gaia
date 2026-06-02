@@ -3,7 +3,7 @@
 Spawned by call_executor tool via asyncio.create_task(). Runs the
 executor agent graph with a Redis stream writer for tool events. When
 the executor finishes, its terminal text is handed to the comms agent
-as INTERNAL CONTEXT (SystemMessage with an [EXECUTOR_RESULT] prefix);
+as INTERNAL CONTEXT (HumanMessage with an [EXECUTOR_RESULT] prefix);
 comms then generates the user-facing message in its own voice and that
 message is saved + WS-broadcast.
 
@@ -17,22 +17,21 @@ import json
 from typing import Any
 from uuid import uuid4
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import HumanMessage
 from langsmith import traceable
 
+from app.agents.core.background.executor_capture import (
+    drain_executor_tool_data,
+    teardown_executor_capture,
+)
 from app.agents.core.background.inbox import (
-    deregister_bg_subagent_results,
-    deregister_executor_done_event,
-    deregister_executor_spawned,
-    deregister_pending_subagents,
-    deregister_tool_event_collector,
     get_executor_done_event,
-    get_tool_event_collector,
     mark_executor_spawned,
     register_tool_event_collector,
 )
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.graph_manager import GraphManager
+from app.agents.core.nodes.follow_up_actions_node import generate_follow_up_actions
 from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
@@ -46,11 +45,6 @@ from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import ReplyToMessageData
 from app.services.conversation_service import update_messages
-from app.utils.stream_utils import (
-    absorb_collector_event,
-    apply_outputs_to_tool_data,
-    reconstruct_subagent_groups,
-)
 from shared.py.wide_events import log
 
 # Prevent GC of background tasks spawned from the queue
@@ -65,10 +59,10 @@ async def _invoke_comms_graph(
 ) -> str:
     """Invoke the comms graph silently with the executor result as internal context.
 
-    The result is injected as a SystemMessage with a stable prefix so comms
-    treats it as ground-truth internal data (not a user turn). Comms applies
-    its voice/persona and returns the user-facing text. The graph's
-    checkpoint is updated naturally — no manual aupdate_state.
+    The result is injected as a HumanMessage with a stable prefix so comms
+    treats it as ground-truth internal data and re-voices it. Comms applies its
+    voice/persona (loaded from the checkpoint) and returns the user-facing text.
+    The graph's checkpoint is updated naturally — no manual aupdate_state.
 
     Returns the comms-generated text, or an empty string on failure.
     """
@@ -86,7 +80,18 @@ async def _invoke_comms_graph(
         )
         initial_state = {
             "messages": [
-                SystemMessage(
+                # MUST be a HumanMessage. The message type is load-bearing here:
+                #   - SystemMessage: manage_system_prompts_node treats it as the
+                #     static-prompt slot and EVICTS COMMS_AGENT_PROMPT, leaving
+                #     comms with no persona — so it parrots the raw [EXECUTOR_RESULT]
+                #     instead of speaking in GAIA's voice.
+                #   - AIMessage: Gemini sees a trailing assistant turn as already
+                #     answered and returns an empty completion.
+                #   - HumanMessage: not a system message, so it's immune to the
+                #     prompt pruning (the checkpoint's persona survives) and Gemini
+                #     treats it as a turn to respond to. This is how it worked
+                #     before the HumanMessage→SystemMessage regression.
+                HumanMessage(
                     content=f"{prefix}\n{result_text}",
                     name="background_executor",
                 ),
@@ -117,26 +122,6 @@ async def _lookup_user_message_content(
     except Exception as e:
         log.warning("_lookup_user_message_content: failed", error=str(e))
     return ""
-
-
-def _collect_queued_tool_events(
-    stream_id: str,
-) -> list[dict[str, Any]] | None:
-    """Drain the tool event collector for a queued stream into a tool_data list.
-
-    Only called for queued tasks — live tasks already have tool_data on the
-    comms ack message (attached by chat_service after the executor finishes).
-    """
-    collector = get_tool_event_collector(stream_id)
-    if not collector:
-        return None
-    accumulated: dict[str, Any] = {"tool_data": []}
-    tool_outputs: dict[str, str] = {}
-    for evt in collector:
-        absorb_collector_event(evt, accumulated, tool_outputs)
-    apply_outputs_to_tool_data(accumulated["tool_data"], tool_outputs)
-    reconstruct_subagent_groups(accumulated)
-    return accumulated.get("tool_data") or None
 
 
 async def _broadcast_message(user_id: str, ws_event: dict[str, Any]) -> None:
@@ -209,6 +194,24 @@ async def _deliver_bg_notification(
             role="user",
         )
 
+    # Generate follow-up suggestions on the executor's final answer (not the
+    # intermediate comms ack) so they appear once, on the real result. Only for
+    # successful results — an error message gets no suggestions.
+    follow_up_actions: list[str] = []
+    if msg_type == "final":
+        follow_up_context = (
+            f"User request: {user_msg_content}\n\nAssistant response: {notification_text}"
+            if user_msg_content
+            else notification_text
+        )
+        follow_up_actions = await generate_follow_up_actions(
+            follow_up_context,
+            user_id,
+            {"configurable": {"user_id": user_id}},
+        )
+    if follow_up_actions:
+        bot_message.follow_up_actions = follow_up_actions
+
     try:
         await update_messages(
             UpdateMessagesRequest(
@@ -229,6 +232,8 @@ async def _deliver_bg_notification(
     }
     if tool_data:
         ws_payload["tool_data"] = tool_data
+    if follow_up_actions:
+        ws_payload["follow_up_actions"] = follow_up_actions
     if task_id:
         ws_payload["task_id"] = task_id
     if user_message_id:
@@ -262,18 +267,6 @@ def _user_from_configurable(configurable: dict[str, Any]) -> dict:
     }
 
 
-def _cleanup_queued_stream_state(stream_id: str) -> None:
-    """Tear down per-stream orchestration state that chat_service would normally clean.
-
-    Queued streams have no chat_service finally block, so this mirror is needed.
-    """
-    deregister_executor_done_event(stream_id)
-    deregister_tool_event_collector(stream_id)
-    deregister_pending_subagents(stream_id)
-    deregister_executor_spawned(stream_id)
-    deregister_bg_subagent_results(stream_id)
-
-
 async def _dispatch_executor_result(
     *,
     result_text: str,
@@ -290,7 +283,7 @@ async def _dispatch_executor_result(
     Live tasks have tool_data attached to the comms ack message by chat_service.
     Queued tasks have no live SSE consumer, so we attach tool_data here instead.
     """
-    queued_tool_data = _collect_queued_tool_events(stream_id) if is_queued else None
+    queued_tool_data = drain_executor_tool_data(stream_id) if is_queued else None
     try:
         await _deliver_bg_notification(
             result_text=result_text,
@@ -344,7 +337,7 @@ async def _finalize_executor_run(
         )
 
     if is_queued:
-        _cleanup_queued_stream_state(stream_id)
+        teardown_executor_capture(stream_id)
         if not was_cancelled:
             await StreamManager.publish_chunk(stream_id, "data: [DONE]\n\n")
             await StreamManager.complete_stream(stream_id)
@@ -355,6 +348,36 @@ async def _finalize_executor_run(
     spawned_next = await _process_next_queued_task(conversation_id) if not was_cancelled else False
     if not spawned_next:
         await redis_cache.delete(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
+
+
+async def _execute_executor(
+    task: str,
+    configurable: dict[str, Any],
+    user_time: datetime,
+    stream_id: str,
+) -> tuple[str, str]:
+    """Run the executor agent graph once. Returns (result_text, result_type).
+
+    Tool events stream to the per-stream collector via make_redis_stream_writer
+    so the caller can persist the executor's tool_data. Never raises — errors
+    come back as ("...", "error").
+    """
+    try:
+        ctx, error = await prepare_executor_execution(
+            task=task,
+            configurable=configurable,
+            user_time=user_time,
+            stream_id=stream_id,
+        )
+        if error or ctx is None:
+            log.error("Executor prep failed", error=error)
+            return (error or "Executor agent not available"), "error"
+        writer = make_redis_stream_writer(stream_id)
+        result_text = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
+        return result_text, "final"
+    except Exception as e:
+        log.error("Executor run failed", stream_id=stream_id, error=str(e))
+        return str(e), "error"
 
 
 @traceable(name="executor_background", run_type="chain")
@@ -387,28 +410,8 @@ async def run_executor_background(
     result_type = "final"
 
     try:
-        ctx, error = await prepare_executor_execution(
-            task=task,
-            configurable=configurable,
-            user_time=user_time,
-            stream_id=stream_id,
-        )
-        if error or ctx is None:
-            result_text = error or "Executor agent not available"
-            result_type = "error"
-            log.error("Background executor prep failed", error=result_text)
-        else:
-            writer = make_redis_stream_writer(stream_id)
-            result_text = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
-            log.info(
-                "Background executor completed",
-                task_id=task_id,
-                stream_id=stream_id,
-            )
-    except Exception as e:
-        log.error("Background executor failed", stream_id=stream_id, error=str(e))
-        result_text = str(e)
-        result_type = "error"
+        result_text, result_type = await _execute_executor(task, configurable, user_time, stream_id)
+        log.info("Background executor completed", task_id=task_id, stream_id=stream_id)
     finally:
         await _finalize_executor_run(
             stream_id=stream_id,

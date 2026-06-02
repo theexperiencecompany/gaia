@@ -21,6 +21,10 @@ import { createPersistenceHelpers } from "./persistence";
 import { createStreamHandlers } from "./streamHandlers";
 import type { PendingStreamArgs, StreamContext } from "./types";
 
+// Fallback for the rare case a background executor never delivers its result
+// message — clears the "awaiting executor result" UI so it can't stick forever.
+const EXECUTOR_RESULT_TIMEOUT_MS = 120_000;
+
 export const useChatStream = () => {
   const { setIsLoading, setAbortController } = useLoading();
   const { convoMessages } = useConversation();
@@ -104,6 +108,7 @@ export const useChatStream = () => {
     setAbortController(null);
 
     useChatStore.getState().setStreamingConversationId(null);
+    useChatStore.getState().setExecutorPendingConversationId(null);
     useChatStore.getState().clearOptimisticMessage();
   };
 
@@ -302,7 +307,35 @@ export const useChatStream = () => {
 
       updateBotMessage({ loading: false });
 
+      // A turn that delegated to a background executor (tool_category "executor")
+      // delivers its real answer later via a `conversation.new_message` event.
+      // Keep the turn visually "in progress" until that arrives.
+      const delegatedToExecutor =
+        refs.current.botMessage?.tool_data?.some(
+          (e) => (e as { tool_category?: string }).tool_category === "executor",
+        ) ?? false;
+
       const conversationId = resolveConversationId();
+
+      // Set the executor-pending bridge BEFORE clearing isLoading so the loading
+      // indicator never drops between SSE close and the result message arriving.
+      if (delegatedToExecutor && conversationId) {
+        useChatStore
+          .getState()
+          .setExecutorPendingConversationId(conversationId);
+        setTimeout(() => {
+          const store = useChatStore.getState();
+          if (store.executorPendingConversationId === conversationId) {
+            store.setExecutorPendingConversationId(null);
+          }
+        }, EXECUTOR_RESULT_TIMEOUT_MS);
+      } else if (
+        conversationId &&
+        useChatStore.getState().executorPendingConversationId === conversationId
+      ) {
+        // A non-delegating turn in the same conversation supersedes stale state.
+        useChatStore.getState().setExecutorPendingConversationId(null);
+      }
 
       if (persistTimerRef.current) {
         clearTimeout(persistTimerRef.current);
@@ -313,7 +346,8 @@ export const useChatStream = () => {
       }
 
       setIsLoading(false);
-      resetLoadingText();
+      // Keep the last tool context on screen while the executor result is pending.
+      if (!delegatedToExecutor) resetLoadingText();
       streamController.clear();
 
       console.log("[handleStreamClose] Persisting bot message:", {

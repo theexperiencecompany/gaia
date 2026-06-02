@@ -14,16 +14,11 @@ from uuid import uuid4
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 from app.agents.core.agent import call_agent
-from app.agents.core.background.inbox import (
-    deregister_bg_subagent_results,
-    deregister_executor_done_event,
-    deregister_executor_spawned,
-    deregister_pending_subagents,
-    deregister_tool_event_collector,
-    get_tool_event_collector,
-    register_executor_done_event,
-    register_tool_event_collector,
-    was_executor_spawned,
+from app.agents.core.background.executor_capture import (
+    await_executor_done,
+    drain_executor_tool_data,
+    register_executor_capture,
+    teardown_executor_capture,
 )
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.model_pricing import calculate_token_cost
@@ -36,9 +31,7 @@ from app.services.conversation_service import update_messages
 from app.services.payments.payment_service import payment_service
 from app.utils.chat_utils import create_conversation, generate_and_update_description
 from app.utils.stream_utils import (
-    absorb_collector_event,
     aggregate_usage_metadata,
-    apply_outputs_to_tool_data,
     inject_todo_progress,
     merge_tool_outputs,
     process_data_chunk,
@@ -144,15 +137,12 @@ async def _run_chat_stream(
     is_cancelled = False
     _saved = False  # tracks whether _save_conversation_async already ran
 
-    # Register the executor-done event so we can keep the SSE stream open
-    # while the background executor produces tool events, then publish [DONE]
-    # once it finishes. Comms re-narration + WS push of the user-facing
-    # message happens independently in the executor's finally block.
-    executor_done = register_executor_done_event(stream_id)
-    # Register the tool event collector so make_redis_stream_writer can
-    # append executor tool events. After executor finishes we drain this
-    # list and attach it to the comms ack message's tool_data.
-    register_tool_event_collector(stream_id)
+    # Register the executor-done event + tool-event collector so we can keep the
+    # SSE stream open while the background executor produces tool events, drain
+    # them into the comms ack message's tool_data, then publish [DONE]. Comms
+    # re-narration + WS push of the user-facing message happens independently in
+    # the executor's finally block.
+    register_executor_capture(stream_id)
 
     try:
         description_task = _start_description_task(is_new_conversation, body, conversation_id, user)
@@ -289,17 +279,9 @@ async def _run_chat_stream(
         # signals done, drain its tool events into the comms ack message's
         # tool_data, then close the SSE. Comms re-narration runs separately
         # in the executor's finally block and is delivered via WebSocket.
-        if not is_cancelled and was_executor_spawned(stream_id):
-            log.info(f"Waiting for executor completion for stream {stream_id}")
-            try:
-                await asyncio.wait_for(executor_done.wait(), timeout=1800)
-            except TimeoutError:
-                log.warning(
-                    f"Timed out waiting for executor on stream {stream_id} — "
-                    "publishing [DONE] anyway"
-                )
-
-            executor_td = _accumulate_executor_tool_data(stream_id)
+        if not is_cancelled:
+            await await_executor_done(stream_id)
+            executor_td = drain_executor_tool_data(stream_id)
             if executor_td:
                 try:
                     await conversations_collection.update_one(
@@ -345,11 +327,7 @@ async def _run_chat_stream(
         await stream_manager.publish_chunk(stream_id, f"data: {json.dumps({'error': str(e)})}\n\n")
         await stream_manager.set_error(stream_id, str(e))
     finally:
-        deregister_executor_done_event(stream_id)
-        deregister_tool_event_collector(stream_id)
-        deregister_pending_subagents(stream_id)
-        deregister_executor_spawned(stream_id)
-        deregister_bg_subagent_results(stream_id)
+        teardown_executor_capture(stream_id)
 
         if not _saved:
             # Error path: save as fallback. recover_stream_state / merge /
@@ -490,26 +468,6 @@ async def _save_conversation_async(
         ),
         user=user,
     )
-
-
-def _accumulate_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
-    """Drain the executor tool event collector into a flat tool_data list.
-
-    Mirrors the comms-graph accumulation path: tool_calls_data outputs are
-    merged in, subagent start/end pairs are grouped via reconstruct_subagent_groups.
-    Only tool_calls_data entries get their output backfilled (the comms ack
-    message only owns tool_calls_data; other entries belong to the executor).
-    """
-    collector = get_tool_event_collector(stream_id)
-    if not collector:
-        return []
-    accumulated: dict[str, Any] = {"tool_data": []}
-    outputs: dict[str, str] = {}
-    for evt in collector:
-        absorb_collector_event(evt, accumulated, outputs)
-    apply_outputs_to_tool_data(accumulated["tool_data"], outputs, only_tool_name="tool_calls_data")
-    reconstruct_subagent_groups(accumulated)
-    return accumulated.get("tool_data", [])
 
 
 async def _process_token_usage_and_cost(user_id: str, metadata: dict[str, Any]) -> None:

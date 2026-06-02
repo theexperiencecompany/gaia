@@ -178,8 +178,10 @@ export default function UnifiedToolThread({
           key="tools"
           title={
             <div className="flex items-center hover:text-white text-zinc-500">
-              {stackedIcons}
-              <span className="text-xs font-medium transition-colors duration-200">
+              {totalToolCount > 1 && stackedIcons}
+              <span
+                className={`text-xs font-medium transition-colors duration-200 ${totalToolCount > 1 ? "ml-2" : ""}`}
+              >
                 Used {totalToolCount} tool
                 {totalToolCount !== 1 ? "s" : ""}
               </span>

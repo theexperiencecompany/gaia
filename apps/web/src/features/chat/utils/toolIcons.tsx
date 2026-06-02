@@ -14,6 +14,7 @@ import {
   BodyPartMuscleIcon,
   Brain02Icon,
   CheckListIcon,
+  Clock04Icon,
   ComputerTerminal01Icon,
   ConnectIcon,
   FileEmpty02Icon,
@@ -72,6 +73,7 @@ const isRenderableIconSrc = (src: string): boolean => {
 /** Map icon component names to actual React components */
 const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
   CheckListIcon,
+  Clock04Icon,
   AlarmClockIcon,
   PuzzleIcon,
   FileEmpty02Icon,

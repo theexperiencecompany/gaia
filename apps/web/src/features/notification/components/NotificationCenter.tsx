@@ -33,12 +33,8 @@ export function NotificationCenter({
     [activeTab],
   );
 
-  const { notifications, loading, markAsRead, bulkMarkAsRead } =
+  const { notifications, unreadCount, loading, markAsRead, bulkMarkAsRead } =
     useNotifications(notificationOptions);
-
-  const unreadCount = notifications.filter(
-    (n) => n.status === NotificationStatus.DELIVERED,
-  ).length;
 
   const handleMarkAsRead = async (notificationId: string) => {
     await markAsRead(notificationId);
@@ -67,19 +63,23 @@ export function NotificationCenter({
       <Popover>
         <PopoverTrigger>
           <div className="relative">
-            <SidebarHeaderButton
-              aria-label="Notifications"
-              tooltip="Notifications"
+            <Badge
+              color="primary"
+              shape="circle"
+              size="sm"
+              content={unreadCount > 99 ? "99+" : unreadCount}
+              isInvisible={unreadCount === 0}
+              // pointer-events-none lets the bell underneath capture hover/press;
+              // select-none keeps the count from being text-selected.
+              classNames={{ badge: "pointer-events-none select-none border-0" }}
             >
-              <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
-            </SidebarHeaderButton>
-            {unreadCount > 0 && (
-              <div className="absolute -right-1 bottom-3 flex h-full items-center justify-center">
-                <div className="flex aspect-square h-4 w-4 items-center justify-center rounded-full bg-primary text-xs font-medium text-zinc-950">
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </div>
-              </div>
-            )}
+              <SidebarHeaderButton
+                aria-label="Notifications"
+                tooltip="Notifications"
+              >
+                <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+              </SidebarHeaderButton>
+            </Badge>
           </div>
         </PopoverTrigger>
 
@@ -93,23 +93,21 @@ export function NotificationCenter({
             <Tab
               key="unread"
               title={
-                <div className="flex items-center gap-4">
-                  <span>Unread</span>
-                  {unreadCount > 0 && (
-                    <Badge
-                      className="border-0"
-                      color="primary"
-                      content={
-                        unreadCount > 99 ? "99+" : unreadCount.toString()
-                      }
-                    >
-                      <span />
-                    </Badge>
-                  )}
-                </div>
+                <Badge
+                  color="primary"
+                  size="sm"
+                  placement="top-right"
+                  content={unreadCount > 99 ? "99+" : unreadCount}
+                  isInvisible={unreadCount === 0}
+                  classNames={{ badge: "select-none border-0" }}
+                >
+                  {/* right padding gives the corner-anchored count room so it
+                      sits after the label instead of overlapping it */}
+                  <span className="pr-5">Unread</span>
+                </Badge>
               }
             />
-            <Tab key="all" title={"All"} />
+            <Tab key="all" title="All" />
           </Tabs>
 
           {/* Notifications list */}

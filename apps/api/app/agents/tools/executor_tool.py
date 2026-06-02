@@ -15,7 +15,9 @@ from uuid import uuid4
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from app.agents.core.background.executor_runner import run_executor_background
+from app.agents.core.background.executor_runner import (
+    run_executor_background,
+)
 from app.agents.core.background.inbox import mark_executor_spawned
 from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
@@ -179,23 +181,28 @@ async def call_executor(
             conversation_id=conversation_id,
         )
     except (LangChainRateLimitException, RateLimitExceededException) as e:
-        if isinstance(e, LangChainRateLimitException):
-            feature = e.feature
-        else:
-            detail: dict[str, str] = e.detail if isinstance(e.detail, dict) else {}
-            feature = detail.get("feature", "")
-        log.warning("Rate limit exceeded for executor task", feature=feature)
-        return (
-            f"Rate limit exceeded for {feature or 'this feature'}. "
-            "The user has already been notified of this limit; "
-            "acknowledge briefly without repeating the limit details."
-        )
+        return _rate_limit_message(e)
     except Exception as e:  # noqa: BLE001
         log.error("Error dispatching executor", error=str(e))
         await redis_cache.delete(
             f"{EXECUTOR_BUSY_PREFIX}{conversation_id}",
         )
         return f"Error starting task: {e!s}"
+
+
+def _rate_limit_message(e: LangChainRateLimitException | RateLimitExceededException) -> str:
+    """Build the comms-facing message for an executor rate-limit hit."""
+    if isinstance(e, LangChainRateLimitException):
+        feature = e.feature
+    else:
+        detail: dict[str, str] = e.detail if isinstance(e.detail, dict) else {}
+        feature = detail.get("feature", "")
+    log.warning("Rate limit exceeded for executor task", feature=feature)
+    return (
+        f"Rate limit exceeded for {feature or 'this feature'}. "
+        "The user has already been notified of this limit; "
+        "acknowledge briefly without repeating the limit details."
+    )
 
 
 async def _dispatch_executor(

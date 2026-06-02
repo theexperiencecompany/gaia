@@ -195,6 +195,7 @@ async def format_tool_call_entry(
         "call_executor": ("executor", "Delegating to executor", False),
         "handoff": ("handoff", None, False),  # message will be set from args
         "spawn_subagent": ("spawn_subagent", "Spawning subagent", False),
+        "wait_for_subagents": ("wait_for_subagents", "Waiting for subagents", False),
         "plan_tasks": ("plan_tasks", "Planning tasks", True),
         "update_tasks": ("plan_tasks", "Updating tasks", True),
     }

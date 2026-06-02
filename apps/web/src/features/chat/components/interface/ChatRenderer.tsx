@@ -22,6 +22,7 @@ import {
   isBotMessageEmpty,
 } from "@/features/chat/utils/messageContentUtils";
 import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
+import { useChatStore } from "@/stores/chatStore";
 import type {
   ChatBubbleBotProps,
   ChatBubbleUserProps,
@@ -44,6 +45,31 @@ export default function ChatRenderer({
   const { isLoading } = useLoading();
   const { loadingText, loadingTextKey, toolInfo } = useLoadingText();
   const { id: convoIdParam } = useParams<{ id: string }>();
+  const streamingConversationId = useChatStore(
+    (state) => state.streamingConversationId,
+  );
+  const activeConversationId = useChatStore(
+    (state) => state.activeConversationId,
+  );
+  const executorPendingConversationId = useChatStore(
+    (state) => state.executorPendingConversationId,
+  );
+  // While this conversation is "in progress", suppress follow-up actions and
+  // the hover action/timestamp row — they belong to a *finished* turn. A turn
+  // is in progress while its SSE stream runs (including the executor phase) AND,
+  // for turns that delegated to a background executor, until that executor's
+  // result message arrives via WebSocket (a few seconds after SSE close).
+  //
+  // NB: compare against the store's `activeConversationId`, not the route param
+  // — new conversations rewrite the URL via `history.replaceState`, which does
+  // not update Next's `useParams`, so `convoIdParam` is stale during streaming.
+  const isAwaitingExecutorResult =
+    !!executorPendingConversationId &&
+    executorPendingConversationId === activeConversationId;
+  const isConversationStreaming =
+    (!!streamingConversationId &&
+      streamingConversationId === activeConversationId) ||
+    isAwaitingExecutorResult;
   const scrolledToMessageRef = useRef<string | null>(null);
   const { retryMessage, isRetrying } = useRetryMessage();
   const [imageData, setImageData] = useState<SetImageDataType>({
@@ -266,9 +292,11 @@ export default function ChatRenderer({
               <ChatBubbleBot
                 key={message.message_id || index}
                 {...getMessageProps(message, "bot", messagePropsOptions)}
-                disableActions={isFollowedByBot}
+                disableActions={isFollowedByBot || isConversationStreaming}
                 follow_up_actions={
-                  isFollowedByBot ? undefined : messageProps.follow_up_actions
+                  isFollowedByBot || isConversationStreaming
+                    ? undefined
+                    : messageProps.follow_up_actions
                 }
                 date={isFollowedByBot ? undefined : messageProps.date}
                 isGroupedWithNext={isFollowedByBot}
@@ -284,7 +312,7 @@ export default function ChatRenderer({
           );
         },
       )}
-      {isLoading && (
+      {(isLoading || isAwaitingExecutorResult) && (
         <AnimatePresence>
           <LoadingIndicator
             loadingText={loadingText}

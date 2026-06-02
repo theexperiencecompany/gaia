@@ -13,11 +13,15 @@ from app.agents.core.agent import call_agent_silent
 from app.db.mongodb.collections import todos_collection
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
-    ChannelConfig,
+    ActionConfig,
+    ActionStyle,
+    ActionType,
+    NotificationAction,
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
     NotificationType,
+    RedirectConfig,
 )
 from app.services.model_service import get_default_model
 from app.services.notification_service import notification_service
@@ -326,6 +330,23 @@ async def _notify_overdue(doc: dict, pool: Any) -> None:
     )
 
 
+def _todo_redirect_action(label: str, todo_id: str | None) -> NotificationAction:
+    """Build a primary REDIRECT action to the todos page.
+
+    Deep-links the specific todo via ``?todoId`` when one is given (single-item
+    notifications), otherwise lands on the todos list (multi-item digest).
+    """
+    url = f"/todos?todoId={todo_id}" if todo_id else "/todos"
+    return NotificationAction(
+        type=ActionType.REDIRECT,
+        label=label,
+        style=ActionStyle.PRIMARY,
+        config=ActionConfig(
+            redirect=RedirectConfig(url=url, open_in_new_tab=False, close_notification=True)
+        ),
+    )
+
+
 async def _send_dormant_digest(todos: list[dict]) -> None:
     """Send a single digest notification for all dormant todos that need attention."""
     if not todos:
@@ -350,6 +371,11 @@ async def _send_dormant_digest(todos: list[dict]) -> None:
 
         count = len(user_todos)
         body = "\n".join(lines)
+        # Deep-link the single todo; land on the list when the digest bundles several.
+        action = _todo_redirect_action(
+            "View todo" if count == 1 else "Review todos",
+            str(user_todos[0]["_id"]) if count == 1 else None,
+        )
 
         try:
             await notification_service.create_notification(
@@ -361,8 +387,8 @@ async def _send_dormant_digest(todos: list[dict]) -> None:
                     content=NotificationContent(
                         title=f"{count} dormant todo{'s' if count != 1 else ''} need attention",
                         body=body,
+                        actions=[action],
                     ),
-                    channels=[ChannelConfig(channel_type="inapp", enabled=True, priority=1)],
                     metadata={"todo_count": count},
                 )
             )
@@ -473,7 +499,7 @@ async def _send_individual_notification(
     todo_id: str,
     notification_type: NotificationType,
 ) -> None:
-    """Send a single in-app notification for a specific todo."""
+    """Send a single notification for a specific todo across the user's enabled channels."""
     try:
         await notification_service.create_notification(
             NotificationRequest(
@@ -483,8 +509,8 @@ async def _send_individual_notification(
                 content=NotificationContent(
                     title=title,
                     body=body,
+                    actions=[_todo_redirect_action("View todo", todo_id)],
                 ),
-                channels=[ChannelConfig(channel_type="inapp", enabled=True, priority=1)],
                 metadata={"todo_id": todo_id},
             )
         )
