@@ -128,12 +128,16 @@ export default function UseCaseDetailClient({
   const creatorAvatar = resolveCreatorAvatar(creatorRecord);
   const showCreator = !!communityWorkflow && !!creatorName;
 
-  // Prepare tools - Type-safe extraction from steps, mapped to Tool format for ToolsList
-  const tools = (useCase?.steps || communityWorkflow?.steps || []).map(
-    (step) => ({
-      name: step.category,
-      category: step.category,
-    }),
+  // Prepare tools - Type-safe extraction from steps, mapped to Tool format for ToolsList.
+  // Dedupe by category so a workflow with multiple steps using the same tool only
+  // renders one chip in the tools list.
+  const tools = Array.from(
+    new Map(
+      (useCase?.steps || communityWorkflow?.steps || []).map((step) => [
+        step.category,
+        { name: step.category, category: step.category },
+      ]),
+    ).values(),
   );
 
   // Prepare run count

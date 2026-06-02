@@ -24,6 +24,7 @@ interface WorkflowDescriptionFieldProps {
   isPreview?: boolean;
   selectedIntegrationSlugs: string[];
   onIntegrationSlugsChange: (slugs: string[]) => void;
+  showIntegrationSelector?: boolean;
 }
 
 export default function WorkflowDescriptionField({
@@ -34,6 +35,7 @@ export default function WorkflowDescriptionField({
   isPreview = false,
   selectedIntegrationSlugs,
   onIntegrationSlugsChange,
+  showIntegrationSelector = true,
 }: WorkflowDescriptionFieldProps) {
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -156,7 +158,7 @@ export default function WorkflowDescriptionField({
           </div>
         )}
       />
-      {!isPreview && (
+      {showIntegrationSelector && !isPreview && (
         <div className="pt-1">
           <IntegrationChipsSelector
             selectedSlugs={selectedIntegrationSlugs}

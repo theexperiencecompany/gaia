@@ -207,7 +207,7 @@ run_knip() {
   fi
 
   local raw_output
-  raw_output=$(npx knip --no-progress --no-config-hints 2>&1) || true
+  raw_output=$(npx knip --config config/knip.config.ts --no-progress --no-config-hints 2>&1) || true
 
   if [[ -z "$raw_output" ]]; then
     echo -e "  ${GREEN}No unused code found.${RESET}"

@@ -1,20 +1,16 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
+import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { InformationCircleIcon } from "@icons";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useHotkeys } from "react-hotkeys-hook";
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import WorkflowDescriptionField from "@/features/workflows/components/workflow-modal/WorkflowDescriptionField";
 import WorkflowFooter from "@/features/workflows/components/workflow-modal/WorkflowFooter";
 import WorkflowHeader from "@/features/workflows/components/workflow-modal/WorkflowHeader";
@@ -27,6 +23,7 @@ import { useRouter } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
+import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
 import { type Workflow, workflowApi } from "../api/workflowApi";
 import {
   getDefaultFormValues,
@@ -52,6 +49,18 @@ interface WorkflowModalProps {
   existingWorkflow?: Workflow | null;
   /** Pre-fill form from AI-generated draft data */
   draftData?: WorkflowDraftData | null;
+  /**
+   * Pre-built steps from a public/community workflow. When provided:
+   * - the steps are forwarded to create so the backend skips regeneration
+   * - the integration chip selector is hidden
+   * - a read-only preview panel renders alongside the form
+   */
+  predefinedSteps?: PublicWorkflowStep[];
+  /**
+   * When true, the create button shows "Create and Send" and the workflow is
+   * immediately executed in the chat after creation.
+   */
+  createAndSend?: boolean;
 }
 
 export default function WorkflowModal({
@@ -62,7 +71,10 @@ export default function WorkflowModal({
   mode,
   existingWorkflow,
   draftData,
+  predefinedSteps,
+  createAndSend = false,
 }: WorkflowModalProps) {
+  const hasPredefinedSteps = !!predefinedSteps && predefinedSteps.length > 0;
   const {
     isCreating,
     error: creationError,
@@ -102,6 +114,8 @@ export default function WorkflowModal({
 
   // Single source of truth for workflow data
   const [currentWorkflow, setCurrentWorkflow] = useState<Workflow | null>(null);
+
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Selected integration slugs for hinting step generation
   const [selectedIntegrationSlugs, setSelectedIntegrationSlugs] = useState<
@@ -151,6 +165,21 @@ export default function WorkflowModal({
     watch,
     formState: { errors },
   } = form;
+
+  // Defer the form reset until after the modal's exit animation finishes —
+  // resetting synchronously on close blanks out the visible form fields while
+  // the modal is still fading out, which reads as an abrupt close. The delay
+  // matches HeroUI's modal exit transition.
+  useEffect(() => {
+    if (isOpen) return;
+    const timer = window.setTimeout(() => {
+      resetFormValues(getDefaultFormValues());
+      setSelectedIntegrationSlugs([]);
+      resetToForm();
+      clearCreationError();
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [isOpen, resetFormValues, resetToForm, clearCreationError]);
 
   // Manage the single workflow state from all sources
   useEffect(() => {
@@ -364,13 +393,6 @@ export default function WorkflowModal({
     );
   };
 
-  const handleFormReset = () => {
-    resetFormValues(getDefaultFormValues());
-    setSelectedIntegrationSlugs([]);
-    resetToForm();
-    clearCreationError();
-  };
-
   const handleSave = async (data: WorkflowFormData) => {
     if (!data.title.trim() || !data.prompt?.trim()) return;
 
@@ -384,7 +406,8 @@ export default function WorkflowModal({
           setCreationPhase("error");
           return;
         }
-      } catch {
+      } catch (validationError) {
+        console.error("Form validation error:", validationError);
         setCreationPhase("error");
         return;
       }
@@ -395,7 +418,18 @@ export default function WorkflowModal({
         description: data.description || undefined,
         prompt: data.prompt,
         trigger_config: data.trigger_config,
-        generate_immediately: true, // Generate steps immediately
+        // When predefined steps are supplied (from a community/featured
+        // workflow), forward them so the backend reuses them instead of
+        // regenerating a fresh plan.
+        steps: hasPredefinedSteps
+          ? predefinedSteps?.map((step) => ({
+              id: step.id ?? "",
+              title: step.title,
+              description: step.description,
+              category: step.category,
+            }))
+          : undefined,
+        generate_immediately: !hasPredefinedSteps,
         selected_integrations:
           selectedIntegrationSlugs.length > 0
             ? selectedIntegrationSlugs
@@ -405,31 +439,39 @@ export default function WorkflowModal({
       const result = await createWorkflow(createRequest);
 
       if (result.success && result.workflow) {
+        const createdWorkflow = result.workflow;
         trackEvent(ANALYTICS_EVENTS.WORKFLOWS_CREATED, {
-          workflow_id: result.workflow.id,
-          workflow_title: result.workflow.title,
-          step_count: result.workflow.steps?.length || 0,
+          workflow_id: createdWorkflow.id,
+          workflow_title: createdWorkflow.title,
+          step_count: createdWorkflow.steps?.length || 0,
           trigger_type: data.trigger_config.type,
           has_schedule: data.trigger_config.type === "schedule",
         });
 
         // Update currentWorkflow with the newly created workflow
-        setCurrentWorkflow(result.workflow);
+        setCurrentWorkflow(createdWorkflow);
         setCreationPhase("success");
 
         // Show success toast
         toast.success("Workflow created successfully!", {
-          description: `${result.workflow.steps?.length || 0} steps generated`,
+          description: `${createdWorkflow.steps?.length || 0} steps generated`,
           duration: 3000,
         });
 
         // Optimistic update: add to store immediately for instant UI feedback
-        addToStore(result.workflow);
+        addToStore(createdWorkflow);
 
         // Notify parent callbacks if provided (for backwards compatibility)
-        if (onWorkflowSaved) onWorkflowSaved(result.workflow.id);
+        if (onWorkflowSaved) onWorkflowSaved(createdWorkflow.id);
         await fetchWorkflows();
 
+        // In createAndSend mode, auto-execute the workflow in chat after
+        // creation. Fire selectWorkflow BEFORE closing — the parent gates the
+        // modal render on local state and unmounts us synchronously on close,
+        // which would kill any post-close effect.
+        if (createAndSend) {
+          selectWorkflow(createdWorkflow, { autoSend: true });
+        }
         handleClose();
       } else {
         setCreationPhase("error");
@@ -528,18 +570,19 @@ export default function WorkflowModal({
       await fetchWorkflows();
     } catch (error) {
       console.error("Failed to update workflow:", error);
-      toast.error("Failed to save workflow", {
+      toast.error("Failed to update workflow", {
         description:
           error instanceof Error
             ? error.message
-            : "An unexpected error occurred",
+            : "An unexpected error occurred. Please try again.",
         duration: 4000,
       });
     }
   };
 
   const handleClose = () => {
-    handleFormReset();
+    // Reset is handled by the close-animation effect — calling it here would
+    // blank the form while the modal is still visibly fading out.
     onOpenChange(false);
   };
 
@@ -560,9 +603,15 @@ export default function WorkflowModal({
     }
   };
 
-  const handleDeleteConfirm = async () => {
-    if (mode !== "edit" || !existingWorkflow) return;
-    setIsDeleteConfirmOpen(false);
+  const handleDelete = () => {
+    if (mode === "edit" && existingWorkflow) {
+      setIsDeleteConfirmOpen(true);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!(mode === "edit" && existingWorkflow)) return;
+    setIsDeleting(true);
     try {
       trackEvent(ANALYTICS_EVENTS.WORKFLOWS_DELETED, {
         workflow_id: existingWorkflow.id,
@@ -570,10 +619,14 @@ export default function WorkflowModal({
         step_count: existingWorkflow.steps?.length || 0,
         is_public: existingWorkflow.is_public,
       });
+
       await workflowApi.deleteWorkflow(existingWorkflow.id);
       removeFromStore(existingWorkflow.id);
+
       if (onWorkflowDeleted) onWorkflowDeleted(existingWorkflow.id);
+
       await fetchWorkflows();
+      setIsDeleteConfirmOpen(false);
       handleClose();
     } catch (error) {
       console.error("Failed to delete workflow:", error);
@@ -584,6 +637,8 @@ export default function WorkflowModal({
             : "An unexpected error occurred",
         duration: 4000,
       });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -755,14 +810,10 @@ export default function WorkflowModal({
         trigger_type: existingWorkflow.trigger_config.type,
       });
 
-      // Close modal first to ensure clean state
+      // Fire selectWorkflow before closing — the parent may unmount us
+      // synchronously, which would drop any post-close effect.
+      selectWorkflow(existingWorkflow, { autoSend: true });
       onOpenChange(false);
-
-      // Then navigate after modal starts closing
-      // Small delay ensures modal close animation begins and component cleanup doesn't interfere
-      setTimeout(() => {
-        selectWorkflow(existingWorkflow, { autoSend: true });
-      }, 50);
     } catch (error) {
       console.error("Failed to select workflow for execution:", error);
     }
@@ -770,6 +821,7 @@ export default function WorkflowModal({
 
   const getButtonText = () => {
     if (mode === "edit") return isCreating ? "Saving..." : "Save";
+    if (createAndSend) return isCreating ? "Creating..." : "Create and Send";
     return isCreating ? "Creating..." : "Create Workflow";
   };
 
@@ -782,14 +834,10 @@ export default function WorkflowModal({
     <>
       <Modal
         isOpen={isOpen}
-        onOpenChange={(open) => {
-          if (!open) handleFormReset();
-          onOpenChange(open);
-        }}
-        // isDismissable={false}
+        onOpenChange={onOpenChange}
         hideCloseButton
-        size={mode === "create" ? "3xl" : "4xl"}
-        className={`max-h-[71vh] bg-secondary-bg ${mode !== "create" ? "min-w-[80vw]" : ""}`}
+        size={mode === "create" && !hasPredefinedSteps ? "3xl" : "4xl"}
+        className={`max-h-[71vh] bg-secondary-bg ${mode !== "create" || hasPredefinedSteps ? "min-w-[80vw]" : ""}`}
         backdrop="blur"
       >
         <ModalContent>
@@ -831,7 +879,7 @@ export default function WorkflowModal({
                         onToggleActivation={handleActivationToggle}
                         isPublic={!!currentWorkflow?.is_public}
                         onUnpublish={handlePublishToggle}
-                        onDelete={() => setIsDeleteConfirmOpen(true)}
+                        onDelete={handleDelete}
                         onResetToDefault={handleResetToDefault}
                       />
 
@@ -862,6 +910,7 @@ export default function WorkflowModal({
                             onIntegrationSlugsChange={
                               setSelectedIntegrationSlugs
                             }
+                            showIntegrationSelector={!hasPredefinedSteps}
                           />
                         </div>
                       </div>
@@ -894,6 +943,29 @@ export default function WorkflowModal({
                     />
                   )}
                 </div>
+
+                {mode === "create" && hasPredefinedSteps && (
+                  <div className="flex w-96 min-h-0 flex-col overflow-hidden rounded-2xl bg-zinc-950/30 p-3">
+                    <div className="mb-2 flex items-center justify-between px-1">
+                      <span className="text-sm font-medium text-zinc-300">
+                        Steps
+                      </span>
+                      <span className="rounded-full bg-primary/20 px-1.5 py-0.5 text-xs text-primary">
+                        {predefinedSteps?.length}
+                      </span>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto">
+                      <WorkflowSteps
+                        steps={(predefinedSteps ?? []).map((step) => ({
+                          id: step.id ?? "",
+                          title: step.title,
+                          description: step.description,
+                          category: step.category,
+                        }))}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {(mode === "edit" || mode === "preview") &&
                   existingWorkflow && (
@@ -928,36 +1000,19 @@ export default function WorkflowModal({
           </ModalBody>
         </ModalContent>
       </Modal>
-
-      <Modal
-        isOpen={isDeleteConfirmOpen}
-        onOpenChange={setIsDeleteConfirmOpen}
-        size="sm"
-        backdrop="blur"
-      >
-        <ModalContent>
-          <ModalHeader>Delete workflow?</ModalHeader>
-          <ModalBody>
-            <p className="text-sm text-foreground-500">
-              <span className="font-medium text-foreground">
-                {currentWorkflow?.title}
-              </span>{" "}
-              will be permanently deleted. This cannot be undone.
-            </p>
-          </ModalBody>
-          <ModalFooter>
-            <Button
-              variant="flat"
-              onPress={() => setIsDeleteConfirmOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button color="danger" onPress={handleDeleteConfirm}>
-              Delete
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      {mode === "edit" && existingWorkflow && (
+        <ConfirmationDialog
+          isOpen={isDeleteConfirmOpen}
+          title="Delete workflow"
+          message={`Are you sure you want to delete "${existingWorkflow.title}"? This action cannot be undone.`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          variant="destructive"
+          isLoading={isDeleting}
+          onConfirm={confirmDelete}
+          onCancel={() => setIsDeleteConfirmOpen(false)}
+        />
+      )}
     </>
   );
 }
