@@ -19,6 +19,7 @@ from app.workers.tasks import (
     sweep_idle_sandboxes,
 )
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
+from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
 from app.workers.tasks.tracked_todo_tasks import (
     execute_tracked_todo,
     safety_net_check_orphaned_todos,
@@ -43,6 +44,7 @@ _prune_inactive_sessions = instrument_task(prune_inactive_sessions)
 _execute_tracked_todo = instrument_task(execute_tracked_todo)
 _safety_net_check_orphaned_todos = instrument_task(safety_net_check_orphaned_todos)
 _maintenance_sweep_tracked_todos = instrument_task(maintenance_sweep_tracked_todos)
+_rescan_pending_scheduled_tasks = instrument_task(rescan_pending_scheduled_tasks)
 
 WorkerSettings.functions = [
     _process_reminder,
@@ -97,6 +99,9 @@ WorkerSettings.cron_jobs = [
         minute=15,
         second=0,
     ),
+    # Recovery safety net: re-enqueue due scheduled tasks whose ARQ job was lost
+    # (Redis eviction/flush). Idempotent via the deterministic _job_id.
+    cron(_rescan_pending_scheduled_tasks, minute={0, 30}, second=0),
 ]
 
 WorkerSettings.on_startup = startup

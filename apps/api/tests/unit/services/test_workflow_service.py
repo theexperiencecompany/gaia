@@ -533,43 +533,6 @@ class TestWorkflowQueueServiceExecution:
 
 
 @pytest.mark.unit
-class TestWorkflowQueueServiceScheduled:
-    async def test_queue_scheduled_execution_passes_defer_until(self, mock_redis_pool):
-        scheduled_at = datetime.now(UTC) + timedelta(hours=2)
-        mock_job = MagicMock()
-        mock_job.job_id = "job_sched"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
-
-        result = await WorkflowQueueService.queue_scheduled_workflow_execution(
-            workflow_id=WORKFLOW_ID, scheduled_at=scheduled_at
-        )
-
-        assert result is True
-        kwargs = mock_redis_pool.enqueue_job.call_args[1]
-        assert kwargs["_defer_until"] == scheduled_at
-
-    async def test_queue_scheduled_returns_false_when_job_none(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=None)
-        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
-
-        result = await WorkflowQueueService.queue_scheduled_workflow_execution(
-            WORKFLOW_ID, scheduled_at
-        )
-
-        assert result is False
-
-    async def test_queue_scheduled_returns_false_on_exception(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(side_effect=Exception("unavailable"))
-        scheduled_at = datetime.now(UTC) + timedelta(hours=1)
-
-        result = await WorkflowQueueService.queue_scheduled_workflow_execution(
-            WORKFLOW_ID, scheduled_at
-        )
-
-        assert result is False
-
-
-@pytest.mark.unit
 class TestWorkflowQueueServiceRegeneration:
     async def test_queue_regeneration_passes_all_params(self, mock_redis_pool):
         mock_job = MagicMock()

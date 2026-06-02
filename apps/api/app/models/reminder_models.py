@@ -108,9 +108,10 @@ class CreateReminderRequest(BaseModel):
                 raise ValueError("stop_after must be in the future")
         return v
 
-    @field_serializer("scheduled_at", "stop_after", "base_time")
+    @field_serializer("scheduled_at", "stop_after", "base_time", when_used="json")
     def serialize_datetime(self, value: datetime | None) -> str | None:
-        """Serialize datetime fields to ISO format strings."""
+        """ISO strings for JSON only; python mode keeps native datetimes so a
+        model_dump() used to build a Mongo document never persists a string date."""
         if value is not None:
             return value.isoformat()
         return None
@@ -285,9 +286,11 @@ class UpdateReminderRequest(BaseModel):
                 raise ValueError("stop_after must be in the future")
         return v
 
-    @field_serializer("scheduled_at", "stop_after")
+    @field_serializer("scheduled_at", "stop_after", when_used="json")
     def serialize_datetime(self, value: datetime | None) -> str | None:
-        """Serialize datetime fields to ISO format strings."""
+        """ISO strings for JSON only; python mode (the Mongo `$set` update path
+        in update_reminder) keeps native datetimes so the persisted scheduled_at
+        stays a BSON date the `$lte` recovery scan can match."""
         if value is not None:
             return value.isoformat()
         return None

@@ -3,6 +3,7 @@ Base scheduler service for managing scheduled tasks.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -122,42 +123,42 @@ class BaseSchedulerService(ABC):
 
         log.info(f"Processing task {task_id}")
 
+        occurrence_count = task.occurrence_count + 1
+
         try:
-            # Mark task as executing
             await self.update_task_status(
                 task_id,
                 ScheduledTaskStatus.EXECUTING,
                 {"updated_at": datetime.now(UTC)},
             )
-
-            # Execute the task
             execution_result = await self.execute_task(task)
-
-            # Increment occurrence count
-            occurrence_count = task.occurrence_count + 1
-
-            # Handle recurring tasks
-            if task.repeat:
-                await self._handle_recurring_task(task, occurrence_count)
-            else:
-                # One-time task - mark as completed
-                await self.update_task_status(
-                    task_id,
-                    ScheduledTaskStatus.COMPLETED,
-                    {"occurrence_count": occurrence_count},
-                )
-                log.info(f"Completed one-time task {task_id}")
-
-            return execution_result
-
         except Exception as e:
-            log.error(f"Failed to process task {task_id}: {e!s}")
+            log.error(f"Failed to execute task {task_id}: {e!s}")
+            execution_result = TaskExecutionResult(
+                success=False, message=f"Task execution failed: {e!s}"
+            )
+
+        if task.repeat:
+            # Recurring tasks advance to the next occurrence on success AND failure:
+            # a transient error must not silently kill the series (mirrors the workflow
+            # executor). max_occurrences / stop_after still terminate the series.
+            await self.handle_recurring_task(task, occurrence_count)
+        elif execution_result.success:
+            await self.update_task_status(
+                task_id,
+                ScheduledTaskStatus.COMPLETED,
+                {"occurrence_count": occurrence_count},
+            )
+            log.info(f"Completed one-time task {task_id}")
+        else:
             await self.update_task_status(
                 task_id,
                 ScheduledTaskStatus.FAILED,
-                {"updated_at": datetime.now(UTC)},
+                {"occurrence_count": occurrence_count, "updated_at": datetime.now(UTC)},
             )
-            return TaskExecutionResult(success=False, message=f"Task execution failed: {e!s}")
+            log.warning(f"One-time task {task_id} failed: {execution_result.message}")
+
+        return execution_result
 
     async def cancel_task(self, task_id: str, user_id: str) -> bool:
         """
@@ -196,15 +197,19 @@ class BaseSchedulerService(ABC):
 
         scheduled_count = 0
         for task in tasks:
-            if task.id:
+            if task.id and task.scheduled_at:
                 await self._enqueue_task(task.id, task.scheduled_at)
                 scheduled_count += 1
 
         log.info(f"Scheduled {scheduled_count} pending tasks")
 
-    async def _handle_recurring_task(self, task: BaseScheduledTask, occurrence_count: int):
+    async def handle_recurring_task(self, task: BaseScheduledTask, occurrence_count: int):
         """
-        Handle rescheduling logic for recurring tasks.
+        Reschedule the next occurrence of a recurring task, or mark it completed
+        once max_occurrences / stop_after is reached.
+
+        Shared by the reminder path (via process_task_execution) and the workflow
+        executor, so recurrence behaves identically for both.
 
         Args:
             task: The task to handle
@@ -233,7 +238,9 @@ class BaseSchedulerService(ABC):
             user_timezone = trigger_config.timezone
             log.debug(f"Using workflow timezone: {user_timezone}")
 
-        next_run = get_next_run_time(task.repeat, task.scheduled_at, user_timezone)
+        # Advance from now, not from a (possibly stale) scheduled_at, so a dormant
+        # task resumes at its next future occurrence instead of replaying missed runs.
+        next_run = get_next_run_time(task.repeat, datetime.now(UTC), user_timezone)
 
         # Check if we should continue scheduling
         should_continue = True
@@ -255,15 +262,14 @@ class BaseSchedulerService(ABC):
                 log.info(f"Task {task.id} reached stop_after date ({stop_after})")
 
         if should_continue:
-            # Update and reschedule
-            await self.update_task_status(
-                task.id,
-                ScheduledTaskStatus.SCHEDULED,
-                {
-                    "scheduled_at": next_run.isoformat(),
-                    "occurrence_count": occurrence_count,
-                },
-            )
+            # Store scheduled_at as a native datetime so the `$lte` scan can match it.
+            update_fields: dict[str, Any] = {
+                "scheduled_at": next_run,
+                "occurrence_count": occurrence_count,
+            }
+            if trigger_config is not None and hasattr(trigger_config, "next_run"):
+                update_fields["trigger_config.next_run"] = next_run
+            await self.update_task_status(task.id, ScheduledTaskStatus.SCHEDULED, update_fields)
             await self.reschedule_task(task.id, next_run)
             log.info(f"Rescheduled recurring task {task.id} for {next_run}")
         else:
@@ -274,6 +280,10 @@ class BaseSchedulerService(ABC):
                 {"occurrence_count": occurrence_count},
             )
             log.info(f"Completed recurring task {task.id}")
+
+    def _build_job_args(self, task_id: str) -> tuple:
+        """Positional args passed to the ARQ job. Subclasses may add context."""
+        return (task_id,)
 
     async def _enqueue_task(self, task_id: str, scheduled_at: datetime) -> bool:
         """
@@ -317,15 +327,60 @@ class BaseSchedulerService(ABC):
         )
 
         job_name = self.get_job_name()
-        job = await self.arq_pool.enqueue_job(job_name, task_id, _defer_until=scheduled_at)
+        # Deterministic job id: ARQ dedupes a task+fire-time so concurrent scans or
+        # repeated enqueues can't stack duplicate jobs for the same occurrence.
+        job_id = f"{job_name}:{task_id}:{int(scheduled_at.timestamp())}"
+        job = await self.arq_pool.enqueue_job(
+            job_name, *self._build_job_args(task_id), _job_id=job_id, _defer_until=scheduled_at
+        )
 
         if not job:
-            log.error(f"Failed to enqueue task {task_id}")
+            log.warning(f"Task {task_id} already enqueued for {scheduled_at.isoformat()}; skipping")
             return False
 
         log.set(arq_job_id=job.job_id, arq_job_name=job_name)
         log.debug(f"Enqueued task {task_id} with job ID {job.job_id}")
         return True
+
+    async def _query_pending_tasks(
+        self,
+        collection: Any,
+        current_time: datetime,
+        doc_to_task: Callable[[dict[str, Any]], BaseScheduledTask],
+        extra_filter: dict[str, Any] | None = None,
+    ) -> list[BaseScheduledTask]:
+        """Shared recovery-scan query for every scheduler subclass.
+
+        Selects tasks that are SCHEDULED and DUE (``scheduled_at <= now``). The
+        ``$lte`` due-semantics live here, in one place, so the reminder and
+        workflow scans can never diverge on the operator again (they once did:
+        reminders used ``$gte`` and silently dropped every overdue task).
+
+        Subclasses supply only their collection, a document->model mapper, and
+        any extra filter (e.g. workflows additionally require ``activated: True``).
+        """
+        query: dict[str, Any] = {
+            "status": ScheduledTaskStatus.SCHEDULED.value,
+            "scheduled_at": {"$lte": current_time},
+        }
+        if extra_filter:
+            query.update(extra_filter)
+
+        tasks: list[BaseScheduledTask] = []
+        try:
+            cursor = collection.find(query)
+            async for doc in cursor:
+                try:
+                    tasks.append(doc_to_task(doc))
+                except Exception as e:
+                    log.error(f"Error building pending task from document: {e}")
+                    continue
+        except Exception as e:
+            log.error(f"Error fetching pending tasks: {e}")
+            return []
+
+        log.info(f"Found {len(tasks)} pending tasks")
+        return tasks
 
     # Abstract methods that subclasses must implement
 

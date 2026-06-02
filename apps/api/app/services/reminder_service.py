@@ -118,8 +118,8 @@ class ReminderScheduler(BaseSchedulerService):
             True if updated successfully
         """
         log.set(reminder_id=reminder_id, reminder_user_id=user_id)
-        # Add updated_at timestamp
-        update_data["updated_at"] = datetime.now(UTC).isoformat()
+        # Native datetime (BSON date), consistent with create/status-update writes.
+        update_data["updated_at"] = datetime.now(UTC)
 
         filters: dict = {"_id": ObjectId(reminder_id)}
         if user_id:
@@ -133,10 +133,10 @@ class ReminderScheduler(BaseSchedulerService):
             # If scheduled_at was updated, reschedule the task
             if "scheduled_at" in update_data and "status" in update_data:
                 if update_data["status"] == ReminderStatus.SCHEDULED:
-                    await self.reschedule_task(
-                        reminder_id,
-                        new_scheduled_at=datetime.fromisoformat(update_data["scheduled_at"]),
-                    )
+                    scheduled_at = update_data["scheduled_at"]
+                    if isinstance(scheduled_at, str):
+                        scheduled_at = datetime.fromisoformat(scheduled_at)
+                    await self.reschedule_task(reminder_id, new_scheduled_at=scheduled_at)
 
             return True
 
@@ -239,18 +239,22 @@ class ReminderScheduler(BaseSchedulerService):
         return result.modified_count > 0
 
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
-        """Get all scheduled reminders that should be enqueued."""
-        cursor = reminders_collection.find(
-            {"status": ReminderStatus.SCHEDULED, "scheduled_at": {"$gte": current_time}}
+        """Reminders that are scheduled and due (scheduled_at <= now).
+
+        Delegates the due-query to the shared base implementation so the
+        recovery scan can't diverge from the workflow scan (it previously used
+        ``$gte`` and silently dropped overdue reminders).
+        """
+        return await self._query_pending_tasks(
+            reminders_collection, current_time, self._doc_to_reminder
         )
 
-        tasks: list[BaseScheduledTask] = []
-        async for doc in cursor:
-            if "_id" in doc:
-                doc["_id"] = str(doc["_id"])
-            tasks.append(ReminderModel(**doc))
-
-        return tasks
+    @staticmethod
+    def _doc_to_reminder(doc: dict) -> ReminderModel:
+        """Transform a MongoDB document into a ReminderModel (ObjectId ``_id`` -> str)."""
+        if "_id" in doc:
+            doc["_id"] = str(doc["_id"])
+        return ReminderModel(**doc)
 
     def _serialize_reminder(self, reminder: ReminderModel) -> dict:
         """

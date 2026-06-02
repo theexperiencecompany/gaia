@@ -31,7 +31,11 @@ class BaseScheduledTask(BaseModel):
     id: str | None = Field(None, alias="_id")
     user_id: str = Field(..., description="User ID who owns this task")
     repeat: str | None = Field(None, description="Cron expression for recurring tasks")
-    scheduled_at: datetime = Field(..., description="Next scheduled execution time")
+    scheduled_at: datetime | None = Field(
+        default=None,
+        description="Next scheduled execution time; None when the task has no schedule "
+        "(e.g. a manual/integration workflow). A null value never matches the due-scan.",
+    )
     status: ScheduledTaskStatus = Field(
         default=ScheduledTaskStatus.SCHEDULED, description="Current status"
     )
@@ -59,9 +63,19 @@ class BaseScheduledTask(BaseModel):
             v = v.replace(tzinfo=UTC)
         return v
 
-    @field_serializer("scheduled_at", "stop_after", "created_at", "updated_at")
-    def serialize_datetime(self, value: datetime | None) -> str | None:
-        """Serialize datetime fields to ISO format strings."""
+    @field_serializer("scheduled_at", "stop_after", when_used="json")
+    def serialize_schedule_datetime(self, value: datetime | None) -> str | None:
+        """ISO strings for JSON only; python mode (Mongo writes) keeps native
+        datetimes so the scheduler's `scheduled_at: {"$lte": now}` scan matches."""
+        if value is not None:
+            return value.isoformat()
+        return None
+
+    @field_serializer("created_at", "updated_at", when_used="json")
+    def serialize_audit_datetime(self, value: datetime | None) -> str | None:
+        """ISO strings for JSON only; python mode (Mongo writes) keeps native
+        datetimes so these match the same type as status-update/migration writes
+        and sort correctly alongside them."""
         if value is not None:
             return value.isoformat()
         return None
