@@ -436,8 +436,9 @@ def build_dashboard(
     )
     line.add_data(nm_ref, titles_from_data=True, from_rows=True)
     line.set_categories(cats)
-    if line.series:
-        line.series[0].smooth = True
+    series = list(line.series)
+    if series:
+        series[0].smooth = True
     ws.add_chart(line, "D19")
 
     ws.freeze_panes = "A4"
