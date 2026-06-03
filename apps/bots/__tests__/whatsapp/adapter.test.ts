@@ -231,6 +231,7 @@ describe("WhatsAppAdapter - sendWhatsAppText", () => {
       phoneNumberId: "test-phone-id",
       to: "+15551234567",
       body: "Hello",
+      previewUrl: false,
     });
   });
 
@@ -251,6 +252,7 @@ describe("WhatsAppAdapter - sendWhatsAppText", () => {
       phoneNumberId: "test-phone-id",
       to: "+15551234567",
       body: "Updated text",
+      previewUrl: false,
     });
   });
 

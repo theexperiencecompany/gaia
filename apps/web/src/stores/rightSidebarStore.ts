@@ -22,11 +22,7 @@ interface RightSidebarState {
   close: () => void;
 }
 
-// Timer/frame IDs for cancelling stale async operations on open/close races.
-let closeContentTimer: ReturnType<typeof setTimeout> | null = null;
-let openRafId: number | null = null;
-
-export const useRightSidebar = create<RightSidebarState>((set, get) => ({
+export const useRightSidebar = create<RightSidebarState>((set) => ({
   content: null,
   isOpen: false,
   variant: "sidebar",
@@ -37,41 +33,15 @@ export const useRightSidebar = create<RightSidebarState>((set, get) => ({
       isOpen: true,
       variant: variant ?? state.variant,
     })),
-  openWithContent: (content, variant) => {
-    // Cancel any pending content-clear from a previous close() so it doesn't
-    // wipe the content we're about to set.
-    if (closeContentTimer !== null) {
-      clearTimeout(closeContentTimer);
-      closeContentTimer = null;
-    }
-    if (openRafId !== null) {
-      cancelAnimationFrame(openRafId);
-    }
-
-    const currentVariant = variant ?? get().variant;
-    set({ content, variant: currentVariant });
-    // Defer isOpen so the browser paints one frame with the sidebar off-screen
-    // (translateX(100%)) before the CSS transition animates it in.
-    openRafId = requestAnimationFrame(() => {
-      openRafId = null;
-      set({ isOpen: true });
-    });
-  },
-  close: () => {
-    // Cancel any pending open rAF so a stale open doesn't fire after close.
-    if (openRafId !== null) {
-      cancelAnimationFrame(openRafId);
-      openRafId = null;
-    }
-    if (closeContentTimer !== null) {
-      clearTimeout(closeContentTimer);
-    }
-
-    set({ isOpen: false });
-    // Delay content clear by 300ms to allow the slide-out CSS transition to complete.
-    closeContentTimer = setTimeout(() => {
-      closeContentTimer = null;
-      set({ content: null });
-    }, 300);
-  },
+  openWithContent: (content, variant) =>
+    set((state) => ({
+      content,
+      isOpen: true,
+      variant: variant ?? state.variant,
+    })),
+  // Closing only flips isOpen — the CSS transition (translateX/width) animates
+  // the panel out, and the offscreen content is invisible. Keeping the content
+  // mounted means the next open replaces it deterministically without any
+  // timer-based race against the previous close.
+  close: () => set({ isOpen: false }),
 }));

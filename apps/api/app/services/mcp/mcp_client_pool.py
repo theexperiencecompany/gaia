@@ -1,16 +1,17 @@
 """
-MCP Client Pool - Thread-safe pool for per-user MCPClient instances.
+MCP Client Pool — one MCPClient per user, bounded by memory not by idle timer.
 
-Uses LRU eviction and TTL-based cleanup to manage memory.
-Integrated with lazy_provider for proper lifecycle management.
+Sessions persist for the worker's lifetime. LRU eviction at the capacity cap is
+the only path that closes sessions while the worker is running; under normal
+load it never fires. This matches mcp_use's connection model, where the
+underlying SSE/HTTP task is detached and designed to live indefinitely.
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections import OrderedDict
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -22,37 +23,21 @@ if TYPE_CHECKING:
 
 @dataclass
 class PooledClient:
-    """Wrapper for pooled MCPClient with metadata."""
+    """Wrapper for a pooled MCPClient."""
 
     client: MCPClient
-    last_used: datetime = field(default_factory=lambda: datetime.now(UTC))
-
-    def touch(self):
-        """Update last used timestamp."""
-        self.last_used = datetime.now(UTC)
 
 
 class MCPClientPool:
-    """
-    Thread-safe MCP client pool with LRU eviction.
-
-    Features:
-    - Reuses MCPClient instances for the same user across requests
-    - LRU eviction when pool reaches max capacity
-    - Background cleanup of stale clients (not used within TTL)
-    - Graceful shutdown of all connections
-    """
+    """Per-user MCPClient pool with LRU-only eviction at capacity."""
 
     def __init__(
         self,
-        max_clients: int = 100,
-        ttl_seconds: int = 300,  # 5 minutes
+        max_clients: int = 5000,
     ):
         self._clients: OrderedDict[str, PooledClient] = OrderedDict()
         self._max_clients = max_clients
-        self._ttl = timedelta(seconds=ttl_seconds)
         self._lock = asyncio.Lock()
-        self._cleanup_task: asyncio.Task | None = None
 
     async def get(self, user_id: str) -> MCPClient:
         """Get or create MCPClient for user."""
@@ -60,8 +45,8 @@ class MCPClientPool:
         async with self._lock:
             if user_id in self._clients:
                 pooled = self._clients[user_id]
-                pooled.touch()
-                # Move to end (most recently used)
+                # Move to end (most recently used) so LRU eviction picks the
+                # truly oldest entry when we hit the cap.
                 self._clients.move_to_end(user_id)
                 log.debug(f"Reusing pooled MCPClient for {user_id}")
                 return pooled.client
@@ -70,6 +55,9 @@ class MCPClientPool:
             if len(self._clients) >= self._max_clients:
                 oldest_key = next(iter(self._clients))
                 evicted = self._clients.pop(oldest_key)
+                log.info(
+                    f"MCPClientPool at capacity ({self._max_clients}); LRU-evicting {oldest_key}"
+                )
 
             # Create new client (local import to avoid circular dependency)
             from app.services.mcp.mcp_client import MCPClient
@@ -93,64 +81,14 @@ class MCPClientPool:
             return
 
         pooled = self._clients.pop(user_id)
-        # Close all active MCP sessions using public method
         try:
             await pooled.client.close_all_client_sessions()
         except Exception as e:
             log.warning(f"Error closing MCP sessions for user {user_id}: {e}")
         log.debug(f"Evicted MCPClient for {user_id}")
 
-    async def cleanup_stale(self) -> None:
-        """Remove clients that haven't been used within TTL."""
-        to_close: list[PooledClient] = []
-        async with self._lock:
-            now = datetime.now(UTC)
-            stale = [
-                uid for uid, pooled in self._clients.items() if now - pooled.last_used > self._ttl
-            ]
-            for user_id in stale:
-                pooled = self._clients.pop(user_id, None)
-                if pooled:
-                    to_close.append(pooled)
-            if stale:
-                log.info(f"Cleaned up {len(stale)} stale MCP clients")
-
-        # Close sessions outside the lock to avoid blocking concurrent get() calls
-        for pooled in to_close:
-            try:
-                await pooled.client.close_all_client_sessions()
-            except Exception as e:
-                log.warning(f"Error closing stale MCP sessions: {e}")
-
-    async def start_cleanup_loop(self, interval: int = 60):
-        """Start background cleanup task."""
-
-        async def _loop():
-            while True:
-                try:
-                    await asyncio.sleep(interval)
-                except asyncio.CancelledError:
-                    log.info("MCPClientPool cleanup loop cancelled")
-                    raise
-                try:
-                    await self.cleanup_stale()
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    log.warning(f"Error in MCP cleanup loop: {e}")
-
-        self._cleanup_task = asyncio.create_task(_loop())
-        log.info("MCPClientPool cleanup loop started")
-
     async def shutdown(self):
         """Graceful shutdown of all clients."""
-        if self._cleanup_task:
-            self._cleanup_task.cancel()
-            try:
-                await self._cleanup_task
-            except asyncio.CancelledError:
-                raise
-
         async with self._lock:
             for user_id in list(self._clients.keys()):
                 await self._evict(user_id)
@@ -171,9 +109,7 @@ class MCPClientPool:
 )
 async def init_mcp_client_pool() -> MCPClientPool:
     """Initialize the MCP client pool."""
-    pool = MCPClientPool()
-    await pool.start_cleanup_loop()
-    return pool
+    return MCPClientPool()
 
 
 async def get_mcp_client_pool() -> MCPClientPool:

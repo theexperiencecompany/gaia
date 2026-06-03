@@ -170,7 +170,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
 
           {/* Canvas working memory — only for gaia-tracked todos */}
           {todo.vfs_path && (
-            <CanvasViewer vfsPath={todo.vfs_path} todoTitle={todo.title} />
+            <CanvasViewer todoId={todo.id} todoTitle={todo.title} />
           )}
 
           {/* Editable Fields */}

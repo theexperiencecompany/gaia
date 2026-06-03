@@ -202,6 +202,49 @@ Run composio tests (needs credentials): `uv run pytest tests/composio -v`
 
 Run e2e tests (needs live services): `nx run api:test:e2e`
 
+## Native vs Dockered API (JuiceFS trade-off)
+
+The API can run two ways in dev. They are **not** equivalent — the difference matters whenever you touch workspace v2, file uploads, artifacts, or sandbox file ops.
+
+| Mode | How | Port | JuiceFS mount | Hot reload |
+|---|---|---|---|---|
+| **Native** (default) | `mise dev` / `nx dev api` | host:8000 | not available | `uvicorn --reload` |
+| **Dockered** | `mise dev:vm` / `docker compose --profile backend up -d` | host:8000 → container:80 | mounted at `/mnt/jfs` | `WATCHFILES_FORCE_POLLING` |
+
+### Why this split exists
+
+JuiceFS is the host-side FUSE mount that backs workspace v2 (per-session FS, uploads, artifacts, skill installs). Mounting FUSE on Linux needs `CAP_SYS_ADMIN` + `/dev/fuse` + `apparmor:unconfined`. A native macOS process can't grant itself those — they only exist inside the dockered container. So the API code on the host has no `/mnt/jfs`, and `_require_mount()` in `app/services/storage/juicefs.py` raises `JuiceFSUnavailable`.
+
+The compose file profile-gates `gaia-backend` (`profiles: ["backend", "all"]`) precisely so `mise dev` can give you a native API with fast iteration without forcing the JuiceFS plumbing on every dev session.
+
+### What works in native mode
+
+- Chat (LLM calls, message persistence, SSE streaming)
+- Memory, todos, reminders, integrations, workflows, payments — anything Mongo/Postgres-only
+- Most agent tool calls
+- Sandbox tools that don't depend on the API seeding files via JuiceFS first
+
+### What raises `JuiceFSUnavailable` in native mode
+
+All of these call `_require_mount()` in `app/services/storage/juicefs.py`:
+
+- `write_session_file` — user file uploads from the chat UI
+- `ensure_user_workspace` — first-time workspace bootstrap for a user
+- `write_skill_file` / `ensure_user_skills_dir` — installing skills to the user's workspace
+- The artifact watcher in `app/services/sandbox/artifact_watcher.py` — needs to tail `/mnt/jfs/.accesslog`
+- Any service path under `app/services/storage/sessions/` that touches the FS
+
+If you hit `JuiceFSUnavailable` while running natively, **that is expected** — the fix is to switch to `mise dev:vm`, not to "fix" the error. Do not silence the exception, do not add a no-op fallback, do not stub `_is_mounted` to return `True`. The mount being missing is a load-bearing signal that JuiceFS-dependent features need the dockered API.
+
+### When to use which
+
+- **Default to native (`mise dev`).** Faster start, port 8000 free, `uv` commands work directly, hot reload is instant.
+- **Switch to `mise dev:vm`** when your task touches `app/services/storage/`, `app/services/sandbox/`, file upload endpoints, artifact streaming, workspace v2 in general, or you start seeing `JuiceFSUnavailable` in logs.
+
+### Coding-agent note
+
+If you are an agent fixing a bug here and you see `JuiceFSUnavailable`: do **not** wrap it in `try/except: pass`, do **not** stub the storage helpers, and do **not** create a fake `/mnt/jfs` directory. The user's `mise dev` is intentionally configured to surface this. Either tell the user to switch to `mise dev:vm` for tasks that actually exercise JuiceFS, or confirm with them that the failing code path isn't relevant to the current task before changing anything.
+
 ## Environment
 
 Settings class is selected by `ENV` env var (`production` | `development`). `DevelopmentSettings` makes most keys optional. `ProductionSettings` requires all keys.
@@ -253,3 +296,4 @@ nx run-many -t lint --projects=web,desktop
 - **Background memory storage**: `store_user_message_memory()` is fire-and-forget in `_core_agent_logic()`. Use the `_background_tasks` set pattern to prevent garbage collection of running tasks.
 - **`UJSONResponse`** is the default response class (faster JSON serialization). Custom error handlers in `app_factory.py` return plain `JSONResponse` to avoid double-serialization issues.
 - **`ENABLE_LAZY_LOADING=true`** (default) means startup blocks until services initialize. Setting it to `false` makes the server start immediately and warm up in the background — safe for requests because `LazyLoader` uses per-provider locks.
+- **Sandbox user has no `sudo`.** The `gaia-coder` template strips the sandbox user from the `sudo` and `wheel` groups (see `apps/api/scripts/build_e2b_template.py`). Drive root-needing operations (mount.sh, accesslog tail) through e2b's `sbx.commands.run(..., user="root")` parameter — never prefix shell commands with `sudo` in API code, the call will fail. JuiceFS itself runs under `/etc/gaia/jfs_launcher.py` which marks the daemon non-dumpable (`PR_SET_DUMPABLE=0`) so its `/proc/<pid>/{environ,cmdline}` are unreadable to the unprivileged user. `/proc` is mounted `hidepid=invisible` so even PID enumeration is denied. Verify after template rebuilds with `apps/api/scripts/verify_sandbox_hardening.sh`.

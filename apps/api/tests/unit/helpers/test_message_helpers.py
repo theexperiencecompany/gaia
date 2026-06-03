@@ -422,12 +422,12 @@ class TestFormatReplyContext:
 
 class TestFormatFilesList:
     def test_no_files(self) -> None:
-        assert format_files_list(None) == "No files uploaded."
-        assert format_files_list([]) == "No files uploaded."
+        assert format_files_list(None) == ""
+        assert format_files_list([]) == ""
 
     def test_empty_file_ids(self) -> None:
         files = [FileData(fileId="f1", url="u", filename="test.txt")]
-        assert format_files_list(files, file_ids=[]) == "No files uploaded."
+        assert format_files_list(files, file_ids=[]) == ""
 
     def test_all_files(self) -> None:
         files = [
@@ -437,7 +437,7 @@ class TestFormatFilesList:
         result = format_files_list(files)
         assert "a.txt" in result
         assert "b.pdf" in result
-        assert "f1" in result
+        assert "user-uploaded/" in result
 
     def test_filtered_by_ids(self) -> None:
         files = [
@@ -450,9 +450,14 @@ class TestFormatFilesList:
 
     def test_no_matching_ids(self) -> None:
         files = [FileData(fileId="f1", url="u", filename="a.txt")]
-        assert format_files_list(files, file_ids=["f99"]) == "No files uploaded."
+        assert format_files_list(files, file_ids=["f99"]) == ""
 
     def test_file_ids_none_returns_all(self) -> None:
         files = [FileData(fileId="f1", url="u", filename="a.txt")]
         result = format_files_list(files, file_ids=None)
         assert "a.txt" in result
+
+    def test_conversation_id_in_path(self) -> None:
+        files = [FileData(fileId="f1", url="u", filename="a.txt")]
+        result = format_files_list(files, conversation_id="conv123")
+        assert "/workspace/sessions/conv123/user-uploaded/a.txt" in result

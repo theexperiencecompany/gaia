@@ -26,6 +26,7 @@ import {
   handleStreamingChat,
   hashLogIdentifier,
   type IncomingMedia,
+  type OutboundAttachment,
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
@@ -51,6 +52,9 @@ import type {
 } from "./webhook.types";
 
 // ─── WhatsApp-specific config ─────────────────────────────────────────────────
+
+/** WhatsApp image-message byte cap; larger images are sent as documents. */
+const WHATSAPP_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 interface WhatsAppConfig {
   kapsoApiKey: string;
@@ -745,6 +749,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
       to: `+${waId}`,
       body: text,
+      previewUrl: false,
     });
 
     const messageId = response.messages[0]?.id ?? "";
@@ -757,8 +762,62 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
           to: `+${waId}`,
           body: updatedText,
+          previewUrl: false,
         });
       },
     };
+  }
+
+  protected async deliverOutbound(
+    destinationId: string,
+    text: string,
+  ): Promise<void> {
+    await this.sendWhatsAppText(destinationId, text);
+  }
+
+  /**
+   * Delivers an agent-generated file artifact to a WhatsApp user. Fetches the
+   * bytes from GAIA (bot-authenticated), uploads them to WhatsApp via the Kapso
+   * media API, then sends an image or document message referencing the media id.
+   */
+  protected override async deliverOutboundFile(
+    destinationId: string,
+    attachment: OutboundAttachment,
+  ): Promise<void> {
+    const artifact = await this.fetchOutboundArtifact(
+      destinationId,
+      attachment,
+    );
+    if (!artifact) return; // too large — fetchOutboundArtifact already replied
+    const { data, contentType } = artifact;
+    const mime =
+      attachment.content_type ?? contentType ?? "application/octet-stream";
+    const phoneNumberId = this.whatsAppConfig.kapsoPhoneNumberId;
+
+    const uploaded = (await this.whatsAppClient.media.upload({
+      phoneNumberId,
+      type: mime,
+      file: new Blob([new Uint8Array(data)], { type: mime }),
+      fileName: attachment.filename,
+    })) as { id?: string };
+    if (!uploaded.id) throw new Error("Kapso media upload returned no id");
+
+    const to = `+${destinationId}`;
+    const caption = attachment.caption ?? undefined;
+    // WhatsApp image messages cap around 5 MB; deliver larger images as a
+    // document so they still arrive instead of being rejected.
+    if (mime.startsWith("image/") && data.length <= WHATSAPP_IMAGE_MAX_BYTES) {
+      await this.whatsAppClient.messages.sendImage({
+        phoneNumberId,
+        to,
+        image: { id: uploaded.id, caption },
+      });
+    } else {
+      await this.whatsAppClient.messages.sendDocument({
+        phoneNumberId,
+        to,
+        document: { id: uploaded.id, filename: attachment.filename, caption },
+      });
+    }
   }
 }

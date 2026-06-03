@@ -48,7 +48,6 @@ import type {
 } from "@/types/features/searchTypes";
 import type {
   ArtifactData,
-  DocumentData,
   GoalDataMessageType,
   GoogleDocsData,
   WorkflowDraftData,
@@ -62,7 +61,6 @@ import { CalendarEditSection } from "../CalendarEditSection";
 import CalendarEventSection from "../CalendarEventSection";
 import CodeExecutionSection from "../CodeExecutionSection";
 import ContactListSection from "../ContactListSection";
-import DocumentSection from "../DocumentSection";
 import EmailComposeSection from "../EmailComposeSection";
 import EmailSentSection from "../EmailSentSection";
 import FileArtifactSection from "../FileArtifactSection";
@@ -250,12 +248,6 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   ),
 
   // Documents & Code
-  document_data: (data, index) => (
-    <DocumentSection
-      key={`tool-doc-${index}`}
-      document_data={data as DocumentData}
-    />
-  ),
   google_docs_data: (data, index) => (
     <GoogleDocsSection
       key={`tool-gdocs-${index}`}

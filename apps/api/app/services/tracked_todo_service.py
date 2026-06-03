@@ -1,11 +1,15 @@
 """
-Tracked todo service — VFS lifecycle for GAIA's working memory todos.
+Tracked todo service — Mongo-backed lifecycle for GAIA's working memory todos.
 
 A tracked todo is a regular todo with:
-- vfs_path set to /users/{user_id}/todos/{todo_id}/
+- vfs_path (display label) set to /users/{user_id}/todos/{todo_id}/
 - 'gaia-tracked' label
-- canvas.md (agent-written brain) indexed in ChromaDB
-- log.md (system-written audit trail)
+- canvas_content field (agent-written brain) indexed in ChromaDB
+- log_content field (system-written audit trail)
+
+Canvas and log content live on the todo document itself — see
+``app/services/todo_canvas_storage.py`` for the storage primitives. No
+JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 """
 
 from datetime import UTC, datetime
@@ -13,10 +17,17 @@ import re
 
 from bson import ObjectId
 
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.mongodb.collections import todos_collection
 from app.models.todo_models import Priority, TodoModel, TodoResponse
+from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
+from app.services.todo_canvas_storage import (
+    append_log,
+    build_vfs_label,
+    read_canvas,
+    write_canvas,
+)
 from app.services.todos.todo_service import TodoService
-from app.services.vfs.mongo_vfs import MongoVFS
 from app.utils.canvas_vector_utils import (
     mark_canvas_completed,
     store_canvas_embedding,
@@ -46,8 +57,6 @@ CANVAS_TEMPLATE = """# {title}
 <!-- written on completion: what worked, what didn't, key decisions, timing insights, optimizations for next time -->
 """
 
-GAIA_TRACKED_LABEL = "gaia-tracked"
-
 
 def _pin_active_todo(docs: list[dict], active_todo_id: str | None) -> None:
     """Move the matching todo to the front of `docs` in-place (no-op if not found)."""
@@ -73,17 +82,15 @@ _KEY_DETAILS_RE = re.compile(r"## Key Details\n(.*?)(?:\n## |\Z)", re.DOTALL)
 _KEY_DETAILS_MAX_LINES = 5
 
 
-async def _extract_canvas_key_details(vfs: MongoVFS, doc: dict, user_id: str) -> str:
-    """Pull the Key Details section text from a tracked todo's canvas.md (empty on miss)."""
-    vfs_path = doc.get("vfs_path", "")
-    if not vfs_path:
-        return ""
+async def _extract_canvas_key_details(doc: dict, user_id: str) -> str:
+    """Pull the Key Details section text from a tracked todo's canvas (empty on miss)."""
+    todo_id = str(doc["_id"])
     try:
-        canvas = await vfs.read(path=f"{vfs_path}/canvas.md", user_id=user_id)
+        canvas = await read_canvas(todo_id, user_id)
     except Exception as e:
         log.warning(
             "tracked_todo.canvas_read_failed",
-            todo_id=str(doc["_id"]),
+            todo_id=todo_id,
             error=str(e),
         )
         return ""
@@ -164,34 +171,26 @@ class TrackedTodoService:
         result = await TodoService.create_todo(todo, user_id)
         todo_id = result.id
 
-        # Initialize VFS
-        vfs_path = f"/users/{user_id}/todos/{todo_id}"
+        # Persist canvas + log + display label on the todo doc itself.
+        vfs_path = build_vfs_label(user_id, todo_id)
         canvas_content = initial_canvas or CANVAS_TEMPLATE.format(title=title)
-
-        vfs = MongoVFS()
         now = datetime.now(UTC)
-
-        await vfs.write(
-            path=f"{vfs_path}/canvas.md",
-            content=canvas_content,
-            user_id=user_id,
+        log_content = (
+            f"# System Log: {title}\n\n"
+            f"## {now.isoformat()} [CREATED]\n"
+            f"- Source: agent\n"
+            f"- Labels: {', '.join(all_labels)}\n"
         )
 
-        await vfs.write(
-            path=f"{vfs_path}/log.md",
-            content=(
-                f"# System Log: {title}\n\n"
-                f"## {now.isoformat()} [CREATED]\n"
-                f"- Source: agent\n"
-                f"- Labels: {', '.join(all_labels)}\n"
-            ),
-            user_id=user_id,
-        )
-
-        # Set vfs_path on the todo document
         await todos_collection.update_one(
             {"_id": ObjectId(todo_id), "user_id": user_id},
-            {"$set": {"vfs_path": vfs_path}},
+            {
+                "$set": {
+                    "vfs_path": vfs_path,
+                    "canvas_content": canvas_content,
+                    "log_content": log_content,
+                }
+            },
         )
 
         # Index canvas in ChromaDB
@@ -213,36 +212,32 @@ class TrackedTodoService:
             title=title,
             vfs_path=vfs_path,
         )
+        schedule_gaia_tasks_sync(user_id)
         return result
 
     @staticmethod
     async def complete_tracked_todo(todo_id: str, user_id: str, summary: str) -> bool:
-        """Complete a tracked todo: archive VFS, remove from ChromaDB index."""
+        """Complete a tracked todo: append completion to log, mark done, archive label."""
         doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
         if not doc:
             return False
 
-        # Guard against double-completion (VFS already archived)
+        # Guard against double-completion
         if doc.get("completed"):
             return True
 
-        vfs_path = doc.get("vfs_path")
-        if not vfs_path:
-            return False
-
+        vfs_path = doc.get("vfs_path") or build_vfs_label(user_id, todo_id)
         now = datetime.now(UTC)
-        vfs = MongoVFS()
 
         # Append completion to log
-        await vfs.append(
-            path=f"{vfs_path}/log.md",
-            content=f"\n## {now.isoformat()} [COMPLETED]\n- Summary: {summary}\n",
-            user_id=user_id,
+        await append_log(
+            todo_id,
+            user_id,
+            f"\n## {now.isoformat()} [COMPLETED]\n- Summary: {summary}\n",
         )
 
-        # Archive VFS
+        # Switch the display label to the archived form (purely cosmetic).
         archive_path = vfs_path.replace("/todos/", "/todos/archive/")
-        await vfs.move(source=vfs_path, dest=archive_path, user_id=user_id)
 
         # Update todo
         await todos_collection.update_one(
@@ -274,6 +269,7 @@ class TrackedTodoService:
             user_id=user_id,
             summary=summary,
         )
+        schedule_gaia_tasks_sync(user_id)
         return True
 
     @staticmethod
@@ -311,20 +307,16 @@ class TrackedTodoService:
         section, the line is inserted at the top of its body; otherwise a new
         section is appended at the end of the canvas.
         """
-        doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
-        if not doc or not doc.get("vfs_path"):
-            return False
-
-        vfs = MongoVFS()
-        canvas_path = f"{doc['vfs_path']}/canvas.md"
         try:
-            current = await vfs.read(path=canvas_path, user_id=user_id) or ""
+            current = await read_canvas(todo_id, user_id) or ""
         except Exception as e:
             log.warning(
                 "tracked_todo.canvas_read_for_timeline_failed",
                 todo_id=todo_id,
                 error=str(e),
             )
+            return False
+        if not current:
             return False
 
         line = entry if entry.startswith("- ") else f"- {entry}"
@@ -339,7 +331,7 @@ class TrackedTodoService:
             new_canvas = current[:insert_pos] + f"\n{line}" + current[insert_pos:]
 
         try:
-            await vfs.write(path=canvas_path, content=new_canvas, user_id=user_id)
+            await write_canvas(todo_id, user_id, new_canvas)
         except Exception as e:
             log.warning(
                 "tracked_todo.canvas_timeline_write_failed",
@@ -351,20 +343,15 @@ class TrackedTodoService:
 
     @staticmethod
     async def system_log(todo_id: str, user_id: str, event_type: str, details: str) -> None:
-        """Append a system log entry to a tracked todo's log.md.
+        """Append a system log entry to a tracked todo's log.
 
-        Called by code (not agent) for audit trail. Agent writes to canvas.md.
+        Called by code (not agent) for audit trail. Agent writes to canvas.
         """
-        doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
-        if not doc or not doc.get("vfs_path"):
-            return
-
-        vfs = MongoVFS()
         now = datetime.now(UTC)
-        await vfs.append(
-            path=f"{doc['vfs_path']}/log.md",
-            content=f"\n## {now.isoformat()} [{event_type}]\n- {details}\n",
-            user_id=user_id,
+        await append_log(
+            todo_id,
+            user_id,
+            f"\n## {now.isoformat()} [{event_type}]\n- {details}\n",
         )
 
     @staticmethod
@@ -385,9 +372,8 @@ class TrackedTodoService:
         if not docs:
             return ""
 
-        vfs = MongoVFS()
         lines = [
-            _format_signal_entry(doc, await _extract_canvas_key_details(vfs, doc, user_id))
+            _format_signal_entry(doc, await _extract_canvas_key_details(doc, user_id))
             for doc in docs
         ]
         return "ACTIVE TRACKED TODOS (check if incoming signal relates to any):\n" + "\n".join(
@@ -396,13 +382,12 @@ class TrackedTodoService:
 
     @staticmethod
     async def reindex_canvas(todo_id: str, user_id: str) -> bool:
-        """Re-index a todo's canvas.md in ChromaDB after agent writes to it."""
+        """Re-index a todo's canvas in ChromaDB after the agent writes to it."""
         doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
-        if not doc or not doc.get("vfs_path"):
+        if not doc:
             return False
 
-        vfs = MongoVFS()
-        canvas_content = await vfs.read(path=f"{doc['vfs_path']}/canvas.md", user_id=user_id)
+        canvas_content = doc.get("canvas_content")
         if not canvas_content:
             return False
 

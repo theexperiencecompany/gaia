@@ -13,7 +13,7 @@ Explore & Discover section, organized by categories:
 
 Each workflow uses REAL tools from:
 - Composio integrations (GMAIL, GITHUB, NOTION, SLACK, LINEAR, etc.)
-- Core GAIA tools (create_todo, add_memory, web_search_tool, generate_document, etc.)
+- Core GAIA tools (create_todo, add_memory, web_search_tool, etc.)
 
 Usage:
   cd backend

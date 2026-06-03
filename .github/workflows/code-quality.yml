@@ -71,7 +71,7 @@ jobs:
       - name: All workspace packages agree on dep versions (syncpack)
         run: |
           echo "::group::syncpack lint"
-          pnpm exec syncpack lint
+          pnpm exec syncpack lint --config config/.syncpackrc.json
           echo "::endgroup::"
           echo "syncpack: OK (dep versions and semver ranges consistent)"
       - name: Workspace topology is valid (manypkg)
@@ -439,7 +439,7 @@ jobs:
   # --- Dead code detection (knip + vulture) — enforced ---------------------
   # Runs in --strict mode: any knip (TS) or vulture (Python) finding fails the
   # lane. The scan is tightened to drop systematic false positives (tests,
-  # Pydantic/dynamic-dispatch, framework-consumed files) — see knip.config.ts
+  # Pydantic/dynamic-dispatch, framework-consumed files) — see config/knip.config.ts
   # and apps/api/scripts/vulture-whitelist.py.
   dead-code:
     name: Dead code (knip + vulture, strict)

@@ -29,7 +29,6 @@ import type { TodoToolData } from "@/types/features/todoToolTypes";
 import type {
   ArtifactData,
   CodeData,
-  DocumentData,
   GoalDataMessageType,
   GoogleDocsData,
   WorkflowCreatedData,
@@ -140,7 +139,6 @@ export const TOOL_REGISTRY = {
   calendar_list_fetch_data: null as unknown as CalendarListFetchData[],
   support_ticket_data: null as unknown as SupportTicketData[],
   reddit_data: null as unknown as RedditData,
-  document_data: null as unknown as DocumentData,
   google_docs_data: null as unknown as GoogleDocsData,
   code_data: null as unknown as CodeData,
   todo_data: null as unknown as TodoToolData,

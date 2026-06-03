@@ -70,9 +70,11 @@ for (const line of sh(`git diff --unified=0 ${base}`).split("\n")) {
   }
 }
 
-// Run jscpd (reuses .jscpd.json) and load the JSON report.
+// Run jscpd (reuses config/.jscpd.json) and load the JSON report.
 const outDir = mkdtempSync(join(tmpdir(), "jscpd-"));
-sh(`pnpm exec jscpd --reporters json --output ${outDir} --silent .`);
+sh(
+  `pnpm exec jscpd -c config/.jscpd.json --reporters json --output ${outDir} --silent .`,
+);
 const report = JSON.parse(
   readFileSync(join(outDir, "jscpd-report.json"), "utf8"),
 );

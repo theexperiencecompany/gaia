@@ -193,15 +193,13 @@ const nextConfig = {
   ],
   async headers() {
     return [
-      {
-        source: "/_next/static/(.*)",
-        headers: [
-          {
-            key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
-          },
-        ],
-      },
+      // /_next/static/* — intentionally NOT setting a custom Cache-Control
+      // here. Next.js content-hashes chunk filenames in production builds, so
+      // its default immutable cache headers are already correct; in dev
+      // Turbopack reuses the same chunk filenames across rebuilds, and any
+      // custom long-cache header would pin a stale bundle in the browser and
+      // break hot reloads (Next itself warns "Setting a custom Cache-Control
+      // header can break Next.js development behavior").
       {
         source: "/images/(.*)",
         headers: [

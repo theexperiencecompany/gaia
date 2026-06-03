@@ -311,7 +311,7 @@ unfixable = [
   "PT015",
 ]
 "**/conftest.py" = ["ANN", "INP001", "ARG", "S101"]
-"**/scripts/**/*.py" = ["T20", "INP001", "PLR2004", "S603", "S607"]
+"**/scripts/**/*.py" = ["T20", "INP001", "PLR2004", "S603", "S606", "S607"]
 "**/migrations/**/*.py" = ["INP001", "N999", "ANN"]
 "**/__init__.py" = ["F401"]
 "**/patches.py" = ["F401", "PLC", "ANN", "ARG"]
@@ -367,6 +367,10 @@ disallow_any_generics = false
 warn_return_any = false
 warn_unreachable = false
 warn_unused_ignores = false
+# Builtin-skill resource files (templates/, scripts/) are sandbox-executed assets,
+# not importable API modules — they run in the docgen sandbox toolchain (Typst,
+# openpyxl, docx-js), so they are not type-checked against the API environment.
+exclude = "app/agents/skills/builtin/[^/]+/(templates|scripts)/"
 
 # Shared library code: ratchet stricter than apps once legacy gaps are closed.
 # Today it inherits the global baseline; the per-module override exists so

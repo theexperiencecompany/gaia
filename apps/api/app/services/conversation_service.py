@@ -7,15 +7,18 @@ from fastapi import HTTPException, status
 
 from app.db.mongodb.collections import conversations_collection
 from app.models.chat_models import (
+    BOT_CONVERSATION_SOURCES,
     BatchSyncRequest,
     ConversationModel,
     SystemPurpose,
     UpdateMessagesRequest,
 )
+from app.services.storage import JuiceFSUnavailable, delete_session_dir
 from app.utils.tool_data_utils import (
     convert_conversation_messages,
     convert_legacy_tool_data,
 )
+from shared.py.wide_events import log
 
 
 async def create_conversation_service(conversation: ConversationModel, user: dict) -> dict:
@@ -86,8 +89,7 @@ async def get_conversations(user: dict, page: int = 1, limit: int = 10) -> dict:
     }
 
     # Exclude conversations originating from bots (they are accessible via direct URL)
-    _BOT_SOURCES = ["telegram", "discord", "slack", "whatsapp"]
-    _source_filter = {"source": {"$nin": _BOT_SOURCES}}
+    _source_filter = {"source": {"$nin": [s.value for s in BOT_CONVERSATION_SOURCES]}}
 
     starred_filter = {"user_id": user_id, "starred": True, **_source_filter}
     non_starred_filter = {
@@ -202,6 +204,16 @@ async def delete_conversation(conversation_id: str, user: dict) -> dict:
             status_code=404,
             detail="Conversation not found or does not belong to the user",
         )
+
+    # Best-effort cleanup of the on-disk session dir. Mongo delete already
+    # succeeded; the ARQ prune task is the backstop if this fails.
+    if user_id:
+        try:
+            await delete_session_dir(user_id, conversation_id)
+        except JuiceFSUnavailable as e:
+            log.warning("[conversation] juicefs cleanup skipped", error=str(e))
+        except Exception as e:
+            log.warning("[conversation] session dir cleanup failed", error=str(e))
 
     return {
         "message": "Conversation deleted successfully",

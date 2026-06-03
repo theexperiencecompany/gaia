@@ -311,6 +311,81 @@ async def connect_self_integration(
     )
 
 
+async def initiate_integration_connection(
+    user_id: str,
+    integration_id: str,
+    *,
+    user_email: str = "",
+    redirect_path: str = "/integrations",
+    bearer_token: str | None = None,
+) -> ConnectIntegrationResponse | None:
+    """Resolve an integration and start its connect flow.
+
+    Single source of truth for the connect dispatch, shared by the
+    ``POST /connect/{id}`` endpoint and the login-free ``GET /connect-link``
+    entry point. Returns ``None`` when the integration does not exist (callers
+    map that to 404 / a friendly error); otherwise a ``ConnectIntegrationResponse``
+    whose ``redirect_url`` is the provider OAuth URL.
+    """
+    resolved = await IntegrationResolver.resolve(integration_id)
+    if not resolved:
+        return None
+
+    def _error(message: str) -> ConnectIntegrationResponse:
+        return ConnectIntegrationResponse(
+            status="error",
+            integration_id=integration_id,
+            name=resolved.name,
+            error=message,
+        )
+
+    if (
+        resolved.source == "platform"
+        and resolved.platform_integration
+        and not resolved.platform_integration.available
+    ):
+        return _error(f"Integration {integration_id} is not available yet")
+
+    provider = resolved.platform_integration.provider if resolved.platform_integration else None
+    try:
+        if resolved.managed_by == "mcp":
+            return await connect_mcp_integration(
+                user_id=user_id,
+                integration_id=integration_id,
+                integration_name=resolved.name,
+                requires_auth=resolved.requires_auth,
+                redirect_path=redirect_path,
+                server_url=resolved.mcp_config.server_url if resolved.mcp_config else None,
+                is_platform=resolved.source == "platform",
+                bearer_token=bearer_token,
+            )
+        if resolved.managed_by == "composio":
+            if not provider:
+                return _error("Provider not configured")
+            return await connect_composio_integration(
+                user_id=user_id,
+                integration_id=integration_id,
+                integration_name=resolved.name,
+                provider=provider,
+                redirect_path=redirect_path,
+            )
+        if resolved.managed_by == "self":
+            if not provider:
+                return _error("Provider not configured")
+            return await connect_self_integration(
+                user_id=user_id,
+                user_email=user_email,
+                integration_id=integration_id,
+                integration_name=resolved.name,
+                provider=provider,
+                redirect_path=redirect_path,
+            )
+        return _error(f"Unsupported integration type: {resolved.managed_by}")
+    except Exception as e:
+        log.error(f"Failed to initiate connection for {integration_id}: {e}")
+        return _error(str(e))
+
+
 async def disconnect_integration(user_id: str, integration_id: str) -> IntegrationSuccessResponse:
     """Disconnect an integration for the user."""
     log.set(integration={"provider": integration_id, "action": "disconnect"})

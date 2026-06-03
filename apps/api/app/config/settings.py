@@ -95,6 +95,11 @@ class CommonSettings(BaseAppSettings):
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
 
+    @field_validator("HOST", "FRONTEND_URL", mode="after")
+    @classmethod
+    def _strip_trailing_slash(cls, v: str) -> str:
+        return v.rstrip("/") if isinstance(v, str) else v
+
     # ----------------------------------------------
     # Observability
     # ----------------------------------------------
@@ -276,6 +281,40 @@ class ProductionSettings(CommonSettings):
     # Code Execution Environment
     # ----------------------------------------------
     E2B_API_KEY: str
+    E2B_TEMPLATE_ID: str  # gaia-coder template ID (run scripts/build_e2b_template.py)
+    E2B_SANDBOX_IDLE_PAUSE_SECONDS: int = 60
+    E2B_DEFAULT_BASH_TIMEOUT: int = 120
+    E2B_SANDBOX_EVICT_DAYS: int = 14
+    E2B_WARM_POOL_TARGET_RATIO: float = 2.0  # Phase 2
+    # Artifact detection mechanism — decided empirically by
+    # scripts/probe_artifact_detection.py (Phase 0). "watch_dir" uses E2B
+    # envd's native recursive watch; "accesslog" tails JuiceFS .accesslog.
+    ARTIFACT_DETECTION_MODE: Literal["watch_dir", "accesslog"] = "watch_dir"
+    ARTIFACT_WATCHER_INODE_CACHE_SIZE: int = 4096  # accesslog mode only
+
+    # ----------------------------------------------
+    # Persistent Workspace Storage (R2 + JuiceFS)
+    # ----------------------------------------------
+    R2_ACCOUNT_ID: str
+    R2_BUCKET: str  # e.g. "gaia-workspaces"
+    R2_ACCESS_KEY: str
+    R2_SECRET_KEY: str
+    # Templated metadata URL: contains {shard} substituted at mount time.
+    # Example: "postgres://juicefs:pass@host:5432/gaia_juicefs_{shard}?sslmode=require"
+    JUICEFS_META_URL_TEMPLATE: str
+    JUICEFS_NUM_SHARDS: int = 1  # Phase 1: 1, Phase 2: 16
+    # JuiceFS RSA-4096 private key in PEM form. Whole multi-line PEM stored as a
+    # single env var / Infisical secret; the entrypoint writes it to disk on
+    # boot so `juicefs format / mount` can pick it up. Optional — leave empty
+    # to skip client-side encryption (R2 at-rest encryption still applies).
+    JFS_ENCRYPTION_KEY: str | None = None
+    JUICEFS_HOST_MOUNT_PATH: str = "/mnt/jfs"  # API container's sidecar mount
+    # JuiceFS bootstrap supervisor (tune per env without a code change):
+    JUICEFS_MOUNT_READY_TIMEOUT: int = 90  # secs to wait for mount readiness
+    JUICEFS_BOOTSTRAP_MAX_ATTEMPTS: int = 20  # retries on transient meta errors
+    JUICEFS_BOOTSTRAP_RETRY_BACKOFF: int = 3  # base secs, exponential, cap 15
+    SESSION_RETENTION_DAYS: int = 30  # prune sessions after this inactivity
+    SESSION_PRUNE_BATCH_LIMIT: int = 1000  # safety cap per prune task run
 
     # ----------------------------------------------
     # Payment Processing
@@ -287,8 +326,6 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     SENTRY_DSN: str
     POSTHOG_API_KEY: str
-    OPIK_API_KEY: str
-    OPIK_WORKSPACE: str
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -301,7 +338,7 @@ class ProductionSettings(CommonSettings):
     FIGMA_MCP_CLIENT_SECRET: str
 
     # ----------------------------------------------
-    # Opik Evaluation Config
+    # Eval / Skills Test Config (used by tests/skills via tests/conftest.py)
     # ----------------------------------------------
     EVAL_USER_ID: str | None = None
     EVAL_USER_EMAIL: str | None = None
@@ -430,6 +467,30 @@ class DevelopmentSettings(CommonSettings):
     # Code Execution Environment
     # ----------------------------------------------
     E2B_API_KEY: str | None = None
+    E2B_TEMPLATE_ID: str | None = None
+    E2B_SANDBOX_IDLE_PAUSE_SECONDS: int = 60
+    E2B_DEFAULT_BASH_TIMEOUT: int = 120
+    E2B_SANDBOX_EVICT_DAYS: int = 14
+    E2B_WARM_POOL_TARGET_RATIO: float = 2.0
+    ARTIFACT_DETECTION_MODE: Literal["watch_dir", "accesslog"] = "watch_dir"
+    ARTIFACT_WATCHER_INODE_CACHE_SIZE: int = 4096
+
+    # ----------------------------------------------
+    # Persistent Workspace Storage (R2 + JuiceFS)
+    # ----------------------------------------------
+    R2_ACCOUNT_ID: str | None = None
+    R2_BUCKET: str | None = None
+    R2_ACCESS_KEY: str | None = None
+    R2_SECRET_KEY: str | None = None
+    JUICEFS_META_URL_TEMPLATE: str | None = None
+    JUICEFS_NUM_SHARDS: int = 1
+    JFS_ENCRYPTION_KEY: str | None = None
+    JUICEFS_HOST_MOUNT_PATH: str = "/mnt/jfs"
+    JUICEFS_MOUNT_READY_TIMEOUT: int = 90
+    JUICEFS_BOOTSTRAP_MAX_ATTEMPTS: int = 20
+    JUICEFS_BOOTSTRAP_RETRY_BACKOFF: int = 3
+    SESSION_RETENTION_DAYS: int = 30
+    SESSION_PRUNE_BATCH_LIMIT: int = 1000
 
     # ----------------------------------------------
     # Payment Processing
@@ -441,8 +502,6 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     SENTRY_DSN: str | None = None
     POSTHOG_API_KEY: str | None = None
-    OPIK_API_KEY: str | None = None
-    OPIK_WORKSPACE: str | None = None
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -455,7 +514,7 @@ class DevelopmentSettings(CommonSettings):
     FIGMA_MCP_CLIENT_SECRET: str | None = None
 
     # ----------------------------------------------
-    # Opik Evaluation Config
+    # Eval / Skills Test Config (used by tests/skills via tests/conftest.py)
     # ----------------------------------------------
     EVAL_USER_ID: str | None = None
     EVAL_USER_EMAIL: str | None = None

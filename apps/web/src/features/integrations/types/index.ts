@@ -18,6 +18,13 @@ export type IntegrationCategoryValue =
   | "capabilities"
   | "other";
 
+export interface IntegrationInstructions {
+  integrationId: string;
+  content: string;
+  updatedBy: "user" | "agent";
+  updatedAt: string | null;
+}
+
 export interface Integration {
   id: string;
   name: string;

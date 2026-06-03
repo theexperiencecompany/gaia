@@ -141,7 +141,7 @@ async def construct_langchain_messages(
 
     # Append file context if files are uploaded
     if currently_uploaded_file_ids and (
-        files_str := format_files_list(files_data, currently_uploaded_file_ids)
+        files_str := format_files_list(files_data, currently_uploaded_file_ids, conversation_id)
     ):
         content += f"\n\n{files_str}"
 

@@ -18,6 +18,11 @@ import type {
 
 interface TodoProgressSectionProps {
   todo_progress: TodoProgressData;
+  /**
+   * When true, in_progress todos animate their spinner. Default false so
+   * historical messages with stale in_progress state (interrupted runs,
+   * crashed agents) don't spin forever on page reload.
+   */
   isStreaming?: boolean;
 }
 
@@ -61,6 +66,9 @@ function TaskRow({
   isStreaming?: boolean;
 }) {
   const StatusIcon = STATUS_ICON_MAP[todo.status];
+  // Only spin while the stream is live. Historical messages may carry stale
+  // in_progress todos (interrupted runs); spinning those forever lies to the
+  // user about ongoing work.
   const shouldSpin = todo.status === "in_progress" && isStreaming;
   return (
     <div className="flex items-start gap-2">

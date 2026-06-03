@@ -107,8 +107,32 @@ services:
       FORCE_COLOR: 1
       WORKER_TYPE: main_app
       PYTHONPATH: /app/apps/api
+      # Where the host-side JuiceFS sidecar mounts. The storage layer reads
+      # this to locate the mount; it must match the mountpoint inside the
+      # container. JuiceFS itself only mounts when an object store + meta DB
+      # are configured (R2_*/JUICEFS_META_URL_TEMPLATE in .env) — otherwise
+      # workspace v2 features soft-fail with JuiceFSUnavailable.
+      JUICEFS_HOST_MOUNT_PATH: /mnt/jfs
+      # JuiceFS is a FUSE mount; E2B's inotify watcher cannot watch a FUSE
+      # filesystem, so artifact detection must tail the JuiceFS .accesslog.
+      ARTIFACT_DETECTION_MODE: accesslog
     ports:
       - "${API_HOST_PORT:-8000}:8000"
+    # JuiceFS mounts via FUSE inside the container, which requires the mount
+    # capability (SYS_ADMIN), the FUSE device, and — on Ubuntu/Debian hosts —
+    # an unconfined AppArmor profile (the default docker profile denies mount
+    # even with the capability). Docker Desktop on macOS/Windows supplies
+    # /dev/fuse from its Linux VM, so this works cross-platform.
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      # Persist JuiceFS's local chunk cache so reads don't re-fetch from the
+      # object store on every restart.
+      - juicefs_cache:/var/cache/juicefs
     restart: on-failure
     tty: true
     stdin_open: true
@@ -163,12 +187,25 @@ services:
     environment:
       WORKER_TYPE: arq_worker
       PYTHONPATH: /app/apps/api
+      # Session/sandbox background tasks touch the workspace, so the worker
+      # needs the same JuiceFS mount as the backend.
+      JUICEFS_HOST_MOUNT_PATH: /mnt/jfs
+      ARTIFACT_DETECTION_MODE: accesslog
     # Python deps are installed system-wide via UV_PROJECT_ENVIRONMENT=/usr/local
     # in the API Dockerfile, so call python directly. `uv run` would try to
     # rewrite /app/uv.lock and fail (Permission denied) under the non-root
     # appuser the runtime image switches to.
     command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
     restart: always
+    # Same FUSE requirements as gaia-backend (see that service for details).
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - juicefs_cache:/var/cache/juicefs
     depends_on:
       redis:
         condition: service_healthy
@@ -204,6 +241,7 @@ volumes:
   redis_data:
   mongo_data:
   rabbitmq_data:
+  juicefs_cache:
 
 networks:
   gaia_network:

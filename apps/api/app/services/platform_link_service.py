@@ -202,7 +202,14 @@ class PlatformLinkService:
         Returns:
             Dict mapping platform name to connection details
         """
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        # Project only the link fields: this runs on the outbound delivery hot
+        # path (once per platform adapter, fanned out per notification), so
+        # fetching the whole user document would pull conversations/settings/etc.
+        # we never read here.
+        user = await users_collection.find_one(
+            {"_id": ObjectId(user_id)},
+            {"platform_links": 1, "platform_links_connected_at": 1},
+        )
 
         if not user:
             return {}

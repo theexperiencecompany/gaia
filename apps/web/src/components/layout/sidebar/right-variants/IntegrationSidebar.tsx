@@ -23,6 +23,7 @@ import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
+import { IntegrationInstructionsEditor } from "@/features/integrations/components/IntegrationInstructionsEditor";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
 import type { Integration } from "@/features/integrations/types";
 import { toast } from "@/lib/toast";
@@ -134,6 +135,16 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
     integration.name,
     integration.iconUrl,
   ]);
+
+  // Readable tool names (prefix-stripped, like the chips) for @/# mentions.
+  const toolMentionNames = useMemo(() => {
+    const names = integrationTools.map((tool) =>
+      categoryPrefixRegex
+        ? formatToolName(tool.name).replace(categoryPrefixRegex, "").trim()
+        : formatToolName(tool.name),
+    );
+    return Array.from(new Set(names.filter(Boolean)));
+  }, [integrationTools, categoryPrefixRegex]);
 
   const handleConnect = async () => {
     if (isConnected || isConnecting) return;
@@ -477,6 +488,15 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           >
             {deleteButtonText}
           </Button>
+        )}
+        {isConnected && (
+          <div className="mt-3">
+            <IntegrationInstructionsEditor
+              integrationId={integration.id}
+              integrationName={integration.name}
+              toolNames={toolMentionNames}
+            />
+          </div>
         )}
         {integrationTools.length > 0 && (
           <h2 className="mt-3 text-sm font-medium text-zinc-300 relative right-1">

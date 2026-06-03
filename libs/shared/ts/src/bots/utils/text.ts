@@ -43,10 +43,17 @@ export function extractSubcommandArgs(
   return { subcommand: parseTextArgs(rawText ?? "").subcommand };
 }
 
-/** Per-platform message character limits. Used by truncateResponse. */
+/**
+ * Per-platform message character limits. Used by truncateResponse and
+ * chunkResponse.
+ *
+ * Slack's hard API limit is ~40k, but messages render cleanly only well below
+ * that — we cap at 3000 (not the 4000 block limit) for readable bubbles, the
+ * same headroom the per-channel Slack sender used before delivery moved here.
+ */
 export const PLATFORM_LIMITS: Record<string, number> = {
   discord: 2000,
-  slack: 4000,
+  slack: 3000,
   telegram: 4096,
   whatsapp: 4096,
 };
@@ -237,10 +244,85 @@ function findOrphanSingleAsterisk(text: string, scan: "tail" | "head"): number {
 }
 
 /**
+ * A pipe-delimited GFM table row — trimmed, starting and ending with ``|``
+ * (e.g. ``| a | b |``). Exported so {@link formatters} can share one definition
+ * instead of re-deriving the same check.
+ */
+export function isTableRow(line: string): boolean {
+  const t = line.trim();
+  return t.length >= 2 && t.startsWith("|") && t.endsWith("|");
+}
+
+/**
+ * A GFM table separator row — a table row made up only of ``|``, ``-``, ``:``
+ * and spaces (e.g. ``|---|:--:|``).
+ */
+export function isTableSeparator(line: string): boolean {
+  const t = line.trim();
+  return (
+    isTableRow(t) &&
+    t.includes("-") &&
+    [...t].every((c) => c === "|" || c === "-" || c === ":" || c === " ")
+  );
+}
+
+/**
+ * Char-offset ranges ``[start, end)`` of every GFM table block in ``text`` (a
+ * header row, a ``|---|`` separator, then contiguous body rows). Used by
+ * {@link pickCutBoundary} to reject a cut that lands inside a table — the
+ * per-chunk renderer needs the whole block contiguous, so a split table is
+ * emitted to the user as raw ``| a | b |`` pipe rows.
+ *
+ * Only table blocks whose header starts at or before ``maxHeaderStart`` are
+ * returned — pickCutBoundary never cuts past that offset, so tables beyond it
+ * are irrelevant. A block that starts within the window but extends past it is
+ * still scanned to its true end (so a straddling table is fully fenced off).
+ * Bounding the scan keeps each call O(window) instead of O(whole remaining),
+ * which matters because chunkResponse calls this once per chunk (and per
+ * render-aware retry) over a shrinking tail.
+ */
+function findTableRanges(
+  text: string,
+  maxHeaderStart: number = text.length,
+): [number, number][] {
+  const len = text.length;
+  const lineEnd = (start: number): number => {
+    const nl = text.indexOf("\n", start);
+    return nl === -1 ? len : nl;
+  };
+
+  const ranges: [number, number][] = [];
+  let lineStart = 0;
+  while (lineStart <= len && lineStart <= maxHeaderStart) {
+    const headerEnd = lineEnd(lineStart);
+    const sepStart = headerEnd + 1;
+    const sepEnd = lineEnd(sepStart);
+    if (
+      isTableRow(text.slice(lineStart, headerEnd)) &&
+      isTableSeparator(text.slice(sepStart, sepEnd))
+    ) {
+      let last = sepEnd;
+      let rowStart = sepEnd + 1;
+      while (rowStart <= len) {
+        const rowEnd = lineEnd(rowStart);
+        if (!isTableRow(text.slice(rowStart, rowEnd))) break;
+        last = rowEnd;
+        rowStart = rowEnd + 1;
+      }
+      ranges.push([lineStart, last]);
+      lineStart = last + 1;
+    } else {
+      lineStart = headerEnd + 1;
+    }
+  }
+  return ranges;
+}
+
+/**
  * Picks the best cut index ≤ ``limit`` for a chunk of ``text``. Prefers
  * paragraph (`\n\n`), then sentence enders, then word boundary, then a hard
  * cut at ``limit`` as a last resort. Boundaries that would split a markdown
- * link are skipped.
+ * link or a GFM table block are skipped.
  *
  * The 50 %-of-limit floor avoids producing tiny fragments — if no decent
  * boundary exists in the second half of the window, we accept the hard cut
@@ -249,10 +331,16 @@ function findOrphanSingleAsterisk(text: string, scan: "tail" | "head"): number {
 function pickCutBoundary(text: string, limit: number): number {
   const window = text.slice(0, limit);
   const floor = limit * 0.5;
+  // Cuts are always ≤ limit, so only tables whose header starts within the
+  // window can contain one — bound the scan there.
+  const tableRanges = findTableRanges(text, limit);
+  const unsafe = (idx: number): boolean =>
+    cutsInsideMarkdown(text, idx) ||
+    tableRanges.some(([start, end]) => idx > start && idx < end);
 
   // 1. Paragraph break
   const paragraph = window.lastIndexOf("\n\n");
-  if (paragraph >= floor && !cutsInsideMarkdown(text, paragraph)) {
+  if (paragraph >= floor && !unsafe(paragraph)) {
     return paragraph;
   }
 
@@ -262,7 +350,7 @@ function pickCutBoundary(text: string, limit: number): number {
     const idx = window.lastIndexOf(sep);
     if (idx < floor) continue;
     const cut = idx + sep.length;
-    if (cut > bestSentence && !cutsInsideMarkdown(text, cut)) {
+    if (cut > bestSentence && !unsafe(cut)) {
       bestSentence = cut;
     }
   }
@@ -271,7 +359,7 @@ function pickCutBoundary(text: string, limit: number): number {
   // 3. Word boundary
   let space = window.lastIndexOf(" ");
   while (space >= floor) {
-    if (!cutsInsideMarkdown(text, space + 1)) return space + 1;
+    if (!unsafe(space + 1)) return space + 1;
     space = window.lastIndexOf(" ", space - 1);
   }
 
@@ -315,6 +403,46 @@ function balanceSingleAsterisks(
 }
 
 /**
+ * Builds the (balanced) `[chunk, next]` pair for a raw cut of ``remaining`` at
+ * ``rawLimit``. Picks the boundary, then balances emphasis markers and code
+ * fences across the cut so each bubble renders as valid markdown.
+ */
+function splitAtBoundary(
+  remaining: string,
+  rawLimit: number,
+): [string, string] {
+  const cutAt = pickCutBoundary(remaining, rawLimit);
+  let chunk = remaining.slice(0, cutAt);
+  let next = remaining.slice(cutAt);
+
+  const chunkNarrative = stripFencedBlocks(chunk);
+  [chunk, next] = balanceDoubleAsterisks(chunk, next, chunkNarrative);
+  [chunk, next] = balanceSingleAsterisks(chunk, next, chunkNarrative);
+
+  // Balance code fences across the cut: if the chunk has an odd number of
+  // ``` it ends inside an open fence — close it here and reopen on the next
+  // chunk so each bubble renders as valid markdown.
+  const fenceCount = chunk.match(/```/g)?.length ?? 0;
+  if (fenceCount % 2 === 1) {
+    chunk = `${chunk}\n\`\`\``;
+    next = `\`\`\`\n${next}`;
+  } else {
+    // Cosmetic whitespace trim for narrative cuts only. We never trim when
+    // the cut lands inside a fenced block, because leading whitespace there
+    // is significant code indentation (Python, YAML) and trimming it would
+    // produce broken code in the next bubble.
+    chunk = chunk.trimEnd();
+    next = next.trimStart();
+  }
+  return [chunk, next];
+}
+
+/** Smallest raw cut we will shrink to when a rendered chunk overflows. */
+const MIN_RENDER_RAW_LIMIT = 256;
+/** Cap on shrink retries per chunk (proportional shrink converges in ~1-2). */
+const MAX_RENDER_SHRINK_ITERS = 6;
+
+/**
  * Splits a long response into platform-sized chunks for delivery as multiple
  * messages instead of a single truncated bubble. Used by bot adapters so the
  * user receives the full content across as many bubbles as needed.
@@ -325,21 +453,27 @@ function balanceSingleAsterisks(
  * unclosed code fence (```), the chunk is closed and the next chunk reopens
  * with the same fence so the markdown stays valid across bubbles.
  *
- * Each returned chunk is guaranteed to be ≤ the platform character limit
- * (after fence-balancing, the closing/reopening adds a small fixed overhead;
- * we leave headroom by reserving 8 chars for the fence pair).
+ * The platform limit applies to the message the platform actually receives. If
+ * ``render`` is supplied, the chunk is measured by its RENDERED length and the
+ * raw cut is shrunk until the rendered output fits — without a renderer, e.g.
+ * Telegram's markdown→HTML table padding can inflate a 4096-char raw chunk past
+ * the 4096-char API limit and the send is rejected.
  *
  * @param text - The full message text.
  * @param platform - The target platform (discord, slack, telegram, whatsapp).
- * @returns An array of chunks, in order, each ≤ the platform character limit.
- *   Returns ``[text]`` when ``text`` already fits.
+ * @param render - Optional platform renderer; when given, chunk sizes are
+ *   measured against the rendered output rather than the raw markdown.
+ * @returns An array of chunks (raw markdown, in order); each is ≤ the platform
+ *   limit after rendering. Returns ``[text]`` when ``text`` already fits.
  */
 export function chunkResponse(
   text: string,
   platform: "discord" | "slack" | "telegram" | "whatsapp",
+  render?: (chunk: string) => string,
 ): string[] {
   const limit = PLATFORM_LIMITS[platform];
-  if (text.length <= limit) return [text];
+  const measure = (s: string): number => (render ? render(s).length : s.length);
+  if (measure(text) <= limit) return [text];
 
   // Reserve space for code-fence balancing markers ("\n```" + "```\n") so a
   // chunk that closes/reopens a fence still fits inside the platform limit.
@@ -349,30 +483,30 @@ export function chunkResponse(
   const chunks: string[] = [];
   let remaining = text;
 
-  while (remaining.length > limit) {
-    const cutAt = pickCutBoundary(remaining, cutLimit);
-    let chunk = remaining.slice(0, cutAt);
-    let next = remaining.slice(cutAt);
+  // `remaining.length > 0` guards termination: each iteration consumes a
+  // non-empty prefix so `remaining` strictly shrinks. Looping on `measure()`
+  // alone would spin forever for a renderer whose fixed overhead keeps even an
+  // empty string over the limit.
+  while (remaining.length > 0 && measure(remaining) > limit) {
+    let rawLimit = cutLimit;
+    let [chunk, next] = splitAtBoundary(remaining, rawLimit);
 
-    const chunkNarrative = stripFencedBlocks(chunk);
-    [chunk, next] = balanceDoubleAsterisks(chunk, next, chunkNarrative);
-    [chunk, next] = balanceSingleAsterisks(chunk, next, chunkNarrative);
-
-    // Balance code fences across the cut: if the chunk has an odd number of
-    // ``` it ends inside an open fence — close it here and reopen on the next
-    // chunk so each bubble renders as valid markdown.
-    const fenceCount = chunk.match(/```/g)?.length ?? 0;
-    const insideFence = fenceCount % 2 === 1;
-    if (insideFence) {
-      chunk = `${chunk}\n\`\`\``;
-      next = `\`\`\`\n${next}`;
-    } else {
-      // Cosmetic whitespace trim for narrative cuts only. We never trim when
-      // the cut lands inside a fenced block, because leading whitespace there
-      // is significant code indentation (Python, YAML) and trimming it would
-      // produce broken code in the next bubble.
-      chunk = chunk.trimEnd();
-      next = next.trimStart();
+    // Render-aware: if the rendered chunk overflows, shrink the raw cut
+    // proportionally to the overflow and re-split until it fits (or we hit the
+    // floor — a single oversized atom like one giant table row that can't be
+    // split further is sent best-effort).
+    for (
+      let i = 0;
+      render &&
+      rawLimit > MIN_RENDER_RAW_LIMIT &&
+      measure(chunk) > limit &&
+      i < MAX_RENDER_SHRINK_ITERS;
+      i += 1
+    ) {
+      const renderedLen = measure(chunk) || 1;
+      const scaled = Math.floor((rawLimit * limit) / renderedLen);
+      rawLimit = Math.max(MIN_RENDER_RAW_LIMIT, Math.min(rawLimit - 1, scaled));
+      [chunk, next] = splitAtBoundary(remaining, rawLimit);
     }
 
     chunks.push(chunk);

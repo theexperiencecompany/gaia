@@ -7,8 +7,10 @@ system and our custom langgraph_bigtool-based agent architecture.
 Key Components:
 - MiddlewareExecutor: Executes middleware hooks at appropriate points
 - SubagentMiddleware: Spawn subagents for parallel/focused work
-- VFSArchivingSummarizationMiddleware: Extends SummarizationMiddleware with VFS archiving
-- VFSCompactionMiddleware: Compacts large tool outputs to VFS
+- WorkspaceArchivingSummarizationMiddleware: Archives history to the
+  persistent workspace before summarization
+- WorkspaceCompactionMiddleware: Persists large tool outputs to the
+  persistent workspace and replaces them with a `/workspace/...` reference
 - create_middleware_stack: Factory function to create the standard middleware stack
 
 Usage in build_graph.py:
@@ -24,6 +26,7 @@ Usage in build_graph.py:
 """
 
 from app.agents.middleware.accounting import LLMAccountingMiddleware
+from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.agents.middleware.factory import (
     create_comms_middleware,
@@ -39,8 +42,9 @@ from app.agents.middleware.runtime_adapter import (
     create_tool_call_request,
 )
 from app.agents.middleware.subagent import SubagentMiddleware
-from app.agents.middleware.vfs_compaction import VFSCompactionMiddleware
-from app.agents.middleware.vfs_summarization import VFSArchivingSummarizationMiddleware
+from app.agents.middleware.summarization import (
+    WorkspaceArchivingSummarizationMiddleware,
+)
 
 __all__ = [
     "BigtoolRuntime",
@@ -48,8 +52,8 @@ __all__ = [
     "LLMAccountingMiddleware",
     "MiddlewareExecutor",
     "SubagentMiddleware",
-    "VFSArchivingSummarizationMiddleware",
-    "VFSCompactionMiddleware",
+    "WorkspaceArchivingSummarizationMiddleware",
+    "WorkspaceCompactionMiddleware",
     "create_comms_middleware",
     "create_executor_middleware",
     "create_middleware_stack",

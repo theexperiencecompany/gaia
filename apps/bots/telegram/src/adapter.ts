@@ -34,6 +34,7 @@ import {
   htmlToPlainText,
   type IncomingMedia,
   type MediaKind,
+  type OutboundAttachment,
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
@@ -44,7 +45,13 @@ import {
   sanitizeErrorForLog,
 } from "@gaia/shared";
 import type { Message } from "@grammyjs/types";
-import { Bot, type Context } from "grammy";
+import { Bot, type Context, InputFile } from "grammy";
+
+/** Telegram's sendPhoto byte cap; larger images are sent as documents. */
+const TELEGRAM_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+// Telegram caps media captions (sendPhoto/sendDocument) at 1024 chars; an
+// over-limit caption rejects the whole upload, so the file would never arrive.
+const TELEGRAM_CAPTION_MAX_CHARS = 1024;
 
 /**
  * Telegram-specific implementation of the GAIA bot adapter.
@@ -368,6 +375,48 @@ export class TelegramAdapter extends BaseBotAdapter {
       return await send(html, { parse_mode: "HTML" });
     } catch {
       return await send(htmlToPlainText(html));
+    }
+  }
+
+  protected async deliverOutbound(
+    destinationId: string,
+    text: string,
+  ): Promise<void> {
+    // grammY accepts a string chat_id; passing the id through avoids the NaN
+    // that Number() would produce for any non-numeric destination.
+    await this.sendHtml(
+      (t, opts) => this.bot.api.sendMessage(destinationId, t, opts),
+      text,
+    );
+  }
+
+  /**
+   * Delivers an agent-generated file artifact to a Telegram user. Fetches the
+   * bytes from GAIA (bot-authenticated) and uploads them as a photo (for
+   * images) or a document. The chat id is the stored Telegram user id.
+   */
+  protected override async deliverOutboundFile(
+    destinationId: string,
+    attachment: OutboundAttachment,
+  ): Promise<void> {
+    const artifact = await this.fetchOutboundArtifact(
+      destinationId,
+      attachment,
+    );
+    if (!artifact) return; // too large — fetchOutboundArtifact already replied
+    const { data, contentType } = artifact;
+    const mime =
+      attachment.content_type ?? contentType ?? "application/octet-stream";
+    const file = new InputFile(data, attachment.filename);
+    const caption = attachment.caption
+      ? attachment.caption.slice(0, TELEGRAM_CAPTION_MAX_CHARS)
+      : undefined;
+    // sendPhoto caps around 10 MB; deliver larger images as a document so they
+    // still arrive instead of being rejected.
+    if (mime.startsWith("image/") && data.length <= TELEGRAM_PHOTO_MAX_BYTES) {
+      await this.bot.api.sendPhoto(destinationId, file, { caption });
+    } else {
+      await this.bot.api.sendDocument(destinationId, file, { caption });
     }
   }
 

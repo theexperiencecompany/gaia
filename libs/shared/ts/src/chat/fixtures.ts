@@ -12,7 +12,6 @@ import type {
   CodeData,
   ContactData,
   DeepResearchResults,
-  DocumentData,
   EmailComposeData,
   EmailFetchData,
   EmailSentData,
@@ -613,17 +612,6 @@ const goalFixture: GoalDataMessageType = {
 // Documents / Code / Artifacts
 // ---------------------------------------------------------------------------
 
-const documentFixture: DocumentData = {
-  filename: "Q1-review.pdf",
-  url: "https://example.com/files/Q1-review.pdf",
-  title: "Q1 2026 Product Review",
-  is_plain_text: false,
-  metadata: {
-    page_count: 24,
-    created_at: "2026-04-01T00:00:00Z",
-  },
-};
-
 const googleDocsFixture: GoogleDocsData = {
   action: "create",
   message: "Created a new Google Doc: Mobile Chat Parity Plan",
@@ -1086,12 +1074,6 @@ export const TOOL_FIXTURES: readonly ToolFixture[] = [
     label: "Goals",
     description: "Long-running goals with progress and stats.",
     data: goalFixture,
-  },
-  {
-    toolName: "document_data",
-    label: "Document",
-    description: "File attachment preview with metadata.",
-    data: documentFixture,
   },
   {
     toolName: "google_docs_data",

@@ -882,6 +882,45 @@ export class GaiaClient {
   }
 
   /**
+   * Downloads a session artifact's bytes (a file the agent wrote to
+   * `artifacts/`) on behalf of the authenticated bot user. Used to deliver
+   * agent-generated documents to a messaging platform: the bot fetches the
+   * bytes here, then uploads them via the platform's media API.
+   *
+   * Hits the same authenticated `GET /api/v1/sessions/{conv}/artifacts/{path}`
+   * route the web app uses; the bot auth middleware resolves the linked user
+   * and the endpoint enforces conversation ownership.
+   */
+  async downloadArtifact(
+    conversationId: string,
+    path: string,
+    ctx: BotUserContext,
+  ): Promise<{ data: Buffer; contentType: string }> {
+    return this.requestWithAuth(async () => {
+      const encodedPath = path
+        .split("/")
+        .map((seg) => encodeURIComponent(seg))
+        .join("/");
+      const { data, headers } = await this.client.get(
+        `/api/v1/sessions/${encodeURIComponent(conversationId)}/artifacts/${encodedPath}`,
+        {
+          responseType: "arraybuffer",
+          headers: this.userHeaders(ctx),
+          // 100 MB = the largest per-platform outbound cap (WhatsApp). A lower
+          // cap here would reject 50–100 MB artifacts as transport errors before
+          // OUTBOUND_FILE_LIMITS can apply the platform limit or graceful note.
+          maxContentLength: 100 * 1024 * 1024,
+          maxBodyLength: 100 * 1024 * 1024,
+        },
+      );
+      const contentType = String(
+        headers["content-type"] ?? "application/octet-stream",
+      );
+      return { data: Buffer.from(data as ArrayBuffer), contentType };
+    }, ctx);
+  }
+
+  /**
    * Transcribes a short audio clip (voice note or audio file) to text via the
    * bot transcription endpoint, which proxies to OpenAI Whisper server-side.
    *

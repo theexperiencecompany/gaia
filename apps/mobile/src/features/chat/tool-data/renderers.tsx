@@ -43,8 +43,6 @@ import {
   ContactListCard,
   DeepResearchCard,
   type DeepResearchResults,
-  DocumentCard,
-  type DocumentData,
   EmailFetchCard,
   type EmailFetchItem,
   EmailSentCard,
@@ -234,10 +232,6 @@ const TOOL_RENDERERS: Record<
 
   goal_data: (data, baseKey) => (
     <GoalCard key={baseKey} data={data as GoalData} />
-  ),
-
-  document_data: (data, baseKey) => (
-    <DocumentCard key={baseKey} data={data as DocumentData} />
   ),
 
   google_docs_data: (data, baseKey) => (

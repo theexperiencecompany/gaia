@@ -15,7 +15,7 @@
  * platform-specific {@link IncomingMedia} descriptor and a download thunk.
  */
 import type { GaiaClient } from "../api";
-import type { BotFileData, BotUserContext } from "../types";
+import type { BotFileData, BotUserContext, PlatformName } from "../types";
 
 const MB = 1024 * 1024;
 
@@ -26,6 +26,21 @@ export const BOT_MEDIA_LIMITS = {
   /** OpenAI Whisper hard cap, matched by the backend transcribe endpoint. */
   audio: 25 * MB,
 } as const;
+
+/**
+ * Max bytes a backend-originated artifact may be to deliver on each platform.
+ * Conservative per-platform document caps — over these, the bot sends a short
+ * "too large" note instead of attempting an upload the platform would reject
+ * (which would dead-letter with no user feedback). The artifact download itself
+ * is capped at 100 MB (GaiaClient.downloadArtifact) to match the largest cap
+ * below, so every per-platform limit here is fully effective.
+ */
+export const OUTBOUND_FILE_LIMITS: Record<PlatformName, number> = {
+  discord: 8 * MB, // non-boosted server upload limit (safe floor)
+  slack: 50 * MB,
+  telegram: 50 * MB, // bot API sendDocument limit
+  whatsapp: 100 * MB, // WhatsApp document limit
+};
 
 /** Normalised media kind, identical across platforms. */
 export type MediaKind = "image" | "audio" | "video" | "document" | "sticker";

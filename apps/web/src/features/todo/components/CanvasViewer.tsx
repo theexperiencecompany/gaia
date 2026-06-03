@@ -5,14 +5,14 @@ import { CanvasIcon } from "@icons";
 import type React from "react";
 import { useState } from "react";
 import MarkdownViewerModal from "@/components/common/MarkdownViewerModal";
-import { vfsApi } from "@/features/chat/api/vfsApi";
+import { apiService } from "@/lib/api/service";
 
 interface CanvasViewerProps {
-  vfsPath: string;
+  todoId: string;
   todoTitle: string;
 }
 
-const CanvasViewer: React.FC<CanvasViewerProps> = ({ vfsPath, todoTitle }) => {
+const CanvasViewer: React.FC<CanvasViewerProps> = ({ todoId, todoTitle }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [content, setContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -26,7 +26,10 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({ vfsPath, todoTitle }) => {
     setIsLoading(true);
     setHasError(false);
     try {
-      const res = await vfsApi.readFile(`${vfsPath}/canvas.md`);
+      const res = await apiService.get<{ content: string }>(
+        `/api/v1/todos/${todoId}/canvas`,
+        { silent: true },
+      );
       setContent(res.content);
     } catch {
       setHasError(true);

@@ -30,6 +30,7 @@ from app.api.v1.endpoints import (
     platform_links,
     reminders,
     search,
+    sessions,
     skills,
     support,
     todos,
@@ -37,7 +38,6 @@ from app.api.v1.endpoints import (
     triggers,
     usage,
     user,
-    vfs,
     voice_token,
     webhook_composio,
     websocket,
@@ -50,6 +50,7 @@ router = APIRouter()
 router.include_router(voice_token.router, tags=["Voice"])
 router.include_router(chat.router, tags=["Chat"])
 router.include_router(conversations.router, tags=["Conversations"])
+router.include_router(sessions.router)
 router.include_router(feedback.router, tags=["Feedback"])
 router.include_router(image.router, tags=["Image"])
 router.include_router(search.router, tags=["Search"])
@@ -74,7 +75,6 @@ router.include_router(workflows.router, tags=["Workflows"])
 router.include_router(triggers.router, tags=["Triggers"])
 router.include_router(reminders.router, tags=["Reminders"])
 router.include_router(skills.router, tags=["Skills"])
-router.include_router(vfs.router, prefix="/vfs", tags=["VFS"])
 router.include_router(support.router, tags=["Support"])
 router.include_router(payments.router, prefix="/payments", tags=["Payments"])
 router.include_router(usage.router, tags=["Usage"])

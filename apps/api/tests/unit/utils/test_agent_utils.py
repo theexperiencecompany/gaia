@@ -324,7 +324,7 @@ class TestSSEFormatters:
 class TestProcessCustomEventForTools:
     def test_with_payload(self) -> None:
         with patch(
-            "app.services.chat_service.extract_tool_data",
+            "app.utils.agent_utils.extract_tool_data",
             return_value={"tool": "data"},
         ):
             result = process_custom_event_for_tools({"some": "payload"})
@@ -332,7 +332,7 @@ class TestProcessCustomEventForTools:
 
     def test_with_none_payload(self) -> None:
         with patch(
-            "app.services.chat_service.extract_tool_data",
+            "app.utils.agent_utils.extract_tool_data",
             return_value=None,
         ):
             result = process_custom_event_for_tools(None)
@@ -340,7 +340,7 @@ class TestProcessCustomEventForTools:
 
     def test_extract_returns_none(self) -> None:
         with patch(
-            "app.services.chat_service.extract_tool_data",
+            "app.utils.agent_utils.extract_tool_data",
             return_value=None,
         ):
             result = process_custom_event_for_tools({"x": 1})
@@ -348,7 +348,7 @@ class TestProcessCustomEventForTools:
 
     def test_exception_returns_empty(self) -> None:
         with patch(
-            "app.services.chat_service.extract_tool_data",
+            "app.utils.agent_utils.extract_tool_data",
             side_effect=RuntimeError("parse fail"),
         ):
             result = process_custom_event_for_tools({"x": 1})

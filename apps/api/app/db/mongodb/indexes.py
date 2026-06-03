@@ -21,8 +21,11 @@ from app.db.mongodb.collections import (
     calendars_collection,
     conversations_collection,
     device_tokens_collection,
+    e2b_sandboxes_collection,
+    e2b_warm_pool_collection,
     files_collection,
     goals_collection,
+    integration_instructions_collection,
     integrations_collection,
     mail_collection,
     notes_collection,
@@ -38,7 +41,6 @@ from app.db.mongodb.collections import (
     usage_snapshots_collection,
     user_integrations_collection,
     users_collection,
-    vfs_nodes_collection,
     workflow_executions_collection,
     workflows_collection,
 )
@@ -82,11 +84,12 @@ async def create_all_indexes():
             create_ai_models_indexes(),
             create_integration_indexes(),
             create_user_integration_indexes(),
+            create_integration_instructions_indexes(),
             create_device_token_indexes(),
-            create_vfs_indexes(),
             create_installed_skills_indexes(),
             create_workflow_execution_indexes(),
             create_bot_session_indexes(),
+            create_e2b_sandbox_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -112,11 +115,12 @@ async def create_all_indexes():
             "ai_models",
             "integrations",
             "user_integrations",
+            "integration_instructions",
             "device_tokens",
-            "vfs_nodes",
             "skills",
             "workflow_executions",
             "bot_sessions",
+            "e2b_sandboxes",
         ]
 
         index_results = {}
@@ -849,6 +853,27 @@ async def create_user_integration_indexes():
         raise
 
 
+async def create_integration_instructions_indexes():
+    """
+    Create indexes for integration_instructions collection.
+
+    Query patterns:
+    - Read one integration's instructions: user_id + integration_id (unique)
+    - List all of a user's instructions for materialization
+    """
+    try:
+        await _create_index_safe(
+            integration_instructions_collection,
+            [("user_id", 1), ("integration_id", 1)],
+            unique=True,
+            name="user_integration_instructions_unique",
+        )
+
+    except Exception as e:
+        log.error(f"Error creating integration instructions indexes: {e!s}")
+        raise
+
+
 async def create_device_token_indexes():
     """Create indexes for device_tokens collection for push notifications."""
     try:
@@ -863,78 +888,6 @@ async def create_device_token_indexes():
 
     except Exception as e:
         log.error(f"Error creating device token indexes: {e!s}")
-        raise
-
-
-async def create_vfs_indexes() -> None:
-    """
-    Create indexes for vfs_nodes collection (Virtual Filesystem).
-
-    Query patterns:
-    - Primary path lookups (unique per user)
-    - Directory listing (parent_path queries)
-    - Session-based queries (conversation_id in metadata)
-    - Agent-specific queries (agent_name in metadata)
-    - Cleanup/retention queries (created_at)
-    """
-    try:
-        await asyncio.gather(
-            # Primary unique index: user + path combination
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("path", 1)],
-                unique=True,
-                name="user_path_unique",
-            ),
-            # Directory listing: find all children of a parent path
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("parent_path", 1)],
-                name="user_parent_path",
-            ),
-            # Session-based queries: find files in a conversation
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("metadata.conversation_id", 1)],
-                sparse=True,
-                name="user_conversation",
-            ),
-            # Agent-based queries: find files created by a specific agent
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("metadata.agent_name", 1)],
-                sparse=True,
-                name="user_agent",
-            ),
-            # Tool-based queries: find outputs from a specific tool
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("metadata.tool_name", 1)],
-                sparse=True,
-                name="user_tool",
-            ),
-            # Retention/cleanup queries: order by creation time
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("created_at", 1)],
-                name="user_created",
-            ),
-            # Recent access queries
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("accessed_at", -1)],
-                name="user_accessed",
-            ),
-            # Node type filtering (folders vs files)
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("node_type", 1), ("parent_path", 1)],
-                name="user_type_parent",
-            ),
-        )
-
-    except Exception as e:
-        log.error(f"Error creating VFS indexes: {e!s}")
         raise
 
 
@@ -1029,7 +982,6 @@ async def get_index_status() -> dict[str, list[str]]:
             "notifications": notifications_collection,
             "reminders": reminders_collection,
             "workflows": workflows_collection,
-            "vfs_nodes": vfs_nodes_collection,
             "skills": skills_collection,
         }
 
@@ -1056,6 +1008,33 @@ async def get_index_status() -> dict[str, list[str]]:
     except Exception as e:
         log.error(f"Error getting index status: {e!s}")
         return {"error": [str(e)]}
+
+
+async def create_e2b_sandbox_indexes() -> None:
+    """
+    Create indexes for e2b_sandboxes and e2b_warm_pool collections.
+
+    Query patterns:
+    - Sandbox lookup by user_id (1 sandbox per user, unique)
+    - Sweeper: scan by last_used_at to find evictable sandboxes
+    - Warm pool: claim a ready sandbox by (shard_id, state)
+    """
+    try:
+        await asyncio.gather(
+            e2b_sandboxes_collection.create_index("user_id", unique=True),
+            e2b_sandboxes_collection.create_index("last_used_at"),
+            e2b_sandboxes_collection.create_index([("shard_id", 1), ("state", 1)]),
+            e2b_warm_pool_collection.create_index(
+                [("shard_id", 1), ("state", 1), ("created_at", 1)]
+            ),
+            e2b_warm_pool_collection.create_index(
+                "created_at",
+                expireAfterSeconds=3600,  # 1 hour TTL on pool entries
+            ),
+        )
+    except Exception as e:
+        log.error(f"Error creating e2b sandbox indexes: {e!s}")
+        raise
 
 
 async def log_index_summary():

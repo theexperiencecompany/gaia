@@ -140,6 +140,7 @@ async def _core_agent_logic(
         tool_category=request.toolCategory,
         active_todo_id=active_todo_id,
         execution_mode=execution_mode,
+        source=source,
         langfuse_trace_id=langfuse_trace_id,
         langfuse_tags=langfuse_tags,
     )

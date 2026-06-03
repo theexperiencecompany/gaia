@@ -1,6 +1,7 @@
 import "katex/dist/katex.min.css";
 
 import Image from "next/image";
+import { useParams } from "next/navigation";
 import type React from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
@@ -11,6 +12,7 @@ import remarkMath from "remark-math";
 import remarkSmartypants from "remark-smartypants";
 import remarkSupersub from "remark-supersub";
 
+import { resolveArtifactSrc } from "@/features/chat/api/sessionFilesApi";
 import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import { cn } from "@/lib/utils";
@@ -49,6 +51,8 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   hideCodeToolbar,
 }) => {
   const { openDialog } = useImageDialog();
+  const params = useParams<{ id?: string }>();
+  const conversationId = params?.id;
 
   return (
     <div
@@ -99,16 +103,22 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           ),
           p: ({ ...props }) => <p className="mb-4 last:mb-0" {...props} />,
           li: ({ ...props }) => <li className="mb-2" {...props} />,
-          img: ({ ...props }) => (
-            <Image
-              width={500}
-              height={500}
-              alt="image"
-              className="mx-auto my-4 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
-              src={props.src as string}
-              onClick={() => openDialog(props.src as string)}
-            />
-          ),
+          img: ({ ...props }) => {
+            const resolved =
+              resolveArtifactSrc(props.src as string, conversationId) ??
+              (props.src as string);
+            return (
+              <Image
+                width={500}
+                height={500}
+                alt={(props.alt as string) || "image"}
+                className="mx-auto my-4 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
+                src={resolved}
+                onClick={() => openDialog(resolved)}
+                unoptimized
+              />
+            );
+          },
           pre: ({ ...props }) => (
             <pre className="font-serif! text-wrap" {...props} />
           ),

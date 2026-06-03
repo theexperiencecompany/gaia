@@ -12,7 +12,6 @@ import CalendarEventSection from "@/features/chat/components/bubbles/bot/Calenda
 import CodeExecutionSection from "@/features/chat/components/bubbles/bot/CodeExecutionSection";
 import ContactListSection from "@/features/chat/components/bubbles/bot/ContactListSection";
 import DeepResearchResultsTabs from "@/features/chat/components/bubbles/bot/DeepResearchResultsTabs";
-import DocumentSection from "@/features/chat/components/bubbles/bot/DocumentSection";
 import EmailComposeSection from "@/features/chat/components/bubbles/bot/EmailComposeSection";
 import EmailSentSection from "@/features/chat/components/bubbles/bot/EmailSentSection";
 import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadCard";
@@ -30,7 +29,6 @@ import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResu
 import SupportTicketSection from "@/features/chat/components/bubbles/bot/SupportTicketSection";
 import TodoProgressSection from "@/features/chat/components/bubbles/bot/TodoProgressSection";
 import TodoSection from "@/features/chat/components/bubbles/bot/TodoSection";
-import ToolCallsSection from "@/features/chat/components/bubbles/bot/ToolCallsSection";
 import TwitterSearchSection from "@/features/chat/components/bubbles/bot/TwitterSearchSection";
 import TwitterUserSection from "@/features/chat/components/bubbles/bot/TwitterUserSection";
 import { MCPAppRenderer } from "@/features/chat/components/tools/MCPAppRenderer";
@@ -111,7 +109,7 @@ function GalleryRenderer({ fixture }: { fixture: ToolFixture }): JSX.Element {
     case "todo_progress":
       return (
         // biome-ignore lint/suspicious/noExplicitAny: gallery-only
-        <TodoProgressSection todo_progress={data as any} isStreaming={false} />
+        <TodoProgressSection todo_progress={data as any} />
       );
     case "goal_data": {
       // biome-ignore lint/suspicious/noExplicitAny: gallery-only
@@ -125,9 +123,6 @@ function GalleryRenderer({ fixture }: { fixture: ToolFixture }): JSX.Element {
         />
       );
     }
-    case "document_data":
-      // biome-ignore lint/suspicious/noExplicitAny: gallery-only
-      return <DocumentSection document_data={data as any} />;
     case "google_docs_data":
       // biome-ignore lint/suspicious/noExplicitAny: gallery-only
       return <GoogleDocsSection google_docs_data={data as any} />;
@@ -193,9 +188,6 @@ function GalleryRenderer({ fixture }: { fixture: ToolFixture }): JSX.Element {
     case "rate_limit_data":
       // biome-ignore lint/suspicious/noExplicitAny: gallery-only
       return <RateLimitCard data={data as any} />;
-    case "tool_calls_data":
-      // biome-ignore lint/suspicious/noExplicitAny: gallery-only
-      return <ToolCallsSection tool_calls_data={data as any} />;
     case "mcp_app":
       // biome-ignore lint/suspicious/noExplicitAny: gallery-only
       return <MCPAppRenderer data={data as any} />;

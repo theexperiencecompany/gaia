@@ -18,6 +18,8 @@ from app.agents.templates.agent_template import (
     EXECUTOR_PROMPT_TEMPLATE,
     get_comms_static_prompt,
 )
+from app.agents.workspace.paths import safe_upload_filename
+from app.config.oauth_config import get_integration_by_id
 from app.db.mongodb.collections import (
     conversations_collection,
     todos_collection,
@@ -32,6 +34,7 @@ from app.models.message_models import (
 )
 from app.models.user_models import OnboardingPhase
 from app.services.gaia_knowledge_service import gaia_knowledge_service
+from app.services.integrations.user_integrations import get_user_connected_integrations
 from app.services.memory_service import memory_service
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow import WorkflowService
@@ -166,11 +169,7 @@ async def _get_tracked_todos_section(user_id: str, active_todo_id: str | None = 
         if cached:
             return cached if isinstance(cached, str) else str(cached)
     except Exception as cache_err:
-        log.warning(
-            "tracked_todos.summary_cache_read_failed",
-            cache_namespace="tracked_todos.summary",
-            error=str(cache_err),
-        )
+        log.debug("tracked_todo_summary.cache_get_failed", error=str(cache_err))
 
     summary = await tracked_todo_service.get_active_tracked_summary(user_id)
 
@@ -178,11 +177,7 @@ async def _get_tracked_todos_section(user_id: str, active_todo_id: str | None = 
         try:
             await set_cache(cache_key, summary, ttl=60)
         except Exception as cache_err:
-            log.warning(
-                "tracked_todos.summary_cache_write_failed",
-                cache_namespace="tracked_todos.summary",
-                error=str(cache_err),
-            )
+            log.debug("tracked_todo_summary.cache_set_failed", error=str(cache_err))
 
     return summary
 
@@ -239,6 +234,33 @@ def _mark_dynamic_context(msg: SystemMessage) -> SystemMessage:
     # Back-compat: existing filter logic looks at `memory_message` too.
     msg.additional_kwargs.setdefault("memory_message", True)
     return msg
+
+
+async def _get_connected_integrations_manifest(user_id: str) -> str:
+    """One line per connected integration so the agent knows what it can reach.
+
+    Capability awareness only — the agent learns Slack/Linear/GitHub/etc. are
+    available without first running tool retrieval. Detailed tool schemas still
+    come from ``retrieve_tools`` at inference time. Names resolve from the
+    in-memory OAuth config (no extra DB calls); unknown ids fall back to the id.
+    """
+    try:
+        docs = await get_user_connected_integrations(user_id)
+    except Exception as e:
+        log.warning(f"Error building connected-integrations manifest: {e}")
+        return ""
+    connected = sorted(
+        str(d["integration_id"])
+        for d in docs
+        if d.get("status") == "connected" and d.get("integration_id")
+    )
+    if not connected:
+        return ""
+    lines = ["Connected integrations (hand off to the matching subagent to use them):"]
+    for iid in connected:
+        integration = get_integration_by_id(iid)
+        lines.append(f"- {integration.name} ({iid})" if integration else f"- {iid}")
+    return "\n".join(lines)
 
 
 async def build_dynamic_context_message(
@@ -313,6 +335,11 @@ async def build_dynamic_context_message(
                 user_preferences or {}, writing_style=writing_style
             ):
                 user_stable_parts.append(f"User Preferences:\n{formatted}")
+        # Connected-integrations manifest sits with the stable prefix: it only
+        # changes when the user connects/disconnects an integration, not per turn.
+        if user_id:
+            if manifest := await _get_connected_integrations_manifest(user_id):
+                user_stable_parts.append(manifest)
 
         # --- Fetches (may change turn-to-turn) -----------------------------
         if memories_text is not None:
@@ -536,6 +563,7 @@ async def get_onboarding_system_prompt_if_applicable(
     conversation_id: str,
     latest_user_message: str | None = None,
 ) -> str | None:
+    """Return the onboarding system prompt for onboarding/demo turns, else ``None``."""
     try:
         conv = await conversations_collection.find_one(
             {"conversation_id": conversation_id},
@@ -593,22 +621,51 @@ async def get_onboarding_system_prompt_if_applicable(
         return None
 
 
-def format_files_list(files_data: list[FileData] | None, file_ids: list[str] | None = None) -> str:
-    """Format file information for agent context with usage instructions."""
-    if not files_data or (file_ids is not None and not file_ids):
-        return "No files uploaded."
+def format_files_list(
+    files_data: list[FileData] | None,
+    file_ids: list[str] | None = None,
+    conversation_id: str | None = None,
+) -> str:
+    """Surface uploaded files to the agent as concrete FS paths.
 
-    # Filter to specific files if IDs provided, otherwise use all
+    The agent reads/writes files via bash/read/write/edit; the upload
+    pipeline mirrors every attachment into the session's read-only
+    `user-uploaded/` dir. Tell the agent the on-disk path explicitly and
+    point at the session GUIDE for the action conventions — no
+    `query_files` tool indirection, no path guessing.
+    """
+    if not files_data or (file_ids is not None and not file_ids):
+        return ""
+
     files = files_data if file_ids is None else [f for f in files_data if f.fileId in file_ids]
     if not files:
-        return "No files uploaded."
+        return ""
 
-    file_list = "\n".join(f"- Name: {file.filename} Id: {file.fileId}" for file in files)
+    lines: list[str] = []
+    for file in files:
+        try:
+            on_disk = safe_upload_filename(file.filename)
+        except ValueError:
+            continue
+        if conversation_id:
+            path = f"/workspace/sessions/{conversation_id}/user-uploaded/{on_disk}"
+        else:
+            path = f"./user-uploaded/{on_disk}"
+        lines.append(f"- {file.filename}  →  `{path}`")
 
+    if not lines:
+        return ""
+
+    file_block = "\n".join(lines)
     return f"""
-Uploaded Files:
-{file_list}
+[Attached files for this turn]
+{file_block}
 
-You can use these files in your conversation. If you need to refer to them, use the file IDs provided.
-You must use query_files to retrieve file content or metadata.
+These files are on the conversation filesystem in `./user-uploaded/`
+(read-only). To process them: copy into `./scratch/`, do your work,
+and write any user-visible output into `./artifacts/` — files written
+there render as cards in the chat immediately.
+
+See `/workspace/sessions/{conversation_id or "<conv>"}/GUIDE.md` for the
+full layout and conventions, and `/workspace/INDEX.md` for the top level.
 """

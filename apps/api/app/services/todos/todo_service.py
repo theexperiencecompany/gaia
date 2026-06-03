@@ -42,7 +42,7 @@ from app.models.todo_models import (
 from app.services.todos.sync_service import (
     sync_subtask_to_goal_completion,
 )
-from app.services.vfs.mongo_vfs import MongoVFS
+from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
 from app.utils.todo_vector_utils import (
     bulk_index_todos,
@@ -377,6 +377,7 @@ class TodoService:
             log.warning("todo.index_failed", error=str(e))
 
         await cls._invalidate_cache(user_id, todo.project_id, str(result.inserted_id), "create")
+        schedule_user_todos_sync(user_id)
 
         # Return todo response without workflow (will be generated in background)
         if not created_todo:
@@ -642,6 +643,7 @@ class TodoService:
             todo_id,
             "update" if affects_visibility else "update_minor",
         )
+        schedule_user_todos_sync(user_id)
 
         return TodoResponse(**serialize_document(updated))
 
@@ -659,17 +661,14 @@ class TodoService:
         if not doc:
             raise ValueError(f"Todo {todo_id} not found")
 
-        # Clean up tracked todo assets if present
+        # Clean up tracked todo search index if present. Canvas/log content lives on
+        # the todo doc itself, so it disappears with the delete_one below — no
+        # separate filesystem cleanup needed.
         if doc.get("vfs_path"):
             try:
                 await delete_canvas_embedding(todo_id)
             except Exception as e:
                 log.warning("todo.canvas_embedding_delete_failed", todo_id=todo_id, error=str(e))
-            try:
-                vfs = MongoVFS()
-                await vfs.delete(path=doc["vfs_path"], user_id=user_id, recursive=True)
-            except Exception as e:
-                log.warning("todo.vfs_delete_failed", todo_id=todo_id, error=str(e))
 
         # Delete the document with ownership verification
         result = await todos_collection.delete_one({"_id": ObjectId(todo_id), "user_id": user_id})
@@ -685,6 +684,7 @@ class TodoService:
 
         # Invalidate cache broadly since we don't know the project_id
         await cls._invalidate_cache(user_id, None, todo_id, "delete")
+        schedule_user_todos_sync(user_id)
 
     # Bulk Operations
     @classmethod

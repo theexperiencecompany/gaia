@@ -3,6 +3,7 @@ Service module for file upload functionality with vector search capabilities.
 """
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime
 import io
 from typing import Any
@@ -13,12 +14,22 @@ import cloudinary.uploader
 from fastapi import HTTPException, UploadFile
 from langchain_core.documents import Document
 
+from app.agents.workspace.paths import USER_UPLOADED_DIRNAME, safe_upload_filename
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection
 from app.db.utils import serialize_document
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.files_models import DocumentSummaryModel
 from app.models.message_models import FileData
+from app.services.artifact_events import publish_artifact_event, upload_event
+from app.services.storage import (
+    FsOps,
+    JuiceFSUnavailable,
+    chmod_path,
+    fs_timer,
+    session_root,
+    write_session_file,
+)
 from app.utils.embedding_utils import search_documents_by_similarity
 from app.utils.file_utils import generate_file_summary
 from app.utils.upload_validation import validate_upload
@@ -95,6 +106,21 @@ async def upload_file_service(
 
         summary, formatted_file_content = _process_file_summary(summary_result)
 
+        sandbox_path: str | None = None
+        if conversation_id:
+            try:
+                safe_filename = safe_upload_filename(filename)
+            except ValueError as e:
+                log.warning(f"[upload] skipping sandbox copy: {e}")
+            else:
+                sandbox_path = await _persist_upload_to_sandbox(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    safe_filename=safe_filename,
+                    content=content,
+                    content_type=normalized_content_type,
+                )
+
         current_time = datetime.now(UTC)
         file_metadata = {
             "file_id": file_id,
@@ -106,6 +132,7 @@ async def upload_file_service(
             "user_id": user_id,
             "description": summary,
             "page_wise_summary": formatted_file_content,
+            "sandbox_path": sandbox_path,
             "created_at": current_time,
             "updated_at": current_time,
         }
@@ -131,6 +158,7 @@ async def upload_file_service(
             "filename": filename,
             "description": summary,
             "type": normalized_content_type,
+            "sandbox_path": sandbox_path,
         }
 
     except HTTPException:
@@ -138,6 +166,55 @@ async def upload_file_service(
     except Exception as e:
         log.error(f"Failed to upload file: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to upload file: {e!s}")
+
+
+async def _persist_upload_to_sandbox(
+    user_id: str,
+    conversation_id: str,
+    safe_filename: str,
+    content: bytes,
+    content_type: str,
+) -> str | None:
+    """Mirror an upload into the session's read-only `user-uploaded/` dir.
+
+    Returns the `/workspace/...` path the agent can operate on, or None if
+    JuiceFS is unavailable (dev). Cloudinary remains the durable copy; a
+    failure here must never fail the upload.
+    """
+    try:
+        async with fs_timer(FsOps.UPLOAD_PERSIST_SANDBOX):
+            # Clear a prior read-only copy so re-uploads (last-writer-wins) work.
+            prior = session_root(user_id, conversation_id) / USER_UPLOADED_DIRNAME / safe_filename
+            with contextlib.suppress(Exception):
+                if prior.exists():
+                    await chmod_path(prior, 0o644)
+
+            host_path, sbx_path = await write_session_file(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                relative_path=f"{USER_UPLOADED_DIRNAME}/{safe_filename}",
+                content=content,
+            )
+            await chmod_path(host_path, 0o444)
+    except JuiceFSUnavailable as e:
+        log.warning("[upload] juicefs unavailable; sandbox_path not set", error=str(e))
+        return None
+    except Exception as e:
+        log.error("[upload] juicefs write failed", error=str(e), exc_info=True)
+        return None
+
+    # Cross-mount host writes may not reach the sandbox watcher; publish the
+    # artifact event directly so the chat UI sees the upload immediately.
+    await publish_artifact_event(
+        user_id,
+        upload_event(
+            conversation_id,
+            safe_filename,
+            size_bytes=len(content),
+            content_type=content_type,
+        ),
+    )
+    return sbx_path
 
 
 def _process_file_summary(
@@ -313,14 +390,11 @@ async def fetch_files(context: dict[str, Any]) -> dict[str, Any]:
         return context
 
     try:
-        # Track files to include in the response
         included_files = []
 
-        # Get explicit file IDs and file data from context
         explicit_file_ids = context.get("fileIds", [])
         file_data_list: list[FileData] = context.get("fileData", [])
 
-        # Create a mapping of file IDs to their complete metadata from fileData
         file_data_map = {file_data.fileId: file_data.model_dump() for file_data in file_data_list}
 
         if explicit_file_ids:
@@ -340,6 +414,7 @@ async def fetch_files(context: dict[str, Any]) -> dict[str, Any]:
                             "filename": file_data["filename"],
                             "description": file_data.get("description", ""),
                             "content_type": file_data.get("type", ""),
+                            "sandbox_path": file_data.get("sandbox_path"),
                             "_id": file_data["fileId"],  # Use fileId as _id for consistency
                         }
                     )
@@ -367,6 +442,7 @@ async def fetch_files(context: dict[str, Any]) -> dict[str, Any]:
                             "filename": file_data["filename"],
                             "description": file_data.get("description", ""),
                             "content_type": file_data.get("content_type", ""),
+                            "sandbox_path": file_data.get("sandbox_path"),
                             "_id": file_data["file_id"],  # Use file_id as _id for consistency
                         }
                     )
@@ -426,12 +502,26 @@ async def fetch_files(context: dict[str, Any]) -> dict[str, Any]:
             # Include explicitly requested files first
             if explicit_files:
                 formatted_files += "### Uploaded Files\n\n"
+                if any(f.get("sandbox_path") for f in explicit_files):
+                    formatted_files += (
+                        "Files attached to this conversation are also on disk "
+                        "at `./user-uploaded/`. Use bash/read/write/edit to "
+                        "operate on them directly. They are read-only — copy "
+                        "to `./scratch/` before modifying.\n\n"
+                    )
                 for file in explicit_files:
                     filename = file.get("filename", "Unnamed file")
                     file_type = file.get("content_type", "Unknown type")
                     description = file.get("description", "No description available")
+                    sandbox_path = file.get("sandbox_path")
 
-                    formatted_files += f"**{filename}** ({file_type})\n"
+                    if sandbox_path:
+                        on_disk = sandbox_path.rsplit("/", 1)[-1]
+                        formatted_files += (
+                            f"**{filename}** ({file_type}) — at `./user-uploaded/{on_disk}`\n"
+                        )
+                    else:
+                        formatted_files += f"**{filename}** ({file_type})\n"
                     formatted_files += f"{description}\n\n"
 
             if semantic_files:
@@ -499,7 +589,6 @@ async def delete_file_service(file_id: str, user_id: str | None) -> dict:
             status_code=404, detail="File not found"
         )  # Get the conversation_id for cache invalidation
 
-    # Get the public_id for cloudinary deletion
     public_id = file_data.get("public_id")
     if not public_id:
         log.warning(f"File {file_id} has no public_id for Cloudinary deletion")
@@ -572,7 +661,6 @@ async def update_file_service(
     log.info(f"Updating file with id: {file_id} for user: {user_id}")
     log.set(service="file_service", operation="update", file_id=file_id, user_id=user_id)
 
-    # Get the current file data
     file_data = await files_collection.find_one({"file_id": file_id, "user_id": user_id})
     if not file_data:
         log.error(f"File with id {file_id} not found for user {user_id}")
@@ -619,7 +707,6 @@ async def update_file_service(
     if result.modified_count == 0:
         log.warning(f"No changes made to file {file_id}")
 
-    # Get the updated file data
     updated_file = await files_collection.find_one({"file_id": file_id, "user_id": user_id})
     if not updated_file:
         log.error(f"Updated file {file_id} not found")

@@ -10,7 +10,6 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import (
@@ -207,48 +206,33 @@ async def mcp_oauth_callback(
         f"integration={integration_id} user={user_id}"
     )
     try:
-        tools = await client.handle_oauth_callback(
+        # handle_oauth_callback now stores tokens, flips status to connected,
+        # and dispatches the full MCP connect (handshake + tools/list +
+        # schema conversion + Chroma indexing) as a background task. Returns
+        # immediately with an empty list — callback fires the redirect in
+        # ~1-2s instead of 8-29s.
+        await client.handle_oauth_callback(
             integration_id=integration_id,
             code=code,
             state=state_token,
             redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
         )
 
-        # handle_oauth_callback() already calls connect() internally
-        # and returns tools, so we don't need to call connect() again
-        if tools:
-            log.info(
-                f"mcp_oauth_callback: connected with {len(tools)} tools for "
-                f"{integration_id} user={user_id}, now loading into tool_registry"
-            )
-
-            tool_registry = await get_tool_registry()
-            await tool_registry.load_user_mcp_tools(str(user_id))
-            log.info(
-                f"mcp_oauth_callback: load_user_mcp_tools completed for "
-                f"{integration_id} user={user_id}"
-            )
-
-            try:
-                await delete_cache("api:get_available_tools:*")
-                log.info("Invalidated tools list cache after MCP connection")
-            except Exception as cache_err:
-                log.warning(
-                    f"Failed to invalidate tools cache: {type(cache_err).__name__}: {cache_err}"
-                )
-        else:
+        try:
+            await delete_cache("api:get_available_tools:*")
+        except Exception as cache_err:
             log.warning(
-                f"mcp_oauth_callback: handle_oauth_callback returned no tools for "
-                f"{integration_id} user={user_id} (empty list)"
+                f"Failed to invalidate tools cache: {type(cache_err).__name__}: {cache_err}"
             )
 
         await invalidate_mcp_status_cache(str(user_id))
 
-        # Subagent indexing handled in MCPClient._handle_custom_integration_connect
-
         frontend_url = get_frontend_url()
-
-        log.set(outcome="connected", tools_count=len(tools) if tools else 0)
+        log.set(outcome="connected")
+        log.info(
+            f"mcp_oauth_callback: OAuth complete for {integration_id} user={user_id}; "
+            f"connect dispatched to background, redirecting now"
+        )
         return RedirectResponse(
             url=f"{frontend_url}{redirect_path}?id={integration_id}&status=connected&name={quote(integration_name)}"
         )

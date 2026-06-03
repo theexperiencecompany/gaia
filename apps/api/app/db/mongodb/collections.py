@@ -117,12 +117,18 @@ _COLLECTION_MAPPINGS = {
     "ai_models_collection": "ai_models",
     "integrations_collection": "integrations",
     "user_integrations_collection": "user_integrations",
+    "integration_instructions_collection": "integration_instructions",
     "device_tokens_collection": "device_tokens",
-    "vfs_nodes_collection": "vfs_nodes",
     "skills_collection": "skills",
     "workflow_executions_collection": "workflow_executions",
     "processed_webhooks_collection": "processed_webhooks",
     "bot_sessions_collection": "bot_sessions",
+    "e2b_sandboxes_collection": "e2b_sandboxes",
+    "e2b_warm_pool_collection": "e2b_warm_pool",
+    # Legacy: kept ONLY so the one-shot migration script (scripts/
+    # migrate_vfs_to_juicefs.py) can read pre-cutover data. Drop after
+    # the migration has been run successfully in production.
+    "vfs_nodes_collection": "vfs_nodes",
 }
 
 
