@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
+import { useIsMainResponseStreaming } from "@/stores/loadingStore";
 import type { SearchMode } from "@/types/shared/searchTypes";
 
 interface SearchbarLeftDropdownProps {
@@ -38,6 +39,9 @@ export default function ComposerLeft({
   onOpenSlashCommandDropdown,
   isSlashCommandDropdownOpen,
 }: SearchbarLeftDropdownProps) {
+  // Locked only during the initial response (send → main_response_complete),
+  // matching the send button — unlocks once the agent acknowledges the task.
+  const isMainResponseStreaming = useIsMainResponseStreaming();
   const currentMode = React.useMemo(
     () => Array.from(selectedMode)[0],
     [selectedMode],
@@ -100,7 +104,9 @@ export default function ComposerLeft({
             size="icon"
             className={cn(
               "group relative h-9 w-9 rounded-full border-none bg-zinc-700 p-0 hover:bg-zinc-600/90",
+              isMainResponseStreaming ? "cursor-wait!" : "",
             )}
+            disabled={isMainResponseStreaming}
           >
             <PlusSignIcon className="min-h-[23px] min-w-[23px] text-zinc-400!" />
             <span
@@ -175,9 +181,11 @@ export default function ComposerLeft({
             size="icon"
             className={cn(
               "group relative flex h-9 w-9 items-center justify-center rounded-full border-none bg-zinc-700 fill-zinc-400 p-0 text-zinc-400 hover:bg-zinc-600/90",
+              isMainResponseStreaming ? "cursor-wait!" : "",
               isSlashCommandDropdownOpen &&
                 "border-primary/50 bg-primary/20 text-primary hover:bg-primary/40",
             )}
+            disabled={isMainResponseStreaming}
             onClick={() => {
               trackEvent(ANALYTICS_EVENTS.CHAT_TOOLS_BUTTON_CLICKED, {
                 is_open: isSlashCommandDropdownOpen,

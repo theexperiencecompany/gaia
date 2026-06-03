@@ -323,6 +323,9 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
 
   const handleMainResponseComplete = () => {
     setIsLoading(false);
+    // The comms agent has finished its initial response ("on it"), so unlock the
+    // composer — the user can now queue while any background executor runs.
+    useLoadingStore.getState().setMainResponseStreaming(false);
     resetLoadingText();
     updateBotMessage({ loading: false });
   };

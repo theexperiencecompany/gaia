@@ -1,10 +1,12 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
-import { ArrowUp02Icon } from "@icons";
+import { ArrowUp02Icon, StopIcon } from "@icons";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
+import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useComposerFiles } from "@/stores/composerStore";
+import { useIsMainResponseStreaming } from "@/stores/loadingStore";
 
 interface RightSideProps {
   handleFormSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
@@ -19,16 +21,19 @@ export default function RightSide({
   selectedTool,
   setvoiceModeActive: _setvoiceModeActive,
 }: RightSideProps) {
+  const { stopStream } = useLoading();
   const { selectedWorkflow } = useWorkflowSelection();
   const { selectedCalendarEvent } = useCalendarEventSelection();
   const { uploadedFiles } = useComposerFiles();
+  // Only the INITIAL response phase locks the composer (send → main_response_complete).
+  // Once the agent has acknowledged the task, the composer unlocks so the user
+  // can queue the next message while a background executor keeps running.
+  const isResponding = useIsMainResponseStreaming();
   const hasText = (searchbarText || "").trim().length > 0;
   const hasSelectedTool = selectedTool != null;
   const hasSelectedWorkflow = selectedWorkflow != null;
   const hasSelectedCalendarEvent = selectedCalendarEvent != null;
   const hasFiles = uploadedFiles.length > 0;
-  // The send button never reflects stream loading — sending while a response is
-  // streaming queues the next message (see useChatStream's pending-stream queue).
   const hasContent =
     hasText ||
     hasSelectedTool ||
@@ -37,6 +42,8 @@ export default function RightSide({
     hasFiles;
 
   const getTooltipContent = () => {
+    if (isResponding) return "Stop generation";
+
     if (hasSelectedCalendarEvent && !hasText && !hasSelectedTool && !hasFiles) {
       return `Send with calendar event: ${selectedCalendarEvent?.summary}`;
     }
@@ -76,25 +83,42 @@ export default function RightSide({
     );
   };
 
+  const handleButtonPress = () => {
+    if (isResponding) {
+      stopStream();
+    } else {
+      handleFormSubmit();
+    }
+  };
+
   return (
     <div className="ml-2 flex items-center gap-2">
       <Tooltip
         content={getTooltipContent()}
         placement="right"
-        color="primary"
+        color={isResponding ? "danger" : "primary"}
         showArrow
       >
         <Button
           isIconOnly
-          aria-label="Send message"
-          className="h-9 min-h-9 w-9 max-w-9 min-w-9"
-          color={hasContent ? "primary" : "default"}
-          disabled={!hasContent}
+          aria-label={isResponding ? "Stop generation" : "Send message"}
+          className={`h-9 min-h-9 w-9 max-w-9 min-w-9 ${isResponding ? "cursor-pointer" : ""}`}
+          color={isResponding ? "default" : hasContent ? "primary" : "default"}
+          disabled={!isResponding && !hasContent}
           radius="full"
           type="submit"
-          onPress={() => handleFormSubmit()}
+          onPress={handleButtonPress}
         >
-          <ArrowUp02Icon color={hasContent ? "black" : "gray"} />
+          {isResponding ? (
+            <StopIcon
+              color="lightgray"
+              width={20}
+              height={20}
+              fill="lightgray"
+            />
+          ) : (
+            <ArrowUp02Icon color={hasContent ? "black" : "gray"} />
+          )}
         </Button>
       </Tooltip>
     </div>

@@ -10,6 +10,7 @@ import { toast } from "@/lib/toast";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
+import { useLoadingStore } from "@/stores/loadingStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
@@ -103,6 +104,7 @@ export const useChatStream = () => {
     refs.current.currentStreamingMessages = [];
     refs.current.newConversation = { id: null, description: null };
     setIsLoading(false);
+    useLoadingStore.getState().setMainResponseStreaming(false);
     resetLoadingText();
     streamController.clear();
     setAbortController(null);
@@ -298,6 +300,11 @@ export const useChatStream = () => {
         refs.current.currentStreamingMessages = [];
         refs.current.newConversation = { id: null, description: null };
         useChatStore.getState().setStreamingConversationId(null);
+        // Keep the composer locked if a message is queued (it streams next);
+        // otherwise this turn is fully done.
+        if (!pendingStreamArgsRef.current) {
+          useLoadingStore.getState().setMainResponseStreaming(false);
+        }
         console.log(
           "[useChatStream] dispatching pending stream after early close",
         );
@@ -397,6 +404,13 @@ export const useChatStream = () => {
       refs.current.newConversation = { id: null, description: null };
 
       useChatStore.getState().setStreamingConversationId(null);
+
+      // Keep the composer locked if a message is queued (it streams next);
+      // otherwise this turn is fully done. (Normal turns already cleared this at
+      // main_response_complete — this covers turns that closed without one.)
+      if (!pendingStreamArgsRef.current) {
+        useLoadingStore.getState().setMainResponseStreaming(false);
+      }
 
       console.log(
         "[useChatStream] dispatching pending stream after stream close",
