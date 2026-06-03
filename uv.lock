@@ -928,23 +928,24 @@ wheels = [
 
 [[package]]
 name = "composio"
-version = "0.10.7"
+version = "0.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "composio-client" },
+    { name = "json-schema-to-pydantic" },
     { name = "openai" },
     { name = "pydantic" },
     { name = "pysher" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1d/02/e3a63d22c863fc236ca0c43bf41e05d87a95aa245bf01a959bf0b054779d/composio-0.10.7.tar.gz", hash = "sha256:e3147d7b119408aee00453e90b31ce6f6795413498ab38eba73173cc8ee83ee0", size = 111772, upload-time = "2026-01-14T11:46:11.778Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dd/4e/3e7391c38e13a69ba8634282f14488fb80189c4c8b27460457bf7a34e498/composio-0.13.1.tar.gz", hash = "sha256:957327c6557704135d34e10f3a0c8a885082b3d650e08acfb0f562c69290d289", size = 210832, upload-time = "2026-05-14T07:46:03.508Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5a/33/f43b38277cbfd99dbb759cda7207901f78e4b7fce2b94d22fc7ae6732625/composio-0.10.7-py3-none-any.whl", hash = "sha256:acdc693f9ad4825ce3fdfc72e114cfb8712bb49631aee305fd4892fda37ec3ab", size = 85226, upload-time = "2026-01-14T11:45:58.52Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/a0/e4777e815c485015174f62e5d9562f814e2b1ea062b4a6a2ba09fe2abdfd/composio-0.13.1-py3-none-any.whl", hash = "sha256:9a9620499d792d8f3336533a68d71f704a55659eb9f7a575cfe8b930409793a5", size = 142353, upload-time = "2026-05-14T07:45:48.687Z" },
 ]
 
 [[package]]
 name = "composio-client"
-version = "1.26.0"
+version = "1.39.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -954,22 +955,22 @@ dependencies = [
     { name = "sniffio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/31/ea/e9abfe0a16b10358ea126fae9019808cde5d76fdf17b70cc1df48c7535b6/composio_client-1.26.0.tar.gz", hash = "sha256:8ab65d900025970760c522c8df4445a6a63aff9f78773682f7193928016fb0f7", size = 192874, upload-time = "2026-01-14T10:14:10.658Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/78/efc71b2df0d580c4550ee60644193644ae3ddc06fc89f3fc92998db6393c/composio_client-1.39.0.tar.gz", hash = "sha256:2086493925117b956a3166da18414925cb50829172c8211591137fcdc3d60c7d", size = 248246, upload-time = "2026-05-12T14:28:13.071Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/37/2b/ad19b251f0d2241da0227fce6aee5792a6bbf26c09ff1d43841b946e7557/composio_client-1.26.0-py3-none-any.whl", hash = "sha256:24b6b0ffba0b7a1c818da53a77b450bbddc26313f9c6abc1ef4472cfb348e450", size = 210074, upload-time = "2026-01-14T10:14:09.404Z" },
+    { url = "https://files.pythonhosted.org/packages/88/59/f4ddca56b9f02c8fed3277584111a687c9be986d0d2e8b421c80a20caa03/composio_client-1.39.0-py3-none-any.whl", hash = "sha256:bf6050dc0d523bd1e9d52e39e162f5b23bd029aa441b5c4a18e1751aae58571d", size = 284163, upload-time = "2026-05-12T14:28:11.681Z" },
 ]
 
 [[package]]
 name = "composio-langchain"
-version = "0.10.7"
+version = "0.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "composio" },
     { name = "langchain" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6e/64/e31afd951e358bfcbd8cc90b4400fc7a2447bc6c5e6058c3b7bb0ae69013/composio_langchain-0.10.7.tar.gz", hash = "sha256:3ccaf130429d1b71d765fa1738d1c48c1ef128c2494364d384c5d462e8f31749", size = 3096, upload-time = "2026-01-14T11:46:17.044Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/65/fe/83c98170bf508b42826de8524c5d11ff5e52a2114fc3a605b4d38a39d273/composio_langchain-0.13.1.tar.gz", hash = "sha256:d5180ff0d2ef4fa79e2993d445eeb09d48088787e7f675fa16ddf798c6274054", size = 2675, upload-time = "2026-05-14T07:46:09.839Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b4/a4/c9abb2aaae2bf91c00ee817dc35f8a8df6166de7affcf0c4a0f36a421f26/composio_langchain-0.10.7-py3-none-any.whl", hash = "sha256:1a4f5e4ff44d246ae618d2a172f8e3299ed6ed203c2ae5bbf77a9cc9bad83c9a", size = 3390, upload-time = "2026-01-14T11:46:07.217Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/86/dac7a6950f547fb2adac9688e82dc62eb9d0cd4c53707707c1366fcad9e2/composio_langchain-0.13.1-py3-none-any.whl", hash = "sha256:77fe47c09c2523dea29331448e57a6112a30e409a57bd1165d9442512338e1af", size = 2963, upload-time = "2026-05-14T07:45:58.13Z" },
 ]
 
 [[package]]
@@ -2048,9 +2049,9 @@ backend = [
     { name = "bs4", specifier = "==0.0.2" },
     { name = "chromadb", specifier = ">=0.6.3" },
     { name = "cloudinary", specifier = "==1.41.0" },
-    { name = "composio", specifier = ">=0.8.19" },
-    { name = "composio-client", specifier = ">=1.10.0" },
-    { name = "composio-langchain", specifier = ">=0.8.0" },
+    { name = "composio", specifier = ">=0.13.1" },
+    { name = "composio-client", specifier = ">=1.39.0" },
+    { name = "composio-langchain", specifier = ">=0.13.1" },
     { name = "crawl4ai", specifier = ">=0.7.7" },
     { name = "dodopayments", specifier = ">=1.49.0" },
     { name = "e2b-code-interpreter", specifier = ">=1.2.0" },
@@ -2932,6 +2933,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/64/33/60135848598c076ce4b231e1b1895170f45fbcaeaa2c9d5e38b04db70c35/joblib-1.4.2.tar.gz", hash = "sha256:2382c5816b2636fbd20a09e0f4e9dad4736765fdfb7dca582943b9c1366b3f0e", size = 2116621, upload-time = "2024-05-02T12:15:05.765Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/91/29/df4b9b42f2be0b623cbd5e2140cafcaa2bef0759a00b7b70104dcfe2fb51/joblib-1.4.2-py3-none-any.whl", hash = "sha256:06d478d5674cbc267e7496a410ee875abd68e4340feff4490bcb7afb88060ae6", size = 301817, upload-time = "2024-05-02T12:15:00.765Z" },
+]
+
+[[package]]
+name = "json-schema-to-pydantic"
+version = "0.4.11"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/60/d8/423895b918706c80db1cee679c13fbe810200b9a9d9a9442c7a58d35c3f2/json_schema_to_pydantic-0.4.11.tar.gz", hash = "sha256:35448ed711a28dd33396b095c8492939b4925aa30eb31942e9b8e08d04279465", size = 56597, upload-time = "2026-03-09T20:53:55.692Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f3/64/7cfeb8c6d2a5e73e0f8d732032aa62be9a7724c04beb461d677de0b4beb3/json_schema_to_pydantic-0.4.11-py3-none-any.whl", hash = "sha256:da2ccc39d070ee03dbcf0517d16720e3e33f7aa8d61257ace09af8c51bd46348", size = 17842, upload-time = "2026-03-09T20:53:54.576Z" },
 ]
 
 [[package]]
