@@ -245,7 +245,8 @@ async def _dispatch_executor(
         )
         return (
             "I'm already working on a task for this conversation. "
-            "Your request has been queued and I'll handle it right after."
+            f"Your request has been queued (task_id: {task_id}) "
+            "and I'll handle it right after."
         )
 
     # MCP tools load lazily inside each subagent's first use — the old eager
@@ -277,7 +278,7 @@ async def _dispatch_executor(
         task_id=task_id,
         stream_id=stream_id,
     )
-    return "Task accepted. I'm on it — you'll get progress updates as I work."
+    return f"Task accepted (task_id: {task_id}). I'm on it — you'll get progress updates as I work."
 
 
 @tool
@@ -291,12 +292,13 @@ async def cancel_executor(
     """Cancel background executor tasks by their task_ids.
 
     task_ids behavior:
-    - Empty list [] (default) = cancel EVERYTHING running + queued for this
-      conversation. This is the right call for every generic stop request
-      ("stop that", "cancel it", "abort", "nevermind that") — task_ids are
-      not exposed in the chat, so you don't need to track them.
-    - Specific task_ids = cancel only those. Only use when the user
-      explicitly provides a task_id string (rare).
+    - Empty list [] = cancel EVERYTHING (running task + all queued).
+      Use for: "stop everything", "cancel all", or generic "stop that".
+    - Specific task_ids = cancel only those (running or queued), keep rest.
+      Use for: "cancel the search task" / "stop the second one".
+      Match user intent to task_ids from call_executor responses in
+      conversation history (e.g. "Task accepted (task_id: abc-123)"
+      or "queued (task_id: xyz-456)").
 
     CRITICAL: NEVER use this tool unless the user EXPLICITLY asks to stop,
     cancel, or abort. Valid triggers: "stop that", "cancel it", "abort",
