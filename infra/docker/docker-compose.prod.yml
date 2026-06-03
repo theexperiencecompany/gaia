@@ -35,10 +35,6 @@ services:
     image: ghcr.io/theexperiencecompany/gaia:latest
     working_dir: /app/apps/api
     command: python -m uvicorn app.main:app --host 0.0.0.0 --port 80 --no-access-log --workers 1 --timeout-keep-alive 65 --timeout-graceful-shutdown 30 --h11-max-incomplete-event-size 16777216
-    # JuiceFS requires CAP_SYS_ADMIN to manage FUSE mounts and apparmor:unconfined
-    # to allow the fuse kernel module. /dev/fuse is bind-mounted as a volume because
-    # Docker Swarm does not support the `devices:` directive — this is the standard
-    # Swarm workaround for FUSE access without full privileged mode.
     cap_add:
       - SYS_ADMIN
     security_opt:
@@ -115,8 +111,6 @@ services:
     image: ghcr.io/theexperiencecompany/gaia:latest
     working_dir: /app/apps/api
     command: python -m arq app.worker.WorkerSettings
-    # Same FUSE requirements as gaia-backend — worker runs sandbox eviction tasks
-    # and shares the JuiceFS bootstrap on startup.
     cap_add:
       - SYS_ADMIN
     security_opt:
