@@ -18,6 +18,19 @@ from app.models.workflow_models import TriggerType, Workflow
 from app.services.scheduler_service import BaseSchedulerService
 from shared.py.wide_events import log
 
+# The run-states a WORKFLOW may legitimately hold. The shared ScheduledTaskStatus
+# enum also carries `failed`/`paused`/`cancelled` for the reminder subsystem, but a
+# workflow encodes liveness via `activated` and uses `status` purely as run-state:
+# scheduled (armed/idle) -> executing (claimed fire) -> scheduled (re-armed) or
+# completed (terminal). Writing any other value is a bug.
+WORKFLOW_RUN_STATUSES: frozenset[ScheduledTaskStatus] = frozenset(
+    {
+        ScheduledTaskStatus.SCHEDULED,
+        ScheduledTaskStatus.EXECUTING,
+        ScheduledTaskStatus.COMPLETED,
+    }
+)
+
 
 class WorkflowScheduler(BaseSchedulerService):
     """
@@ -176,6 +189,13 @@ class WorkflowScheduler(BaseSchedulerService):
         Returns:
             True if update was successful
         """
+        if status not in WORKFLOW_RUN_STATUSES:
+            raise ValueError(
+                f"Workflow {task_id}: refusing to write status={status.value!r}. "
+                f"Workflow liveness is governed by `activated`; status is run-state "
+                f"only ({sorted(s.value for s in WORKFLOW_RUN_STATUSES)})."
+            )
+
         try:
             update_fields = {
                 "status": status.value,
