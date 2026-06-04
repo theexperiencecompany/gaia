@@ -513,23 +513,21 @@ class WorkflowService:
                     or old_config.enabled != new_trigger_config.enabled
                 )
 
-                if schedule_changed:
-                    # Use reschedule logic instead of cancel + schedule for efficiency
-                    if (
-                        new_trigger_config.type == "schedule"
-                        and new_trigger_config.enabled
-                        and new_trigger_config.next_run
-                        and current_workflow.activated
-                    ):
-                        # Reschedule to new time with new cron expression
-                        await workflow_scheduler.reschedule_workflow(
-                            workflow_id,
-                            new_trigger_config.next_run,
-                            repeat=new_trigger_config.cron_expression,
-                        )
-                    else:
-                        # Cancel if workflow is being disabled or conditions not met
-                        await workflow_scheduler.cancel_scheduled_workflow_execution(workflow_id)
+                if schedule_changed and (
+                    new_trigger_config.type == "schedule"
+                    and new_trigger_config.enabled
+                    and new_trigger_config.next_run
+                    and current_workflow.activated
+                ):
+                    # Reschedule to the new time/cron. When the workflow is instead
+                    # being disabled or made non-scheduled, no teardown is needed:
+                    # liveness is governed by `activated`, so a stale deferred fire
+                    # is rejected by the claim gate.
+                    await workflow_scheduler.reschedule_workflow(
+                        workflow_id,
+                        new_trigger_config.next_run,
+                        repeat=new_trigger_config.cron_expression,
+                    )
 
                 # Handle trigger re-registration for integration triggers
                 # Always delete and recreate triggers since Composio triggers can't be updated
@@ -604,14 +602,8 @@ class WorkflowService:
             # Get workflow first to access trigger config
             workflow = await WorkflowService.get_workflow(workflow_id, user_id)
 
-            # Cancel any scheduled executions before deleting
-            await workflow_scheduler.cancel_scheduled_workflow_execution(workflow_id)
-
-            # Additional cleanup
-            try:
-                await workflow_scheduler.cancel_task(workflow_id, user_id)
-            except Exception as e:
-                log.warning(f"Additional cleanup failed for workflow {workflow_id}: {e}")
+            # No schedule teardown needed: once the document is deleted, a deferred
+            # ARQ fire finds no row to claim and is rejected by the claim gate.
 
             # Unregister Composio triggers if any (pass workflow_id for reference counting)
             if workflow:
@@ -833,8 +825,9 @@ class WorkflowService:
             if not workflow:
                 return None
 
-            # Cancel any scheduled executions
-            await workflow_scheduler.cancel_scheduled_workflow_execution(workflow_id)
+            # Liveness is governed by `activated` (set False below). A deferred ARQ
+            # fire already in Redis is harmless — the claim gate rejects it because
+            # the row is no longer `activated`. No status write is needed here.
 
             # Unregister Composio triggers if any (pass workflow_id for reference counting)
             trigger_config = workflow.trigger_config

@@ -192,9 +192,11 @@ async def _rearm_if_scheduled(
     """Arm the next occurrence for cron-scheduled recurring workflows.
 
     Only scheduler-originated fires (trigger_type=schedule) advance the schedule;
-    manual and integration-triggered runs must not shift it.
+    manual and integration-triggered runs must not shift it. A workflow deactivated
+    while a fire was in flight must not be re-armed back into the scheduled loop —
+    liveness is governed by `activated`.
     """
-    if workflow is None or not workflow.repeat:
+    if workflow is None or not workflow.repeat or not workflow.activated:
         return
     trigger_type = context.get("trigger_type") if context else None
     if trigger_type != TriggerType.SCHEDULE.value:

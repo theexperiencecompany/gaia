@@ -278,38 +278,6 @@ class WorkflowScheduler(BaseSchedulerService):
             log.error(f"Error scheduling workflow {workflow_id}: {e!s}")
             return False
 
-    async def cancel_scheduled_workflow_execution(self, workflow_id: str) -> bool:
-        """
-        Cancel scheduled workflow execution.
-
-        Args:
-            workflow_id: Workflow ID to cancel
-
-        Returns:
-            True if cancelled successfully
-        """
-        try:
-            # Update workflow status to cancelled in database
-            db_success = await self.update_task_status(workflow_id, ScheduledTaskStatus.CANCELLED)
-
-            # Cancel ARQ job
-            arq_success = await self.cancel_task(workflow_id, "")
-
-            if db_success and arq_success:
-                log.info(f"Cancelled scheduled execution for workflow {workflow_id}")
-            elif db_success:
-                log.warning(f"Cancelled workflow {workflow_id} in DB but ARQ cancellation failed")
-            else:
-                log.warning(
-                    f"Could not cancel workflow {workflow_id} - may not exist or already executed"
-                )
-
-            return db_success
-
-        except Exception as e:
-            log.error(f"Error cancelling workflow {workflow_id}: {e!s}")
-            return False
-
     async def reschedule_workflow(
         self, workflow_id: str, new_scheduled_at: datetime, repeat: str | None = None
     ) -> bool:
