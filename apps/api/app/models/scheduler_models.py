@@ -124,13 +124,3 @@ class TaskExecutionResult(BaseModel):
     success: bool = Field(..., description="Whether the task executed successfully")
     message: str | None = Field(None, description="Result message or error details")
     data: dict[str, Any] | None = Field(default=None, description="Additional result data")
-
-
-class SchedulerTaskInfo(BaseModel):
-    """Information about a task in the scheduler."""
-
-    task_id: str = Field(..., description="Unique task identifier")
-    task_type: str = Field(..., description="Type of task (e.g., 'reminder', 'workflow')")
-    scheduled_at: datetime = Field(..., description="When the task is scheduled to run")
-    status: ScheduledTaskStatus = Field(..., description="Current task status")
-    user_id: str = Field(..., description="User who owns this task")

@@ -128,24 +128,3 @@ export function sortWorkflows(
       return sorted;
   }
 }
-
-export function getWorkflowStatus(workflow: Workflow): string {
-  if (!workflow.activated) {
-    return "inactive";
-  }
-
-  if (workflow.error_message) {
-    return "error";
-  }
-
-  const trigger = workflow.trigger_config;
-  if (!trigger.enabled) {
-    return "paused";
-  }
-
-  if (trigger.type === "schedule" && trigger.next_run) {
-    return "scheduled";
-  }
-
-  return "active";
-}

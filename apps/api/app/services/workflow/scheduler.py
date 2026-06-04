@@ -345,23 +345,6 @@ class WorkflowScheduler(BaseSchedulerService):
             log.error(f"Error rescheduling workflow {workflow_id}: {e!s}")
             return False
 
-    async def get_workflow_status(self, workflow_id: str) -> str | None:
-        """
-        Get the current status of a workflow.
-
-        Args:
-            workflow_id: Workflow ID
-
-        Returns:
-            Status string or None if not found
-        """
-        try:
-            workflow = await self.get_task(workflow_id)
-            return workflow.status.value if workflow else None
-        except Exception as e:
-            log.error(f"Error getting workflow status for {workflow_id}: {e!s}")
-            return None
-
 
 # Global instance for backward compatibility
 workflow_scheduler = WorkflowScheduler()
