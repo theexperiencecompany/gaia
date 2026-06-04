@@ -35,6 +35,11 @@ services:
     image: ghcr.io/theexperiencecompany/gaia:latest
     working_dir: /app/apps/api
     command: python -m uvicorn app.main:app --host 0.0.0.0 --port 80 --no-access-log --workers 1 --timeout-keep-alive 65 --timeout-graceful-shutdown 30 --h11-max-incomplete-event-size 16777216
+    cap_add:
+      - SYS_ADMIN
+    volumes:
+      - /dev/fuse:/dev/fuse
+      - juicefs_cache:/var/cache/juicefs
     environment:
       PYTHONUNBUFFERED: "1"
       FORCE_COLOR: "0"
@@ -104,6 +109,11 @@ services:
     image: ghcr.io/theexperiencecompany/gaia:latest
     working_dir: /app/apps/api
     command: python -m arq app.worker.WorkerSettings
+    cap_add:
+      - SYS_ADMIN
+    volumes:
+      - /dev/fuse:/dev/fuse
+      - juicefs_cache:/var/cache/juicefs
     environment:
       WORKER_TYPE: arq_worker
       PYTHONPATH: /app/apps/api
@@ -797,6 +807,7 @@ volumes:
   grafana_data:
   prometheus_data:
   promtail_positions:
+  juicefs_cache:
 
 networks:
   gaia-prod-shared:
