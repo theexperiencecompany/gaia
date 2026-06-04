@@ -29,7 +29,6 @@ from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
     ActionType,
-    ChannelConfig,
     NotificationAction,
     NotificationContent,
     NotificationRequest,
@@ -400,9 +399,6 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                                 body=body,
                                 actions=[upgrade_action] if upgrade_action else None,
                             ),
-                            channels=[
-                                ChannelConfig(channel_type="inapp", enabled=True, priority=1)
-                            ],
                             metadata={
                                 "workflow_id": workflow.id,
                                 "error_type": type(e).__name__,
@@ -743,7 +739,6 @@ async def create_workflow_completion_notification(workflow, execution_messages, 
                         "conversation_id": conversation["conversation_id"],
                     },
                 ),
-                channels=[ChannelConfig(channel_type="inapp", enabled=True, priority=1)],
                 metadata={
                     "workflow_id": workflow.id,
                     "conversation_id": conversation["conversation_id"],

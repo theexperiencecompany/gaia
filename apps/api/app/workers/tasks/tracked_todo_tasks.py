@@ -22,7 +22,6 @@ from app.agents.core.agent import call_agent_silent
 from app.db.mongodb.collections import todos_collection
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
-    ChannelConfig,
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
@@ -389,7 +388,6 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: dict) -> None:
                         f"{MAX_RETRY_ATTEMPTS} attempts. Please check the task and try again."
                     ),
                 ),
-                channels=[ChannelConfig(channel_type="inapp", enabled=True, priority=1)],
                 metadata={
                     "todo_id": todo_id,
                     "retry_count": MAX_RETRY_ATTEMPTS,
