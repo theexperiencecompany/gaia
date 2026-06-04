@@ -104,6 +104,16 @@ class LangchainProvider(
                 runnable_config.get("metadata", {}) if isinstance(runnable_config, dict) else {}
             )
             user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
+            if not user_id:
+                # Composio defaults a missing user_id to its "default" account,
+                # which would silently route this call to the wrong (or no)
+                # connected account. Fail loudly instead of hitting "default".
+                log.warning(
+                    f"composio tool {tool} (toolkit={toolkit}) invoked without a "
+                    "user_id in runnable metadata; refusing to fall back to the "
+                    "Composio 'default' account."
+                )
+                raise ValueError(f"Missing user_id in runnable metadata for composio tool {tool}")
 
             kwargs = _reinstate_reserved_python_keywords(
                 request=kwargs,
