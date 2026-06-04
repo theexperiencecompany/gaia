@@ -217,7 +217,10 @@ class WorkflowService:
             # Use provided steps or initialize empty list for generation
             workflow_steps = request.steps if request.steps else []
 
-            # Step 1: Create workflow in PENDING state (activated=False)
+            # Step 1: Create workflow in PENDING state (activated=False). Keep
+            # trigger_config.enabled in lockstep with activated (the single liveness
+            # field) — a pending workflow is not live.
+            trigger_config.enabled = False
             workflow = Workflow(
                 title=request.title,
                 description=request.description or "",
@@ -316,8 +319,12 @@ class WorkflowService:
                     f"trigger '{trigger_config.trigger_name}' not connected"
                 )
             else:
-                # Step 3: Activate workflow and store trigger IDs
-                update_data: dict[str, Any] = {"activated": True}
+                # Step 3: Activate workflow and store trigger IDs. enabled mirrors
+                # activated.
+                update_data: dict[str, Any] = {
+                    "activated": True,
+                    "trigger_config.enabled": True,
+                }
                 if trigger_ids:
                     update_data["trigger_config.composio_trigger_ids"] = trigger_ids
 
@@ -328,6 +335,7 @@ class WorkflowService:
 
                 # Update local workflow object
                 workflow.activated = True
+                workflow.trigger_config.enabled = True
                 if trigger_ids:
                     workflow.trigger_config.composio_trigger_ids = trigger_ids
 
@@ -342,12 +350,8 @@ class WorkflowService:
                 )
                 log.info(f"Activated workflow {workflow.id} with {len(trigger_ids)} triggers")
 
-                # Schedule the workflow if it's a scheduled type and enabled
-                if (
-                    trigger_config.type == "schedule"
-                    and trigger_config.enabled
-                    and trigger_config.next_run
-                ):
+                # Schedule the workflow if it's a scheduled type (activated here).
+                if trigger_config.type == "schedule" and trigger_config.next_run:
                     await workflow_scheduler.schedule_workflow_execution(
                         workflow.id,
                         user_id,
@@ -489,9 +493,15 @@ class WorkflowService:
             update_data = {"updated_at": datetime.now(UTC)}
             update_fields = request.model_dump(exclude_unset=True)
 
+            # enabled mirrors activated (the single liveness field). Resolve the
+            # effective activated value for this update and never trust a client-sent
+            # `enabled` that disagrees with it.
+            effective_activated = update_fields.get("activated", current_workflow.activated)
+
             # Handle trigger config changes
             if "trigger_config" in update_fields:
                 new_trigger_config = ensure_trigger_config_object(update_fields["trigger_config"])
+                new_trigger_config.enabled = effective_activated
 
                 # Use provided timezone or fallback to UTC
                 timezone_to_use = user_timezone or "UTC"
@@ -566,6 +576,12 @@ class WorkflowService:
                     update_fields["trigger_config"]["composio_trigger_ids"] = registered_trigger_ids
 
             update_data.update(update_fields)
+
+            # activated changed without a trigger_config rewrite: sync the nested
+            # enabled flag via a dotted key (the sub-document sync above only runs
+            # when trigger_config is part of the update).
+            if "trigger_config" not in update_fields and "activated" in update_fields:
+                update_data["trigger_config.enabled"] = effective_activated
 
             try:
                 result = await workflows_collection.update_one(
