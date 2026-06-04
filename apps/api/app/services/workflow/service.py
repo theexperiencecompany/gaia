@@ -13,6 +13,7 @@ from pymongo.errors import DuplicateKeyError
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import workflows_collection
 from app.decorators.caching import Cacheable
+from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     PublicWorkflowsResponse,
@@ -734,6 +735,11 @@ class WorkflowService:
             trigger_config = workflow.trigger_config
             trigger_type = trigger_config.type
 
+            # Recompute next_run from the cron so a stale/frozen schedule time (e.g.
+            # left over from a prior deactivation) cannot carry over on reactivation.
+            if trigger_type == TriggerType.SCHEDULE and trigger_config.cron_expression:
+                trigger_config.update_next_run(user_timezone=user_timezone)
+
             # Refuse activation up front: registration would otherwise silently
             # no-op for a disconnected integration, confusing the user.
             if trigger_type == TriggerType.INTEGRATION and trigger_config.trigger_name:
@@ -762,11 +768,15 @@ class WorkflowService:
             # Get trigger_name for potential rollback
             trigger_name = trigger_config.trigger_name
 
-            # 2. Update status and store triggers
+            # 2. Activate: set liveness (activated) and re-arm run-state to idle
+            # (status=scheduled) with the freshly recomputed next_run.
             update_data: dict[str, Any] = {
                 "activated": True,
                 "trigger_config.enabled": True,
                 "trigger_config.composio_trigger_ids": trigger_ids,
+                "status": ScheduledTaskStatus.SCHEDULED.value,
+                "scheduled_at": trigger_config.next_run,
+                "trigger_config.next_run": trigger_config.next_run,
                 "updated_at": datetime.now(UTC),
             }
 
@@ -787,10 +797,10 @@ class WorkflowService:
             if not updated_workflow:
                 return None
 
-            # 4. Schedule if needed
+            # 4. Schedule if needed — liveness is governed by `activated`.
             if (
                 trigger_type == "schedule"
-                and updated_workflow.trigger_config.enabled
+                and updated_workflow.activated
                 and updated_workflow.trigger_config.next_run
             ):
                 await workflow_scheduler.schedule_workflow_execution(
