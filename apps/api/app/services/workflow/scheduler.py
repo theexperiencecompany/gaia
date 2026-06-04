@@ -46,17 +46,27 @@ class WorkflowScheduler(BaseSchedulerService):
         return (task_id, {"trigger_type": TriggerType.SCHEDULE.value})
 
     async def claim_scheduled_for_execution(self, workflow_id: str) -> bool:
-        """Atomically transition a SCHEDULED workflow to EXECUTING.
+        """Atomically claim a live, idle workflow for a fire (SCHEDULED -> EXECUTING).
 
-        Returns False if the workflow was not in scheduled state — meaning a
-        concurrent recovery scan already claimed it (or it isn't scheduler-managed).
-        The caller must then skip execution: this is what prevents the recovery scan
-        from double-running a workflow whose previous fire is still in flight (the
-        scan selects status="scheduled", so a claimed row is excluded). The re-arm at
-        the end of execution returns the row to "scheduled" with its next run time.
+        The claim verifies BOTH axes at once: liveness (`activated=True`) and
+        run-state (`status="scheduled"`). Returns False — and the caller skips the
+        fire — when either fails:
+        - a concurrent recovery scan already claimed it (status != scheduled), or
+        - the workflow has been deactivated (`activated=False`) but a deferred ARQ
+          job for an earlier-armed occurrence is still in Redis and fires anyway.
+
+        Keeping liveness (`activated`) and run-state (`status`) as independent fields
+        is deliberate: deactivate/reactivate only flips `activated`, so a reactivated
+        workflow is still status="scheduled" and immediately claimable — no stale
+        status can wedge it. The re-arm at the end of execution returns the row to
+        "scheduled" with its next run time.
         """
         result = await workflows_collection.find_one_and_update(
-            {"_id": workflow_id, "status": ScheduledTaskStatus.SCHEDULED.value},
+            {
+                "_id": workflow_id,
+                "activated": True,
+                "status": ScheduledTaskStatus.SCHEDULED.value,
+            },
             {
                 "$set": {
                     "status": ScheduledTaskStatus.EXECUTING.value,
