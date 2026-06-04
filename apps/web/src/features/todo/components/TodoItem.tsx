@@ -238,10 +238,10 @@ export default memo(function TodoItem({
 
               {todo.vfs_path && (
                 <Chip
-                  className="flex items-center text-zinc-400 px-1"
+                  className="flex items-center text-primary px-1"
                   size="sm"
                   radius="sm"
-                  color="secondary"
+                  color="primary"
                   variant="flat"
                   startContent={
                     <AiBrainIcon width={14} height={14} className="mx-1" />
