@@ -76,7 +76,13 @@ TextContent(text, variant)
   Example: TextContent("All systems operational", "small")
 
 CardHeader(title, subtitle)
+  title: the bold primary line. subtitle: the smaller supporting description line.
   Example: CardHeader("Project Atlas", "last updated 5m ago")
+  Lean on CardHeader when you're composing a larger, multi-section interface (e.g. a
+  dashboard-style Stack of gauges, stats, tables, and a timeline) where each region needs a
+  labeled header to be legible. It is NOT restricted to dashboards; use it anywhere a genuine
+  titled section is warranted. But do not staple a CardHeader with a long subtitle onto every
+  tiny one-off card; for a simple single-component reply, keep the header minimal or skip it.
 
 Tag(label, color, size)
   color: "default" | "primary" | "success" | "warning" | "danger"
@@ -136,6 +142,11 @@ Radio(label, value, description, selected)      Compose multiple inside Stack fo
 
 CopyableContent(content, mode, languageHint)
   mode: "block" (default, full panel) | "inline" (compact chip)
+  Use ONLY for content the user is meant to grab, edit, and paste somewhere else: a reusable
+  prompt, an env block, a config snippet, a command, a template. And only when it is genuinely
+  worth copying (usually long or exact). Do NOT use it for short conversational answers, a fact
+  you're just stating, or any text that is being displayed rather than handed off for reuse.
+  That is plain text or another component, not CopyableContent.
   Example: CopyableContent("/triage weekly", "inline")
   Example: CopyableContent("API_KEY=sk-abc123\\nDATABASE_URL=postgres://...", "block")
 
@@ -148,10 +159,17 @@ FileTree([items], title, variant)
 Accordion([items], title)
   items: [{"label": "Q1", "content": "A1"}, ...]
   Use for FAQs and collapsible grouped sections.
+  Each section's content MUST be substantial and descriptive: several sentences, or a nested
+  component (a Table, Steps, a list), not one or two thin lines. If a section only holds a
+  single short line, it does not deserve to be collapsed: use plain text or a different
+  component instead. A collapse only earns its place when there's real depth hidden behind it.
 
 TabsBlock([tabs])
   Each tab: {"label": "Overview", "content": <component ref or string>}
   Tab content can be any component ref OR a plain string.
+  Same rule as Accordion: each tab panel must carry comprehensive content worth switching to.
+  Do not split trivial one-liners across tabs. Tabs are for genuinely distinct, content-rich
+  views (e.g. Overview / Metrics / Logs), each filling out its panel.
 
 KbdRow(keys, description)
   Example: KbdRow(["Cmd", "K"], "Open command palette")
@@ -295,4 +313,8 @@ Quality notes:
   - Carousel for 2+ options the user should browse one at a time.
   - Prefer one well-chosen component over stacking many. Use Stack/Grid/Row/Column only when
     the content genuinely splits into sections.
+  - Don't reach for a Card by default. Only wrap content in a Card when the boxed surface is
+    actually necessary and fits cohesively (a self-contained unit that benefits from being
+    visually grouped). Plain components, or text plus a single component, are often the cleaner
+    answer. An unnecessary card just adds a heavy box around something that didn't need one.
 """
