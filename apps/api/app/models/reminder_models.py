@@ -24,8 +24,23 @@ class AgentType(str, Enum):
 class StaticReminderPayload(BaseModel):
     """Payload for STATIC agent reminders."""
 
-    title: str = Field(..., description="Notification title")
-    body: str = Field(..., description="Notification body")
+    title: str = Field(
+        ...,
+        description=(
+            "Notification title: short and human-readable, like a phone "
+            "notification header (e.g. 'Drink water'). Shown directly to the user."
+        ),
+    )
+    body: str = Field(
+        ...,
+        description=(
+            "Notification body: write it as a natural, friendly message the user "
+            "reads directly, the way you would text them (e.g. 'time to drink some "
+            "water, stay hydrated!'). It is delivered as a push / WhatsApp / email "
+            "notification across platforms, so use second person, no IDs, no "
+            "internal jargon, no markdown."
+        ),
+    )
 
 
 class ReminderModel(BaseScheduledTask):
@@ -83,9 +98,13 @@ class CreateReminderRequest(BaseModel):
             if v.tzinfo is None:
                 v = v.replace(tzinfo=UTC)
 
-            if v <= datetime.now(UTC):
+            now = datetime.now(UTC)
+            if v <= now:
                 raise ValueError(
-                    "scheduled_at must be in the future. The provided time has already passed."
+                    "scheduled_at must be in the future. The provided time "
+                    f"({v.isoformat()}) has already passed; current time is "
+                    f"{now.isoformat()} (UTC). For a relative reminder, pass "
+                    "delay_seconds instead of computing a clock time."
                 )
         return v
 
@@ -145,6 +164,16 @@ class CreateReminderToolRequest(BaseModel):
         None,
         description="Timezone offset for stop_after in (+|-)HH:MM format. Only use if user explicitly mentions a timezone.",
     )
+    delay_seconds: int | None = Field(
+        None,
+        description=(
+            "Relative delay from NOW, in seconds, for one-off reminders phrased "
+            "as 'in N minutes/hours/seconds' (e.g. 'remind me in 1 minute' -> 60). "
+            "PREFER this for any relative request: the server computes the absolute "
+            "time from the current time, so you never do timezone math. When set, "
+            "scheduled_at / timezone_offset are ignored."
+        ),
+    )
     user_time: str = Field(..., description="User's current time for timezone handling")
 
     @field_validator("repeat")
@@ -179,7 +208,12 @@ class CreateReminderToolRequest(BaseModel):
         user_timezone = user_datetime.tzinfo if user_datetime.tzinfo else UTC
 
         processed_scheduled_at = None
-        if self.scheduled_at:
+        if self.delay_seconds is not None:
+            # Relative reminder ("in N minutes/seconds"): compute from the
+            # authoritative current time so the LLM never does timezone math.
+            # user_datetime is tz-aware, so adding a delta preserves the instant.
+            processed_scheduled_at = user_datetime + timedelta(seconds=self.delay_seconds)
+        elif self.scheduled_at:
             try:
                 # Parse the datetime string
                 dt = datetime.fromisoformat(self.scheduled_at.replace(" ", "T"))
