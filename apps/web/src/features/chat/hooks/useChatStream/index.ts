@@ -336,13 +336,11 @@ export const useChatStream = () => {
             store.setExecutorPendingConversationId(null);
           }
         }, EXECUTOR_RESULT_TIMEOUT_MS);
-      } else if (
-        conversationId &&
-        useChatStore.getState().executorPendingConversationId === conversationId
-      ) {
-        // A non-delegating turn in the same conversation supersedes stale state.
-        useChatStore.getState().setExecutorPendingConversationId(null);
       }
+      // NB: a later non-delegating turn must NOT clear executorPending here — an
+      // earlier message's background executor may still be running. It is cleared
+      // only when its result message arrives (useBgMessageWebSocket), on
+      // abort/reset, or by the safety timeout above.
 
       if (persistTimerRef.current) {
         clearTimeout(persistTimerRef.current);

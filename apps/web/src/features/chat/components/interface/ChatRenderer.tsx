@@ -70,6 +70,13 @@ export default function ChatRenderer({
     (!!streamingConversationId &&
       streamingConversationId === activeConversationId) ||
     isAwaitingExecutorResult;
+  // Follow-up actions and the action/timestamp row belong to a *fully finished*
+  // turn. Hide them whenever the conversation is still working — i.e. exactly
+  // when the bottom loading indicator is visible (`isLoading || awaiting`). This
+  // also covers a later message completing while an *earlier* message's
+  // background executor is still running: its follow-ups must not pop in (with a
+  // gap) above the still-active loading indicator.
+  const isConversationBusy = isConversationStreaming || isLoading;
   const scrolledToMessageRef = useRef<string | null>(null);
   const { retryMessage, isRetrying } = useRetryMessage();
   const [imageData, setImageData] = useState<SetImageDataType>({
@@ -292,9 +299,9 @@ export default function ChatRenderer({
               <ChatBubbleBot
                 key={message.message_id || index}
                 {...getMessageProps(message, "bot", messagePropsOptions)}
-                disableActions={isFollowedByBot || isConversationStreaming}
+                disableActions={isFollowedByBot || isConversationBusy}
                 follow_up_actions={
-                  isFollowedByBot || isConversationStreaming
+                  isFollowedByBot || isConversationBusy
                     ? undefined
                     : messageProps.follow_up_actions
                 }
