@@ -17,6 +17,7 @@ import zoneinfo
 from composio import Composio
 from langgraph.config import get_config, get_stream_writer
 
+from app.constants.calendar import DEFAULT_CALENDAR_COLOR
 from app.decorators import with_doc
 from app.models.calendar_models import (
     AddRecurrenceInput,
@@ -62,17 +63,6 @@ def _extract_datetime(dt: Any) -> str:
     return ""
 
 
-def _format_event_for_stream(event: dict[str, Any]) -> dict[str, Any]:
-    """Format a calendar event into the CalendarFetchData schema for frontend streaming."""
-    return {
-        "summary": event.get("summary", event.get("title", "")),
-        "start_time": _extract_datetime(event.get("start")),
-        "end_time": _extract_datetime(event.get("end")),
-        "calendar_name": event.get("calendarTitle", event.get("calendar_name", "")),
-        "background_color": event.get("backgroundColor", "#4285f4"),
-    }
-
-
 def _format_calendar_option_for_stream(opt: dict[str, Any]) -> dict[str, Any]:
     """Format a calendar draft option into CalendarOptions schema for frontend streaming."""
     formatted: dict[str, Any] = {
@@ -81,7 +71,7 @@ def _format_calendar_option_for_stream(opt: dict[str, Any]) -> dict[str, Any]:
         "is_all_day": opt.get("is_all_day", False),
         "calendar_id": opt.get("calendar_id", ""),
         "calendar_name": opt.get("calendar_name", ""),
-        "background_color": opt.get("color", "#4285f4"),
+        "background_color": opt.get("color", DEFAULT_CALENDAR_COLOR),
         "start": _extract_datetime(opt.get("start")),
         "end": _extract_datetime(opt.get("end")),
     }
@@ -263,13 +253,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
 
         writer = get_stream_writer()
         if formatted_events:
-            writer(
-                {
-                    "calendar_fetch_data": [
-                        _format_event_for_stream(e) for e in formatted_events if isinstance(e, dict)
-                    ]
-                }
-            )
+            writer({"calendar_fetch_data": [e for e in formatted_events if isinstance(e, dict)]})
 
         return result_data
 
@@ -306,15 +290,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
 
         writer = get_stream_writer()
         if calendar_fetch_data:
-            writer(
-                {
-                    "calendar_fetch_data": [
-                        _format_event_for_stream(e)
-                        for e in calendar_fetch_data
-                        if isinstance(e, dict)
-                    ]
-                }
-            )
+            writer({"calendar_fetch_data": [e for e in calendar_fetch_data if isinstance(e, dict)]})
 
         return {
             "calendar_fetch_data": calendar_fetch_data,
@@ -352,13 +328,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         writer = get_stream_writer()
         if calendar_search_data:
             writer(
-                {
-                    "calendar_fetch_data": [
-                        _format_event_for_stream(e)
-                        for e in calendar_search_data
-                        if isinstance(e, dict)
-                    ]
-                }
+                {"calendar_fetch_data": [e for e in calendar_search_data if isinstance(e, dict)]}
             )
 
         return {

@@ -3,6 +3,7 @@ from typing import Any, Union
 
 from fastapi import HTTPException
 
+from app.constants.calendar import DEFAULT_CALENDAR_COLOR
 from app.db.mongodb.collections import get_sync_collection
 from app.models.calendar_models import (
     EventCreateRequest,
@@ -221,7 +222,7 @@ def get_calendar_metadata_map(
             if isinstance(cal, dict):
                 cal_id = cal.get("id")
                 if cal_id:
-                    color_map[cal_id] = cal.get("backgroundColor", "#00bbff")
+                    color_map[cal_id] = cal.get("backgroundColor", DEFAULT_CALENDAR_COLOR)
                     name_map[cal_id] = cal.get("summary", "Calendar")
 
     return color_map, name_map
@@ -248,7 +249,7 @@ def format_event_for_frontend(
     calendar_name = calendar_name_map.get(
         calendar_id, event.get("calendarTitle", "Unknown Calendar")
     )
-    background_color = calendar_color_map.get(calendar_id, "#00bbff")
+    background_color = calendar_color_map.get(calendar_id, DEFAULT_CALENDAR_COLOR)
 
     return {
         "summary": event.get("summary", "No Title"),
@@ -311,7 +312,7 @@ def enrich_calendar_options_with_metadata(
 
     for option in calendar_options:
         calendar_id = option.get("calendar_id", "primary")
-        option["background_color"] = color_map.get(calendar_id, "#00bbff")
+        option["background_color"] = color_map.get(calendar_id, DEFAULT_CALENDAR_COLOR)
         option["calendar_name"] = name_map.get(calendar_id, "Calendar")
 
     event_dates_info = extract_unique_dates(calendar_options)
@@ -319,7 +320,7 @@ def enrich_calendar_options_with_metadata(
 
     for event in same_day_events:
         calendar_id = event.get("calendarId") or ""
-        event["background_color"] = color_map.get(calendar_id, "#00bbff")
+        event["background_color"] = color_map.get(calendar_id, DEFAULT_CALENDAR_COLOR)
 
     for option in calendar_options:
         option["same_day_events"] = same_day_events

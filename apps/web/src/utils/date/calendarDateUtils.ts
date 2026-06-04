@@ -7,6 +7,7 @@
  */
 export const formatDateWithRelative = (dateString: string): string => {
   const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return "Date unavailable";
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -42,6 +43,10 @@ export const formatDateWithRelative = (dateString: string): string => {
 export const formatTimeRange = (startTime: string, endTime: string): string => {
   const start = new Date(startTime);
   const end = new Date(endTime);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return "";
+  }
 
   const formatTimeString = (date: Date) => {
     const hours = date.getHours();
