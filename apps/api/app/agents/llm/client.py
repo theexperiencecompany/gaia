@@ -19,10 +19,8 @@ from typing_extensions import TypedDict
 
 from app.config.settings import settings
 from app.constants.llm import (
-    DEFAULT_GEMINI_FREE_MODEL_NAME,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_GROK_MODEL_NAME,
-    GEMINI_FREE_FALLBACK_MODELS,
     OPENROUTER_BASE_URL,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -301,51 +299,23 @@ def register_llm_providers():
 
 def get_free_llm_chain() -> list[BaseChatModel]:
     """
-    Get a chain of free/low-cost LLMs for auxiliary tasks with fallback support.
+    Get a chain of low-cost LLMs for auxiliary tasks (suggestions, follow-ups,
+    research helpers).
 
-    Returns a list of LLMs in priority order:
-    1. OpenRouter free models (Gemini 2.0 Flash free tier)
-    2. Direct Gemini API (as fallback if OpenRouter fails)
+    Uses the direct Gemini API on DEFAULT_GEMINI_MODEL_NAME.
 
     Returns:
         List of LLM instances to try in order
     """
-    llms: list[BaseChatModel] = []
+    if not settings.GOOGLE_API_KEY:
+        raise RuntimeError("No LLM provider configured for auxiliary tasks. Set GOOGLE_API_KEY.")
 
-    # Primary: OpenRouter free model with automatic model fallback
-    if settings.OPENROUTER_API_KEY:
-        llms.append(
-            ChatOpenAI(
-                model=DEFAULT_GEMINI_FREE_MODEL_NAME,
-                temperature=0.1,
-                streaming=False,
-                api_key=settings.OPENROUTER_API_KEY,
-                base_url=OPENROUTER_BASE_URL,
-                default_headers={
-                    "HTTP-Referer": settings.FRONTEND_URL,
-                    "X-Title": "GAIA",
-                },
-                extra_body={
-                    "models": GEMINI_FREE_FALLBACK_MODELS,
-                },
-            )
+    return [
+        ChatGoogleGenerativeAI(
+            model=DEFAULT_GEMINI_MODEL_NAME,
+            temperature=0.1,
         )
-
-    # Fallback: Direct Gemini API
-    if settings.GOOGLE_API_KEY:
-        llms.append(
-            ChatGoogleGenerativeAI(
-                model=DEFAULT_GEMINI_MODEL_NAME,
-                temperature=0.1,
-            )
-        )
-
-    if not llms:
-        raise RuntimeError(
-            "No free LLM providers configured. Set OPENROUTER_API_KEY or GOOGLE_API_KEY."
-        )
-
-    return llms
+    ]
 
 
 async def invoke_with_fallback(
