@@ -2,7 +2,7 @@
 Workflow scheduler extending BaseSchedulerService for robust scheduling.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from arq.connections import RedisSettings
@@ -16,7 +16,14 @@ from app.models.scheduler_models import (
 )
 from app.models.workflow_models import TriggerType, Workflow
 from app.services.scheduler_service import BaseSchedulerService
+from app.utils.cron_utils import get_next_run_time
 from shared.py.wide_events import log
+
+# How long a workflow may sit in EXECUTING before the recovery scan treats it as a
+# crashed fire (worker died after claiming, before re-arming) and resets it to
+# SCHEDULED. Set well above any real workflow run so a legitimately long execution is
+# never reaped out from under itself.
+STALE_EXECUTING_THRESHOLD = timedelta(hours=1)
 
 # The run-states a WORKFLOW may legitimately hold. The shared ScheduledTaskStatus
 # enum also carries `failed`/`paused`/`cancelled` for the reminder subsystem, but a
@@ -344,6 +351,54 @@ class WorkflowScheduler(BaseSchedulerService):
         except Exception as e:
             log.error(f"Error rescheduling workflow {workflow_id}: {e!s}")
             return False
+
+    async def reap_stale_executing(self) -> int:
+        """Recover workflows wedged in EXECUTING past the staleness threshold.
+
+        A fire claims a workflow (scheduled -> executing); if the worker dies before
+        re-arming, the row stays EXECUTING forever and the claim gate can never match
+        it again. This sweep returns such rows to SCHEDULED with a fresh next run so
+        they resume. Workflow-only: liveness (`activated`) has no reminder equivalent.
+
+        Returns the number of workflows reaped.
+        """
+        now = datetime.now(UTC)
+        cutoff = now - STALE_EXECUTING_THRESHOLD
+        reaped = 0
+
+        cursor = workflows_collection.find(
+            {
+                "activated": True,
+                "status": ScheduledTaskStatus.EXECUTING.value,
+                "updated_at": {"$lt": cutoff},
+            }
+        )
+        async for doc in cursor:
+            workflow_id = doc["_id"]
+            repeat = doc.get("repeat")
+            timezone = (doc.get("trigger_config") or {}).get("timezone")
+
+            updated_at = doc.get("updated_at")
+            if isinstance(updated_at, datetime) and updated_at.tzinfo is None:
+                updated_at = updated_at.replace(tzinfo=UTC)
+            stuck_seconds = int((now - updated_at).total_seconds()) if updated_at else -1
+
+            next_run = get_next_run_time(repeat, now, timezone) if repeat else None
+            update_fields: dict[str, Any] = {"scheduled_at": next_run}
+            if next_run is not None:
+                update_fields["trigger_config.next_run"] = next_run
+
+            await self.update_task_status(workflow_id, ScheduledTaskStatus.SCHEDULED, update_fields)
+            if next_run is not None:
+                await self.reschedule_task(workflow_id, next_run)
+
+            log.warning(
+                f"Reaped workflow {workflow_id} stuck in EXECUTING for {stuck_seconds}s; "
+                f"reset to SCHEDULED (next run {next_run})"
+            )
+            reaped += 1
+
+        return reaped
 
 
 # Global instance for backward compatibility
