@@ -30,12 +30,27 @@ from app.agents.core.background.inbox import (
     was_executor_spawned,
 )
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT
+from app.models.chat_models import tool_fields
 from app.utils.stream_utils import (
     absorb_collector_event,
     apply_outputs_to_tool_data,
     reconstruct_subagent_groups,
 )
 from shared.py.wide_events import log
+
+# Friendly nouns for the "already shown as a card" note. Falls back to "items".
+_RETURNED_CARD_NOUNS: dict[str, str] = {
+    "calendar_fetch_data": "events",
+    "calendar_list_fetch_data": "calendars",
+    "calendar_options": "draft events",
+    "email_fetch_data": "emails",
+    "email_thread_data": "thread",
+    "email_compose_data": "draft",
+    "email_sent_data": "sent email",
+    "contacts_data": "contacts",
+    "people_search_data": "people",
+    "search_results": "results",
+}
 
 
 def register_executor_capture(stream_id: str) -> asyncio.Event:
@@ -89,6 +104,42 @@ def drain_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
     apply_outputs_to_tool_data(accumulated["tool_data"], outputs, only_tool_name="tool_calls_data")
     reconstruct_subagent_groups(accumulated)
     return accumulated.get("tool_data", [])
+
+
+def build_returned_to_frontend_note(stream_id: str) -> str:
+    """Build a note telling comms which native cards already rendered this turn.
+
+    Sourced from the executor's emitted tool events (the same collector +
+    ``tool_fields`` source of truth as ``OPENUI_SUPPRESSED_TOOLS``), so it states
+    what was RETURNED to the frontend — not a claim about DOM rendering.
+
+    MUST be called before the collector is torn down (and, for live streams,
+    before ``done_event`` is set, since the chat stream drains + tears down in
+    parallel). Returns "" when nothing card-worthy was emitted.
+    """
+    entries = drain_executor_tool_data(stream_id)
+    summary: list[str] = []
+    for entry in entries:
+        name = entry.get("tool_name")
+        if name not in tool_fields:
+            continue  # excludes tool_calls_data / subagent_group (loading rows)
+        data = entry.get("data")
+        count = len(data) if isinstance(data, list) else 1
+        noun = _RETURNED_CARD_NOUNS.get(name, "items")
+        summary.append(f"  - {name} ({count} {noun})")
+
+    if not summary:
+        return ""
+
+    body = "\n".join(summary)
+    return (
+        "[RETURNED_TO_FRONTEND]\n"
+        "The data below is ALREADY shown to the user as native cards this turn:\n"
+        f"{body}\n"
+        "Do NOT restate or list their contents, and do NOT emit OpenUI for them. "
+        'A brief conversational lead-in is fine (e.g. "here\'s your week 👇"), '
+        "but never enumerate the items the card already shows.\n"
+    )
 
 
 def teardown_executor_capture(stream_id: str) -> None:

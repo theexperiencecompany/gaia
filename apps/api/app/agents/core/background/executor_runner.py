@@ -21,6 +21,7 @@ from langchain_core.messages import HumanMessage
 from langsmith import traceable
 
 from app.agents.core.background.executor_capture import (
+    build_returned_to_frontend_note,
     drain_executor_tool_data,
     teardown_executor_capture,
 )
@@ -57,6 +58,7 @@ async def _invoke_comms_graph(
     msg_type: str,
     conversation_id: str,
     user: dict,
+    returned_note: str = "",
 ) -> str:
     """Invoke the comms graph silently with the executor result as internal context.
 
@@ -68,6 +70,11 @@ async def _invoke_comms_graph(
     Returns the comms-generated text, or an empty string on failure.
     """
     prefix = "[EXECUTOR_ERROR]" if msg_type == "error" else "[EXECUTOR_RESULT]"
+    # Prepend the "already shown as a card" note (if any) so comms doesn't
+    # re-narrate data the frontend already rendered natively.
+    content = (
+        f"{returned_note}{prefix}\n{result_text}" if returned_note else f"{prefix}\n{result_text}"
+    )
     try:
         comms_graph = await GraphManager.get_graph("comms_agent")
         if not comms_graph:
@@ -93,7 +100,7 @@ async def _invoke_comms_graph(
                 #     treats it as a turn to respond to. This is how it worked
                 #     before the HumanMessage→SystemMessage regression.
                 HumanMessage(
-                    content=f"{prefix}\n{result_text}",
+                    content=content,
                     name="background_executor",
                 ),
             ],
@@ -171,6 +178,7 @@ async def _deliver_bg_notification(
     user_message_id: str | None = None,
     tool_data: list[dict[str, Any]] | None = None,
     is_queued: bool = False,
+    returned_note: str = "",
 ) -> None:
     """Run comms once with the executor result, then save + deliver the message.
 
@@ -203,7 +211,9 @@ async def _deliver_bg_notification(
     """
     user_id = user.get("user_id", "")
 
-    notification_text = await _invoke_comms_graph(result_text, msg_type, conversation_id, user)
+    notification_text = await _invoke_comms_graph(
+        result_text, msg_type, conversation_id, user, returned_note=returned_note
+    )
     # If comms is unavailable, fall back to the raw executor text rather than
     # dropping the message entirely.
     if not notification_text:
@@ -330,6 +340,7 @@ async def _dispatch_executor_result(
     user_message_id: str | None,
     stream_id: str,
     is_queued: bool,
+    returned_note: str = "",
 ) -> None:
     """Hand the executor's terminal text to comms and surface the message to the user.
 
@@ -347,6 +358,7 @@ async def _dispatch_executor_result(
             user_message_id=user_message_id,
             tool_data=queued_tool_data,
             is_queued=is_queued,
+            returned_note=returned_note,
         )
     except Exception as e:
         log.error("Background notification delivery failed", error=str(e))
@@ -365,6 +377,11 @@ async def _finalize_executor_run(
     """The full post-run cleanup: signal done, notify, tear down state, hand off lock."""
     was_cancelled = bool(stream_id) and await StreamManager.is_cancelled(stream_id)
     is_queued = stream_id.startswith("queued_")
+
+    # Snapshot which native cards were returned to the frontend BEFORE signalling
+    # done — for live streams the chat path drains + tears down the collector in
+    # parallel once done_event fires, so reading it after would race teardown.
+    returned_note = "" if was_cancelled else build_returned_to_frontend_note(stream_id)
 
     # Signal SSE consumer that tool events are done so it can drain the collector
     # into the comms ack and publish [DONE]. Comms re-narration runs in parallel.
@@ -388,6 +405,7 @@ async def _finalize_executor_run(
             user_message_id=user_message_id,
             stream_id=stream_id,
             is_queued=is_queued,
+            returned_note=returned_note,
         )
 
     if is_queued:
