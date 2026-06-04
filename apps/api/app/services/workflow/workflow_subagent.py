@@ -199,7 +199,7 @@ class WorkflowSubagentRunner:
                             {
                                 "tool_output": {
                                     "tool_call_id": chunk.tool_call_id,
-                                    "output": chunk.text()[:3000],
+                                    "output": chunk.text(),
                                 }
                             }
                         )

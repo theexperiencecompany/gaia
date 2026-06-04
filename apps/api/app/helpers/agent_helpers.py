@@ -726,11 +726,7 @@ async def execute_graph_streaming(
                         tool_result_payload = dict(tool_result_payload.__dict__)
                     else:
                         tool_result_payload = str(tool_result_payload)
-                output = (
-                    chunk.content[:3000]
-                    if isinstance(chunk.content, str)
-                    else str(chunk.content)[:3000]
-                )
+                output = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
                 yield format_sse_data(
                     {
                         "tool_output": {

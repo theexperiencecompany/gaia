@@ -371,7 +371,7 @@ async def execute_subagent_stream(
                 if stream_writer:
                     tool_output_data: dict = {
                         "tool_call_id": chunk.tool_call_id,
-                        "output": content_str[:3000],
+                        "output": content_str,
                     }
                     if subagent_id:
                         tool_output_data["subagent_id"] = subagent_id
@@ -663,7 +663,7 @@ async def call_subagent(
                 complete_message = _capture_finish_task_content(chunk, complete_message)
                 if chunk.name == FINISH_TASK_NAME:
                     yield f"data: {json.dumps({'response': content_str})}\n\n"
-                yield f"data: {json.dumps({'tool_output': {'tool_call_id': chunk.tool_call_id, 'output': content_str[:3000]}})}\n\n"
+                yield f"data: {json.dumps({'tool_output': {'tool_call_id': chunk.tool_call_id, 'output': content_str}})}\n\n"
             continue
 
         if stream_mode == "custom":
