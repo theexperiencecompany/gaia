@@ -34,10 +34,39 @@ export function ToolCallRow({
 }>) {
   const [expanded, setExpanded] = useState(false);
 
+  const primaryLabel = call.message || formatToolName(call.tool_name);
+  const integrationLabel =
+    getIntegrationName(call) ||
+    (call.tool_category && call.tool_category !== "unknown"
+      ? call.tool_category
+          .replaceAll("_", " ")
+          .split(" ")
+          .map(
+            (word) =>
+              word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
+          )
+          .join(" ")
+      : "");
+  // `show_category === false` means the backend sent a custom/curated label as
+  // the primary. In that case the primary already reads naturally, so the
+  // secondary shows the raw tool name (with underscores, untrimmed) for
+  // transparency. Otherwise the primary IS the tool name, so the secondary shows
+  // the integration/category (the original behaviour).
+  const hasCustomLabel = call.show_category === false;
+  const secondaryLabel = hasCustomLabel
+    ? call.tool_name.toLowerCase()
+    : integrationLabel;
+  // Hide the secondary when it adds nothing — e.g. "retrieve_tools" under
+  // "Retrieve tools". Compares with separators stripped so a tool name only
+  // shows when it genuinely differs from the primary label.
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const normPrimary = normalize(primaryLabel);
+  const normSecondary = normalize(secondaryLabel);
   const hasCategoryText =
-    call.show_category !== false &&
-    call.tool_category &&
-    call.tool_category !== "unknown";
+    secondaryLabel.length > 0 &&
+    normSecondary.length > 0 &&
+    !normPrimary.includes(normSecondary) &&
+    !normSecondary.includes(normPrimary);
   const hasInputs =
     call.inputs &&
     typeof call.inputs === "object" &&
@@ -63,18 +92,16 @@ export function ToolCallRow({
       </div>
 
       <div className="flex-1 min-w-0">
-        <div
-          className={`${hasCategoryText ? "min-h-8 flex flex-col justify-center" : "flex items-center min-h-8"}`}
+        <button
+          type="button"
+          className={`w-full text-left group/parent ${hasCategoryText ? "min-h-8 flex flex-col justify-center" : "flex items-center min-h-8"} ${hasDetails ? "cursor-pointer" : "cursor-default"}`}
+          onClick={() => hasDetails && setExpanded(!expanded)}
         >
-          <button
-            type="button"
-            className={`flex items-center gap-1 group/parent ${hasDetails ? "cursor-pointer" : ""}`}
-            onClick={() => hasDetails && setExpanded(!expanded)}
-          >
+          <div className="flex items-center gap-1">
             <p
               className={`text-xs text-zinc-400 font-medium ${hasDetails ? "group-hover/parent:text-white transition-colors" : ""}`}
             >
-              {call.message || formatToolName(call.tool_name)}
+              {primaryLabel}
             </p>
             {hasDetails && (
               <ChevronDown
@@ -83,22 +110,13 @@ export function ToolCallRow({
                 height={14}
               />
             )}
-          </button>
+          </div>
           {hasCategoryText && (
-            <p className="text-[11px] text-default-400 capitalize leading-tight">
-              {getIntegrationName(call) ||
-                call.tool_category
-                  .replaceAll("_", " ")
-                  .split(" ")
-                  .map(
-                    (word) =>
-                      word.charAt(0).toUpperCase() +
-                      word.slice(1).toLowerCase(),
-                  )
-                  .join(" ")}
+            <p className="text-[11px] text-zinc-600 leading-tight">
+              {secondaryLabel}
             </p>
           )}
-        </div>
+        </button>
 
         <AnimatePresence>
           {expanded && hasDetails && (
@@ -222,12 +240,12 @@ export function SubagentRow({
       </div>
 
       <div className="flex-1 min-w-0">
-        <div className="min-h-8 flex flex-col justify-center">
-          <button
-            type="button"
-            className="flex items-center group/sa cursor-pointer w-full"
-            onClick={() => setExpanded(!expanded)}
-          >
+        <button
+          type="button"
+          className="min-h-8 flex flex-col justify-center w-full text-left group/sa cursor-pointer"
+          onClick={() => setExpanded(!expanded)}
+        >
+          <div className="flex items-center">
             <span className="text-xs font-medium text-zinc-200 group-hover/sa:text-white transition-colors mr-auto">
               {group.subagent_name}
             </span>
@@ -243,13 +261,13 @@ export function SubagentRow({
                 height={14}
               />
             </div>
-          </button>
+          </div>
           <p className="text-[11px] text-zinc-600 leading-tight">
             Subagent
             {visibleToolCalls.length > 0 &&
               ` · ${visibleToolCalls.length} tool${visibleToolCalls.length === 1 ? "" : "s"}`}
           </p>
-        </div>
+        </button>
 
         <AnimatePresence>
           {expanded && (

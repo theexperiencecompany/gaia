@@ -8,6 +8,7 @@ from langchain_core.messages import ToolCall
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
+from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
 from app.db.mongodb.collections import integrations_collection
 from app.decorators.caching import Cacheable
 from app.models.chat_models import (
@@ -183,14 +184,14 @@ async def format_tool_call_entry(
     # Special tools with custom display names and categories
     # Format: (category, display_name, show_category)
     special_tools = {
-        "retrieve_tools": ("retrieve_tools", "Retrieving tools", False),
+        "retrieve_tools": ("retrieve_tools", "Retrieve tools", False),
         "call_executor": ("executor", "Delegating to executor", False),
         "handoff": ("handoff", None, False),  # message will be set from args
-        "spawn_subagent": ("spawn_subagent", "Spawning subagent", False),
-        "wait_for_subagents": ("wait_for_subagents", "Waiting for subagents", False),
-        "plan_tasks": ("plan_tasks", "Planning tasks", True),
-        "update_tasks": ("plan_tasks", "Updating tasks", True),
-        "finish_task": ("finish_task", "Finishing task", False),
+        "spawn_subagent": ("spawn_subagent", "Spawn subagent", False),
+        "wait_for_subagents": ("wait_for_subagents", "Wait for subagents", False),
+        "plan_tasks": ("plan_tasks", "Plan tasks", False),
+        "update_tasks": ("plan_tasks", "Update tasks", False),
+        "finish_task": ("finish_task", "Finish task", False),
     }
 
     if tool_name_raw in special_tools:
@@ -227,8 +228,13 @@ async def format_tool_call_entry(
             if tool_category and tool_category.startswith("mcp_"):
                 tool_category = tool_category[4:]
 
-        tool_display_name = tool_name_raw.replace("_", " ").title()
-        show_category = True
+        tool_display_name = humanize_tool_name(tool_name_raw, tool_category)
+        # show_category=False marks "the primary is a custom/curated label" (the
+        # tool name isn't already in the primary text). The frontend uses this as
+        # the single signal: the live LoadingIndicator drops the "Category:" prefix,
+        # and the tool thread shows the raw tool name as the secondary line. When
+        # uncurated, the primary IS the tool name, so the category is shown instead.
+        show_category = tool_name_raw not in TOOL_DISPLAY_NAMES
 
         # When a core tool runs inside an MCP subagent, also drop the
         # integration's icon_url / display name so the secondary label
