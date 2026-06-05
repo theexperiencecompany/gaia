@@ -32,12 +32,7 @@ class ReminderScheduler(BaseSchedulerService):
     """
 
     def __init__(self, redis_settings: RedisSettings | None = None):
-        """
-        Initialize the reminder scheduler.
-
-        Args:
-            redis_settings: Redis connection settings for ARQ
-        """
+        """Initialize the reminder scheduler."""
         super().__init__(redis_settings)
 
     def get_job_name(self) -> str:
@@ -45,16 +40,7 @@ class ReminderScheduler(BaseSchedulerService):
         return "process_reminder"
 
     async def create_reminder(self, reminder_data: CreateReminderRequest, user_id: str) -> str:
-        """
-        Create a new reminder and schedule it.
-
-        Args:
-            reminder_data: Reminder data dictionary
-            user_id: User Id
-
-        Returns:
-            Created reminder ID
-        """
+        """Create a new reminder and schedule it. Returns the reminder ID."""
         is_recurring = reminder_data.repeat is not None
         now = datetime.now(UTC)
         scheduled_at = reminder_data.scheduled_at
@@ -106,17 +92,7 @@ class ReminderScheduler(BaseSchedulerService):
         return reminder_id
 
     async def update_reminder(self, reminder_id: str, update_data: dict, user_id: str) -> bool:
-        """
-        Update an existing reminder.
-
-        Args:
-            reminder_id: Reminder ID to update
-            update_data: Fields to update
-            user_id: User ID for authorization
-
-        Returns:
-            True if updated successfully
-        """
+        """Update an existing reminder, rescheduling if scheduled_at changed."""
         log.set(reminder_id=reminder_id, reminder_user_id=user_id)
         # Native datetime (BSON date), consistent with create/status-update writes.
         update_data["updated_at"] = datetime.now(UTC)
@@ -149,18 +125,7 @@ class ReminderScheduler(BaseSchedulerService):
         limit: int = 100,
         skip: int = 0,
     ) -> list[ReminderModel]:
-        """
-        List reminders for a user.
-
-        Args:
-            user_id: User ID
-            status: Filter by status (optional)
-            limit: Maximum number of results
-            skip: Number of results to skip
-
-        Returns:
-            List of reminder models
-        """
+        """List reminders for a user, optionally filtered by status."""
         query = {"user_id": user_id}
         if status:
             query["status"] = status
@@ -257,15 +222,7 @@ class ReminderScheduler(BaseSchedulerService):
         return ReminderModel(**doc)
 
     def _serialize_reminder(self, reminder: ReminderModel) -> dict:
-        """
-        Serialize a ReminderModel to a dictionary for MongoDB storage.
-
-        Args:
-            reminder: ReminderModel instance
-
-        Returns:
-            Dictionary representation of the reminder
-        """
+        """Serialize a ReminderModel to a dict for MongoDB storage."""
         reminder_dict = reminder.model_dump(by_alias=True)
         if reminder_dict.get("_id") is None:
             # Ensure to remove _id if it was not set

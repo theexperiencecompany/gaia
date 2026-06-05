@@ -1,17 +1,8 @@
-"""
-Subagent Execution Core - Shared logic for subagent invocation.
+"""Shared logic for subagent invocation, used by handoff_tools.py and
+executor_tool.py.
 
-This module contains the reusable classes and functions for invoking subagents.
-Both handoff_tools.py and executor_tool.py use these.
-
-Keeping shared code here avoids cyclic dependencies since handoff_tools.py
-imports from this file, not the other way around.
-
-Key exports:
-- SubagentExecutionContext: Container for execution data
-- build_initial_messages(): Construct standard message list with context
-- execute_subagent_stream(): Unified streaming with configurable tool tracking
-- prepare_executor_execution(): Prepare context for executor agent
+Lives here (rather than in handoff_tools.py) so those modules import from it,
+avoiding a cyclic dependency.
 """
 
 from datetime import datetime
@@ -154,22 +145,13 @@ async def execute_subagent_stream(
     integration_metadata: IntegrationMetadata | None = None,
     subagent_id: str | None = None,
 ) -> str:
-    """
-    Execute subagent with streaming and tool tracking.
+    """Execute a subagent with streaming and tool tracking, returning the
+    complete message.
 
-    Args:
-        ctx: SubagentExecutionContext for the subagent run
-        stream_writer: Callback for custom events (from get_stream_writer())
-        integration_metadata: Optional dict with {icon_url, integration_id, name}
-                              for custom MCP icon display
-
-    Returns:
-        Complete message string
-
-    Stream Event Flow:
-        1. "updates" - Emit tool_data with complete args when tool is called
-        2. "messages" - Stream content, emit tool_output when ToolMessage arrives
-        3. "custom" - Forward custom events (progress messages, etc.) to parent
+    Stream event flow:
+        - "updates": emit tool_data with complete args when a tool is called
+        - "messages": stream content, emit tool_output when a ToolMessage arrives
+        - "custom": forward custom events (progress, etc.) to the parent
     """
     log.set(subagent={"name": ctx.agent_name, "provider": ctx.integration_id})
     complete_message = ""
@@ -280,22 +262,14 @@ async def prepare_executor_execution(
     user_time: datetime,
     stream_id: str | None = None,
 ) -> tuple[SubagentExecutionContext | None, str | None]:
-    """
-    Prepare execution context for the executor agent.
+    """Prepare execution context for the executor agent.
 
-    Like the platform-subagent prepare flow but:
-    - Uses GraphManager for graph resolution (not providers)
-    - Uses create_system_message for executor-specific prompts
-    - Injects direct handoff hints when selected_tool/tool_category is known
+    Like the platform-subagent prepare flow but resolves the graph via
+    GraphManager, uses executor-specific prompts, and injects direct handoff
+    hints when selected_tool/tool_category is known.
 
-    Args:
-        task: The task/query to execute
-        configurable: Config dict from RunnableConfig (with user_id, user_time, etc.)
-        user_time: User's local time
-
-    Returns:
-        Tuple of (SubagentExecutionContext, None) on success, or
-        (None, error_message) on failure
+    Returns (SubagentExecutionContext, None) on success, or (None, error) on
+    failure.
     """
     user_id = configurable.get("user_id")
     thread_id = configurable.get("thread_id", "")

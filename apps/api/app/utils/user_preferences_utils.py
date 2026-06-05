@@ -9,15 +9,7 @@ from shared.py.wide_events import log
 
 
 def format_response_style_instruction(response_style: str) -> str:
-    """
-    Format response style into instruction for agent.
-
-    Args:
-        response_style: User's preferred response style
-
-    Returns:
-        Formatted instruction string for the agent
-    """
+    """Map a user's response-style preference to an agent instruction."""
     style_map = {
         "brief": "Keep responses brief and to the point",
         "detailed": "Provide detailed and comprehensive responses",
@@ -29,15 +21,7 @@ def format_response_style_instruction(response_style: str) -> str:
 
 
 def format_profession_for_display(profession: str) -> str:
-    """
-    Format profession for display in agent context.
-
-    Args:
-        profession: User's profession
-
-    Returns:
-        Formatted profession string
-    """
+    """Title-case a profession string for display in agent context."""
     if not profession:
         return ""
 
@@ -46,15 +30,7 @@ def format_profession_for_display(profession: str) -> str:
 
 
 def build_user_context_parts(preferences: dict[str, Any]) -> list[str]:
-    """
-    Build user context parts from preferences for agent system prompt.
-
-    Args:
-        preferences: Dictionary of user preferences
-
-    Returns:
-        List of formatted context strings
-    """
+    """Build formatted user-context lines from preferences for the system prompt."""
     log.set(
         operation="build_user_context_parts",
         has_profession=bool(preferences.get("profession")),
@@ -142,15 +118,7 @@ def format_user_preferences_for_agent(
     preferences: dict[str, Any],
     writing_style: dict[str, Any] | None = None,
 ) -> str | None:
-    """
-    Format user preferences into a string suitable for agent system prompt.
-
-    Args:
-        preferences: Dictionary of user preferences from onboarding
-
-    Returns:
-        Formatted string of user preferences or None if no valid preferences
-    """
+    """Format user preferences (and writing style) into a system-prompt block, or None."""
     if not preferences and not writing_style:
         return None
 

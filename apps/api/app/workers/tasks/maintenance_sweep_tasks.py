@@ -55,13 +55,12 @@ UNTITLED_TODO_TITLE = "Untitled Todo"
 
 
 async def maintenance_sweep_tracked_todos(_ctx: dict) -> str:
-    """
-    Cron task: scan active tracked todos and apply tiered staleness handling.
+    """Cron task: scan active tracked todos and apply tiered staleness handling.
 
-    Three tiers:
-    - Expired: expires_at <= now → health-check agent decides archive or notify
-    - Overdue: due_date <= now with no upcoming schedule → individual notification
-    - Dormant: no update in DORMANT_DAYS days → health-check agent re-queues or bundles digest
+    Tiers:
+    - Expired (expires_at <= now): health-check agent archives or notifies.
+    - Overdue (due_date <= now, no upcoming schedule): individual notification.
+    - Dormant (no update in DORMANT_DAYS): agent re-queues or bundles a digest.
     """
     async with wide_task("maintenance_sweep_tracked_todos"):
         now = datetime.now(UTC)

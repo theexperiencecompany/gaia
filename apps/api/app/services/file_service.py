@@ -45,18 +45,7 @@ async def upload_file_service(
     conversation_id: str | None = None,
     content_length: int | None = None,
 ) -> dict:
-    """
-    Upload a file to Cloudinary, generate embeddings, and store metadata in MongoDB and ChromaDB.
-    Args:
-        file (UploadFile): The file to upload
-        user_id (str): The ID of the user uploading the file
-        conversation_id (str, optional): The conversation ID to associate with the file
-        content_length (int | None): Request Content-Length header, for pre-flight size rejection
-    Returns:
-        dict: File metadata including file_id and url
-    Raises:
-        HTTPException: If file upload fails
-    """
+    """Upload a file to Cloudinary, generate embeddings, and store metadata in MongoDB and ChromaDB."""
     content, normalized_content_type, resource_type = await validate_upload(
         file=file, content_length=content_length
     )
@@ -362,20 +351,7 @@ async def update_file_in_chromadb(
     ]
 )
 async def delete_file_service(file_id: str, user_id: str | None) -> dict:
-    """
-    Delete a file by its ID for the specified user.
-    Removes the file from MongoDB, Cloudinary, and ChromaDB.
-
-    Args:
-        file_id (str): The ID of the file to delete
-        user_id (Optional[str]): The ID of the authenticated user
-
-    Returns:
-        dict: Success message with deleted file information
-
-    Raises:
-        HTTPException: If the file is not found or deletion fails
-    """
+    """Delete a file by ID for the user, removing it from MongoDB, Cloudinary, and ChromaDB."""
     log.info(f"Deleting file with id: {file_id} for user: {user_id}")
     log.set(service="file_service", operation="delete", file_id=file_id, user_id=user_id)
 
@@ -443,22 +419,9 @@ async def update_file_service(
     file_content: bytes | None = None,
     conversation_id: str | None = None,
 ) -> dict:
-    """
-    Update file metadata and optionally regenerate description if file content is provided.
-    The function refreshes ChromaDB embedding and invalidates related caches.
+    """Update file metadata, regenerating the description from new content if provided.
 
-    Args:
-        file_id (str): The ID of the file to update
-        user_id (str): The ID of the authenticated user
-        update_data (dict): The file data to update
-        file_content (bytes, optional): The new file content to process for description
-        conversation_id (str, optional): The conversation ID to associate with the file
-
-    Returns:
-        dict: Updated file metadata
-
-    Raises:
-        HTTPException: If the file is not found or update fails
+    Refreshes the ChromaDB embedding and invalidates related caches.
     """
     log.info(f"Updating file with id: {file_id} for user: {user_id}")
     log.set(service="file_service", operation="update", file_id=file_id, user_id=user_id)

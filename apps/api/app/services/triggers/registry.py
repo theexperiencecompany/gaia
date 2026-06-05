@@ -23,11 +23,7 @@ class TriggerRegistry:
         self._event_handlers: dict[str, TriggerHandler] = {}
 
     def register(self, handler: TriggerHandler) -> None:
-        """Register a trigger handler.
-
-        Args:
-            handler: The handler instance to register
-        """
+        """Register a trigger handler."""
         log.set(
             service="trigger_registry",
             operation="register",

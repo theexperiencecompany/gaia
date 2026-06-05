@@ -97,16 +97,7 @@ class WorkflowScheduler(BaseSchedulerService):
         return result is not None
 
     async def get_task(self, task_id: str, user_id: str | None = None) -> Workflow | None:
-        """
-        Get a workflow by ID.
-
-        Args:
-            task_id: Workflow ID
-            user_id: Optional user ID for additional validation
-
-        Returns:
-            Workflow object or None if not found
-        """
+        """Get a workflow by ID, or None if not found."""
         try:
             query = {"_id": task_id}
             if user_id:
@@ -128,21 +119,11 @@ class WorkflowScheduler(BaseSchedulerService):
             return None
 
     async def execute_task(self, task: BaseScheduledTask) -> TaskExecutionResult:
-        """
-        Execute a workflow task.
+        """Execute a workflow task via the BaseSchedulerService interface.
 
-        This delegates to the existing workflow worker logic
-        while providing the BaseSchedulerService interface.
-
-        Note: Workflows are executed via ARQ calling execute_workflow_by_id
-        directly, which handles execution tracking. This method is currently
-        not used for workflows but kept for BaseSchedulerService compatibility.
-
-        Args:
-            task: Workflow to execute (extending BaseScheduledTask)
-
-        Returns:
-            Task execution result
+        Workflows are normally executed via ARQ calling execute_workflow_by_id
+        directly (which handles execution tracking); this method is currently
+        unused but kept for BaseSchedulerService compatibility.
         """
         try:
             workflow: Workflow | None = task if isinstance(task, Workflow) else None
@@ -176,18 +157,7 @@ class WorkflowScheduler(BaseSchedulerService):
         update_data: dict[str, Any] | None = None,
         user_id: str | None = None,
     ) -> bool:
-        """
-        Update workflow status and other fields.
-
-        Args:
-            task_id: Workflow ID
-            status: New status
-            update_data: Additional fields to update
-            user_id: User ID for authorization (optional)
-
-        Returns:
-            True if update was successful
-        """
+        """Update workflow status and other fields."""
         if status not in WORKFLOW_RUN_STATUSES:
             raise ValueError(
                 f"Workflow {task_id}: refusing to write status={status.value!r}. "
@@ -256,20 +226,7 @@ class WorkflowScheduler(BaseSchedulerService):
         max_occurrences: int | None = None,
         stop_after: datetime | None = None,
     ) -> bool:
-        """
-        Schedule workflow execution using BaseSchedulerService.
-
-        Args:
-            workflow_id: Workflow ID to schedule
-            user_id: User ID (for validation)
-            scheduled_at: When to execute
-            repeat: Cron expression for recurring workflows
-            max_occurrences: Limit number of executions
-            stop_after: Stop executing after this date
-
-        Returns:
-            True if scheduled successfully
-        """
+        """Schedule workflow execution using BaseSchedulerService."""
         try:
             # Create schedule configuration
             schedule_config = ScheduleConfig(
@@ -300,17 +257,7 @@ class WorkflowScheduler(BaseSchedulerService):
     async def reschedule_workflow(
         self, workflow_id: str, new_scheduled_at: datetime, repeat: str | None = None
     ) -> bool:
-        """
-        Reschedule an existing workflow.
-
-        Args:
-            workflow_id: Workflow ID to reschedule
-            new_scheduled_at: New execution time
-            repeat: New cron expression (optional)
-
-        Returns:
-            True if rescheduled successfully
-        """
+        """Reschedule an existing workflow."""
         try:
             # Update the workflow's scheduling fields in database
             update_data = {

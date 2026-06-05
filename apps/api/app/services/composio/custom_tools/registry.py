@@ -127,12 +127,7 @@ class CustomToolsRegistry:
         return len(self._registered_toolkits) == expected_count
 
     def initialize(self, composio: Composio) -> None:
-        """
-        Initialize the registry with Composio client and register all custom tools.
-
-        Args:
-            composio: The Composio client instance
-        """
+        """Initialize the registry with the Composio client and register all custom tools."""
         if self._composio is composio and self._is_fully_initialized():
             return
 
@@ -161,13 +156,7 @@ class CustomToolsRegistry:
         toolkit: str,
         register_func: Callable[["Composio"], list[str]],
     ) -> None:
-        """
-        Register custom tools for a specific toolkit.
-
-        Args:
-            toolkit: The toolkit name (e.g., 'gmail')
-            register_func: Function that registers tools and returns their names
-        """
+        """Register custom tools for a specific toolkit."""
         if self._composio is None:
             raise RuntimeError("Registry not initialized. Call initialize() first.")
 
@@ -188,15 +177,7 @@ class CustomToolsRegistry:
         log.info(f"Registered {len(tool_names)} custom tools for {normalized_toolkit} toolkit")
 
     def get_tool_names(self, toolkit: str) -> list[str]:
-        """
-        Get list of custom tool names for a specific toolkit.
-
-        Args:
-            toolkit: The toolkit name (e.g., 'gmail', 'slack')
-
-        Returns:
-            List of custom tool names, or empty list if none exist
-        """
+        """Get the custom tool names for a toolkit, or an empty list if none exist."""
         return self._tools_by_toolkit.get(toolkit.lower(), [])
 
     @property

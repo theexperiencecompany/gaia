@@ -1,9 +1,5 @@
-"""
-Follow-up Actions Node for the conversational graph.
-
-This module provides functionality to suggest contextual follow-up actions
-to users based on the conversation context and tool usage patterns.
-"""
+"""Follow-up actions node: suggests contextual follow-up actions from
+conversation context and tool usage."""
 
 from typing import cast
 
@@ -17,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.llm.client import get_free_llm_chain, invoke_with_fallback
 from app.agents.tools.core.registry import get_tool_registry
+from app.constants.general import CALL_EXECUTOR_NAME
 from app.override.langgraph_bigtool.utils import State
 from app.services.integrations.user_integrations import (
     get_user_integration_capabilities,
@@ -25,11 +22,6 @@ from app.templates.docstrings.follow_up_actions_tool_docs import (
     SUGGEST_FOLLOW_UP_ACTIONS,
 )
 from shared.py.wide_events import log
-
-# Comms tool that hands the turn off to the background executor. When the
-# current turn calls it, the user-visible answer arrives later as a separate
-# message (see executor_runner), so follow-ups are generated there instead.
-CALL_EXECUTOR_TOOL_NAME = "call_executor"
 
 
 class FollowUpActions(BaseModel):
@@ -95,14 +87,9 @@ async def generate_follow_up_actions(
 
 
 async def follow_up_actions_node(state: State, config: RunnableConfig, store: BaseStore) -> State:
-    """
-    Analyze conversation context and suggest relevant follow-up actions.
+    """Analyze conversation context and stream relevant follow-up actions.
 
-    Args:
-        state: The current state of the conversation
-
-    Returns:
-        Empty dict indicating successful completion (follow-up actions are streamed, not stored in state)
+    Follow-up actions are streamed, not stored in state.
     """
     # Send completion marker as soon as follow-up actions start
     writer = get_stream_writer()
@@ -170,7 +157,7 @@ def _delegated_to_executor(messages: list[AnyMessage]) -> bool:
         tool_calls = getattr(message, "tool_calls", None) or []
         for tc in tool_calls:
             name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
-            if name == CALL_EXECUTOR_TOOL_NAME:
+            if name == CALL_EXECUTOR_NAME:
                 return True
     return False
 

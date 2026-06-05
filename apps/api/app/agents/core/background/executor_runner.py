@@ -37,6 +37,7 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
+from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_QUEUE_PREFIX
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
@@ -51,23 +52,6 @@ from shared.py.wide_events import log
 
 # Prevent GC of background tasks spawned from the queue
 _queued_executor_tasks: set[asyncio.Task] = set()
-
-
-# Prepended to a workflow result so comms restates the full outcome in text.
-# A workflow notification is delivered to external messaging apps (WhatsApp,
-# Telegram, ...) with NO cards or UI, so "the card already shows it" does not
-# apply: every concrete data point has to live in the words themselves.
-_PLATFORM_DELIVERY_NOTE = (
-    "[PLATFORM_DELIVERY]\n"
-    "This is an automated workflow result delivered to the user as PLAIN TEXT on an "
-    "external messaging app (WhatsApp, Telegram, etc.). There are NO cards, NO UI "
-    "components, NO screen: the user only sees your words. State the full outcome in "
-    "your message — actually list the emails (sender + subject), the calendar events "
-    "(title + time), and every concrete result the user needs. Never say things like "
-    "'saved to your list', 'here's your summary 👇', or refer to anything shown on "
-    "screen, because there is no screen. Write it naturally but completely, and keep "
-    "GAIA's voice.\n"
-)
 
 
 async def _invoke_comms_graph(
@@ -92,7 +76,7 @@ async def _invoke_comms_graph(
         # Text-only platform delivery: tell comms to restate everything. The
         # card-suppression note (returned_note) is deliberately dropped here —
         # it would tell comms NOT to list data that has no card to fall back on.
-        content = f"{_PLATFORM_DELIVERY_NOTE}{prefix}\n{result_text}"
+        content = f"{PLATFORM_DELIVERY_NOTE}{prefix}\n{result_text}"
     else:
         # Interactive chat: prepend the "already shown as a card" note (if any)
         # so comms doesn't re-narrate data the frontend rendered natively.

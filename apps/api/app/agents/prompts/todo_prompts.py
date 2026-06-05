@@ -1,10 +1,4 @@
-"""
-Prompts and tool descriptions for agent task management tools.
-
-This file contains all text content for the todo management tools:
-- System prompts
-- Tool descriptions
-"""
+"""Prompts and tool descriptions for the agent task management tools."""
 
 # System prompt appended to model context
 TODO_SYSTEM_PROMPT = """You have TWO separate task systems — do not confuse them.

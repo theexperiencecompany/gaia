@@ -62,18 +62,7 @@ class BatchEventDeleteRequest(BaseModel):
 
 
 class RecurrenceRule(BaseModel):
-    """
-    Model representing a recurrence rule (RRULE) for a recurring event following RFC 5545.
-
-    This model supports the core components needed to define recurring events in Google Calendar:
-    - FREQ: Required frequency of repetition (daily, weekly, monthly, yearly)
-    - INTERVAL: Optional interval between occurrences (default: 1)
-    - COUNT: Optional number of occurrences
-    - UNTIL: Optional end date (inclusive)
-    - BYDAY: Optional days of week (e.g., for weekly events)
-    - BYMONTHDAY: Optional days of month (e.g., for monthly events)
-    - BYMONTH: Optional months of year (e.g., for yearly events)
-    """
+    """Recurrence rule (RRULE) for a recurring event following RFC 5545."""
 
     frequency: Literal["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] = Field(
         ..., title="Frequency of repetition"
@@ -125,17 +114,11 @@ class RecurrenceRule(BaseModel):
 
     @model_validator(mode="after")
     def validate_recurrence(self) -> "RecurrenceRule":
-        """
-        Validate the recurrence rule based on frequency type
-        """
-        # Cannot specify both count and until
         if self.count is not None and self.until is not None:
             raise ValueError("Cannot specify both 'count' and 'until' in a recurrence rule")
 
-        # Validate the until date format if provided
         if self.until:
             try:
-                # Try to parse the date to validate it
                 if "T" in self.until:  # ISO datetime format
                     datetime.fromisoformat(self.until.replace("Z", "+00:00"))
                 else:  # Simple date format
@@ -145,11 +128,6 @@ class RecurrenceRule(BaseModel):
                     "Invalid 'until' date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS±HH:MM)"
                 )
 
-        # Specific validations based on frequency
-        if self.frequency == "WEEKLY" and not self.by_day:
-            # For weekly frequency, by_day should typically be specified
-            pass  # This is just a recommendation, not an error
-
         if self.frequency == "MONTHLY" and self.by_day and self.by_month_day:
             raise ValueError(
                 "Cannot specify both 'by_day' and 'by_month_day' for monthly recurrence"
@@ -158,9 +136,7 @@ class RecurrenceRule(BaseModel):
         return self
 
     def to_rrule_string(self) -> str:
-        """
-        Convert the RecurrenceRule object to an RFC 5545 RRULE string
-        """
+        """Convert to an RFC 5545 RRULE string."""
         components = [f"FREQ={self.frequency}"]
 
         if self.interval != 1:
@@ -218,24 +194,12 @@ class RecurrenceRule(BaseModel):
 
 
 class RecurrenceData(BaseModel):
-    """
-    Model representing the complete recurrence data for an event.
-
-    This can include:
-    - rrule: The main recurrence rule
-    - exclude_dates: Specific dates to exclude from the recurrence pattern
-    - include_dates: Additional specific dates to include in the pattern
-    """
+    """Complete recurrence data for an event."""
 
     rrule: RecurrenceRule = Field(..., title="Recurrence rule")
 
     def to_google_calendar_format(self) -> list[str]:
-        """
-        Convert the recurrence data to the format expected by Google Calendar API.
-
-        Returns:
-            List[str]: List of recurrence rules in RFC 5545 format
-        """
+        """Convert to the format expected by the Google Calendar API."""
         rules = [self.rrule.to_rrule_string()]
 
         if self.rrule.include_dates:

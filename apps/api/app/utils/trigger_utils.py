@@ -9,20 +9,9 @@ from app.config.oauth_config import OAUTH_INTEGRATIONS
 
 
 def get_integration_for_trigger(trigger_name: str) -> str | None:
-    """
-    Get the integration ID for a given trigger name.
+    """Return the integration ID owning ``trigger_name``, or None.
 
-    Args:
-        trigger_name: The trigger name to lookup (e.g., "calendar_event_created")
-
-    Returns:
-        Optional[str]: The integration ID if found, None otherwise
-
-    Example:
-        >>> get_integration_for_trigger("calendar_event_created")
-        'googlecalendar'
-        >>> get_integration_for_trigger("github_commit_event")
-        'github'
+    E.g. "calendar_event_created" -> "googlecalendar".
     """
     for integration in OAUTH_INTEGRATIONS:
         if not integration.associated_triggers:

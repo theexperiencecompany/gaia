@@ -328,17 +328,7 @@ async def get_starred_messages(user: dict) -> dict:
 async def create_system_conversation(
     user_id: str, description: str, system_purpose: SystemPurpose
 ) -> dict:
-    """
-    Create a system-generated conversation with proper flags.
-
-    Args:
-        user_id: The user ID
-        description: Description of the conversation
-        system_purpose: Purpose identifier (e.g., "email_processing", "reminder_processing")
-
-    Returns:
-        dict: Created conversation data
-    """
+    """Create a system-generated conversation with proper flags."""
     conversation_id = str(uuid4())
     created_at = datetime.now(UTC).isoformat()
 

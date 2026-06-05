@@ -27,17 +27,7 @@ async def update_user_profile(
     picture_data: bytes | None = None,
     data: dict | None = None,
 ) -> dict:
-    """
-    Update user profile information.
-
-    Args:
-        user_id: User ID
-        name: New name (optional)
-        picture_data: New profile picture data (optional)
-
-    Returns:
-        Updated user data
-    """
+    """Update user profile information."""
     log.set(
         service="user_service",
         user_id=user_id,

@@ -10,13 +10,7 @@ from app.models.notification.notification_models import (
 
 
 class AIProactiveNotificationSource:
-    """
-    Notification source for AI-initiated proactive actions.
-
-    This class contains static methods to create notifications for various
-    AI-driven proactive actions like email composition, calendar events,
-    and task creation that are initiated by backend workers.
-    """
+    """Builds notifications for AI-initiated proactive actions (reminders, etc.)."""
 
     @staticmethod
     def create_reminder_notification(

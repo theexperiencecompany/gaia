@@ -35,14 +35,10 @@ class WorkflowQueueService:
     ) -> bool:
         """Queue workflow execution as a background task.
 
-        Enqueued with a deterministic ``_job_id`` derived from the workflow, user,
-        and trigger context so an accidental duplicate enqueue — a double-clicked
-        "Run now", a re-fired identical trigger event — collapses to ONE run while
-        it is queued/executing (ARQ rejects a second job with the same id, which
-        is what was sending two "Workflow Completed" notifications). A genuinely
-        distinct trigger event hashes to a different id and still runs; with
-        ``keep_result=0`` the id frees the moment the run finishes, so a later
-        legitimate re-run is never blocked.
+        Uses a deterministic ``_job_id`` hashed from workflow + user + context so
+        a duplicate enqueue collapses to one run while queued/executing (ARQ
+        rejects a same-id job). ``keep_result=0`` frees the id once the run
+        finishes, so a later legitimate re-run is never blocked.
         """
         try:
             pool = await RedisPoolManager.get_pool()

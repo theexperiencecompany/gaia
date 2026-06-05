@@ -63,18 +63,7 @@ async def fetch_tavily_search(
     search_topic: str = "general",
     extra_params: dict | None = None,
 ) -> dict:
-    """
-    Call Tavily API with Redis caching.
-
-    Args:
-        query: The search query.
-        count: Number of results to return.
-        search_topic: Type of search ("general", "news", "finance").
-        extra_params: Additional search parameters.
-
-    Returns:
-        The search results as a dictionary, or an empty dict on error.
-    """
+    """Call the Tavily search API (Redis-cached). Returns {} on error."""
     log.set(
         operation="fetch_tavily_search",
         search_query=query,
@@ -113,16 +102,7 @@ async def fetch_tavily_search(
     namespace="search",
 )
 async def perform_search(query: str, count: int) -> dict:
-    """
-    Perform Tavily search and return comprehensive results.
-
-    Args:
-        query (str): The search query string.
-        count (int): Number of results to fetch per category.
-
-    Returns:
-        dict: Formatted search results with web, news, images, and videos data.
-    """
+    """Perform a Tavily search, returning web/news/images/answer results."""
     try:
         # Perform general search with all features enabled
         general_data = await fetch_tavily_search(query, count, "general")
@@ -160,16 +140,7 @@ async def perform_search(query: str, count: int) -> dict:
     namespace="web",
 )
 async def fetch_with_firecrawl(url: str, use_stealth: bool = False) -> str:
-    """
-    Fetch webpage content using Firecrawl with stealth mode support.
-
-    Args:
-        url: The URL to scrape
-        use_stealth: Whether to use stealth proxy mode
-
-    Returns:
-        The scraped content in markdown format
-    """
+    """Scrape a webpage to markdown via Firecrawl, retrying with stealth mode on block."""
     try:
         writer = get_stream_writer()
         writer({"progress": f"Fetching URL with Firecrawl: {url[:50]}..."})

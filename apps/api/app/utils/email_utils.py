@@ -1,12 +1,4 @@
-"""
-Email utilities for sending various types of emails and parsing email content.
-
-This module provides functions for:
-- Sending different types of emails (support, onboarding, engagement)
-- Parsing and extracting content from email messages (Gmail/Composio formats)
-
-All emails use Jinja2 templates for HTML generation and Resend for email delivery.
-"""
+"""Email utilities: send transactional emails (Jinja2 templates + Resend)."""
 
 from datetime import UTC, datetime
 import os
@@ -41,15 +33,7 @@ TWITTER_URL = "https://twitter.com/trygaia"
 async def send_support_team_notification(
     notification_data: SupportEmailNotification,
 ) -> None:
-    """
-    Send email notification to support team when a new support/feature request is created.
-
-    Args:
-        notification_data: Support email notification data containing ticket details
-
-    Raises:
-        Exception: If email sending fails
-    """
+    """Email the support team when a new support/feature request is created."""
     log.set(
         ticket_id=notification_data.ticket_id,
         request_type=notification_data.type.value,
@@ -81,15 +65,7 @@ async def send_support_team_notification(
 async def send_support_to_user_email(
     notification_data: SupportEmailNotification,
 ) -> None:
-    """
-    Send confirmation email to user that their support request has been received.
-
-    Args:
-        notification_data: Support email notification data containing ticket details
-
-    Raises:
-        Exception: If email sending fails
-    """
+    """Email the user confirming their support request was received."""
     try:
         subject = f"[{notification_data.ticket_id}] Your {notification_data.type.value} request has been received"
         html_content = generate_support_to_user_email_html(notification_data)
@@ -109,18 +85,7 @@ async def send_support_to_user_email(
 
 
 def generate_support_team_email_html(data: SupportEmailNotification) -> str:
-    """
-    Generate HTML email content for support team notifications using Jinja2 template.
-
-    Args:
-        data: Support email notification data
-
-    Returns:
-        str: Rendered HTML email content
-
-    Raises:
-        Exception: If template rendering fails
-    """
+    """Render the support-team notification email HTML."""
     try:
         template = jinja_env.get_template("support_to_admin.html")
 
@@ -147,18 +112,7 @@ def generate_support_team_email_html(data: SupportEmailNotification) -> str:
 
 
 def generate_support_to_user_email_html(data: SupportEmailNotification) -> str:
-    """
-    Generate HTML email content for user confirmation emails using Jinja2 template.
-
-    Args:
-        data: Support email notification data
-
-    Returns:
-        str: Rendered HTML email content
-
-    Raises:
-        Exception: If template rendering fails
-    """
+    """Render the user confirmation email HTML."""
     try:
         template = jinja_env.get_template("support_to_user.html")
 
@@ -291,16 +245,9 @@ def generate_welcome_email_html(user_name: str | None = None) -> str | None:
 async def send_inactive_user_email(
     user_email: str, user_name: str | None = None, user_id: str | None = None
 ) -> bool:
-    """
-    Send email to inactive user and track when sent to prevent spam.
+    """Email an inactive user, tracking sends to avoid spam.
 
-    Args:
-        user_email: Email address of the inactive user
-        user_name: Name of the user (optional)
-        user_id: User ID for tracking (optional)
-
-    Returns:
-        True if email was sent, False if skipped
+    Returns True if sent, False if skipped.
     """
 
     try:

@@ -2009,16 +2009,7 @@ def get_integration_by_config(auth_config_id: str) -> OAuthIntegration | None:
 
 
 def get_memory_extraction_prompt(integration_id: str) -> str | None:
-    """Get the memory extraction prompt for a specific integration.
-
-    This is the single source of truth for memory prompts.
-
-    Args:
-        integration_id: The integration ID (e.g., 'slack', 'github')
-
-    Returns:
-        The memory extraction prompt for this integration, or None if not found
-    """
+    """Get the memory extraction prompt for an integration, or None. Single source of truth."""
     integration = get_integration_by_id(integration_id)
     if not integration or not integration.subagent_config:
         return None
@@ -2027,14 +2018,10 @@ def get_memory_extraction_prompt(integration_id: str) -> str | None:
 
 @cache
 def get_toolkit_to_integration_map() -> dict[str, str]:
-    """Get mapping of Composio toolkit names to integration IDs.
+    """Map Composio toolkit names (e.g. 'GMAIL') to integration IDs (e.g. 'gmail').
 
-    This is the single source of truth for tool prefix -> integration category mapping.
-    Used by workflow context extractor to infer categories from tool names.
-
-    Returns:
-        Dict mapping toolkit name (e.g., 'GMAIL', 'GOOGLECALENDAR') to integration ID
-        (e.g., 'gmail', 'googlecalendar')
+    Single source of truth for tool-prefix -> integration-category mapping; used by the
+    workflow context extractor to infer categories from tool names.
     """
     mapping = {}
     for integration in OAUTH_INTEGRATIONS:

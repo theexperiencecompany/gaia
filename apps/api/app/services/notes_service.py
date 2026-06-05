@@ -16,19 +16,7 @@ from shared.py.wide_events import log
 
 
 async def get_note(note_id: str, user_id: str) -> NoteResponse:
-    """
-    Retrieve a single note by its ID for the specified user.
-
-    Args:
-        note_id (str): The note's ID.
-        user_id (str): The ID of the authenticated user.
-
-    Returns:
-        NoteResponse: The retrieved note.
-
-    Raises:
-        HTTPException: If the note is not found.
-    """
+    """Retrieve a single note by its ID for the user."""
     log.info(f"Retrieving note with id: {note_id} for user: {user_id}")
     log.set(service="notes_service", operation="get_note", note_id=note_id, user_id=user_id)
     cache_key = f"note:{user_id}:{note_id}"
@@ -49,15 +37,7 @@ async def get_note(note_id: str, user_id: str) -> NoteResponse:
 
 
 async def get_all_notes(user_id: str) -> list[NoteResponse]:
-    """
-    Retrieve all notes for the specified user.
-
-    Args:
-        user_id (str): The ID of the authenticated user.
-
-    Returns:
-        list[NoteResponse]: A list of the user's notes.
-    """
+    """Retrieve all notes for the user."""
     log.info(f"Retrieving all notes for user: {user_id}")
     cache_key = f"notes:{user_id}"
     cached_notes = await get_cache(cache_key)
@@ -78,20 +58,7 @@ async def get_all_notes(user_id: str) -> list[NoteResponse]:
 
 
 async def update_note(note_id: str, note: NoteModel, user_id: str) -> NoteResponse:
-    """
-    Update an existing note by its ID for the specified user.
-
-    Args:
-        note_id (str): The ID of the note to update.
-        note (NoteModel): The updated note data.
-        user_id (str): The ID of the authenticated user.
-
-    Returns:
-        NoteResponse: The updated note.
-
-    Raises:
-        HTTPException: If the note is not found.
-    """
+    """Update an existing note by its ID for the user."""
     log.info(f"Updating note with id: {note_id} for user: {user_id}")
     log.set(
         service="notes_service",
@@ -148,16 +115,7 @@ async def update_note(note_id: str, note: NoteModel, user_id: str) -> NoteRespon
 
 
 async def delete_note(note_id: str, user_id: str) -> None:
-    """
-    Delete a note by its ID for the specified user.
-
-    Args:
-        note_id (str): The ID of the note to delete.
-        user_id (str): The ID of the authenticated user.
-
-    Raises:
-        HTTPException: If the note is not found.
-    """
+    """Delete a note by its ID for the user."""
     log.info(f"Deleting note with id: {note_id} for user: {user_id}")
     log.set(
         service="notes_service",
@@ -189,19 +147,7 @@ async def delete_note(note_id: str, user_id: str) -> None:
 
 
 async def create_note_service(note: NoteModel, user_id: str) -> NoteResponse:
-    """
-    Create a new note for the authenticated user.
-
-    Args:
-        note (NoteModel): The note data.
-        user_id (str): The ID of the authenticated user.
-
-    Returns:
-        NoteResponse: The created note.
-
-    Raises:
-        HTTPException: If note creation fails.
-    """
+    """Create a new note for the authenticated user."""
     try:
         return await insert_note(note, user_id)
     except Exception as e:

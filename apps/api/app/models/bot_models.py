@@ -94,13 +94,7 @@ class IntegrationInfo(BaseModel):
 
 
 class BotSettingsResponse(BaseModel):
-    """
-    Response model for user settings.
-
-    This is a union type:
-    - If authenticated=False: Only authenticated field is relevant
-    - If authenticated=True: All other fields contain user data (nullable where appropriate)
-    """
+    """Response model for user settings. When authenticated=False only that field is relevant."""
 
     authenticated: bool = Field(..., description="Whether user is linked")
     user_name: str | None = Field(None, description="User's display name (null if not set)")

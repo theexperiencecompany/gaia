@@ -44,18 +44,10 @@ class MissingKeyStrategy(Enum):
 
 
 class LazyLoader(Generic[T]):
-    """
-    Lazy loader that defers provider initialization until first get() access.
-    Supports both sync and async loader functions.
+    """Defers provider initialization until first get() access.
 
-    Features:
-    - Thread-safe singleton pattern per loader
-    - Configurable error handling for missing values
-    - Validation caching to avoid repeated checks
-    - Flexible warning system at registration time
-    - Type safety with generics
-    - Support for global context providers (like Cloudinary)
-    - Support for both sync and async loader functions
+    Thread-safe singleton per loader; supports sync/async loaders, global-context
+    providers (e.g. Cloudinary), and configurable missing-key handling.
     """
 
     def __init__(

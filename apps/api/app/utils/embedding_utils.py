@@ -16,19 +16,10 @@ async def search_by_similarity(
     additional_filters: dict | None = None,
     fetch_mongo_details: bool | None = False,
 ):
-    """
-    Generalized function to search for similar items in a ChromaDB collection.
+    """Search a ChromaDB collection for items similar to ``input_text``.
 
-    Args:
-        input_text: The text to compare items against
-        user_id: The user ID whose items to search
-        collection_name: The name of the ChromaDB collection to query
-        top_k: Maximum number of results to return
-        additional_filters: Additional filters to apply to the query
-        fetch_mongo_details: Whether to fetch additional details from MongoDB
-
-    Returns:
-        List of items with their content and metadata
+    Scoped to ``user_id``; optionally enriches results with MongoDB details.
+    Returns a list of items with content and metadata.
     """
     log.set(
         collection_name=collection_name,

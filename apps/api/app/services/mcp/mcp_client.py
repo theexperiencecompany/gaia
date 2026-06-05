@@ -232,16 +232,10 @@ class MCPClient:
         requires_auth: bool,
         auth_type: str,
     ) -> None:
-        """
-        Update integration auth status in MongoDB after probe discovery.
+        """Update integration auth status in MongoDB after probe discovery.
 
-        This ensures the stored mcp_config reflects the actual auth requirements
-        discovered from the MCP server, fixing stale requires_auth flags.
-
-        Args:
-            integration_id: The integration ID to update
-            requires_auth: Whether auth is required
-            auth_type: The auth type ("oauth", "none", etc.)
+        Keeps the stored mcp_config in sync with the auth requirements actually
+        discovered from the server, fixing stale requires_auth flags.
         """
         try:
             result = await integrations_collection.update_one(
@@ -938,13 +932,8 @@ class MCPClient:
         5. Returns authorization URL for browser redirect
 
         Supports platform integrations (from code) and custom integrations.
-
-        Args:
-            integration_id: The integration to authenticate
-            redirect_uri: OAuth callback URL
-            redirect_path: Frontend path to redirect after OAuth
-            challenge_data: Optional pre-fetched WWW-Authenticate challenge from probe
-                           to avoid duplicate discovery HTTP calls.
+        ``challenge_data`` is an optional pre-fetched WWW-Authenticate challenge
+        from probe, passed to avoid duplicate discovery HTTP calls.
         """
         # Resolve integration from platform config or MongoDB
         resolved = await IntegrationResolver.resolve(integration_id)

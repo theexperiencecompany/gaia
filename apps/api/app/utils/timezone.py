@@ -14,17 +14,9 @@ import pytz
 def parse_timezone(
     timezone_input: Union[str, builtin_timezone],
 ) -> Union[builtin_timezone, pytz.BaseTzInfo]:
-    """
-    Parse timezone input into a timezone object.
+    """Parse a timezone name or object into a timezone object.
 
-    Args:
-        timezone_input: Either a timezone string name or timezone object
-
-    Returns:
-        Union[timezone, pytz.BaseTzInfo]: Parsed timezone object
-
-    Raises:
-        ValueError: If timezone string is invalid or unrecognized
+    Raises ValueError on an unrecognized timezone string.
     """
     if isinstance(timezone_input, str):
         # Handle common timezone string formats

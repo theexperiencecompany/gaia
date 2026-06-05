@@ -58,15 +58,9 @@ async def provision_system_workflows(
     """Create system workflows for a newly connected integration.
 
     Called as a background task from handle_oauth_connection().
-    Idempotent — checks system_workflow_key to avoid duplicates on reconnect.
-
-    Args:
-        user_id: The user who connected the integration.
-        integration_id: The integration that was connected (e.g. 'gmail', 'googlecalendar').
-        integration_display_name: Human-readable name for notifications (e.g. 'Gmail').
-        notify: If True, sends a user notification summarising the new workflows.
-            Set to False during onboarding so the provisioning is silent — the
-            onboarding UI surfaces the workflows itself.
+    Idempotent: checks system_workflow_key to avoid duplicates on reconnect.
+    ``notify`` is set False during onboarding so provisioning is silent (the
+    onboarding UI surfaces the workflows itself).
     """
     log.set(
         service="system_workflow_provisioner",
@@ -184,9 +178,7 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
 
     Restores: title, description, steps, trigger_config.
     Preserves: _id, user_id, activated state, execution stats, created_at.
-
-    Returns:
-        True if reset succeeded, False if workflow not found or not resettable.
+    Returns False if the workflow is not found or not resettable.
     """
     log.set(
         service="system_workflow_provisioner",

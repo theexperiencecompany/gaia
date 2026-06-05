@@ -9,6 +9,7 @@ their own module to keep the executor runner free of a circular import on
 
 from datetime import UTC, datetime
 
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -25,9 +26,6 @@ from app.services.user_service import get_user_by_id
 from app.utils.timezone import format_local_time
 from shared.py.wide_events import log
 
-# Splits one voiced result into ordered chat bubbles for external channels.
-MESSAGE_BREAK = "<NEW_MESSAGE_BREAK>"
-
 
 async def send_workflow_completion_notification(
     *,
@@ -37,13 +35,11 @@ async def send_workflow_completion_notification(
     user_id: str,
     result_text: str,
 ) -> None:
-    """Send the proactive "workflow done" notification with the real result.
+    """Send the "workflow done" notification, splitting the result into bubbles.
 
-    ``result_text`` is the comms-voiced executor result; it is split on
-    ``<NEW_MESSAGE_BREAK>`` into ordered bubbles that drive the multi-part
-    external-channel envelope. Best-effort: never raises into the caller.
+    Best-effort: never raises into the caller.
     """
-    message_parts = [p.strip() for p in result_text.split(MESSAGE_BREAK) if p.strip()]
+    message_parts = [p.strip() for p in result_text.split(NEW_MESSAGE_BREAKER) if p.strip()]
 
     # Format the completion time in the user's own timezone — a UTC stamp is
     # meaningless to someone reading this on their phone. A lookup failure must

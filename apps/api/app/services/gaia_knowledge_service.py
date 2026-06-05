@@ -47,16 +47,7 @@ class GaiaKnowledgeService:
         self.collection_name = "gaia_knowledge"
 
     async def search_knowledge(self, query: str, limit: int = 5) -> list[KnowledgeResult]:
-        """
-        Search GAIA knowledge base using semantic similarity.
-
-        Args:
-            query: The search query
-            limit: Maximum number of results to return
-
-        Returns:
-            List of KnowledgeResult objects with content and relevance scores
-        """
+        """Search the GAIA knowledge base using semantic similarity."""
         log.set(
             service="gaia_knowledge_service",
             operation="search_knowledge",
@@ -90,15 +81,7 @@ class GaiaKnowledgeService:
             return []
 
     async def add_knowledge_batch(self, items: list[KnowledgeItem]) -> int:
-        """
-        Add multiple knowledge items in batch.
-
-        Args:
-            items: List of KnowledgeItem objects (validated via Pydantic)
-
-        Returns:
-            Number of items successfully added
-        """
+        """Add multiple knowledge items in batch. Returns the number added."""
         log.set(
             service="gaia_knowledge_service",
             operation="add_knowledge_batch",
@@ -128,12 +111,7 @@ class GaiaKnowledgeService:
             return 0
 
     async def clear_knowledge(self) -> bool:
-        """
-        Clear all knowledge from the collection (use with caution).
-
-        Returns:
-            True if successful, False otherwise
-        """
+        """Clear all knowledge from the collection (use with caution)."""
         try:
             # Get the async client to delete collection
             async_client = await ChromaClient.get_client()

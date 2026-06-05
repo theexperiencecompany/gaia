@@ -24,18 +24,7 @@ class DeviceTokenService:
         platform: PlatformType,
         device_id: str | None = None,
     ) -> bool:
-        """
-        Register or update a device token for push notifications
-
-        Args:
-            user_id: User ID
-            token: Expo push token
-            platform: Device platform (ios/android)
-            device_id: Optional device identifier
-
-        Returns:
-            True if successful, False otherwise
-        """
+        """Register or update a device token for push notifications. Returns success."""
         try:
             now = datetime.now(UTC)
             # Use upsert to avoid race condition
@@ -98,16 +87,7 @@ class DeviceTokenService:
             return False
 
     async def unregister_device_token(self, token: str, user_id: str) -> bool:
-        """
-        Unregister a device token (mark as inactive or delete)
-
-        Args:
-            token: Expo push token to unregister
-            user_id: User ID for authorization
-
-        Returns:
-            True if successful, False otherwise
-        """
+        """Unregister a device token, deleting it only if it belongs to the user. Returns success."""
         try:
             # Delete only if token belongs to user
             result = await self.collection.delete_one({"token": token, "user_id": user_id})

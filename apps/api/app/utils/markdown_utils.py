@@ -8,15 +8,7 @@ from shared.py.wide_events import log
 
 
 def convert_markdown_to_html(markdown_text: str) -> str:
-    """
-    Convert markdown text to HTML.
-
-    Args:
-        markdown_text: The markdown text to convert
-
-    Returns:
-        str: HTML string
-    """
+    """Convert markdown text to HTML."""
     log.set(operation="convert_markdown_to_html", input_length=len(markdown_text))
     try:
         html = markdown2.markdown(

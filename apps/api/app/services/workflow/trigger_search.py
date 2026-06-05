@@ -29,19 +29,9 @@ class TriggerSearchService:
         user_id: str,
         limit: int = 15,
     ) -> list[dict[str, Any]]:
-        """
-        Search for triggers matching the query.
+        """Search for triggers matching the query via ChromaDB semantic search.
 
-        Uses semantic search via ChromaDB embeddings.
-        Returns triggers with connection status and config_fields embedded.
-
-        Args:
-            query: Natural language search query
-            user_id: User ID for checking connection status
-            limit: Maximum number of results (default 15)
-
-        Returns:
-            List of trigger dicts with connection status and config_fields
+        Returns trigger dicts enriched with connection status and config_fields.
         """
         from app.services.oauth.oauth_service import check_integration_status
 
@@ -95,14 +85,7 @@ class TriggerSearchService:
 
     @classmethod
     async def get_schema(cls, trigger_slug: str) -> dict[str, Any] | None:
-        """Get configuration schema for a specific trigger.
-
-        Args:
-            trigger_slug: The trigger slug to look up
-
-        Returns:
-            Schema dict with trigger info and config fields, or None if not found
-        """
+        """Get the configuration schema for a trigger, or None if not found."""
         for integration in OAUTH_INTEGRATIONS:
             if not integration.associated_triggers:
                 continue

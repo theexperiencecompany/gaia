@@ -26,6 +26,7 @@ from app.constants.cache import (
     EXECUTOR_QUEUE_PREFIX,
     EXECUTOR_QUEUE_TTL,
 )
+from app.constants.general import CALL_EXECUTOR_NAME
 from app.core.stream_manager import StreamManager
 from app.db.redis import redis_cache
 from app.decorators.rate_limiting import LangChainRateLimitException
@@ -216,7 +217,7 @@ async def _dispatch_executor(
     """Core dispatch logic — acquire lock, queue if busy, or spawn."""
     log.set(
         tool={
-            "name": "call_executor",
+            "name": CALL_EXECUTOR_NAME,
             "action": "dispatch",
             "task_id": task_id,
         },

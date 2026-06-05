@@ -1,14 +1,6 @@
-"""
-Stream Utilities - Shared helpers for LangGraph streaming.
+"""Shared helpers for processing LangGraph stream events and tool call data.
 
-This module provides reusable functions for processing LangGraph stream events,
-particularly for extracting and formatting tool call data.
-
-Used by:
-- execute_graph_streaming() in agent_helpers.py (main agent)
-- execute_subagent_stream() in subagent_runner.py (subagents via handoff/executor)
-- call_subagent() in subagent_runner.py (direct subagent calls for testing)
-- chat_service.py (SSE chunk processing)
+Used by agent_helpers, subagent_runner, and chat_service.
 """
 
 from datetime import UTC, datetime
@@ -26,34 +18,12 @@ async def extract_tool_entries_from_update(
     emitted_tool_calls: set[str],
     integration_metadata: IntegrationMetadata | None = None,
 ) -> list[tuple[str, dict]]:
-    """
-    Extract tool_data entries from a LangGraph state update.
+    """Extract new tool_data entries from a LangGraph state update.
 
-    Processes the nested structure of state updates to find tool calls
-    and format them for frontend streaming. Handles deduplication via
-    the emitted_tool_calls set.
-
-    Args:
-        state_update: State update dict from LangGraph 'updates' stream.
-                      Expected structure: {"messages": [AIMessage with tool_calls, ...]}
-        emitted_tool_calls: Set of already-emitted tool_call_ids.
-                            Modified in place to track new emissions.
-        integration_metadata: Optional IntegrationMetadata with icon_url, integration_id, name
-                              for custom MCP integrations. If provided, applied
-                              to all tool entries.
-
-    Returns:
-        List of (tool_call_id, tool_entry) tuples for tool calls that haven't
-        been emitted yet. Each tool_entry is ready for streaming to frontend.
-
-    Example:
-        >>> entries = await extract_tool_entries_from_update(
-        ...     state_update={"messages": [ai_message_with_tools]},
-        ...     emitted_tool_calls=set(),
-        ...     integration_metadata={"icon_url": "...", "name": "Gmail"},
-        ... )
-        >>> for tc_id, entry in entries:
-        ...     stream_writer({"tool_data": entry})
+    Formats each tool call for frontend streaming, deduplicating against
+    ``emitted_tool_calls`` (mutated in place). ``integration_metadata``, if
+    given, is applied to every entry. Returns (tool_call_id, tool_entry) tuples
+    for tool calls not yet emitted.
     """
     entries: list[tuple[str, dict]] = []
 

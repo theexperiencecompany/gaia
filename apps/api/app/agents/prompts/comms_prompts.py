@@ -868,3 +868,18 @@ OUTPUT CONTRACT
   what and why; don't paper over it.
 - No chain-of-thought, no commentary, no empty responses.
 """
+
+
+# Prepended to a workflow result delivered to external messaging apps, where
+# there are no cards or UI, so every concrete data point must live in the words.
+PLATFORM_DELIVERY_NOTE = (
+    "[PLATFORM_DELIVERY]\n"
+    "This is an automated workflow result delivered to the user as PLAIN TEXT on an "
+    "external messaging app (WhatsApp, Telegram, etc.). There are NO cards, NO UI "
+    "components, NO screen: the user only sees your words. State the full outcome in "
+    "your message — actually list the emails (sender + subject), the calendar events "
+    "(title + time), and every concrete result the user needs. Never say things like "
+    "'saved to your list', 'here's your summary 👇', or refer to anything shown on "
+    "screen, because there is no screen. Write it naturally but completely, and keep "
+    "GAIA's voice.\n"
+)

@@ -1,22 +1,6 @@
-"""
-Timing decorators for measuring function execution time.
+"""Timing decorators that log execution time for async and sync functions.
 
-This module provides simple timing decorators that log execution time
-for both async and sync functions. These are lightweight alternatives
-to the full profiling decorators when you just need timing information.
-
-Usage:
-    @async_timer
-    async def my_async_function():
-        pass
-
-    @sync_timer
-    def my_sync_function():
-        pass
-
-    @timer  # Works for both async and sync
-    def any_function():
-        pass
+Lightweight alternative to the profiling decorators when you only need timing.
 """
 
 from collections.abc import Callable
@@ -28,15 +12,7 @@ from shared.py.wide_events import log
 
 
 def async_timer(func: Callable) -> Callable:
-    """
-    Timing decorator for async functions.
-
-    Args:
-        func: The async function to time
-
-    Returns:
-        Decorated function that logs execution time
-    """
+    """Timing decorator for async functions."""
 
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
@@ -61,15 +37,7 @@ def async_timer(func: Callable) -> Callable:
 
 
 def sync_timer(func: Callable) -> Callable:
-    """
-    Timing decorator for sync functions.
-
-    Args:
-        func: The sync function to time
-
-    Returns:
-        Decorated function that logs execution time
-    """
+    """Timing decorator for sync functions."""
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -94,15 +62,7 @@ def sync_timer(func: Callable) -> Callable:
 
 
 def timer(func: Callable) -> Callable:
-    """
-    Universal timing decorator that works for both async and sync functions.
-
-    Args:
-        func: The function to time (async or sync)
-
-    Returns:
-        Decorated function that logs execution time
-    """
+    """Universal timing decorator for both async and sync functions."""
     if inspect.iscoroutinefunction(func):
         return async_timer(func)
     return sync_timer(func)

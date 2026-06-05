@@ -63,19 +63,11 @@ class TriggerService:
     async def get_triggers_safe_to_delete(
         trigger_ids: list[str], excluding_workflow_id: str | None = None
     ) -> list[str]:
-        """
-        Filter trigger IDs to only those safe to delete from Composio.
+        """Filter trigger IDs to those safe to delete from Composio.
 
         A trigger is safe to delete if no other workflows reference it.
-        When excluding_workflow_id is provided, we check if any OTHER workflows
-        reference the trigger (used during workflow deletion/update).
-
-        Args:
-            trigger_ids: List of Composio trigger IDs to check
-            excluding_workflow_id: Workflow ID to exclude from reference count
-
-        Returns:
-            List of trigger IDs that are safe to delete
+        ``excluding_workflow_id`` is excluded from the reference count (used
+        during workflow deletion/update).
         """
         safe_to_delete = []
 
@@ -111,24 +103,11 @@ class TriggerService:
         trigger_config: TriggerConfig,
         raise_on_failure: bool = False,
     ) -> list[str]:
-        """
-        Register triggers for a workflow using the appropriate handler.
+        """Register triggers for a workflow using the appropriate handler.
 
-        Args:
-            user_id: The user ID
-            workflow_id: The workflow ID
-            trigger_name: The trigger name (e.g., 'calendar_event_created')
-            trigger_config: The TriggerConfig object with properly typed trigger_data
-            raise_on_failure: If True, raise when the handler is missing or
-                raises. An empty list is a legitimate success (e.g. account-level
-                Gmail has no per-workflow IDs), NOT a failure.
-
-        Returns:
-            List of registered Composio trigger IDs (may be empty on success)
-
-        Raises:
-            TypeError: If trigger_data type doesn't match expected type
-            TriggerRegistrationError: If the handler raises or is missing
+        Returns the registered Composio trigger IDs (may be empty on success, e.g.
+        account-level Gmail has no per-workflow IDs). With ``raise_on_failure``,
+        raises TriggerRegistrationError when the handler is missing or raises.
         """
         handler = get_handler_by_name(trigger_name)
         if not handler:
@@ -164,21 +143,12 @@ class TriggerService:
         trigger_ids: list[str],
         workflow_id: str | None = None,
     ) -> bool:
-        """
-        Unregister triggers using the appropriate handler.
+        """Unregister triggers using the appropriate handler.
 
-        Only deletes triggers from Composio if no other workflows reference them.
-        This is important because Composio uses upsert - multiple workflows may
-        share the same trigger ID if they have identical configurations.
-
-        Args:
-            user_id: The user ID
-            trigger_name: The trigger name to find the right handler
-            trigger_ids: List of Composio trigger IDs to unregister
-            workflow_id: The workflow being deleted/updated (to exclude from ref count)
-
-        Returns:
-            True if operation completed (even if some triggers weren't deleted due to refs)
+        Only deletes triggers from Composio when no other workflows reference
+        them: Composio upserts, so workflows with identical configs share a
+        trigger ID. Returns True once the operation completes, even if some
+        triggers were kept due to remaining references.
         """
         if not trigger_ids:
             return True

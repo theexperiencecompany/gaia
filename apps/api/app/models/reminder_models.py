@@ -44,12 +44,7 @@ class StaticReminderPayload(BaseModel):
 
 
 class ReminderModel(BaseScheduledTask):
-    """
-    Reminder document model for MongoDB.
-
-    Represents a scheduled task that can be one-time or recurring.
-    Inherits scheduling fields from BaseScheduledTask.
-    """
+    """Reminder document model for MongoDB (one-time or recurring)."""
 
     agent: AgentType = Field(..., description="Agent responsible for this reminder task")
     stop_after: datetime | None = Field(

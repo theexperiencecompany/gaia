@@ -1,15 +1,9 @@
-"""Agent execution module with streaming and silent modes.
+"""Agent execution: streaming and silent modes.
 
-Two execution patterns due to Python async limitations:
-
-1. call_agent() - Returns AsyncGenerator for real-time SSE streaming
-   Use for: Interactive chat, voice agents, frontend interfaces
-
-2. call_agent_silent() - Returns complete results tuple
-   Use for: Workflows, batch processing, API integrations
+- call_agent() returns an AsyncGenerator for SSE streaming (interactive chat).
+- call_agent_silent() returns a results tuple (workflows, background tasks).
 
 Both share _core_agent_logic() for common setup (messages, graph, config).
-Choose streaming for user interactions, silent for background processing.
 """
 
 import asyncio
@@ -58,11 +52,10 @@ async def _core_agent_logic(
     langfuse_trace_id: str | None = None,
     langfuse_tags: list[str] | None = None,
 ):
-    """Core agent initialization logic shared between streaming and silent execution modes.
+    """Shared setup for streaming and silent execution.
 
-    Handles the common setup required for both streaming and silent agent execution
-    including message construction, graph initialization, state building, and
-    background memory storage. Centralizes the preparation logic to avoid duplication.
+    Constructs messages, initializes the graph, builds state, and kicks off
+    background memory storage.
 
     Args:
         request: Message request with conversation history and file data

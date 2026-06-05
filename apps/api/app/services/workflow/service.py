@@ -432,12 +432,7 @@ class WorkflowService:
 
     @staticmethod
     async def list_workflows(user_id: str, exclude_todo_workflows: bool = True) -> list[Workflow]:
-        """List all workflows for a user.
-
-        Args:
-            user_id: User ID to filter by
-            exclude_todo_workflows: If True, filter out auto-generated todo workflows
-        """
+        """List all workflows for a user, excluding auto-generated todo workflows by default."""
         try:
             # Build query - filter out todo workflows by default
             query: dict[str, Any] = {"user_id": user_id}
@@ -949,16 +944,7 @@ class WorkflowService:
     async def increment_execution_count(
         workflow_id: str, user_id: str, is_successful: bool = False
     ) -> bool:
-        """Increment workflow execution statistics.
-
-        Args:
-            workflow_id: ID of the workflow
-            user_id: ID of the user who owns the workflow
-            is_successful: Whether the execution was successful
-
-        Returns:
-            True if update succeeded, False otherwise
-        """
+        """Increment workflow execution statistics."""
         try:
             inc_data = {"total_executions": 1}
             if is_successful:

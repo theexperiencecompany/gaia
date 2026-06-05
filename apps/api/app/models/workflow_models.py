@@ -108,16 +108,9 @@ class TriggerConfig(BaseModel):
     def calculate_next_run(
         self, base_time: datetime | None = None, user_timezone: str | None = None
     ) -> datetime | None:
-        """
-        Calculate the next run time based on cron expression with timezone awareness.
+        """Calculate the next run time from the cron expression. Returns UTC.
 
-        Args:
-            base_time: Base time for calculation (defaults to current UTC)
-            user_timezone: User's timezone for cron calculation (defaults to trigger config timezone)
-                          Supports both IANA names (e.g., "America/New_York") and offset strings (e.g., "+05:30")
-
-        Returns:
-            Next run time in UTC
+        user_timezone accepts IANA names ("America/New_York") or offset strings ("+05:30").
         """
         if self.type != TriggerType.SCHEDULE or not self.cron_expression:
             return None
@@ -155,16 +148,7 @@ class TriggerConfig(BaseModel):
     def update_next_run(
         self, base_time: datetime | None = None, user_timezone: str | None = None
     ) -> bool:
-        """
-        Update the next_run field with timezone awareness and return True if changed.
-
-        Args:
-            base_time: Base time for calculation
-            user_timezone: User's timezone for cron calculation
-
-        Returns:
-            True if next_run was updated
-        """
+        """Update the next_run field; return True if it changed."""
         old_next_run = self.next_run
         self.next_run = self.calculate_next_run(base_time, user_timezone)
         return old_next_run != self.next_run

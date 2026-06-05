@@ -1,17 +1,13 @@
 """Shared lifecycle for capturing background-executor tool events.
 
-The executor always runs as a detached asyncio task (spawned by the
-``call_executor`` tool). Its tool events — and those of any subagent it hands
-off to — are appended to a per-``stream_id`` collector by
-``make_redis_stream_writer`` while the comms agent that spawned it runs.
+The executor runs as a detached asyncio task (spawned by ``call_executor``).
+Its tool events, and those of any subagent it hands off to, are appended to a
+per-``stream_id`` collector by ``make_redis_stream_writer``.
 
-Both the live chat path (``chat_service.run_chat_stream_background``) and the
-silent path (``agent.call_agent_silent``, used by workflows and other background
-tasks) need to register that collector, wait for the executor, drain it into
-grouped ``tool_data``, and tear the state back down. Centralizing the lifecycle
-here means there is exactly one implementation of "capture the executor's
-tool_data and group its subagents", so chat and workflow runs render
-identically and can never drift apart.
+Both the live chat path and the silent path (workflows, background tasks)
+register that collector, wait for the executor, drain it into grouped
+``tool_data``, and tear it down. Centralizing it here keeps one implementation
+so chat and workflow runs render identically.
 """
 
 import asyncio
@@ -37,20 +33,6 @@ from app.utils.stream_utils import (
     reconstruct_subagent_groups,
 )
 from shared.py.wide_events import log
-
-# Friendly nouns for the "already shown as a card" note. Falls back to "items".
-_RETURNED_CARD_NOUNS: dict[str, str] = {
-    "calendar_fetch_data": "events",
-    "calendar_list_fetch_data": "calendars",
-    "calendar_options": "draft events",
-    "email_fetch_data": "emails",
-    "email_thread_data": "thread",
-    "email_compose_data": "draft",
-    "email_sent_data": "sent email",
-    "contacts_data": "contacts",
-    "people_search_data": "people",
-    "search_results": "results",
-}
 
 
 def register_executor_capture(stream_id: str) -> asyncio.Event:
@@ -125,7 +107,9 @@ def build_returned_to_frontend_note(stream_id: str) -> str:
             continue  # excludes tool_calls_data / subagent_group (loading rows)
         data = entry.get("data")
         count = len(data) if isinstance(data, list) else 1
-        noun = _RETURNED_CARD_NOUNS.get(name, "items")
+        # Derive a readable label from the field name so it never drifts from
+        # the tool_fields source of truth (e.g. "email_fetch_data" -> "email fetch").
+        noun = name.removesuffix("_data").replace("_", " ") or "items"
         summary.append(f"  - {name} ({count} {noun})")
 
     if not summary:

@@ -14,17 +14,7 @@ email_comprehensive_parser = PydanticOutputParser(pydantic_object=EmailComprehen
 async def get_email_importance_summaries(
     user_id: str, limit: int = 50, important_only: bool = False
 ) -> dict[str, Any]:
-    """
-    Get email importance summaries for a user.
-
-    Args:
-        user_id: User ID
-        limit: Maximum number of emails to return
-        important_only: If True, only return important emails
-
-    Returns:
-        Dictionary containing email summaries and metadata
-    """
+    """Get email importance summaries for a user."""
     log.set(mail_user_id=user_id, mail_limit=limit, mail_important_only=important_only)
     try:
         # Build query filter
@@ -57,16 +47,7 @@ async def get_email_importance_summaries(
 async def get_single_email_importance_summary(
     user_id: str, message_id: str
 ) -> dict[str, Any] | None:
-    """
-    Get importance summary for a specific email.
-
-    Args:
-        user_id: User ID
-        message_id: Gmail message ID
-
-    Returns:
-        Dictionary containing email summary
-    """
+    """Get the importance summary for a specific email."""
     log.set(mail_user_id=user_id, mail_message_id=message_id)
     try:
         # Find the email in database
@@ -90,16 +71,7 @@ async def get_single_email_importance_summary(
 async def get_bulk_email_importance_summaries(
     user_id: str, message_ids: list[str]
 ) -> dict[str, Any]:
-    """
-    Get importance summaries for multiple emails in bulk.
-
-    Args:
-        user_id: User ID
-        message_ids: List of Gmail message IDs
-
-    Returns:
-        Dictionary containing email summaries indexed by message_id
-    """
+    """Get importance summaries for multiple emails in bulk, indexed by message_id."""
     log.set(
         mail_user_id=user_id,
         mail_bulk_message_count=len(message_ids),

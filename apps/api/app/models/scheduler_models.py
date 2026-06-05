@@ -21,12 +21,7 @@ class ScheduledTaskStatus(str, Enum):
 
 
 class BaseScheduledTask(BaseModel):
-    """
-    Base model for any scheduled task.
-
-    Contains all common scheduling-related fields that any scheduled task should have.
-    Domain-specific models should inherit from this and add their own fields.
-    """
+    """Base model for any scheduled task; domain models inherit and add their own fields."""
 
     id: str | None = Field(None, alias="_id")
     user_id: str = Field(..., description="User ID who owns this task")

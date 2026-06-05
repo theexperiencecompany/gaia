@@ -35,12 +35,7 @@ class BaseSchedulerService(ABC):
     """
 
     def __init__(self, redis_settings: RedisSettings | None = None):
-        """
-        Initialize the scheduler service.
-
-        Args:
-            redis_settings: Redis connection settings for ARQ
-        """
+        """Initialize the scheduler service."""
         self.redis_settings = redis_settings or RedisSettings.from_dsn(settings.REDIS_URL)
         self.arq_pool = None
 
@@ -56,16 +51,7 @@ class BaseSchedulerService(ABC):
         log.info(f"{self.__class__.__name__} closed")
 
     async def schedule_task(self, task_id: str, schedule_config: ScheduleConfig) -> bool:
-        """
-        Schedule a task using the provided configuration.
-
-        Args:
-            task_id: Unique identifier for the task
-            schedule_config: Scheduling configuration
-
-        Returns:
-            True if scheduled successfully
-        """
+        """Schedule a task using the provided configuration."""
         scheduled_at = schedule_config.scheduled_at
 
         # If no scheduled_at but has repeat, calculate next run time
@@ -80,34 +66,12 @@ class BaseSchedulerService(ABC):
         return await self._enqueue_task(task_id, scheduled_at)
 
     async def reschedule_task(self, task_id: str, new_scheduled_at: datetime) -> bool:
-        """
-        Reschedule an existing task to a new time.
-
-        Args:
-            task_id: Task ID to reschedule
-            new_scheduled_at: New scheduled time
-
-        Returns:
-            True if rescheduled successfully
-        """
+        """Reschedule an existing task to a new time."""
         return await self._enqueue_task(task_id, new_scheduled_at)
 
     async def process_task_execution(self, task_id: str) -> TaskExecutionResult:
-        """
-        Process a scheduled task execution.
-
-        This method handles the complete task execution lifecycle:
-        1. Get and validate the task
-        2. Execute the task
-        3. Handle recurring logic
-        4. Update task status
-
-        Args:
-            task_id: Task ID to process
-
-        Returns:
-            Task execution result
-        """
+        """Process a scheduled task execution: validate, execute, then handle
+        recurring logic or update final status."""
         log.set(scheduler_task_id=task_id, scheduler_class=self.__class__.__name__)
         # Get the task
         task = await self.get_task(task_id)
@@ -161,19 +125,10 @@ class BaseSchedulerService(ABC):
         return execution_result
 
     async def cancel_task(self, task_id: str, user_id: str) -> bool:
-        """
-        Cancel a scheduled task.
+        """Cancel a scheduled task.
 
-        Note: ARQ doesn't support direct job cancellation, so this marks the task
-        as cancelled in the database. The task execution will check this status
-        and skip execution if cancelled.
-
-        Args:
-            task_id: Task ID to cancel
-            user_id: User ID for authorization
-
-        Returns:
-            True if cancelled successfully
+        ARQ has no direct job cancellation, so this marks the task cancelled in
+        the DB; execution checks the status and skips if cancelled.
         """
         success = await self.update_task_status(
             task_id,
@@ -188,10 +143,7 @@ class BaseSchedulerService(ABC):
         return success
 
     async def scan_and_schedule_pending_tasks(self):
-        """
-        Scan for scheduled tasks and enqueue them in ARQ.
-        Called during service startup.
-        """
+        """Scan for due scheduled tasks and enqueue them in ARQ (called at startup)."""
         now = datetime.now(UTC)
         tasks = await self.get_pending_task(now)
 
@@ -210,10 +162,6 @@ class BaseSchedulerService(ABC):
 
         Shared by the reminder path (via process_task_execution) and the workflow
         executor, so recurrence behaves identically for both.
-
-        Args:
-            task: The task to handle
-            occurrence_count: Current occurrence count
         """
         log.set(
             scheduler_task_id=task.id,
@@ -286,16 +234,7 @@ class BaseSchedulerService(ABC):
         return (task_id,)
 
     async def _enqueue_task(self, task_id: str, scheduled_at: datetime) -> bool:
-        """
-        Enqueue a task in ARQ.
-
-        Args:
-            task_id: Task ID
-            scheduled_at: When to execute the task
-
-        Returns:
-            True if enqueued successfully
-        """
+        """Enqueue a task in ARQ."""
         log.set(scheduler_task_id=task_id, scheduler_scheduled_at=str(scheduled_at))
         if not self.arq_pool:
             log.error("ARQ pool not initialized")
@@ -386,29 +325,12 @@ class BaseSchedulerService(ABC):
 
     @abstractmethod
     async def get_task(self, task_id: str, user_id: str | None = None) -> BaseScheduledTask | None:
-        """
-        Get a task by ID.
-
-        Args:
-            task_id: Task ID
-            user_id: User ID for authorization (optional)
-
-        Returns:
-            Task model or None if not found
-        """
+        """Get a task by ID, or None if not found."""
         pass
 
     @abstractmethod
     async def execute_task(self, task: BaseScheduledTask) -> TaskExecutionResult:
-        """
-        Execute the actual task logic.
-
-        Args:
-            task: Task to execute
-
-        Returns:
-            Task execution result
-        """
+        """Execute the actual task logic."""
         pass
 
     @abstractmethod
@@ -419,39 +341,15 @@ class BaseSchedulerService(ABC):
         update_data: dict[str, Any] | None = None,
         user_id: str | None = None,
     ) -> bool:
-        """
-        Update task status and additional data.
-
-        Args:
-            task_id: Task ID to update
-            status: New status
-            update_data: Additional fields to update
-            user_id: User ID for authorization (optional)
-
-        Returns:
-            True if updated successfully
-        """
+        """Update task status and any additional fields."""
         pass
 
     @abstractmethod
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
-        """
-        Get all tasks that should be scheduled.
-
-        Args:
-            current_time: Current time for filtering
-
-        Returns:
-            List of tasks to schedule
-        """
+        """Get all tasks that are due to be scheduled at current_time."""
         pass
 
     @abstractmethod
     def get_job_name(self) -> str:
-        """
-        Get the ARQ job name for this scheduler.
-
-        Returns:
-            Job name string
-        """
+        """Get the ARQ job name for this scheduler."""
         pass

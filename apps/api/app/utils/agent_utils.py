@@ -121,17 +121,12 @@ async def emit_subagent_tool_calls(
 ) -> None:
     """Emit tool_data events for each tool call made inside a spawned subagent.
 
-    Called from SubagentMiddleware._execute_subagent before parallel tool
-    invocation so the frontend can show tools as they are dispatched.
-
     Reuses ``format_tool_call_entry`` so categories, icons, and special-tool
-    display names match the post-execution emission path exactly — without
-    that, e.g. ``vfs_read`` would render with its raw tool name as the
-    category (wrench icon) instead of ``filesystem`` (FolderFileStorageIcon).
+    display names match the post-execution path; otherwise e.g. ``vfs_read``
+    renders with its raw name as the category instead of ``filesystem``.
 
-    When ``user_id`` is provided, MCP tool calls resolve their integration
-    metadata (icon, integration name) via the user's MCPClient — required
-    after the cross-user-leak fix removed MCP tools from the global registry.
+    With ``user_id``, MCP tool calls resolve their integration metadata via
+    the user's MCPClient (MCP tools no longer live in the global registry).
     """
     for tc in tool_calls:
         entry = await format_tool_call_entry(tc, user_id=user_id)
@@ -147,24 +142,21 @@ async def format_tool_call_entry(
     integration_name: str | None = None,
     user_id: str | None = None,
 ) -> dict | None:
-    """Format tool call as tool_data entry for frontend streaming.
+    """Format a tool call as a tool_data entry for frontend streaming.
 
-    Creates a unified tool_data entry that the frontend can directly append
-    to the message's tool_data array. This is emitted once per tool call
-    from the 'updates' stream when complete args are available.
+    Emitted once per tool call from the 'updates' stream when complete args
+    are available; the frontend appends it to the message's tool_data array.
 
     Args:
-        tool_call: LangChain ToolCall object containing tool execution details
-        icon_url: Optional icon URL for custom integrations
-        integration_id: Optional integration ID to use as category (for custom MCPs)
-        integration_name: Optional friendly name for display (e.g., 'Researcher')
-        user_id: Optional user ID used to resolve MCP tool provenance via the
-            user's MCPClient — required for MCP-tool icons / names after the
-            cross-user-leak fix moved MCP tools out of the global registry.
+        tool_call: LangChain ToolCall object.
+        icon_url: Icon URL for custom integrations.
+        integration_id: Integration ID to use as category (for custom MCPs).
+        integration_name: Friendly display name (e.g. 'Researcher').
+        user_id: Used to resolve MCP tool provenance via the user's MCPClient
+            (MCP tools no longer live in the global registry).
 
     Returns:
-        Dictionary in tool_data entry format with tool_name="tool_calls_data",
-        or None if tool name is missing
+        tool_data entry dict, or None if the tool name is missing.
     """
     tool_registry = await get_tool_registry()
     tool_name_raw = tool_call.get("name")
@@ -350,49 +342,19 @@ async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str |
 
 
 def format_sse_response(content: str) -> str:
-    """Format text content as Server-Sent Events (SSE) response.
-
-    Wraps content in the standard SSE data format with JSON encoding
-    for transmission to frontend clients via EventSource connections.
-
-    Args:
-        content: Text content to be streamed to the client
-
-    Returns:
-        SSE-formatted string with 'data:' prefix and proper line endings
-    """
+    """Wrap text content as a JSON-encoded SSE ``data:`` line."""
     return f"data: {json.dumps({'response': content})}\n\n"
 
 
 def format_sse_data(data: dict) -> str:
-    """Format structured data as Server-Sent Events (SSE) response.
-
-    Converts dictionary data to JSON and wraps it in SSE format for
-    streaming structured information like tool progress, errors, or
-    custom events to frontend clients.
-
-    Args:
-        data: Dictionary containing structured data to stream
-
-    Returns:
-        SSE-formatted string with JSON-encoded data and proper line endings
-    """
+    """Wrap a dict as a JSON-encoded SSE ``data:`` line."""
     return f"data: {json.dumps(data)}\n\n"
 
 
 def process_custom_event_for_tools(payload) -> dict:
-    """Extract and process tool execution data from custom LangGraph events.
+    """Extract tool execution data from a custom LangGraph event payload.
 
-    Safely processes custom event payloads from LangGraph streams to extract
-    tool execution results and data. Handles serialization and delegates to
-    the chat service for tool-specific data extraction.
-
-    Args:
-        payload: Raw event payload from LangGraph custom events
-
-    Returns:
-        Dictionary containing extracted tool data, or empty dict if
-        extraction fails or no data is available
+    Returns the extracted tool data, or an empty dict on failure / no data.
     """
     try:
         serialized = json.dumps(payload) if payload else "{}"

@@ -49,16 +49,7 @@ from shared.py.wide_events import log
 
 
 async def create_all_indexes():
-    """
-    Create all database indexes for optimal performance.
-    This is the main function called during application startup.
-
-    Indexes are created with best practices:
-    - User-specific compound indexes for multi-tenant queries
-    - Date-based sorting indexes for pagination
-    - Text search indexes for full-text search
-    - Unique indexes for data integrity    - Compound indexes ordered by: equality → range → sort
-    """
+    """Create all database indexes. Called during application startup."""
     try:
         log.set(db={"operation": "create_indexes", "collection": "all"})
         log.info("Starting comprehensive database index creation...")

@@ -1,10 +1,4 @@
-"""Core agent helper functions for LangGraph execution and configuration.
-
-Provides essential building blocks for agent execution including configuration
-building, state initialization, and graph execution in both streaming and silent modes.
-
-These functions are tightly coupled to agent-specific logic and LangGraph execution.
-"""
+"""Core agent helpers: config building, state init, and graph execution (streaming and silent)."""
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -48,15 +42,8 @@ from shared.py.wide_events import log
 async def get_handoff_metadata(subagent_id: str) -> dict:
     """Look up icon_url, integration_id, integration_name for handoff subagents.
 
-    Checks both platform integrations (in-memory) and custom MCPs (MongoDB/Redis).
-    Uses Redis cache for custom MCPs to avoid repeated DB queries.
-
-    Args:
-        subagent_id: The subagent ID from handoff tool args
-
-    Returns:
-        Dict with icon_url, integration_id, integration_name if found,
-        empty dict otherwise
+    Checks platform integrations (in-memory) and custom MCPs (MongoDB, Redis-cached).
+    Returns an empty dict if not found.
     """
 
     clean_id, _ = parse_subagent_id(subagent_id)
@@ -116,18 +103,7 @@ async def get_handoff_metadata(subagent_id: str) -> dict:
 
 
 def _extract_timezone_offset(user_time: datetime) -> str:
-    """
-    Extract timezone offset string from a datetime object.
-
-    Returns the offset as a string like "+05:30" or "-08:00".
-    Falls back to "+00:00" (UTC) if the datetime has no timezone info.
-
-    Args:
-        user_time: Datetime object (preferably timezone-aware)
-
-    Returns:
-        Timezone offset string (e.g., "+05:30", "-08:00", "+00:00")
-    """
+    """Extract timezone offset string (e.g. "+05:30") from a datetime; "+00:00" if naive."""
     if user_time.tzinfo is None:
         return "+00:00"
 
@@ -259,33 +235,14 @@ def build_agent_config(
     langfuse_trace_id: str | None = None,
     langfuse_tags: list[str] | None = None,
 ) -> dict:
-    """Build configuration for graph execution with optional authentication tokens.
+    """Build the LangGraph execution config (user context, model, auth, execution params).
 
-    Creates a comprehensive configuration object for LangGraph execution that includes
-    user context, model settings, authentication tokens, and execution parameters.
-
-    Args:
-        conversation_id: Unique identifier for the conversation thread
-        user: User information dictionary containing user_id and email
-        user_time: Current datetime for the user's timezone
-        user_model_config: Optional model configuration with provider and token limits
-        thread_id: Optional override for thread_id (defaults to conversation_id)
-        base_configurable: Optional base configurable to inherit from (for child agents)
-        selected_tool: Optional tool name selected via slash command
-        tool_category: Optional category of the selected tool
-        subagent_id: Optional subagent ID for skill learning (e.g., "twitter", "github")
-        vfs_session_id: Shared VFS session ID that stays constant across the executor
-            and all handoff subagents it spawns. All agents in the chain resolve VFS
-            paths relative to the executor workspace using this ID. When provided via
-            base_configurable it is inherited automatically.
-        langfuse_trace_id: Bind spans to this Langfuse trace; inherits from
-            `base_configurable["langfuse_trace_id"]` when omitted so the
-            executor lands on the comms trace.
-        langfuse_tags: Tags for the Langfuse trace; same inheritance rule.
-
-    Returns:
-        Configuration dictionary formatted for LangGraph execution with configurable
-        parameters, metadata, and recursion limits
+    Notable args:
+        vfs_session_id: Shared VFS session ID held constant across the executor and the
+            handoff subagents it spawns, so all resolve VFS paths against the executor
+            workspace. Inherited automatically via base_configurable.
+        langfuse_trace_id / langfuse_tags: Bind spans to a Langfuse trace; inherit from
+            base_configurable when omitted so the executor lands on the comms trace.
     """
     callbacks = _build_agent_callbacks(conversation_id, user, agent_name, usage_metadata_callback)
     model_name, provider_name, max_tokens = _resolve_model_config(user_model_config)
@@ -380,23 +337,7 @@ def build_initial_state(
     history,
     trigger_context: dict | None = None,
 ) -> dict:
-    """Construct initial state dictionary for LangGraph execution.
-
-    Builds the starting state containing all necessary context for the agent
-    including user query, conversation history, tool selections, and optional
-    workflow trigger context.
-
-    Args:
-        request: Message request object containing user message and selections
-        user_id: Unique identifier for the user
-        conversation_id: Unique identifier for the conversation thread
-        history: List of previous messages in LangChain format
-        trigger_context: Optional context data from workflow triggers
-
-    Returns:
-        State dictionary with query, messages, datetime, user context, and
-        selected tools/workflows for graph processing
-    """
+    """Construct the initial LangGraph state (query, history, tool selections, trigger context)."""
     state = {
         "query": request.message,
         "intent": request.message,
@@ -431,24 +372,11 @@ async def execute_graph_silent(
     initial_state: dict,
     config: dict,
 ) -> tuple[str, dict]:
-    """Execute LangGraph in silent mode with real-time progress storage.
+    """Execute LangGraph in silent mode, accumulating the full message and tool data.
 
-    Runs the agent graph asynchronously and accumulates all results including
-    the complete message content and extracted tool data. Used for background
-    processing and workflow triggers where real-time streaming is not needed.
-
-    Stores intermediate messages and tool outputs as they happen during execution,
-    using the same storage patterns as normal chat.
-
-    Args:
-        graph: LangGraph instance to execute
-        initial_state: Starting state dictionary with query and context
-        config: Configuration dictionary with user context and settings
-
-    Returns:
-        Tuple containing:
-        - complete_message: Full response text accumulated from all chunks
-        - tool_data: Dictionary of extracted tool execution data and results
+    Used for background processing and workflow triggers that don't need streaming.
+    Stores intermediate messages and tool outputs as they happen, like normal chat.
+    Returns (complete_message, tool_data).
     """
     complete_message = ""
     tool_data: dict = {"tool_data": []}
@@ -562,41 +490,15 @@ async def execute_graph_streaming(
     initial_state: dict,
     config: dict,
 ) -> AsyncGenerator[str, None]:
-    """Execute LangGraph in streaming mode with real-time output.
+    """Execute LangGraph in streaming mode, yielding SSE-formatted updates.
 
-    Runs the agent graph and yields Server-Sent Events (SSE) formatted updates
-    as they occur. Handles both message content streaming and tool execution.
+    Cancellable via stream_id in config (through stream_manager).
 
-    Supports cancellation via stream_id in config - when cancelled via
-    stream_manager, streaming stops gracefully.
-
-    Args:
-        graph: LangGraph instance to execute
-        initial_state: Starting state dictionary with query and context
-        config: Configuration dictionary with user context and settings
-
-    Yields:
-        SSE-formatted strings containing:
-        - Real-time message content as it's generated
-        - Tool data entries (tool_data) with complete inputs
-        - Tool outputs (tool_output) when tools complete
-        - Custom events from tool executions
-        - Final completion marker and accumulated message
-
-    Stream Event Flow:
-        LangGraph emits events in 3 stream modes:
-
-        1. "updates" - State changes after each node execution
-           Contains AIMessage.tool_calls with complete args.
-           We emit tool_data entries here (frontend shows loading state).
-
-        2. "messages" - Individual message chunks
-           AIMessageChunk: streaming text content
-           ToolMessage: tool execution results -> emit tool_output
-
-        3. "custom" - Application-specific events from tools
-           Progress messages, errors, custom data.
-           Forwarded to frontend as-is.
+    LangGraph emits three stream modes:
+        - "updates": state changes after each node; AIMessage.tool_calls carry full
+          args, emitted as tool_data entries (frontend shows loading state).
+        - "messages": AIMessageChunk text content; ToolMessage results -> tool_output.
+        - "custom": application-specific tool events, forwarded as-is.
     """
     complete_message = ""
     stream_id = config.get("configurable", {}).get("stream_id")
