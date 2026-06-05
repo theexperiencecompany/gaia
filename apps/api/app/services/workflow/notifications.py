@@ -10,6 +10,7 @@ their own module to keep the executor runner free of a circular import on
 from datetime import UTC, datetime
 
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.notifications import pick_workflow_done_copy
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -50,6 +51,7 @@ async def send_workflow_completion_notification(
     except Exception:
         user_timezone = None
     formatted_time = format_local_time(datetime.now(UTC), user_timezone)
+    title, body = pick_workflow_done_copy(workflow_id, workflow_title, formatted_time)
 
     try:
         await notification_service.create_notification(
@@ -58,8 +60,8 @@ async def send_workflow_completion_notification(
                 source=NotificationSourceEnum.WORKFLOW_COMPLETED,
                 type=NotificationType.SUCCESS,
                 content=NotificationContent(
-                    title=f"Done with '{workflow_title}'",
-                    body=f"finished at {formatted_time}",
+                    title=title,
+                    body=body,
                     actions=[
                         NotificationAction(
                             type=ActionType.REDIRECT,

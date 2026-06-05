@@ -994,7 +994,10 @@ class TestWorkflowNotificationSenders:
 
         mock_notif.create_notification.assert_awaited_once()
         notif_req = mock_notif.create_notification.call_args[0][0]
-        assert notif_req.content.title == "Done with 'Morning Briefing'"
+        # Human, WhatsApp-style copy: exact phrasing rotates, but the workflow
+        # name is always woven into the title and there's a casual body.
+        assert "Morning Briefing" in notif_req.content.title
+        assert notif_req.content.body
         assert notif_req.content.rich_content["type"] == "workflow_execution"
         assert notif_req.content.rich_content["messages"] == ["got emails", "and calendar"]
 
