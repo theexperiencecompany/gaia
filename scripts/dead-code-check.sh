@@ -123,7 +123,17 @@ run_vulture() {
   # Test files are excluded: pytest fixtures, mock attributes, and
   # parametrize/conftest-injected names read as "unused" to vulture but are
   # consumed by pytest at runtime. Scanning them produces only false positives.
-  local exclude_globs="*/tests/*,*/test_*.py,*_test.py,*/conftest.py"
+  #
+  # Excluding test files also means a production symbol referenced ONLY by tests
+  # is reported as dead — that is intentional. Test-only-referenced production
+  # code is dead production code; the scan should surface it.
+  #
+  # Virtualenvs / vendored trees (.venv, site-packages, node_modules, .nx) are
+  # excluded so vulture scans only our source. Without this, vulture descends
+  # into installed deps and hard-crashes on Python-2 syntax in some packages
+  # (e.g. aenum) when run locally where a synced .venv exists. CI dodges this
+  # only because it never installs Python app deps — local runs do not.
+  local exclude_globs="*/tests/*,*/test_*.py,*_test.py,*/conftest.py,*/.venv/*,*/venv/*,*/.virtualenv/*,*/site-packages/*,*/node_modules/*,*/.nx/*"
 
   local raw_output
   # min-confidence 70 is vulture's reliable tier. The 60% tier is dominated by

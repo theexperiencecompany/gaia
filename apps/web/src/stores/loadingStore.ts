@@ -149,6 +149,5 @@ export const useLoadingStore = create<LoadingStore>()(
 );
 
 // Selectors
-export const useIsLoading = () => useLoadingStore((state) => state.isLoading);
 export const useIsMainResponseStreaming = () =>
   useLoadingStore((state) => state.isMainResponseStreaming);

@@ -218,7 +218,7 @@ class TestCreateReminderRequest:
             scheduled_at=future,
             base_time=future,
         )
-        data = m.model_dump()
+        data = m.model_dump(mode="json")
         assert isinstance(data["scheduled_at"], str)
         assert isinstance(data["base_time"], str)
 
@@ -431,7 +431,7 @@ class TestUpdateReminderRequest:
     def test_serializer_datetime_to_iso(self):
         future = datetime.now(UTC) + timedelta(days=30)
         m = UpdateReminderRequest(scheduled_at=future, stop_after=future)
-        data = m.model_dump()
+        data = m.model_dump(mode="json")
         assert isinstance(data["scheduled_at"], str)
         assert isinstance(data["stop_after"], str)
 

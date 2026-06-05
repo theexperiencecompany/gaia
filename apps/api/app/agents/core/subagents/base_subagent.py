@@ -161,7 +161,6 @@ class SubAgentFactory:
         full_tool_dict = tool_registry.get_tool_dict()
 
         middleware = create_subagent_middleware(
-            todo_source=provider,
             subagent_llm=llm,
             subagent_registry=full_tool_dict,
             subagent_tool_space=tool_space,

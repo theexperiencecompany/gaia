@@ -238,7 +238,6 @@ def create_comms_middleware() -> list[Any]:
 
 def create_subagent_middleware(
     *,
-    todo_source: str = "subagent",
     subagent_llm: LanguageModelLike | None = None,
     subagent_tools: list[BaseTool] | None = None,
     subagent_registry: Mapping[str, BaseTool] | None = None,
@@ -258,7 +257,6 @@ def create_subagent_middleware(
     SubagentMiddleware itself which excludes spawn_subagent from child tools).
 
     Args:
-        todo_source: Kept for API compatibility (unused — todo source set in todo_tools)
         subagent_llm: LLM for spawned sub-subagent execution
         subagent_tools: Tools available to spawned sub-subagents
         subagent_registry: Alternative tool registry for spawned sub-subagents
