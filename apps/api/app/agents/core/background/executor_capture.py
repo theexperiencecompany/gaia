@@ -46,10 +46,7 @@ def register_executor_capture(stream_id: str) -> asyncio.Event:
     return done_event
 
 
-async def await_executor_done(
-    stream_id: str,
-    timeout: float = EXECUTOR_WAIT_TIMEOUT,
-) -> None:
+async def await_executor_done(stream_id: str) -> None:
     """Block until the background executor for this stream signals completion.
 
     No-op when no executor was spawned for the stream. On timeout, logs and
@@ -62,7 +59,7 @@ async def await_executor_done(
         return
     log.info("Waiting for executor completion", stream_id=stream_id)
     try:
-        async with asyncio.timeout(timeout):
+        async with asyncio.timeout(EXECUTOR_WAIT_TIMEOUT):
             await done_event.wait()
     except TimeoutError:
         log.warning("Timed out waiting for executor — draining anyway", stream_id=stream_id)
