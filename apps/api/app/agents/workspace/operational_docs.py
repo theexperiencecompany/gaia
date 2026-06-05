@@ -109,12 +109,16 @@ Typical flow:
 """
 
 
-TRACKED_TODOS_DOC: Final[str] = """# Tracked todos — GAIA's institutional memory
+TRACKED_TODOS_DOC: Final[str] = """# Tracked todos — GAIA-managed todos with memory
 
-Tracked todos are **GAIA's memory** of multi-conversation initiatives — what
-GAIA did, when, how, and why — NOT the user's personal todo list. When the user
-says "email Rahul about the contract" and months later asks "what happened with
-Rahul's contract?", the tracked todo and its canvas surface the answer.
+Tracked todos are **GAIA-managed todos**: they show on the user's todos page, but
+GAIA owns them and keeps a canvas of working notes (key IDs, state, activity log,
+learnings) so it can act on them over time. They are distinct from the user's own
+hand-created action items. Create one only when GAIA performs or schedules a real
+action on an external system it needs to remember, follow up on, or repeat; never
+for read-only work (fetching, listing, summarizing), no matter how often it runs.
+When the user says "email Rahul about the contract" and months later asks "what
+happened with Rahul's contract?", the tracked todo and its canvas surface the answer.
 
 **One todo per initiative.** "Email Rahul, create a Linear issue, follow up
 Friday" = ONE tracked todo ("Contract negotiation with Rahul") whose canvas
