@@ -6,9 +6,9 @@ import { NewChatSection } from "@/features/chat/components/interface/sections/Ne
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 
 interface NewChatLayoutProps {
-  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  scrollContainerRef: (node: HTMLElement | null) => void;
+  contentRef: (node: HTMLElement | null) => void;
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
-  handleScroll: (event: React.UIEvent) => void;
   dragHandlers: {
     onDragEnter: (e: React.DragEvent<HTMLElement>) => void;
     onDragOver: (e: React.DragEvent<HTMLElement>) => void;
@@ -32,8 +32,8 @@ interface NewChatLayoutProps {
 
 export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
   scrollContainerRef,
+  contentRef,
   dummySectionRef,
-  handleScroll,
   dragHandlers,
   composerProps,
 }) => {
@@ -43,10 +43,12 @@ export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
     <div
       ref={scrollContainerRef}
       className="h-full space-y-20 overflow-y-auto"
-      onScroll={handleScroll}
       {...dragHandlers}
     >
-      <div className="flex w-full flex-col items-center gap-10 px-4 pb-10">
+      <div
+        ref={contentRef}
+        className="flex w-full flex-col items-center gap-10 px-4 pb-10"
+      >
         <NewChatSection
           composerProps={composerProps}
           showUseCases={showUseCases}

@@ -32,7 +32,7 @@ const WorkflowCardSkeleton = () => {
 
 export const WorkflowListSkeleton = () => {
   return (
-    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-6 @md:grid-cols-2 @3xl:grid-cols-3 @5xl:grid-cols-4">
       {Array.from({ length: 8 }).map((_, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: just mapping empty skeletons
         <WorkflowCardSkeleton key={i} />

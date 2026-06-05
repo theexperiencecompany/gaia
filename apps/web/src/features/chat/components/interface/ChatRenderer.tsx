@@ -70,12 +70,10 @@ export default function ChatRenderer({
     (!!streamingConversationId &&
       streamingConversationId === activeConversationId) ||
     isAwaitingExecutorResult;
-  // Follow-up actions and the action/timestamp row belong to a *fully finished*
-  // turn. Hide them whenever the conversation is still working — i.e. exactly
-  // when the bottom loading indicator is visible (`isLoading || awaiting`). This
-  // also covers a later message completing while an *earlier* message's
-  // background executor is still running: its follow-ups must not pop in (with a
-  // gap) above the still-active loading indicator.
+  // The conversation is "working" while the bottom loading indicator is visible
+  // (`isLoading || awaiting`) or its SSE stream runs. This is used to suppress
+  // the follow-ups + action row on the *active turn's* bubble only (see
+  // `suppressForBusy` below) — finished turns above it keep their follow-ups.
   const isConversationBusy = isConversationStreaming || isLoading;
   const scrolledToMessageRef = useRef<string | null>(null);
   const { retryMessage, isRetrying } = useRetryMessage();
@@ -213,6 +211,22 @@ export default function ChatRenderer({
     [messagePropsOptions],
   );
 
+  // The busy/streaming suppression of follow-ups + the action row applies only
+  // to the turn that is *currently in progress* — i.e. the last rendered bubble,
+  // the one sitting directly above the loading indicator. Earlier, finished
+  // turns keep their follow-ups even after a new message starts streaming.
+  const lastRenderedIndex = useMemo(() => {
+    for (let i = messagesWithDeduplicatedToolCalls.length - 1; i >= 0; i--) {
+      const candidate = messagesWithDeduplicatedToolCalls[i];
+      if (candidate.type === "bot") {
+        if (rendersAsBotBubble(candidate)) return i;
+        continue; // empty bot message — never renders, keep scanning back
+      }
+      return i; // user messages always render
+    }
+    return -1;
+  }, [messagesWithDeduplicatedToolCalls, rendersAsBotBubble]);
+
   // Walk in `step` direction from `index`, skipping empty bot messages, and
   // report whether the next/previous *rendered* bubble is a bot bubble.
   const hasRenderedBotInDirection = useCallback(
@@ -290,6 +304,10 @@ export default function ChatRenderer({
           // grouping reflects the actually-visible bubbles, not raw adjacency.
           const isFollowedByBot = hasRenderedBotInDirection(index, 1);
           const isPrecededByBot = hasRenderedBotInDirection(index, -1);
+          // Only the active turn's bubble (the last rendered one) is suppressed
+          // while the conversation is busy — finished turns keep their actions.
+          const suppressForBusy =
+            index === lastRenderedIndex && isConversationBusy;
 
           if (
             message.type === "bot" &&
@@ -299,9 +317,9 @@ export default function ChatRenderer({
               <ChatBubbleBot
                 key={message.message_id || index}
                 {...getMessageProps(message, "bot", messagePropsOptions)}
-                disableActions={isFollowedByBot || isConversationBusy}
+                disableActions={isFollowedByBot || suppressForBusy}
                 follow_up_actions={
-                  isFollowedByBot || isConversationBusy
+                  isFollowedByBot || suppressForBusy
                     ? undefined
                     : messageProps.follow_up_actions
                 }

@@ -5,9 +5,9 @@ import Composer from "@/features/chat/components/composer/Composer";
 import { ChatSection } from "@/features/chat/components/interface/sections/ChatSection";
 
 interface ChatWithMessagesProps {
-  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  scrollContainerRef: (node: HTMLElement | null) => void;
+  contentRef: (node: HTMLElement | null) => void;
   chatRef: React.RefObject<HTMLDivElement | null>;
-  handleScroll: (event: React.UIEvent) => void;
   dragHandlers: {
     onDragEnter: (e: React.DragEvent<HTMLElement>) => void;
     onDragOver: (e: React.DragEvent<HTMLElement>) => void;
@@ -31,21 +31,22 @@ interface ChatWithMessagesProps {
 
 export const ChatWithMessages: React.FC<ChatWithMessagesProps> = ({
   scrollContainerRef,
+  contentRef,
   chatRef,
-  handleScroll,
   dragHandlers,
   composerProps,
 }) => {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Scrollable chat content */}
+      {/* Scrollable chat content — stick-to-bottom owns scroll position */}
       <div
         ref={scrollContainerRef}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
-        onScroll={handleScroll}
         {...dragHandlers}
       >
-        <ChatSection chatRef={chatRef} />
+        <div ref={contentRef}>
+          <ChatSection chatRef={chatRef} />
+        </div>
       </div>
       {/* Fixed composer at bottom */}
       <div className="shrink-0 pb-2">

@@ -529,7 +529,7 @@ export function CarouselView(props: z.infer<typeof carouselSchema>) {
   const total = props.items.length;
 
   return (
-    <ToolCard size="full">
+    <ToolCard size="full" className="max-w-(--breakpoint-sm)!">
       <Carousel opts={{ align: "start", loop: true }}>
         <CarouselContent className="-ml-0">
           {props.items.map((item) => (

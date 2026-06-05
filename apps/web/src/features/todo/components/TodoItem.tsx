@@ -18,6 +18,7 @@ import { ChevronRight } from "@/components/shared/icons";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { cn } from "@/lib/utils";
 import {
   Priority,
   type Project,
@@ -36,6 +37,7 @@ interface TodoItemProps {
   // onEdit?: (todo: Todo) => void;
   onClick?: (todo: Todo) => void;
   onPrefetchWorkflow?: (todoId: string) => void;
+  className?: string;
 }
 
 const priorityColors = {
@@ -88,6 +90,7 @@ export default memo(function TodoItem({
   // onEdit,
   onClick,
   onPrefetchWorkflow,
+  className,
 }: TodoItemProps) {
   const handleToggleComplete = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation();
@@ -134,9 +137,12 @@ export default memo(function TodoItem({
 
   return (
     <div
-      className={`pointer-events-auto w-full cursor-pointer rounded-xl p-2 pl-3 mb-0 transition-all group ${
-        isSelected ? "bg-zinc-800/50" : "hover:bg-zinc-800/50"
-      } ${todo.completed ? "opacity-30" : ""}`}
+      className={cn(
+        "pointer-events-auto w-full cursor-pointer rounded-xl p-2 pl-3 mb-0 transition-all group",
+        isSelected ? "bg-zinc-800/50" : "hover:bg-zinc-800/50",
+        todo.completed && "opacity-30",
+        className,
+      )}
       style={{ contentVisibility: "auto", containIntrinsicSize: "0 80px" }}
       onClick={() => onClick?.(todo)}
       onMouseEnter={() => onPrefetchWorkflow?.(todo.id)}
