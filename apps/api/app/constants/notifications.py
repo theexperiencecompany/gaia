@@ -47,11 +47,14 @@ DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
 # (first person, casual), not a status bar. Each entry is (title, body);
 # {title} is the workflow name and {time} the local completion time. One pair
 # is picked per run so repeats don't read like a robot.
+# Bodies stay action-agnostic on purpose: the result is delivered inline on
+# external channels (WhatsApp/Telegram) and behind "View Results" in-app, so
+# copy must never promise a specific gesture like "tap" or "come look".
 WORKFLOW_DONE_COPY: tuple[tuple[str, str], ...] = (
-    ("just wrapped up {title} 🙌", "all done at {time}, tap to see how it went"),
-    ("ok, {title} is done!", "knocked it out at {time}, here's what I got for you"),
-    ("just finished {title} 🎉", "all good as of {time}, come take a look"),
-    ("sorted {title} for you", "wrapped it up at {time}, here's everything"),
+    ("just wrapped up {title} 🙌", "all done at {time}"),
+    ("ok, {title} is done!", "finished at {time}, all yours"),
+    ("just finished {title} 🎉", "wrapped it up at {time}"),
+    ("sorted {title} for you", "all good as of {time}"),
 )
 
 
