@@ -283,6 +283,15 @@ async def search_with_duckduckgo(query: str, count: int = 5) -> dict:
             )
             response.raise_for_status()
 
+        # DDG Lite serves an anti-bot CAPTCHA (HTTP 202) that raise_for_status()
+        # treats as success; without this guard it parses as a silent "0 results".
+        if response.status_code == 202 or "bots use duckduckgo" in response.text[:2000].lower():
+            log.warning(
+                f"DuckDuckGo served a bot-challenge page "
+                f"(status {response.status_code}) for query: {query[:60]}"
+            )
+            return {"results": []}
+
         soup = BeautifulSoup(response.text, "lxml")
         results = []
 
@@ -310,3 +319,20 @@ async def search_with_duckduckgo(query: str, count: int = 5) -> dict:
     except Exception as e:
         log.error(f"DuckDuckGo search failed: {e}")
         return {"results": []}
+
+
+async def search_for_research(query: str, count: int = 5) -> dict:
+    """Search for the deep-research pipeline: Tavily primary, DuckDuckGo fallback.
+
+    Returns ``{"results": [...]}`` in the shared url/title/content/score shape.
+    """
+    try:
+        tavily_result = await fetch_tavily_search(query, count, "general")
+        results = tavily_result.get("results") if isinstance(tavily_result, dict) else None
+        if results:
+            return {"results": results}
+        log.warning(f"Tavily returned no results, falling back to DuckDuckGo for: {query[:60]}")
+    except Exception as e:
+        log.warning(f"Tavily research search failed, falling back to DuckDuckGo: {e}")
+
+    return await search_with_duckduckgo(query, count)
