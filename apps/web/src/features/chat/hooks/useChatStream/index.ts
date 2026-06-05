@@ -281,6 +281,42 @@ export const useChatStream = () => {
     }
   };
 
+  // Reset all stream refs/state when the SSE closes before any bot message id
+  // was assigned — nothing to persist, so just unwind the in-progress turn.
+  const handleStreamCloseWithoutMessage = () => {
+    console.warn(
+      "[handleStreamClose] No bot message ID - resetting state without persistence",
+    );
+    setIsLoading(false);
+    resetLoadingText();
+    streamController.clear();
+    streamState.endStream();
+    streamInProgressRef.current = false;
+    refs.current.botMessage = null;
+    refs.current.currentStreamingMessages = [];
+    refs.current.newConversation = { id: null, description: null };
+    useChatStore.getState().setStreamingConversationId(null);
+    // Keep the composer locked if a message is queued (it streams next);
+    // otherwise this turn is fully done.
+    if (!pendingStreamArgsRef.current) {
+      useLoadingStore.getState().setMainResponseStreaming(false);
+    }
+    console.log("[useChatStream] dispatching pending stream after early close");
+    dispatchPending();
+  };
+
+  // Set the executor-pending bridge BEFORE clearing isLoading so the loading
+  // indicator never drops between SSE close and the result message arriving.
+  const markExecutorPending = (conversationId: string) => {
+    useChatStore.getState().setExecutorPendingConversationId(conversationId);
+    setTimeout(() => {
+      const store = useChatStore.getState();
+      if (store.executorPendingConversationId === conversationId) {
+        store.setExecutorPendingConversationId(null);
+      }
+    }, EXECUTOR_RESULT_TIMEOUT_MS);
+  };
+
   const handleStreamClose = async () => {
     console.log("[useChatStream] handleStreamClose called");
     if (streamCloseHandledRef.current) return;
@@ -288,27 +324,7 @@ export const useChatStream = () => {
 
     try {
       if (!refs.current.botMessage?.message_id) {
-        console.warn(
-          "[handleStreamClose] No bot message ID - resetting state without persistence",
-        );
-        setIsLoading(false);
-        resetLoadingText();
-        streamController.clear();
-        streamState.endStream();
-        streamInProgressRef.current = false;
-        refs.current.botMessage = null;
-        refs.current.currentStreamingMessages = [];
-        refs.current.newConversation = { id: null, description: null };
-        useChatStore.getState().setStreamingConversationId(null);
-        // Keep the composer locked if a message is queued (it streams next);
-        // otherwise this turn is fully done.
-        if (!pendingStreamArgsRef.current) {
-          useLoadingStore.getState().setMainResponseStreaming(false);
-        }
-        console.log(
-          "[useChatStream] dispatching pending stream after early close",
-        );
-        dispatchPending();
+        handleStreamCloseWithoutMessage();
         return;
       }
 
@@ -324,18 +340,8 @@ export const useChatStream = () => {
 
       const conversationId = resolveConversationId();
 
-      // Set the executor-pending bridge BEFORE clearing isLoading so the loading
-      // indicator never drops between SSE close and the result message arriving.
       if (delegatedToExecutor && conversationId) {
-        useChatStore
-          .getState()
-          .setExecutorPendingConversationId(conversationId);
-        setTimeout(() => {
-          const store = useChatStore.getState();
-          if (store.executorPendingConversationId === conversationId) {
-            store.setExecutorPendingConversationId(null);
-          }
-        }, EXECUTOR_RESULT_TIMEOUT_MS);
+        markExecutorPending(conversationId);
       }
       // NB: a later non-delegating turn must NOT clear executorPending here — an
       // earlier message's background executor may still be running. It is cleared

@@ -5,7 +5,7 @@ from app.services.workflow.scheduler import workflow_scheduler
 from shared.py.wide_events import wide_task
 
 
-async def rescan_pending_scheduled_tasks(ctx: dict) -> str:
+async def rescan_pending_scheduled_tasks(_ctx: dict) -> str:
     """Re-enqueue any SCHEDULED task that is due but whose ARQ job was lost.
 
     The startup scan (``scan_and_schedule_pending_tasks``) only runs once per boot,

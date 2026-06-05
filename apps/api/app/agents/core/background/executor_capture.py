@@ -62,7 +62,8 @@ async def await_executor_done(
         return
     log.info("Waiting for executor completion", stream_id=stream_id)
     try:
-        await asyncio.wait_for(done_event.wait(), timeout=timeout)
+        async with asyncio.timeout(timeout):
+            await done_event.wait()
     except TimeoutError:
         log.warning("Timed out waiting for executor — draining anyway", stream_id=stream_id)
 

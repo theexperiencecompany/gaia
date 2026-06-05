@@ -190,15 +190,25 @@ class BaseSchedulerService(ABC):
         # task resumes at its next future occurrence instead of replaying missed runs.
         next_run = get_next_run_time(task.repeat, datetime.now(UTC), user_timezone)
 
-        # Check if we should continue scheduling
-        should_continue = True
+        if self._should_continue_recurring(task, occurrence_count, next_run):
+            await self._reschedule_recurring_task(task, occurrence_count, next_run, trigger_config)
+        else:
+            await self.update_task_status(
+                task.id,
+                ScheduledTaskStatus.COMPLETED,
+                {"occurrence_count": occurrence_count},
+            )
+            log.info(f"Completed recurring task {task.id}")
 
-        # Check max occurrences
+    @staticmethod
+    def _should_continue_recurring(
+        task: BaseScheduledTask, occurrence_count: int, next_run: datetime
+    ) -> bool:
+        """Decide whether a recurring task has more occurrences to schedule."""
         if task.max_occurrences and occurrence_count >= task.max_occurrences:
-            should_continue = False
             log.info(f"Task {task.id} reached max occurrences ({task.max_occurrences})")
+            return False
 
-        # Check stop_after date
         if task.stop_after:
             stop_after = task.stop_after
             if stop_after.tzinfo is None:
@@ -206,28 +216,29 @@ class BaseSchedulerService(ABC):
                 log.warning(f"Task {task.id} stop_after was offset-naive, assuming UTC")
 
             if next_run >= stop_after:
-                should_continue = False
                 log.info(f"Task {task.id} reached stop_after date ({stop_after})")
+                return False
 
-        if should_continue:
-            # Store scheduled_at as a native datetime so the `$lte` scan can match it.
-            update_fields: dict[str, Any] = {
-                "scheduled_at": next_run,
-                "occurrence_count": occurrence_count,
-            }
-            if trigger_config is not None and hasattr(trigger_config, "next_run"):
-                update_fields["trigger_config.next_run"] = next_run
-            await self.update_task_status(task.id, ScheduledTaskStatus.SCHEDULED, update_fields)
-            await self.reschedule_task(task.id, next_run)
-            log.info(f"Rescheduled recurring task {task.id} for {next_run}")
-        else:
-            # Mark as completed
-            await self.update_task_status(
-                task.id,
-                ScheduledTaskStatus.COMPLETED,
-                {"occurrence_count": occurrence_count},
-            )
-            log.info(f"Completed recurring task {task.id}")
+        return True
+
+    async def _reschedule_recurring_task(
+        self,
+        task: BaseScheduledTask,
+        occurrence_count: int,
+        next_run: datetime,
+        trigger_config: Any,
+    ) -> None:
+        """Persist the next occurrence and re-enqueue the recurring task."""
+        # Store scheduled_at as a native datetime so the `$lte` scan can match it.
+        update_fields: dict[str, Any] = {
+            "scheduled_at": next_run,
+            "occurrence_count": occurrence_count,
+        }
+        if trigger_config is not None and hasattr(trigger_config, "next_run"):
+            update_fields["trigger_config.next_run"] = next_run
+        await self.update_task_status(task.id, ScheduledTaskStatus.SCHEDULED, update_fields)
+        await self.reschedule_task(task.id, next_run)
+        log.info(f"Rescheduled recurring task {task.id} for {next_run}")
 
     def _build_job_args(self, task_id: str) -> tuple:
         """Positional args passed to the ARQ job. Subclasses may add context."""

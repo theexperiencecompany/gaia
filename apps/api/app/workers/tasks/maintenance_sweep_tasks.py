@@ -68,87 +68,20 @@ async def maintenance_sweep_tracked_todos(_ctx: dict) -> str:
 
         pool = await RedisPoolManager.get_pool()
 
-        cursor = todos_collection.find({"completed": False, "labels": "gaia-tracked"}).limit(200)
-
-        expired: list[dict] = []
-        overdue: list[dict] = []
-        dormant: list[dict] = []
-
-        async for doc in cursor:
-            todo_id = str(doc["_id"])
-
-            # Skip todos still inside their (escalating) notification backoff.
-            if await pool.exists(_cooldown_key(todo_id)):
-                continue
-
-            if doc.get("expires_at") and doc["expires_at"] <= now:
-                expired.append(doc)
-            elif (
-                doc.get("due_date")
-                and doc["due_date"] <= now
-                and not _has_upcoming_schedule(doc, now)
-            ):
-                overdue.append(doc)
-            elif _is_dormant(doc, now):
-                dormant.append(doc)
-
-        # Cap at 20 per tier per sweep
-        expired = expired[:20]
-        overdue = overdue[:20]
-        dormant = dormant[:20]
-
-        archived = 0
-        notified_expired = 0
-        notified_overdue = 0
-        requeued = 0
-        needs_attention_todos: list[dict] = []
+        expired, overdue, dormant = await _classify_tracked_todos(pool, now)
 
         # Track health-check calls per user to cap LLM usage per sweep
         health_checks_used: dict[str, int] = {}
         # Cache the daytime decision per user for the duration of this sweep.
         daytime_cache: dict[str, bool] = {}
 
-        for doc in expired:
-            uid = doc["user_id"]
-            # Defer to a daytime sweep — no cooldown consumed, retried later.
-            if not await _is_user_daytime(uid, now, daytime_cache):
-                continue
-            if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
-                continue
-            result = await _health_check_expired(doc, pool)
-            health_checks_used[uid] = health_checks_used.get(uid, 0) + 1
-            if result == "archived":
-                archived += 1
-            elif result == "notified":
-                notified_expired += 1
-
-        for doc in overdue:
-            uid = doc["user_id"]
-            if not await _is_user_daytime(uid, now, daytime_cache):
-                continue
-            if await _notify_overdue(doc, pool):
-                notified_overdue += 1
-
-        # Collect dormant todos that need human attention, then apply the
-        # escalating backoff once per todo and drop any that are now muted.
-        needs_attention_candidates: list[dict] = []
-        for doc in dormant:
-            uid = doc["user_id"]
-            if not await _is_user_daytime(uid, now, daytime_cache):
-                continue
-            if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
-                needs_attention_candidates.append(doc)
-                continue
-            result = await _health_check_dormant(doc, pool)
-            health_checks_used[uid] = health_checks_used.get(uid, 0) + 1
-            if result == "requeued":
-                requeued += 1
-            else:
-                needs_attention_candidates.append(doc)
-
-        for doc in needs_attention_candidates:
-            if await _register_notification(pool, str(doc["_id"])):
-                needs_attention_todos.append(doc)
+        archived, notified_expired = await _process_expired(
+            expired, pool, now, health_checks_used, daytime_cache
+        )
+        notified_overdue = await _process_overdue(overdue, pool, now, daytime_cache)
+        requeued, needs_attention_todos = await _process_dormant(
+            dormant, pool, now, health_checks_used, daytime_cache
+        )
 
         if needs_attention_todos:
             await _send_dormant_digest(needs_attention_todos)
@@ -167,6 +100,124 @@ async def maintenance_sweep_tracked_todos(_ctx: dict) -> str:
             digest_items=len(needs_attention_todos),
         )
         return summary
+
+
+async def _classify_tracked_todos(
+    pool: Any, now: datetime
+) -> tuple[list[dict], list[dict], list[dict]]:
+    """Scan active tracked todos and bucket them into expired/overdue/dormant tiers.
+
+    Todos still inside their notification backoff are skipped. Each tier is capped
+    at 20 entries per sweep.
+    """
+    cursor = todos_collection.find({"completed": False, "labels": "gaia-tracked"}).limit(200)
+
+    expired: list[dict] = []
+    overdue: list[dict] = []
+    dormant: list[dict] = []
+
+    async for doc in cursor:
+        todo_id = str(doc["_id"])
+
+        # Skip todos still inside their (escalating) notification backoff.
+        if await pool.exists(_cooldown_key(todo_id)):
+            continue
+
+        if doc.get("expires_at") and doc["expires_at"] <= now:
+            expired.append(doc)
+        elif (
+            doc.get("due_date") and doc["due_date"] <= now and not _has_upcoming_schedule(doc, now)
+        ):
+            overdue.append(doc)
+        elif _is_dormant(doc, now):
+            dormant.append(doc)
+
+    # Cap at 20 per tier per sweep
+    return expired[:20], overdue[:20], dormant[:20]
+
+
+async def _process_expired(
+    expired: list[dict],
+    pool: Any,
+    now: datetime,
+    health_checks_used: dict[str, int],
+    daytime_cache: dict[str, bool],
+) -> tuple[int, int]:
+    """Run the health-check agent on expired todos; archive or notify each.
+
+    Returns ``(archived_count, notified_count)``.
+    """
+    archived = 0
+    notified_expired = 0
+    for doc in expired:
+        uid = doc["user_id"]
+        # Defer to a daytime sweep — no cooldown consumed, retried later.
+        if not await _is_user_daytime(uid, now, daytime_cache):
+            continue
+        if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
+            continue
+        result = await _health_check_expired(doc, pool)
+        health_checks_used[uid] = health_checks_used.get(uid, 0) + 1
+        if result == "archived":
+            archived += 1
+        elif result == "notified":
+            notified_expired += 1
+    return archived, notified_expired
+
+
+async def _process_overdue(
+    overdue: list[dict],
+    pool: Any,
+    now: datetime,
+    daytime_cache: dict[str, bool],
+) -> int:
+    """Send an individual notification for each overdue todo. Returns notified count."""
+    notified_overdue = 0
+    for doc in overdue:
+        uid = doc["user_id"]
+        if not await _is_user_daytime(uid, now, daytime_cache):
+            continue
+        if await _notify_overdue(doc, pool):
+            notified_overdue += 1
+    return notified_overdue
+
+
+async def _process_dormant(
+    dormant: list[dict],
+    pool: Any,
+    now: datetime,
+    health_checks_used: dict[str, int],
+    daytime_cache: dict[str, bool],
+) -> tuple[int, list[dict]]:
+    """Re-queue dormant todos via the agent, else collect them for the digest.
+
+    Applies the escalating backoff once per surviving todo and drops any now muted.
+    Returns ``(requeued_count, needs_attention_todos)``.
+    """
+    requeued = 0
+    # Collect dormant todos that need human attention, then apply the
+    # escalating backoff once per todo and drop any that are now muted.
+    needs_attention_candidates: list[dict] = []
+    for doc in dormant:
+        uid = doc["user_id"]
+        if not await _is_user_daytime(uid, now, daytime_cache):
+            continue
+        if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
+            needs_attention_candidates.append(doc)
+            continue
+        result = await _health_check_dormant(doc, pool)
+        health_checks_used[uid] = health_checks_used.get(uid, 0) + 1
+        if result == "requeued":
+            requeued += 1
+        else:
+            needs_attention_candidates.append(doc)
+
+    needs_attention_todos: list[dict] = []
+    for doc in needs_attention_candidates:
+        if await _register_notification(pool, str(doc["_id"])):
+            needs_attention_todos.append(doc)
+
+    return requeued, needs_attention_todos
 
 
 def _has_upcoming_schedule(doc: dict, now: datetime) -> bool:
@@ -409,51 +460,56 @@ async def _send_dormant_digest(todos: list[dict]) -> None:
             by_user.setdefault(uid, []).append(doc)
 
     for user_id, user_todos in by_user.items():
-        lines: list[str] = []
-        for doc in user_todos:
-            title: str = doc.get("title", UNTITLED_TODO_TITLE)
-            updated_at: datetime | None = doc.get("updated_at")
-            idle_days = (now - updated_at).days if updated_at else DORMANT_DAYS
-            lines.append(f"- {title} (idle {idle_days}d)")
+        await _send_user_dormant_digest(user_id, user_todos, now)
 
-        count = len(user_todos)
-        body = "\n".join(lines)
-        # Deep-link the single todo; land on the list when the digest bundles several.
-        action = _todo_redirect_action(
-            "View todo" if count == 1 else "Review todos",
-            str(user_todos[0]["_id"]) if count == 1 else None,
-        )
 
-        try:
-            await notification_service.create_notification(
-                NotificationRequest(
-                    user_id=user_id,
-                    source=NotificationSourceEnum.BACKGROUND_JOB,
-                    type=NotificationType.INFO,
-                    priority=2,
-                    content=NotificationContent(
-                        title=(
-                            f"{count} dormant todo needs attention"
-                            if count == 1
-                            else f"{count} dormant todos need attention"
-                        ),
-                        body=body,
-                        actions=[action],
+async def _send_user_dormant_digest(user_id: str, user_todos: list[dict], now: datetime) -> None:
+    """Send one dormant-todo digest notification to a single user."""
+    lines: list[str] = []
+    for doc in user_todos:
+        title: str = doc.get("title", UNTITLED_TODO_TITLE)
+        updated_at: datetime | None = doc.get("updated_at")
+        idle_days = (now - updated_at).days if updated_at else DORMANT_DAYS
+        lines.append(f"- {title} (idle {idle_days}d)")
+
+    count = len(user_todos)
+    body = "\n".join(lines)
+    # Deep-link the single todo; land on the list when the digest bundles several.
+    action = _todo_redirect_action(
+        "View todo" if count == 1 else "Review todos",
+        str(user_todos[0]["_id"]) if count == 1 else None,
+    )
+
+    try:
+        await notification_service.create_notification(
+            NotificationRequest(
+                user_id=user_id,
+                source=NotificationSourceEnum.BACKGROUND_JOB,
+                type=NotificationType.INFO,
+                priority=2,
+                content=NotificationContent(
+                    title=(
+                        f"{count} dormant todo needs attention"
+                        if count == 1
+                        else f"{count} dormant todos need attention"
                     ),
-                    metadata={"todo_count": count},
-                )
+                    body=body,
+                    actions=[action],
+                ),
+                metadata={"todo_count": count},
             )
-            log.info(
-                "maintenance_sweep.dormant_digest_sent",
-                user_id=user_id,
-                todo_count=count,
-            )
-        except Exception as exc:
-            log.warning(
-                "maintenance_sweep.dormant_digest_failed",
-                user_id=user_id,
-                error=str(exc),
-            )
+        )
+        log.info(
+            "maintenance_sweep.dormant_digest_sent",
+            user_id=user_id,
+            todo_count=count,
+        )
+    except Exception as exc:
+        log.warning(
+            "maintenance_sweep.dormant_digest_failed",
+            user_id=user_id,
+            error=str(exc),
+        )
 
 
 async def _read_canvas(doc: dict) -> str:

@@ -255,21 +255,12 @@ async def _deliver_bg_notification(
             role="user",
         )
 
-    # Generate follow-up suggestions on the executor's final answer (not the
-    # intermediate comms ack) so they appear once, on the real result. Only for
-    # successful results — an error message gets no suggestions.
-    follow_up_actions: list[str] = []
-    if msg_type == "final":
-        follow_up_context = (
-            f"User request: {user_msg_content}\n\nAssistant response: {notification_text}"
-            if user_msg_content
-            else notification_text
-        )
-        follow_up_actions = await generate_follow_up_actions(
-            follow_up_context,
-            user_id,
-            {"configurable": {"user_id": user_id}},
-        )
+    follow_up_actions = await _build_follow_up_actions(
+        msg_type=msg_type,
+        notification_text=notification_text,
+        user_msg_content=user_msg_content,
+        user_id=user_id,
+    )
     if follow_up_actions:
         bot_message.follow_up_actions = follow_up_actions
 
@@ -290,28 +281,13 @@ async def _deliver_bg_notification(
     # carrying the real voiced result, instead of pushing to one conversation
     # transport. The bot message is already saved above for "View Results".
     if workflow_id:
-        from app.services.workflow.notifications import (
-            send_workflow_completion_notification,
-            send_workflow_failure_notification,
-        )
-
-        if msg_type == "error":
-            await send_workflow_failure_notification(
-                workflow_id=workflow_id,
-                workflow_title=workflow_title,
-                user_id=user_id,
-            )
-        else:
-            await send_workflow_completion_notification(
-                workflow_id=workflow_id,
-                workflow_title=workflow_title,
-                conversation_id=conversation_id,
-                user_id=user_id,
-                result_text=notification_text,
-            )
-        log.info(
-            "_deliver_bg_notification: workflow notification dispatched",
+        await _dispatch_workflow_notification(
+            msg_type=msg_type,
             workflow_id=workflow_id,
+            workflow_title=workflow_title,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            notification_text=notification_text,
             message_id=bot_message.message_id,
         )
         return
@@ -329,31 +305,17 @@ async def _deliver_bg_notification(
         )
         transport = "platform"
     else:
-        ws_payload: dict[str, Any] = {
-            "type": "bot",
-            "response": notification_text,
-            "message_id": bot_message.message_id,
-            "date": bot_message.date,
-        }
-        if tool_data:
-            ws_payload["tool_data"] = tool_data
-        if follow_up_actions:
-            ws_payload["follow_up_actions"] = follow_up_actions
-        if task_id:
-            ws_payload["task_id"] = task_id
-        if show_reply_quote:
-            ws_payload["replyToMessage"] = {
-                "id": user_message_id,
-                "content": user_msg_content,
-                "role": "user",
-            }
-        await _broadcast_message(
-            user_id,
-            {
-                "type": "conversation.new_message",
-                "conversation_id": conversation_id,
-                "message": ws_payload,
-            },
+        await _broadcast_bot_message(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            bot_message=bot_message,
+            notification_text=notification_text,
+            tool_data=tool_data,
+            follow_up_actions=follow_up_actions,
+            task_id=task_id,
+            show_reply_quote=show_reply_quote,
+            user_message_id=user_message_id,
+            user_msg_content=user_msg_content,
         )
         delivered = True
         transport = "websocket"
@@ -366,6 +328,112 @@ async def _deliver_bg_notification(
         conversation_source=conversation_source.value if conversation_source else None,
         transport=transport,
         delivered=delivered,
+    )
+
+
+async def _build_follow_up_actions(
+    *,
+    msg_type: str,
+    notification_text: str,
+    user_msg_content: str,
+    user_id: str,
+) -> list[str]:
+    """Generate follow-up suggestions on the executor's final answer.
+
+    Suggestions are computed on the real result (not the intermediate comms ack)
+    so they appear once. Only successful results get suggestions — an error
+    message gets none.
+    """
+    if msg_type != "final":
+        return []
+    follow_up_context = (
+        f"User request: {user_msg_content}\n\nAssistant response: {notification_text}"
+        if user_msg_content
+        else notification_text
+    )
+    return await generate_follow_up_actions(
+        follow_up_context,
+        user_id,
+        {"configurable": {"user_id": user_id}},
+    )
+
+
+async def _dispatch_workflow_notification(
+    *,
+    msg_type: str,
+    workflow_id: str,
+    workflow_title: str,
+    conversation_id: str,
+    user_id: str,
+    notification_text: str,
+    message_id: str,
+) -> None:
+    """Send the proactive workflow completion/failure notification."""
+    from app.services.workflow.notifications import (
+        send_workflow_completion_notification,
+        send_workflow_failure_notification,
+    )
+
+    if msg_type == "error":
+        await send_workflow_failure_notification(
+            workflow_id=workflow_id,
+            workflow_title=workflow_title,
+            user_id=user_id,
+        )
+    else:
+        await send_workflow_completion_notification(
+            workflow_id=workflow_id,
+            workflow_title=workflow_title,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            result_text=notification_text,
+        )
+    log.info(
+        "_deliver_bg_notification: workflow notification dispatched",
+        workflow_id=workflow_id,
+        message_id=message_id,
+    )
+
+
+async def _broadcast_bot_message(
+    *,
+    user_id: str,
+    conversation_id: str,
+    bot_message: MessageModel,
+    notification_text: str,
+    tool_data: list[dict[str, Any]] | None,
+    follow_up_actions: list[str],
+    task_id: str | None,
+    show_reply_quote: bool,
+    user_message_id: str | None,
+    user_msg_content: str,
+) -> None:
+    """Push the bot message to web/mobile/system clients over the WebSocket."""
+    ws_payload: dict[str, Any] = {
+        "type": "bot",
+        "response": notification_text,
+        "message_id": bot_message.message_id,
+        "date": bot_message.date,
+    }
+    if tool_data:
+        ws_payload["tool_data"] = tool_data
+    if follow_up_actions:
+        ws_payload["follow_up_actions"] = follow_up_actions
+    if task_id:
+        ws_payload["task_id"] = task_id
+    if show_reply_quote:
+        ws_payload["replyToMessage"] = {
+            "id": user_message_id,
+            "content": user_msg_content,
+            "role": "user",
+        }
+    await _broadcast_message(
+        user_id,
+        {
+            "type": "conversation.new_message",
+            "conversation_id": conversation_id,
+            "message": ws_payload,
+        },
     )
 
 

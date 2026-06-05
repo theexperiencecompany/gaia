@@ -41,11 +41,18 @@ export default function CalendarListCard({
               <div className="space-y-2">
                 {dayEvents.map((event) => {
                   const eventColor = event.background_color || "#00bbff";
-                  const timeLabel = isDateOnly(event.start_time)
-                    ? "All day"
-                    : event.start_time?.includes("T") && event.end_time
-                      ? formatTimeRange(event.start_time, event.end_time)
-                      : "";
+                  let timeLabel = "";
+                  if (isDateOnly(event.start_time)) {
+                    timeLabel = "All day";
+                  } else if (
+                    event.start_time?.includes("T") &&
+                    event.end_time
+                  ) {
+                    timeLabel = formatTimeRange(
+                      event.start_time,
+                      event.end_time,
+                    );
+                  }
 
                   return (
                     <div

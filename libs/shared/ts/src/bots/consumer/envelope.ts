@@ -64,3 +64,6 @@ export const outboundMessageEnvelopeSchema = z
   );
 
 export type OutboundAttachment = z.infer<typeof outboundAttachmentSchema>;
+export type OutboundMessageEnvelope = z.infer<
+  typeof outboundMessageEnvelopeSchema
+>;

@@ -48,6 +48,7 @@ from .validators import WorkflowValidator
 
 _SLUG_SUFFIX_LEN = 6
 _SLUG_MAX_RETRIES = 5
+TRIGGER_CONFIG_ENABLED_FIELD = "trigger_config.enabled"
 
 
 def _slug_suffix() -> str:
@@ -323,7 +324,7 @@ class WorkflowService:
                 # activated.
                 update_data: dict[str, Any] = {
                     "activated": True,
-                    "trigger_config.enabled": True,
+                    TRIGGER_CONFIG_ENABLED_FIELD: True,
                 }
                 if trigger_ids:
                     update_data["trigger_config.composio_trigger_ids"] = trigger_ids
@@ -576,7 +577,7 @@ class WorkflowService:
             # enabled flag via a dotted key (the sub-document sync above only runs
             # when trigger_config is part of the update).
             if "trigger_config" not in update_fields and "activated" in update_fields:
-                update_data["trigger_config.enabled"] = effective_activated
+                update_data[TRIGGER_CONFIG_ENABLED_FIELD] = effective_activated
 
             try:
                 result = await workflows_collection.update_one(
@@ -783,7 +784,7 @@ class WorkflowService:
             # (status=scheduled) with the freshly recomputed next_run.
             update_data: dict[str, Any] = {
                 "activated": True,
-                "trigger_config.enabled": True,
+                TRIGGER_CONFIG_ENABLED_FIELD: True,
                 "trigger_config.composio_trigger_ids": trigger_ids,
                 "status": ScheduledTaskStatus.SCHEDULED.value,
                 "scheduled_at": trigger_config.next_run,
@@ -870,7 +871,7 @@ class WorkflowService:
             # Update trigger to disabled and clear trigger IDs
             update_data: dict[str, Any] = {
                 "activated": False,
-                "trigger_config.enabled": False,
+                TRIGGER_CONFIG_ENABLED_FIELD: False,
                 "trigger_config.composio_trigger_ids": [],
                 "updated_at": datetime.now(UTC),
             }

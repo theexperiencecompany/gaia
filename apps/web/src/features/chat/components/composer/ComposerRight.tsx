@@ -91,6 +91,11 @@ export default function RightSide({
     }
   };
 
+  let buttonColor: "default" | "primary" = "default";
+  if (!isResponding && hasContent) {
+    buttonColor = "primary";
+  }
+
   return (
     <div className="ml-2 flex items-center gap-2">
       <Tooltip
@@ -103,7 +108,7 @@ export default function RightSide({
           isIconOnly
           aria-label={isResponding ? "Stop generation" : "Send message"}
           className={`h-9 min-h-9 w-9 max-w-9 min-w-9 ${isResponding ? "cursor-pointer" : ""}`}
-          color={isResponding ? "default" : hasContent ? "primary" : "default"}
+          color={buttonColor}
           disabled={!isResponding && !hasContent}
           radius="full"
           type="submit"
