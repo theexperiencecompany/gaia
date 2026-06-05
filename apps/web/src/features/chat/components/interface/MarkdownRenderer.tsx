@@ -64,15 +64,18 @@ const MarkdownImage: React.FC<MarkdownImageProps> = ({
   );
 };
 
-const MarkdownImageNode: React.FC<{ src?: string; alt?: string }> = ({
+const MarkdownImageNode: React.FC<{ src?: string | Blob; alt?: string }> = ({
   src,
   alt,
 }) => {
   const { openDialog } = useImageDialog();
   const params = useParams<{ id?: string }>();
+  // Markdown image sources are always URL strings; ignore the Blob case the
+  // react-markdown prop type technically allows.
+  const imageSrc = typeof src === "string" ? src : undefined;
   return (
     <MarkdownImage
-      src={src}
+      src={imageSrc}
       alt={alt}
       conversationId={params?.id}
       onOpen={openDialog}
@@ -142,9 +145,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           ),
           p: ({ ...props }) => <p className="mb-4 last:mb-0" {...props} />,
           li: ({ ...props }) => <li className="mb-2" {...props} />,
-          img: ({ src, alt }) => (
-            <MarkdownImageNode src={src as string} alt={alt as string} />
-          ),
+          img: MarkdownImageNode,
           pre: ({ ...props }) => (
             <pre className="font-serif! text-wrap" {...props} />
           ),
