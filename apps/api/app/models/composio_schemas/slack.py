@@ -31,12 +31,3 @@ class SlackChannelCreatedPayload(BaseModel):
     creator: str | None = Field(None, description="User ID who created the channel")
     id: str | None = Field(None, description="Channel ID")
     name: str | None = Field(None, description="Channel name")
-
-
-# Unwired as of 2026-06; kept for future use.
-# class SlackSearchMessagesData(BaseModel):
-#     """Output data for SLACK_SEARCH_MESSAGES tool."""
-#     ok: bool = True
-#     messages: dict[str, Any] = Field(default_factory=dict)
-#     def get_matches(self) -> list[dict[str, Any]]:
-#         return self.messages.get("matches", [])

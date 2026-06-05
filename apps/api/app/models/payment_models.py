@@ -97,39 +97,6 @@ class PlanDB(BaseModel):
         allow_population_by_field_name = True
 
 
-# Unwired as of 2026-06; billing-persistence infra not yet wired. Kept for future use.
-# class SubscriptionDB(BaseModel):
-#     """Database model for subscription."""
-#     id: str | None = Field(None, alias="_id")
-#     dodo_subscription_id: str = Field(..., description="Dodo subscription ID")
-#     user_id: str = Field(..., description="User ID")
-#     product_id: str = Field(..., description="Product ID")
-#     status: str = Field(..., description="Subscription status")
-#     quantity: int = Field(1, description="Quantity")
-#     payment_link: str | None = Field(None, description="Payment link URL")
-#     webhook_processed_at: datetime | None = Field(None, description="Webhook processing timestamp")
-#     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-#     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-#     metadata: dict[str, Any] = Field(default_factory=dict)
-#     class Config:
-#         populate_by_name = True
-#         allow_population_by_field_name = True
-#
-# class PaymentDB(BaseModel):
-#     """Database model for payment."""
-#     id: str | None = Field(None, alias="_id")
-#     dodo_subscription_id: str = Field(..., description="Dodo subscription ID")
-#     user_id: str = Field(..., description="User ID")
-#     subscription_id: str | None = Field(None, description="Internal subscription ID")
-#     amount: int = Field(..., description="Payment amount")
-#     currency: str = Field(..., description="Currency")
-#     status: str = Field(..., description="Payment status")
-#     description: str | None = Field(None, description="Payment description")
-#     webhook_processed_at: datetime | None = Field(None, description="Webhook processing timestamp")
-#     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-#     metadata: dict[str, Any] = Field(default_factory=dict)
-
-
 class PaymentVerificationResponse(BaseModel):
     payment_completed: bool
     subscription_id: str | None = None

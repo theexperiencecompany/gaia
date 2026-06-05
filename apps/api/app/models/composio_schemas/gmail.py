@@ -26,24 +26,3 @@ class GmailNewMessagePayload(BaseModel):
     sender: str | None = Field(None, description="Sender email address")
     subject: str | None = Field(None, description="Email subject")
     thread_id: str | None = Field(None, description="Thread ID")
-
-
-# =============================================================================
-# Tool Output Schemas (Unwired as of 2026-06; kept for future use)
-# =============================================================================
-
-# class GmailMessage(BaseModel):
-#     """Single Gmail message from GMAIL_FETCH_EMAILS."""
-#     model_config = ConfigDict(extra="ignore")
-#     messageId: str | None = Field(None, alias="messageId")
-#     messageText: str | None = Field(None, alias="messageText")
-#     messageTimestamp: str | None = Field(None, alias="messageTimestamp")
-#     labelIds: list[str] = Field(default_factory=list, alias="labelIds")
-#     subject: str | None = None
-#     sender: str | None = Field(None, alias="from")
-#     preview: dict[str, Any] | None = None
-#
-# class GmailFetchEmailsData(BaseModel):
-#     """Output data for GMAIL_FETCH_EMAILS tool."""
-#     model_config = ConfigDict(extra="ignore")
-#     messages: list[GmailMessage] = Field(default_factory=list)

@@ -32,18 +32,3 @@ class NotionAllPageEventsPayload(BaseModel):
 
     block: dict[str, Any] | None = Field(None, description="The block/page")
     event_type: str = Field(..., description="Event type")
-
-
-# =============================================================================
-# Tool Output Schemas
-# =============================================================================
-
-
-# Unwired as of 2026-06; kept for future use.
-# class NotionSearchData(BaseModel):
-#     """Output data for NOTION_SEARCH_NOTION_PAGE tool."""
-#     response_data: dict[str, Any] = Field(default_factory=dict)
-#     def get_results(self) -> list[dict[str, Any]]:
-#         if "results" in self.response_data:
-#             return self.response_data["results"]
-#         return self.response_data.get("pages", [])
