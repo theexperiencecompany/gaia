@@ -1,5 +1,8 @@
 """Unified workflow queue service for background job management."""
 
+import hashlib
+import json
+
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import log
 
@@ -30,23 +33,50 @@ class WorkflowQueueService:
     async def queue_workflow_execution(
         workflow_id: str, user_id: str, context: dict | None = None
     ) -> bool:
-        """Queue workflow execution as a background task."""
+        """Queue workflow execution as a background task.
+
+        Enqueued with a deterministic ``_job_id`` derived from the workflow, user,
+        and trigger context so an accidental duplicate enqueue — a double-clicked
+        "Run now", a re-fired identical trigger event — collapses to ONE run while
+        it is queued/executing (ARQ rejects a second job with the same id, which
+        is what was sending two "Workflow Completed" notifications). A genuinely
+        distinct trigger event hashes to a different id and still runs; with
+        ``keep_result=0`` the id frees the moment the run finishes, so a later
+        legitimate re-run is never blocked.
+        """
         try:
             pool = await RedisPoolManager.get_pool()
 
-            job = await pool.enqueue_job("execute_workflow_by_id", workflow_id, context or {})
+            dedup_payload = json.dumps(
+                {"workflow_id": workflow_id, "user_id": user_id, "context": context or {}},
+                sort_keys=True,
+                default=str,
+            )
+            job_id = (
+                "execute_workflow_by_id:" + hashlib.sha256(dedup_payload.encode()).hexdigest()[:32]
+            )
 
-            if job:
-                log.set(
-                    workflow={"id": workflow_id, "status": "execution_queued"},
-                    arq_job_id=job.job_id,
-                    queue_mode="immediate",
-                    defer_seconds=0,
+            job = await pool.enqueue_job(
+                "execute_workflow_by_id", workflow_id, context or {}, _job_id=job_id
+            )
+
+            if job is None:
+                # A job with this id is already queued or running — the duplicate
+                # enqueue was deduped. That's the intended outcome, not a failure.
+                log.info(
+                    f"Workflow execution already queued for {workflow_id}; "
+                    f"deduped duplicate enqueue (job ID {job_id})"
                 )
-                log.info(f"Queued workflow execution for {workflow_id} with job ID {job.job_id}")
                 return True
-            log.error(f"Failed to queue workflow execution for {workflow_id}")
-            return False
+
+            log.set(
+                workflow={"id": workflow_id, "status": "execution_queued"},
+                arq_job_id=job.job_id,
+                queue_mode="immediate",
+                defer_seconds=0,
+            )
+            log.info(f"Queued workflow execution for {workflow_id} with job ID {job.job_id}")
+            return True
 
         except Exception as e:
             log.error(f"Error queuing workflow execution for {workflow_id}: {e!s}")

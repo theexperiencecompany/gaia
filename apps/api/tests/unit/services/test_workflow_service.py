@@ -499,9 +499,40 @@ class TestWorkflowQueueServiceExecution:
         )
 
         assert result is True
-        mock_redis_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id", WORKFLOW_ID, {}
-        )
+        args, kwargs = mock_redis_pool.enqueue_job.call_args
+        assert args == ("execute_workflow_by_id", WORKFLOW_ID, {})
+        # Enqueued with a deterministic _job_id so a duplicate enqueue dedupes.
+        assert kwargs["_job_id"].startswith("execute_workflow_by_id:")
+
+    async def test_queue_execution_dedup_key_is_deterministic_and_context_scoped(
+        self, mock_redis_pool
+    ):
+        mock_redis_pool.enqueue_job = AsyncMock(return_value=MagicMock(job_id="j"))
+
+        async def job_id_for(context):
+            mock_redis_pool.enqueue_job.reset_mock()
+            await WorkflowQueueService.queue_workflow_execution(
+                WORKFLOW_ID, USER_ID, context=context
+            )
+            return mock_redis_pool.enqueue_job.call_args.kwargs["_job_id"]
+
+        same_a = await job_id_for({})
+        same_b = await job_id_for({})
+        evt1 = await job_id_for({"trigger_data": {"email_id": "E1"}})
+        evt2 = await job_id_for({"trigger_data": {"email_id": "E2"}})
+
+        # Identical requests dedupe; distinct trigger events must NOT.
+        assert same_a == same_b
+        assert evt1 != evt2 != same_a
+
+    async def test_queue_execution_deduped_enqueue_is_not_an_error(self, mock_redis_pool):
+        # ARQ returns None when a job with the same _job_id is already queued —
+        # that's a successful dedupe, not a failure.
+        mock_redis_pool.enqueue_job = AsyncMock(return_value=None)
+
+        result = await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID)
+
+        assert result is True
 
     async def test_queue_execution_passes_context(self, mock_redis_pool):
         mock_job = MagicMock()
