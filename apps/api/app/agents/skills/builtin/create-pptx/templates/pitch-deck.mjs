@@ -164,7 +164,7 @@ problems.forEach((p, i) => {
   // coral top accent stripe signals "pain"
   s.addShape(pptx.ShapeType.rect, { x, y: 2.55, w: probW, h: 0.14, fill: { color: COLOR.coral } });
   s.addText(p.stat, { x: x + 0.25, y: 2.85, w: probW - 0.5, h: 1.1, fontSize: 44, bold: true, color: COLOR.coral, valign: "middle", fontFace: FONT });
-  s.addText(p.t, { x: x + 0.25, y: 4.0, w: probW - 0.5, h: 0.5, fontSize: 18, bold: true, color: COLOR.ink, fontFace: FONT });
+  s.addText(p.t, { x: x + 0.25, y: 4, w: probW - 0.5, h: 0.5, fontSize: 18, bold: true, color: COLOR.ink, fontFace: FONT });
   s.addText(p.d, { x: x + 0.25, y: 4.55, w: probW - 0.5, h: 1.7, fontSize: 13.5, color: COLOR.body, fontFace: FONT, lineSpacingMultiple: 1.25, valign: "top" });
 });
 
@@ -176,7 +176,7 @@ problems.forEach((p, i) => {
 s = pptx.addSlide({ masterName: MASTER });
 addHeader(s, "One platform. Zero plumbing.", "The solution");
 s.addText("Nimbus turns a repo into production infrastructure automatically — sane defaults, no config.", {
-  x: PAGE.margin, y: 1.72, w: 6.1, h: 1.0, fontSize: 18, color: COLOR.body, fontFace: FONT, lineSpacingMultiple: 1.25,
+  x: PAGE.margin, y: 1.72, w: 6.1, h: 1, fontSize: 18, color: COLOR.body, fontFace: FONT, lineSpacingMultiple: 1.25,
 });
 s.addText(
   [
@@ -185,7 +185,7 @@ s.addText(
     { text: "Pay for usage, not idle capacity", options: { bullet: { code: "2713" }, color: COLOR.ink, bold: true } },
     { text: "Escape hatches when you outgrow the defaults", options: { bullet: { code: "2713" }, color: COLOR.ink, bold: true } },
   ],
-  { x: PAGE.margin, y: 2.9, w: 6.0, h: 3.4, fontSize: 16, color: COLOR.ink, fontFace: FONT, lineSpacingMultiple: 1.4, paraSpaceAfter: 10, valign: "top" },
+  { x: PAGE.margin, y: 2.9, w: 6, h: 3.4, fontSize: 16, color: COLOR.ink, fontFace: FONT, lineSpacingMultiple: 1.4, paraSpaceAfter: 10, valign: "top" },
 );
 // right-side flow of three stage chips
 const flow = [
@@ -247,7 +247,7 @@ addHeader(s, "A large, expanding market", "Market size");
 const cx = 3.85; // center x of the largest circle
 const market = [
   { label: "TAM", value: "$84B", d: "Global cloud platform spend", dia: 4.4, color: COLOR.bgAlt, txt: COLOR.white },
-  { label: "SAM", value: "$19B", d: "Self-serve PaaS for SMB/startups", dia: 3.0, color: COLOR.tealDk, txt: COLOR.white },
+  { label: "SAM", value: "$19B", d: "Self-serve PaaS for SMB/startups", dia: 3, color: COLOR.tealDk, txt: COLOR.white },
   { label: "SOM", value: "$640M", d: "Reachable in 5 yrs", dia: 1.6, color: COLOR.teal, txt: COLOR.bg },
 ];
 // draw largest first so smaller sit on top; bottom-aligned so circles nest
@@ -260,7 +260,7 @@ market.forEach((m) => {
 // labels inside each ring (stacked near the top of each band)
 s.addText([{ text: "TAM ", options: { bold: true } }, { text: "$84B", options: { bold: true, color: COLOR.teal } }], { x: cx - 1.6, y: 2.4, w: 3.2, h: 0.45, fontSize: 18, color: COLOR.white, align: "center", fontFace: FONT });
 s.addText([{ text: "SAM ", options: { bold: true } }, { text: "$19B", options: { bold: true, color: COLOR.gold } }], { x: cx - 1.4, y: 3.85, w: 2.8, h: 0.45, fontSize: 17, color: COLOR.white, align: "center", fontFace: FONT });
-s.addText([{ text: "SOM ", options: { bold: true } }, { text: "$640M", options: { bold: true } }], { x: cx - 1.0, y: 5.2, w: 2.0, h: 0.45, fontSize: 15, color: COLOR.bg, align: "center", fontFace: FONT });
+s.addText([{ text: "SOM ", options: { bold: true } }, { text: "$640M", options: { bold: true } }], { x: cx - 1, y: 5.2, w: 2, h: 0.45, fontSize: 15, color: COLOR.bg, align: "center", fontFace: FONT });
 // right-side legend with descriptions
 const legX = 7.4;
 market.forEach((m, i) => {
@@ -319,7 +319,7 @@ s.addText(
 s = pptx.addSlide({ masterName: MASTER });
 addHeader(s, "The line goes up", "Traction");
 // --- drawn column chart (left) ---
-const chart = { x: PAGE.margin, y: 2.0, w: 6.6, h: 4.4 };
+const chart = { x: PAGE.margin, y: 2, w: 6.6, h: 4.4 };
 const arr = [
   { label: "Q1", v: 120 },
   { label: "Q2", v: 210 },
@@ -366,11 +366,11 @@ kpis.forEach((k, i) => {
   const col = i % 2;
   const row = Math.floor(i / 2);
   const x = kx + col * (kW + 0.4);
-  const y = 2.0 + row * (kH + 0.4);
+  const y = 2 + row * (kH + 0.4);
   s.addShape(pptx.ShapeType.roundRect, { x, y, w: kW, h: kH, rectRadius: 0.12, fill: { color: COLOR.panel }, line: { color: COLOR.line, width: 1 } });
   s.addShape(pptx.ShapeType.rect, { x, y, w: kW, h: 0.1, fill: { color: COLOR.teal } });
   s.addText(k.v, { x: x + 0.2, y: y + 0.2, w: kW - 0.4, h: 0.8, fontSize: 30, bold: true, color: COLOR.ink, valign: "middle", fontFace: FONT });
-  s.addText(k.l, { x: x + 0.2, y: y + 1.0, w: kW - 0.4, h: 0.4, fontSize: 12.5, color: COLOR.body, fontFace: FONT });
+  s.addText(k.l, { x: x + 0.2, y: y + 1, w: kW - 0.4, h: 0.4, fontSize: 12.5, color: COLOR.body, fontFace: FONT });
   s.addText(k.delta, { x: x + 0.2, y: y + 1.42, w: kW - 0.4, h: 0.4, fontSize: 12.5, bold: true, color: COLOR.tealDk, fontFace: FONT });
 });
 
@@ -383,7 +383,7 @@ s = pptx.addSlide({ masterName: MASTER });
 addHeader(s, "Where we win", "Competition");
 // matrix plot area
 const mx = PAGE.margin + 0.4;
-const my = 2.0;
+const my = 2;
 const mw = 7.4;
 const mh = 4.3;
 // outer frame
@@ -393,7 +393,7 @@ s.addShape(pptx.ShapeType.line, { x: mx, y: my + mh / 2, w: mw, h: 0, line: { co
 s.addShape(pptx.ShapeType.line, { x: mx + mw / 2, y: my, w: 0, h: mh, line: { color: COLOR.faint, width: 1, dashType: "dash" } });
 // axis labels
 s.addText("Easy to use →", { x: mx, y: my + mh + 0.08, w: mw, h: 0.3, fontSize: 12, bold: true, color: COLOR.body, align: "center", fontFace: FONT });
-s.addText("Powerful →", { x: mx - 1.85, y: my + mh / 2 - 0.15, w: 2.0, h: 0.3, fontSize: 12, bold: true, color: COLOR.body, align: "center", rotate: 270, fontFace: FONT });
+s.addText("Powerful →", { x: mx - 1.85, y: my + mh / 2 - 0.15, w: 2, h: 0.3, fontSize: 12, bold: true, color: COLOR.body, align: "center", rotate: 270, fontFace: FONT });
 // players: px/py are 0..1 within the plot; Nimbus is the highlighted dot
 const players = [
   { n: "Legacy cloud", px: 0.2, py: 0.78, c: COLOR.faint, big: false },
@@ -409,7 +409,7 @@ players.forEach((p) => {
   s.addText(p.n, { x: dotX - 0.9, y: dotY + dia + 0.02, w: dia + 1.8, h: 0.3, fontSize: p.big ? 13 : 11, bold: p.big, color: p.big ? COLOR.teal : COLOR.body, align: "center", fontFace: FONT });
 });
 // right-side "why we win" bullets
-s.addText("Why Nimbus wins", { x: 8.7, y: 2.0, w: 3.95, h: 0.4, fontSize: 16, bold: true, color: COLOR.ink, fontFace: FONT });
+s.addText("Why Nimbus wins", { x: 8.7, y: 2, w: 3.95, h: 0.4, fontSize: 16, bold: true, color: COLOR.ink, fontFace: FONT });
 s.addText(
   [
     { text: "Powerful defaults without the K8s tax", options: { bullet: { code: "2713" }, color: COLOR.ink } },
@@ -462,7 +462,7 @@ const team = [
 const tcW = (CONTENT_W - 0.5 * (team.length - 1)) / team.length;
 team.forEach((m, i) => {
   const x = PAGE.margin + i * (tcW + 0.5);
-  const y = 2.0;
+  const y = 2;
   s.addShape(pptx.ShapeType.roundRect, { x, y, w: tcW, h: 4.3, rectRadius: 0.14, fill: { color: COLOR.panel }, line: { color: COLOR.line, width: 1 } });
   // drawn avatar: colored circle + white initials
   const av = 1.3;
@@ -489,7 +489,7 @@ s.addText(
     { text: "$6M", options: { bold: true, color: COLOR.teal } },
     { text: " seed", options: { color: COLOR.white } },
   ],
-  { x: PAGE.margin, y: 1.15, w: CONTENT_W, h: 1.0, fontSize: 46, bold: true, fontFace: FONT, valign: "middle" },
+  { x: PAGE.margin, y: 1.15, w: CONTENT_W, h: 1, fontSize: 46, bold: true, fontFace: FONT, valign: "middle" },
 );
 s.addText("18 months of runway to reach $3M ARR and a Series A profile.", { x: PAGE.margin, y: 2.25, w: CONTENT_W, h: 0.5, fontSize: 18, color: COLOR.mist, fontFace: FONT });
 // use-of-funds stacked horizontal bar
@@ -540,7 +540,7 @@ s.addText("18-month milestones", { x: PAGE.margin, y: 5.35, w: CONTENT_W, h: 0.3
 s = pptx.addSlide();
 s.background = { color: COLOR.bg };
 // mirrored accent rings, bottom-left
-s.addShape(pptx.ShapeType.ellipse, { x: -1.7, y: 4.0, w: 5.0, h: 5.0, fill: { type: "none" }, line: { color: COLOR.tealDk, width: 1.25 } });
+s.addShape(pptx.ShapeType.ellipse, { x: -1.7, y: 4, w: 5, h: 5, fill: { type: "none" }, line: { color: COLOR.tealDk, width: 1.25 } });
 s.addShape(pptx.ShapeType.ellipse, { x: -0.8, y: 4.9, w: 3.2, h: 3.2, fill: { type: "none" }, line: { color: COLOR.coral, width: 1.25 } });
 s.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: PAGE.w, h: 0.18, fill: { color: COLOR.teal } });
 addLogoMark(s, 0.85, 0.85, 0.62);

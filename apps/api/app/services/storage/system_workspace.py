@@ -62,6 +62,30 @@ def _library_signature(files: list[SystemFile]) -> str:
     return digest.hexdigest()[:32]
 
 
+def _write_system_files(root: Path, files: list[SystemFile]) -> None:
+    """Write each manifest file under ``root`` if its body changed."""
+    for f in files:
+        target = root / f.rel_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not (target.is_file() and target.read_text(encoding="utf-8") == f.body):
+            target.write_text(f.body, encoding="utf-8")
+
+
+def _prune_orphan_system_files(root: Path, files: list[SystemFile]) -> None:
+    """Drop files under ``root`` no longer present in the manifest.
+
+    ``system_files()`` is the authoritative complete set, so stale bodies (e.g.
+    a removed builtin skill) must not linger once the signature says it's current.
+    """
+    expected = {f.rel_path for f in files}
+    for existing in root.rglob("*"):
+        if not existing.is_file():
+            continue
+        rel = existing.relative_to(root).as_posix()
+        if rel != _SYSTEM_HASH_MARKER and rel not in expected:
+            existing.unlink(missing_ok=True)
+
+
 async def ensure_system_subtree() -> bool:
     """Write the single shared ``_system`` copy host-side. Idempotent + hash-gated.
 
@@ -81,21 +105,8 @@ async def ensure_system_subtree() -> bool:
         if marker.is_file() and marker.read_text(encoding="utf-8").strip() == signature:
             return True
         root.mkdir(parents=True, exist_ok=True)
-        for f in files:
-            target = root / f.rel_path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if not (target.is_file() and target.read_text(encoding="utf-8") == f.body):
-                target.write_text(f.body, encoding="utf-8")
-        # Prune files dropped from the manifest (e.g. a removed builtin skill) so
-        # stale bodies don't linger in the shared subtree after the signature
-        # says it's current. `system_files()` is the authoritative complete set.
-        expected = {f.rel_path for f in files}
-        for existing in root.rglob("*"):
-            if not existing.is_file():
-                continue
-            rel = existing.relative_to(root).as_posix()
-            if rel != _SYSTEM_HASH_MARKER and rel not in expected:
-                existing.unlink(missing_ok=True)
+        _write_system_files(root, files)
+        _prune_orphan_system_files(root, files)
         marker.write_text(signature, encoding="utf-8")
         return True
 

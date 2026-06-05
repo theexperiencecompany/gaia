@@ -70,6 +70,36 @@ async def edit(
         return f"Error editing file: {e}"
 
 
+async def _read_editable_content(sbx: object, abs_path: str) -> tuple[str | None, str]:
+    """Read a workspace file's UTF-8 content. Returns ``(content, error)``.
+
+    On success ``error`` is empty; on failure ``content`` is ``None`` and
+    ``error`` holds the user-facing message.
+    """
+    # Read full file via base64 to keep binary-safe and to avoid quoting issues.
+    # Signal "file missing" via exit code, not an in-band marker.
+    read_cmd = (
+        f"if [ ! -f {sh_quote(abs_path)} ]; then exit 44; else base64 -w0 {sh_quote(abs_path)}; fi"
+    )
+    read_result = await sbx.commands.run(read_cmd, timeout=15)  # type: ignore[attr-defined]
+    if (getattr(read_result, "exit_code", 0) or 0) == 44:
+        return None, f"Error: file not found at {abs_path}"
+    raw = (getattr(read_result, "stdout", "") or "").strip()
+
+    try:
+        content_bytes = base64.b64decode(raw)
+    except Exception as e:
+        return None, f"Error: failed to decode file: {e}"
+
+    if len(content_bytes) > MAX_FILE_BYTES:
+        return None, f"Error: file exceeds {MAX_FILE_BYTES} bytes; cannot edit"
+
+    try:
+        return content_bytes.decode("utf-8"), ""
+    except UnicodeDecodeError:
+        return None, "Error: file is not UTF-8; cannot edit"
+
+
 async def _do_edit(
     sbx: object,
     abs_path: str,
@@ -78,28 +108,9 @@ async def _do_edit(
     replace_all: bool,
     session_id: str | None,
 ) -> str:
-    # Read full file via base64 to keep binary-safe and to avoid quoting issues.
-    # Signal "file missing" via exit code, not an in-band marker.
-    read_cmd = (
-        f"if [ ! -f {sh_quote(abs_path)} ]; then exit 44; else base64 -w0 {sh_quote(abs_path)}; fi"
-    )
-    read_result = await sbx.commands.run(read_cmd, timeout=15)  # type: ignore[attr-defined]
-    if (getattr(read_result, "exit_code", 0) or 0) == 44:
-        return f"Error: file not found at {abs_path}"
-    raw = (getattr(read_result, "stdout", "") or "").strip()
-
-    try:
-        content_bytes = base64.b64decode(raw)
-    except Exception as e:
-        return f"Error: failed to decode file: {e}"
-
-    if len(content_bytes) > MAX_FILE_BYTES:
-        return f"Error: file exceeds {MAX_FILE_BYTES} bytes; cannot edit"
-
-    try:
-        content = content_bytes.decode("utf-8")
-    except UnicodeDecodeError:
-        return "Error: file is not UTF-8; cannot edit"
+    content, error = await _read_editable_content(sbx, abs_path)
+    if content is None:
+        return error
 
     occurrences = content.count(old_string)
     if occurrences == 0:

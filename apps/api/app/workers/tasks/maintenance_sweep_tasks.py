@@ -359,7 +359,7 @@ async def _health_check_dormant(doc: dict, pool: Any) -> str:
     response = await _call_health_check_agent(todo_id, user_id, prompt)
 
     if response.startswith("EXECUTE:"):
-        jitter_seconds = random.randint(10, 120)  # nosec B311 — non-crypto scheduling jitter
+        jitter_seconds = random.randint(10, 120)  # nosec B311  # NOSONAR python:S2245 — non-crypto scheduling jitter
         scheduled_at = now + timedelta(seconds=jitter_seconds)
         await tracked_todo_service.schedule_execution(todo_id, scheduled_at)
         action = response[len("EXECUTE:") :].strip()

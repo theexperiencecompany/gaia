@@ -37,6 +37,33 @@ const sanitizeSchema = {
   },
 };
 
+interface MarkdownImageProps {
+  src?: string;
+  alt?: string;
+  conversationId: string | undefined;
+  onOpen: (src: string) => void;
+}
+
+const MarkdownImage: React.FC<MarkdownImageProps> = ({
+  src,
+  alt,
+  conversationId,
+  onOpen,
+}) => {
+  const resolved = resolveArtifactSrc(src, conversationId) ?? (src as string);
+  return (
+    <Image
+      width={500}
+      height={500}
+      alt={alt || "image"}
+      className="mx-auto my-4 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
+      src={resolved}
+      onClick={() => onOpen(resolved)}
+      unoptimized
+    />
+  );
+};
+
 export interface MarkdownRendererProps {
   content: string;
   className?: string;
@@ -103,22 +130,14 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           ),
           p: ({ ...props }) => <p className="mb-4 last:mb-0" {...props} />,
           li: ({ ...props }) => <li className="mb-2" {...props} />,
-          img: ({ ...props }) => {
-            const resolved =
-              resolveArtifactSrc(props.src as string, conversationId) ??
-              (props.src as string);
-            return (
-              <Image
-                width={500}
-                height={500}
-                alt={(props.alt as string) || "image"}
-                className="mx-auto my-4 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
-                src={resolved}
-                onClick={() => openDialog(resolved)}
-                unoptimized
-              />
-            );
-          },
+          img: ({ src, alt }) => (
+            <MarkdownImage
+              src={src as string}
+              alt={alt as string}
+              conversationId={conversationId}
+              onOpen={openDialog}
+            />
+          ),
           pre: ({ ...props }) => (
             <pre className="font-serif! text-wrap" {...props} />
           ),

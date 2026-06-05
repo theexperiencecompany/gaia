@@ -1,5 +1,7 @@
 """User workspace integration routes."""
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
@@ -105,11 +107,11 @@ async def remove_integration_from_workspace(
 
 @router.get(
     "/{integration_id}/instructions",
-    response_model=IntegrationInstructionsResponse,
+    responses={500: {"description": "Failed to fetch integration instructions"}},
 )
 async def get_integration_instructions(
     integration_id: str,
-    user_id: str = Depends(get_user_id),
+    user_id: Annotated[str, Depends(get_user_id)],
 ) -> IntegrationInstructionsResponse:
     """Return the current user's custom instructions for an integration.
 
@@ -144,12 +146,16 @@ async def get_integration_instructions(
 
 @router.put(
     "/{integration_id}/instructions",
-    response_model=IntegrationInstructionsResponse,
+    responses={
+        400: {"description": "Invalid integration_id"},
+        404: {"description": "Integration not found in workspace"},
+        500: {"description": "Failed to update integration instructions"},
+    },
 )
 async def update_integration_instructions(
     integration_id: str,
     request: UpdateIntegrationInstructionsRequest,
-    user_id: str = Depends(get_user_id),
+    user_id: Annotated[str, Depends(get_user_id)],
 ) -> IntegrationInstructionsResponse:
     """Create or replace the current user's custom instructions for an integration."""
     try:

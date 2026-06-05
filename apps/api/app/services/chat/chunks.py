@@ -35,74 +35,100 @@ async def process_data_chunk(
     """
     chunk_payload = chunk[6:]
 
-    chunk_json: dict[str, Any] | None = None
-    try:
-        chunk_json = json.loads(chunk_payload)
-    except json.JSONDecodeError:
-        chunk_json = None
+    chunk_json = _parse_chunk_json(chunk_payload)
+    _accumulate_todo_progress(chunk_json, todo_progress_accumulated)
 
+    new_data = extract_tool_data(chunk_payload)
+    if not new_data:
+        # No tool data — pass through as-is.
+        await stream_manager.publish_chunk(stream_id, chunk)
+        response_text = extract_response_text(chunk)
+        if response_text:
+            await stream_manager.update_progress(
+                stream_id,
+                message_chunk=response_text,
+                tool_data=None,
+            )
+        return follow_up_actions, True
+
+    follow_up_actions = await _publish_other_data(stream_id, new_data, follow_up_actions)
+    await _publish_tool_data(stream_id, new_data, tool_data)
+    await _publish_tool_output(stream_id, new_data, tool_outputs)
+
+    if chunk_json and "todo_progress" in chunk_json:
+        await stream_manager.publish_chunk(
+            stream_id,
+            f"data: {json.dumps({'todo_progress': chunk_json['todo_progress']})}\n\n",
+        )
+
+    response_text = extract_response_text(chunk)
+    await stream_manager.update_progress(
+        stream_id,
+        message_chunk=response_text,
+        tool_data=new_data,
+    )
+    return follow_up_actions, True
+
+
+def _parse_chunk_json(chunk_payload: str) -> dict[str, Any] | None:
+    """Parse a chunk payload as JSON, returning ``None`` on malformed input."""
+    try:
+        return json.loads(chunk_payload)
+    except json.JSONDecodeError:
+        return None
+
+
+def _accumulate_todo_progress(
+    chunk_json: dict[str, Any] | None, todo_progress_accumulated: dict[str, Any]
+) -> None:
+    """Record the latest todo-progress snapshot keyed by its source."""
     if chunk_json and "todo_progress" in chunk_json:
         snapshot = chunk_json["todo_progress"]
         source = snapshot.get("source", "executor")
         todo_progress_accumulated[source] = snapshot
 
-    new_data = extract_tool_data(chunk_payload)
-    if new_data:
-        if "other_data" in new_data:
-            other_data_dict = new_data["other_data"]
-            if "follow_up_actions" in other_data_dict:
-                follow_up_actions = other_data_dict["follow_up_actions"]
-                await stream_manager.publish_chunk(
-                    stream_id,
-                    f"data: {json.dumps({'follow_up_actions': follow_up_actions})}\n\n",
-                )
 
-        if "tool_data" in new_data:
-            for tool_entry in new_data["tool_data"]:
-                tool_data["tool_data"].append(tool_entry)
-                await stream_manager.publish_chunk(
-                    stream_id,
-                    f"data: {json.dumps({'tool_data': tool_entry})}\n\n",
-                )
-
-        # Capture tool_output events for merging before save AND stream to
-        # frontend for real-time UI updates.
-        if "tool_output" in new_data:
-            output_data = new_data["tool_output"]
-            tool_call_id = output_data.get("tool_call_id")
-            output = output_data.get("output")
-            if tool_call_id and output:
-                tool_outputs[tool_call_id] = output
-            await stream_manager.publish_chunk(
-                stream_id,
-                f"data: {json.dumps({'tool_output': output_data})}\n\n",
-            )
-
-        if chunk_json and "todo_progress" in chunk_json:
-            await stream_manager.publish_chunk(
-                stream_id,
-                f"data: {json.dumps({'todo_progress': chunk_json['todo_progress']})}\n\n",
-            )
-
-        response_text = extract_response_text(chunk)
-        if response_text or new_data:
-            await stream_manager.update_progress(
-                stream_id,
-                message_chunk=response_text,
-                tool_data=new_data,
-            )
-        return follow_up_actions, True
-
-    # No tool data — pass through as-is.
-    await stream_manager.publish_chunk(stream_id, chunk)
-    response_text = extract_response_text(chunk)
-    if response_text:
-        await stream_manager.update_progress(
+async def _publish_other_data(
+    stream_id: str, new_data: dict[str, Any], follow_up_actions: list[str]
+) -> list[str]:
+    """Publish follow-up actions if present, returning the (possibly updated) list."""
+    other_data_dict = new_data.get("other_data")
+    if other_data_dict and "follow_up_actions" in other_data_dict:
+        follow_up_actions = other_data_dict["follow_up_actions"]
+        await stream_manager.publish_chunk(
             stream_id,
-            message_chunk=response_text,
-            tool_data=None,
+            f"data: {json.dumps({'follow_up_actions': follow_up_actions})}\n\n",
         )
-    return follow_up_actions, True
+    return follow_up_actions
+
+
+async def _publish_tool_data(
+    stream_id: str, new_data: dict[str, Any], tool_data: dict[str, Any]
+) -> None:
+    """Append each tool-data entry and stream it to the frontend."""
+    for tool_entry in new_data.get("tool_data", []):
+        tool_data["tool_data"].append(tool_entry)
+        await stream_manager.publish_chunk(
+            stream_id,
+            f"data: {json.dumps({'tool_data': tool_entry})}\n\n",
+        )
+
+
+async def _publish_tool_output(
+    stream_id: str, new_data: dict[str, Any], tool_outputs: dict[str, str]
+) -> None:
+    """Capture a tool_output event for merging before save and stream it live."""
+    if "tool_output" not in new_data:
+        return
+    output_data = new_data["tool_output"]
+    tool_call_id = output_data.get("tool_call_id")
+    output = output_data.get("output")
+    if tool_call_id and output:
+        tool_outputs[tool_call_id] = output
+    await stream_manager.publish_chunk(
+        stream_id,
+        f"data: {json.dumps({'tool_output': output_data})}\n\n",
+    )
 
 
 def extract_response_text(chunk: str) -> str:

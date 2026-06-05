@@ -73,10 +73,15 @@ class BuiltinSkill:
     resources: tuple[tuple[str, str], ...] = ()
 
 
-_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
+# Input is a trusted, bounded builtin SKILL.md frontmatter block bundled in the
+# repo — never user-supplied — so the lazy `.*?` cannot be driven into pathological
+# backtracking by an adversary.
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)  # NOSONAR python:S5852
 # Forgiving YAML reader: builtins only ever use scalar key: value pairs and we
-# don't want to depend on PyYAML in this hot path.
-_KV_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):\s*(.+?)\s*$")
+# don't want to depend on PyYAML in this hot path. Trailing whitespace in the
+# value is stripped by the caller, so capture the rest of the line greedily
+# (linear) rather than with a backtracking lazy group.
+_KV_RE = re.compile(r"^([A-Za-z_]\w*):\s*(.+)$")
 
 
 def _parse_frontmatter(raw: str) -> tuple[dict[str, str], str]:
@@ -89,7 +94,7 @@ def _parse_frontmatter(raw: str) -> tuple[dict[str, str], str]:
             continue
         kv = _KV_RE.match(line)
         if kv:
-            meta[kv.group(1)] = kv.group(2).strip('"').strip("'")
+            meta[kv.group(1)] = kv.group(2).strip().strip('"').strip("'")
     body = raw[match.end() :]
     return meta, body
 

@@ -325,7 +325,9 @@ async def get_todo(todo_id: str, user: dict = Depends(get_current_user)):
 
 
 @router.get("/todos/{todo_id}/canvas")
-async def get_todo_canvas(todo_id: str, user: dict = Depends(get_current_user)) -> JSONResponse:
+async def get_todo_canvas(
+    todo_id: str, user: Annotated[dict, Depends(get_current_user)]
+) -> JSONResponse:
     """Return the canvas markdown for a tracked todo."""
     log.set(user={"id": user["user_id"]}, todo={"operation": "get_canvas", "id": todo_id})
     content = await read_canvas(todo_id, user["user_id"])

@@ -20,15 +20,15 @@ fail() { echo "ERROR: $*" >&2; exit 1; }
 ensure_node_pkg() {
   local pkg="$1"
   mkdir -p "$NODE_HOME"
-  [ -f "$NODE_HOME/package.json" ] || ( cd "$NODE_HOME" && npm init -y >/dev/null 2>&1 )
-  [ -d "$NODE_HOME/node_modules/$pkg" ] && return 0
+  [[ -f "$NODE_HOME/package.json" ]] || ( cd "$NODE_HOME" && npm init -y >/dev/null 2>&1 )
+  [[ -d "$NODE_HOME/node_modules/$pkg" ]] && return 0
   ( cd "$NODE_HOME" && npm install "$pkg" >/dev/null 2>&1 ) || fail "npm install $pkg failed"
 }
 
 # Validate OOXML + count slides. Uses system python3 (base image) — no deps.
 validate_pptx() {
   local out="$1"
-  [ -s "$out" ] || fail "output is empty or missing: $out"
+  [[ -s "$out" ]] || fail "output is empty or missing: $out"
   local slides
   slides="$(python3 - "$out" <<'PY' || true
 import sys, zipfile, re
@@ -45,13 +45,14 @@ PY
 )"
   case "$slides" in
     ""|ERR:*) fail "produced file is not a valid PowerPoint" ;;
+    *) ;;
   esac
-  [ "${slides:-0}" -ge 1 ] 2>/dev/null || fail "presentation has no slides"
+  [[ "${slides:-0}" -ge 1 ]] 2>/dev/null || fail "presentation has no slides"
   echo "OK: $OUT (slides=$slides)"
 }
 # --- end SEAM ------------------------------------------------------------------
 
-[ -f "$SRC" ] || fail "source not found: $SRC"
+[[ -f "$SRC" ]] || fail "source not found: $SRC"
 mkdir -p "$(dirname "$OUT")"
 ensure_node_pkg pptxgenjs
 # ESM bare imports ("pptxgenjs") resolve by walking up from the SOURCE file's

@@ -216,7 +216,11 @@ def _inherit_from_parent_configurable(
     return merged
 
 
-def build_agent_config(
+# NOSONAR python:S107 — these parameters form one cohesive LangGraph execution
+# config surface (user context, model, auth, tracing, execution params). Grouping
+# them into a dataclass would not reduce the surface, only move it, and every
+# caller already passes them as explicit keyword args.
+def build_agent_config(  # NOSONAR python:S107
     conversation_id: str,
     user: dict,
     user_time: datetime,

@@ -93,7 +93,7 @@ async def _all_users() -> Iterable[str]:
     }
 
 
-async def _main() -> int:
+async def _main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("user_id", nargs="?", help="Target user id")
     parser.add_argument(
@@ -115,7 +115,7 @@ async def _main() -> int:
     if args.list_targets:
         for iid in integration_subagent_ids():
             print(iid)
-        return 0
+        return
 
     connected_override: set[str] | None = None
     if args.connected:
@@ -125,13 +125,12 @@ async def _main() -> int:
         users = await _all_users()
         for uid in sorted(users):
             await _materialize_one(uid, connected_override)
-        return 0
+        return
 
     if not args.user_id:
         parser.error("user_id is required unless --all-users or --list-targets is set")
     await _materialize_one(args.user_id, connected_override)
-    return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(asyncio.run(_main()))
+    asyncio.run(_main())

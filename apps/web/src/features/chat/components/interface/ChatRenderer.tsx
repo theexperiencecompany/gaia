@@ -204,9 +204,9 @@ export default function ChatRenderer({
   // avatar/timestamp/follow-up actions when followed by an empty bot message.
   const rendersAsBotBubble = useCallback(
     (message: MessageType | undefined): boolean => {
-      if (!message || message.type !== "bot") return false;
+      if (message?.type !== "bot") return false;
       const props = getMessageProps(message, "bot", messagePropsOptions);
-      return !!props && !isBotMessageEmpty(props as ChatBubbleBotProps);
+      return !!props && !isBotMessageEmpty(props);
     },
     [messagePropsOptions],
   );

@@ -59,7 +59,7 @@ async def _load_user_with_tz(user_id: str) -> tuple[dict, ZoneInfo]:
         return {"user_id": user_id}, ZoneInfo("UTC")
 
 
-async def execute_tracked_todo(ctx: dict, todo_id: str) -> str:
+async def execute_tracked_todo(_ctx: dict, todo_id: str) -> str:
     """
     ARQ task: execute a single scheduled tracked todo.
 
@@ -227,6 +227,54 @@ async def _run_execution(doc: dict, user_id: str, *, user_data: dict, user_tz: Z
         await _execute_via_agent(doc, user_id, user_data=user_data, user_tz=user_tz)
 
 
+def _extract_learnings(ref_canvas: str) -> str | None:
+    """Return the ``## Learnings`` section of a canvas, or None if absent."""
+    if not ref_canvas or "## Learnings" not in ref_canvas:
+        return None
+    learnings_start = ref_canvas.index("## Learnings")
+    next_section = ref_canvas.find("\n## ", learnings_start + 1)
+    if next_section != -1:
+        return ref_canvas[learnings_start:next_section]
+    return ref_canvas[learnings_start:]
+
+
+async def _collect_reference_context(ref_ids: list[str], user_id: str) -> str:
+    """Gather ``## Learnings`` from up to 5 referenced todos for prompt context."""
+    if not ref_ids:
+        return ""
+    ref_parts: list[str] = []
+    for ref_id in ref_ids[:5]:  # Cap at 5 to avoid context bloat
+        try:
+            ref_doc = await todos_collection.find_one({"_id": ObjectId(ref_id)})
+            if not ref_doc:
+                continue
+            learnings = _extract_learnings(await read_canvas(ref_id, user_id))
+            if learnings:
+                ref_parts.append(
+                    f'From past todo "{ref_doc.get("title", "Unknown")}":\n{learnings.strip()}'
+                )
+        except Exception as e:
+            log.debug("execute_todo.reference_read_failed", ref_id=ref_id, error=str(e))
+            continue
+    if not ref_parts:
+        return ""
+    return "\n\nPast experience (from similar completed todos):\n" + "\n\n".join(ref_parts)
+
+
+def _build_execution_prompt(
+    *, title: str, description: str, canvas_content: str | None, reference_context: str
+) -> str:
+    """Assemble the scheduled-run prompt from the todo's fields and context."""
+    prompt_parts = [f"Execute the following scheduled task: {title}"]
+    if description:
+        prompt_parts.append(f"Details: {description}")
+    if canvas_content:
+        prompt_parts.append(f"Canvas context:\n{canvas_content}")
+    if reference_context:
+        prompt_parts.append(reference_context)
+    return "\n\n".join(prompt_parts)
+
+
 async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict, user_tz: ZoneInfo) -> str:
     """
     Execute the todo using call_agent_silent directly (no workflow needed).
@@ -254,45 +302,16 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict, user_t
         )
 
     # Read referenced canvases for institutional memory
-    reference_context = ""
-    ref_ids: list[str] = doc.get("references", [])
-    if ref_ids:
-        ref_parts: list[str] = []
-        for ref_id in ref_ids[:5]:  # Cap at 5 to avoid context bloat
-            try:
-                ref_doc = await todos_collection.find_one({"_id": ObjectId(ref_id)})
-                if ref_doc:
-                    ref_canvas = await read_canvas(ref_id, user_id)
-                    if ref_canvas and "## Learnings" in ref_canvas:
-                        learnings_start = ref_canvas.index("## Learnings")
-                        next_section = ref_canvas.find("\n## ", learnings_start + 1)
-                        learnings = (
-                            ref_canvas[learnings_start:next_section]
-                            if next_section != -1
-                            else ref_canvas[learnings_start:]
-                        )
-                        ref_parts.append(
-                            f'From past todo "{ref_doc.get("title", "Unknown")}":\n{learnings.strip()}'
-                        )
-            except Exception as e:
-                log.debug("execute_todo.reference_read_failed", ref_id=ref_id, error=str(e))
-                continue
-        if ref_parts:
-            reference_context = (
-                "\n\nPast experience (from similar completed todos):\n" + "\n\n".join(ref_parts)
-            )
+    reference_context = await _collect_reference_context(doc.get("references", []), user_id)
 
     # Build prompt
     title: str = doc.get("title", "Untitled Todo")
-    description: str = doc.get("description", "")
-    prompt_parts = [f"Execute the following scheduled task: {title}"]
-    if description:
-        prompt_parts.append(f"Details: {description}")
-    if canvas_content:
-        prompt_parts.append(f"Canvas context:\n{canvas_content}")
-    if reference_context:
-        prompt_parts.append(reference_context)
-    prompt = "\n\n".join(prompt_parts)
+    prompt = _build_execution_prompt(
+        title=title,
+        description=doc.get("description", ""),
+        canvas_content=canvas_content,
+        reference_context=reference_context,
+    )
 
     # Generate a fresh conversation_id for each execution to prevent
     # history accumulation in PostgreSQL. Each execution is independent.
@@ -522,7 +541,7 @@ async def safety_net_check_orphaned_todos(_ctx: dict) -> str:
                 continue
 
             # Random jitter: 0–60 seconds
-            jitter_seconds = random.randint(0, 60)  # nosec B311 — non-crypto scheduling jitter
+            jitter_seconds = random.randint(0, 60)  # nosec B311  # NOSONAR python:S2245 — non-crypto scheduling jitter
             run_at = now + timedelta(seconds=jitter_seconds)
             await pool.enqueue_job("execute_tracked_todo", todo_id, _defer_until=run_at)
             re_enqueued += 1

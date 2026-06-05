@@ -231,25 +231,21 @@ def _resolve_prompt(target: str | None, next_description: str) -> str | None:
     return target
 
 
-async def _run(args: argparse.Namespace) -> int:
-    only = set(args.only or [])
-    if only:
-        manifest = {k: v for k, v in MANIFEST.items() if k in only}
-        if not manifest:
-            print(f"No manifest entries matched {only}.")
-            return 1
-    else:
-        manifest = MANIFEST
+def _select_manifest(only: set[str]) -> dict | None:
+    if not only:
+        return MANIFEST
+    manifest = {k: v for k, v in MANIFEST.items() if k in only}
+    if not manifest:
+        print(f"No manifest entries matched {only}.")
+        return None
+    return manifest
 
-    cursor = workflows_collection.find({"is_public": True})
-    docs = {doc["_id"]: doc async for doc in cursor}
 
-    print(f"Found {len(docs)} public workflows in Mongo; manifest covers {len(manifest)}.")
-
+def _report_discrepancies(docs: dict, manifest: dict, *, skip_orphans: bool) -> None:
     orphan_ids = sorted(set(docs) - set(MANIFEST))
     missing_ids = sorted(set(manifest) - set(docs))
 
-    if orphan_ids and not args.skip_orphans:
+    if orphan_ids and not skip_orphans:
         print()
         print("Public workflows with NO manifest entry (left untouched):")
         for wid in orphan_ids:
@@ -262,68 +258,52 @@ async def _run(args: argparse.Namespace) -> int:
         for wid in missing_ids:
             print(f"  - {wid}")
 
+
+def _plan_for(wid: str, target: dict, doc: dict) -> tuple[dict[str, str], dict[str, str]] | None:
+    current_desc = doc.get("description") or ""
+    current_prompt = doc.get("prompt") or ""
+
+    next_desc = target["description"] if target["description"] is not None else current_desc
+    next_prompt = _resolve_prompt(target["prompt"], next_desc)
+    if next_prompt is None:
+        next_prompt = current_prompt
+
+    if next_desc == current_desc and next_prompt == current_prompt:
+        print(f"  [skip] {wid} {doc.get('title', '')!r} — already matches target")
+        return None
+
+    before = {"description": current_desc, "prompt": current_prompt}
+    after = {"description": next_desc, "prompt": next_prompt}
+    _print_edit(wid, doc.get("title", ""), before, after)
+    return before, after
+
+
+def _print_edit(wid: str, title: str, before: dict[str, str], after: dict[str, str]) -> None:
     print()
-    print("=" * 78)
-    print("Per-workflow plan (DRY RUN)" if not args.apply else "Per-workflow plan")
-    print("=" * 78)
+    print(f"  [edit] {wid}  {title!r}")
+    if before["description"] != after["description"]:
+        print(f"    description: {_truncate(before['description'])}")
+        print(f"             ->  {_truncate(after['description'])}")
+    if before["prompt"] != after["prompt"]:
+        print(f"    prompt:      {_truncate(before['prompt'])}")
+        print(f"             ->  {_truncate(after['prompt'])}")
 
+
+def _build_plans(manifest: dict, docs: dict) -> list[tuple[str, dict[str, str], dict[str, str]]]:
     plans: list[tuple[str, dict[str, str], dict[str, str]]] = []
-
     for wid, target in manifest.items():
         doc = docs.get(wid)
         if doc is None:
             continue
+        plan = _plan_for(wid, target, doc)
+        if plan is not None:
+            plans.append((wid, plan[0], plan[1]))
+    return plans
 
-        current_desc = doc.get("description") or ""
-        current_prompt = doc.get("prompt") or ""
 
-        next_desc = target["description"] if target["description"] is not None else current_desc
-        next_prompt = _resolve_prompt(target["prompt"], next_desc)
-        if next_prompt is None:
-            next_prompt = current_prompt
-
-        update: dict[str, str] = {}
-        if next_desc != current_desc:
-            update["description"] = next_desc
-        if next_prompt != current_prompt:
-            update["prompt"] = next_prompt
-
-        title = doc.get("title", "")
-        if not update:
-            print(f"  [skip] {wid} {title!r} — already matches target")
-            continue
-
-        plans.append(
-            (
-                wid,
-                {"description": current_desc, "prompt": current_prompt},
-                {"description": next_desc, "prompt": next_prompt},
-            )
-        )
-
-        print()
-        print(f"  [edit] {wid}  {title!r}")
-        if "description" in update:
-            print(f"    description: {_truncate(current_desc)}")
-            print(f"             ->  {_truncate(next_desc)}")
-        if "prompt" in update:
-            print(f"    prompt:      {_truncate(current_prompt)}")
-            print(f"             ->  {_truncate(next_prompt)}")
-
-    print()
-    print("=" * 78)
-    print(f"Summary: {len(plans)} workflow(s) need updating.")
-    print("=" * 78)
-
-    if not args.apply:
-        print()
-        print("Dry run only. Re-run with --apply to commit.")
-        return 0
-
-    if not plans:
-        print("Nothing to apply.")
-        return 0
-
+async def _apply_plans(
+    plans: list[tuple[str, dict[str, str], dict[str, str]]],
+) -> None:
     now = datetime.now(UTC)
     confirmed = 0
     for wid, _before, after in plans:
@@ -353,6 +333,41 @@ async def _run(args: argparse.Namespace) -> int:
 
     print()
     print(f"Applied {confirmed}/{len(plans)} updates.")
+
+
+async def _run(args: argparse.Namespace) -> int:
+    manifest = _select_manifest(set(args.only or []))
+    if manifest is None:
+        return 1
+
+    cursor = workflows_collection.find({"is_public": True})
+    docs = {doc["_id"]: doc async for doc in cursor}
+
+    print(f"Found {len(docs)} public workflows in Mongo; manifest covers {len(manifest)}.")
+    _report_discrepancies(docs, manifest, skip_orphans=args.skip_orphans)
+
+    print()
+    print("=" * 78)
+    print("Per-workflow plan (DRY RUN)" if not args.apply else "Per-workflow plan")
+    print("=" * 78)
+
+    plans = _build_plans(manifest, docs)
+
+    print()
+    print("=" * 78)
+    print(f"Summary: {len(plans)} workflow(s) need updating.")
+    print("=" * 78)
+
+    if not args.apply:
+        print()
+        print("Dry run only. Re-run with --apply to commit.")
+        return 0
+
+    if not plans:
+        print("Nothing to apply.")
+        return 0
+
+    await _apply_plans(plans)
     return 0
 
 

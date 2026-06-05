@@ -16,31 +16,37 @@ interface MentionTextareaProps {
 interface Segment {
   text: string;
   mention: boolean;
+  offset: number;
 }
 
 // Split the text on `@<toolName>` occurrences so they can be highlighted in the
 // backdrop. Longest names first so e.g. "@Send Email" wins over "@Send".
 const buildSegments = (value: string, toolNames: string[]): Segment[] => {
-  if (toolNames.length === 0) return [{ text: value, mention: false }];
+  if (toolNames.length === 0)
+    return [{ text: value, mention: false, offset: 0 }];
   const alternation = toolNames
     .slice()
     .sort((a, b) => b.length - a.length)
-    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`))
     .join("|");
   // Trailing boundary so a prefix doesn't highlight inside a longer token
   // (e.g. "@Send" must not light up inside "@Sender").
-  const re = new RegExp(`@(?:${alternation})(?!\\w)`, "g");
+  const re = new RegExp(String.raw`@(?:${alternation})(?!\w)`, "g");
   const segments: Segment[] = [];
   let last = 0;
   for (const match of value.matchAll(re)) {
     const index = match.index ?? 0;
     if (index > last)
-      segments.push({ text: value.slice(last, index), mention: false });
-    segments.push({ text: match[0], mention: true });
+      segments.push({
+        text: value.slice(last, index),
+        mention: false,
+        offset: last,
+      });
+    segments.push({ text: match[0], mention: true, offset: index });
     last = index + match[0].length;
   }
   if (last < value.length)
-    segments.push({ text: value.slice(last), mention: false });
+    segments.push({ text: value.slice(last), mention: false, offset: last });
   return segments;
 };
 
@@ -94,18 +100,16 @@ export const MentionTextarea = ({
         aria-hidden="true"
         className={`pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words text-zinc-100 ${SHARED_TEXT}`}
       >
-        {segments.map((segment, i) =>
+        {segments.map((segment) =>
           segment.mention ? (
             <mark
-              // biome-ignore lint/suspicious/noArrayIndexKey: segments are positional
-              key={i}
+              key={segment.offset}
               className="rounded bg-primary/20 text-primary"
             >
               {segment.text}
             </mark>
           ) : (
-            // biome-ignore lint/suspicious/noArrayIndexKey: segments are positional
-            <span key={i}>{segment.text}</span>
+            <span key={segment.offset}>{segment.text}</span>
           ),
         )}
       </div>

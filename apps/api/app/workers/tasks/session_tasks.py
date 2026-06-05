@@ -21,7 +21,7 @@ from app.services.storage import (
 from shared.py.wide_events import log, wide_task
 
 
-async def prune_inactive_sessions(ctx: dict[str, Any]) -> str:
+async def prune_inactive_sessions(_ctx: dict[str, Any]) -> str:
     """Delete session dirs inactive past SESSION_RETENTION_DAYS."""
     async with wide_task("prune_inactive_sessions"):
         cutoff_days = settings.SESSION_RETENTION_DAYS

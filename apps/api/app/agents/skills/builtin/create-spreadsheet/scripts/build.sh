@@ -20,7 +20,7 @@ fail() { echo "ERROR: $*" >&2; exit 1; }
 
 # --- SEAM: toolchain provisioning (idempotent) ---------------------------------
 ensure_venv() {
-  if [ ! -x "$VENV_PY" ]; then
+  if [[ ! -x "$VENV_PY" ]]; then
     python3 -m venv "$VENV" || fail "could not create venv"
   fi
   if ! "$VENV_PY" -c "import openpyxl, pandas" >/dev/null 2>&1; then
@@ -32,7 +32,7 @@ ensure_venv() {
 # Validate OOXML + count sheets. Uses system python3 (no deps).
 validate_xlsx() {
   local out="$1"
-  [ -s "$out" ] || fail "output is empty or missing: $out"
+  [[ -s "$out" ]] || fail "output is empty or missing: $out"
   local sheets
   sheets="$(python3 - "$out" <<'PY' || true
 import sys, zipfile, re
@@ -49,13 +49,14 @@ PY
 )"
   case "$sheets" in
     ""|ERR:*) fail "produced file is not a valid Excel workbook" ;;
+    *) ;;
   esac
-  [ "${sheets:-0}" -ge 1 ] 2>/dev/null || fail "workbook has no sheets"
+  [[ "${sheets:-0}" -ge 1 ]] 2>/dev/null || fail "workbook has no sheets"
   echo "OK: $OUT (sheets=$sheets)"
 }
 # --- end SEAM ------------------------------------------------------------------
 
-[ -f "$SRC" ] || fail "source not found: $SRC"
+[[ -f "$SRC" ]] || fail "source not found: $SRC"
 mkdir -p "$(dirname "$OUT")"
 ensure_venv
 
@@ -63,7 +64,7 @@ err="$(mktemp)"; trap 'rm -f "$err"' EXIT
 if ! "$VENV_PY" "$SRC" "$OUT" 2>"$err"; then
   # Surface the last line of the Python traceback (the actual error).
   msg="$(grep -E '^[A-Za-z_.]+(Error|Exception):' "$err" | tail -1 | cut -c1-200)"
-  [ -z "$msg" ] && msg="$(tail -1 "$err" | cut -c1-200)"
+  [[ -z "$msg" ]] && msg="$(tail -1 "$err" | cut -c1-200)"
   fail "${msg:-python failed to run $SRC (see source)}"
 fi
 

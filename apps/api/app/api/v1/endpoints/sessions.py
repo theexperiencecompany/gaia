@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse, JSONResponse
@@ -93,7 +93,7 @@ async def _resolve_file(
 @router.get("/{conv_id}/artifacts")
 @tiered_rate_limit("session_files")
 async def list_session_artifacts(
-    conv_id: str, user: dict = Depends(get_current_user)
+    conv_id: str, user: Annotated[dict, Depends(get_current_user)]
 ) -> JSONResponse:
     user_id = user["user_id"]
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "list_artifacts"})
@@ -105,10 +105,17 @@ async def list_session_artifacts(
     return JSONResponse(content=[asdict(i) for i in items])
 
 
-@router.get("/{conv_id}/artifacts/{path:path}")
+@router.get(
+    "/{conv_id}/artifacts/{path:path}",
+    responses={
+        400: {"description": "Invalid path"},
+        404: {"description": "File not found"},
+        503: {"description": "Workspace storage offline"},
+    },
+)
 @tiered_rate_limit("session_files")
 async def get_artifact_file(
-    conv_id: str, path: str, user: dict = Depends(get_current_user)
+    conv_id: str, path: str, user: Annotated[dict, Depends(get_current_user)]
 ) -> FileResponse:
     user_id = user["user_id"]
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "get_artifact"})
@@ -119,7 +126,9 @@ async def get_artifact_file(
 
 @router.get("/{conv_id}/uploads")
 @tiered_rate_limit("session_files")
-async def list_uploads(conv_id: str, user: dict = Depends(get_current_user)) -> JSONResponse:
+async def list_uploads(
+    conv_id: str, user: Annotated[dict, Depends(get_current_user)]
+) -> JSONResponse:
     user_id = user["user_id"]
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "list_uploads"})
     await _assert_owns(user_id, conv_id)
@@ -130,10 +139,17 @@ async def list_uploads(conv_id: str, user: dict = Depends(get_current_user)) -> 
     return JSONResponse(content=[asdict(i) for i in items])
 
 
-@router.get("/{conv_id}/uploads/{path:path}")
+@router.get(
+    "/{conv_id}/uploads/{path:path}",
+    responses={
+        400: {"description": "Invalid path"},
+        404: {"description": "File not found"},
+        503: {"description": "Workspace storage offline"},
+    },
+)
 @tiered_rate_limit("session_files")
 async def get_upload_file(
-    conv_id: str, path: str, user: dict = Depends(get_current_user)
+    conv_id: str, path: str, user: Annotated[dict, Depends(get_current_user)]
 ) -> FileResponse:
     user_id = user["user_id"]
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "get_upload"})
@@ -142,12 +158,20 @@ async def get_upload_file(
     return _serve(host_path, is_artifact=False, filename=path.rsplit("/", 1)[-1])
 
 
-@router.post("/{conv_id}/pin", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{conv_id}/pin",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"description": "Invalid path"},
+        404: {"description": "Artifact not found"},
+        503: {"description": "Workspace storage offline"},
+    },
+)
 @tiered_rate_limit("session_files")
 async def pin_artifact(
     conv_id: str,
     payload: PinRequest,
-    user: dict = Depends(get_current_user),
+    user: Annotated[dict, Depends(get_current_user)],
 ) -> JSONResponse:
     user_id = user["user_id"]
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "pin"})

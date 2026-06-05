@@ -116,8 +116,8 @@ export class OutboundConsumer {
     if (this.reconnectTimer) return;
     // Close the (possibly still-open) connection before dropping the reference,
     // so a channel-level failure after connect() succeeded does not leak it.
-    void this.channel?.close().catch(() => undefined);
-    void this.conn?.close().catch(() => undefined);
+    this.channel?.close().catch(() => undefined);
+    this.conn?.close().catch(() => undefined);
     this.channel = null;
     this.conn = null;
     const delay = this.reconnectDelayMs;

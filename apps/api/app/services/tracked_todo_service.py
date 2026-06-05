@@ -78,7 +78,7 @@ def _format_due_string(due_date: datetime | None, now: datetime) -> str:
     return f" due({days_until}d)"
 
 
-_KEY_DETAILS_RE = re.compile(r"## Key Details\n(.*?)(?:\n## |\Z)", re.DOTALL)
+_KEY_DETAILS_RE = re.compile(r"## Key Details\n(.*?)(?=\n## |\Z)", re.DOTALL)
 _KEY_DETAILS_MAX_LINES = 5
 
 

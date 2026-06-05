@@ -103,6 +103,68 @@ async def _migrate_reminder_types(apply: bool) -> int:
     return fixed
 
 
+async def _apply_type_fixes(doc: dict, apply: bool) -> bool:
+    """Type-repair the scheduling + audit timestamps. Returns True if any fixed."""
+    fixes = _build_type_fixes(doc)
+    if not fixes:
+        return False
+    print(f"  {doc.get('_id')}: type-fix {sorted(fixes)}")
+    if apply:
+        await workflows_collection.update_one({"_id": doc.get("_id")}, {"$set": fixes})
+    return True
+
+
+def _is_active_recurring(doc: dict) -> bool:
+    return bool(
+        doc.get("repeat")
+        and doc.get("activated", False)
+        and doc.get("status") == ScheduledTaskStatus.SCHEDULED.value
+    )
+
+
+def _recurrence_limit_reached(doc: dict, next_run: datetime) -> bool:
+    occurrence_count = doc.get("occurrence_count") or 0
+    max_occurrences = doc.get("max_occurrences")
+    stop_after = _to_datetime(doc.get("stop_after"))
+    return bool(max_occurrences and occurrence_count >= max_occurrences) or bool(
+        stop_after and next_run >= stop_after
+    )
+
+
+async def _rearm_workflow(
+    doc: dict, scheduler: WorkflowScheduler, now: datetime, apply: bool
+) -> str:
+    """Re-arm one active recurring workflow. Returns 'completed' or 'rearmed'."""
+    workflow_id = doc.get("_id")
+    timezone = (doc.get("trigger_config") or {}).get("timezone") or "UTC"
+    next_run = get_next_run_time(doc["repeat"], now, timezone)
+
+    if _recurrence_limit_reached(doc, next_run):
+        print(f"  {workflow_id}: limit reached -> completed")
+        if apply:
+            await workflows_collection.update_one(
+                {"_id": workflow_id},
+                {"$set": {"status": ScheduledTaskStatus.COMPLETED.value}},
+            )
+        return "completed"
+
+    print(f"  {workflow_id}: re-arm -> {next_run.isoformat()}")
+    if apply:
+        set_fields: dict[str, datetime | str] = {
+            "scheduled_at": next_run,
+            "status": ScheduledTaskStatus.SCHEDULED.value,
+            "updated_at": now,
+        }
+        # Only touch the nested field when the parent object exists, so a
+        # missing/null trigger_config is never auto-created as a malformed
+        # subdocument.
+        if isinstance(doc.get("trigger_config"), dict):
+            set_fields["trigger_config.next_run"] = next_run
+        await workflows_collection.update_one({"_id": workflow_id}, {"$set": set_fields})
+        await scheduler.reschedule_task(str(workflow_id), next_run)
+    return "rearmed"
+
+
 async def migrate(apply: bool) -> None:
     mode = "APPLY" if apply else "DRY RUN"
     print(f"[{mode}] Repairing workflow + reminder scheduling state...\n")
@@ -111,67 +173,21 @@ async def migrate(apply: bool) -> None:
     if apply:
         await scheduler.initialize()
 
-    type_fixed = 0
-    rearmed = 0
-    completed = 0
-    skipped = 0
+    counts = {"type_fixed": 0, "rearmed": 0, "completed": 0, "skipped": 0}
     reminder_fixed = 0
 
     try:
         async for doc in workflows_collection.find({}):
-            workflow_id = doc.get("_id")
             now = datetime.now(UTC)
+            if await _apply_type_fixes(doc, apply):
+                counts["type_fixed"] += 1
 
-            # 1. Type repair for the scheduling + audit timestamps.
-            fixes = _build_type_fixes(doc)
-            if fixes:
-                type_fixed += 1
-                print(f"  {workflow_id}: type-fix {sorted(fixes)}")
-                if apply:
-                    await workflows_collection.update_one({"_id": workflow_id}, {"$set": fixes})
-
-            # 2. Re-arm active recurring workflows.
-            repeat = doc.get("repeat")
-            activated = doc.get("activated", False)
-            status = doc.get("status")
-            if not repeat or not activated or status != ScheduledTaskStatus.SCHEDULED.value:
-                skipped += 1
+            if not _is_active_recurring(doc):
+                counts["skipped"] += 1
                 continue
 
-            timezone = (doc.get("trigger_config") or {}).get("timezone") or "UTC"
-            next_run = get_next_run_time(repeat, now, timezone)
-
-            occurrence_count = doc.get("occurrence_count") or 0
-            max_occurrences = doc.get("max_occurrences")
-            stop_after = _to_datetime(doc.get("stop_after"))
-
-            if (max_occurrences and occurrence_count >= max_occurrences) or (
-                stop_after and next_run >= stop_after
-            ):
-                completed += 1
-                print(f"  {workflow_id}: limit reached -> completed")
-                if apply:
-                    await workflows_collection.update_one(
-                        {"_id": workflow_id},
-                        {"$set": {"status": ScheduledTaskStatus.COMPLETED.value}},
-                    )
-                continue
-
-            rearmed += 1
-            print(f"  {workflow_id}: re-arm -> {next_run.isoformat()}")
-            if apply:
-                set_fields: dict[str, datetime | str] = {
-                    "scheduled_at": next_run,
-                    "status": ScheduledTaskStatus.SCHEDULED.value,
-                    "updated_at": now,
-                }
-                # Only touch the nested field when the parent object exists, so a
-                # missing/null trigger_config is never auto-created as a malformed
-                # subdocument.
-                if isinstance(doc.get("trigger_config"), dict):
-                    set_fields["trigger_config.next_run"] = next_run
-                await workflows_collection.update_one({"_id": workflow_id}, {"$set": set_fields})
-                await scheduler.reschedule_task(str(workflow_id), next_run)
+            outcome = await _rearm_workflow(doc, scheduler, now, apply)
+            counts[outcome] += 1
 
         # 3. Type repair for reminders (same string->datetime defect, no re-arm).
         reminder_fixed = await _migrate_reminder_types(apply)
@@ -180,8 +196,9 @@ async def migrate(apply: bool) -> None:
             await scheduler.close()
 
     print(
-        f"\n[{mode}] Done. workflow type-fixed={type_fixed} re-armed={rearmed} "
-        f"completed={completed} skipped={skipped} | reminder type-fixed={reminder_fixed}"
+        f"\n[{mode}] Done. workflow type-fixed={counts['type_fixed']} "
+        f"re-armed={counts['rearmed']} completed={counts['completed']} "
+        f"skipped={counts['skipped']} | reminder type-fixed={reminder_fixed}"
     )
     if not apply:
         print("Re-run with --apply to write these changes.")

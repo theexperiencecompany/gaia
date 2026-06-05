@@ -733,7 +733,6 @@ class TestCreateDraft:
 
         result = await create_draft(
             user_id=USER_ID,
-            sender="me@example.com",
             to_list=["bob@example.com"],
             subject="Draft subject",
             body="Draft body",
@@ -751,7 +750,6 @@ class TestCreateDraft:
 
         await create_draft(
             user_id=USER_ID,
-            sender="me@example.com",
             to_list=["bob@example.com"],
             subject="Hi",
             body="Body",
@@ -771,7 +769,6 @@ class TestCreateDraft:
 
         await create_draft(
             user_id=USER_ID,
-            sender="me@example.com",
             to_list=["bob@example.com"],
             subject="Hi",
             body="<b>HTML</b>",
@@ -787,7 +784,6 @@ class TestCreateDraft:
 
         result = await create_draft(
             user_id=USER_ID,
-            sender="me@example.com",
             to_list=["bob@example.com"],
             subject="Hi",
             body="Body",
@@ -899,7 +895,6 @@ class TestUpdateDraft:
         await update_draft(
             user_id=USER_ID,
             draft_id="draft1",
-            sender="me@example.com",
             to_list=["bob@example.com"],
             subject="Updated Subject",
             body="Updated body",
@@ -917,7 +912,6 @@ class TestUpdateDraft:
         result = await update_draft(
             user_id=USER_ID,
             draft_id="draft1",
-            sender="me@example.com",
             to_list=["bob@example.com"],
             subject="Hi",
             body="Body",

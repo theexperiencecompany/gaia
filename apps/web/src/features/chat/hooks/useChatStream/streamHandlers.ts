@@ -272,7 +272,7 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
   };
 
   const handleTodoProgress = (snapshot: TodoProgressSnapshot) => {
-    // Accumulate snapshots keyed by source on the todo_progress field
+    // Accumulate snapshots keyed by source on the task-progress field
     const existing = refs.current.botMessage?.todo_progress ?? {};
     const source = snapshot.source || "executor";
     const accumulated = {
@@ -335,7 +335,7 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
       refs.current.accumulatedResponse += data.response;
     }
 
-    // Skip tool_data, tool_output, and todo_progress - they're handled separately
+    // Skip tool_data, tool_output, and task-progress - they're handled separately
     // to avoid double-processing in parseStreamData
     const {
       tool_data: _toolData,
@@ -343,10 +343,7 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
       todo_progress: _todoProgress,
       ...restData
     } = data;
-    const streamUpdates = parseStreamData(
-      restData as Partial<MessageType>,
-      refs.current.botMessage,
-    );
+    const streamUpdates = parseStreamData(restData, refs.current.botMessage);
 
     updateBotMessage({
       ...streamUpdates,
@@ -462,7 +459,6 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
         toast.error(parsed.error);
         return parsed.error;
       case "main_response_complete":
-        console.log("[handleStreamEvent] Received main_response_complete");
         handleMainResponseComplete();
         return undefined;
       case "tool_data":
@@ -490,7 +486,6 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
         streamingData.follow_up_actions = parsed.actions;
         return undefined;
       case "conversation_initialized":
-        console.log("[useChatStream] conversation_initialized event:", parsed);
         await handleConversationInitialized(parsed);
         return undefined;
       case "conversation_description":

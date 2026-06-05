@@ -21,8 +21,8 @@ fail() { echo "ERROR: $*" >&2; exit 1; }
 ensure_node_pkg() {
   local pkg="$1"
   mkdir -p "$NODE_HOME"
-  [ -f "$NODE_HOME/package.json" ] || ( cd "$NODE_HOME" && npm init -y >/dev/null 2>&1 )
-  [ -d "$NODE_HOME/node_modules/$pkg" ] && return 0
+  [[ -f "$NODE_HOME/package.json" ]] || ( cd "$NODE_HOME" && npm init -y >/dev/null 2>&1 )
+  [[ -d "$NODE_HOME/node_modules/$pkg" ]] && return 0
   ( cd "$NODE_HOME" && npm install "$pkg" >/dev/null 2>&1 ) || fail "npm install $pkg failed"
 }
 
@@ -30,7 +30,7 @@ ensure_node_pkg() {
 # python3 (present in the sandbox base image) — no extra deps.
 validate_ooxml() {
   local out="$1" member="$2"
-  [ -s "$out" ] || fail "output is empty or missing: $out"
+  [[ -s "$out" ]] || fail "output is empty or missing: $out"
   python3 - "$out" "$member" <<'PY' || fail "produced file is not a valid Office document"
 import sys, zipfile
 path, member = sys.argv[1], sys.argv[2]
@@ -48,7 +48,7 @@ PY
 }
 # --- end SEAM ------------------------------------------------------------------
 
-[ -f "$SRC" ] || fail "source not found: $SRC"
+[[ -f "$SRC" ]] || fail "source not found: $SRC"
 mkdir -p "$(dirname "$OUT")"
 ensure_node_pkg docx
 # ESM bare imports ("docx") resolve by walking up from the SOURCE file's dir —

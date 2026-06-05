@@ -25,6 +25,8 @@ from app.utils.canvas_vector_utils import search_canvas_context
 from shared.py.wide_events import log
 
 _RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
+_UTC_OFFSET = "+00:00"
+_ERR_NO_USER_ID = "Error: user_id not found in config"
 
 
 async def _get_user_tz(user_id: str) -> str:
@@ -81,7 +83,7 @@ def _fire_and_forget(coro) -> None:
 def _parse_iso_future_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
     """Parse an ISO datetime; require it to be in the future. Returns (parsed, error)."""
     try:
-        parsed = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(iso_str.replace("Z", _UTC_OFFSET))
     except ValueError:
         return None, f"Error: invalid {field_name} format '{iso_str}'."
     if parsed <= datetime.now(UTC):
@@ -163,7 +165,9 @@ async def _persist_scheduling_fields(
         update_fields["recurrence"] = recurrence
     if expires_at:
         try:
-            update_fields["expires_at"] = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            update_fields["expires_at"] = datetime.fromisoformat(
+                expires_at.replace("Z", _UTC_OFFSET)
+            )
         except ValueError:
             return f"Error: invalid expires_at format '{expires_at}'."
     await todos_collection.update_one(
@@ -236,7 +240,7 @@ def _build_clearable_datetime_update(
         update_fields[field_name] = None
         return None
     try:
-        update_fields[field_name] = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        update_fields[field_name] = datetime.fromisoformat(value.replace("Z", _UTC_OFFSET))
     except ValueError:
         return f"Error: invalid {field_name} format '{value}'."
     return None
@@ -263,7 +267,7 @@ def _build_scheduled_at_update(
         update_fields["scheduled_at"] = None
         return None
     try:
-        parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+        parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", _UTC_OFFSET))
     except ValueError:
         return f"Error: invalid scheduled_at format '{scheduled_at}'."
     if parsed_at <= datetime.now(UTC):
@@ -498,7 +502,7 @@ async def create_tracked_todo(
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
-        return "Error: user_id not found in config"
+        return _ERR_NO_USER_ID
 
     # Recurrence is always evaluated in the user's stored timezone. We only
     # look it up here to (a) compute the first cron fire correctly and (b)
@@ -555,7 +559,7 @@ async def search_todo_context(
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
-        return "Error: user_id not found in config"
+        return _ERR_NO_USER_ID
 
     matches = await search_canvas_context(
         query=query,
@@ -612,7 +616,7 @@ async def update_tracked_todo_canvas(
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
-        return "Error: user_id not found in config"
+        return _ERR_NO_USER_ID
 
     if mode not in ("replace", "append", "section"):
         return f"Error: invalid mode '{mode}'. Use 'replace', 'append', or 'section'."
@@ -660,7 +664,7 @@ async def complete_tracked_todo(
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
-        return "Error: user_id not found in config"
+        return _ERR_NO_USER_ID
 
     success = await tracked_todo_service.complete_tracked_todo(
         todo_id=todo_id, user_id=user_id, summary=summary
@@ -730,7 +734,7 @@ async def update_tracked_todo(
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
-        return "Error: user_id not found in config"
+        return _ERR_NO_USER_ID
 
     update_fields: dict[str, object] = {}
     notes: list[str] = []
@@ -813,7 +817,7 @@ async def list_tracked_todos(
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
-        return "Error: user_id not found in config"
+        return _ERR_NO_USER_ID
 
     cursor = (
         todos_collection.find(

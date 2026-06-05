@@ -1,6 +1,5 @@
 import type React from "react";
 import type {
-  MCPAppData,
   RateLimitData,
   ToolDataMap,
   ToolName,
@@ -22,16 +21,9 @@ import { WeatherCard } from "@/features/weather/components/WeatherCard";
 import WorkflowCreatedCard from "@/features/workflows/components/WorkflowCreatedCard";
 import WorkflowDraftCard from "@/features/workflows/components/WorkflowDraftCard";
 import type {
-  CalendarDeleteOptions,
-  CalendarEditOptions,
-  CalendarFetchData,
-} from "@/types/features/calendarTypes";
-import type {
-  ContactData,
   EmailComposeData,
   EmailFetchData,
   EmailSentData,
-  EmailThreadData,
 } from "@/types/features/mailTypes";
 import type { NotificationRecord } from "@/types/features/notificationTypes";
 import type {
@@ -42,20 +34,7 @@ import type {
   RedditPostData,
   RedditSearchData,
 } from "@/types/features/redditTypes";
-import type {
-  DeepResearchResults,
-  SearchResults,
-} from "@/types/features/searchTypes";
-import type {
-  ArtifactData,
-  GoalDataMessageType,
-  GoogleDocsData,
-  WorkflowDraftData,
-} from "@/types/features/toolDataTypes";
-import type {
-  TwitterSearchData,
-  TwitterUserData,
-} from "@/types/features/twitterTypes";
+import type { SearchResults } from "@/types/features/searchTypes";
 import { CalendarDeleteSection } from "../CalendarDeleteSection";
 import { CalendarEditSection } from "../CalendarEditSection";
 import CalendarEventSection from "../CalendarEventSection";
@@ -141,7 +120,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   deep_research_results: (data, index) => (
     <DeepResearchResultsTabs
       key={`tool-deep-search-${index}`}
-      deep_research_results={data as DeepResearchResults}
+      deep_research_results={data}
     />
   ),
 
@@ -154,21 +133,21 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   email_thread_data: (data, index) => (
     <EmailThreadCard
       key={`tool-email-thread-${index}`}
-      emailThreadData={data as EmailThreadData}
+      emailThreadData={data}
     />
   ),
   email_fetch_data: (data, index) => {
     // When grouped, data is EmailFetchData[][] — flatten batches into one list
     const emails = Array.isArray(data[0])
       ? (data as unknown as EmailFetchData[][]).flat()
-      : (data as EmailFetchData[]);
+      : data;
     return <EmailListCard key={`tool-email-fetch-${index}`} emails={emails} />;
   },
   email_compose_data: (data, index) => {
     // When grouped, data is EmailComposeData[][] — flatten batches
     const items = Array.isArray(data[0])
       ? (data as unknown as EmailComposeData[][]).flat()
-      : (data as EmailComposeData[]);
+      : data;
     return (
       <EmailComposeSection
         key={`tool-email-compose-${index}`}
@@ -180,7 +159,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     // When grouped, data is EmailSentData[][] — flatten batches
     const items = Array.isArray(data[0])
       ? (data as unknown as EmailSentData[][]).flat()
-      : (data as EmailSentData[]);
+      : data;
     return (
       <EmailSentSection
         key={`tool-email-sent-${index}`}
@@ -191,7 +170,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   contacts_data: (data, index) => (
     <ContactListSection
       key={`tool-contacts-${index}`}
-      contacts_data={(Array.isArray(data) ? data : [data]) as ContactData[]}
+      contacts_data={Array.isArray(data) ? data : [data]}
     />
   ),
   people_search_data: (data, index) => (
@@ -214,7 +193,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     return (
       <CalendarDeleteSection
         key={`tool-cal-del-${index}`}
-        calendar_delete_options={data as CalendarDeleteOptions[]}
+        calendar_delete_options={data}
       />
     );
   },
@@ -222,14 +201,14 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     return (
       <CalendarEditSection
         key={`tool-cal-edit-${index}`}
-        calendar_edit_options={data as CalendarEditOptions[]}
+        calendar_edit_options={data}
       />
     );
   },
   calendar_fetch_data: (data, index) => (
     <CalendarListCard
       key={`tool-cal-fetch-${index}`}
-      events={(Array.isArray(data) ? data : [data]) as CalendarFetchData[]}
+      events={Array.isArray(data) ? data : [data]}
     />
   ),
   calendar_list_fetch_data: (data, index) => (
@@ -249,19 +228,13 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 
   // Documents & Code
   google_docs_data: (data, index) => (
-    <GoogleDocsSection
-      key={`tool-gdocs-${index}`}
-      google_docs_data={data as GoogleDocsData}
-    />
+    <GoogleDocsSection key={`tool-gdocs-${index}`} google_docs_data={data} />
   ),
   code_data: (data, index) => (
     <CodeExecutionSection key={`tool-code-${index}`} code_data={data} />
   ),
   artifact_data: (data, index) => (
-    <FileArtifactSection
-      key={`tool-artifact-${index}`}
-      artifact_data={data as ArtifactData | ArtifactData[]}
-    />
+    <FileArtifactSection key={`tool-artifact-${index}`} artifact_data={data} />
   ),
 
   todo_data: (data, index) => (
@@ -275,7 +248,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     />
   ),
   goal_data: (data, index) => {
-    const g = data as GoalDataMessageType;
+    const g = data;
     return (
       <GoalSection
         key={`tool-goal-${index}`}
@@ -351,15 +324,13 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   twitter_search_data: (data, index) => (
     <TwitterSearchSection
       key={`tool-twitter-search-${index}`}
-      twitter_search_data={data as TwitterSearchData}
+      twitter_search_data={data}
     />
   ),
   twitter_user_data: (data, index) => (
     <TwitterUserSection
       key={`tool-twitter-users-${index}`}
-      twitter_user_data={
-        (Array.isArray(data) ? data : [data]) as TwitterUserData[]
-      }
+      twitter_user_data={Array.isArray(data) ? data : [data]}
     />
   ),
 
@@ -414,10 +385,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   },
 
   workflow_draft: (data, index) => (
-    <WorkflowDraftCard
-      key={`tool-workflow-draft-${index}`}
-      draft={data as WorkflowDraftData}
-    />
+    <WorkflowDraftCard key={`tool-workflow-draft-${index}`} draft={data} />
   ),
 
   workflow_created: (data, index) => (
@@ -429,8 +397,8 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 
   mcp_app: (data, index) => (
     <MCPAppRenderer
-      key={`tool-mcp-app-${(data as MCPAppData).tool_call_id || index}`}
-      data={data as MCPAppData}
+      key={`tool-mcp-app-${data.tool_call_id || index}`}
+      data={data}
     />
   ),
 

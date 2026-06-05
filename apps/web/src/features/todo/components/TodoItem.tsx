@@ -108,7 +108,7 @@ export default memo(function TodoItem({
 
   const user = useUser();
   // Format scheduled time in the user's preferred timezone so it matches the
-  // todo modal / ScheduledFieldChip instead of the browser's local timezone.
+  // task-edit modal / ScheduledFieldChip instead of the browser's local timezone.
   const scheduledLabel = useMemo(
     () => formatScheduledLabel(todo.scheduled_at, user?.timezone),
     [todo.scheduled_at, user?.timezone],

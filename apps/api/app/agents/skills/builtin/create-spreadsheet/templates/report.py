@@ -154,7 +154,7 @@ def compute_model() -> dict:
     ebitda_margin = [e / r if r else 0.0 for e, r in zip(ebitda, revenue)]
     net_margin = [ni / r if r else 0.0 for ni, r in zip(net_income, revenue)]
 
-    # CAGR = (end / start) ** (1 / periods) - 1.
+    # Compound annual growth rate of revenue across the projected periods.
     rev_cagr = (revenue[-1] / revenue[0]) ** (1 / (n - 1)) - 1 if n > 1 else 0.0
 
     return {
@@ -249,6 +249,63 @@ def build_assumptions(ws: Worksheet) -> None:
 
 
 # --- Sheet 2: Model (the P&L) -------------------------------------------------
+def _style_pnl_row(ws: Worksheet, r: int, total_col: int, row: tuple) -> None:
+    """Render a single P&L line item with subtotal/zebra emphasis."""
+    label, values, fmt, bold = row
+    is_indented = label.startswith("  ")
+    style_label(
+        ws.cell(row=r, column=1),
+        label.strip() if is_indented else label,
+        bold=bold,
+        indent=1 if is_indented else 0,
+    )
+    for i, v in enumerate(values):
+        style_number(ws.cell(row=r, column=2 + i), v, fmt, bold=bold)
+    # Bold totals column = sum across years (computed in Python).
+    style_number(ws.cell(row=r, column=total_col), sum(values), fmt, bold=True)
+    # Emphasize subtotal rows with a light fill.
+    if bold:
+        for c in range(1, total_col + 1):
+            cell = ws.cell(row=r, column=c)
+            if cell.fill.fgColor.rgb in (None, "00000000"):
+                cell.fill = PatternFill("solid", fgColor=BRAND_LIGHT)
+    elif r % 2 == 0:  # zebra banding on non-subtotal rows
+        for c in range(1, total_col + 1):
+            ws.cell(row=r, column=c).fill = PatternFill("solid", fgColor=ZEBRA)
+
+
+def _build_pnl_rows(ws: Worksheet, model: dict, total_col: int, data_start: int) -> tuple[int, int]:
+    """Render all P&L line items. Returns (revenue_row, next_free_row)."""
+    revenue_row = 0
+    r = data_start
+    for row in model["rows"]:
+        if row[0] == "Revenue":
+            revenue_row = r
+        _style_pnl_row(ws, r, total_col, row)
+        r += 1
+    return revenue_row, r
+
+
+def _build_margin_table(
+    ws: Worksheet, model: dict, years: list, total_col: int, start_row: int
+) -> tuple[int, int, int]:
+    """Render the margin sub-table. Returns (margin_hdr, margin_first, margin_last)."""
+    margin_hdr = start_row
+    style_header(ws.cell(row=start_row, column=1), "Margins")
+    for i, yr in enumerate(years):
+        style_header(ws.cell(row=start_row, column=2 + i), str(yr))
+    style_header(ws.cell(row=start_row, column=total_col), "Avg")
+    r = start_row + 1
+    margin_first = r
+    for label, values in model["margin_rows"]:
+        style_label(ws.cell(row=r, column=1), label)
+        for i, v in enumerate(values):
+            style_number(ws.cell(row=r, column=2 + i), v, FMT_PERCENT)
+        style_number(ws.cell(row=r, column=total_col), sum(values) / len(values), FMT_PERCENT)
+        r += 1
+    return margin_hdr, margin_first, r - 1
+
+
 def build_model(ws: Worksheet, model: dict) -> tuple[int, int]:
     """Render the P&L. Returns the 1-based row index of the Revenue row so the
     dashboard charts can build References into it."""
@@ -272,50 +329,14 @@ def build_model(ws: Worksheet, model: dict) -> tuple[int, int]:
         style_header(ws.cell(row=hdr, column=2 + i), str(yr))
     style_header(ws.cell(row=hdr, column=total_col), "Total")
 
-    revenue_row = 0
     data_start = hdr + 1
-    r = data_start
-    for label, values, fmt, bold in model["rows"]:
-        is_indented = label.startswith("  ")
-        style_label(
-            ws.cell(row=r, column=1),
-            label.strip() if is_indented else label,
-            bold=bold,
-            indent=1 if is_indented else 0,
-        )
-        if label == "Revenue":
-            revenue_row = r
-        for i, v in enumerate(values):
-            style_number(ws.cell(row=r, column=2 + i), v, fmt, bold=bold)
-        # Bold totals column = sum across years (computed in Python).
-        style_number(ws.cell(row=r, column=total_col), sum(values), fmt, bold=True)
-        # Emphasize subtotal rows with a light fill.
-        if bold:
-            for c in range(1, total_col + 1):
-                cell = ws.cell(row=r, column=c)
-                if cell.fill.fgColor.rgb in (None, "00000000"):
-                    cell.fill = PatternFill("solid", fgColor=BRAND_LIGHT)
-        elif r % 2 == 0:  # zebra banding on non-subtotal rows
-            for c in range(1, total_col + 1):
-                ws.cell(row=r, column=c).fill = PatternFill("solid", fgColor=ZEBRA)
-        r += 1
+    revenue_row, next_row = _build_pnl_rows(ws, model, total_col, data_start)
 
     # Margin sub-table below the P&L (percent-formatted, computed values).
-    r += 1
-    margin_hdr = r
-    style_header(ws.cell(row=r, column=1), "Margins")
-    for i, yr in enumerate(years):
-        style_header(ws.cell(row=r, column=2 + i), str(yr))
-    style_header(ws.cell(row=r, column=total_col), "Avg")
-    r += 1
-    margin_first = r
-    for label, values in model["margin_rows"]:
-        style_label(ws.cell(row=r, column=1), label)
-        for i, v in enumerate(values):
-            style_number(ws.cell(row=r, column=2 + i), v, FMT_PERCENT)
-        style_number(ws.cell(row=r, column=total_col), sum(values) / len(values), FMT_PERCENT)
-        r += 1
-    margin_last = r - 1
+    margin_hdr, margin_first, margin_last = _build_margin_table(
+        ws, model, years, total_col, next_row + 1
+    )
+    r = margin_last + 1
 
     # An instructive (non-authoritative) formula string — clearly labeled.
     note_row = r + 1

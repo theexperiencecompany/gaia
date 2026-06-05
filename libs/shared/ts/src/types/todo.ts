@@ -28,7 +28,7 @@ export interface Todo {
   vfs_path?: string;
   scheduled_at?: string | null; // ISO datetime string
   recurrence?: string | null; // 'daily' | 'weekly' | 'every_4h' | cron expression
-  expires_at?: string | null; // ISO datetime — when this todo becomes irrelevant
+  expires_at?: string | null; // ISO datetime — when this task becomes irrelevant
   references?: string[]; // IDs of related past tracked todos
   workflow_categories?: string[];
   starred?: boolean;

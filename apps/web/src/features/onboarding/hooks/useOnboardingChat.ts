@@ -88,19 +88,11 @@ export function useOnboardingChat(
       };
 
       try {
-        await fetchChatStream(
-          trimmed,
-          [userMessage],
-          [],
-          null,
-          null,
-          null,
-          null,
-          userMessageId,
-          null,
+        await fetchChatStream(trimmed, [userMessage], {
+          optimisticUserId: userMessageId,
           conversationId,
-          true,
-        );
+          isOnboardingDemo: true,
+        });
       } catch {
       } finally {
         setIsChatSending(false);

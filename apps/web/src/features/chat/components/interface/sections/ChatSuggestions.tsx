@@ -73,8 +73,8 @@ export const ChatSuggestions: React.FC = () => {
   // produces a flash. The 250ms matches HeroUI's modal exit transition.
   useEffect(() => {
     if (isModalOpen || !selectedWorkflow) return;
-    const timer = window.setTimeout(() => setSelectedWorkflow(null), 250);
-    return () => window.clearTimeout(timer);
+    const timer = globalThis.setTimeout(() => setSelectedWorkflow(null), 250);
+    return () => globalThis.clearTimeout(timer);
   }, [isModalOpen, selectedWorkflow]);
 
   // Filter for only featured workflows

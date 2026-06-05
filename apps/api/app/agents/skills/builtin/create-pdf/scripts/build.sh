@@ -26,7 +26,7 @@ ensure_dirs() { mkdir -p "$BIN" "$DOCGEN_HOME/venv" 2>/dev/null || true; }
 
 ensure_typst() {
   command -v typst >/dev/null 2>&1 && return 0
-  [ -x "$BIN/typst" ] && return 0
+  [[ -x "$BIN/typst" ]] && return 0
   # Pin the version (like tectonic below) so the fallback download is
   # reproducible — `latest` could pull a release with breaking syntax/CLI changes.
   local ver="0.13.1" arch tgt
@@ -43,7 +43,7 @@ ensure_typst() {
 
 ensure_tectonic() {
   command -v tectonic >/dev/null 2>&1 && return 0
-  [ -x "$BIN/tectonic" ] && return 0
+  [[ -x "$BIN/tectonic" ]] && return 0
   # Use the STATIC musl build, not the drop-sh installer's linux-gnu build: the
   # gnu binary needs a newer GLIBC (2.38+) than the sandbox base (Debian
   # bookworm, GLIBC 2.36) provides, so it fails to even start. musl is static.
@@ -56,16 +56,16 @@ ensure_tectonic() {
   esac
   curl -fsSL "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40${ver}/tectonic-${ver}-${tgt}.tar.gz" \
     | tar -xz -C "$BIN" 2>/dev/null || fail "0:0: tectonic download failed (arch $arch)"
-  [ -x "$BIN/tectonic" ] || fail "0:0: tectonic binary missing after download"
+  [[ -x "$BIN/tectonic" ]] || fail "0:0: tectonic binary missing after download"
 }
 
 # pymupdf (fitz) gives an accurate page count; falls back to a %PDF/grep check.
 validate_pdf() {
   local out="$1"
-  [ -s "$out" ] || fail "0:0: output PDF is empty or missing"
+  [[ -s "$out" ]] || fail "0:0: output PDF is empty or missing"
   head -c 4 "$out" | grep -q '%PDF' || fail "0:0: output is not a valid PDF"
   local pages=""
-  if [ -x "$VENV_PY" ]; then
+  if [[ -x "$VENV_PY" ]]; then
     pages="$("$VENV_PY" - "$out" <<'PY' 2>/dev/null || true
 import sys
 try:
@@ -80,10 +80,10 @@ PY
   # plaintext grep frequently finds nothing. Page count is therefore BEST-EFFORT:
   # report it when known, but never fail a PDF the compiler already produced
   # (exit 0) with a valid %PDF header — that is the real success signal.
-  if [ -z "$pages" ]; then
+  if [[ -z "$pages" ]]; then
     pages="$(grep -a -c '/Type[[:space:]]*/Page[^s]' "$out" 2>/dev/null || echo "")"
   fi
-  if [ -n "$pages" ] && [ "$pages" -ge 1 ] 2>/dev/null; then
+  if [[ -n "$pages" ]] && [[ "$pages" -ge 1 ]] 2>/dev/null; then
     echo "OK: $OUT (pages=$pages)"
   else
     echo "OK: $OUT"
@@ -92,7 +92,7 @@ PY
 # --- end SEAM ------------------------------------------------------------------
 
 ensure_dirs
-[ -f "$SRC" ] || fail "0:0: source not found: $SRC"
+[[ -f "$SRC" ]] || fail "0:0: source not found: $SRC"
 mkdir -p "$(dirname "$OUT")"
 
 ext="${SRC##*.}"
@@ -123,14 +123,14 @@ case "$ext" in
       # Tectonic's failure line doesn't always contain "error"/"!" (e.g. bundle
       # fetch issues) — fall back to the last non-empty stderr line so the agent
       # sees the real reason instead of a generic message.
-      [ -z "$msg" ] && msg="$(grep -v '^[[:space:]]*$' "$err" | tail -1 | cut -c1-200 || true)"
+      [[ -z "$msg" ]] && msg="$(grep -v '^[[:space:]]*$' "$err" | tail -1 | cut -c1-200 || true)"
       fail "$SRC:0: ${msg:-tectonic compile failed}"
     fi
     # tectonic names output after the source stem; move to requested OUT.
     # Guard with `if` (not `[ ] && [ ] && mv`) — a false leading test would
     # return non-zero and abort under `set -e` when no move is needed.
     produced="$(dirname "$OUT")/$(basename "${SRC%.*}").pdf"
-    if [ "$produced" != "$OUT" ] && [ -f "$produced" ]; then
+    if [[ "$produced" != "$OUT" ]] && [[ -f "$produced" ]]; then
       mv -f "$produced" "$OUT"
     fi
     ;;

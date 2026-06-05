@@ -74,7 +74,7 @@ function extractTaskFromInputs(
   inputs: ToolCallEntry["inputs"],
 ): string | undefined {
   if (!inputs || typeof inputs !== "object") return undefined;
-  const task = (inputs as Record<string, unknown>).task;
+  const task = inputs.task;
   return typeof task === "string" && task ? task : undefined;
 }
 
@@ -185,11 +185,15 @@ function emitGroupForCall(
   timeline: TimelineItem[],
   emittedGroupIds: Set<string>,
 ): void {
-  const matched = isHandoff
-    ? matchHandoffGroupByName(allGroups, (tc.message || "").toLowerCase())
-    : spawnIdxRef.value < unmatchedSpawned.length
-      ? unmatchedSpawned[spawnIdxRef.value++]
-      : undefined;
+  let matched: EnrichedSubagentGroup | undefined;
+  if (isHandoff) {
+    matched = matchHandoffGroupByName(
+      allGroups,
+      (tc.message || "").toLowerCase(),
+    );
+  } else if (spawnIdxRef.value < unmatchedSpawned.length) {
+    matched = unmatchedSpawned[spawnIdxRef.value++];
+  }
   if (!matched) return;
 
   attachHandoffPayload(
@@ -262,7 +266,7 @@ function extractSubagentIdFromInputs(
   inputs: ToolCallEntry["inputs"],
 ): string | undefined {
   if (!inputs || typeof inputs !== "object") return undefined;
-  const raw = (inputs as Record<string, unknown>).subagent_id;
+  const raw = inputs.subagent_id;
   if (typeof raw !== "string" || !raw) return undefined;
   // Normalize "subagent:posthog" → "posthog" and "posthog_agent" → "posthog"
   // so the icon registry resolves to the integration's logo, not a generic

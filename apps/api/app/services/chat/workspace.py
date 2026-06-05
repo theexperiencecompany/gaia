@@ -101,50 +101,23 @@ async def forward_artifact_events(
     try:
         await pubsub.subscribe(channel)
         async for message in pubsub.listen():
-            if message.get("type") != "message":
-                continue
-            try:
-                payload = json.loads(message["data"])
-            except (ValueError, TypeError):
-                continue
-            if payload.get("session_id") != conversation_id:
+            payload = _parse_artifact_message(message, conversation_id)
+            if payload is None:
                 continue
             path = payload.get("path")
             event = payload.get("event")
-            sig: tuple[str | None, str | None, int | None, str | None] = (
-                event,
-                path,
-                payload.get("size_bytes"),
-                payload.get("mtime"),
-            )
-            if path and seen.get(path) == sig:
+            if _is_duplicate_artifact(payload, path, event, seen):
                 continue  # unchanged — skip duplicate push/persist
-            if path:
-                if event == "remove":
-                    seen.pop(path, None)
-                else:
-                    seen[path] = sig
-            # Deliver agent-generated artifacts (event == "upsert") to bot users.
-            # User uploads (event == "upload") are skipped — the user already has them.
-            if (
-                bot_platform is not None
-                and event == "upsert"
-                and path
-                and path not in published_files
-            ):
-                published_files.add(path)
-                pub_task = asyncio.create_task(
-                    publish_outbound_file(
-                        platform=bot_platform,
-                        user_id=user_id,
-                        conversation_id=conversation_id,
-                        path=path,
-                        filename=path.rsplit("/", 1)[-1],
-                        content_type=payload.get("content_type"),
-                    )
-                )
-                publish_tasks.add(pub_task)
-                pub_task.add_done_callback(publish_tasks.discard)
+            _maybe_deliver_to_bot(
+                payload=payload,
+                path=path,
+                event=event,
+                bot_platform=bot_platform,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                published_files=published_files,
+                publish_tasks=publish_tasks,
+            )
             entry = {
                 "tool_name": "artifact_data",
                 "data": payload,
@@ -165,3 +138,77 @@ async def forward_artifact_events(
             await pubsub.unsubscribe(channel)
         with contextlib.suppress(Exception):
             await pubsub.aclose()
+
+
+def _parse_artifact_message(message: dict[str, Any], conversation_id: str) -> dict[str, Any] | None:
+    """Decode a pub/sub message into an artifact payload for this conversation.
+
+    Returns ``None`` when the message isn't a data frame, can't be parsed, or
+    belongs to a different conversation.
+    """
+    if message.get("type") != "message":
+        return None
+    try:
+        payload = json.loads(message["data"])
+    except (ValueError, TypeError):
+        return None
+    if payload.get("session_id") != conversation_id:
+        return None
+    return payload
+
+
+def _is_duplicate_artifact(
+    payload: dict[str, Any],
+    path: str | None,
+    event: str | None,
+    seen: dict[str, tuple[str | None, str | None, int | None, str | None]],
+) -> bool:
+    """Return True if this artifact is unchanged since last seen; else record it."""
+    sig: tuple[str | None, str | None, int | None, str | None] = (
+        event,
+        path,
+        payload.get("size_bytes"),
+        payload.get("mtime"),
+    )
+    if path and seen.get(path) == sig:
+        return True
+    if path:
+        if event == "remove":
+            seen.pop(path, None)
+        else:
+            seen[path] = sig
+    return False
+
+
+def _maybe_deliver_to_bot(
+    *,
+    payload: dict[str, Any],
+    path: str | None,
+    event: str | None,
+    bot_platform: ConversationSource | None,
+    user_id: str,
+    conversation_id: str,
+    published_files: set[str],
+    publish_tasks: set[asyncio.Task[bool]],
+) -> None:
+    """Push agent-generated artifacts to a bot user's outbound queue, at most once.
+
+    User uploads (``event == "upload"``) are skipped — the user already has them.
+    """
+    if not (
+        bot_platform is not None and event == "upsert" and path and path not in published_files
+    ):
+        return
+    published_files.add(path)
+    pub_task = asyncio.create_task(
+        publish_outbound_file(
+            platform=bot_platform,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            path=path,
+            filename=path.rsplit("/", 1)[-1],
+            content_type=payload.get("content_type"),
+        )
+    )
+    publish_tasks.add(pub_task)
+    pub_task.add_done_callback(publish_tasks.discard)

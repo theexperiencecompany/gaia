@@ -588,4 +588,5 @@ const doc = new Document({
 });
 
 const out = process.argv[2] || "out.docx";
-Packer.toBuffer(doc).then((buf) => writeFileSync(out, buf));
+const buf = await Packer.toBuffer(doc);
+writeFileSync(out, buf);

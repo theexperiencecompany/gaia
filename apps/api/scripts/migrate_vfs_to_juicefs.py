@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 import sys
 
@@ -109,7 +109,7 @@ async def migrate_one(user_id: str, *, dry_run: bool = False) -> dict:
     return {"user_id": user_id, "files": written, "status": "ok"}
 
 
-async def _all_user_ids() -> AsyncIterator[str]:
+async def _all_user_ids() -> AsyncGenerator[str, None]:
     async for doc in users_collection.find({}, projection={"_id": 1}):
         yield str(doc["_id"])
 

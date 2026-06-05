@@ -117,17 +117,16 @@ export default function UnifiedToolThread({
               <ToolsIcon width={21} height={21} />
             </div>
           );
+          let rotate = "0deg";
+          if (display.length > 1) {
+            rotate = i % 2 === 0 ? "8deg" : "-8deg";
+          }
           return (
             <div
               key={`${d.category}-${i}`}
               className="relative flex min-w-8 items-center justify-center"
               style={{
-                rotate:
-                  display.length > 1
-                    ? i % 2 === 0
-                      ? "8deg"
-                      : "-8deg"
-                    : "0deg",
+                rotate,
                 zIndex: i,
               }}
             >
@@ -170,7 +169,7 @@ export default function UnifiedToolThread({
                 className={`text-xs font-medium transition-colors duration-200 ${totalToolCount > 1 ? "ml-2" : ""}`}
               >
                 Used {totalToolCount} tool
-                {totalToolCount !== 1 ? "s" : ""}
+                {totalToolCount === 1 ? "" : "s"}
               </span>
               <ChevronDown
                 className={`${isExpanded ? "rotate-180" : ""} ml-2 transition-transform duration-200`}

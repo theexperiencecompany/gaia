@@ -416,7 +416,6 @@ async def remove_labels(
 
 async def create_draft(
     user_id: str,
-    sender: str,
     to_list: list[str],
     subject: str,
     body: str,
@@ -507,7 +506,6 @@ async def get_draft(user_id: str, draft_id: str) -> dict[str, Any]:
 async def update_draft(
     user_id: str,
     draft_id: str,
-    sender: str,
     to_list: list[str],
     subject: str,
     body: str,

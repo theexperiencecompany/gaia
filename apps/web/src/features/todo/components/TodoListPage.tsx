@@ -82,8 +82,8 @@ export default function TodoListPage({
   const { selectedTodoId, selectTodo, clearSelection } = useUrlTodoSelection();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Deep-link fallback: a todo opened via ?todoId= may not be in the loaded
-  // (filtered/paginated) list — e.g. a dormant todo linked from a notification.
+  // Deep-link fallback: a task opened via ?todoId= may not be in the loaded
+  // (filtered/paginated) list — e.g. a dormant task linked from a notification.
   // In that case we fetch it by id so the sidebar still opens. `notFoundId`
   // records an id confirmed missing (404) so we clear instead of refetching.
   const [fetchedTodo, setFetchedTodo] = useState<Todo | null>(null);
@@ -167,7 +167,7 @@ export default function TodoListPage({
     useTodoStore.getState().prefetchWorkflowStatus(todoId);
   }, []);
 
-  // Find the selected todo: prefer the loaded list, fall back to the todo
+  // Find the selected task: prefer the loaded list, fall back to the item
   // fetched by id for deep links that point outside the current view.
   const selectedTodo = useMemo(() => {
     if (!selectedTodoId) return null;
@@ -176,7 +176,7 @@ export default function TodoListPage({
     return fetchedTodo?.id === selectedTodoId ? fetchedTodo : null;
   }, [selectedTodoId, todos, fetchedTodo]);
 
-  // Fetch a deep-linked todo by id when it isn't in the loaded list.
+  // Fetch a deep-linked task by id when it isn't in the loaded list.
   useEffect(() => {
     if (!selectedTodoId) return;
     if (todos.some((t) => t.id === selectedTodoId)) return; // already visible
@@ -217,7 +217,7 @@ export default function TodoListPage({
       openWithContent(sidebarContent, "sheet");
     } else if (selectedTodoId && notFoundId === selectedTodoId) {
       // Confirmed missing (deleted/stale, fetch returned 404) - clear selection.
-      // While a deep-linked todo is still being fetched we leave the selection
+      // While a deep-linked task is still being fetched we leave the selection
       // intact so the sidebar opens once it resolves.
       clearSelection();
       closeRightSidebar();

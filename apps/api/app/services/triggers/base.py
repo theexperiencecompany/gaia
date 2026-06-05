@@ -38,6 +38,33 @@ def _parse_event_start_utc(data: dict[str, Any]) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
+def _log_event_timing(data: dict[str, Any], now_utc: datetime) -> None:
+    """Attach event-start and webhook-lag instrumentation to the log context."""
+    event_start_utc = _parse_event_start_utc(data)
+    if event_start_utc is None:
+        return
+    seconds_until_event = int((event_start_utc - now_utc).total_seconds())
+    log.set(
+        event_start_time_utc=event_start_utc.isoformat(),
+        event_start_time_raw=data.get("start_time") or data.get("startTime"),
+        seconds_until_event=seconds_until_event,
+    )
+    countdown = data.get("countdown_window_minutes")
+    if not isinstance(countdown, int):
+        return
+    expected_fire = event_start_utc.timestamp() - countdown * 60
+    webhook_lag = int(now_utc.timestamp() - expected_fire)
+    log.set(
+        countdown_window_minutes=countdown,
+        webhook_lag_seconds=webhook_lag,
+    )
+    if abs(webhook_lag) > 300:
+        log.warning(
+            "webhook fired far from expected time — "
+            f"lag={webhook_lag}s (positive = late, negative = early)",
+        )
+
+
 class TriggerHandler(ABC):
     """Abstract base for all trigger handlers.
 
@@ -306,27 +333,7 @@ class TriggerHandler(ABC):
             now_utc=now_utc.isoformat(),
         )
 
-        event_start_utc = _parse_event_start_utc(data)
-        if event_start_utc is not None:
-            seconds_until_event = int((event_start_utc - now_utc).total_seconds())
-            log.set(
-                event_start_time_utc=event_start_utc.isoformat(),
-                event_start_time_raw=data.get("start_time") or data.get("startTime"),
-                seconds_until_event=seconds_until_event,
-            )
-            countdown = data.get("countdown_window_minutes")
-            if isinstance(countdown, int):
-                expected_fire = event_start_utc.timestamp() - countdown * 60
-                webhook_lag = int(now_utc.timestamp() - expected_fire)
-                log.set(
-                    countdown_window_minutes=countdown,
-                    webhook_lag_seconds=webhook_lag,
-                )
-                if abs(webhook_lag) > 300:
-                    log.warning(
-                        "webhook fired far from expected time — "
-                        f"lag={webhook_lag}s (positive = late, negative = early)",
-                    )
+        _log_event_timing(data, now_utc)
 
         # Find matching workflows using handler's find_workflows method
         # Each handler decides what identifiers it needs (trigger_id, user_id, etc.)
@@ -348,58 +355,73 @@ class TriggerHandler(ABC):
         queued_count = 0
         signal_context_by_user: dict[str, str] = {}
         for workflow in workflows:
-            try:
-                if workflow.id is None:
-                    log.error(
-                        "trigger_workflow_missing_id",
-                        event_type=event_type,
-                        trigger_id=trigger_id,
-                    )
-                    continue
-                # Enrich context with tracked todos for signal matching
-                context: dict[str, Any] = {"trigger_data": data}
-                if workflow.user_id not in signal_context_by_user:
-                    try:
-                        signal_context_by_user[
-                            workflow.user_id
-                        ] = await tracked_todo_service.get_signal_matching_context(workflow.user_id)
-                    except Exception as e:
-                        log.warning(
-                            "trigger.signal_context_fetch_failed",
-                            user_id=workflow.user_id,
-                            error=str(e),
-                        )
-                        signal_context_by_user[workflow.user_id] = ""
-                todos_context = signal_context_by_user[workflow.user_id]
-                if todos_context:
-                    context["tracked_todos_context"] = todos_context
-
-                await WorkflowQueueService.queue_workflow_execution(
-                    workflow.id,
-                    workflow.user_id,
-                    context=context,
-                )
+            if await self._queue_one_workflow(
+                workflow, data, signal_context_by_user, event_type, trigger_id
+            ):
                 queued_count += 1
-                log.info(
-                    "trigger_workflow_queued",
-                    workflow_id=workflow.id,
-                    user_id=workflow.user_id,
-                    event_type=event_type,
-                    trigger_id=trigger_id,
-                )
-            except Exception as e:
-                log.error(
-                    "trigger_workflow_queue_failed",
-                    workflow_id=workflow.id,
-                    user_id=workflow.user_id,
-                    event_type=event_type,
-                    trigger_id=trigger_id,
-                    error_type=type(e).__name__,
-                    error=str(e),
-                    exc_info=True,
-                )
 
         return {
             "status": "success",
             "message": f"Queued {queued_count} workflows",
         }
+
+    async def _queue_one_workflow(
+        self,
+        workflow: Any,
+        data: dict[str, Any],
+        signal_context_by_user: dict[str, str],
+        event_type: str,
+        trigger_id: str | None,
+    ) -> bool:
+        """Queue a single matched workflow. Returns True if it was queued."""
+        try:
+            if workflow.id is None:
+                log.error(
+                    "trigger_workflow_missing_id",
+                    event_type=event_type,
+                    trigger_id=trigger_id,
+                )
+                return False
+            # Enrich context with tracked todos for signal matching
+            context: dict[str, Any] = {"trigger_data": data}
+            if workflow.user_id not in signal_context_by_user:
+                try:
+                    signal_context_by_user[
+                        workflow.user_id
+                    ] = await tracked_todo_service.get_signal_matching_context(workflow.user_id)
+                except Exception as e:
+                    log.warning(
+                        "trigger.signal_context_fetch_failed",
+                        user_id=workflow.user_id,
+                        error=str(e),
+                    )
+                    signal_context_by_user[workflow.user_id] = ""
+            todos_context = signal_context_by_user[workflow.user_id]
+            if todos_context:
+                context["tracked_todos_context"] = todos_context
+
+            await WorkflowQueueService.queue_workflow_execution(
+                workflow.id,
+                workflow.user_id,
+                context=context,
+            )
+            log.info(
+                "trigger_workflow_queued",
+                workflow_id=workflow.id,
+                user_id=workflow.user_id,
+                event_type=event_type,
+                trigger_id=trigger_id,
+            )
+            return True
+        except Exception as e:
+            log.error(
+                "trigger_workflow_queue_failed",
+                workflow_id=workflow.id,
+                user_id=workflow.user_id,
+                event_type=event_type,
+                trigger_id=trigger_id,
+                error_type=type(e).__name__,
+                error=str(e),
+                exc_info=True,
+            )
+            return False

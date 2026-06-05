@@ -16,7 +16,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.agents.workspace.skill_loader import SKILL_BODY_FILENAME, skills_by_subagent
+from app.agents.workspace.skill_loader import (
+    SKILL_BODY_FILENAME,
+    BuiltinSkill,
+    skills_by_subagent,
+)
 from app.agents.workspace.system_docs import (
     INDEX_MD,
     INTEGRATIONS_GUIDE_MD,
@@ -27,6 +31,7 @@ from app.services.storage.juicefs import ensure_safe_path_id
 from shared.py.wide_events import log
 
 SKILLS_HASH_MARKER = ".gaia/skills.v"
+GUIDE_FILENAME = "GUIDE.md"
 
 
 def read_text_or_none(path: Path) -> str | None:
@@ -45,7 +50,7 @@ def write_user_root_docs(user_root: Path) -> None:
     if not matches_text(index, INDEX_MD):
         index.parent.mkdir(parents=True, exist_ok=True)
         index.write_text(INDEX_MD, encoding="utf-8")
-    sessions_guide = user_root / "sessions" / "GUIDE.md"
+    sessions_guide = user_root / "sessions" / GUIDE_FILENAME
     if not matches_text(sessions_guide, SESSIONS_GUIDE_MD):
         sessions_guide.parent.mkdir(parents=True, exist_ok=True)
         sessions_guide.write_text(SESSIONS_GUIDE_MD, encoding="utf-8")
@@ -69,6 +74,50 @@ def write_skills_marker(user_root: Path, value: str) -> None:
     marker.write_text(value, encoding="utf-8")
 
 
+def _write_skill_dir(slug_dir: Path, skill: BuiltinSkill) -> int:
+    """Write one skill's body + bundled resources, prune stale files.
+
+    Returns the count of files actually (re)written.
+    """
+    written = 0
+    slug_dir.mkdir(parents=True, exist_ok=True)
+    target = slug_dir / SKILL_BODY_FILENAME
+    if not matches_text(target, skill.body):
+        target.write_text(skill.body, encoding="utf-8")
+        written += 1
+    # Also write the skill's bundled resources (templates/, reference.md,
+    # scripts/, …) so multi-file skills work when the shared _system
+    # subtree + symlinks are unavailable (the linker replaces these with
+    # symlinks once the subtree exists). `rel` is always contained within
+    # the skill dir (see skill_loader._load_resources), so no traversal.
+    for rel, content in skill.resources:
+        res = slug_dir / rel
+        if not matches_text(res, content):
+            res.parent.mkdir(parents=True, exist_ok=True)
+            res.write_text(content, encoding="utf-8")
+            written += 1
+    # Drop fallback copies of resources that left the manifest (renamed or
+    # removed) so a stale template can't outlive the registry change. Only
+    # real files are pruned — symlinks are owned by link_system_files.
+    expected = {SKILL_BODY_FILENAME, *(rel for rel, _ in skill.resources)}
+    for existing in slug_dir.rglob("*"):
+        if existing.is_symlink() or not existing.is_file():
+            continue
+        if existing.relative_to(slug_dir).as_posix() not in expected:
+            existing.unlink(missing_ok=True)
+    return written
+
+
+def _write_connected_marker(agent_dir: Path, *, connected: bool) -> None:
+    """Drop or remove the ``.connected`` marker under an integration's agent dir."""
+    marker = agent_dir / ".connected"
+    if connected:
+        if not marker.exists():
+            marker.write_text("", encoding="utf-8")
+    elif marker.exists():
+        marker.unlink()
+
+
 def materialize_skills(user_root: Path, connected_ids: set[str]) -> int:
     """Write the SKILL.md catalog under ``integrations/`` and ``skills/``.
 
@@ -78,8 +127,8 @@ def materialize_skills(user_root: Path, connected_ids: set[str]) -> int:
     written = 0
     integrations_root = user_root / "integrations"
     integrations_root.mkdir(parents=True, exist_ok=True)
-    if not matches_text(integrations_root / "GUIDE.md", INTEGRATIONS_GUIDE_MD):
-        (integrations_root / "GUIDE.md").write_text(INTEGRATIONS_GUIDE_MD, encoding="utf-8")
+    if not matches_text(integrations_root / GUIDE_FILENAME, INTEGRATIONS_GUIDE_MD):
+        (integrations_root / GUIDE_FILENAME).write_text(INTEGRATIONS_GUIDE_MD, encoding="utf-8")
 
     grouped = skills_by_subagent()
     for iid, skills in grouped.items():
@@ -89,38 +138,8 @@ def materialize_skills(user_root: Path, connected_ids: set[str]) -> int:
         skills_dir = agent_dir / "skills"
         skills_dir.mkdir(parents=True, exist_ok=True)
         for skill in skills:
-            slug_dir = skills_dir / skill.slug
-            slug_dir.mkdir(parents=True, exist_ok=True)
-            target = slug_dir / SKILL_BODY_FILENAME
-            if not matches_text(target, skill.body):
-                target.write_text(skill.body, encoding="utf-8")
-                written += 1
-            # Also write the skill's bundled resources (templates/, reference.md,
-            # scripts/, …) so multi-file skills work when the shared _system
-            # subtree + symlinks are unavailable (the linker replaces these with
-            # symlinks once the subtree exists). `rel` is always contained within
-            # the skill dir (see skill_loader._load_resources), so no traversal.
-            for rel, content in skill.resources:
-                res = slug_dir / rel
-                if not matches_text(res, content):
-                    res.parent.mkdir(parents=True, exist_ok=True)
-                    res.write_text(content, encoding="utf-8")
-                    written += 1
-            # Drop fallback copies of resources that left the manifest (renamed or
-            # removed) so a stale template can't outlive the registry change. Only
-            # real files are pruned — symlinks are owned by link_system_files.
-            expected = {SKILL_BODY_FILENAME, *(rel for rel, _ in skill.resources)}
-            for existing in slug_dir.rglob("*"):
-                if existing.is_symlink() or not existing.is_file():
-                    continue
-                if existing.relative_to(slug_dir).as_posix() not in expected:
-                    existing.unlink(missing_ok=True)
-        marker = agent_dir / ".connected"
-        if iid in connected_ids:
-            if not marker.exists():
-                marker.write_text("", encoding="utf-8")
-        elif marker.exists():
-            marker.unlink()
+            written += _write_skill_dir(skills_dir / skill.slug, skill)
+        _write_connected_marker(agent_dir, connected=iid in connected_ids)
 
     # Executor (general) skill bodies are NOT written here: they belong in the
     # /skills/<uid> overlay subtree (what the sandbox shows at /workspace/skills),

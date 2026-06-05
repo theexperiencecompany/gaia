@@ -128,7 +128,7 @@ s.addText(
     { text: "Q3 2026", options: { bold: true, color: COLOR.white } },
     { text: "   ·   Prepared by GAIA   ·   Confidential", options: { color: "B9C6DC" } },
   ],
-  { x: 0.9, y: 5.0, w: 11.5, h: 0.5, fontSize: 16, fontFace: FONT.face },
+  { x: 0.9, y: 5, w: 11.5, h: 0.5, fontSize: 16, fontFace: FONT.face },
 );
 
 // ===========================================================================
@@ -151,7 +151,7 @@ agenda.forEach((item, i) => {
 // ===========================================================================
 s = pptx.addSlide();
 s.background = { color: COLOR.brand };
-s.addText("01", { x: 0.85, y: 2.0, w: 4, h: 2, fontSize: 120, bold: true, color: COLOR.accent, fontFace: FONT.face });
+s.addText("01", { x: 0.85, y: 2, w: 4, h: 2, fontSize: 120, bold: true, color: COLOR.accent, fontFace: FONT.face });
 s.addText("Performance", { x: 0.9, y: 4.1, w: 11, h: 1, fontSize: 44, bold: true, color: COLOR.white, fontFace: FONT.face });
 s.addText("How the quarter landed against the plan we set in Q2.", { x: 0.95, y: 5.05, w: 10, h: 0.6, fontSize: 18, color: "D6E0F0", fontFace: FONT.face });
 
@@ -172,7 +172,7 @@ s.addText(
     { text: "Shipped three major features ahead of schedule", options: { bullet: { code: "2022" }, bold: true, color: COLOR.ink } },
     { text: "Collaboration mode, audit log, and SSO", options: { bullet: true, indentLevel: 1, color: COLOR.body } },
   ],
-  { x: PAGE.margin, y: 1.7, w: CONTENT_W, h: 5.0, fontSize: 18, fontFace: FONT.face, lineSpacingMultiple: 1.25, paraSpaceAfter: 6 },
+  { x: PAGE.margin, y: 1.7, w: CONTENT_W, h: 5, fontSize: 18, fontFace: FONT.face, lineSpacingMultiple: 1.25, paraSpaceAfter: 6 },
 );
 
 // ===========================================================================
@@ -225,7 +225,7 @@ kpis.forEach((k, i) => {
   const x = PAGE.margin + i * (kpiW + kpiGap);
   s.addShape(pptx.ShapeType.roundRect, { x, y: 2.3, w: kpiW, h: 2.9, rectRadius: 0.14, fill: { color: COLOR.panel }, line: { color: COLOR.line, width: 1 } });
   s.addShape(pptx.ShapeType.rect, { x, y: 2.3, w: kpiW, h: 0.12, fill: { color: COLOR.brand } });
-  s.addText(k.value, { x: x + 0.15, y: 2.7, w: kpiW - 0.3, h: 1.0, fontSize: 40, bold: true, color: COLOR.brand, align: "center", valign: "middle", fontFace: FONT.face });
+  s.addText(k.value, { x: x + 0.15, y: 2.7, w: kpiW - 0.3, h: 1, fontSize: 40, bold: true, color: COLOR.brand, align: "center", valign: "middle", fontFace: FONT.face });
   s.addText(k.label, { x: x + 0.15, y: 3.75, w: kpiW - 0.3, h: 0.5, fontSize: 13, color: COLOR.body, align: "center", fontFace: FONT.face });
   s.addText(k.delta, { x: x + 0.15, y: 4.35, w: kpiW - 0.3, h: 0.5, fontSize: 14, bold: true, color: k.up ? COLOR.ok : COLOR.bad, align: "center", fontFace: FONT.face });
 });
@@ -248,7 +248,7 @@ const barSeries = [
 ];
 
 // --- plot-area geometry (the rectangle the bars live inside) ---
-const plot = { x: PAGE.margin + 0.7, y: 2.0, w: CONTENT_W - 0.7, h: 4.2 };
+const plot = { x: PAGE.margin + 0.7, y: 2, w: CONTENT_W - 0.7, h: 4.2 };
 const axisMax = 0.7; // round number above the largest value (0.63)
 const yTicks = [0, 0.175, 0.35, 0.525, 0.7]; // 5 gridlines
 
@@ -333,14 +333,14 @@ mix.forEach((seg, i) => {
       { text: `${seg.label}  `, options: { bold: true, color: COLOR.ink } },
       { text: `${seg.pct}%`, options: { color: COLOR.body } },
     ],
-    { x: stackX + 0.45, y: ly - 0.04, w: 5.0, h: 0.38, fontSize: 14, valign: "middle", fontFace: FONT.face },
+    { x: stackX + 0.45, y: ly - 0.04, w: 5, h: 0.38, fontSize: 14, valign: "middle", fontFace: FONT.face },
   );
 });
 
 // ---------- RIGHT: line chart from line segments + ellipse markers ----------
 s.addText("Active users (trailing 6 mo, k)", { x: 6.95, y: 1.6, w: 5.78, h: 0.4, fontSize: 14, bold: true, color: COLOR.body, fontFace: FONT.face });
 const lineLabels = ["Apr", "May", "Jun", "Jul", "Aug", "Sep"];
-const lineValues = [13.4, 14.1, 14.8, 16.0, 17.1, 18.2];
+const lineValues = [13.4, 14.1, 14.8, 16, 17.1, 18.2];
 const lplot = { x: 7.35, y: 2.2, w: 5.35, h: 3.9 };
 const lMin = 12; // floor below the smallest value so the line isn't flat at the bottom
 const lMax = 19; // ceiling above the largest value
@@ -428,17 +428,17 @@ const stages = [
 ];
 const stW = 2.55;
 const stGap = 0.62;
-const stY = 3.0;
+const stY = 3;
 stages.forEach((st, i) => {
   const x = PAGE.margin + i * (stW + stGap);
   // connector arrow between stage i-1 and i
   if (i > 0) {
     s.addShape(pptx.ShapeType.rightArrow, { x: x - stGap - 0.04, y: stY + 0.78, w: stGap + 0.08, h: 0.4, fill: { color: COLOR.faint } });
   }
-  s.addShape(pptx.ShapeType.roundRect, { x, y: stY, w: stW, h: 2.0, rectRadius: 0.12, fill: { color: COLOR.white }, line: { color: st.c, width: 1.5 } });
+  s.addShape(pptx.ShapeType.roundRect, { x, y: stY, w: stW, h: 2, rectRadius: 0.12, fill: { color: COLOR.white }, line: { color: st.c, width: 1.5 } });
   s.addShape(pptx.ShapeType.roundRect, { x, y: stY, w: stW, h: 0.7, rectRadius: 0.12, fill: { color: st.c } });
   s.addText(st.t, { x, y: stY, w: stW, h: 0.7, fontSize: 18, bold: true, color: COLOR.white, align: "center", valign: "middle", fontFace: FONT.face });
-  s.addText(st.d, { x: x + 0.15, y: stY + 0.85, w: stW - 0.3, h: 1.0, fontSize: 13, color: COLOR.body, align: "center", valign: "middle", fontFace: FONT.face });
+  s.addText(st.d, { x: x + 0.15, y: stY + 0.85, w: stW - 0.3, h: 1, fontSize: 13, color: COLOR.body, align: "center", valign: "middle", fontFace: FONT.face });
   s.addText(`Week ${i * 3 + 1}–${i * 3 + 3}`, { x, y: stY + 1.6, w: stW, h: 0.35, fontSize: 11, italic: true, color: COLOR.faint, align: "center", fontFace: FONT.face });
 });
 

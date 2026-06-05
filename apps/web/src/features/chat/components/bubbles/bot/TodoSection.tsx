@@ -21,7 +21,7 @@ interface TodoSectionProps {
   message?: string;
 }
 
-// Adapt the streamed chat todo payload to the canonical Todo the shared
+// Adapt the streamed chat task payload to the canonical Todo the shared
 // TodoItem component (used on the todos page) expects, so chat and page render
 // identically and can never drift. Missing optional fields (scheduled_at,
 // vfs_path, etc.) are simply absent — TodoItem renders them conditionally.
@@ -163,10 +163,10 @@ export default function TodoSection({
   }
 
   // Todos List View — reuse the canonical todos-page TodoItem. No card chrome:
-  // just the rows, clicking opens the todo on the todos page.
+  // just the rows, clicking opens the task on the todos page.
   if (todos && todos.length > 0) {
     // Build the projects lookup TodoItem needs from the streamed projects plus
-    // any project embedded inline on a todo.
+    // any project embedded inline on a task.
     const projectMap = new Map<string, Project>();
     for (const p of projects ?? []) projectMap.set(p.id, toCanonicalProject(p));
     for (const t of todos) {
@@ -204,7 +204,7 @@ export default function TodoSection({
     );
   }
 
-  // Success/Action Message (delete confirmations etc. that return no todo rows)
+  // Success/Action Message (delete confirmations etc. that return no task rows)
   if (message && !todos && !stats && !projects) {
     const isDeleteAction = action === "delete";
     const iconColor = isDeleteAction ? "text-red-500" : "text-green-500";

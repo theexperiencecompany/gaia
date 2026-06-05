@@ -441,7 +441,7 @@ async def _remove_queued_by_ids(
                 cancelled.append(item.get("task_id", "queued"))
             else:
                 keep.append(_decode_raw_item(raw_item))
-        except (json.JSONDecodeError, ValueError):
+        except ValueError:
             keep.append(_decode_raw_item(raw_item))
 
     if cancelled:

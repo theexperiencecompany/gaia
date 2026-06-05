@@ -97,6 +97,23 @@ def _record_bash_exit_code(code: int | None, *, timed_out: bool) -> None:
         )
 
 
+def _emit_bash_error(run_id: str, chunk: str, return_message: str, session_id: str | None) -> str:
+    """Emit a terminal error event for a bash run and return the error string."""
+    safe_emit(
+        {
+            "bash_data": {
+                "id": run_id,
+                "status": "error",
+                "exit_code": None,
+                "stream": "stderr",
+                "chunk": chunk,
+            }
+        },
+        session_id=session_id,
+    )
+    return return_message
+
+
 @tool
 @with_rate_limiting("bash_execution")
 @with_doc(BASH_TOOL)
@@ -128,14 +145,13 @@ async def bash(
     use_session_cwd = bool(session_id) and (not cwd or cwd == WORKSPACE_ROOT)
     if use_session_cwd and session_id:
         cwd = session_dir(session_id)
-    elif cwd:
+    elif cwd and not is_under_workspace(cwd):
         # LLM-supplied cwd must stay under /workspace. Without this gate the
         # agent could `cd /etc/gaia` (or anywhere else inside the sandbox)
         # and read host-internal config files that have no business being in
         # the agent's reach. Same-user sandbox so it's not a cross-user
         # issue, but it makes prompt-injection drift much harder to bound.
-        if not is_under_workspace(cwd):
-            return f"Error: cwd must be under {WORKSPACE_ROOT} (got {cwd!r})"
+        return f"Error: cwd must be under {WORKSPACE_ROOT} (got {cwd!r})"
 
     safe_emit(
         {
@@ -171,34 +187,10 @@ async def bash(
                     await _publish_artifacts(sbx, user_id, session_id)
             return result
     except SandboxAcquisitionError as e:
-        safe_emit(
-            {
-                "bash_data": {
-                    "id": run_id,
-                    "status": "error",
-                    "exit_code": None,
-                    "stream": "stderr",
-                    "chunk": str(e),
-                }
-            },
-            session_id=session_id,
-        )
-        return f"Error: sandbox unavailable — {e}"
+        return _emit_bash_error(run_id, str(e), f"Error: sandbox unavailable — {e}", session_id)
     except Exception as e:
         log.error(f"bash tool failed: {e}", exc_info=True)
-        safe_emit(
-            {
-                "bash_data": {
-                    "id": run_id,
-                    "status": "error",
-                    "exit_code": None,
-                    "stream": "stderr",
-                    "chunk": str(e),
-                }
-            },
-            session_id=session_id,
-        )
-        return f"Error executing command: {e}"
+        return _emit_bash_error(run_id, str(e), f"Error executing command: {e}", session_id)
 
 
 async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None:
@@ -284,7 +276,7 @@ def _decode_inline(body_b64: str, size_bytes: int, content_type: str | None) -> 
         return None
     try:
         return base64.b64decode(body_b64).decode("utf-8", errors="replace")
-    except (ValueError, UnicodeDecodeError):
+    except ValueError:
         return None
 
 
@@ -342,13 +334,13 @@ async def _run_foreground(
         )
 
     try:
-        result = await sbx.commands.run(  # type: ignore[attr-defined]
-            command,
-            cwd=cwd or WORKSPACE_ROOT,
-            timeout=timeout,
-            on_stdout=_on_stdout,
-            on_stderr=_on_stderr,
-        )
+        async with asyncio.timeout(timeout):
+            result = await sbx.commands.run(  # type: ignore[attr-defined]
+                command,
+                cwd=cwd or WORKSPACE_ROOT,
+                on_stdout=_on_stdout,
+                on_stderr=_on_stderr,
+            )
     except (TimeoutError, asyncio.CancelledError):
         _record_bash_exit_code(None, timed_out=True)
         raise

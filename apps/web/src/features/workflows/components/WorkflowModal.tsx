@@ -172,13 +172,13 @@ export default function WorkflowModal({
   // matches HeroUI's modal exit transition.
   useEffect(() => {
     if (isOpen) return;
-    const timer = window.setTimeout(() => {
+    const timer = globalThis.setTimeout(() => {
       resetFormValues(getDefaultFormValues());
       setSelectedIntegrationSlugs([]);
       resetToForm();
       clearCreationError();
     }, 250);
-    return () => window.clearTimeout(timer);
+    return () => globalThis.clearTimeout(timer);
   }, [isOpen, resetFormValues, resetToForm, clearCreationError]);
 
   // Manage the single workflow state from all sources

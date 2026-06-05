@@ -145,7 +145,7 @@ def _materialize_encryption_key() -> Path | None:
         target.parent.mkdir(parents=True, exist_ok=True)
         if not target.parent.is_dir():
             raise PermissionError(f"{target.parent} not writable")
-    except (PermissionError, OSError):
+    except OSError:
         fd, fallback = tempfile.mkstemp(prefix="jfs-master-", suffix=".pem")
         os.close(fd)
         target = Path(fallback)

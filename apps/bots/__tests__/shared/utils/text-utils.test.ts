@@ -8,10 +8,16 @@ import { describe, expect, it } from "vitest";
 
 /** A wide GFM table — renders to a Telegram <pre> block whose column padding
  *  and ─ rule line make the visible output longer than the raw markdown. */
+const wideHeaderCells = Array.from({ length: 6 }, (_, i) =>
+  `c${i}`.padEnd(40, "x"),
+).join(" | ");
+const wideValueCells = Array.from({ length: 6 }, (_, i) =>
+  `v${i}`.padEnd(40, "y"),
+).join(" | ");
 const WIDE_TABLE = [
-  `| ${Array.from({ length: 6 }, (_, i) => `c${i}`.padEnd(40, "x")).join(" | ")} |`,
+  `| ${wideHeaderCells} |`,
   `|${"---|".repeat(6)}`,
-  `| ${Array.from({ length: 6 }, (_, i) => `v${i}`.padEnd(40, "y")).join(" | ")} |`,
+  `| ${wideValueCells} |`,
 ].join("\n");
 
 // ---------------------------------------------------------------------------
@@ -191,7 +197,10 @@ describe("chunkResponse — brutal edges", () => {
     // kept intact AND fit, so the last-resort hard cut splits it — better than
     // emitting one mega-chunk the platform would reject. The contract that
     // matters: terminate, every chunk is sendable, and no content is lost.
-    const monsterRow = `| ${Array.from({ length: 20 }, (_, i) => `col${i}`.padEnd(300, "z")).join(" | ")} |`;
+    const monsterCells = Array.from({ length: 20 }, (_, i) =>
+      `col${i}`.padEnd(300, "z"),
+    ).join(" | ");
+    const monsterRow = `| ${monsterCells} |`;
     const table = [monsterRow, `|${"---|".repeat(20)}`, monsterRow].join("\n");
     const render = (c: string) => renderForPlatform(c, "telegram");
 
