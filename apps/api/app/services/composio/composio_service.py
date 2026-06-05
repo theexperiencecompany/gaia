@@ -8,6 +8,13 @@ from app.config.oauth_config import get_composio_social_configs
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.trigger_config import TriggerConfig
+
+# Defensive: guarantee the Composio CustomTool monkey-patches are applied in any
+# process that builds a Composio client (API, ARQ worker, future entrypoints),
+# not only where an entrypoint remembers to `import app.patches`. Without the
+# user_id-injection patch, custom tools 500 with "Missing user_id in
+# auth_credentials".
+import app.patches  # noqa: F401
 from app.services.composio.custom_tools.registry import custom_tools_registry
 from app.services.composio.langchain_composio_service import LangchainProvider
 from app.services.composio.proxy_client import invalidate_connected_account_cache
