@@ -28,12 +28,14 @@ export function useFittingIconCount(total: number) {
         return;
       }
       // Overflowing: reserve room for the "+N" badge, but still show at least
-      // one icon whenever a single icon fits (never a lonely badge).
+      // one icon whenever an icon and the badge fit together (never a clipped
+      // icon, never a lonely badge).
       const fitWithBadge = Math.floor(
         (width - OVERFLOW_BADGE_PX) / ICON_STEP_PX,
       );
+      const canShowIconWithBadge = width >= ICON_STEP_PX + OVERFLOW_BADGE_PX;
       setVisibleCount(
-        Math.min(total, Math.max(fitAll > 0 ? 1 : 0, fitWithBadge)),
+        Math.min(total, Math.max(canShowIconWithBadge ? 1 : 0, fitWithBadge)),
       );
     };
 

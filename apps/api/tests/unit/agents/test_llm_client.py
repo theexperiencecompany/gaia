@@ -242,34 +242,6 @@ class TestCreateConfigurableLlm:
 @pytest.mark.unit
 class TestInitLlm:
     @patch("app.agents.llm.client.log")
-    @patch("app.agents.llm.client.settings")
-    @patch("app.agents.llm.client.ChatOpenAI")
-    def test_use_free_returns_openrouter_model(
-        self, mock_chat_openai: MagicMock, mock_settings: MagicMock, mock_log: MagicMock
-    ) -> None:
-        mock_settings.OPENROUTER_API_KEY = "test-key"  # pragma: allowlist secret
-        mock_settings.FRONTEND_URL = "http://localhost:3000"
-        mock_chat_openai.return_value = MagicMock()
-
-        result = init_llm(use_free=True)
-
-        mock_chat_openai.assert_called_once()
-        call_kwargs = mock_chat_openai.call_args.kwargs
-        assert call_kwargs["streaming"] is False
-        assert "models" in call_kwargs["extra_body"]
-        assert result is mock_chat_openai.return_value
-
-    @patch("app.agents.llm.client.log")
-    @patch("app.agents.llm.client.settings")
-    def test_use_free_no_api_key_raises(
-        self, mock_settings: MagicMock, mock_log: MagicMock
-    ) -> None:
-        mock_settings.OPENROUTER_API_KEY = None
-
-        with pytest.raises(RuntimeError, match="OpenRouter API key not configured"):
-            init_llm(use_free=True)
-
-    @patch("app.agents.llm.client.log")
     @patch("app.agents.llm.client._create_configurable_llm")
     @patch("app.agents.llm.client._get_ordered_providers")
     @patch("app.agents.llm.client._get_available_providers")
@@ -415,69 +387,26 @@ class TestGetFreeLlmChain:
     @patch("app.agents.llm.client.ChatGoogleGenerativeAI")
     @patch("app.agents.llm.client.ChatOpenAI")
     @patch("app.agents.llm.client.settings")
-    def test_both_providers_available(
+    def test_returns_gemini_only(
         self,
         mock_settings: MagicMock,
         mock_chat_openai: MagicMock,
         mock_chat_google: MagicMock,
     ) -> None:
-        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
         mock_settings.GOOGLE_API_KEY = "google-key"  # pragma: allowlist secret
-        mock_settings.FRONTEND_URL = "http://localhost:3000"
-        mock_chat_openai.return_value = MagicMock()
-        mock_chat_google.return_value = MagicMock()
-
-        chain = get_free_llm_chain()
-
-        assert len(chain) == 2
-        mock_chat_openai.assert_called_once()
-        mock_chat_google.assert_called_once()
-
-    @patch("app.agents.llm.client.ChatGoogleGenerativeAI")
-    @patch("app.agents.llm.client.ChatOpenAI")
-    @patch("app.agents.llm.client.settings")
-    def test_only_openrouter(
-        self,
-        mock_settings: MagicMock,
-        mock_chat_openai: MagicMock,
-        mock_chat_google: MagicMock,
-    ) -> None:
-        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
-        mock_settings.GOOGLE_API_KEY = None
-        mock_settings.FRONTEND_URL = "http://localhost:3000"
-        mock_chat_openai.return_value = MagicMock()
-
-        chain = get_free_llm_chain()
-
-        assert len(chain) == 1
-        mock_chat_openai.assert_called_once()
-        mock_chat_google.assert_not_called()
-
-    @patch("app.agents.llm.client.ChatGoogleGenerativeAI")
-    @patch("app.agents.llm.client.ChatOpenAI")
-    @patch("app.agents.llm.client.settings")
-    def test_only_google(
-        self,
-        mock_settings: MagicMock,
-        mock_chat_openai: MagicMock,
-        mock_chat_google: MagicMock,
-    ) -> None:
-        mock_settings.OPENROUTER_API_KEY = None
-        mock_settings.GOOGLE_API_KEY = "google-key"  # pragma: allowlist secret
-        mock_chat_openai.return_value = MagicMock()
         mock_chat_google.return_value = MagicMock()
 
         chain = get_free_llm_chain()
 
         assert len(chain) == 1
         mock_chat_google.assert_called_once()
+        mock_chat_openai.assert_not_called()
 
     @patch("app.agents.llm.client.settings")
-    def test_no_providers_raises(self, mock_settings: MagicMock) -> None:
-        mock_settings.OPENROUTER_API_KEY = None
+    def test_no_google_key_raises(self, mock_settings: MagicMock) -> None:
         mock_settings.GOOGLE_API_KEY = None
 
-        with pytest.raises(RuntimeError, match="No free LLM providers configured"):
+        with pytest.raises(RuntimeError, match="No LLM provider configured for auxiliary tasks"):
             get_free_llm_chain()
 
 
@@ -669,7 +598,7 @@ class TestChatbot:
 
         result = await chatbot(state, use_free_llm=False)
 
-        mock_init_llm.assert_called_once_with(use_free=False)
+        mock_init_llm.assert_called_once_with()
         mock_llm.ainvoke.assert_called_once_with(state.messages)
         assert result["messages"][0].content == "paid response"
 

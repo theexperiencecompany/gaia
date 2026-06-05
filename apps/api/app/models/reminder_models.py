@@ -190,6 +190,13 @@ class CreateReminderToolRequest(BaseModel):
             raise ValueError("max_occurrences must be greater than 0")
         return v
 
+    @field_validator("delay_seconds")
+    @classmethod
+    def check_delay_seconds(cls, v):
+        if v is not None and v <= 0:
+            raise ValueError("delay_seconds must be greater than 0")
+        return v
+
     @field_validator("timezone_offset", "stop_after_timezone_offset")
     @classmethod
     def validate_timezone_offset(cls, v):

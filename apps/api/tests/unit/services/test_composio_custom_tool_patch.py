@@ -8,6 +8,7 @@ dispatch paths funnel through), so GAIA's custom tools can keep reading it.
 
 from __future__ import annotations
 
+import inspect
 from unittest.mock import MagicMock
 
 from composio.core.models.custom_tools import CustomTool
@@ -40,8 +41,6 @@ class TestPatchTarget:
         assert hasattr(CustomTool, _PRIVATE_AUTH_METHOD)
 
     def test_dispatch_funnels_through_patched_method(self) -> None:
-        import inspect
-
         # invoke_trusted is the real dispatch path; __call__ defers to it.
         assert _PRIVATE_AUTH_METHOD.rsplit("__", maxsplit=1)[-1] in inspect.getsource(
             CustomTool.invoke_trusted

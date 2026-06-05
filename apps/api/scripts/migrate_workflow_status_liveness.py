@@ -109,7 +109,12 @@ async def migrate(apply: bool) -> None:
                 max_occurrences = doc.get("max_occurrences")
                 stop_after = _to_datetime(doc.get("stop_after"))
 
-                if (max_occurrences and occurrence_count >= max_occurrences) or (
+                if next_run is None:
+                    # Invalid cron or no future occurrence -> nothing left to fire.
+                    completed += 1
+                    print(f"  {workflow_id}: no future run -> completed")
+                    set_fields["status"] = ScheduledTaskStatus.COMPLETED.value
+                elif (max_occurrences and occurrence_count >= max_occurrences) or (
                     stop_after and next_run >= stop_after
                 ):
                     completed += 1

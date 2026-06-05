@@ -528,7 +528,7 @@ class WorkflowService:
                     new_trigger_config.type == "schedule"
                     and new_trigger_config.enabled
                     and new_trigger_config.next_run
-                    and current_workflow.activated
+                    and effective_activated
                 ):
                     # Reschedule to the new time/cron. When the workflow is instead
                     # being disabled or made non-scheduled, no teardown is needed:

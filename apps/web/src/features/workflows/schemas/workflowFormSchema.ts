@@ -25,8 +25,9 @@ const scheduleTriggerConfigSchema = z.object({
   enabled: z.boolean(),
   cron_expression: z
     .string()
+    .trim()
     .min(1, "Cron expression is required")
-    .refine((value) => value.trim() === "" || describeCron(value).isValid, {
+    .refine((value) => describeCron(value).isValid, {
       message: "Invalid cron expression",
     }),
   timezone: z.string().min(1),

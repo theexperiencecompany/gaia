@@ -57,7 +57,7 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
           {shuffledIntegrations.slice(0, visibleCount).map((integration) => (
             <div
               key={integration.id}
-              className="shrink-0 opacity-60 transition duration-200 hover:scale-150 hover:rotate-6 hover:opacity-120"
+              className="shrink-0 opacity-60 transition duration-200 hover:scale-150 hover:rotate-6 hover:opacity-100"
               title={integration.name}
             >
               {getToolCategoryIcon(integration.id, {
