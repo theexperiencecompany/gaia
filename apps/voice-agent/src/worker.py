@@ -309,7 +309,7 @@ async def entrypoint(ctx: JobContext):
         task.add_done_callback(background_tasks.discard)
 
     @ctx.room.on("participant_metadata_changed")
-    def _on_participant_metadata_changed(p: rtc.Participant, old_md: str, new_md: str):
+    def _on_participant_metadata_changed(p: rtc.Participant, _old_md: str, new_md: str):
         task = asyncio.create_task(_extract_and_set_participant_credentials(new_md))
         background_tasks.add(task)
         task.add_done_callback(background_tasks.discard)

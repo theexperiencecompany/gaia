@@ -132,7 +132,6 @@ def _make_unauth_token_store():
     """Token store stub for an unauthenticated MCP — every lookup returns None."""
     store = MagicMock()
     store.get_bearer_token = AsyncMock(return_value=None)
-    store.has_credentials = AsyncMock(return_value=False)
     store.is_token_expiring_soon = AsyncMock(return_value=False)
     store.store_unauthenticated = AsyncMock()
     return store

@@ -5,7 +5,6 @@ import pytest
 from app.agents.skills.parser import (
     generate_skill_md,
     parse_skill_md,
-    strip_frontmatter,
     validate_skill_content,
 )
 
@@ -157,37 +156,6 @@ class TestParseSkillMd:
         content = "---\nname: a\ndescription: b\ncompatibility: python3.11+\n---\nBody"
         metadata, _ = parse_skill_md(content)
         assert metadata.compatibility == "python3.11+"
-
-
-# ---------------------------------------------------------------------------
-# strip_frontmatter
-# ---------------------------------------------------------------------------
-
-
-class TestStripFrontmatter:
-    """Tests for strip_frontmatter."""
-
-    def test_strips_frontmatter(self) -> None:
-        result = strip_frontmatter(VALID_SKILL_MD)
-        assert "---" not in result
-        assert "name:" not in result
-        assert "# Instructions" in result
-
-    def test_returns_content_without_frontmatter_unchanged(self) -> None:
-        result = strip_frontmatter("# Just a heading\nSome text")
-        assert result == "# Just a heading\nSome text"
-
-    def test_empty_content_returns_empty(self) -> None:
-        assert strip_frontmatter("") == ""
-
-    def test_none_like_empty_returns_empty(self) -> None:
-        # strip_frontmatter checks `if not content`
-        assert strip_frontmatter("") == ""
-
-    def test_body_is_stripped(self) -> None:
-        content = "---\nname: a\n---\n\n  spaced body  \n\n"
-        result = strip_frontmatter(content)
-        assert result == "spaced body"
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ Reference: node_modules/@composio/core/generated/notion.ts
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 # =============================================================================
 # Trigger Payloads
@@ -39,15 +39,11 @@ class NotionAllPageEventsPayload(BaseModel):
 # =============================================================================
 
 
-class NotionSearchData(BaseModel):
-    """Output data for NOTION_SEARCH_NOTION_PAGE tool."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    response_data: dict[str, Any] = Field(default_factory=dict)
-
-    def get_results(self) -> list[dict[str, Any]]:
-        """Get results from nested response_data."""
-        if "results" in self.response_data:
-            return self.response_data["results"]
-        return self.response_data.get("pages", [])
+# Unwired as of 2026-06; kept for future use.
+# class NotionSearchData(BaseModel):
+#     """Output data for NOTION_SEARCH_NOTION_PAGE tool."""
+#     response_data: dict[str, Any] = Field(default_factory=dict)
+#     def get_results(self) -> list[dict[str, Any]]:
+#         if "results" in self.response_data:
+#             return self.response_data["results"]
+#         return self.response_data.get("pages", [])

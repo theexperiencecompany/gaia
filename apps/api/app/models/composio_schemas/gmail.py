@@ -6,7 +6,7 @@ Reference: node_modules/@composio/core/generated/gmail.ts
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 # =============================================================================
 # Trigger Payloads
@@ -29,27 +29,21 @@ class GmailNewMessagePayload(BaseModel):
 
 
 # =============================================================================
-# Tool Output Schemas
+# Tool Output Schemas (Unwired as of 2026-06; kept for future use)
 # =============================================================================
 
-
-class GmailMessage(BaseModel):
-    """Single Gmail message from GMAIL_FETCH_EMAILS."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    messageId: str | None = Field(None, alias="messageId")
-    messageText: str | None = Field(None, alias="messageText")
-    messageTimestamp: str | None = Field(None, alias="messageTimestamp")
-    labelIds: list[str] = Field(default_factory=list, alias="labelIds")
-    subject: str | None = None
-    sender: str | None = Field(None, alias="from")
-    preview: dict[str, Any] | None = None
-
-
-class GmailFetchEmailsData(BaseModel):
-    """Output data for GMAIL_FETCH_EMAILS tool."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    messages: list[GmailMessage] = Field(default_factory=list)
+# class GmailMessage(BaseModel):
+#     """Single Gmail message from GMAIL_FETCH_EMAILS."""
+#     model_config = ConfigDict(extra="ignore")
+#     messageId: str | None = Field(None, alias="messageId")
+#     messageText: str | None = Field(None, alias="messageText")
+#     messageTimestamp: str | None = Field(None, alias="messageTimestamp")
+#     labelIds: list[str] = Field(default_factory=list, alias="labelIds")
+#     subject: str | None = None
+#     sender: str | None = Field(None, alias="from")
+#     preview: dict[str, Any] | None = None
+#
+# class GmailFetchEmailsData(BaseModel):
+#     """Output data for GMAIL_FETCH_EMAILS tool."""
+#     model_config = ConfigDict(extra="ignore")
+#     messages: list[GmailMessage] = Field(default_factory=list)

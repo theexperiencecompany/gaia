@@ -738,24 +738,6 @@ class TestGmailInputModels:
         model = GetContactListInput(query="john")
         assert model.max_results == 30
 
-    def test_schedule_send_input(self):
-        from app.services.composio.custom_tools.gmail_tools import ScheduleSendInput
-
-        model = ScheduleSendInput(
-            recipient_email="a@b.com",
-            subject="hi",
-            body="hello",
-            send_at="2024-01-15T10:00:00Z",
-        )
-        assert model.cc is None
-        assert model.bcc is None
-
-    def test_snooze_email_input(self):
-        from app.services.composio.custom_tools.gmail_tools import SnoozeEmailInput
-
-        model = SnoozeEmailInput(message_ids=["a"], snooze_until="2024-01-15T09:00:00Z")
-        assert model.message_ids == ["a"]
-
 
 class TestRegisterGmailCustomTools:
     def test_returns_tool_names(self):

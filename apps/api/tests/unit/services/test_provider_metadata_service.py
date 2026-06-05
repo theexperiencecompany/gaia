@@ -375,46 +375,6 @@ class TestGetProviderMetadata:
 # ---------------------------------------------------------------------------
 
 
-class TestGetAllProviderMetadata:
-    @pytest.mark.asyncio
-    @patch("app.services.provider_metadata_service.users_collection")
-    async def test_returns_all(self, mock_coll: MagicMock) -> None:
-        from app.services.provider_metadata_service import get_all_provider_metadata
-
-        mock_coll.find_one = AsyncMock(
-            return_value={"provider_metadata": {"github": {"u": "a"}, "twitter": {"u": "b"}}}
-        )
-        result = await get_all_provider_metadata("507f1f77bcf86cd799439011")
-        assert len(result) == 2
-
-    @pytest.mark.asyncio
-    @patch("app.services.provider_metadata_service.users_collection")
-    async def test_returns_empty_when_user_not_found(self, mock_coll: MagicMock) -> None:
-        from app.services.provider_metadata_service import get_all_provider_metadata
-
-        mock_coll.find_one = AsyncMock(return_value=None)
-        result = await get_all_provider_metadata("507f1f77bcf86cd799439011")
-        assert result == {}
-
-    @pytest.mark.asyncio
-    @patch("app.services.provider_metadata_service.users_collection")
-    async def test_exception_returns_empty(self, mock_coll: MagicMock) -> None:
-        from app.services.provider_metadata_service import get_all_provider_metadata
-
-        mock_coll.find_one = AsyncMock(side_effect=RuntimeError("db"))
-        result = await get_all_provider_metadata("507f1f77bcf86cd799439011")
-        assert result == {}
-
-    @pytest.mark.asyncio
-    @patch("app.services.provider_metadata_service.users_collection")
-    async def test_returns_empty_when_no_metadata_key(self, mock_coll: MagicMock) -> None:
-        from app.services.provider_metadata_service import get_all_provider_metadata
-
-        mock_coll.find_one = AsyncMock(return_value={"name": "test"})
-        result = await get_all_provider_metadata("507f1f77bcf86cd799439011")
-        assert result == {}
-
-
 # ---------------------------------------------------------------------------
 # fetch_and_store_provider_metadata
 # ---------------------------------------------------------------------------

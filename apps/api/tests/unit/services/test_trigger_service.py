@@ -510,22 +510,6 @@ class TestTriggerRegistry:
         registry = TriggerRegistry()
         assert registry.get_by_event_type("NONEXISTENT_EVENT") is None
 
-    def test_get_all_trigger_names(self):
-        registry = TriggerRegistry()
-        handler = _ConcreteTriggerHandler()
-        registry.register(handler)
-
-        names = registry.get_all_trigger_names()
-        assert "test_trigger" in names
-
-    def test_get_all_event_types(self):
-        registry = TriggerRegistry()
-        handler = _ConcreteTriggerHandler()
-        registry.register(handler)
-
-        event_types = registry.get_all_event_types()
-        assert "TEST_EVENT" in event_types
-
     def test_overwrite_handler_warns(self):
         """Registering a handler with the same trigger name overwrites the old one."""
         registry = TriggerRegistry()
@@ -564,8 +548,6 @@ class TestTriggerRegistry:
 
         assert registry.get_by_trigger_name("test_trigger") is h1
         assert registry.get_by_trigger_name("second_trigger") is h2
-        assert len(registry.get_all_trigger_names()) == 2
-        assert len(registry.get_all_event_types()) == 2
 
     def test_global_helper_get_handler_by_name(self):
         """The module-level get_handler_by_name delegates to the global registry."""

@@ -1,9 +1,7 @@
 """Memory utilities for agent operations."""
 
-import asyncio
 from datetime import UTC, datetime
 
-from app.agents.templates.mail_templates import GmailMessageParser
 from app.services.memory_service import memory_service
 from shared.py.wide_events import log
 
@@ -39,46 +37,3 @@ async def store_user_message_memory(user_id: str, message: str, conversation_id:
         log.error(f"Error storing memory: {e}")
 
     return None
-
-
-def start_memory_task(user_id: str, message: str, conversation_id: str):
-    """Start memory storage task if conditions are met."""
-    if user_id and message:
-        return asyncio.create_task(store_user_message_memory(user_id, message, conversation_id))
-    return None
-
-
-def check_memory_task_yield(memory_task, memory_yielded: bool):
-    """Check if memory task is done and return data to yield."""
-    if memory_task and memory_task.done() and not memory_yielded:
-        try:
-            memory_stored = memory_task.result()
-            if memory_stored:
-                return memory_stored, True
-        except Exception as e:
-            log.error(f"Error getting memory task result: {e}")
-            return None, True
-    return None, memory_yielded
-
-
-async def await_remaining_memory_task(memory_task, memory_yielded: bool):
-    """Await remaining memory task if not yet yielded."""
-    if memory_task and not memory_yielded:
-        try:
-            memory_stored = await memory_task
-            if memory_stored:
-                return memory_stored
-        except Exception as e:
-            log.error(f"Error awaiting memory task: {e}")
-    return None
-
-
-def format_email_for_memory(parser: GmailMessageParser) -> str:
-    """Format email content for Mem0 storage."""
-    sender = parser.sender or "Unknown Sender"
-    subject = parser.subject or "No Subject"
-    content = parser.text_content or "No content available"
-
-    return f"""User received email from {sender} with subject "{subject}".
-
-{content}"""

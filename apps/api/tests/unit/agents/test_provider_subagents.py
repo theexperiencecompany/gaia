@@ -353,7 +353,6 @@ class TestCreateSubagentForUser:
 
         mock_mcp_client = AsyncMock()
         mock_mcp_client._tools = {"test_int": mock_tools}
-        mock_mcp_client.get_all_connected_tools = AsyncMock()
 
         with (
             patch(
@@ -504,7 +503,6 @@ class TestCreateCustomMcpSubagent:
         mock_mcp_client = AsyncMock()
         mock_mcp_client._tools = {}
         mock_mcp_client.connect = AsyncMock(return_value=mock_tools)
-        mock_mcp_client.get_all_connected_tools = AsyncMock()
 
         with (
             patch(
@@ -560,7 +558,6 @@ class TestCreateCustomMcpSubagent:
         mock_mcp_client = AsyncMock()
         mock_mcp_client._tools = {}
         mock_mcp_client.connect = AsyncMock(return_value=mock_tools)
-        mock_mcp_client.get_all_connected_tools = AsyncMock()
 
         with (
             patch(
@@ -618,7 +615,6 @@ class TestCreateCustomMcpSubagent:
         mock_mcp_client = AsyncMock()
         mock_mcp_client._tools = {}
         mock_mcp_client.connect = AsyncMock(return_value=mock_tools)
-        mock_mcp_client.get_all_connected_tools = AsyncMock()
 
         with (
             patch(

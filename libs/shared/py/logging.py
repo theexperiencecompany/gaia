@@ -26,6 +26,8 @@ Usage:
     logger.info("Hello world")
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 import json as _json
 import logging
@@ -91,7 +93,7 @@ LOG_CONFIG: _LogConfig = {
 }
 
 
-def _build_json_entry(record: "Record") -> str:
+def _build_json_entry(record: Record) -> str:
     """Serialize a loguru record to a flat NDJSON line.
 
     Produces one JSON object per line. Fields from `.bind()` calls are merged
@@ -131,7 +133,7 @@ def _build_json_entry(record: "Record") -> str:
     return _json.dumps(entry, default=str) + "\n"
 
 
-def _json_stdout_sink(message: "Message") -> None:
+def _json_stdout_sink(message: Message) -> None:
     """Callable sink that writes flat JSON to stdout.
 
     Using a callable sink (not format=callable) bypasses loguru's str.format_map()
@@ -142,7 +144,7 @@ def _json_stdout_sink(message: "Message") -> None:
     sys.stdout.flush()
 
 
-def _json_file_sink_factory(log_dir: Path) -> "Callable[[Message], None]":
+def _json_file_sink_factory(log_dir: Path) -> Callable[[Message], None]:
     """Create a callable sink that writes flat NDJSON to daily rotating files.
 
     Produces the same flat JSON format as _json_stdout_sink so that Promtail
@@ -150,7 +152,7 @@ def _json_file_sink_factory(log_dir: Path) -> "Callable[[Message], None]":
     """
     _handles: dict[str, TextIO] = {}
 
-    def _sink(message: "Message") -> None:
+    def _sink(message: Message) -> None:
         record = message.record
         date_str = record["time"].strftime("%Y-%m-%d")
         resolved = log_dir / f"structured-{date_str}.json"
@@ -180,7 +182,7 @@ def _json_file_sink_factory(log_dir: Path) -> "Callable[[Message], None]":
     return _sink
 
 
-def _worker_name_patcher(record: "Record") -> None:
+def _worker_name_patcher(record: Record) -> None:
     """Derive a short worker label from the OS process name.
 
     uvicorn --workers spawns processes named SpawnProcess-1, SpawnProcess-2, etc.

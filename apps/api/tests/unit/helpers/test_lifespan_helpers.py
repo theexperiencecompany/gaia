@@ -1,6 +1,5 @@
 """Tests for app/helpers/lifespan_helpers.py"""
 
-import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,38 +17,7 @@ from app.helpers.lifespan_helpers import (
     init_reminder_service,
     init_websocket_consumer,
     init_workflow_service,
-    setup_event_loop_policy,
 )
-
-# ---------------------------------------------------------------------------
-# setup_event_loop_policy
-# ---------------------------------------------------------------------------
-
-
-class TestSetupEventLoopPolicy:
-    def test_unix_with_uvloop(self) -> None:
-        mock_uvloop = MagicMock()
-        with (
-            patch.object(sys, "platform", "linux"),
-            patch.dict("sys.modules", {"uvloop": mock_uvloop}),
-            patch("asyncio.set_event_loop_policy") as mock_set,
-        ):
-            setup_event_loop_policy()
-            mock_set.assert_called_once()
-
-    def test_unix_without_uvloop(self) -> None:
-        with (
-            patch.object(sys, "platform", "linux"),
-            patch("builtins.__import__", side_effect=ImportError("no uvloop")),
-        ):
-            # Should not raise
-            setup_event_loop_policy()
-
-    def test_windows(self) -> None:
-        with patch.object(sys, "platform", "win32"):
-            # Should not raise, just logs
-            setup_event_loop_policy()
-
 
 # ---------------------------------------------------------------------------
 # Init functions

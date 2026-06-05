@@ -15,7 +15,7 @@ import ipaddress
 import json
 import re
 import time
-from typing import Any, Protocol
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -52,12 +52,6 @@ class OAuthSecurityError(Exception):
 
 class OAuthDiscoveryError(Exception):
     """Raised when OAuth discovery fails."""
-
-    pass
-
-
-class TokenOperationError(Exception):
-    """Raised when token operations (revocation, introspection) fail."""
 
     pass
 
@@ -547,21 +541,6 @@ async def introspect_token(
     except Exception as e:
         log.warning(f"Token introspection failed: {e}")
         return None
-
-
-class HTTPResponseProtocol(Protocol):
-    """Protocol for HTTP response objects (supports httpx.Response and mocks)."""
-
-    @property
-    def status_code(self) -> int: ...
-
-    @property
-    def headers(self) -> Any: ...
-
-    @property
-    def text(self) -> str: ...
-
-    def json(self) -> dict[str, Any]: ...
 
 
 def parse_oauth_error_response(response: Any) -> dict:

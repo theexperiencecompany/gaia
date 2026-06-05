@@ -1,8 +1,7 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 import json
-from typing import Any, TypedDict, cast
-from uuid import uuid4
+from typing import Any, TypedDict
 
 from langchain_core.messages import ToolCall
 
@@ -11,14 +10,7 @@ from app.agents.tools.core.registry import get_tool_registry
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
 from app.db.mongodb.collections import integrations_collection
 from app.decorators.caching import Cacheable
-from app.models.chat_models import (
-    MessageModel,
-    ToolDataEntry,
-    UpdateMessagesRequest,
-    tool_fields,
-)
 from app.services.chat.chunks import extract_tool_data
-from app.services.conversation_service import update_messages
 from shared.py.wide_events import log
 
 # Type for the stream_writer callable used across agent execution paths.
@@ -409,84 +401,3 @@ def process_custom_event_for_tools(payload) -> dict:
     except Exception as e:
         log.error(f"Error extracting tool data: {e}")
         return {}
-
-
-async def store_agent_progress(
-    conversation_id: str, user_id: str, current_message: str, current_tool_data: dict
-) -> None:
-    """Store agent execution progress in real-time.
-
-    Generic function for storing bot messages during agent execution.
-    Works for any agent execution - workflows, normal chat, etc.
-    Only stores messages that have meaningful content (message text or tool data).
-
-    Args:
-        conversation_id: Conversation ID for storage
-        user_id: User ID for authorization
-        current_message: Current accumulated LLM response
-        current_tool_data: Current accumulated tool outputs (can contain both unified tool_data and legacy individual fields)
-    """
-    log.set(conversation_id=conversation_id, user_id=user_id)
-    try:
-        # Check if there's meaningful content
-        has_tool_data = False
-        if current_tool_data:
-            # Check for unified tool_data format
-            if current_tool_data.get("tool_data") or any(current_tool_data.values()):
-                has_tool_data = True
-
-        has_content = current_message.strip() or has_tool_data
-
-        if not has_content:
-            return  # Skip storing empty messages
-
-        # Create bot message using same pattern as chat_service.py
-        bot_message = MessageModel(
-            type="bot",
-            response=current_message,
-            date=datetime.now(UTC).isoformat(),
-            message_id=str(uuid4()),
-        )
-
-        # Handle tool data in unified format
-        if current_tool_data:
-            # If we have unified tool_data, use it directly
-            if "tool_data" in current_tool_data:
-                bot_message.tool_data = current_tool_data["tool_data"]
-            else:
-                # Legacy support: convert individual fields to unified format
-                tool_data_entries = []
-                timestamp = datetime.now(UTC).isoformat()
-
-                # Convert individual tool fields to unified ToolDataEntry format using tool_fields list
-                for field_name in tool_fields:
-                    if (
-                        field_name in current_tool_data
-                        and current_tool_data[field_name] is not None
-                    ):
-                        tool_entry = {
-                            "tool_name": field_name,
-                            "data": current_tool_data[field_name],
-                            "timestamp": timestamp,
-                        }
-                        tool_data_entries.append(tool_entry)
-
-                if tool_data_entries:
-                    bot_message.tool_data = cast(list[ToolDataEntry], tool_data_entries)
-
-            # Handle follow_up_actions separately (it's a core field, not tool data)
-            if "follow_up_actions" in current_tool_data:
-                bot_message.follow_up_actions = current_tool_data["follow_up_actions"]
-
-        # Store immediately using existing service
-        await update_messages(
-            UpdateMessagesRequest(
-                conversation_id=conversation_id,
-                messages=[bot_message],
-            ),
-            user={"user_id": user_id},
-        )
-
-    except Exception as e:
-        # Don't break agent execution for storage failures
-        log.error(f"Failed to store agent progress: {e!s}")

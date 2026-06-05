@@ -29,7 +29,6 @@ from app.utils.mcp_oauth_utils import (
     MCP_PROTOCOL_VERSION,
     OAuthDiscoveryError,
     OAuthSecurityError,
-    TokenOperationError,
     extract_auth_challenge,
     fetch_auth_server_metadata,
     fetch_protected_resource_metadata,
@@ -1295,4 +1294,3 @@ class TestConstants:
     def test_exception_classes_exist(self) -> None:
         assert issubclass(OAuthSecurityError, Exception)
         assert issubclass(OAuthDiscoveryError, Exception)
-        assert issubclass(TokenOperationError, Exception)

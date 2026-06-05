@@ -56,14 +56,6 @@ class TriggerRegistry:
         """Get handler by event type (for webhook processing)."""
         return self._event_handlers.get(event_type)
 
-    def get_all_trigger_names(self) -> set[str]:
-        """Get all registered trigger names."""
-        return set(self._name_handlers.keys())
-
-    def get_all_event_types(self) -> set[str]:
-        """Get all registered event types."""
-        return set(self._event_handlers.keys())
-
 
 # Global registry instance
 trigger_registry = TriggerRegistry()

@@ -9,7 +9,6 @@ from typing import Any
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.mongodb.collections import workflows_collection
-from app.models.trigger_config import WorkflowTriggerSchema
 from app.models.workflow_models import TriggerConfig
 from app.services.triggers import get_handler_by_name
 from app.utils.exceptions import TriggerRegistrationError
@@ -59,41 +58,6 @@ class TriggerService:
                     )
 
         return triggers
-
-    @staticmethod
-    def get_trigger_by_slug(slug: str) -> WorkflowTriggerSchema | None:
-        """Get a workflow trigger schema by its slug."""
-        for integration in OAUTH_INTEGRATIONS:
-            for trigger_config in integration.associated_triggers:
-                if (
-                    trigger_config.workflow_trigger_schema
-                    and trigger_config.workflow_trigger_schema.slug == slug
-                ):
-                    return trigger_config.workflow_trigger_schema
-        return None
-
-    @staticmethod
-    async def get_trigger_reference_count(trigger_id: str) -> int:
-        """
-        Count how many workflows reference a specific Composio trigger ID.
-
-        Composio uses upsert for triggers, so multiple workflows may share
-        the same trigger ID if they have identical configurations.
-
-        Args:
-            trigger_id: The Composio trigger ID to check
-
-        Returns:
-            Number of workflows referencing this trigger
-        """
-        try:
-            count = await workflows_collection.count_documents(
-                {"trigger_config.composio_trigger_ids": trigger_id}
-            )
-            return count
-        except Exception as e:
-            log.error(f"Error counting trigger references for {trigger_id}: {e}")
-            return 0
 
     @staticmethod
     async def get_triggers_safe_to_delete(

@@ -900,34 +900,6 @@ class TestQueueService:
 
         assert result is False
 
-    async def test_queue_regeneration(self):
-        """queue_workflow_regeneration enqueues with reason and force flag."""
-        mock_pool = AsyncMock()
-        mock_job = MagicMock()
-        mock_job.job_id = "job_regen_101"
-        mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
-
-        with patch(
-            "app.services.workflow.queue_service.RedisPoolManager.get_pool",
-            new_callable=AsyncMock,
-            return_value=mock_pool,
-        ):
-            result = await WorkflowQueueService.queue_workflow_regeneration(
-                FAKE_WORKFLOW_ID,
-                FAKE_USER_ID,
-                regeneration_reason="User requested different approach",
-                force_different_tools=True,
-            )
-
-        assert result is True
-        mock_pool.enqueue_job.assert_awaited_once_with(
-            "regenerate_workflow_steps",
-            FAKE_WORKFLOW_ID,
-            FAKE_USER_ID,
-            "User requested different approach",
-            True,
-        )
-
 
 # ---------------------------------------------------------------------------
 # TEST 9: Generation Service (parse and enrich)

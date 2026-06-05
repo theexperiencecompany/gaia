@@ -15,29 +15,31 @@ import pytest
 from app.models.calendar_models import (
     EventCreateRequest,
     EventDeleteRequest,
-    EventLookupRequest,
     EventUpdateRequest,
 )
 from app.services.calendar_service import (
     create_calendar_event,
     delete_calendar_event,
-    extract_unique_dates,
     fetch_calendar_events,
     fetch_calendar_list,
     filter_events,
-    find_event_for_action,
     format_event_for_frontend,
     get_calendar_events,
     get_calendar_events_by_id,
     get_calendar_metadata_map,
     get_user_calendar_preferences,
-    initialize_calendar_preferences,
     list_calendars,
     search_calendar_events_native,
     search_events_in_calendar,
     update_calendar_event,
     update_user_calendar_preferences,
 )
+
+# Unwired as of 2026-06; kept for future use (calendar).
+# from app.services.calendar_service import (
+#     extract_unique_dates,
+#     initialize_calendar_preferences,
+# )
 from app.utils.errors import AppError
 
 USER_ID = "user_test_123"
@@ -89,19 +91,20 @@ class TestFilterEvents:
         ]
 
 
-class TestExtractUniqueDates:
-    def test_extracts_dates_with_offsets(self):
-        result = extract_unique_dates(
-            [
-                {"start": "2025-10-25T09:00:00+05:30"},
-                {"start": "2025-10-25T11:00:00+05:30"},
-                {"start": "2025-10-26T09:00:00Z"},
-            ]
-        )
-        assert result == {"2025-10-25": "+05:30", "2025-10-26": "+00:00"}
-
-    def test_skips_missing_start(self):
-        assert extract_unique_dates([{"start": ""}, {}]) == {}
+# Unwired as of 2026-06; kept for future use (calendar).
+# class TestExtractUniqueDates:
+#     def test_extracts_dates_with_offsets(self):
+#         result = extract_unique_dates(
+#             [
+#                 {"start": "2025-10-25T09:00:00+05:30"},
+#                 {"start": "2025-10-25T11:00:00+05:30"},
+#                 {"start": "2025-10-26T09:00:00Z"},
+#             ]
+#         )
+#         assert result == {"2025-10-25": "+05:30", "2025-10-26": "+00:00"}
+#
+#     def test_skips_missing_start(self):
+#         assert extract_unique_dates([{"start": ""}, {}]) == {}
 
 
 class TestFormatEventForFrontend:
@@ -336,15 +339,6 @@ class TestUpdateCalendarEvent:
         assert mock_proxy.call_args_list[1].kwargs["body"]["summary"] == "New"
 
 
-class TestFindEventForAction:
-    def test_returns_none_when_not_found(self, mock_proxy):
-        mock_proxy.side_effect = _http_error(404)
-        result = find_event_for_action(
-            USER_ID, EventLookupRequest(calendar_id="primary", event_id="missing")
-        )
-        assert result is None
-
-
 # ---------------------------------------------------------------------------
 # Higher-level orchestration
 # ---------------------------------------------------------------------------
@@ -424,17 +418,18 @@ class TestPreferences:
         }
 
 
-class TestInitializeCalendarPreferences:
-    def test_skips_when_already_set(self, mock_proxy, mock_calendars_collection):
-        mock_calendars_collection.find_one.return_value = {"selected_calendars": ["c1"]}
-        initialize_calendar_preferences(USER_ID)
-        mock_calendars_collection.update_one.assert_not_called()
-        mock_proxy.assert_not_called()
-
-    def test_seeds_when_empty(self, mock_proxy, mock_calendars_collection):
-        mock_calendars_collection.find_one.return_value = None
-        mock_proxy.return_value = {"items": [{"id": "c1"}, {"id": "c2"}]}
-        initialize_calendar_preferences(USER_ID)
-        mock_calendars_collection.update_one.assert_called_once()
-        update_args: list[Any] = mock_calendars_collection.update_one.call_args[0]
-        assert update_args[1] == {"$set": {"selected_calendars": ["c1", "c2"]}}
+# Unwired as of 2026-06; kept for future use (calendar).
+# class TestInitializeCalendarPreferences:
+#     def test_skips_when_already_set(self, mock_proxy, mock_calendars_collection):
+#         mock_calendars_collection.find_one.return_value = {"selected_calendars": ["c1"]}
+#         initialize_calendar_preferences(USER_ID)
+#         mock_calendars_collection.update_one.assert_not_called()
+#         mock_proxy.assert_not_called()
+#
+#     def test_seeds_when_empty(self, mock_proxy, mock_calendars_collection):
+#         mock_calendars_collection.find_one.return_value = None
+#         mock_proxy.return_value = {"items": [{"id": "c1"}, {"id": "c2"}]}
+#         initialize_calendar_preferences(USER_ID)
+#         mock_calendars_collection.update_one.assert_called_once()
+#         update_args: list[Any] = mock_calendars_collection.update_one.call_args[0]
+#         assert update_args[1] == {"$set": {"selected_calendars": ["c1", "c2"]}}

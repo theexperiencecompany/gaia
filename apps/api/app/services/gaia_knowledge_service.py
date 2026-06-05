@@ -89,32 +89,6 @@ class GaiaKnowledgeService:
             log.error(f"Error searching GAIA knowledge: {e}")
             return []
 
-    async def add_knowledge(self, content: str, metadata: dict[str, Any] | None = None) -> bool:
-        """
-        Add a single knowledge item to the knowledge base.
-
-        Args:
-            content: The knowledge content to store
-            metadata: Optional metadata (source, section, etc.)
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            client = await ChromaClient.get_langchain_client(
-                collection_name=self.collection_name, create_if_not_exists=True
-            )
-
-            # Add document
-            await client.aadd_texts(texts=[content], metadatas=[metadata or {}])
-
-            log.debug(f"Added knowledge: {content[:50]}...")
-            return True
-
-        except Exception as e:
-            log.error(f"Error adding knowledge: {e}")
-            return False
-
     async def add_knowledge_batch(self, items: list[KnowledgeItem]) -> int:
         """
         Add multiple knowledge items in batch.

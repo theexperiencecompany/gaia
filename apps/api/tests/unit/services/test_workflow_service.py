@@ -564,38 +564,6 @@ class TestWorkflowQueueServiceExecution:
 
 
 @pytest.mark.unit
-class TestWorkflowQueueServiceRegeneration:
-    async def test_queue_regeneration_passes_all_params(self, mock_redis_pool):
-        mock_job = MagicMock()
-        mock_job.job_id = "job_regen"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
-
-        result = await WorkflowQueueService.queue_workflow_regeneration(
-            workflow_id=WORKFLOW_ID,
-            user_id=USER_ID,
-            regeneration_reason="User requested changes",
-            force_different_tools=True,
-        )
-
-        assert result is True
-        args = mock_redis_pool.enqueue_job.call_args[0]
-        assert args[0] == "regenerate_workflow_steps"
-        assert args[1] == WORKFLOW_ID
-        assert args[2] == USER_ID
-        assert args[3] == "User requested changes"
-        assert args[4] is True
-
-    async def test_queue_regeneration_returns_false_on_exception(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(side_effect=Exception("pool exhausted"))
-
-        result = await WorkflowQueueService.queue_workflow_regeneration(
-            WORKFLOW_ID, USER_ID, "reason"
-        )
-
-        assert result is False
-
-
-@pytest.mark.unit
 class TestWorkflowQueueServiceTodo:
     async def test_queue_todo_generation_sets_redis_flag(self, mock_redis_pool):
         mock_job = MagicMock()

@@ -799,69 +799,6 @@ class TestCreateSystemConversation:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
-class TestGetOrCreateSystemConversation:
-    """Tests for get_or_create_system_conversation reuse, creation and description defaults/overrides."""
-
-    async def test_returns_existing_conversation(self, mock_collection):
-        from app.services.conversation_service import get_or_create_system_conversation
-
-        existing = {
-            "_id": ObjectId(),
-            "user_id": "user_123",
-            "conversation_id": "conv_sys",
-            "is_system_generated": True,
-            "system_purpose": "email_processing",
-        }
-        mock_collection.find_one = AsyncMock(return_value=existing)
-
-        result = await get_or_create_system_conversation("user_123", SystemPurpose.EMAIL_PROCESSING)
-
-        assert result["conversation_id"] == "conv_sys"
-        assert isinstance(result["_id"], str)
-
-    async def test_creates_new_when_not_found(self, mock_collection):
-        from app.services.conversation_service import get_or_create_system_conversation
-
-        mock_collection.find_one = AsyncMock(return_value=None)
-        mock_result = MagicMock()
-        mock_result.acknowledged = True
-        mock_collection.insert_one = AsyncMock(return_value=mock_result)
-
-        result = await get_or_create_system_conversation("user_123", SystemPurpose.EMAIL_PROCESSING)
-
-        assert result["is_system_generated"] is True
-        assert result["description"] == "Email Actions & Notifications"
-
-    async def test_uses_custom_description(self, mock_collection):
-        from app.services.conversation_service import get_or_create_system_conversation
-
-        mock_collection.find_one = AsyncMock(return_value=None)
-        mock_result = MagicMock()
-        mock_result.acknowledged = True
-        mock_collection.insert_one = AsyncMock(return_value=mock_result)
-
-        result = await get_or_create_system_conversation(
-            "user_123", SystemPurpose.OTHER, description="Custom Desc"
-        )
-
-        assert result["description"] == "Custom Desc"
-
-    async def test_default_description_fallback(self, mock_collection):
-        from app.services.conversation_service import get_or_create_system_conversation
-
-        mock_collection.find_one = AsyncMock(return_value=None)
-        mock_result = MagicMock()
-        mock_result.acknowledged = True
-        mock_collection.insert_one = AsyncMock(return_value=mock_result)
-
-        result = await get_or_create_system_conversation(
-            "user_123", SystemPurpose.REMINDER_PROCESSING
-        )
-
-        assert result["description"] == "Reminder Management"
-
-
 # ---------------------------------------------------------------------------
 # batch_sync_conversations
 # ---------------------------------------------------------------------------

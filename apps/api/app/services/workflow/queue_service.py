@@ -83,36 +83,6 @@ class WorkflowQueueService:
             return False
 
     @staticmethod
-    async def queue_workflow_regeneration(
-        workflow_id: str,
-        user_id: str,
-        regeneration_reason: str,
-        force_different_tools: bool = True,
-    ) -> bool:
-        """Queue workflow step regeneration as a background task."""
-        try:
-            pool = await RedisPoolManager.get_pool()
-
-            job = await pool.enqueue_job(
-                "regenerate_workflow_steps",
-                workflow_id,
-                user_id,
-                regeneration_reason,
-                force_different_tools,
-            )
-
-            if job:
-                log.set(workflow={"id": workflow_id, "status": "regeneration_queued"})
-                log.info(f"Queued workflow regeneration for {workflow_id} with job ID {job.job_id}")
-                return True
-            log.error(f"Failed to queue workflow regeneration for {workflow_id}")
-            return False
-
-        except Exception as e:
-            log.error(f"Error queuing workflow regeneration for {workflow_id}: {e!s}")
-            return False
-
-    @staticmethod
     async def queue_todo_workflow_generation(
         todo_id: str, user_id: str, title: str, description: str = ""
     ) -> bool:

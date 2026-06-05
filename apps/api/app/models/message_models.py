@@ -65,8 +65,3 @@ class MessageRequestWithHistory(BaseModel):
 
 class MessageRequest(BaseModel):
     message: str
-
-
-class MessageRequestPrimary(BaseModel):
-    message: str
-    conversation_id: SafePathId

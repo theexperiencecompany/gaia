@@ -10,7 +10,6 @@ from app.models.notes_models import NoteModel, NoteResponse
 from app.services.notes_service import (
     create_note_service,
     delete_note,
-    fetch_notes,
     get_all_notes,
     get_note,
     update_note,
@@ -415,75 +414,3 @@ class TestCreateNoteService:
 # ---------------------------------------------------------------------------
 # fetch_notes
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestFetchNotes:
-    async def test_appends_notes_to_context_when_found(self):
-        context = {
-            "last_message": {"content": "What are my notes?"},
-            "query_text": "my notes",
-            "user": {"user_id": FAKE_USER_ID},
-        }
-        mock_notes = [
-            {"title": "Note 1", "content": "Content 1"},
-            {"title": "Note 2", "content": "Content 2"},
-        ]
-        with patch(
-            "app.services.notes_service.search_notes_by_similarity",
-            new_callable=AsyncMock,
-            return_value=mock_notes,
-        ):
-            result = await fetch_notes(context)
-
-        assert result["notes_added"] is True
-        assert "Note 1" in result["last_message"]["content"]
-        assert "Note 2" in result["last_message"]["content"]
-
-    async def test_marks_notes_not_added_when_empty(self):
-        context = {
-            "last_message": {"content": "Hello"},
-            "query_text": "hello",
-            "user": {"user_id": FAKE_USER_ID},
-        }
-        with patch(
-            "app.services.notes_service.search_notes_by_similarity",
-            new_callable=AsyncMock,
-            return_value=[],
-        ):
-            result = await fetch_notes(context)
-
-        assert result["notes_added"] is False
-
-    async def test_handles_notes_without_title(self):
-        context = {
-            "last_message": {"content": "Check notes"},
-            "query_text": "notes",
-            "user": {"user_id": FAKE_USER_ID},
-        }
-        mock_notes = [{"content": "No title here"}]
-        with patch(
-            "app.services.notes_service.search_notes_by_similarity",
-            new_callable=AsyncMock,
-            return_value=mock_notes,
-        ):
-            result = await fetch_notes(context)
-
-        assert result["notes_added"] is True
-        assert "Untitled Note" in result["last_message"]["content"]
-
-    async def test_handles_notes_without_content(self):
-        context = {
-            "last_message": {"content": "Check notes"},
-            "query_text": "notes",
-            "user": {"user_id": FAKE_USER_ID},
-        }
-        mock_notes = [{"title": "Empty Note"}]
-        with patch(
-            "app.services.notes_service.search_notes_by_similarity",
-            new_callable=AsyncMock,
-            return_value=mock_notes,
-        ):
-            result = await fetch_notes(context)
-
-        assert result["notes_added"] is True

@@ -151,22 +151,6 @@ async def _validate_url_for_fetch(url: str) -> None:
         )
 
 
-def is_valid_url(url: str) -> bool:
-    """
-    Lightweight sync validator used by non-fetch code paths. Only does shape/scheme
-    checks — DNS-level SSRF protection happens in ``_validate_url_for_fetch``.
-    """
-    try:
-        parsed = urlparse(url)
-    except ValueError:
-        return False
-    if parsed.scheme not in ("http", "https"):
-        return False
-    if not parsed.hostname:
-        return False
-    return True
-
-
 async def fetch_url_metadata(url: str) -> URLResponse:
     """Fetch metadata for a URL, with caching and database fallback."""
     log.set(url=url, operation="fetch_url_metadata")

@@ -104,50 +104,6 @@ class GetUnreadCountInput(BaseModel):
     )
 
 
-class ScheduleSendInput(BaseModel):
-    """Input for scheduling an email to send later."""
-
-    recipient_email: str = Field(
-        ...,
-        description="Email address of the recipient",
-    )
-    subject: str = Field(
-        ...,
-        description="Subject line of the email",
-    )
-    body: str = Field(
-        ...,
-        description="Body content of the email",
-    )
-    send_at: str = Field(
-        ...,
-        description="ISO 8601 timestamp for when to send (e.g., '2024-01-15T10:00:00Z')",
-    )
-    cc: str | None = Field(
-        default=None,
-        description="CC email addresses (comma-separated)",
-    )
-    bcc: str | None = Field(
-        default=None,
-        description="BCC email addresses (comma-separated)",
-    )
-
-
-class SnoozeEmailInput(BaseModel):
-    """Input for snoozing emails until a specified time."""
-
-    message_ids: list[str] = Field(
-        ...,
-        description="List of Gmail message IDs to snooze",
-    )
-    snooze_until: str = Field(
-        ...,
-        description="ISO 8601 timestamp for when to unsnooze (e.g., '2024-01-15T09:00:00Z'). "
-        "Common values: 'tomorrow morning' (9am next day), 'next week' (Monday 9am), "
-        "'this afternoon' (today 3pm), 'this evening' (today 6pm)",
-    )
-
-
 class GetContactListInput(BaseModel):
     """Input for getting contact list from email history."""
 

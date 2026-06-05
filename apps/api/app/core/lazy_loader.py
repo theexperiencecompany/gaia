@@ -634,12 +634,6 @@ class ProviderRegistry:
                         self.get(dep)
         return await loader.aget()
 
-    def get_loader(self, name: str) -> LazyLoader:
-        """Get the loader itself (not the instance)."""
-        if name not in self._providers:
-            raise KeyError(f"Provider '{name}' not found in registry")
-        return self._providers[name]
-
     def is_available(self, name: str) -> bool:
         """Check if a provider is available."""
         if name not in self._providers:
@@ -651,18 +645,6 @@ class ProviderRegistry:
         if name not in self._providers:
             return False
         return self._providers[name].is_initialized()
-
-    def list_providers(self) -> dict[str, dict[str, bool]]:
-        """List all providers with their status."""
-        return {
-            name: {
-                "available": loader.is_available(),
-                "initialized": loader.is_initialized(),
-                "is_global_context": loader.is_global_context,
-                "is_async": loader.is_async,
-            }
-            for name, loader in self._providers.items()
-        }
 
 
 # Global registry instance

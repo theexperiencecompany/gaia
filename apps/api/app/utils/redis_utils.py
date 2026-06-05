@@ -37,18 +37,3 @@ class RedisPoolManager:
                         log.error(f"Failed to create Redis pool: {e}")
                         raise
         return cls._pool
-
-    @classmethod
-    async def close_pool(cls):
-        """Close the Redis pool connection."""
-        log.set(operation="redis_close_pool", component="RedisPoolManager")
-        if cls._pool:
-            async with cls._lock:
-                if cls._pool:
-                    try:
-                        await cls._pool.close()
-                        cls._pool = None
-                        log.info("Redis pool closed")
-                    except Exception as e:
-                        log.error(f"Error closing Redis pool: {e}")
-                        cls._pool = None
