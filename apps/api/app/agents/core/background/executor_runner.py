@@ -53,12 +53,30 @@ from shared.py.wide_events import log
 _queued_executor_tasks: set[asyncio.Task] = set()
 
 
+# Prepended to a workflow result so comms restates the full outcome in text.
+# A workflow notification is delivered to external messaging apps (WhatsApp,
+# Telegram, ...) with NO cards or UI, so "the card already shows it" does not
+# apply: every concrete data point has to live in the words themselves.
+_PLATFORM_DELIVERY_NOTE = (
+    "[PLATFORM_DELIVERY]\n"
+    "This is an automated workflow result delivered to the user as PLAIN TEXT on an "
+    "external messaging app (WhatsApp, Telegram, etc.). There are NO cards, NO UI "
+    "components, NO screen: the user only sees your words. State the full outcome in "
+    "your message — actually list the emails (sender + subject), the calendar events "
+    "(title + time), and every concrete result the user needs. Never say things like "
+    "'saved to your list', 'here's your summary 👇', or refer to anything shown on "
+    "screen, because there is no screen. Write it naturally but completely, and keep "
+    "GAIA's voice.\n"
+)
+
+
 async def _invoke_comms_graph(
     result_text: str,
     msg_type: str,
     conversation_id: str,
     user: dict,
     returned_note: str = "",
+    workflow_id: str | None = None,
 ) -> str:
     """Invoke the comms graph silently with the executor result as internal context.
 
@@ -70,11 +88,19 @@ async def _invoke_comms_graph(
     Returns the comms-generated text, or an empty string on failure.
     """
     prefix = "[EXECUTOR_ERROR]" if msg_type == "error" else "[EXECUTOR_RESULT]"
-    # Prepend the "already shown as a card" note (if any) so comms doesn't
-    # re-narrate data the frontend already rendered natively.
-    content = (
-        f"{returned_note}{prefix}\n{result_text}" if returned_note else f"{prefix}\n{result_text}"
-    )
+    if workflow_id:
+        # Text-only platform delivery: tell comms to restate everything. The
+        # card-suppression note (returned_note) is deliberately dropped here —
+        # it would tell comms NOT to list data that has no card to fall back on.
+        content = f"{_PLATFORM_DELIVERY_NOTE}{prefix}\n{result_text}"
+    else:
+        # Interactive chat: prepend the "already shown as a card" note (if any)
+        # so comms doesn't re-narrate data the frontend rendered natively.
+        content = (
+            f"{returned_note}{prefix}\n{result_text}"
+            if returned_note
+            else f"{prefix}\n{result_text}"
+        )
     try:
         comms_graph = await GraphManager.get_graph("comms_agent")
         if not comms_graph:
@@ -179,6 +205,8 @@ async def _deliver_bg_notification(
     tool_data: list[dict[str, Any]] | None = None,
     is_queued: bool = False,
     returned_note: str = "",
+    workflow_id: str | None = None,
+    workflow_title: str = "",
 ) -> None:
     """Run comms once with the executor result, then save + deliver the message.
 
@@ -212,7 +240,12 @@ async def _deliver_bg_notification(
     user_id = user.get("user_id", "")
 
     notification_text = await _invoke_comms_graph(
-        result_text, msg_type, conversation_id, user, returned_note=returned_note
+        result_text,
+        msg_type,
+        conversation_id,
+        user,
+        returned_note=returned_note,
+        workflow_id=workflow_id,
     )
     # If comms is unavailable, fall back to the raw executor text rather than
     # dropping the message entirely.
@@ -266,6 +299,37 @@ async def _deliver_bg_notification(
         )
     except Exception as e:
         log.error("_deliver_bg_notification: failed to save message", error=str(e))
+        return
+
+    # Workflow run: the result was produced with no human watching, so deliver it
+    # as the proactive completion notification (multi-channel, "Done with X")
+    # carrying the real voiced result, instead of pushing to one conversation
+    # transport. The bot message is already saved above for "View Results".
+    if workflow_id:
+        from app.services.workflow.notifications import (
+            send_workflow_completion_notification,
+            send_workflow_failure_notification,
+        )
+
+        if msg_type == "error":
+            await send_workflow_failure_notification(
+                workflow_id=workflow_id,
+                workflow_title=workflow_title,
+                user_id=user_id,
+            )
+        else:
+            await send_workflow_completion_notification(
+                workflow_id=workflow_id,
+                workflow_title=workflow_title,
+                conversation_id=conversation_id,
+                user_id=user_id,
+                result_text=notification_text,
+            )
+        log.info(
+            "_deliver_bg_notification: workflow notification dispatched",
+            workflow_id=workflow_id,
+            message_id=bot_message.message_id,
+        )
         return
 
     # Deliver over exactly one transport, decided by the conversation's source.
@@ -341,13 +405,17 @@ async def _dispatch_executor_result(
     stream_id: str,
     is_queued: bool,
     returned_note: str = "",
+    workflow_id: str | None = None,
+    workflow_title: str = "",
 ) -> None:
     """Hand the executor's terminal text to comms and surface the message to the user.
 
     Live tasks have tool_data attached to the comms ack message by chat_service.
-    Queued tasks have no live SSE consumer, so we attach tool_data here instead.
+    Queued tasks and workflow runs have no live SSE consumer attaching the cards,
+    so we drain and attach the executor's tool_data here instead (otherwise the
+    workflow result message renders with no email/calendar cards).
     """
-    queued_tool_data = drain_executor_tool_data(stream_id) if is_queued else None
+    attach_tool_data = drain_executor_tool_data(stream_id) if (is_queued or workflow_id) else None
     try:
         await _deliver_bg_notification(
             result_text=result_text,
@@ -356,9 +424,11 @@ async def _dispatch_executor_result(
             user=user,
             task_id=task_id,
             user_message_id=user_message_id,
-            tool_data=queued_tool_data,
+            tool_data=attach_tool_data,
             is_queued=is_queued,
             returned_note=returned_note,
+            workflow_id=workflow_id,
+            workflow_title=workflow_title,
         )
     except Exception as e:
         log.error("Background notification delivery failed", error=str(e))
@@ -373,6 +443,8 @@ async def _finalize_executor_run(
     result_type: str,
     task_id: str | None,
     user_message_id: str | None,
+    workflow_id: str | None = None,
+    workflow_title: str = "",
 ) -> None:
     """The full post-run cleanup: signal done, notify, tear down state, hand off lock."""
     was_cancelled = bool(stream_id) and await StreamManager.is_cancelled(stream_id)
@@ -406,6 +478,8 @@ async def _finalize_executor_run(
             stream_id=stream_id,
             is_queued=is_queued,
             returned_note=returned_note,
+            workflow_id=workflow_id,
+            workflow_title=workflow_title,
         )
 
     if is_queued:
@@ -478,6 +552,11 @@ async def run_executor_background(
     LLM/tool spans land on the same Langfuse trace as comms.
     """
     user = _user_from_configurable(configurable)
+    # Workflow runs tag their executor task so the delivery path routes the
+    # final result to the workflow-completion notification (multi-channel)
+    # instead of a normal conversation message. Unset for interactive chat.
+    workflow_id = configurable.get("workflow_id")
+    workflow_title = configurable.get("workflow_title", "")
     result_text = ""
     result_type = "final"
 
@@ -493,6 +572,8 @@ async def run_executor_background(
             result_type=result_type,
             task_id=task_id,
             user_message_id=user_message_id,
+            workflow_id=workflow_id,
+            workflow_title=workflow_title,
         )
 
 

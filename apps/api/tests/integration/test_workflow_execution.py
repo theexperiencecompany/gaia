@@ -865,12 +865,14 @@ class TestQueueService:
             )
 
         assert result is True
-        mock_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id", FAKE_WORKFLOW_ID, {"source": "api"}
-        )
+        args, kwargs = mock_pool.enqueue_job.call_args
+        assert args == ("execute_workflow_by_id", FAKE_WORKFLOW_ID, {"source": "api"})
+        # A deterministic _job_id dedupes accidental duplicate enqueues.
+        assert kwargs["_job_id"].startswith("execute_workflow_by_id:")
 
-    async def test_queue_workflow_execution_returns_false_on_failure(self):
-        """queue_workflow_execution returns False when enqueue returns None."""
+    async def test_queue_workflow_execution_deduped_enqueue_returns_true(self):
+        """A None from enqueue_job means the same _job_id is already queued — the
+        duplicate was deduped, which is success, not failure."""
         mock_pool = AsyncMock()
         mock_pool.enqueue_job = AsyncMock(return_value=None)
 
@@ -883,7 +885,7 @@ class TestQueueService:
                 FAKE_WORKFLOW_ID, FAKE_USER_ID
             )
 
-        assert result is False
+        assert result is True
 
     async def test_queue_workflow_execution_returns_false_on_redis_error(self):
         """queue_workflow_execution returns False when Redis throws."""

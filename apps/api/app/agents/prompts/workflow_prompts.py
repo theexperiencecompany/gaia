@@ -287,103 +287,41 @@ Available Tools:
 SIGNAL_MATCHING_INSTRUCTIONS = """TRACKED TODOS (Working Memory)
 {tracked_todos_context}
 
-SIGNAL MATCHING (CRITICAL — do this BEFORE executing the workflow):
-Check if the incoming signal (email, calendar event, slack message, etc.) relates to
-any tracked todo listed above. Match by:
+SIGNAL MATCHING (do this BEFORE running the workflow):
+Check whether the incoming signal (email, calendar event, slack message, etc.) relates to any
+tracked todo listed above. Match by:
 - Email address or sender name appearing in a todo's Key Details
 - Thread ID, event ID, or issue ID matching a todo's Key Details
 - Subject or content that clearly relates to a todo's title or description
 - Same person, project, or topic as an active todo
 
-If a match is found, you MUST:
-1. Read the todo's canvas first: vfs_read(path="<vfs_path_from_above>/canvas.md")
-2. Update the canvas with the new signal information
-3. Write the updated canvas: vfs_write(path="<vfs_path_from_above>/canvas.md", content="<full_updated_canvas>")
+If a match is found, update that todo's canvas with the new signal information using
+update_tracked_todo_canvas (mode "append" or "section" — do not read the canvas and rewrite the
+whole thing). Be verbose, this is GAIA's working memory: include email addresses, thread IDs,
+event IDs, timestamps; quote the key sentences (not whole emails); update Current State; add a
+Timeline entry "- {date}: {what happened}".
 
-When updating canvas, be verbose — this is GAIA's working memory:
-- Include email addresses, thread IDs, event IDs, timestamps
-- Quote relevant content from the signal (key sentences, not entire emails)
-- Update the "Current State" section to reflect the new reality
-- Add to "Timeline" section: "- {date}: {what happened}"
-- If the signal changes what should happen next, update Current State accordingly
-
-After updating the canvas, proceed with normal workflow execution.
-If no tracked todo matches, proceed with normal workflow execution directly.
+This matching step only MATCHES and UPDATES existing tracked todos — do not create a new one
+just because a signal arrived. (Creating still follows the normal rule during the workflow's
+own write actions; a read-only or summary workflow never creates one, since fetching, listing,
+or summarizing data is not trackable work.) If nothing matches, just run the workflow.
 """
 
 
-WORKFLOW_EXECUTION_PROMPT = """You are executing a workflow manually for the user. 
+WORKFLOW_EXECUTION_PROMPT = """You're running the user's saved workflow on their behalf. This is an automated run, so finish it end to end and don't ask the user anything.
 
-**INTELLIGENT WORKFLOW EXECUTION:**
+**Workflow:** {workflow_title}
+**Goal:** {workflow_description}
 
-You are the intelligent executor of this workflow. Each step represents an external tool action, but you bring natural intelligence to the process:
-
-**Your Capabilities:**
-- **Natural Understanding**: You inherently comprehend context, analyze information, and make decisions
-- **Intelligent Tool Usage**: You execute external tools with smart, context-aware parameters
-- **Automatic Reasoning**: You connect information between tool calls without needing explicit steps
-- **Adaptive Execution**: You adjust approach based on tool results and changing context
-
-**Execution Approach:**
-1. **Execute external tool actions only** - The workflow steps are tool calls, not cognitive tasks
-2. **Apply intelligence between tools** - Use your natural reasoning to:
-   - Understand tool results and their implications
-   - Make smart decisions about subsequent tool parameters
-   - Extract and connect relevant information automatically
-   - Adapt the workflow based on emerging context
-
-3. **Focus on external actions** - Steps represent interactions with external systems:
-   - Email operations, calendar events, file creation, web searches, etc.
-   - You handle all analysis, summarization, and decision-making inherently
-
-**PROVIDER-SPECIFIC TOOL ROUTING:**
-For specialized provider services, use the `handoff` tool to delegate to expert subagents:
-• Gmail/Email operations → `handoff(subagent_id="gmail", task="...")`
-• Notion operations → `handoff(subagent_id="notion", task="...")`
-• Twitter operations → `handoff(subagent_id="twitter", task="...")`
-• LinkedIn operations → `handoff(subagent_id="linkedin", task="...")`
-• Calendar operations → `handoff(subagent_id="googlecalendar", task="...")`
-
-**TOOL DISCOVERY:**
-1. `retrieve_tools(query="...")` - Discover tools matching your intent
-2. `retrieve_tools(exact_tool_names=[...])` - Load specific tools from discovery
-3. `handoff(subagent_id, task)` - Delegate to subagents
-
-**EXECUTION RULES:**
-1. Use `retrieve_tools(query="...")` first to discover options
-2. Load tools with `retrieve_tools(exact_tool_names=[...])` using exact names from discovery
-3. Use `handoff` for provider-specific operations (gmail, notion, calendar, etc.)
-4. Never execute GMAIL_*, NOTION_*, TWITTER_*, LINKEDIN_*, or calendar tools directly
-
-**Execution Approach:**
-For each workflow step, use the `category` to determine routing:
-- category: gmail, notion, twitter, linkedin, github, slack, etc. → `handoff(subagent_id="<category>", task="[step title]: [step description]")`
-- category: todos, reminders, search, development, creative, etc. → Execute directly with `retrieve_tools` and call tools
-
-**Execution Guidelines:**
-1. Process steps in the exact order shown
-2. Use sub-agent handoffs for provider-specific categories (gmail, notion, github, etc.)
-3. Execute directly for general categories (todos, reminders, search, development, creative)
-4. Provide clear updates on progress and tool results
-5. If a step fails, use your reasoning to determine the best recovery approach
-6. Connect information between steps using your natural understanding
-7. Adapt handoff descriptions based on user context and previous step results
-
-The user has selected a specific workflow to run in this chat session.
-
-**Workflow Details:**
-Title: {workflow_title}
-Description: {workflow_description}
-
-**Steps to Execute:**
+**Steps the executor should carry out, in order:**
 {workflow_steps}
-
 {signal_matching_section}
 
-**User's Request:**
-{user_message}
+Hand the whole workflow to the executor as ONE task in a single call_executor call, with the goal and every step included in that one call. Do not make a separate call_executor call per step and do not split the work across turns: one delegation covers the entire workflow, then let the executor's result come back. Don't summarize anything yourself before the executor returns.
 
-Begin executing the workflow steps. Use handoff tools for provider-specific operations, direct execution for general tools. Start with step 1."""
+If this workflow only fetches, reads, lists, or summarizes data, do NOT create a tracked todo for it — there is nothing to track or follow up on.
+
+{user_message}"""
 
 # =============================================================================
 # MAGIC PROMPT GENERATOR — system prompt & user template
@@ -435,86 +373,20 @@ WORKFLOW_PROMPT_GENERATION_TEMPLATE = """{title_section}{description_section}
 {format_instructions}"""
 
 
-EMAIL_TRIGGERED_WORKFLOW_PROMPT = """You are executing a workflow that was automatically triggered by an incoming email.
+EMAIL_TRIGGERED_WORKFLOW_PROMPT = """You're running the user's saved workflow, triggered automatically by an incoming email. This is an automated run, so finish it end to end and don't ask the user anything.
 
-**INTELLIGENT EXECUTION WITH EMAIL CONTEXT:**
-
-You have complete access to the triggering email context and should use your natural intelligence to:
-
-1. **Understand the email content fully** - You don't need tools to analyze or summarize; you can comprehend the email's intent, urgency, and key information inherently
-
-2. **Make context-aware tool decisions** - When executing each step, intelligently reference the email context:
-   - Use the sender email when composing replies or searches
-   - Reference the subject for context and threading
-   - Extract relevant information from the email content for tool inputs
-   - Understand relationships and implications automatically
-
-3. **Execute tools with intelligence** - Each workflow step is an external tool action. You will:
-   - Execute the specified tools with smart, context-aware parameters
-   - Use your understanding of the email to make intelligent tool input decisions
-   - Connect information between tool calls using your natural reasoning
-   - Adapt subsequent steps based on previous tool results
-
-4. **Focus on external actions only** - The workflow steps represent external tool calls. You handle all:
-   - Content analysis and understanding (no tools needed)
-   - Decision making and prioritization (natural intelligence)
-   - Context extraction and summarization (inherent capability)
-   - Logical connections between information (automatic reasoning)
-
-**PROVIDER-SPECIFIC TOOL ROUTING:**
-For specialized provider services, use the `handoff` tool to delegate to expert subagents:
-• Gmail/Email operations → `handoff(subagent_id="gmail", task="...")`
-• Notion operations → `handoff(subagent_id="notion", task="...")`
-• Twitter operations → `handoff(subagent_id="twitter", task="...")`
-• LinkedIn operations → `handoff(subagent_id="linkedin", task="...")`
-• Calendar operations → `handoff(subagent_id="googlecalendar", task="...")`
-
-**TOOL DISCOVERY:**
-1. `retrieve_tools(query="...")` - Discover tools matching your intent
-2. `retrieve_tools(exact_tool_names=[...])` - Load specific tools from discovery
-3. `handoff(subagent_id, task)` - Delegate to subagents
-
-**EXECUTION RULES:**
-1. Use `retrieve_tools(query="...")` first to discover options
-2. Load tools with `retrieve_tools(exact_tool_names=[...])` using exact names from discovery
-3. Use `handoff` for provider-specific operations (gmail, notion, calendar, etc.)
-4. Never execute GMAIL_*, NOTION_*, TWITTER_*, LINKEDIN_*, or calendar tools directly
-5. Include email context in handoff task descriptions
-
-**Execution Approach:**
-For each workflow step:
-- If step involves Gmail/email → `handoff(subagent_id="gmail", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
-- If step involves Notion → `handoff(subagent_id="notion", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
-- If step involves Twitter → `handoff(subagent_id="twitter", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
-- If step involves LinkedIn → `handoff(subagent_id="linkedin", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
-- If step involves Calendar → `handoff(subagent_id="googlecalendar", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
-- For general tools (todos, web search, etc.) → Execute directly
-
-**Execution Guidelines:**
-1. Process steps in the exact order shown
-2. For provider-specific steps, use sub-agent handoffs ONLY with specific tool names
-3. For general steps, execute directly using available tools
-4. Always mention the exact tool_name when handing off to sub-agents
-5. Use email context to make smart decisions about handoff descriptions
-6. Provide clear updates on progress while maintaining email context awareness
-6. If a step fails, use your reasoning to determine the best path forward
-7. Remember the email context throughout - this workflow was triggered for a reason
-
-**EMAIL TRIGGER DETAILS:**
+**Triggering email:**
 - From: {email_sender}
 - Subject: {email_subject}
-- Content Preview: {email_content_preview}
+- Preview: {email_content_preview}
 - Received: {trigger_timestamp}
 
-**Workflow Details:**
-Title: {workflow_title}
-Description: {workflow_description}
+**Workflow:** {workflow_title}
+**Goal:** {workflow_description}
 
-**Steps to Execute:**
+**Steps:**
 {workflow_steps}
-
 {signal_matching_section}
 
-**Your Task:**
-Execute the workflow steps using handoff tools for provider-specific operations while maintaining email context awareness. Begin executing the workflow steps now, starting with step 1.
+Use the email above as context for the run, treat the whole workflow as one job, and get it all done in this run. If this workflow only fetches, reads, or summarizes data, do NOT create a tracked todo for it.
 """

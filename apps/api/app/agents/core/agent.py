@@ -145,6 +145,13 @@ async def _core_agent_logic(
         langfuse_tags=langfuse_tags,
     )
 
+    # Workflow runs carry their id/title so the background executor's delivery
+    # path can route the final result to the workflow-completion notification
+    # instead of a normal conversation message. Absent for interactive chat.
+    if trigger_context and trigger_context.get("workflow_id"):
+        config["configurable"]["workflow_id"] = trigger_context["workflow_id"]
+        config["configurable"]["workflow_title"] = trigger_context.get("workflow_title", "")
+
     log.set(
         agent=dict(
             model=config["configurable"].get("model_name"),
