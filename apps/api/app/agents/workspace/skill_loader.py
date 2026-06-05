@@ -78,10 +78,10 @@ class BuiltinSkill:
 # backtracking by an adversary.
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)  # NOSONAR python:S5852
 # Forgiving YAML reader: builtins only ever use scalar key: value pairs and we
-# don't want to depend on PyYAML in this hot path. Trailing whitespace in the
-# value is stripped by the caller, so capture the rest of the line greedily
-# (linear) rather than with a backtracking lazy group.
-_KV_RE = re.compile(r"^([A-Za-z_]\w*):\s*(.+)$")
+# don't want to depend on PyYAML in this hot path. The leading-whitespace gap is
+# matched possessively (`\s*+`) so it never backtracks into the value group,
+# keeping the match linear. Trailing whitespace is stripped by the caller.
+_KV_RE = re.compile(r"^([A-Za-z_]\w*):\s*+(.+)$")
 
 
 def _parse_frontmatter(raw: str) -> tuple[dict[str, str], str]:

@@ -118,7 +118,9 @@ async def main_async(args: argparse.Namespace) -> int:
     if args.user:
         targets = [args.user]
     else:
-        targets = [u async for u in _all_user_ids()]
+        targets = []
+        async for user_id in _all_user_ids():
+            targets.append(user_id)
 
     summary: list[dict] = []
     for user_id in targets:

@@ -21,7 +21,7 @@ interface TodoSectionProps {
   message?: string;
 }
 
-// Adapt the streamed chat task payload to the canonical Todo the shared
+// Adapt the streamed chat task payload to the canonical task model the shared
 // TodoItem component (used on the todos page) expects, so chat and page render
 // identically and can never drift. Missing optional fields (scheduled_at,
 // vfs_path, etc.) are simply absent — TodoItem renders them conditionally.

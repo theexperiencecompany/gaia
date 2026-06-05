@@ -253,39 +253,40 @@ async def list_session_ids(user_id: str) -> list[str]:
         return await asyncio.to_thread(_scan)
 
 
+def _stale_in_user_dir(user_dir: Path, cutoff: datetime) -> list[tuple[str, str]]:
+    sessions_dir = user_dir / "sessions"
+    if not sessions_dir.is_dir():
+        return []
+    found: list[tuple[str, str]] = []
+    for sess in sorted(sessions_dir.iterdir()):
+        if not sess.is_dir():
+            continue
+        last_active = parse_last_active(sess / SESSION_META_FILENAME)
+        if last_active is None or last_active >= cutoff:
+            continue
+        found.append((user_dir.name, sess.name))
+    return found
+
+
+def _scan_stale_sessions(cutoff_days: int, limit: int | None) -> list[tuple[str, str]]:
+    if not _is_mounted():
+        return []
+    users_root = _mount_root() / "users"
+    if not users_root.is_dir():
+        return []
+    cutoff = datetime.now(UTC) - timedelta(days=cutoff_days)
+    stale: list[tuple[str, str]] = []
+    for user_dir in sorted(users_root.iterdir()):
+        stale.extend(_stale_in_user_dir(user_dir, cutoff))
+        if limit is not None and len(stale) >= limit:
+            return stale[:limit]
+    return stale
+
+
 async def list_stale_sessions(cutoff_days: int, limit: int | None = None) -> list[tuple[str, str]]:
     """Return (user_id, conv_id) for sessions inactive past ``cutoff_days``.
 
     Sessions whose ``last_active`` cannot be parsed are skipped, never pruned.
     """
-
-    def _stale_in_user_dir(user_dir: Path, cutoff: datetime) -> list[tuple[str, str]]:
-        sessions_dir = user_dir / "sessions"
-        if not sessions_dir.is_dir():
-            return []
-        found: list[tuple[str, str]] = []
-        for sess in sorted(sessions_dir.iterdir()):
-            if not sess.is_dir():
-                continue
-            last_active = parse_last_active(sess / SESSION_META_FILENAME)
-            if last_active is None or last_active >= cutoff:
-                continue
-            found.append((user_dir.name, sess.name))
-        return found
-
-    def _scan() -> list[tuple[str, str]]:
-        if not _is_mounted():
-            return []
-        users_root = _mount_root() / "users"
-        if not users_root.is_dir():
-            return []
-        cutoff = datetime.now(UTC) - timedelta(days=cutoff_days)
-        stale: list[tuple[str, str]] = []
-        for user_dir in sorted(users_root.iterdir()):
-            stale.extend(_stale_in_user_dir(user_dir, cutoff))
-            if limit is not None and len(stale) >= limit:
-                return stale[:limit]
-        return stale
-
     async with fs_timer(FsOps.LIST_STALE_SESSIONS):
-        return await asyncio.to_thread(_scan)
+        return await asyncio.to_thread(_scan_stale_sessions, cutoff_days, limit)

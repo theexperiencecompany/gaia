@@ -97,9 +97,9 @@ class TestAwrapToolCall:
         big = json.dumps([{"i": i} for i in range(500)])
         request = _request()
 
-        async def handler(
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
             _req,
-        ):  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+        ):
             return _tool_msg(big)
 
         with patch(
@@ -124,9 +124,9 @@ class TestAwrapToolCall:
         mw = WorkspaceCompactionMiddleware(max_output_chars=1000)
         original = _tool_msg("small result")
 
-        async def handler(
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
             _req,
-        ):  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+        ):
             return original
 
         with patch(
@@ -143,9 +143,9 @@ class TestAwrapToolCall:
         mw = WorkspaceCompactionMiddleware(max_output_chars=10)
         big = "x" * 5000
 
-        async def handler(
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
             _req,
-        ):  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+        ):
             return _tool_msg(big)
 
         with patch(
@@ -162,9 +162,9 @@ class TestAwrapToolCall:
         mw = WorkspaceCompactionMiddleware(max_output_chars=1)
         sentinel = SimpleNamespace(kind="command")  # not a ToolMessage
 
-        async def handler(
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
             _req,
-        ):  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+        ):
             return sentinel
 
         with patch(
@@ -186,9 +186,9 @@ class TestAwrapToolCall:
             state={"messages": []},
         )
 
-        async def handler(
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
             _req,
-        ):  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+        ):
             return _tool_msg(big)
 
         with patch(

@@ -192,7 +192,7 @@ function FileViewerBody({
   conversationId,
   path,
   viewMode,
-}: FileViewerBodyProps) {
+}: Readonly<FileViewerBodyProps>) {
   if (isImage) {
     return (
       <div className="flex h-full items-center justify-center bg-zinc-950 p-4">

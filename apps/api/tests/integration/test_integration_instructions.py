@@ -62,9 +62,9 @@ class FakeCollection:
         self.docs: list[dict] = []
 
     # async to match the awaited Motor collection interface the service relies on.
-    async def update_one(
+    async def update_one(  # NOSONAR python:S7503
         self, flt: dict, update: dict, upsert: bool = False
-    ) -> None:  # NOSONAR python:S7503
+    ) -> None:
         for doc in self.docs:
             if _matches(doc, flt):
                 doc.update(update.get("$set", {}))
@@ -76,9 +76,9 @@ class FakeCollection:
             self.docs.append(new)
 
     # async to match the awaited Motor collection interface the service relies on.
-    async def find_one(
+    async def find_one(  # NOSONAR python:S7503
         self, flt: dict, projection: Any = None
-    ) -> dict | None:  # NOSONAR python:S7503
+    ) -> dict | None:
         for doc in self.docs:
             if _matches(doc, flt):
                 return dict(doc)

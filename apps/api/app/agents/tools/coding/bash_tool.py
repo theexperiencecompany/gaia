@@ -114,6 +114,25 @@ def _emit_bash_error(run_id: str, chunk: str, return_message: str, session_id: s
     return return_message
 
 
+def _resolve_cwd(cwd: str, session_id: str | None) -> tuple[str, bool, str | None]:
+    """Resolve the working directory for a bash run.
+
+    Returns ``(cwd, use_session_cwd, error)``. ``error`` is non-None when the
+    LLM-supplied cwd escapes the workspace, in which case the caller returns it.
+    """
+    use_session_cwd = bool(session_id) and (not cwd or cwd == WORKSPACE_ROOT)
+    if use_session_cwd and session_id:
+        return session_dir(session_id), True, None
+    if cwd and not is_under_workspace(cwd):
+        # LLM-supplied cwd must stay under /workspace. Without this gate the
+        # agent could `cd /etc/gaia` (or anywhere else inside the sandbox)
+        # and read host-internal config files that have no business being in
+        # the agent's reach. Same-user sandbox so it's not a cross-user
+        # issue, but it makes prompt-injection drift much harder to bound.
+        return cwd, use_session_cwd, f"Error: cwd must be under {WORKSPACE_ROOT} (got {cwd!r})"
+    return cwd, use_session_cwd, None
+
+
 @tool
 @with_rate_limiting("bash_execution")
 @with_doc(BASH_TOOL)
@@ -142,16 +161,9 @@ async def bash(
         return f"Error: {e}"
 
     session_id = get_session_id(config)
-    use_session_cwd = bool(session_id) and (not cwd or cwd == WORKSPACE_ROOT)
-    if use_session_cwd and session_id:
-        cwd = session_dir(session_id)
-    elif cwd and not is_under_workspace(cwd):
-        # LLM-supplied cwd must stay under /workspace. Without this gate the
-        # agent could `cd /etc/gaia` (or anywhere else inside the sandbox)
-        # and read host-internal config files that have no business being in
-        # the agent's reach. Same-user sandbox so it's not a cross-user
-        # issue, but it makes prompt-injection drift much harder to bound.
-        return f"Error: cwd must be under {WORKSPACE_ROOT} (got {cwd!r})"
+    cwd, use_session_cwd, cwd_error = _resolve_cwd(cwd, session_id)
+    if cwd_error:
+        return cwd_error
 
     safe_emit(
         {

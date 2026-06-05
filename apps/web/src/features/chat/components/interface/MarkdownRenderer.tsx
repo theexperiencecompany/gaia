@@ -64,6 +64,22 @@ const MarkdownImage: React.FC<MarkdownImageProps> = ({
   );
 };
 
+const MarkdownImageNode: React.FC<{ src?: string; alt?: string }> = ({
+  src,
+  alt,
+}) => {
+  const { openDialog } = useImageDialog();
+  const params = useParams<{ id?: string }>();
+  return (
+    <MarkdownImage
+      src={src}
+      alt={alt}
+      conversationId={params?.id}
+      onOpen={openDialog}
+    />
+  );
+};
+
 export interface MarkdownRendererProps {
   content: string;
   className?: string;
@@ -77,10 +93,6 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   isStreaming,
   hideCodeToolbar,
 }) => {
-  const { openDialog } = useImageDialog();
-  const params = useParams<{ id?: string }>();
-  const conversationId = params?.id;
-
   return (
     <div
       className={cn(
@@ -131,12 +143,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           p: ({ ...props }) => <p className="mb-4 last:mb-0" {...props} />,
           li: ({ ...props }) => <li className="mb-2" {...props} />,
           img: ({ src, alt }) => (
-            <MarkdownImage
-              src={src as string}
-              alt={alt as string}
-              conversationId={conversationId}
-              onOpen={openDialog}
-            />
+            <MarkdownImageNode src={src as string} alt={alt as string} />
           ),
           pre: ({ ...props }) => (
             <pre className="font-serif! text-wrap" {...props} />

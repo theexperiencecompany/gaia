@@ -38,7 +38,7 @@ export function resolveArtifactSrc(
   const m = /^(?:\.?\/)?artifacts\/(.+)$/.exec(src);
   if (!m) return src;
   let convId = conversationId;
-  if (!convId && typeof globalThis.window !== "undefined") {
+  if (!convId && globalThis.window !== undefined) {
     const pathMatch = /\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)?c\/([^/?#]+)/.exec(
       globalThis.window.location.pathname,
     );

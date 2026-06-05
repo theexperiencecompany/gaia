@@ -424,24 +424,24 @@ def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
     """Pause the sandbox after the idle window if no further work arrives."""
 
     async def _pause_after_delay() -> None:
+        # CancelledError (from the sleep or the pause) propagates naturally — the
+        # inner ``except Exception`` never catches it — so the idle-pause task
+        # cancels cleanly when work arrives.
+        await asyncio.sleep(settings.E2B_SANDBOX_IDLE_PAUSE_SECONDS)
+        if entry.refcount > 0:
+            return
+        pause = getattr(entry.sandbox, "pause", None)
+        if pause is None:
+            return
+        await _stop_watcher(entry)
         try:
-            await asyncio.sleep(settings.E2B_SANDBOX_IDLE_PAUSE_SECONDS)
-            if entry.refcount > 0:
-                return
-            pause = getattr(entry.sandbox, "pause", None)
-            if pause is None:
-                return
-            await _stop_watcher(entry)
-            try:
-                await pause()
-                await e2b_sandboxes_collection.update_one(
-                    {"user_id": user_id},
-                    {"$set": {"state": "paused", "paused_at": _now()}},
-                )
-            except Exception as e:
-                log.warning(f"Pause failed for user {user_id}: {e}")
-        except asyncio.CancelledError:
-            raise
+            await pause()
+            await e2b_sandboxes_collection.update_one(
+                {"user_id": user_id},
+                {"$set": {"state": "paused", "paused_at": _now()}},
+            )
+        except Exception as e:
+            log.warning(f"Pause failed for user {user_id}: {e}")
 
     entry.pause_task = asyncio.create_task(_pause_after_delay())
 
