@@ -273,13 +273,15 @@ export class OutboundConsumer {
       return;
     }
 
-    let delivered = 0;
+    // Track delivered count by reference so a throw mid-send still exposes how
+    // many chunks already went out — a partial send must NOT requeue.
+    const progress = { delivered: 0 };
     try {
-      delivered = await this.deliverSources(destinationId, sources);
+      await this.deliverSources(destinationId, sources, progress);
       // Non-empty source text that rendered to nothing on every chunk: don't
       // silently ack it away (the backend recorded it DELIVERED). Dead-letter
       // it so the dropped message is visible for inspection.
-      if (delivered === 0) {
+      if (progress.delivered === 0) {
         this.logger.warn("outbound_text_rendered_empty", { id });
         this.settle(channel, () => channel.nack(msg, false, false));
         return;
@@ -288,7 +290,11 @@ export class OutboundConsumer {
     } catch (err) {
       this.logger.error(
         "outbound_delivery_failed",
-        { id, delivered, redelivered: msg.fields.redelivered },
+        {
+          id,
+          delivered: progress.delivered,
+          redelivered: msg.fields.redelivered,
+        },
         err,
       );
       // Requeue for one retry ONLY if nothing was sent yet. Requeue re-delivers
@@ -296,7 +302,7 @@ export class OutboundConsumer {
       // already-delivered chunks. After a partial send (or on the second
       // attempt) dead-letter instead — the message lands in the DLQ for
       // inspection rather than spamming the user with duplicates.
-      const requeue = delivered === 0 && !msg.fields.redelivered;
+      const requeue = progress.delivered === 0 && !msg.fields.redelivered;
       this.settle(channel, () => channel.nack(msg, false, requeue));
     }
   }
@@ -307,15 +313,16 @@ export class OutboundConsumer {
    * chunkResponse so chunks are sized by their RENDERED length — otherwise
    * markdown that expands when rendered (e.g. Telegram tables padded into
    * <pre> blocks) can overflow the platform's message limit and be rejected.
-   * Returns the number of non-empty messages delivered.
+   * Increments `progress.delivered` for each non-empty message sent, so the
+   * caller sees the partial count even if a later send throws.
    */
   private async deliverSources(
     destinationId: string,
     sources: string[],
-  ): Promise<number> {
+    progress: { delivered: number },
+  ): Promise<void> {
     const render = (chunk: string): string =>
       renderForPlatform(chunk, this.platform);
-    let delivered = 0;
     // Await each send before the next so the bubbles arrive in the published
     // order — never fan these out concurrently.
     for (const source of sources) {
@@ -326,10 +333,9 @@ export class OutboundConsumer {
         // skip it instead of throwing and dead-lettering the whole envelope.
         if (!rendered.trim()) continue;
         await this.deliver(destinationId, rendered);
-        delivered += 1;
+        progress.delivered += 1;
       }
     }
-    return delivered;
   }
 }
 
