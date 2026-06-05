@@ -50,7 +50,7 @@ class TestPublishOutboundMessage:
             ok = await od.publish_outbound_message(ConversationSource.WHATSAPP, "user-1", ["hi"])
         assert ok is od.OutboundResult.FAILED
 
-    async def test_publishes_one_envelope_per_non_blank_part(self) -> None:
+    async def test_publishes_one_ordered_envelope_for_multiple_parts(self) -> None:
         publisher = AsyncMock()
         with (
             patch.object(
@@ -67,11 +67,40 @@ class TestPublishOutboundMessage:
                 ConversationSource.WHATSAPP, "user-1", ["hi", "   ", "there"]
             )
         assert ok is od.OutboundResult.PUBLISHED
-        # The blank middle part is dropped → two envelopes on the whatsapp queue.
-        assert publisher.publish_outbound.await_count == 2
-        queue, body = publisher.publish_outbound.await_args_list[0].args
+        # The parts of one logical message travel as a SINGLE ordered envelope so
+        # a concurrent consumer can't reorder them. The blank middle part is
+        # dropped; the remaining two keep their order in ``text_parts``.
+        assert publisher.publish_outbound.await_count == 1
+        queue, body = publisher.publish_outbound.await_args.args
         assert queue == "outbound.whatsapp"
-        assert b"15551234567" in body  # envelope carries the resolved destination
+        envelope = json.loads(body)
+        assert envelope["destination_id"] == "15551234567"
+        assert envelope["text_parts"] == ["hi", "there"]
+        assert envelope.get("text") is None
+
+    async def test_single_part_uses_plain_text_envelope(self) -> None:
+        publisher = AsyncMock()
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={"whatsapp": {"platformUserId": "15551234567"}},
+            ),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            ok = await od.publish_outbound_message(
+                ConversationSource.WHATSAPP, "user-1", ["just one"]
+            )
+        assert ok is od.OutboundResult.PUBLISHED
+        assert publisher.publish_outbound.await_count == 1
+        _queue, body = publisher.publish_outbound.await_args.args
+        envelope = json.loads(body)
+        # A lone part stays in ``text`` (the common executor-reply shape).
+        assert envelope["text"] == "just one"
+        assert envelope.get("text_parts") is None
 
 
 def _linked(platform: str, platform_user_id: object) -> dict[str, dict[str, object]]:
@@ -121,36 +150,11 @@ class TestPublishOutboundMessageBrutalEdges:
         _queue, body = publisher.publish_outbound.await_args.args
         assert json.loads(body.decode("utf-8"))["text"] == text
 
-    async def test_partial_publish_failure_is_failed_after_sending_earlier_parts(
-        self,
-    ) -> None:
-        # At-least-once reality: the first part is already on the wire when the
-        # second fails. The function reports FAILED but does NOT un-send part one.
+    async def test_publish_error_is_failed_with_a_single_attempt(self) -> None:
+        # All parts ride in ONE envelope, so a broker error is one failed publish —
+        # there is no partial-send window to leave half the bubbles on the wire.
         publisher = AsyncMock()
-        publisher.publish_outbound = AsyncMock(side_effect=[None, RuntimeError("boom")])
-        with (
-            patch.object(
-                od.PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value=_linked("whatsapp", "15551234567"),
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-        ):
-            ok = await od.publish_outbound_message(ConversationSource.WHATSAPP, "u1", ["a", "b"])
-        assert ok is od.OutboundResult.FAILED
-        assert publisher.publish_outbound.await_count == 2
-
-    async def test_stops_publishing_at_the_first_failed_part(self) -> None:
-        # 5 parts; the 3rd publish fails. A downed broker will reject the rest
-        # too, so the function must STOP at the failure (not fire parts 4 and 5)
-        # and report FAILED for the partial send.
-        publisher = AsyncMock()
-        publisher.publish_outbound = AsyncMock(
-            side_effect=[None, None, RuntimeError("boom"), None, None]
-        )
+        publisher.publish_outbound = AsyncMock(side_effect=RuntimeError("boom"))
         with (
             patch.object(
                 od.PlatformLinkService,
@@ -166,7 +170,7 @@ class TestPublishOutboundMessageBrutalEdges:
                 ConversationSource.WHATSAPP, "u1", ["a", "b", "c", "d", "e"]
             )
         assert ok is od.OutboundResult.FAILED
-        assert publisher.publish_outbound.await_count == 3  # stopped at the failure
+        assert publisher.publish_outbound.await_count == 1
 
 
 @pytest.mark.unit

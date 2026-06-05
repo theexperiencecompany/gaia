@@ -45,13 +45,22 @@ export const outboundMessageEnvelopeSchema = z
     destination_id: z.string().min(1),
     /** Raw CommonMark message body. Optional when an attachment is present. */
     text: z.string().min(1).nullish(),
+    /**
+     * Ordered CommonMark bubbles delivered as ONE message. The consumer sends
+     * them sequentially so their order is preserved — used for multi-bubble
+     * notifications (e.g. a workflow completion: header, results, footer) that
+     * would otherwise race each other if published as separate envelopes.
+     */
+    text_parts: z.array(z.string()).nullish(),
     /** A file to deliver (PDF/docx/etc.) — optional. */
     attachment: outboundAttachmentSchema.nullish(),
     /** ISO-8601 enqueue timestamp. */
     enqueued_at: z.string(),
   })
-  .refine((e) => Boolean(e.text) || Boolean(e.attachment), {
-    message: "envelope requires text or attachment",
-  });
+  .refine(
+    (e) =>
+      Boolean(e.text) || Boolean(e.text_parts?.length) || Boolean(e.attachment),
+    { message: "envelope requires text, text_parts, or attachment" },
+  );
 
 export type OutboundAttachment = z.infer<typeof outboundAttachmentSchema>;

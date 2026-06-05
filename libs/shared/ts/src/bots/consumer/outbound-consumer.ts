@@ -210,9 +210,16 @@ export class OutboundConsumer {
       return;
     }
 
-    // Text path. The schema's refine guarantees text when there is no
-    // attachment; narrow it here for the type checker.
-    if (!env.text) {
+    // Text path. The schema's refine guarantees text or text_parts when there
+    // is no attachment; a multi-bubble notification arrives as ordered
+    // `text_parts` (one logical message) and its bubbles MUST be sent in order,
+    // so they are delivered sequentially below within this single handle.
+    const sources = env.text_parts?.length
+      ? env.text_parts
+      : env.text
+        ? [env.text]
+        : [];
+    if (sources.length === 0) {
       this.settle(channel, () => channel.nack(msg, false, false)); // nothing to send → DLQ
       return;
     }
@@ -227,14 +234,18 @@ export class OutboundConsumer {
       // be rejected.
       const render = (chunk: string): string =>
         renderForPlatform(chunk, this.platform);
-      for (const chunk of chunkResponse(env.text, this.platform, render)) {
-        const rendered = render(chunk);
-        // A chunk made up solely of strippable markup (e.g. a lone horizontal
-        // rule) renders to nothing; platform send APIs reject empty text, so
-        // skip it instead of throwing and dead-lettering the whole envelope.
-        if (!rendered.trim()) continue;
-        await this.deliver(env.destination_id, rendered);
-        delivered += 1;
+      // Await each send before the next so the bubbles arrive in the published
+      // order — never fan these out concurrently.
+      for (const source of sources) {
+        for (const chunk of chunkResponse(source, this.platform, render)) {
+          const rendered = render(chunk);
+          // A chunk made up solely of strippable markup (e.g. a lone horizontal
+          // rule) renders to nothing; platform send APIs reject empty text, so
+          // skip it instead of throwing and dead-lettering the whole envelope.
+          if (!rendered.trim()) continue;
+          await this.deliver(env.destination_id, rendered);
+          delivered += 1;
+        }
       }
       // Non-empty source text that rendered to nothing on every chunk: don't
       // silently ack it away (the backend recorded it DELIVERED). Dead-letter

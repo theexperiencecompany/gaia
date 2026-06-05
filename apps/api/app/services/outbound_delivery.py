@@ -71,15 +71,18 @@ async def _prepare(
 async def publish_outbound_message(
     platform: ConversationSource, user_id: str, text_parts: list[str]
 ) -> OutboundResult:
-    """Resolve ``user_id`` to its ``platform`` id and enqueue one envelope per
-    non-empty text part.
+    """Resolve ``user_id`` to its ``platform`` id and enqueue the ordered text
+    parts as a SINGLE envelope.
 
-    Returns ``PUBLISHED`` only if every part was published. ``SKIPPED`` when the
+    The parts of one logical message (e.g. a workflow completion's header,
+    result bubbles, and footer) are published together so the consumer delivers
+    them in order. Publishing one envelope per part instead lets a concurrent
+    consumer (prefetch > 1) reorder the bubbles — the bug this avoids.
+
+    Returns ``PUBLISHED`` when the envelope was enqueued. ``SKIPPED`` when the
     platform is unsupported, the account is unlinked, or there is nothing to
-    send. ``FAILED`` when the broker is unavailable or a publish errored (a
-    partial send is also ``FAILED`` so the orchestrator never records a
-    half-delivered notification as delivered). Best-effort: never raises into
-    the caller's flow.
+    send. ``FAILED`` when the broker is unavailable or the publish errored.
+    Best-effort: never raises into the caller's flow.
     """
     parts = [p for p in (s.strip() for s in text_parts) if p]
     if not parts:
@@ -90,41 +93,36 @@ async def publish_outbound_message(
         return prep
     queue_name, destination_id, publisher = prep
 
-    published = 0
-    for part in parts:
+    # A single part is sent as a plain ``text`` envelope (the common executor-reply
+    # case); multiple parts travel together in ``text_parts`` so ordering is the
+    # consumer's responsibility within one message, not the broker's across many.
+    if len(parts) == 1:
         envelope = OutboundMessageEnvelope(
-            platform=platform.value,
-            destination_id=destination_id,
-            text=part,
+            platform=platform.value, destination_id=destination_id, text=parts[0]
         )
-        try:
-            await publisher.publish_outbound(queue_name, envelope.model_dump_json().encode())
-            published += 1
-        except Exception as e:
-            # Stop on the first failure: a downed broker will reject the rest
-            # too. Already-published parts can't be unsent, but the caller does
-            # NOT retry on a failure result (the notification orchestrator
-            # records the status once and never re-enqueues), so reporting
-            # failure can't duplicate them — it just keeps a partial send from
-            # being recorded as a fully delivered notification.
-            log.error(
-                "publish_outbound_message: publish failed",
-                platform=platform.value,
-                error=str(e),
-                published=published,
-                total=len(parts),
-            )
-            break
+    else:
+        envelope = OutboundMessageEnvelope(
+            platform=platform.value, destination_id=destination_id, text_parts=parts
+        )
 
-    if published:
-        log.info(
-            "outbound_message_published",
+    try:
+        await publisher.publish_outbound(queue_name, envelope.model_dump_json().encode())
+    except Exception as e:
+        log.error(
+            "publish_outbound_message: publish failed",
             platform=platform.value,
-            queue=queue_name,
-            parts=published,
+            error=str(e),
             total=len(parts),
         )
-    return OutboundResult.PUBLISHED if published == len(parts) else OutboundResult.FAILED
+        return OutboundResult.FAILED
+
+    log.info(
+        "outbound_message_published",
+        platform=platform.value,
+        queue=queue_name,
+        parts=len(parts),
+    )
+    return OutboundResult.PUBLISHED
 
 
 async def publish_outbound_file(
