@@ -28,12 +28,27 @@ from app.services.notification_service import notification_service
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
 from app.utils.redis_utils import RedisPoolManager
+from app.utils.timezone import is_within_local_daytime
 from shared.py.wide_events import log, wide_task
 
 DORMANT_DAYS = 5
 WAITING_LABEL_MAX_DAYS = 8
-NOTIFICATION_COOLDOWN_SECONDS = 86400  # 24 hours
 MAX_HEALTH_CHECKS_PER_USER = 10  # Max agent health-check calls per user per sweep
+
+# Escalating backoff between repeat notifications for the same todo: notify, then
+# wait 1 day, then 3, then 7 before each repeat. After the schedule is exhausted
+# the todo is muted for MUTE_DAYS so a permanently-stuck todo stops nagging.
+NOTIFICATION_BACKOFF_DAYS = (1, 3, 7)
+NOTIFICATION_MUTE_DAYS = 30
+# Strike counter lives longer than the cooldown so the escalation level survives
+# between notifications; it resets only after this much silence.
+STRIKE_TTL_DAYS = 30
+SECONDS_PER_DAY = 86400
+
+# Quiet hours: only push proactive notifications during the user's local daytime
+# so reminders never arrive in the middle of the night.
+DAYTIME_START_HOUR = 9
+DAYTIME_END_HOUR = 21
 
 BLOCKING_LABELS = {"waiting-for-reply", "waiting-for-approval", "blocked"}
 UNTITLED_TODO_TITLE = "Untitled Todo"
@@ -63,9 +78,8 @@ async def maintenance_sweep_tracked_todos(_ctx: dict) -> str:
         async for doc in cursor:
             todo_id = str(doc["_id"])
 
-            # Check 24h cooldown
-            cooldown_key = f"gaia_maintenance_notified:{todo_id}"
-            if await pool.exists(cooldown_key):
+            # Skip todos still inside their (escalating) notification backoff.
+            if await pool.exists(_cooldown_key(todo_id)):
                 continue
 
             if doc.get("expires_at") and doc["expires_at"] <= now:
@@ -92,32 +106,49 @@ async def maintenance_sweep_tracked_todos(_ctx: dict) -> str:
 
         # Track health-check calls per user to cap LLM usage per sweep
         health_checks_used: dict[str, int] = {}
+        # Cache the daytime decision per user for the duration of this sweep.
+        daytime_cache: dict[str, bool] = {}
 
         for doc in expired:
             uid = doc["user_id"]
+            # Defer to a daytime sweep — no cooldown consumed, retried later.
+            if not await _is_user_daytime(uid, now, daytime_cache):
+                continue
             if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
                 continue
             result = await _health_check_expired(doc, pool)
             health_checks_used[uid] = health_checks_used.get(uid, 0) + 1
             if result == "archived":
                 archived += 1
-            else:
+            elif result == "notified":
                 notified_expired += 1
 
         for doc in overdue:
-            await _notify_overdue(doc, pool)
-            notified_overdue += 1
+            uid = doc["user_id"]
+            if not await _is_user_daytime(uid, now, daytime_cache):
+                continue
+            if await _notify_overdue(doc, pool):
+                notified_overdue += 1
 
+        # Collect dormant todos that need human attention, then apply the
+        # escalating backoff once per todo and drop any that are now muted.
+        needs_attention_candidates: list[dict] = []
         for doc in dormant:
             uid = doc["user_id"]
+            if not await _is_user_daytime(uid, now, daytime_cache):
+                continue
             if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
-                needs_attention_todos.append(doc)
+                needs_attention_candidates.append(doc)
                 continue
             result = await _health_check_dormant(doc, pool)
             health_checks_used[uid] = health_checks_used.get(uid, 0) + 1
             if result == "requeued":
                 requeued += 1
             else:
+                needs_attention_candidates.append(doc)
+
+        for doc in needs_attention_candidates:
+            if await _register_notification(pool, str(doc["_id"])):
                 needs_attention_todos.append(doc)
 
         if needs_attention_todos:
@@ -201,7 +232,8 @@ async def _health_check_expired(doc: dict, pool: Any) -> str:
     """
     Run a health-check agent call for an expired todo.
 
-    Returns "archived" if the agent decides it expired cleanly, "notified" otherwise.
+    Returns "archived" if the agent decides it expired cleanly, "notified" if a
+    notification was sent, or "muted" when the escalating backoff is exhausted.
     """
     todo_id = str(doc["_id"])
     user_id: str = doc.get("user_id", "")
@@ -224,11 +256,17 @@ async def _health_check_expired(doc: dict, pool: Any) -> str:
     if response.startswith("ARCHIVE:"):
         reason = response[len("ARCHIVE:") :].strip()
         await tracked_todo_service.archive_tracked_todo(todo_id, user_id, reason)
-        await _set_cooldown(pool, todo_id)
+        # Archived todos leave the active set; a short cooldown just avoids a
+        # redundant re-scan before the archive propagates.
+        await _set_cooldown(pool, todo_id, NOTIFICATION_BACKOFF_DAYS[0])
         log.info("maintenance_sweep.expired_archived", todo_id=todo_id, reason=reason)
         return "archived"
 
-    # Default: notify
+    # Default: notify, subject to the escalating backoff.
+    if not await _register_notification(pool, todo_id):
+        log.info("maintenance_sweep.expired_muted", todo_id=todo_id)
+        return "muted"
+
     message = response[len("NOTIFY:") :].strip() if response.startswith("NOTIFY:") else response
     await _send_individual_notification(
         user_id=user_id,
@@ -237,7 +275,6 @@ async def _health_check_expired(doc: dict, pool: Any) -> str:
         todo_id=todo_id,
         notification_type=NotificationType.WARNING,
     )
-    await _set_cooldown(pool, todo_id)
     log.info("maintenance_sweep.expired_notified", todo_id=todo_id)
     return "notified"
 
@@ -282,7 +319,9 @@ async def _health_check_dormant(doc: dict, pool: Any) -> str:
             "maintenance_requeued",
             f"Dormant todo re-queued by maintenance sweep (idle {idle_days}d). Action: {action}",
         )
-        await _set_cooldown(pool, todo_id)
+        # Re-queued for execution, not notified — a short cooldown avoids
+        # re-processing before the scheduled run; no escalation strike consumed.
+        await _set_cooldown(pool, todo_id, NOTIFICATION_BACKOFF_DAYS[0])
         log.info(
             "maintenance_sweep.dormant_requeued",
             todo_id=todo_id,
@@ -290,18 +329,27 @@ async def _health_check_dormant(doc: dict, pool: Any) -> str:
         )
         return "requeued"
 
-    await _set_cooldown(pool, todo_id)
+    # The caller registers the escalating backoff for needs-attention todos
+    # (so muted ones are dropped from the digest), so don't set a cooldown here.
     log.info("maintenance_sweep.dormant_needs_attention", todo_id=todo_id)
     return "needs_attention"
 
 
-async def _notify_overdue(doc: dict, pool: Any) -> None:
-    """Send an individual notification for an overdue todo and label it needs-follow-up."""
+async def _notify_overdue(doc: dict, pool: Any) -> bool:
+    """Notify about an overdue todo and label it needs-follow-up.
+
+    Returns True if a notification was sent, False when the escalating backoff
+    is exhausted and the todo is muted.
+    """
     todo_id = str(doc["_id"])
     user_id: str = doc.get("user_id", "")
     title: str = doc.get("title", UNTITLED_TODO_TITLE)
     due_date: datetime | None = doc.get("due_date")
     now = datetime.now(UTC)
+
+    if not await _register_notification(pool, todo_id):
+        log.info("maintenance_sweep.overdue_muted", todo_id=todo_id)
+        return False
 
     days_overdue = (now - due_date).days if due_date else 0
 
@@ -322,12 +370,12 @@ async def _notify_overdue(doc: dict, pool: Any) -> None:
         },
     )
 
-    await _set_cooldown(pool, todo_id)
     log.info(
         "maintenance_sweep.overdue_notified",
         todo_id=todo_id,
         days_overdue=days_overdue,
     )
+    return True
 
 
 def _todo_redirect_action(label: str, todo_id: str | None) -> NotificationAction:
@@ -385,7 +433,11 @@ async def _send_dormant_digest(todos: list[dict]) -> None:
                     type=NotificationType.INFO,
                     priority=2,
                     content=NotificationContent(
-                        title=f"{count} dormant todo{'s' if count != 1 else ''} need attention",
+                        title=(
+                            f"{count} dormant todo needs attention"
+                            if count == 1
+                            else f"{count} dormant todos need attention"
+                        ),
                         body=body,
                         actions=[action],
                     ),
@@ -521,7 +573,64 @@ async def _send_individual_notification(
         )
 
 
-async def _set_cooldown(pool: Any, todo_id: str) -> None:
-    """Set a 24h Redis cooldown key so this todo is not processed again soon."""
-    cooldown_key = f"gaia_maintenance_notified:{todo_id}"
-    await pool.set(cooldown_key, "1", ex=NOTIFICATION_COOLDOWN_SECONDS)
+def _cooldown_key(todo_id: str) -> str:
+    """Redis key whose presence throttles re-processing of a todo."""
+    return f"gaia_maintenance_notified:{todo_id}"
+
+
+def _strike_key(todo_id: str) -> str:
+    """Redis key holding the escalation level (notification count) for a todo."""
+    return f"gaia_maintenance_strikes:{todo_id}"
+
+
+async def _set_cooldown(pool: Any, todo_id: str, days: int) -> None:
+    """Throttle re-processing of a todo for ``days`` days."""
+    await pool.set(_cooldown_key(todo_id), "1", ex=days * SECONDS_PER_DAY)
+
+
+async def _register_notification(pool: Any, todo_id: str) -> bool:
+    """Advance a todo's escalating notification backoff.
+
+    Returns True if a notification should be sent now and sets the next cooldown
+    from ``NOTIFICATION_BACKOFF_DAYS``. Returns False once the schedule is
+    exhausted — the todo is muted for ``NOTIFICATION_MUTE_DAYS`` and the caller
+    must not send. The strike counter outlives each cooldown so the escalation
+    level survives between notifications, resetting only after ``STRIKE_TTL_DAYS``
+    of silence.
+    """
+    strike_key = _strike_key(todo_id)
+    raw = await pool.get(strike_key)
+    if isinstance(raw, bytes):
+        raw = raw.decode()
+    strike = (int(raw) + 1) if raw else 1
+
+    if strike > len(NOTIFICATION_BACKOFF_DAYS):
+        await _set_cooldown(pool, todo_id, NOTIFICATION_MUTE_DAYS)
+        return False
+
+    await pool.set(strike_key, str(strike), ex=STRIKE_TTL_DAYS * SECONDS_PER_DAY)
+    await _set_cooldown(pool, todo_id, NOTIFICATION_BACKOFF_DAYS[strike - 1])
+    return True
+
+
+async def _is_user_daytime(user_id: str, now: datetime, cache: dict[str, bool]) -> bool:
+    """Whether it is currently daytime for ``user_id`` (cached per sweep).
+
+    Proactive notifications are deferred outside the user's local daytime window
+    so they never arrive overnight. Fails open (returns True) when the user or
+    timezone can't be resolved.
+    """
+    if user_id in cache:
+        return cache[user_id]
+
+    timezone_name: str | None = None
+    try:
+        user = await get_user_by_id(user_id)
+        if user:
+            timezone_name = user.get("timezone")
+    except Exception as exc:
+        log.warning("maintenance_sweep.user_tz_lookup_failed", user_id=user_id, error=str(exc))
+
+    result = is_within_local_daytime(now, timezone_name, DAYTIME_START_HOUR, DAYTIME_END_HOUR)
+    cache[user_id] = result
+    return result

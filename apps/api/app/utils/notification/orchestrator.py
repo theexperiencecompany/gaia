@@ -222,14 +222,22 @@ class NotificationOrchestrator:
             )
 
     async def _get_channel_prefs(self, user_id: str) -> dict:
-        """Fetch user's notification channel preferences from DB."""
+        """Fetch user's notification channel preferences from DB.
+
+        On a transient read failure, fall back to the SAME defaults a user with
+        no stored preference gets (``DEFAULT_CHANNEL_PREFERENCES`` — all enabled),
+        not "all disabled". An opt-out lives in a stored document; an unreadable
+        document means the preference is *unknown*, and treating unknown as
+        opted-out silently drops notifications the user asked for and makes
+        delivery non-deterministic across transient DB blips. Erring toward
+        delivery (one stray message during a rare outage) beats chronically
+        dropping reminders.
+        """
         try:
             return await fetch_channel_preferences(user_id)
         except Exception as e:
-            # Default to all DISABLED on error — better to skip delivery than
-            # to spam users who have opted out when the DB is unavailable.
-            log.warning(f"Failed to fetch channel prefs for {user_id}: {e}")
-            return dict.fromkeys(DEFAULT_CHANNEL_PREFERENCES, False)
+            log.warning(f"Failed to fetch channel prefs for {user_id}, using defaults: {e}")
+            return dict(DEFAULT_CHANNEL_PREFERENCES)
 
     async def _deliver_via_channel(
         self, notification: NotificationRecord, adapter: ChannelAdapter
