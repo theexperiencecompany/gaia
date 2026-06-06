@@ -346,13 +346,16 @@ async def _run_foreground(
         )
 
     try:
-        async with asyncio.timeout(timeout):
-            result = await sbx.commands.run(  # type: ignore[attr-defined]
-                command,
-                cwd=cwd or WORKSPACE_ROOT,
-                on_stdout=_on_stdout,
-                on_stderr=_on_stderr,
-            )
+        # `timeout` is the e2b SDK's server-side command deadline: when it fires
+        # the remote process is killed, which a local `asyncio.timeout` cannot do.
+        # This is not the cancellable local-await pattern S7483 targets.
+        result = await sbx.commands.run(  # type: ignore[attr-defined]  # NOSONAR python:S7483
+            command,
+            cwd=cwd or WORKSPACE_ROOT,
+            on_stdout=_on_stdout,
+            on_stderr=_on_stderr,
+            timeout=timeout,
+        )
     except (TimeoutError, asyncio.CancelledError):
         _record_bash_exit_code(None, timed_out=True)
         raise

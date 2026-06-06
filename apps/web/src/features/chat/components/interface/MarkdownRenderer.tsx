@@ -50,7 +50,8 @@ const MarkdownImage: React.FC<MarkdownImageProps> = ({
   conversationId,
   onOpen,
 }) => {
-  const resolved = resolveArtifactSrc(src, conversationId) ?? (src as string);
+  const resolved = resolveArtifactSrc(src, conversationId) ?? src;
+  if (!resolved) return null;
   return (
     <Image
       width={500}

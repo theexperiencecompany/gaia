@@ -496,8 +496,8 @@ def _check_search_first(chat_results: list[ChatResult]) -> tuple[list[str], list
 
 
 def _check_recurring_fields(scenario: TestScenario, new_todos: list[dict]) -> list[str]:
-    """Validate recurring-todo fields for the recurring scenario (S04)."""
-    if scenario.id != "S04" or not new_todos:
+    """Validate recurring-todo fields for the recurring scenario (tagged ``recurring``)."""
+    if "recurring" not in scenario.tags or not new_todos:
         return []
     todo = new_todos[0]
     failures = []
@@ -676,7 +676,7 @@ def _report_transcript(r: ScenarioResult) -> list[str]:
 
 
 def _report_detail(r: ScenarioResult) -> list[str]:
-    status = "✅ PASS" if r.passed else "❌ FAIL"
+    status = _summary_status(r)
     out = [
         f"### [{r.scenario.id}] {r.scenario.name} — {status}",
         "",

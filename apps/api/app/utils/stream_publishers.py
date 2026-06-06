@@ -18,8 +18,9 @@ def accumulate_todo_progress(
     """Record the latest todo-progress snapshot keyed by its source."""
     if chunk_json and "todo_progress" in chunk_json:
         snapshot = chunk_json["todo_progress"]
-        source = snapshot.get("source", "executor")
-        todo_progress_accumulated[source] = snapshot
+        if isinstance(snapshot, dict):
+            source = snapshot.get("source", "executor")
+            todo_progress_accumulated[source] = snapshot
 
 
 async def publish_other_data(
@@ -55,6 +56,8 @@ async def publish_tool_output(
     if "tool_output" not in new_data:
         return
     output_data = new_data["tool_output"]
+    if not isinstance(output_data, dict):
+        return
     tool_call_id = output_data.get("tool_call_id")
     output = output_data.get("output")
     if tool_call_id and output:

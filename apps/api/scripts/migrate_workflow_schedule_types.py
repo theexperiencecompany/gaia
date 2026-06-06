@@ -139,6 +139,16 @@ async def _rearm_workflow(
     timezone = (doc.get("trigger_config") or {}).get("timezone") or "UTC"
     next_run = get_next_run_time(doc["repeat"], now, timezone)
 
+    if next_run is None:
+        # Invalid cron or no future occurrence left -> nothing more to fire.
+        print(f"  {workflow_id}: no future run -> completed")
+        if apply:
+            await workflows_collection.update_one(
+                {"_id": workflow_id},
+                {"$set": {"status": ScheduledTaskStatus.COMPLETED.value}},
+            )
+        return "completed"
+
     if _recurrence_limit_reached(doc, next_run):
         print(f"  {workflow_id}: limit reached -> completed")
         if apply:
