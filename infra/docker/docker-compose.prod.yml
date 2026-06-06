@@ -35,11 +35,15 @@ services:
     image: ghcr.io/theexperiencecompany/gaia:latest
     working_dir: /app/apps/api
     command: python -m uvicorn app.main:app --host 0.0.0.0 --port 80 --no-access-log --workers 1 --timeout-keep-alive 65 --timeout-graceful-shutdown 30 --h11-max-incomplete-event-size 16777216
-    cap_add:
-      - SYS_ADMIN
     volumes:
-      - /dev/fuse:/dev/fuse
-      - juicefs_cache:/var/cache/juicefs
+      # JuiceFS via the official juicedata/juicefs volume plugin (Swarm-native).
+      # The plugin holds the FUSE privilege; this container stays unprivileged
+      # (no /dev/fuse, no SYS_ADMIN). Volume `gaia_jfs` is pre-created per node.
+      - type: volume
+        source: gaia_jfs
+        target: /mnt/jfs
+        volume:
+          nocopy: true
     environment:
       PYTHONUNBUFFERED: "1"
       FORCE_COLOR: "0"
@@ -109,11 +113,15 @@ services:
     image: ghcr.io/theexperiencecompany/gaia:latest
     working_dir: /app/apps/api
     command: python -m arq app.worker.WorkerSettings
-    cap_add:
-      - SYS_ADMIN
     volumes:
-      - /dev/fuse:/dev/fuse
-      - juicefs_cache:/var/cache/juicefs
+      # JuiceFS via the official juicedata/juicefs volume plugin (Swarm-native).
+      # The plugin holds the FUSE privilege; this container stays unprivileged
+      # (no /dev/fuse, no SYS_ADMIN). Volume `gaia_jfs` is pre-created per node.
+      - type: volume
+        source: gaia_jfs
+        target: /mnt/jfs
+        volume:
+          nocopy: true
     environment:
       WORKER_TYPE: arq_worker
       PYTHONPATH: /app/apps/api
@@ -807,7 +815,12 @@ volumes:
   grafana_data:
   prometheus_data:
   promtail_positions:
-  juicefs_cache:
+  # JuiceFS volume backed by the juicedata/juicefs plugin. Pre-create per node:
+  #   docker volume create -d juicedata/juicefs -o name=gaia-0 -o metaurl=... \
+  #     -o access-key=... -o secret-key=... gaia_jfs
+  # (no -o mountFlags --cache-dir: that path doesn't exist in the plugin → mount EOF)
+  gaia_jfs:
+    external: true
 
 networks:
   gaia-prod-shared:
