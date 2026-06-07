@@ -1,0 +1,12 @@
+# Cloudflare Workers Static Assets headers.
+# Content-hashed Next.js assets are immutable — cache them for a year so the
+# browser never re-downloads or revalidates them across navigations / repeat
+# visits. OpenNext serves these from the asset layer, which otherwise applies
+# `max-age=0, must-revalidate` (forcing a revalidation round-trip per chunk).
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Public images are not content-hashed; cache a month with SWR (mirrors the
+# next.config images header, applied here at the faster asset layer).
+/images/*
+  Cache-Control: public, max-age=2592000, stale-while-revalidate=604800

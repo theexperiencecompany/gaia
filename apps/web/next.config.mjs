@@ -162,6 +162,11 @@ const nextConfig = {
     return config;
   },
   images: {
+    // Offload optimization to Cloudflare Image Resizing (/cdn-cgi/image/) via a
+    // custom loader — edge-cached, off the worker. Requires Transformations
+    // enabled on the zone. See image-loader.ts.
+    loader: "custom",
+    loaderFile: "./image-loader.ts",
     dangerouslyAllowSVG: true,
     minimumCacheTTL: 2_592_000, // 30 days — overrides short upstream Cache-Control (e.g. GitHub's 5 min)
     remotePatterns: [
