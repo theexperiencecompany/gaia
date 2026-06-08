@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from bson import ObjectId
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 
+from app.constants.error_codes import NOT_AUTHENTICATED
 from app.db.mongodb.collections import users_collection
 from shared.py.wide_events import log
 
@@ -57,10 +58,22 @@ async def get_current_user(request: Request):
     """
     if not hasattr(request.state, "authenticated") or not request.state.authenticated:
         log.info("No authenticated user found in request state")
-        raise HTTPException(status_code=401, detail="Unauthorized: Authentication required")
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error_code": NOT_AUTHENTICATED,
+                "message": "Authentication required",
+            },
+        )
     if not request.state.user:
         log.error("User marked as authenticated but no user data found")
-        raise HTTPException(status_code=401, detail="Unauthorized: User data missing")
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error_code": NOT_AUTHENTICATED,
+                "message": "User data missing",
+            },
+        )
 
     user = request.state.user
     log.set(
