@@ -55,6 +55,6 @@ for (const file of files) {
   slugs.push(slug);
 }
 
-slugs.sort();
+slugs.sort((a, b) => a.localeCompare(b));
 writeFileSync(join(OUT_DIR, "_slugs.json"), JSON.stringify(slugs));
 console.log(`[extract-blog] wrote ${slugs.length} posts -> public/data/blog/`);

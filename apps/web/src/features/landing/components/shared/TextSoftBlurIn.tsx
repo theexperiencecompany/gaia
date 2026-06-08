@@ -105,7 +105,7 @@ function TextSoftBlurInImmediate({
         return (
           <span
             // biome-ignore lint/suspicious/noArrayIndexKey: text is static, index is stable
-            key={i}
+            key={i} // NOSONAR S6479: static text split — index is the stable identity, list never reorders
             style={charStyle}
           >
             {part}
