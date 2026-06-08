@@ -18,7 +18,8 @@
   ],
   "scripts": {
     "extract-icons": "tsx scripts/extract-icon-paths.ts",
-    "prebuild": "npm run extract-icons",
+    "extract-blog": "node scripts/extract-blog-data.mjs",
+    "prebuild": "npm run extract-icons && npm run extract-blog",
     "dev": "nx next:dev --turbopack",
     "dev:webpack": "nx next:dev",
     "build": "nx next:build",
@@ -32,6 +33,7 @@
     "lint:fix": "npm run fix",
     "format": "biome format --write .",
     "promote-static": "node scripts/promote-static-landing.mjs",
+    "cf:build": "opennextjs-cloudflare build && npm run promote-static",
     "deploy": "opennextjs-cloudflare build && npm run promote-static && opennextjs-cloudflare deploy",
     "preview": "opennextjs-cloudflare build && npm run promote-static && opennextjs-cloudflare preview",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
