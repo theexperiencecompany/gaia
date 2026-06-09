@@ -15,6 +15,12 @@ import type { ImageLoaderProps } from "next/image";
 const normalizeSrc = (src: string) =>
   src.startsWith("/") ? src.slice(1) : src;
 
+// Cloudflare treats everything after the options segment as the source, so a
+// `?` or `#` in the source (e.g. signed image URLs) would otherwise be parsed
+// as the loader URL's own query/fragment and truncate the path. Escape them.
+const escapeSrcForPath = (src: string) =>
+  normalizeSrc(src).replaceAll("?", "%3F").replaceAll("#", "%23");
+
 export default function cloudflareLoader({
   src,
   width,
@@ -31,5 +37,5 @@ export default function cloudflareLoader({
   }
 
   const params = [`width=${width}`, `quality=${quality || 75}`, "format=auto"];
-  return `/cdn-cgi/image/${params.join(",")}/${normalizeSrc(src)}`;
+  return `/cdn-cgi/image/${params.join(",")}/${escapeSrcForPath(src)}`;
 }

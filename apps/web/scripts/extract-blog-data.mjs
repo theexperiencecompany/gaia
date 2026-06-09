@@ -37,10 +37,16 @@ rmSync(OUT_DIR, { recursive: true, force: true });
 mkdirSync(OUT_DIR, { recursive: true });
 
 const slugs = [];
+const seenSlugs = new Set();
 for (const file of files) {
   const raw = readFileSync(join(CONTENT_DIR, file), "utf8");
   const { data, content } = matter(raw);
   const slug = data.slug || file.replace(/\.(mdx|md)$/, "");
+  if (seenSlugs.has(slug)) {
+    console.error(`[extract-blog] duplicate slug "${slug}" from ${file}`);
+    process.exit(1);
+  }
+  seenSlugs.add(slug);
   const post = {
     slug,
     title: data.title,

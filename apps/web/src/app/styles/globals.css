@@ -330,6 +330,21 @@
     animation: none;
     opacity: 1;
   }
+
+  /* TextSoftBlurIn/SoftBlurInBlock apply their motion via inline styles, so the
+     resets need `!important` to win over them and render the final state. */
+  .sbi-anim {
+    /* biome-ignore lint/complexity/noImportantStyles: override inline animation */
+    animation: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override inline transition */
+    transition: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override inline opacity */
+    opacity: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override inline filter */
+    filter: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override inline transform */
+    transform: none !important;
+  }
 }
 
 /*

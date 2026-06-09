@@ -106,6 +106,7 @@ function TextSoftBlurInImmediate({
           <span
             // biome-ignore lint/suspicious/noArrayIndexKey: text is static, index is stable
             key={i} // NOSONAR S6479: static text split — index is the stable identity, list never reorders
+            className="sbi-anim"
             style={charStyle}
           >
             {part}
@@ -217,6 +218,7 @@ function TextSoftBlurInOnScroll({
           <span
             // biome-ignore lint/suspicious/noArrayIndexKey: stable id + index
             key={`${baseId}-${i}`}
+            className="sbi-anim"
             style={charStyle}
           >
             {part}
@@ -267,7 +269,11 @@ function SoftBlurInBlockImmediate({
     "--sbi-blur": `${blur}px`,
     "--sbi-y": `${yOffset}px`,
   };
-  return createElement(as, { className: cn(className), style }, children);
+  return createElement(
+    as,
+    { className: cn(className, "sbi-anim"), style },
+    children,
+  );
 }
 
 function SoftBlurInBlockOnScroll({
@@ -301,7 +307,11 @@ function SoftBlurInBlockOnScroll({
     willChange: animDone ? "auto" : "opacity, filter, transform",
   };
 
-  return createElement(as, { ref, className: cn(className), style }, children);
+  return createElement(
+    as,
+    { ref, className: cn(className, "sbi-anim"), style },
+    children,
+  );
 }
 
 export function SoftBlurInBlock(props: SoftBlurInBlockProps) {
