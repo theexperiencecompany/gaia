@@ -303,7 +303,9 @@ async def connect_integration(
 
         if isinstance(integration_ids, str):
             integration_ids = [integration_ids]
-        integration_ids = list(dict.fromkeys(iid.lower().strip() for iid in integration_ids if iid.strip()))
+        integration_ids = list(
+            dict.fromkeys(iid.lower().strip() for iid in integration_ids if iid.strip())
+        )
 
         writer = get_stream_writer()
 
