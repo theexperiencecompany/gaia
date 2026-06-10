@@ -161,7 +161,7 @@ void main() {
   // Two components: a tight bright collar (thin) plus a faint long
   // tail — thin edge glow that still dissolves gradually.
   float edge = max(rr - R + 0.02, 0.0) / (1.0 - R);
-  float haloFall = 0.75 * exp(-edge * 10.0) + 0.25 * exp(-pow(edge * 3.2, 1.2));
+  float haloFall = 0.75 * exp(-edge * 16.0) + 0.25 * exp(-pow(edge * 4.0, 1.2));
   float haloNoise = 0.88 + 0.12 * fbm(vec3(uv * 2.0, t * 0.18));
   float halo = haloFall * haloNoise * (1.0 - sphere);
   vec3 haloCol = mix(BRAND, ICE, 0.35) * halo;
