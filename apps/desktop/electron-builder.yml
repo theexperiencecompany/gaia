@@ -65,6 +65,7 @@ mac:
       - CFBundleURLName: "GAIA Protocol"
         CFBundleURLSchemes:
           - gaia
+    NSMicrophoneUsageDescription: 'GAIA listens for the "Hey GAIA" wake word so you can talk to your assistant hands-free.'
 
 dmg:
   iconSize: 100

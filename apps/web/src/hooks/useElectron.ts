@@ -20,6 +20,10 @@ interface ElectronAPI {
   openExternal: (url: string) => void;
   onAuthCallback: (callback: (data: AuthCallbackData) => void) => () => void;
   onAuthRedirecting: (callback: () => void) => () => void;
+  notifyWakeWord: () => void;
+  dismissPopup: () => void;
+  onPopupActivate: (callback: () => void) => () => void;
+  onPopupDeactivate: (callback: () => void) => () => void;
 }
 
 /**
@@ -131,6 +135,51 @@ export function useElectron() {
     [],
   );
 
+  /**
+   * Notify the main process that the wake word was detected
+   * Sent by the hidden wake-listener window; shows the assistant popup
+   */
+  const notifyWakeWord = useCallback(() => {
+    if (typeof window !== "undefined" && hasElectronAPI(window)) {
+      window.api.notifyWakeWord();
+    }
+  }, []);
+
+  /**
+   * Ask the main process to dismiss the assistant popup
+   */
+  const dismissPopup = useCallback(() => {
+    if (typeof window !== "undefined" && hasElectronAPI(window)) {
+      window.api.dismissPopup();
+    }
+  }, []);
+
+  /**
+   * Register a callback for assistant popup activation events
+   * Returns a cleanup function to remove the listener
+   */
+  const onPopupActivate = useCallback((callback: () => void): (() => void) => {
+    if (typeof window !== "undefined" && hasElectronAPI(window)) {
+      return window.api.onPopupActivate(callback);
+    }
+    return () => {}; // No-op cleanup if not in Electron
+  }, []);
+
+  /**
+   * Register a callback for assistant popup deactivation events
+   * Fired just before the popup window hides, for exit animations
+   * Returns a cleanup function to remove the listener
+   */
+  const onPopupDeactivate = useCallback(
+    (callback: () => void): (() => void) => {
+      if (typeof window !== "undefined" && hasElectronAPI(window)) {
+        return window.api.onPopupDeactivate(callback);
+      }
+      return () => {}; // No-op cleanup if not in Electron
+    },
+    [],
+  );
+
   return {
     isElectron,
     signalReady,
@@ -139,5 +188,9 @@ export function useElectron() {
     openExternal,
     onAuthCallback,
     onAuthRedirecting,
+    notifyWakeWord,
+    dismissPopup,
+    onPopupActivate,
+    onPopupDeactivate,
   };
 }

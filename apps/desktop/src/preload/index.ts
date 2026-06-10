@@ -100,6 +100,50 @@ const api = {
     ipcRenderer.on("auth-redirecting", handler);
     return () => ipcRenderer.removeListener("auth-redirecting", handler);
   },
+
+  /**
+   * Notify the main process that the wake word ("Hey GAIA") was
+   * detected. Sent by the hidden `/wake-listener` renderer; the main
+   * process responds by showing the assistant popup.
+   */
+  notifyWakeWord: (): void => ipcRenderer.send("wake-word-detected"),
+
+  /**
+   * Ask the main process to dismiss the assistant popup (after the
+   * renderer's exit animation is triggered via `popup-deactivate`).
+   */
+  dismissPopup: (): void => ipcRenderer.send("popup-dismiss"),
+
+  /**
+   * Subscribe to popup activation events.
+   *
+   * Fired when the assistant popup is shown (wake word or shortcut)
+   * so the renderer can play its entrance animation and start
+   * listening.
+   *
+   * @param callback - Handler invoked on activation.
+   * @returns A cleanup function that removes the listener.
+   */
+  onPopupActivate: (callback: () => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent) => callback();
+    ipcRenderer.on("popup-activate", handler);
+    return () => ipcRenderer.removeListener("popup-activate", handler);
+  },
+
+  /**
+   * Subscribe to popup deactivation events.
+   *
+   * Fired just before the popup window fades out so the renderer can
+   * play its exit animation.
+   *
+   * @param callback - Handler invoked on deactivation.
+   * @returns A cleanup function that removes the listener.
+   */
+  onPopupDeactivate: (callback: () => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent) => callback();
+    ipcRenderer.on("popup-deactivate", handler);
+    return () => ipcRenderer.removeListener("popup-deactivate", handler);
+  },
 };
 
 /*

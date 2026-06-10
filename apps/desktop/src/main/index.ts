@@ -22,7 +22,7 @@
 import "v8-compile-cache";
 
 import { electronApp, optimizer } from "@electron-toolkit/utils";
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, globalShortcut } from "electron";
 import { checkForUpdatesAfterDelay, setupAutoUpdater } from "./auto-updater";
 import { handleDeepLink } from "./deep-link";
 import { registerIpcHandlers } from "./ipc";
@@ -30,12 +30,23 @@ import { registerLinuxDevProtocol, registerProtocol } from "./protocol";
 import { startNextServer, stopNextServer } from "./server";
 import { fixSessionCookies } from "./session";
 import {
+  createAssistantPopup,
+  showAssistantPopup,
+} from "./windows/assistant-popup";
+import {
   createMainWindow,
   getMainWindow,
   setPendingDeepLink,
   showMainWindow,
 } from "./windows/main";
 import { createSplashWindow, isSplashAlive } from "./windows/splash";
+import {
+  createWakeListenerWindow,
+  destroyWakeListenerWindow,
+} from "./windows/wake-listener";
+
+/** Global shortcut that summons the assistant popup (wake-word backup). */
+const ASSISTANT_POPUP_SHORTCUT = "CommandOrControl+Shift+G";
 
 // ---------------------------------------------------------------------------
 // Pre-ready setup (must run before app.ready)
@@ -134,6 +145,19 @@ if (!gotTheLock) {
 
     createMainWindow(() => serverStarted).catch(console.error);
 
+    // Assistant popup + wake-word listener (hidden; non-blocking)
+    createAssistantPopup(() => serverStarted);
+    createWakeListenerWindow(() => serverStarted).catch(console.error);
+
+    if (
+      !globalShortcut.register(ASSISTANT_POPUP_SHORTCUT, showAssistantPopup)
+    ) {
+      console.warn(
+        "[Main] Failed to register shortcut:",
+        ASSISTANT_POPUP_SHORTCUT,
+      );
+    }
+
     // STEP 4 — Fallback timeout (10 s covers server + load + hydration)
     setTimeout(() => {
       if (isSplashAlive()) {
@@ -166,7 +190,12 @@ if (!gotTheLock) {
     if (process.platform !== "darwin") app.quit();
   });
 
+  app.on("will-quit", () => {
+    globalShortcut.unregisterAll();
+  });
+
   app.on("before-quit", () => {
+    destroyWakeListenerWindow();
     stopNextServer().catch(console.error);
   });
 }

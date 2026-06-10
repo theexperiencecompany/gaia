@@ -13,10 +13,9 @@
  * @module windows/main
  */
 
-import { createConnection } from "node:net";
 import { join } from "node:path";
 import { app, BrowserWindow, shell } from "electron";
-import { getServerUrl } from "../server";
+import { loadAppRoute } from "./load-url";
 import { closeSplashWindow } from "./splash";
 
 /** Reference to the current main window (if any). */
@@ -58,94 +57,6 @@ export function consumePendingDeepLink(): string | null {
 }
 
 /**
- * Poll until the production Next.js server is reachable, then
- * navigate the main window to the login page.
- *
- * @param serverReady - A function returning `true` once the server has started.
- */
-async function waitForProductionServer(
-  serverReady: () => boolean,
-): Promise<void> {
-  const maxAttempts = 50; // 50 × 100 ms = 5 s
-
-  for (let i = 0; i < maxAttempts; i++) {
-    if (serverReady()) {
-      // Read the URL only after the server is ready so that
-      // serverPort reflects the actual bound port (which may differ
-      // from the default when the server picked an alternative port).
-      const serverUrl = getServerUrl();
-      console.log("[Main] Server is ready, loading URL:", serverUrl);
-      try {
-        await mainWindow?.loadURL(`${serverUrl}/desktop-login`);
-      } catch (err) {
-        console.error("[Main] Failed to load URL:", err);
-      }
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-
-  const serverUrl = getServerUrl();
-  console.log("[Main] Server wait timeout, attempting to load anyway");
-  try {
-    await mainWindow?.loadURL(`${serverUrl}/desktop-login`);
-  } catch (err) {
-    console.error("[Main] Failed to load URL (fallback):", err);
-  }
-}
-
-/**
- * Poll until the development server on `localhost:3000` accepts
- * TCP connections, then navigate the main window to the login page.
- */
-async function waitForDevServer(): Promise<void> {
-  const devUrl = "http://localhost:3000";
-  const maxAttempts = 100; // 100 × 100 ms = 10 s
-
-  console.log("[Main] Waiting for dev server at", devUrl);
-
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const isReady = await new Promise<boolean>((resolve) => {
-        const socket = createConnection({ port: 3000, host: "localhost" });
-        socket.once("connect", () => {
-          socket.destroy();
-          resolve(true);
-        });
-        socket.once("error", () => {
-          socket.destroy();
-          resolve(false);
-        });
-        setTimeout(() => {
-          socket.destroy();
-          resolve(false);
-        }, 100);
-      });
-
-      if (isReady) {
-        console.log("[Main] Dev server ready, loading...");
-        try {
-          await mainWindow?.loadURL(`${devUrl}/desktop-login`);
-        } catch (err) {
-          console.error("[Main] Failed to load dev URL:", err);
-        }
-        return;
-      }
-    } catch {
-      // Ignore errors, keep polling
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-
-  console.log("[Main] Dev server wait timeout, attempting to load anyway");
-  try {
-    await mainWindow?.loadURL(`${devUrl}/desktop-login`);
-  } catch (err) {
-    console.error("[Main] Failed to load dev URL (fallback):", err);
-  }
-}
-
-/**
  * Create the main application window.
  *
  * The window is created **hidden** (`show: false`) and starts
@@ -160,8 +71,6 @@ async function waitForDevServer(): Promise<void> {
 export async function createMainWindow(
   serverReady: () => boolean,
 ): Promise<void> {
-  const isProduction = process.env.NODE_ENV === "production" || app.isPackaged;
-
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -193,11 +102,7 @@ export async function createMainWindow(
     return { action: "deny" };
   });
 
-  if (isProduction) {
-    waitForProductionServer(serverReady).catch(console.error);
-  } else {
-    waitForDevServer().catch(console.error);
-  }
+  loadAppRoute(mainWindow, "/desktop-login", serverReady).catch(console.error);
 }
 
 /**
