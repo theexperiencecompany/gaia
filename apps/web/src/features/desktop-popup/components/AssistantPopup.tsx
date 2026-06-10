@@ -78,10 +78,11 @@ export default function AssistantPopup() {
 
   if (activationCount === 0) return null;
 
-  // p-1.5 (6px) frame: the X button overhangs the pill by 4px and must
-  // never clip at the window edge.
   return (
-    <div className="h-screen overflow-hidden p-1.5 text-zinc-100">
+    // Flex-centered so the pill content is optically dead-center no
+    // matter what internal spacing the input renders. Zero frame: the
+    // window capsule IS the input bounds.
+    <div className="flex h-screen flex-col justify-center overflow-hidden text-zinc-100">
       <m.div
         key={activationCount}
         initial={{ opacity: 0, scale: 0.97, y: -8 }}

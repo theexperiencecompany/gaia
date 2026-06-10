@@ -61,21 +61,15 @@ export default function PopupComposer({
       event.preventDefault();
       handleSend();
     }
+    // The field swallows Escape (react-aria clear behavior) before the
+    // window-level handler sees it — dismiss from here too.
+    if (event.key === "Escape" && !isStreaming) {
+      dismissPopup();
+    }
   };
 
   return (
-    <div data-popup-composer className="relative">
-      <Button
-        isIconOnly
-        size="sm"
-        radius="full"
-        variant="solid"
-        onPress={dismissPopup}
-        aria-label="Close"
-        className="-top-1 -right-1 absolute z-10 h-5 min-h-5 w-5 max-w-5 min-w-5 bg-zinc-800 text-zinc-400 hover:text-zinc-200"
-      >
-        <Cancel01Icon className="size-3" />
-      </Button>
+    <div data-popup-composer>
       <Input
         ref={inputRef}
         value={text}
@@ -92,6 +86,22 @@ export default function PopupComposer({
           // negative margins keep the optical size in line with the send
           // button while letting the glow breathe.
           <PopupOrb state={agentState} className="-m-3 size-16 shrink-0" />
+        }
+        endContent={
+          // The pill's capsule IS the window shape — a corner-overhanging
+          // X would always be sliced by its curve, so the close button
+          // lives inside the right end instead.
+          <Button
+            isIconOnly
+            size="sm"
+            radius="full"
+            variant="light"
+            onPress={dismissPopup}
+            aria-label="Close"
+            className="h-6 min-h-6 w-6 max-w-6 min-w-6 shrink-0 text-zinc-500 hover:text-zinc-200"
+          >
+            <Cancel01Icon className="size-3.5" />
+          </Button>
         }
         classNames={{
           // Fully transparent: the window's liquid glass IS the field's

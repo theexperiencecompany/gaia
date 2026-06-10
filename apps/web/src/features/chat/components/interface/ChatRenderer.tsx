@@ -2,6 +2,7 @@
 
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
+import nextDynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import {
   type ReactNode,
@@ -46,6 +47,11 @@ interface ChatRendererProps {
    */
   compact?: boolean;
 }
+
+/** Compact-mode loader: the GAIA orb instead of the wave spinner. */
+const GaiaOrbLazy = nextDynamic(() => import("@/components/ui/orb/GaiaOrb"), {
+  ssr: false,
+});
 
 /**
  * Bubble keys that have already played their entrance. Module-level so
@@ -416,15 +422,19 @@ export default function ChatRenderer({
           );
         },
       )}
-      {(isLoading || isAwaitingExecutorResult) && (
-        <AnimatePresence>
-          <LoadingIndicator
-            loadingText={loadingText}
-            loadingTextKey={loadingTextKey}
-            toolInfo={toolInfo}
-          />
-        </AnimatePresence>
-      )}
+      {(isLoading || isAwaitingExecutorResult) &&
+        (compact ? (
+          // The orb is the popup's loading indicator — no wave spinner.
+          <GaiaOrbLazy state="thinking" className="-my-3 -ml-2 size-16" />
+        ) : (
+          <AnimatePresence>
+            <LoadingIndicator
+              loadingText={loadingText}
+              loadingTextKey={loadingTextKey}
+              toolInfo={toolInfo}
+            />
+          </AnimatePresence>
+        ))}
     </>
   );
 }

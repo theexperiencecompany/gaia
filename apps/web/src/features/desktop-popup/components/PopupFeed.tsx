@@ -13,6 +13,18 @@ const STICK_THRESHOLD_PX = 80;
  * top, dissolving downward — scrolled-away bubbles melt into the glass
  * instead of being cut by an opacity fade.
  */
+/** Default BlurStack stops already read bottom-heavy — reuse for the
+ * bottom edge while more content waits below. */
+const BOTTOM_BLUR_LAYERS: BlurLayer[] = [
+  { blur: 0.5, maskStops: [0, 12.5, 25, 37.5], zIndex: 1 },
+  { blur: 1, maskStops: [12.5, 25, 37.5, 50], zIndex: 2 },
+  { blur: 2, maskStops: [25, 37.5, 50, 62.5], zIndex: 3 },
+  { blur: 4, maskStops: [37.5, 50, 62.5, 75], zIndex: 4 },
+  { blur: 8, maskStops: [50, 62.5, 75, 87.5], zIndex: 5 },
+  { blur: 16, maskStops: [62.5, 75, 87.5, 100], zIndex: 6 },
+  { blur: 32, maskStops: [75, 87.5, 100, 100], zIndex: 7 },
+];
+
 const TOP_BLUR_LAYERS: BlurLayer[] = [
   { blur: 64, maskStops: [0, 0, 0, 12.5], zIndex: 8 },
   { blur: 32, maskStops: [0, 0, 12.5, 25], zIndex: 7 },
@@ -34,6 +46,7 @@ export default function PopupFeed() {
   const contentRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const [scrolled, setScrolled] = useState(false);
+  const [moreBelow, setMoreBelow] = useState(false);
 
   useEffect(() => {
     const scroller = scrollRef.current;
@@ -51,7 +64,8 @@ export default function PopupFeed() {
       const distance =
         scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
       if (distance < STICK_THRESHOLD_PX) stickToBottomRef.current = true;
-      setScrolled(scroller.scrollTop > 4);
+      setScrolled(scroller.scrollTop > 0);
+      setMoreBelow(distance > 4);
     };
     scroller.addEventListener("wheel", handleWheel, { passive: true });
     scroller.addEventListener("scroll", handleScroll, { passive: true });
@@ -95,11 +109,17 @@ export default function PopupFeed() {
           <ChatRenderer compact />
         </div>
       </div>
-      {/* Progressive top blur — only once content has scrolled under it. */}
+      {/* Progressive edge blurs — instant (150ms) and only while content
+          actually continues past that edge. */}
       <div
-        className={`pointer-events-none absolute inset-x-0 top-0 h-14 transition-opacity duration-300 ${scrolled ? "opacity-100" : "opacity-0"}`}
+        className={`pointer-events-none absolute inset-x-0 top-0 h-14 transition-opacity duration-150 ${scrolled ? "opacity-100" : "opacity-0"}`}
       >
         <BlurStack config={TOP_BLUR_LAYERS} className="absolute inset-0" />
+      </div>
+      <div
+        className={`pointer-events-none absolute inset-x-0 bottom-0 h-14 transition-opacity duration-150 ${moreBelow ? "opacity-100" : "opacity-0"}`}
+      >
+        <BlurStack config={BOTTOM_BLUR_LAYERS} className="absolute inset-0" />
       </div>
     </div>
   );

@@ -14,7 +14,9 @@ import { useElectron } from "@/hooks/useElectron";
  */
 export default function WakeListenerPage() {
   const { isElectron, notifyWakeWord } = useElectron();
-  const { state, lastDetection, error } = useHeyGaia({ enabled: isElectron });
+  const { state, lastDetection, error, lastScore } = useHeyGaia({
+    enabled: isElectron,
+  });
 
   useEffect(() => {
     if (lastDetection) notifyWakeWord();
@@ -23,6 +25,7 @@ export default function WakeListenerPage() {
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-1 bg-black font-mono text-xs text-zinc-500">
       <p>wake-listener: {state}</p>
+      <p data-wake-score>{lastScore?.toFixed(4) ?? "0"}</p>
       {error && <p className="px-4 text-red-400">{error.message}</p>}
     </div>
   );

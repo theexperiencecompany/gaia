@@ -21,8 +21,8 @@ import { loadAppRoute } from "./load-url";
 /** Width of both popup windows, in px. */
 const POPUP_WIDTH = 420;
 
-/** Composer pill window height, in px (48px input + 6px frame each side). */
-const COMPOSER_HEIGHT = 60;
+/** Composer pill window height, in px — exactly the 48px input. */
+const COMPOSER_HEIGHT = 48;
 
 /** Gap between the composer pill and the conversation card, in px. */
 const ISLAND_GAP = 8;
@@ -34,7 +34,7 @@ const MAX_SCREEN_FRACTION = 0.8;
 const POPUP_MARGIN = 16;
 
 /** Corner radius of the composer pill (half its height — a capsule). */
-const COMPOSER_CORNER_RADIUS = 30;
+const COMPOSER_CORNER_RADIUS = 24;
 
 /** Corner radius of the conversation card. */
 const FEED_CORNER_RADIUS = 24;
@@ -212,11 +212,16 @@ function pinToAllSpaces(win: BrowserWindow): void {
  * @param serverReady - Returns `true` once the production server is up.
  */
 export function createAssistantPopup(serverReady: () => boolean): void {
+  // Liquid glass is the default: only its native view honors the custom
+  // capsule cornerRadius (vibrancy windows are stuck with the standard
+  // macOS radius). Known tradeoff: the material can still dim for
+  // non-key windows (upstream: Meridius-Labs/electron-liquid-glass#64);
+  // the keep-alive in glass.ts holds the best available counter-knobs.
   const useLiquidGlass = supportsLiquidGlass();
 
-  // The pill floats shadowless; the conversation card keeps its depth.
+  // Shadows give both islands their edge definition on glass.
   composerWindow = new BrowserWindow(
-    islandOptions(COMPOSER_HEIGHT, useLiquidGlass, false),
+    islandOptions(COMPOSER_HEIGHT, useLiquidGlass, true),
   );
   feedWindow = new BrowserWindow(islandOptions(200, useLiquidGlass, true));
 
