@@ -85,6 +85,13 @@ function loadWhatsAppConfig(): WhatsAppConfig {
  * True when Meta rejected a free-form message because it was sent outside the
  * 24-hour customer-service window (Graph API error 131047) — the signal to
  * retry delivery through an approved message template.
+ *
+ * Deliberately matches the exact error code rather than the broader
+ * `reengagementWindow` error category: 131047 is the canonical "closed window"
+ * rejection, and only it is reliably recoverable by resending as a template.
+ * Sibling category codes (e.g. undeliverable / unsupported-type) are different
+ * failures that templating would not fix, so they fall through to the
+ * consumer's normal retry/dead-letter path instead.
  */
 function isReengagementWindowError(err: unknown): boolean {
   return (

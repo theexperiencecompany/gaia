@@ -220,6 +220,7 @@ async def send_notification(
             return {"error": "Notification title cannot be empty", "success": False}
 
         resolved_title = title.strip()
+        resolved_message = message.strip()
         resolved_type = notification_type or NotificationType.INFO
 
         # Build channel configs when specific channels are requested. Unknown
@@ -245,7 +246,7 @@ async def send_notification(
             source=NotificationSourceEnum.AI_AGENT,
             type=resolved_type,
             channels=channel_configs,
-            content=NotificationContent(title=resolved_title, body=message),
+            content=NotificationContent(title=resolved_title, body=resolved_message),
         )
 
         record = await notification_service.create_notification(request)
@@ -271,7 +272,7 @@ async def send_notification(
             "success": True,
             "notification_id": record.id,
             "title": resolved_title,
-            "message": message,
+            "message": resolved_message,
             "notification_type": resolved_type.value,
             "status": record.status.value,
             "delivered_channels": delivered_channels,
