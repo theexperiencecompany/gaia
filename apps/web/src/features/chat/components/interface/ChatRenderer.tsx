@@ -372,9 +372,9 @@ export default function ChatRenderer({
               <ChatBubbleBot
                 key={message.message_id || index}
                 {...getMessageProps(message, "bot", messagePropsOptions)}
-                disableActions={isFollowedByBot || suppressForBusy}
+                disableActions={compact || isFollowedByBot || suppressForBusy}
                 follow_up_actions={
-                  isFollowedByBot || suppressForBusy
+                  compact || isFollowedByBot || suppressForBusy
                     ? undefined
                     : messageProps.follow_up_actions
                 }
@@ -401,6 +401,7 @@ export default function ChatRenderer({
               {...messageProps}
               hideAvatar={compact}
               fullWidth={compact}
+              disableActions={compact}
             />
           );
           return compact ? (

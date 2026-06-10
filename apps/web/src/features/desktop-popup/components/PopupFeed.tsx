@@ -39,26 +39,37 @@ export default function PopupFeed() {
     const scroller = scrollRef.current;
     const content = contentRef.current;
     if (!scroller || !content) return;
+    let raf = 0;
 
+    // Wheel-up is explicit user intent: release the bottom-stick so
+    // streaming growth can't yank the view back down. Reaching the
+    // bottom again re-engages it.
+    const handleWheel = (event: WheelEvent) => {
+      if (event.deltaY < 0) stickToBottomRef.current = false;
+    };
     const handleScroll = () => {
-      stickToBottomRef.current =
-        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <
-        STICK_THRESHOLD_PX;
+      const distance =
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+      if (distance < STICK_THRESHOLD_PX) stickToBottomRef.current = true;
       setScrolled(scroller.scrollTop > 4);
     };
+    scroller.addEventListener("wheel", handleWheel, { passive: true });
     scroller.addEventListener("scroll", handleScroll, { passive: true });
 
+    // Instant, rAF-coalesced follow during content growth — queueing
+    // smooth scrolls every resize tick fights the user and stutters.
     const observer = new ResizeObserver(() => {
-      if (stickToBottomRef.current) {
-        scroller.scrollTo({
-          top: scroller.scrollHeight,
-          behavior: "smooth",
-        });
-      }
+      if (!stickToBottomRef.current) return;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        scroller.scrollTop = scroller.scrollHeight;
+      });
     });
     observer.observe(content);
 
     return () => {
+      cancelAnimationFrame(raf);
+      scroller.removeEventListener("wheel", handleWheel);
       scroller.removeEventListener("scroll", handleScroll);
       observer.disconnect();
     };

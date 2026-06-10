@@ -5,7 +5,7 @@ import * as m from "motion/react-m";
 import { useEffect, useState } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useElectron } from "@/hooks/useElectron";
-import { useChatStoreSync } from "@/stores/chatStore";
+import { useChatStore, useChatStoreSync } from "@/stores/chatStore";
 import { useLoadingStore } from "@/stores/loadingStore";
 import { POPUP_EASE, POPUP_TRANSITION_SECONDS } from "../constants";
 import { usePopupVoice } from "../hooks/usePopupVoice";
@@ -49,9 +49,13 @@ export default function AssistantPopup() {
       queryClient.invalidateQueries({ queryKey: ["current-user"] });
     });
     const offDeactivate = onPopupDeactivate(() => {
-      // Window-level fade handles the visual exit; just stop the voice
-      // session. Content stays mounted for a seamless close.
+      // Window-level fade handles the visual exit; stop the voice session
+      // and clear the conversation — each summon starts a fresh chat,
+      // while messages within one summon accumulate.
       deactivate();
+      const chat = useChatStore.getState();
+      chat.setActiveConversationId(null);
+      chat.setOptimisticMessage(null);
     });
     return () => {
       offActivate();

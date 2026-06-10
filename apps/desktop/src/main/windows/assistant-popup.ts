@@ -66,6 +66,58 @@ let feedContentHeight = 0;
 /** In-flight opacity fades, keyed per window. */
 const fadeTimers = new Map<BrowserWindow, NodeJS.Timeout>();
 
+/** Feed height animation duration, in ms — matches the renderer's
+ * POPUP_TRANSITION_SECONDS so window and content move as one. */
+const RESIZE_DURATION_MS = 350;
+
+/** In-flight feed height animation. */
+let resizeTimer: NodeJS.Timeout | null = null;
+
+/** Quart ease-out — the temporal twin of the renderer's [0.19,1,0.22,1]. */
+function easeOutQuart(t: number): number {
+  return 1 - (1 - t) ** 4;
+}
+
+/**
+ * Animate the feed window to `target` with our own easing — the macOS
+ * default `setBounds` animation is short, linear-ish, and visibly out
+ * of sync with the content's motion.
+ */
+function animateFeedBounds(target: Electron.Rectangle): void {
+  if (!feedWindow || feedWindow.isDestroyed()) return;
+  if (resizeTimer) {
+    clearInterval(resizeTimer);
+    resizeTimer = null;
+  }
+
+  const start = feedWindow.getBounds();
+  if (start.height === target.height && start.y === target.y) {
+    feedWindow.setBounds(target);
+    return;
+  }
+
+  const t0 = Date.now();
+  resizeTimer = setInterval(() => {
+    if (!feedWindow || feedWindow.isDestroyed()) {
+      if (resizeTimer) clearInterval(resizeTimer);
+      resizeTimer = null;
+      return;
+    }
+    const t = Math.min(1, (Date.now() - t0) / RESIZE_DURATION_MS);
+    const e = easeOutQuart(t);
+    feedWindow.setBounds({
+      x: target.x,
+      y: target.y,
+      width: target.width,
+      height: Math.round(start.height + (target.height - start.height) * e),
+    });
+    if (t >= 1 && resizeTimer) {
+      clearInterval(resizeTimer);
+      resizeTimer = null;
+    }
+  }, FADE_TICK_MS);
+}
+
 function cancelFade(win: BrowserWindow): void {
   const timer = fadeTimers.get(win);
   if (timer) {
@@ -228,15 +280,18 @@ function layoutFeed(animate: boolean): void {
     return;
   }
 
-  feedWindow.setBounds(
-    {
-      x: pill.x,
-      y: pill.y + COMPOSER_HEIGHT + ISLAND_GAP,
-      width: POPUP_WIDTH,
-      height,
-    },
-    animate,
-  );
+  const target = {
+    x: pill.x,
+    y: pill.y + COMPOSER_HEIGHT + ISLAND_GAP,
+    width: POPUP_WIDTH,
+    height,
+  };
+
+  if (animate && feedWindow.isVisible()) {
+    animateFeedBounds(target);
+  } else {
+    feedWindow.setBounds(target);
+  }
 
   if (!feedWindow.isVisible() && !dismissing) {
     feedWindow.setOpacity(0);
