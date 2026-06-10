@@ -16,11 +16,13 @@
   padding-left: 0 !important;
 }
 
+/* Actions (copy/pin) align to the same right gutter as the bubbles. */
 .compact-chat .pr-13 {
-  padding-right: 0.25rem !important;
+  padding-right: 0 !important;
 }
 
-/* 60vw (the web default) over-squeezes bubbles in the 420px card. */
+/* The web's 60vw cap over-squeezes bubbles in the 420px card — let
+ * them fill the row naturally and wrap naturally. */
 .compact-chat .imessage-bubble {
-  max-width: 85%;
+  max-width: none;
 }
