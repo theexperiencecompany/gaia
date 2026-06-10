@@ -153,7 +153,9 @@ void main() {
   // Tight outer glow hugging the limb — a hint of light bleed, not an
   // aura. Falloff normalized to the remaining canvas space so it dies
   // out well before the edge (no square clipping).
-  float haloFall = exp(-pow(max(rr - R + 0.02, 0.0) / (1.0 - R) * 6.0, 1.3));
+  // Gentle exponent (~1.15) keeps a long, smooth tail so the blue fades
+  // out gradually instead of stopping at a visible boundary.
+  float haloFall = exp(-pow(max(rr - R + 0.02, 0.0) / (1.0 - R) * 4.2, 1.15));
   float haloNoise = 0.70 + 0.30 * fbm(vec3(uv * 2.0, t * 0.18));
   float halo = haloFall * haloNoise * (1.0 - sphere);
   vec3 haloCol = mix(BRAND, ICE, 0.5 + 0.5 * sin(t * 0.23)) * halo;
