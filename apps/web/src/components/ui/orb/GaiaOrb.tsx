@@ -158,7 +158,10 @@ void main() {
   // alpha step at the boundary reads as a hard-cut outline. The alpha
   // starts near the sphere's own coverage at the limb and the same
   // falloff carries it to zero, so brightness decays with no seam.
-  float haloFall = exp(-pow(max(rr - R + 0.02, 0.0) / (1.0 - R) * 4.2, 1.15));
+  // Two components: a tight bright collar (thin) plus a faint long
+  // tail — thin edge glow that still dissolves gradually.
+  float edge = max(rr - R + 0.02, 0.0) / (1.0 - R);
+  float haloFall = 0.75 * exp(-edge * 10.0) + 0.25 * exp(-pow(edge * 3.2, 1.2));
   float haloNoise = 0.88 + 0.12 * fbm(vec3(uv * 2.0, t * 0.18));
   float halo = haloFall * haloNoise * (1.0 - sphere);
   vec3 haloCol = mix(BRAND, ICE, 0.35) * halo;
