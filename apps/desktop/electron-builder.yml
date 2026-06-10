@@ -68,6 +68,12 @@ mac:
     NSMicrophoneUsageDescription: 'GAIA listens for the "Hey GAIA" wake word so you can talk to your assistant hands-free.'
 
 dmg:
+  # Bands-gradient brand wallpaper; background@2x.png alongside it is
+  # picked up automatically for a retina TIFF.
+  background: resources/dmg/background.png
+  window:
+    width: 540
+    height: 380
   iconSize: 100
   contents:
     - x: 130

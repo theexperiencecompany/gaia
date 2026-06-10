@@ -13,10 +13,9 @@
  * @module windows/assistant-popup
  */
 
-import { release } from "node:os";
 import { join } from "node:path";
 import { app, BrowserWindow, screen } from "electron";
-import liquidGlass from "electron-liquid-glass";
+import { applyLiquidGlass, supportsLiquidGlass } from "./glass";
 import { loadAppRoute } from "./load-url";
 
 /** Popup panel width, in px. */
@@ -96,11 +95,7 @@ function fadeTo(win: BrowserWindow, target: number, onDone?: () => void): void {
  * @param serverReady - Returns `true` once the production server is up.
  */
 export function createAssistantPopup(serverReady: () => boolean): void {
-  // macOS 26 "Tahoe" (Darwin 25) ships native liquid glass; older macOS
-  // falls back to the HUD vibrancy material.
-  const useLiquidGlass =
-    process.platform === "darwin" &&
-    Number.parseInt(release().split(".")[0] ?? "0", 10) >= 25;
+  const useLiquidGlass = supportsLiquidGlass();
 
   popupWindow = new BrowserWindow({
     width: POPUP_WIDTH,
@@ -132,17 +127,9 @@ export function createAssistantPopup(serverReady: () => boolean): void {
   });
 
   if (useLiquidGlass) {
-    const win = popupWindow;
-    win.webContents.once("did-finish-load", () => {
-      try {
-        liquidGlass.addView(win.getNativeWindowHandle(), {
-          cornerRadius: POPUP_CORNER_RADIUS,
-          tintColor: "#00000022",
-        });
-        console.log("[Main] Liquid glass applied to assistant popup");
-      } catch (err) {
-        console.error("[Main] Failed to apply liquid glass:", err);
-      }
+    applyLiquidGlass(popupWindow, {
+      cornerRadius: POPUP_CORNER_RADIUS,
+      tintColor: "#00000022",
     });
   }
 
@@ -176,6 +163,9 @@ export function showAssistantPopup(): void {
   dismissing = false;
 
   if (popupWindow.isVisible()) {
+    // A dismiss fade may be mid-flight — reclaim full opacity, otherwise
+    // the window stays stuck semi-translucent and everything looks washed out.
+    fadeTo(popupWindow, 1);
     app.focus({ steal: true });
     popupWindow.focus();
     popupWindow.webContents.send("popup-activate");

@@ -14,6 +14,7 @@
 
 import { join } from "node:path";
 import { app, BrowserWindow, screen } from "electron";
+import { applyLiquidGlass, supportsLiquidGlass } from "./glass";
 
 /** Reference to the current splash window (if any). */
 let splashWindow: BrowserWindow | null = null;
@@ -30,6 +31,7 @@ let splashWindow: BrowserWindow | null = null;
 export function createSplashWindow(): void {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.workAreaSize;
+  const useLiquidGlass = supportsLiquidGlass();
 
   splashWindow = new BrowserWindow({
     width,
@@ -47,13 +49,21 @@ export function createSplashWindow(): void {
     focusable: true,
     show: true,
     hasShadow: false,
-    vibrancy: process.platform === "darwin" ? "under-window" : undefined,
+    // Native liquid glass replaces vibrancy on macOS 26+ (see glass.ts).
+    vibrancy:
+      process.platform === "darwin" && !useLiquidGlass
+        ? "under-window"
+        : undefined,
     visualEffectState: "active",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
   });
+
+  if (useLiquidGlass) {
+    applyLiquidGlass(splashWindow);
+  }
 
   const splashPath = app.isPackaged
     ? join(process.resourcesPath, "splash.html")

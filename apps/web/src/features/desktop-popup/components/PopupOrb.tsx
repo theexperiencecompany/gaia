@@ -13,5 +13,5 @@ const GaiaOrb = nextDynamic(() => import("@/components/ui/orb/GaiaOrb"), {
  * onto the window's liquid glass.
  */
 export default function PopupOrb({ state }: { state: PopupAgentState }) {
-  return <GaiaOrb state={state} className="size-28" />;
+  return <GaiaOrb state={state} className="size-40" />;
 }

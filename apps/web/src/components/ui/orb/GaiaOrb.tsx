@@ -84,9 +84,9 @@ float fbm(vec3 p) {
 // ---------------------------------------------------------------------------
 // Palette
 // ---------------------------------------------------------------------------
-const vec3 DEEP = vec3(0.000, 0.110, 0.240);   // abyssal blue
+const vec3 DEEP = vec3(0.010, 0.160, 0.340);   // deep blue
 const vec3 BRAND = vec3(0.000, 0.733, 1.000);  // #00bbff
-const vec3 TURQ = vec3(0.290, 0.960, 0.860);   // turquoise wisps
+const vec3 ICE = vec3(0.620, 0.880, 1.000);    // pale blue-white wisps
 const vec3 WHITE = vec3(1.0);
 
 void main() {
@@ -94,7 +94,9 @@ void main() {
   float r = length(uv);
   float t = u_time;
 
-  const float R = 0.62; // sphere radius in normalized units
+  // Sphere radius in normalized units — small enough that the halo's
+  // full falloff fits inside the canvas instead of clipping at its edge.
+  const float R = 0.42;
 
   // Speaking throb: gentle radial breathing of every layer.
   float throb = 1.0 + u_pulse * 0.06 * sin(t * 7.0) + u_pulse * 0.03 * sin(t * 13.7);
@@ -111,43 +113,57 @@ void main() {
   vec3 sp = vec3(rot * uv, z);
 
   // Two-level domain warp — this is what makes the wisps feel alive.
-  vec3 flow = sp * 2.2 + vec3(0.0, t * 0.05, t * 0.22 * (0.5 + u_turbulence * 0.5));
+  // Coordinates are normalized by R so the look is radius-independent.
+  vec3 ns = sp / R;
+  vec3 flow = ns * 1.4 + vec3(0.0, t * 0.05, t * 0.22 * (0.5 + u_turbulence * 0.5));
   vec3 warp = vec3(
     fbm(flow + vec3(0.0, 3.1, 1.3)),
     fbm(flow.zxy + vec3(t * 0.07, 0.0, 5.7)),
     fbm(flow.yzx + vec3(2.4, t * 0.05, 0.0)));
   float field = fbm(flow + 1.6 * warp);
 
-  // Broad turquoise wisps and fine white filaments.
-  float wisp = smoothstep(0.32, 0.86, field);
-  float fil = smoothstep(0.60, 0.92, fbm(sp * 4.8 + warp * 2.2 + vec3(0.0, 0.0, t * 0.35)));
+  // Broad turquoise wisps and soft white sheen. Gentle thresholds keep
+  // the interior gaseous — hard edges read as cratered surface texture.
+  float wisp = smoothstep(0.30, 0.88, field);
+  float fil = smoothstep(0.52, 0.95, fbm(ns * 2.6 + warp * 1.8 + vec3(0.0, 0.0, t * 0.35)));
 
-  // Fresnel rim — bright limb where the sphere curves away.
-  float fres = pow(1.0 - clamp(z / R, 0.0, 1.0), 2.6);
+  // Fresnel rim — a thin bright limb where the sphere curves away.
+  float fres = pow(1.0 - clamp(z / R, 0.0, 1.0), 3.2);
 
-  // Compose interior color.
-  vec3 col = mix(DEEP, BRAND, 0.45 + 0.55 * wisp);
-  col = mix(col, TURQ, wisp * wisp * 0.60);
-  col += WHITE * fil * (0.28 + 0.60 * u_intensity);
-  col += BRAND * fres * (0.40 + 0.35 * u_intensity);
-  col += TURQ * pow(fres, 3.0) * 0.45;
+  // Compose the interior. The look depends on dynamic range: a mostly
+  // deep body so wisps, rim, and core read as distinct structures —
+  // lifting everything saturates to a flat cyan blob.
+  vec3 col = mix(DEEP, BRAND, 0.30 + 0.60 * wisp);
+  col = mix(col, ICE, wisp * wisp * 0.45);
+  col += WHITE * fil * fil * (0.18 + 0.38 * u_intensity);
+  // The limb lightens toward blue-white — never a dark outline, and no
+  // hard ring (that reads as a glass marble).
+  col = mix(col, BRAND, fres * (0.45 + 0.20 * u_intensity));
+  col += WHITE * pow(fres, 3.0) * 0.30;
 
-  // Inner core glow, breathing slowly.
-  float core = exp(-rr * rr * 5.0);
-  col += mix(BRAND, WHITE, 0.40) * core * (0.30 + 0.55 * u_intensity) * (0.8 + 0.2 * sin(t * 1.1));
+  // Soft inner light — an ember, not a floodlight.
+  float core = exp(-pow(rr / R, 2.0) * 2.8);
+  col += mix(BRAND, WHITE, 0.35) * core * (0.18 + 0.32 * u_intensity) * (0.85 + 0.15 * sin(t * 1.1));
 
   // Energy scale.
-  col *= 0.70 + 0.60 * u_intensity;
+  col *= 0.90 + 0.45 * u_intensity;
 
   float alpha = sphere;
 
-  // Outer halo — noise-modulated glow bleeding onto the glass.
-  float haloFall = exp(-pow(max(rr - R + 0.04, 0.0) * 4.6, 1.35));
-  float haloNoise = 0.75 + 0.25 * fbm(vec3(uv * 2.0, t * 0.18));
+  // Tight outer glow hugging the limb — a hint of light bleed, not an
+  // aura. Falloff normalized to the remaining canvas space so it dies
+  // out well before the edge (no square clipping).
+  float haloFall = exp(-pow(max(rr - R + 0.02, 0.0) / (1.0 - R) * 6.0, 1.3));
+  float haloNoise = 0.70 + 0.30 * fbm(vec3(uv * 2.0, t * 0.18));
   float halo = haloFall * haloNoise * (1.0 - sphere);
-  vec3 haloCol = mix(BRAND, TURQ, 0.5 + 0.5 * sin(t * 0.23)) * halo;
-  col += haloCol * (0.40 + 0.55 * u_intensity + 0.50 * u_pulse * (0.6 + 0.4 * sin(t * 7.0)));
-  alpha = max(alpha, halo * (0.50 + 0.40 * u_intensity));
+  vec3 haloCol = mix(BRAND, ICE, 0.5 + 0.5 * sin(t * 0.23)) * halo;
+  col += haloCol * (0.18 + 0.30 * u_intensity + 0.35 * u_pulse * (0.6 + 0.4 * sin(t * 7.0)));
+  alpha = max(alpha, halo * (0.30 + 0.30 * u_intensity));
+
+  // Soft tone mapping: hot spots roll off toward white instead of
+  // clipping to flat saturated cyan, preserving hue variation.
+  col = col / (1.0 + col * 0.30);
+  col *= 1.25;
 
   // Premultiplied alpha output for clean compositing over vibrancy/glass.
   fragColor = vec4(col * alpha, alpha);
@@ -300,5 +316,7 @@ export default function GaiaOrb({ state = "idle", className }: GaiaOrbProps) {
     return () => dispose?.();
   }, []);
 
-  return <canvas ref={canvasRef} className={className} />;
+  return (
+    <canvas ref={canvasRef} className={className} data-orb-state={state} />
+  );
 }
