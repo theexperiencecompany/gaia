@@ -88,8 +88,8 @@ export default function PopupComposer({
           // Fully transparent: the window's liquid glass IS the field's
           // background — no overlay tint, no card look.
           inputWrapper:
-            "bg-transparent shadow-none py-1.5 pl-2 pr-2 data-[hover=true]:bg-white/5 group-data-[focus=true]:bg-white/5",
-          input: "px-2 text-sm text-zinc-100 placeholder:text-zinc-400",
+            "bg-transparent shadow-none py-1 pl-1.5 pr-1.5 data-[hover=true]:bg-white/5 group-data-[focus=true]:bg-white/5",
+          input: "px-1.5 text-sm text-zinc-100 placeholder:text-zinc-400",
         }}
       />
     </div>

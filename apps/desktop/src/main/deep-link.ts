@@ -12,19 +12,8 @@
  */
 
 import { type BrowserWindow, session } from "electron";
+import { getApiOrigin, isApiOriginSecure } from "./api-origin";
 import { getServerUrl } from "./server";
-
-/**
- * Derive the API origin from the environment variable.
- *
- * Strips a trailing `/api/v1/` segment so we get the bare origin
- * (e.g. `https://api.heygaia.io`) suitable for cookie storage.
- */
-function getApiOrigin(): string {
-  return (
-    process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.heygaia.io"
-  ).replace(/\/api\/v1\/?$/, "");
-}
 
 /**
  * Handle an incoming `gaia://` deep-link URL.
@@ -68,13 +57,16 @@ export async function handleDeepLink(
       console.log("[Main] Auth token received, storing as cookie");
       if (mainWindow && !mainWindow.isDestroyed()) {
         const apiOrigin = getApiOrigin();
+        const secure = isApiOriginSecure();
         await session.defaultSession.cookies.set({
           url: apiOrigin,
           name: "wos_session",
           value: token,
           httpOnly: true,
-          secure: true,
-          sameSite: "no_restriction",
+          // SameSite=None requires Secure; over http (localhost dev) the
+          // renderer and API are same-site anyway, so Lax suffices.
+          secure,
+          sameSite: secure ? "no_restriction" : "lax",
           expirationDate: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 days
         });
 
