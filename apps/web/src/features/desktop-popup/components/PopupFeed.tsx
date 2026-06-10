@@ -76,9 +76,9 @@ export default function PopupFeed() {
         <div
           ref={contentRef}
           data-popup-feed-content
-          // pt-8 (32px) mirrors the actions row height below the last
-          // bubble so top and bottom insets read identical.
-          className="flex flex-col gap-1 px-3 pt-8 pb-2"
+          // 32px inset on top and sides, mirroring the actions-row height
+          // below the last bubble — equal breathing room all around.
+          className="flex flex-col gap-1 px-8 pt-8 pb-2"
         >
           <ChatRenderer compact />
         </div>
