@@ -75,7 +75,7 @@ export default function AssistantPopup() {
   if (activationCount === 0) return null;
 
   return (
-    <div className="h-screen overflow-hidden p-1 text-zinc-100">
+    <div className="h-screen overflow-hidden p-0.5 text-zinc-100">
       <m.div
         key={activationCount}
         initial={{ opacity: 0, scale: 0.97, y: -8 }}

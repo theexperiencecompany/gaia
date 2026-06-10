@@ -22,7 +22,7 @@ import { loadAppRoute } from "./load-url";
 const POPUP_WIDTH = 420;
 
 /** Composer pill window height, in px. */
-const COMPOSER_HEIGHT = 56;
+const COMPOSER_HEIGHT = 52;
 
 /** Gap between the composer pill and the conversation card, in px. */
 const ISLAND_GAP = 8;
@@ -34,7 +34,7 @@ const MAX_SCREEN_FRACTION = 0.8;
 const POPUP_MARGIN = 16;
 
 /** Corner radius of the composer pill (half its height — a capsule). */
-const COMPOSER_CORNER_RADIUS = 28;
+const COMPOSER_CORNER_RADIUS = 26;
 
 /** Corner radius of the conversation card. */
 const FEED_CORNER_RADIUS = 24;

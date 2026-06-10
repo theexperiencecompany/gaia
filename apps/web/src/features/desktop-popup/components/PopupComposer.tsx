@@ -81,7 +81,7 @@ export default function PopupComposer({
           // Fully transparent: the window's liquid glass IS the field's
           // background — no overlay tints, no borders, no focus ring.
           inputWrapper:
-            "bg-transparent shadow-none border-none outline-none ring-0 py-0.5 pl-1 pr-1 data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus-visible=true]:ring-0 group-data-[focus-visible=true]:ring-offset-0",
+            "bg-transparent shadow-none border-none outline-none ring-0 py-0 pl-1 pr-1 data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus-visible=true]:ring-0 group-data-[focus-visible=true]:ring-offset-0",
           input:
             "px-1.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-400",
         }}
