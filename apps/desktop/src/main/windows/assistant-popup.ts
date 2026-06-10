@@ -14,7 +14,7 @@
  */
 
 import { join } from "node:path";
-import { BrowserWindow, screen } from "electron";
+import { app, BrowserWindow, screen } from "electron";
 import { loadAppRoute } from "./load-url";
 
 /** Popup panel width, in px. */
@@ -146,6 +146,7 @@ export function showAssistantPopup(): void {
   dismissing = false;
 
   if (popupWindow.isVisible()) {
+    app.focus({ steal: true });
     popupWindow.focus();
     popupWindow.webContents.send("popup-activate");
     return;
@@ -161,9 +162,13 @@ export function showAssistantPopup(): void {
 
   popupWindow.setOpacity(0);
   popupWindow.show();
+  // The user just summoned GAIA (voice or shortcut) from wherever they
+  // are — take keyboard focus so they can type immediately.
+  app.focus({ steal: true });
   popupWindow.focus();
   fadeTo(popupWindow, 1);
   popupWindow.webContents.send("popup-activate");
+  console.log("[Main] Assistant popup shown");
 }
 
 /**
@@ -183,6 +188,7 @@ export function dismissAssistantPopup(): void {
       if (!popupWindow || popupWindow.isDestroyed() || !dismissing) return;
       popupWindow.hide();
       dismissing = false;
+      console.log("[Main] Assistant popup hidden");
     });
   }, EXIT_ANIMATION_MS);
 }

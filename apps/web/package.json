@@ -11,7 +11,9 @@
   "type": "module",
   "scripts": {
     "extract-icons": "tsx scripts/extract-icon-paths.ts",
-    "prebuild": "npm run extract-icons",
+    "sync-wake-word-runtime": "node scripts/sync-wake-word-runtime.mjs",
+    "prebuild": "npm run extract-icons && npm run sync-wake-word-runtime",
+    "predev": "npm run sync-wake-word-runtime",
     "dev": "nx next:dev --turbopack",
     "dev:webpack": "nx next:dev",
     "build": "nx next:build",

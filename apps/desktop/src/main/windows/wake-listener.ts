@@ -18,24 +18,25 @@ import { loadAppRoute } from "./load-url";
 let listenerWindow: BrowserWindow | null = null;
 
 /**
- * Request microphone access on macOS.
- *
- * Resolves regardless of outcome — a denial only disables the wake
- * word; the popup remains reachable via the global shortcut.
+ * Request microphone access on macOS without blocking — the OS dialog
+ * can stay open indefinitely. A denial only disables the wake word;
+ * the popup remains reachable via the global shortcut.
  */
-async function ensureMicrophoneAccess(): Promise<void> {
+function requestMicrophoneAccess(): void {
   if (process.platform !== "darwin") return;
 
-  try {
-    const granted = await systemPreferences.askForMediaAccess("microphone");
-    if (!granted) {
-      console.warn(
-        "[Main] Microphone access denied — wake word disabled (shortcut still works)",
-      );
-    }
-  } catch (err) {
-    console.error("[Main] Microphone access request failed:", err);
-  }
+  systemPreferences
+    .askForMediaAccess("microphone")
+    .then((granted) => {
+      if (!granted) {
+        console.warn(
+          "[Main] Microphone access denied — wake word disabled (shortcut still works)",
+        );
+      }
+    })
+    .catch((err) => {
+      console.error("[Main] Microphone access request failed:", err);
+    });
 }
 
 /**
@@ -47,7 +48,7 @@ async function ensureMicrophoneAccess(): Promise<void> {
 export async function createWakeListenerWindow(
   serverReady: () => boolean,
 ): Promise<void> {
-  await ensureMicrophoneAccess();
+  requestMicrophoneAccess();
 
   listenerWindow = new BrowserWindow({
     width: 0,

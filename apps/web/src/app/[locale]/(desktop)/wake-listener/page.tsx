@@ -14,15 +14,16 @@ import { useElectron } from "@/hooks/useElectron";
  */
 export default function WakeListenerPage() {
   const { isElectron, notifyWakeWord } = useElectron();
-  const { state, lastDetection } = useHeyGaia({ enabled: isElectron });
+  const { state, lastDetection, error } = useHeyGaia({ enabled: isElectron });
 
   useEffect(() => {
     if (lastDetection) notifyWakeWord();
   }, [lastDetection, notifyWakeWord]);
 
   return (
-    <div className="flex h-screen items-center justify-center bg-black font-mono text-xs text-zinc-500">
-      wake-listener: {state}
+    <div className="flex h-screen flex-col items-center justify-center gap-1 bg-black font-mono text-xs text-zinc-500">
+      <p>wake-listener: {state}</p>
+      {error && <p className="px-4 text-red-400">{error.message}</p>}
     </div>
   );
 }
