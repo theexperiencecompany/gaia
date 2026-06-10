@@ -59,6 +59,12 @@ _CONFIGURABLE_SCALAR_KEYS = frozenset(
         "execution_mode",
         "conversation_source",
         "source_category",
+        # Workflow context must survive queueing: without it a queued workflow
+        # run loses its id and the delivery path silently downgrades the result
+        # from the completion notification to a plain conversation message.
+        "workflow_id",
+        "workflow_title",
+        "workflow_notify_on_completion",
     }
 )
 

@@ -36,7 +36,6 @@ export interface NotificationActionResponse {
 
 export interface NotificationCategoryPreferences {
   push: boolean;
-  email: boolean;
   in_app: boolean;
 }
 
