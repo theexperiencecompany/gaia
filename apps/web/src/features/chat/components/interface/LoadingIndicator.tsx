@@ -2,6 +2,7 @@
 
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
+import type { ReactNode } from "react";
 
 import { WaveSpinnerSquare } from "@/components/shared/WaveSpinnerSquare";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -16,6 +17,8 @@ interface LoadingIndicatorProps {
     showCategory?: boolean;
   };
   noPadding?: boolean;
+  /** Replaces the default wave spinner (e.g. the orb in the popup). */
+  spinner?: ReactNode;
 }
 
 const slideUp = {
@@ -38,6 +41,7 @@ export function LoadingIndicator({
   loadingTextKey,
   toolInfo,
   noPadding = false,
+  spinner,
 }: LoadingIndicatorProps) {
   const prefix =
     toolInfo?.showCategory !== false && toolInfo?.toolCategory
@@ -57,7 +61,8 @@ export function LoadingIndicator({
           toolInfo.toolCategory,
           { size: 20, width: 20, height: 20, iconOnly: true, pulsating: true },
           toolInfo.iconUrl,
-        )) || <WaveSpinnerSquare />}
+        )) ||
+        spinner || <WaveSpinnerSquare />}
       <AnimatePresence mode="wait">
         <m.span
           key={loadingTextKey}

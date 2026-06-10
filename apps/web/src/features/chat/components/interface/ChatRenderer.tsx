@@ -422,19 +422,26 @@ export default function ChatRenderer({
           );
         },
       )}
-      {(isLoading || isAwaitingExecutorResult) &&
-        (compact ? (
-          // The orb is the popup's loading indicator — no wave spinner.
-          <GaiaOrbLazy state="thinking" className="-my-3 -ml-2 size-16" />
-        ) : (
-          <AnimatePresence>
-            <LoadingIndicator
-              loadingText={loadingText}
-              loadingTextKey={loadingTextKey}
-              toolInfo={toolInfo}
-            />
-          </AnimatePresence>
-        ))}
+      {(isLoading || isAwaitingExecutorResult) && (
+        <AnimatePresence>
+          <LoadingIndicator
+            loadingText={loadingText}
+            loadingTextKey={loadingTextKey}
+            toolInfo={toolInfo}
+            noPadding={compact}
+            spinner={
+              // The orb replaces the wave spinner in the popup; the
+              // loading text and tool info render exactly as on web.
+              compact ? (
+                <GaiaOrbLazy
+                  state="thinking"
+                  className="-m-2 size-12 shrink-0"
+                />
+              ) : undefined
+            }
+          />
+        </AnimatePresence>
+      )}
     </>
   );
 }
