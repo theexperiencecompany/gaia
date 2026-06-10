@@ -1,0 +1,62 @@
+{
+  "$schema": "https://unpkg.com/syncpack@15/dist/schema.json",
+  "indent": "  ",
+  "formatBugs": true,
+  "formatRepository": true,
+  "sortAz": [
+    "contributors",
+    "dependencies",
+    "devDependencies",
+    "keywords",
+    "peerDependencies",
+    "optionalDependencies",
+    "resolutions",
+    "scripts"
+  ],
+  "sortFirst": [
+    "name",
+    "description",
+    "version",
+    "private",
+    "type",
+    "main",
+    "types",
+    "module",
+    "exports",
+    "files",
+    "scripts",
+    "dependencies",
+    "devDependencies",
+    "peerDependencies"
+  ],
+  "sortPackages": true,
+  "semverGroups": [
+    {
+      "label": "Pin React + Next to exact versions",
+      "dependencies": ["react", "react-dom", "next"],
+      "range": ""
+    },
+    {
+      "label": "Pin HeroUI to exact versions (TS2590 bites on minor bumps)",
+      "dependencies": ["@heroui/**"],
+      "range": ""
+    },
+    {
+      "label": "Caret for everything else",
+      "dependencies": ["**"],
+      "range": "^"
+    }
+  ],
+  "versionGroups": [
+    {
+      "label": "Workspace deps use workspace protocol",
+      "dependencies": ["@gaia/**", "@gaia-icons/**", "gaia-shared"],
+      "dependencyTypes": ["dev", "prod"],
+      "pinVersion": "workspace:*"
+    },
+    {
+      "label": "All deps must agree across packages",
+      "dependencies": ["**"]
+    }
+  ]
+}

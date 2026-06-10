@@ -1,7 +1,7 @@
 """Tests for app/core/lazy_loader.py — LazyLoader, ProviderRegistry, lazy_provider."""
 
-import uuid
 from unittest.mock import patch
+import uuid
 
 import pytest
 
@@ -34,9 +34,7 @@ class TestLazyLoaderInit:
         assert loader.provider_name == "my_func"
 
     def test_custom_provider_name(self):
-        loader = LazyLoader(
-            lambda: 1, provider_name="custom", strategy=MissingKeyStrategy.SILENT
-        )
+        loader = LazyLoader(lambda: 1, provider_name="custom", strategy=MissingKeyStrategy.SILENT)
         assert loader.provider_name == "custom"
 
     def test_is_available_all_keys_present(self):
@@ -258,9 +256,7 @@ class TestLazyLoaderAsyncGet:
         async def loader():
             return 1
 
-        ll = LazyLoader(
-            loader, required_keys=[None], strategy=MissingKeyStrategy.SILENT
-        )
+        ll = LazyLoader(loader, required_keys=[None], strategy=MissingKeyStrategy.SILENT)
         assert await ll.aget() is None
 
     async def test_aget_exception_error_strategy(self):
@@ -468,18 +464,6 @@ class TestProviderRegistry:
         reg.register(name, loader, strategy=MissingKeyStrategy.SILENT)
         assert await reg.aget(name) == 88
 
-    def test_get_loader(self):
-        reg = ProviderRegistry()
-        name = _uid("gl")
-        reg.register(name, lambda: 1, strategy=MissingKeyStrategy.SILENT)
-        loader = reg.get_loader(name)
-        assert isinstance(loader, LazyLoader)
-
-    def test_get_loader_unknown(self):
-        reg = ProviderRegistry()
-        with pytest.raises(KeyError):
-            reg.get_loader("nope")
-
     def test_is_available(self):
         reg = ProviderRegistry()
         name = _uid("avail")
@@ -495,17 +479,6 @@ class TestProviderRegistry:
         reg.get(name)
         assert reg.is_initialized(name) is True
         assert reg.is_initialized("nonexistent") is False
-
-    def test_list_providers(self):
-        reg = ProviderRegistry()
-        name = _uid("list")
-        reg.register(name, lambda: 1, strategy=MissingKeyStrategy.SILENT)
-        listing = reg.list_providers()
-        assert name in listing
-        assert "available" in listing[name]
-        assert "initialized" in listing[name]
-        assert "is_async" in listing[name]
-        assert "is_global_context" in listing[name]
 
     def test_re_register_overwrites(self):
         reg = ProviderRegistry()
@@ -591,9 +564,7 @@ class TestInitializeAutoProviders:
         async def loader():
             return "val"
 
-        reg.register(
-            name, loader, strategy=MissingKeyStrategy.SILENT, auto_initialize=True
-        )
+        reg.register(name, loader, strategy=MissingKeyStrategy.SILENT, auto_initialize=True)
         await reg.initialize_auto_providers()
         assert reg.is_initialized(name)
 

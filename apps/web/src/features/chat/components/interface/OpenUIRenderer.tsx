@@ -4,10 +4,9 @@ import {
   type ParseResult,
   Renderer,
 } from "@openuidev/react-lang";
+import { dispatchOpenUIAction, normalizeOpenUICode } from "@shared/utils";
 import React from "react";
 import { genericLibrary } from "@/config/openui/genericLibrary";
-import { dispatchOpenUIAction } from "@/features/chat/actions/openUIActionDispatcher";
-import { normalizeOpenUICode } from "@/features/chat/utils/openUIParser";
 import { useAppendToInput } from "@/stores/composerStore";
 
 interface OpenUIRendererProps {
@@ -59,7 +58,12 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
 
   const handleAction = React.useCallback(
     (event: ActionEvent) => {
-      dispatchOpenUIAction(event, appendToInput).catch((err) => {
+      dispatchOpenUIAction(event, {
+        appendToInput,
+        openUrl: (url) => {
+          window.open(url, "_blank", "noopener,noreferrer");
+        },
+      }).catch((err) => {
         console.error("[OpenUIRenderer] Action dispatch failed:", err);
       });
     },
@@ -133,19 +137,19 @@ class OpenUIErrorBoundary extends React.Component<
     return { hasError: true, errorMessage: error.message };
   }
 
-  componentDidUpdate(prevProps: { code: string }) {
+  override componentDidUpdate(prevProps: { code: string }) {
     if (this.state.hasError && prevProps.code !== this.props.code) {
       this.setState({ hasError: false, errorMessage: "" });
     }
   }
 
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
+  override componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error("[OpenUIRenderer] Render error:", error, info, {
       code: this.props.code,
     });
   }
 
-  render() {
+  override render() {
     if (this.state.hasError) {
       return (
         <OpenUIErrorCard
@@ -164,7 +168,7 @@ export default function OpenUIRenderer({
 }: OpenUIRendererProps) {
   return (
     <OpenUIErrorBoundary code={code}>
-      <div className="my-1">
+      <div className="my-4">
         <OpenUIRendererInner code={code} isStreaming={isStreaming} />
       </div>
     </OpenUIErrorBoundary>

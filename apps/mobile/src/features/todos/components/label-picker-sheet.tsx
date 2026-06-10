@@ -6,7 +6,6 @@ import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
 import { Pressable, View } from "react-native";
 import { Add01Icon, AppIcon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { useResponsive } from "@/lib/responsive";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { LabelChip } from "./label-chip";
 
@@ -25,7 +24,6 @@ export const LabelPickerSheet = forwardRef<LabelPickerSheetRef, Props>(
     const [selected, setSelected] = useState<string[]>([]);
     const [allLabels, setAllLabels] = useState<string[]>([]);
     const [newLabel, setNewLabel] = useState("");
-    const { spacing, fontSize } = useResponsive();
 
     useImperativeHandle(ref, () => ({
       open: (currentSelected: string[], existingLabels: string[]) => {
@@ -70,7 +68,7 @@ export const LabelPickerSheet = forwardRef<LabelPickerSheetRef, Props>(
             snapPoints={["50%", "80%"]}
             enableDynamicSizing={false}
             enablePanDownToClose
-            backgroundStyle={{ backgroundColor: "#1c1c1e" }}
+            backgroundStyle={{ backgroundColor: "#18181b" }}
             handleIndicatorStyle={{ backgroundColor: "#3f3f46", width: 40 }}
           >
             <BottomSheetScrollView
@@ -82,37 +80,23 @@ export const LabelPickerSheet = forwardRef<LabelPickerSheetRef, Props>(
               keyboardShouldPersistTaps="handled"
             >
               {/* Header */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
+              <View className="flex-row items-center justify-between">
                 <Text
-                  style={{
-                    fontSize: fontSize.base,
-                    fontWeight: "600",
-                    color: "#f4f4f5",
-                  }}
+                  style={{ fontSize: 17, fontWeight: "600", color: "#f4f4f5" }}
                 >
                   Labels
                 </Text>
                 <Pressable
                   onPress={handleDone}
                   style={{
-                    paddingHorizontal: spacing.md,
-                    paddingVertical: spacing.sm,
-                    borderRadius: 8,
-                    backgroundColor: "rgba(22,193,255,0.15)",
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 12,
+                    backgroundColor: "#00bbff",
                   }}
                 >
                   <Text
-                    style={{
-                      fontSize: fontSize.sm,
-                      fontWeight: "600",
-                      color: "#16c1ff",
-                    }}
+                    style={{ fontSize: 13, fontWeight: "600", color: "#000" }}
                   >
                     Done
                   </Text>
@@ -121,74 +105,50 @@ export const LabelPickerSheet = forwardRef<LabelPickerSheetRef, Props>(
 
               {/* New label input */}
               <View
+                className="flex-row items-center bg-zinc-800/30"
                 style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.sm,
-                  backgroundColor: "#27272a",
-                  borderRadius: 10,
+                  gap: 10,
                   paddingHorizontal: 12,
                   paddingVertical: 10,
-                  borderWidth: 1,
-                  borderColor: "#3f3f46",
+                  borderRadius: 16,
                 }}
               >
                 <BottomSheetTextInput
                   value={newLabel}
                   onChangeText={setNewLabel}
-                  placeholder="New label..."
+                  placeholder="New label…"
                   placeholderTextColor="#52525b"
-                  style={{
-                    flex: 1,
-                    fontSize: fontSize.sm,
-                    color: "#f4f4f5",
-                  }}
+                  style={{ flex: 1, fontSize: 14, color: "#f4f4f5" }}
                   onSubmitEditing={handleAddNew}
                   returnKeyType="done"
                   autoCapitalize="none"
                 />
                 <Pressable onPress={handleAddNew} hitSlop={8}>
-                  <AppIcon icon={Add01Icon} size={18} color="#16c1ff" />
+                  <AppIcon icon={Add01Icon} size={18} color="#00bbff" />
                 </Pressable>
               </View>
 
               {/* Label list */}
               {allLabels.length === 0 ? (
                 <Text
-                  style={{
-                    fontSize: fontSize.sm,
-                    color: "#52525b",
-                    fontStyle: "italic",
-                    textAlign: "center",
-                    paddingVertical: spacing.md,
-                  }}
+                  className="text-center italic text-zinc-500"
+                  style={{ fontSize: 14, paddingVertical: 16 }}
                 >
                   No labels yet. Create one above.
                 </Text>
               ) : (
-                <View
-                  style={{
-                    backgroundColor: "#27272a",
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: "#3f3f46",
-                    overflow: "hidden",
-                  }}
-                >
-                  {allLabels.map((label, idx) => {
+                <View className="bg-zinc-800/30 rounded-2xl">
+                  {allLabels.map((label) => {
                     const isActive = selected.includes(label);
                     return (
                       <Pressable
                         key={label}
                         onPress={() => toggleLabel(label)}
+                        className="flex-row items-center"
                         style={{
-                          flexDirection: "row",
-                          alignItems: "center",
                           paddingHorizontal: 14,
                           paddingVertical: 12,
                           gap: 10,
-                          borderTopWidth: idx > 0 ? 1 : 0,
-                          borderTopColor: "#3f3f46",
                         }}
                       >
                         <LabelChip label={label} size="sm" />
@@ -199,17 +159,17 @@ export const LabelPickerSheet = forwardRef<LabelPickerSheetRef, Props>(
                             height: 22,
                             borderRadius: 11,
                             borderWidth: 2,
-                            borderColor: isActive ? "#16c1ff" : "#52525b",
+                            borderColor: isActive ? "#00bbff" : "#52525b",
                             backgroundColor: isActive
-                              ? "#16c1ff"
+                              ? "#00bbff"
                               : "transparent",
                             alignItems: "center",
                             justifyContent: "center",
                           }}
                         >
-                          {isActive && (
+                          {isActive ? (
                             <AppIcon icon={Tick02Icon} size={13} color="#000" />
-                          )}
+                          ) : null}
                         </View>
                       </Pressable>
                     );
@@ -223,3 +183,5 @@ export const LabelPickerSheet = forwardRef<LabelPickerSheetRef, Props>(
     );
   },
 );
+
+LabelPickerSheet.displayName = "LabelPickerSheet";

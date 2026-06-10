@@ -15,9 +15,7 @@ from app.utils.agent_utils import (
     format_tool_call_entry,
     parse_subagent_id,
     process_custom_event_for_tools,
-    store_agent_progress,
 )
-
 
 # ---------------------------------------------------------------------------
 # UUID_PATTERN
@@ -96,12 +94,12 @@ class TestResolveHandoffDisplayName:
 
     @pytest.mark.asyncio
     async def test_platform_integration_name(self) -> None:
-        mock_integration = MagicMock()
-        mock_integration.name = "Google Calendar"
+        mock_subagent = MagicMock()
+        mock_subagent.name = "Google Calendar"
 
         with patch(
-            "app.utils.agent_utils.get_integration_by_id",
-            return_value=mock_integration,
+            "app.utils.agent_utils.get_subagent_by_id",
+            return_value=mock_subagent,
         ):
             result = await _resolve_handoff_display_name("googlecalendar")
 
@@ -111,7 +109,7 @@ class TestResolveHandoffDisplayName:
     async def test_custom_integration_from_db(self) -> None:
         with (
             patch(
-                "app.utils.agent_utils.get_integration_by_id",
+                "app.utils.agent_utils.get_subagent_by_id",
                 return_value=None,
             ),
             patch(
@@ -128,7 +126,7 @@ class TestResolveHandoffDisplayName:
     async def test_fallback_to_title_case(self) -> None:
         with (
             patch(
-                "app.utils.agent_utils.get_integration_by_id",
+                "app.utils.agent_utils.get_subagent_by_id",
                 return_value=None,
             ),
             patch(
@@ -325,7 +323,7 @@ class TestSSEFormatters:
 class TestProcessCustomEventForTools:
     def test_with_payload(self) -> None:
         with patch(
-            "app.services.chat_service.extract_tool_data",
+            "app.utils.agent_utils.extract_tool_data",
             return_value={"tool": "data"},
         ):
             result = process_custom_event_for_tools({"some": "payload"})
@@ -333,7 +331,7 @@ class TestProcessCustomEventForTools:
 
     def test_with_none_payload(self) -> None:
         with patch(
-            "app.services.chat_service.extract_tool_data",
+            "app.utils.agent_utils.extract_tool_data",
             return_value=None,
         ):
             result = process_custom_event_for_tools(None)
@@ -341,7 +339,7 @@ class TestProcessCustomEventForTools:
 
     def test_extract_returns_none(self) -> None:
         with patch(
-            "app.services.chat_service.extract_tool_data",
+            "app.utils.agent_utils.extract_tool_data",
             return_value=None,
         ):
             result = process_custom_event_for_tools({"x": 1})
@@ -349,100 +347,8 @@ class TestProcessCustomEventForTools:
 
     def test_exception_returns_empty(self) -> None:
         with patch(
-            "app.services.chat_service.extract_tool_data",
+            "app.utils.agent_utils.extract_tool_data",
             side_effect=RuntimeError("parse fail"),
         ):
             result = process_custom_event_for_tools({"x": 1})
         assert result == {}
-
-
-# ---------------------------------------------------------------------------
-# store_agent_progress
-# ---------------------------------------------------------------------------
-
-
-class TestStoreAgentProgress:
-    @pytest.mark.asyncio
-    async def test_no_content_skips_storage(self) -> None:
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            await store_agent_progress("conv1", "u1", "", {})
-            mock_update.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_whitespace_only_skips(self) -> None:
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            await store_agent_progress("conv1", "u1", "   ", {})
-            mock_update.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_with_message_content(self) -> None:
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            await store_agent_progress("conv1", "u1", "Hello!", {})
-            mock_update.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_with_unified_tool_data(self) -> None:
-        tool_data = {
-            "tool_data": [
-                {"tool_name": "search", "data": {"q": "test"}, "timestamp": "now"}
-            ]
-        }
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            await store_agent_progress("conv1", "u1", "", tool_data)
-            mock_update.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_with_legacy_tool_data(self) -> None:
-        tool_data: dict[str, Any] = {"calendar_options": {"events": []}}
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            await store_agent_progress("conv1", "u1", "", tool_data)
-            mock_update.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_with_follow_up_actions(self) -> None:
-        tool_data = {
-            "tool_data": [{"tool_name": "t", "data": "d", "timestamp": "ts"}],
-            "follow_up_actions": ["action1"],
-        }
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            await store_agent_progress("conv1", "u1", "msg", tool_data)
-            mock_update.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_storage_error_swallowed(self) -> None:
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("db fail"),
-        ):
-            # Should not raise
-            await store_agent_progress("conv1", "u1", "content", {})
-
-    @pytest.mark.asyncio
-    async def test_empty_tool_data_dict_no_values(self) -> None:
-        """tool_data dict with all None values treated as no content."""
-        tool_data = {"tool_data": None}
-        with patch(
-            "app.utils.agent_utils.update_messages",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            await store_agent_progress("conv1", "u1", "", tool_data)
-            mock_update.assert_not_awaited()

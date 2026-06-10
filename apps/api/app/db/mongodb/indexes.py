@@ -11,10 +11,9 @@ Index Strategy:
 """
 
 import asyncio
-from typing import Dict, List
 
-from shared.py.wide_events import log
-from app.helpers.integration_helpers import generate_unique_integration_slug
+from pymongo.errors import OperationFailure
+
 from app.db.mongodb.collections import (
     ai_models_collection,
     blog_collection,
@@ -22,8 +21,11 @@ from app.db.mongodb.collections import (
     calendars_collection,
     conversations_collection,
     device_tokens_collection,
+    e2b_sandboxes_collection,
+    e2b_warm_pool_collection,
     files_collection,
     goals_collection,
+    integration_instructions_collection,
     integrations_collection,
     mail_collection,
     notes_collection,
@@ -39,23 +41,15 @@ from app.db.mongodb.collections import (
     usage_snapshots_collection,
     user_integrations_collection,
     users_collection,
-    vfs_nodes_collection,
     workflow_executions_collection,
     workflows_collection,
 )
+from app.helpers.integration_helpers import generate_unique_integration_slug
+from shared.py.wide_events import log
 
 
 async def create_all_indexes():
-    """
-    Create all database indexes for optimal performance.
-    This is the main function called during application startup.
-
-    Indexes are created with best practices:
-    - User-specific compound indexes for multi-tenant queries
-    - Date-based sorting indexes for pagination
-    - Text search indexes for full-text search
-    - Unique indexes for data integrity    - Compound indexes ordered by: equality → range → sort
-    """
+    """Create all database indexes. Called during application startup."""
     try:
         log.set(db={"operation": "create_indexes", "collection": "all"})
         log.info("Starting comprehensive database index creation...")
@@ -81,11 +75,12 @@ async def create_all_indexes():
             create_ai_models_indexes(),
             create_integration_indexes(),
             create_user_integration_indexes(),
+            create_integration_instructions_indexes(),
             create_device_token_indexes(),
-            create_vfs_indexes(),
             create_installed_skills_indexes(),
             create_workflow_execution_indexes(),
             create_bot_session_indexes(),
+            create_e2b_sandbox_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -111,20 +106,19 @@ async def create_all_indexes():
             "ai_models",
             "integrations",
             "user_integrations",
+            "integration_instructions",
             "device_tokens",
-            "vfs_nodes",
             "skills",
             "workflow_executions",
             "bot_sessions",
+            "e2b_sandboxes",
         ]
 
         index_results = {}
         for i, (collection_name, result) in enumerate(zip(collection_names, results)):
             if isinstance(result, Exception):
-                log.error(
-                    f"Failed to create indexes for {collection_name}: {str(result)}"
-                )
-                index_results[collection_name] = f"FAILED: {str(result)}"
+                log.error(f"Failed to create indexes for {collection_name}: {result!s}")
+                index_results[collection_name] = f"FAILED: {result!s}"
             else:
                 index_results[collection_name] = "SUCCESS"
 
@@ -132,21 +126,15 @@ async def create_all_indexes():
         successful = sum(1 for result in index_results.values() if result == "SUCCESS")
         total = len(index_results)
 
-        log.info(
-            f"Database index creation completed: {successful}/{total} collections successful"
-        )
+        log.info(f"Database index creation completed: {successful}/{total} collections successful")
 
         # Log any failures
-        failed_collections = [
-            name for name, result in index_results.items() if result != "SUCCESS"
-        ]
+        failed_collections = [name for name, result in index_results.items() if result != "SUCCESS"]
         if failed_collections:
-            log.warning(
-                f"Failed to create indexes for collections: {failed_collections}"
-            )
+            log.warning(f"Failed to create indexes for collections: {failed_collections}")
 
     except Exception as e:
-        log.error(f"Critical error during database index creation: {str(e)}")
+        log.error(f"Critical error during database index creation: {e!s}")
         raise
 
 
@@ -158,9 +146,7 @@ async def create_user_indexes():
             # Email unique index (primary lookup method)
             users_collection.create_index("email", unique=True),
             # Onboarding status with creation date
-            users_collection.create_index(
-                [("onboarding.completed", 1), ("created_at", -1)]
-            ),
+            users_collection.create_index([("onboarding.completed", 1), ("created_at", -1)]),
             # Cache cleanup index (sparse since not all users have cached_at)
             users_collection.create_index("cached_at", sparse=True),
             # Activity tracking index for inactive user queries
@@ -169,22 +155,14 @@ async def create_user_indexes():
             users_collection.create_index("last_inactive_email_sent", sparse=True),
             # Platform links indexes for bot authentication (unique + sparse: only bot users have these,
             # and a single platform account must not be linked to multiple GAIA users)
-            users_collection.create_index(
-                "platform_links.discord.id", unique=True, sparse=True
-            ),
-            users_collection.create_index(
-                "platform_links.slack.id", unique=True, sparse=True
-            ),
-            users_collection.create_index(
-                "platform_links.telegram.id", unique=True, sparse=True
-            ),
-            users_collection.create_index(
-                "platform_links.whatsapp.id", unique=True, sparse=True
-            ),
+            users_collection.create_index("platform_links.discord.id", unique=True, sparse=True),
+            users_collection.create_index("platform_links.slack.id", unique=True, sparse=True),
+            users_collection.create_index("platform_links.telegram.id", unique=True, sparse=True),
+            users_collection.create_index("platform_links.whatsapp.id", unique=True, sparse=True),
         )
 
     except Exception as e:
-        log.error(f"Error creating user indexes: {str(e)}")
+        log.error(f"Error creating user indexes: {e!s}")
         raise
 
 
@@ -196,25 +174,19 @@ async def create_conversation_indexes():
             # Primary compound index for user conversations with sorting (most critical)
             conversations_collection.create_index([("user_id", 1), ("createdAt", -1)]),
             # For specific conversation lookups (extremely critical for performance)
-            conversations_collection.create_index(
-                [("user_id", 1), ("conversation_id", 1)]
-            ),
+            conversations_collection.create_index([("user_id", 1), ("conversation_id", 1)]),
             # For starred conversations queries
             conversations_collection.create_index(
                 [("user_id", 1), ("starred", 1), ("createdAt", -1)]
             ),
             # For message pinning operations (nested array queries)
-            conversations_collection.create_index(
-                [("user_id", 1), ("messages.message_id", 1)]
-            ),
+            conversations_collection.create_index([("user_id", 1), ("messages.message_id", 1)]),
             # For message pinning aggregations
-            conversations_collection.create_index(
-                [("user_id", 1), ("messages.pinned", 1)]
-            ),
+            conversations_collection.create_index([("user_id", 1), ("messages.pinned", 1)]),
         )
 
     except Exception as e:
-        log.error(f"Error creating conversation indexes: {str(e)}")
+        log.error(f"Error creating conversation indexes: {e!s}")
         raise
 
 
@@ -228,29 +200,21 @@ async def create_todo_indexes():
             # Project-based queries
             todos_collection.create_index([("user_id", 1), ("project_id", 1)]),
             # Enhanced compound indexes for complex filtering
-            todos_collection.create_index(
-                [("user_id", 1), ("completed", 1), ("created_at", -1)]
-            ),
-            todos_collection.create_index(
-                [("user_id", 1), ("priority", 1), ("created_at", -1)]
-            ),
+            todos_collection.create_index([("user_id", 1), ("completed", 1), ("created_at", -1)]),
+            todos_collection.create_index([("user_id", 1), ("priority", 1), ("created_at", -1)]),
             todos_collection.create_index([("user_id", 1), ("due_date", 1)]),
             # For overdue queries (critical for performance) - sparse for due_date
             todos_collection.create_index(
                 [("user_id", 1), ("due_date", 1), ("completed", 1)], sparse=True
             ),
             # For project + completion status queries
-            todos_collection.create_index(
-                [("user_id", 1), ("project_id", 1), ("completed", 1)]
-            ),
+            todos_collection.create_index([("user_id", 1), ("project_id", 1), ("completed", 1)]),
             # For label-based filtering (sparse since not all todos have labels)
             todos_collection.create_index([("user_id", 1), ("labels", 1)], sparse=True),
             # Text search index for title and description
             todos_collection.create_index([("title", "text"), ("description", "text")]),
             # For subtask operations (sparse since not all todos have subtasks)
-            todos_collection.create_index(
-                [("user_id", 1), ("subtasks.id", 1)], sparse=True
-            ),
+            todos_collection.create_index([("user_id", 1), ("subtasks.id", 1)], sparse=True),
             # For workflow_id lookups (sparse — most todos won't have workflow_id)
             todos_collection.create_index(
                 [("user_id", 1), ("workflow_id", 1)], sparse=True, name="user_workflow"
@@ -271,10 +235,23 @@ async def create_todo_indexes():
                 [("user_id", 1), ("project_id", 1), ("due_date", 1)],
                 name="user_project_due",
             ),
+            # For tracked-todo cron sweeps (safety-net + maintenance). Both
+            # scan by gaia-tracked label + completion, then range on
+            # scheduled_at / gaia_retry_count. ESR ordering: equality fields
+            # first (labels, completed), then range fields.
+            todos_collection.create_index(
+                [
+                    ("labels", 1),
+                    ("completed", 1),
+                    ("scheduled_at", 1),
+                    ("gaia_retry_count", 1),
+                ],
+                name="tracked_sweep",
+            ),
         )
 
     except Exception as e:
-        log.error(f"Error creating todo indexes: {str(e)}")
+        log.error(f"Error creating todo indexes: {e!s}")
         raise
 
 
@@ -292,7 +269,7 @@ async def create_project_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating project indexes: {str(e)}")
+        log.error(f"Error creating project indexes: {e!s}")
         raise
 
 
@@ -311,7 +288,7 @@ async def create_goal_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating goal indexes: {str(e)}")
+        log.error(f"Error creating goal indexes: {e!s}")
         raise
 
 
@@ -325,15 +302,13 @@ async def create_note_indexes():
             # For individual note lookups
             notes_collection.create_index([("user_id", 1), ("_id", 1)]),
             # For auto-created notes filtering (sparse since not all notes have this field)
-            notes_collection.create_index(
-                [("user_id", 1), ("auto_created", 1)], sparse=True
-            ),
+            notes_collection.create_index([("user_id", 1), ("auto_created", 1)], sparse=True),
             # Text search index for content search
             notes_collection.create_index([("plaintext", "text"), ("title", "text")]),
         )
 
     except Exception as e:
-        log.error(f"Error creating note indexes: {str(e)}")
+        log.error(f"Error creating note indexes: {e!s}")
         raise
 
 
@@ -353,7 +328,7 @@ async def create_file_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating file indexes: {str(e)}")
+        log.error(f"Error creating file indexes: {e!s}")
         raise
 
 
@@ -369,7 +344,7 @@ async def create_mail_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating mail indexes: {str(e)}")
+        log.error(f"Error creating mail indexes: {e!s}")
         raise
 
 
@@ -383,13 +358,11 @@ async def create_calendar_indexes():
             # For event queries
             calendars_collection.create_index([("user_id", 1), ("event_date", 1)]),
             # For calendar selection queries
-            calendars_collection.create_index(
-                [("user_id", 1), ("selected_calendars", 1)]
-            ),
+            calendars_collection.create_index([("user_id", 1), ("selected_calendars", 1)]),
         )
 
     except Exception as e:
-        log.error(f"Error creating calendar indexes: {str(e)}")
+        log.error(f"Error creating calendar indexes: {e!s}")
         raise
 
 
@@ -420,7 +393,7 @@ async def create_blog_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating blog indexes: {str(e)}")
+        log.error(f"Error creating blog indexes: {e!s}")
         raise
 
 
@@ -440,7 +413,7 @@ async def create_notification_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating notification indexes: {str(e)}")
+        log.error(f"Error creating notification indexes: {e!s}")
         raise
 
 
@@ -464,6 +437,14 @@ async def create_reminder_indexes():
 async def create_workflow_indexes():
     """Create indexes for workflows collection for optimal query performance."""
     try:
+        # Drop the old non-unique slug index if present so the partial-unique
+        # replacement below can take over. Mongo error code 27 = IndexNotFound.
+        try:
+            await workflows_collection.drop_index("slug_public_idx")
+        except OperationFailure as e:
+            if e.code != 27:
+                raise
+
         # Create all workflow indexes concurrently
         await asyncio.gather(
             # Primary compound index for user workflows with sorting (most critical)
@@ -475,9 +456,7 @@ async def create_workflow_indexes():
                 [("user_id", 1), ("activated", 1), ("created_at", -1)]
             ),
             # For execution history and monitoring queries
-            workflows_collection.create_index(
-                [("user_id", 1), ("last_executed_at", 1)]
-            ),
+            workflows_collection.create_index([("user_id", 1), ("last_executed_at", 1)]),
             # For scheduled workflow queries (critical for scheduler)
             workflows_collection.create_index(
                 [
@@ -504,12 +483,8 @@ async def create_workflow_indexes():
                 ]
             ),
             # For workflow execution status queries
-            workflows_collection.create_index(
-                [("user_id", 1), ("total_executions", 1)]
-            ),
-            workflows_collection.create_index(
-                [("user_id", 1), ("successful_executions", 1)]
-            ),
+            workflows_collection.create_index([("user_id", 1), ("total_executions", 1)]),
+            workflows_collection.create_index([("user_id", 1), ("successful_executions", 1)]),
             # For workflow search and filtering by title
             workflows_collection.create_index([("user_id", 1), ("title", 1)]),
             # For performance monitoring queries
@@ -523,9 +498,7 @@ async def create_workflow_indexes():
             # Sparse index for workflow steps (only workflows with steps)
             workflows_collection.create_index("steps", sparse=True),
             # Sparse index for composio trigger IDs (for efficient webhook routing)
-            workflows_collection.create_index(
-                "trigger_config.composio_trigger_ids", sparse=True
-            ),
+            workflows_collection.create_index("trigger_config.composio_trigger_ids", sparse=True),
             # Community workflows indexes
             workflows_collection.create_index([("is_public", 1), ("created_at", -1)]),
             workflows_collection.create_index([("created_by", 1)]),
@@ -536,16 +509,27 @@ async def create_workflow_indexes():
                 unique=True,
                 partialFilterExpression={"system_workflow_key": {"$type": 2}},
             ),
-            # Compound index for slug-based public workflow lookups
-            workflows_collection.create_index(
-                [("slug", 1), ("is_public", 1)],
-                sparse=True,
-                name="slug_public_idx",
-            ),
         )
 
+        # Partial-unique index on slug for public workflows. Built outside
+        # the gather so a pre-existing duplicate (legacy data) only logs a
+        # warning instead of crashing startup — operators can de-dup and
+        # restart to reapply.
+        try:
+            await workflows_collection.create_index(
+                [("slug", 1)],
+                unique=True,
+                partialFilterExpression={"is_public": True, "slug": {"$type": 2}},
+                name="slug_public_unique_idx",
+            )
+        except OperationFailure as e:
+            log.warning(
+                f"Failed to create slug_public_unique_idx: {e}. "
+                "Likely duplicate public slugs in workflows; de-dup and restart."
+            )
+
     except Exception as e:
-        log.error(f"Error creating workflow indexes: {str(e)}")
+        log.error(f"Error creating workflow indexes: {e!s}")
         raise
 
 
@@ -556,16 +540,12 @@ async def create_workflow_execution_indexes():
             workflow_executions_collection.create_index(
                 [("workflow_id", 1), ("user_id", 1), ("started_at", -1)]
             ),
-            workflow_executions_collection.create_index(
-                [("user_id", 1), ("started_at", -1)]
-            ),
+            workflow_executions_collection.create_index([("user_id", 1), ("started_at", -1)]),
             workflow_executions_collection.create_index("execution_id", unique=True),
-            workflow_executions_collection.create_index(
-                [("workflow_id", 1), ("status", 1)]
-            ),
+            workflow_executions_collection.create_index([("workflow_id", 1), ("status", 1)]),
         )
     except Exception as e:
-        log.error(f"Error creating workflow execution indexes: {str(e)}")
+        log.error(f"Error creating workflow execution indexes: {e!s}")
         raise
 
 
@@ -579,9 +559,7 @@ async def create_payment_indexes():
             payments_collection.create_index("dodo_subscription_id", sparse=True),
             payments_collection.create_index("customer_email"),
             payments_collection.create_index("status"),
-            payments_collection.create_index(
-                [("customer_email", 1), ("created_at", -1)]
-            ),
+            payments_collection.create_index([("customer_email", 1), ("created_at", -1)]),
             payments_collection.create_index("webhook_processed_at", sparse=True),
             # Subscription indexes - for active subscriptions only
             subscriptions_collection.create_index("user_id"),
@@ -599,7 +577,7 @@ async def create_payment_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating payment indexes: {str(e)}")
+        log.error(f"Error creating payment indexes: {e!s}")
         raise
 
 
@@ -621,7 +599,7 @@ async def create_processed_webhook_indexes():
             ),
         )
     except Exception as e:
-        log.error(f"Error creating processed webhook indexes: {str(e)}")
+        log.error(f"Error creating processed webhook indexes: {e!s}")
         raise
 
 
@@ -656,13 +634,11 @@ async def create_usage_indexes():
                 expireAfterSeconds=7776000,  # 90 days
             ),
             # Plan type filtering
-            usage_snapshots_collection.create_index(
-                "plan_type", name="plan_type_filter"
-            ),
+            usage_snapshots_collection.create_index("plan_type", name="plan_type_filter"),
         )
 
     except Exception as e:
-        log.error(f"Error creating usage indexes: {str(e)}")
+        log.error(f"Error creating usage indexes: {e!s}")
         raise
 
 
@@ -687,9 +663,7 @@ async def create_ai_models_indexes():
             # Plan availability queries
             ai_models_collection.create_index("available_in_plans"),
             # Combined active + plan queries (most common)
-            ai_models_collection.create_index(
-                [("is_active", 1), ("available_in_plans", 1)]
-            ),
+            ai_models_collection.create_index([("is_active", 1), ("available_in_plans", 1)]),
             # Pricing queries (for cost calculation)
             ai_models_collection.create_index(
                 [("model_id", 1), ("is_active", 1)], name="model_pricing_lookup"
@@ -700,7 +674,7 @@ async def create_ai_models_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating AI models indexes: {str(e)}")
+        log.error(f"Error creating AI models indexes: {e!s}")
         raise
 
 
@@ -790,7 +764,7 @@ async def create_integration_indexes():
         await _backfill_integration_slugs()
 
     except Exception as e:
-        log.error(f"Error creating integration indexes: {str(e)}")
+        log.error(f"Error creating integration indexes: {e!s}")
         raise
 
 
@@ -866,7 +840,28 @@ async def create_user_integration_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating user integration indexes: {str(e)}")
+        log.error(f"Error creating user integration indexes: {e!s}")
+        raise
+
+
+async def create_integration_instructions_indexes():
+    """
+    Create indexes for integration_instructions collection.
+
+    Query patterns:
+    - Read one integration's instructions: user_id + integration_id (unique)
+    - List all of a user's instructions for materialization
+    """
+    try:
+        await _create_index_safe(
+            integration_instructions_collection,
+            [("user_id", 1), ("integration_id", 1)],
+            unique=True,
+            name="user_integration_instructions_unique",
+        )
+
+    except Exception as e:
+        log.error(f"Error creating integration instructions indexes: {e!s}")
         raise
 
 
@@ -883,79 +878,7 @@ async def create_device_token_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating device token indexes: {str(e)}")
-        raise
-
-
-async def create_vfs_indexes() -> None:
-    """
-    Create indexes for vfs_nodes collection (Virtual Filesystem).
-
-    Query patterns:
-    - Primary path lookups (unique per user)
-    - Directory listing (parent_path queries)
-    - Session-based queries (conversation_id in metadata)
-    - Agent-specific queries (agent_name in metadata)
-    - Cleanup/retention queries (created_at)
-    """
-    try:
-        await asyncio.gather(
-            # Primary unique index: user + path combination
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("path", 1)],
-                unique=True,
-                name="user_path_unique",
-            ),
-            # Directory listing: find all children of a parent path
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("parent_path", 1)],
-                name="user_parent_path",
-            ),
-            # Session-based queries: find files in a conversation
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("metadata.conversation_id", 1)],
-                sparse=True,
-                name="user_conversation",
-            ),
-            # Agent-based queries: find files created by a specific agent
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("metadata.agent_name", 1)],
-                sparse=True,
-                name="user_agent",
-            ),
-            # Tool-based queries: find outputs from a specific tool
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("metadata.tool_name", 1)],
-                sparse=True,
-                name="user_tool",
-            ),
-            # Retention/cleanup queries: order by creation time
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("created_at", 1)],
-                name="user_created",
-            ),
-            # Recent access queries
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("accessed_at", -1)],
-                name="user_accessed",
-            ),
-            # Node type filtering (folders vs files)
-            _create_index_safe(
-                vfs_nodes_collection,
-                [("user_id", 1), ("node_type", 1), ("parent_path", 1)],
-                name="user_type_parent",
-            ),
-        )
-
-    except Exception as e:
-        log.error(f"Error creating VFS indexes: {e!s}")
+        log.error(f"Error creating device token indexes: {e!s}")
         raise
 
 
@@ -966,9 +889,7 @@ async def create_bot_session_indexes():
             # Unique session key index (critical for session lookup)
             bot_sessions_collection.create_index("session_key", unique=True),
             # Compound index for platform user lookups
-            bot_sessions_collection.create_index(
-                [("platform", 1), ("platform_user_id", 1)]
-            ),
+            bot_sessions_collection.create_index([("platform", 1), ("platform_user_id", 1)]),
             # Conversation ID index for conversation-based queries
             bot_sessions_collection.create_index("conversation_id"),
             # TTL index for automatic session cleanup after 30 days (2,592,000 seconds)
@@ -979,7 +900,7 @@ async def create_bot_session_indexes():
         )
 
     except Exception as e:
-        log.error(f"Error creating bot session indexes: {str(e)}")
+        log.error(f"Error creating bot session indexes: {e!s}")
         raise
 
 
@@ -1029,79 +950,28 @@ async def create_installed_skills_indexes() -> None:
         raise
 
 
-async def get_index_status() -> Dict[str, List[str]]:
+async def create_e2b_sandbox_indexes() -> None:
     """
-    Get the current index status for all collections.
-    Useful for monitoring and debugging index usage.
+    Create indexes for e2b_sandboxes and e2b_warm_pool collections.
 
-    Returns:
-        Dict mapping collection names to lists of index names
+    Query patterns:
+    - Sandbox lookup by user_id (1 sandbox per user, unique)
+    - Sweeper: scan by last_used_at to find evictable sandboxes
+    - Warm pool: claim a ready sandbox by (shard_id, state)
     """
     try:
-        collections = {
-            "users": users_collection,
-            "conversations": conversations_collection,
-            "todos": todos_collection,
-            "projects": projects_collection,
-            "goals": goals_collection,
-            "notes": notes_collection,
-            "files": files_collection,
-            "mail": mail_collection,
-            "calendar": calendars_collection,
-            "blog": blog_collection,
-            "notifications": notifications_collection,
-            "reminders": reminders_collection,
-            "workflows": workflows_collection,
-            "vfs_nodes": vfs_nodes_collection,
-            "skills": skills_collection,
-        }
-
-        # Get all collection indexes concurrently
-        async def get_collection_indexes(name: str, collection):
-            try:
-                indexes = await collection.list_indexes().to_list(length=None)
-                return name, [idx.get("name", "unnamed") for idx in indexes]
-            except Exception as e:
-                log.error(f"Failed to get indexes for {name}: {str(e)}")
-                return name, [f"ERROR: {str(e)}"]
-
-        # Execute all index status queries concurrently
-        tasks = [
-            get_collection_indexes(name, collection)
-            for name, collection in collections.items()
-        ]
-        results = await asyncio.gather(*tasks)
-
-        # Convert results to dictionary
-        index_status = dict(results)
-
-        return index_status
-
+        await asyncio.gather(
+            e2b_sandboxes_collection.create_index("user_id", unique=True),
+            e2b_sandboxes_collection.create_index("last_used_at"),
+            e2b_sandboxes_collection.create_index([("shard_id", 1), ("state", 1)]),
+            e2b_warm_pool_collection.create_index(
+                [("shard_id", 1), ("state", 1), ("created_at", 1)]
+            ),
+            e2b_warm_pool_collection.create_index(
+                "created_at",
+                expireAfterSeconds=3600,  # 1 hour TTL on pool entries
+            ),
+        )
     except Exception as e:
-        log.error(f"Error getting index status: {str(e)}")
-        return {"error": [str(e)]}
-
-
-async def log_index_summary():
-    """Log a summary of all collection indexes for monitoring purposes."""
-    try:
-        index_status = await get_index_status()
-
-        log.info("=== DATABASE INDEX SUMMARY ===")
-
-        total_indexes = 0
-        for collection_name, indexes in index_status.items():
-            if not indexes or (len(indexes) == 1 and indexes[0].startswith("ERROR")):
-                log.warning(f"{collection_name}: No indexes or error")
-            else:
-                index_count = len(indexes)
-                total_indexes += index_count
-                log.info(
-                    f"INDEX CREATED: {collection_name}: {index_count} indexes - {', '.join(indexes)}"
-                )
-
-        log.info(f"Total indexes across all collections: {total_indexes}")
-        log.info("=== END INDEX SUMMARY ===")
-
-    except Exception as e:
-        log.error(f"Error logging index summary: {str(e)}")
+        log.error(f"Error creating e2b sandbox indexes: {e!s}")
+        raise

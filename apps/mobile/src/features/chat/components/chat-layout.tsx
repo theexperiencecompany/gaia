@@ -1,36 +1,25 @@
 import { useRouter } from "expo-router";
 import { type ReactNode, useCallback } from "react";
-import { Keyboard, View } from "react-native";
-import DrawerLayout, {
-  DrawerPosition,
-  DrawerState,
-  DrawerType,
-} from "react-native-gesture-handler/ReanimatedDrawerLayout";
+import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useResponsive } from "@/lib/responsive";
 import { useSidebar } from "../hooks/sidebar-context";
 import { useChatContext } from "../hooks/use-chat-context";
 import { ChatHeader } from "./chat/chat-header";
-import { SidebarContent } from "./sidebar/sidebar";
 
 interface ChatLayoutProps {
   children: ReactNode;
   background?: ReactNode;
 }
 
+/**
+ * Chat-specific in-screen frame: header + optional background art + body.
+ * The drawer/sidebar lives at the app level (`AppShell`); this component
+ * only owns the chat header and its hooks (toggle drawer, new chat).
+ */
 export function ChatLayout({ children, background }: ChatLayoutProps) {
   const { setActiveChatId, clearActiveMessages } = useChatContext();
-  const { drawerRef, toggleSidebar, closeSidebar } = useSidebar();
-  const { sidebarWidth } = useResponsive();
+  const { closeSidebar } = useSidebar();
   const router = useRouter();
-
-  const handleSelectChat = useCallback(
-    (chatId: string) => {
-      closeSidebar();
-      setActiveChatId(chatId);
-    },
-    [closeSidebar, setActiveChatId],
-  );
 
   const handleNewChat = useCallback(() => {
     closeSidebar();
@@ -39,60 +28,27 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
     router.replace("/");
   }, [closeSidebar, clearActiveMessages, router, setActiveChatId]);
 
-  const handleSearchPress = useCallback(() => {
-    router.push("/(app)/search");
-  }, [router]);
-
-  const renderDrawerContent = useCallback(
-    () => (
-      <SidebarContent
-        onSelectChat={handleSelectChat}
-        onNewChat={handleNewChat}
-      />
-    ),
-    [handleSelectChat, handleNewChat],
-  );
-
   return (
     <View style={{ flex: 1 }}>
-      <DrawerLayout
-        ref={drawerRef}
-        drawerWidth={sidebarWidth}
-        drawerPosition={DrawerPosition.LEFT}
-        drawerType={DrawerType.FRONT}
-        overlayColor="rgba(0, 0, 0, 0.7)"
-        renderNavigationView={renderDrawerContent}
-        onDrawerStateChanged={(state) => {
-          if (state !== DrawerState.IDLE) Keyboard.dismiss();
-        }}
-      >
-        <View style={{ flex: 1 }}>
-          {background && (
-            <View
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-              }}
-            >
-              {background}
-            </View>
-          )}
-
-          <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-            <ChatHeader
-              onMenuPress={toggleSidebar}
-              onNewChatPress={handleNewChat}
-              onSearchPress={handleSearchPress}
-            />
-
-            {/* This must be flex:1 so KeyboardAvoidingView can resize */}
-            <View style={{ flex: 1 }}>{children}</View>
-          </SafeAreaView>
+      {background && (
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+          }}
+        >
+          {background}
         </View>
-      </DrawerLayout>
+      )}
+
+      <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+        <ChatHeader onNewChatPress={handleNewChat} />
+
+        <View style={{ flex: 1 }}>{children}</View>
+      </SafeAreaView>
     </View>
   );
 }

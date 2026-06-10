@@ -5,10 +5,23 @@
       "args": ["-s", "mcp"],
       "env": {}
     },
+    "code-review-graph": {
+      "command": "uvx",
+      "args": ["code-review-graph", "serve"],
+      "type": "stdio"
+    },
     "chrome-devtools": {
       "command": "npx",
       "args": ["-y", "chrome-devtools-mcp@latest", "--autoConnect"],
       "env": {}
+    },
+    "mobile": {
+      "command": "npx",
+      "args": ["-y", "@mobilenext/mobile-mcp@latest"],
+      "env": {
+        "ANDROID_HOME": "/Users/dhruvmaradiya/Library/Android/sdk",
+        "PATH": "/Users/dhruvmaradiya/Library/Android/sdk/platform-tools:/Users/dhruvmaradiya/Library/Android/sdk/emulator:/Users/dhruvmaradiya/.local/share/mise/installs/java/21.0.2/bin:/usr/local/bin:/usr/bin:/bin"
+      }
     }
   }
 }

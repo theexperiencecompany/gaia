@@ -12,6 +12,7 @@ interface StandardCodeBlockProps {
   children: React.ReactNode;
   copied: boolean;
   onCopy: () => void;
+  hideToolbar?: boolean;
 }
 
 const StandardCodeBlock: React.FC<StandardCodeBlockProps> = ({
@@ -19,6 +20,7 @@ const StandardCodeBlock: React.FC<StandardCodeBlockProps> = ({
   children,
   copied,
   onCopy,
+  hideToolbar,
 }) => {
   const match = /language-(\w+)/.exec(className || "");
   const language = match ? match[1] : undefined;
@@ -26,36 +28,38 @@ const StandardCodeBlock: React.FC<StandardCodeBlockProps> = ({
 
   return (
     <div className="relative my-2 flex flex-col gap-0 rounded-xl">
-      <div className="sticky! top-0 mb-[-0.5em] flex items-center justify-between rounded-t-xl! rounded-b-none! bg-zinc-900 px-4 py-1 text-white">
-        <span className="monospace flex items-center gap-2 font-mono text-xs">
-          <div className="text-base">
-            {iconClass && <i className={`${iconClass} colored`} />}
+      {!hideToolbar && (
+        <div className="sticky! top-0 mb-[-0.5em] flex items-center justify-between rounded-t-xl! rounded-b-none! bg-zinc-900 px-4 py-1 text-white">
+          <span className="monospace flex items-center gap-2 font-mono text-xs">
+            <div className="text-base">
+              {iconClass && <i className={`${iconClass} colored`} />}
+            </div>
+            {language || ""}
+          </span>
+          <div className="flex items-center gap-1">
+            <DownloadButton
+              content={String(children)}
+              language={match ? match[1] : undefined}
+            />
+            <Button
+              className="text-xs text-zinc-400 hover:text-gray-300"
+              size="sm"
+              isIconOnly
+              variant="light"
+              onPress={onCopy}
+            >
+              {copied ? (
+                <Tick02Icon width={18} height={18} />
+              ) : (
+                <Copy01Icon width={18} height={18} />
+              )}
+            </Button>
           </div>
-          {language || ""}
-        </span>
-        <div className="flex items-center gap-1">
-          <DownloadButton
-            content={String(children)}
-            language={match ? match[1] : undefined}
-          />
-          <Button
-            className="text-xs text-zinc-400 hover:text-gray-300"
-            size="sm"
-            isIconOnly
-            variant="light"
-            onPress={onCopy}
-          >
-            {copied ? (
-              <Tick02Icon width={18} height={18} />
-            ) : (
-              <Copy01Icon width={18} height={18} />
-            )}
-          </Button>
         </div>
-      </div>
+      )}
       <PrismAsyncLight
         showLineNumbers
-        className="overflow-x-auto rounded-b-xl"
+        className={`overflow-x-auto ${hideToolbar ? "rounded-xl" : "rounded-b-xl"}`}
         language={match ? match[1] : undefined}
         style={vscDarkPlus}
       >

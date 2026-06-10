@@ -50,6 +50,16 @@ export class CLIStore extends EventEmitter {
   private inputResolver: ((value: any) => void) | null = null;
   private emitTimer: ReturnType<typeof setTimeout> | null = null;
   private emitPending = false;
+  private readonly autoResolveInputs: Map<string, unknown> = new Map();
+
+  /**
+   * Mark an input request id as auto-resolved instead of blocking on a UI
+   * prompt. Used by non-TTY (plain text) handlers so flows that wait for a
+   * final "exit" confirmation don't hang the process.
+   */
+  setAutoResolve(id: string, value: unknown = "exit"): void {
+    this.autoResolveInputs.set(id, value);
+  }
 
   /**
    * Gets the current state snapshot.
@@ -143,6 +153,11 @@ export class CLIStore extends EventEmitter {
    */
   // biome-ignore lint: Allow any for flexible meta and return types
   waitForInput(id: string, meta?: any, timeoutMs?: number): Promise<any> {
+    if (this.autoResolveInputs.has(id)) {
+      this.state.inputRequest = null;
+      this.emitNow();
+      return Promise.resolve(this.autoResolveInputs.get(id));
+    }
     this.state.inputRequest = { id, meta };
     this.emitNow();
     return new Promise((resolve) => {

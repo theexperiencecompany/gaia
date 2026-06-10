@@ -4,14 +4,14 @@ Gmail trigger handler.
 Handles Gmail new message trigger processing.
 """
 
-from typing import Any, Dict, List, Set
+from typing import Any
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import GmailNewMessagePayload
 from app.models.trigger_configs import GmailNewMessageConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.triggers.base import TriggerHandler
+from shared.py.wide_events import log
 
 
 class GmailTriggerHandler(TriggerHandler):
@@ -27,11 +27,11 @@ class GmailTriggerHandler(TriggerHandler):
     SUPPORTED_EVENTS = {"GMAIL_NEW_GMAIL_MESSAGE"}
 
     @property
-    def trigger_names(self) -> List[str]:
+    def trigger_names(self) -> list[str]:
         return self.SUPPORTED_TRIGGERS
 
     @property
-    def event_types(self) -> Set[str]:
+    def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
     async def register(
@@ -40,7 +40,7 @@ class GmailTriggerHandler(TriggerHandler):
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-    ) -> List[str]:
+    ) -> list[str]:
         """Gmail triggers are automatically handled by Composio connection.
 
         No explicit registration needed - triggers fire on connected account.
@@ -48,9 +48,7 @@ class GmailTriggerHandler(TriggerHandler):
         trigger_data = trigger_config.trigger_data
 
         # Validate trigger_data type if provided
-        if trigger_data is not None and not isinstance(
-            trigger_data, GmailNewMessageConfig
-        ):
+        if trigger_data is not None and not isinstance(trigger_data, GmailNewMessageConfig):
             raise TypeError(
                 f"Expected GmailNewMessageConfig for trigger '{trigger_name}', "
                 f"but got {type(trigger_data).__name__}"
@@ -60,8 +58,8 @@ class GmailTriggerHandler(TriggerHandler):
         return []  # No explicit trigger IDs for Gmail
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: Dict[str, Any]
-    ) -> List[Workflow]:
+        self, event_type: str, trigger_id: str, data: dict[str, Any]
+    ) -> list[Workflow]:
         """Find workflows for a Gmail event.
 
         Handles two matching strategies in one pass:
@@ -82,7 +80,7 @@ class GmailTriggerHandler(TriggerHandler):
                 log.error("No user_id in Gmail webhook data")
                 return []
 
-            workflows: List[Workflow] = []
+            workflows: list[Workflow] = []
 
             # Strategy 1: match gmail_new_message workflows by user_id
             user_query = {

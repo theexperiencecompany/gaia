@@ -1,7 +1,7 @@
 """Trigger configuration models (Pydantic)."""
 
 from collections.abc import Callable
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -13,7 +13,7 @@ class TriggerFieldConfig(BaseModel):
     type: Literal["string", "integer", "boolean", "number"]
     description: str
     required: bool = True
-    default: Optional[Any] = None
+    default: Any | None = None
 
 
 class TriggerConfigFieldSchema(BaseModel):
@@ -21,10 +21,10 @@ class TriggerConfigFieldSchema(BaseModel):
 
     type: Literal["string", "integer", "boolean", "number"]
     default: Any
-    min: Optional[int] = None
-    max: Optional[int] = None
-    options_endpoint: Optional[str] = None
-    description: Optional[str] = None
+    min: int | None = None
+    max: int | None = None
+    options_endpoint: str | None = None
+    description: str | None = None
 
 
 class WorkflowTriggerSchema(BaseModel):
@@ -34,7 +34,7 @@ class WorkflowTriggerSchema(BaseModel):
     composio_slug: str
     name: str
     description: str
-    config_schema: Dict[str, TriggerConfigFieldSchema] = {}
+    config_schema: dict[str, TriggerConfigFieldSchema] = {}
 
 
 class TriggerConfig(BaseModel):
@@ -43,8 +43,8 @@ class TriggerConfig(BaseModel):
     slug: str
     name: str
     description: str
-    config: Optional[dict] = None
-    get_config: Optional[Callable] = None
-    config_fields: Optional[List[TriggerFieldConfig]] = None
+    config: dict | None = None
+    get_config: Callable | None = None
+    config_fields: list[TriggerFieldConfig] | None = None
     auto_activate: bool = True
-    workflow_trigger_schema: Optional[WorkflowTriggerSchema] = None
+    workflow_trigger_schema: WorkflowTriggerSchema | None = None

@@ -25,9 +25,11 @@ Gotchas:
 """
 
 import asyncio
-import warnings
 from collections.abc import Awaitable, Callable
 from typing import Literal
+import warnings
+
+from pydantic import PydanticDeprecatedSince20
 
 from app.agents.core.graph_builder.build_graph import build_graphs
 from app.agents.core.graph_builder.checkpointer_manager import init_checkpointer_manager
@@ -35,8 +37,7 @@ from app.agents.llm.client import register_llm_providers
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.store import init_embeddings
 from app.config.cloudinary import init_cloudinary
-from shared.py.wide_events import log
-from app.config.opik import init_opik
+from app.config.langfuse import init_langfuse
 from app.config.posthog import init_posthog
 from app.config.settings import settings
 from app.constants.startup import (
@@ -48,7 +49,8 @@ from app.db.chroma.chroma_tools_store import initialize_chroma_tools_store
 from app.db.chroma.chroma_triggers_store import initialize_chroma_triggers_store
 from app.db.chroma.chromadb import init_chroma
 from app.db.postgresql import init_postgresql_engine
-from app.db.rabbitmq import init_rabbitmq_publisher
+from app.db.rabbitmq import declare_outbound_topology_on_startup, init_rabbitmq_publisher
+from app.db.redis import redis_cache
 from app.helpers.lifespan_helpers import (
     _process_results,
     close_checkpointer_manager,
@@ -65,10 +67,11 @@ from app.helpers.lifespan_helpers import (
 )
 from app.services.composio.composio_service import init_composio_service
 from app.services.mcp.mcp_client_pool import init_mcp_client_pool
+from app.services.sandbox.pool import init_sandbox_pool
 from app.services.startup_validation import validate_startup_requirements
+from app.services.storage.bootstrap import init_juicefs_mount
 from app.services.tools.tools_warmup import warmup_tools_cache
-from app.services.vfs import get_vfs, init_vfs
-from pydantic import PydanticDeprecatedSince20
+from shared.py.wide_events import log
 
 
 def setup_warnings() -> None:
@@ -139,9 +142,7 @@ def _spawn_background_services(
                 log.error(f"Background init failed ({service_names[i]}): {result}")
 
         if failed:
-            log.warning(
-                f"Background init completed with {failed}/{len(services)} failures"
-            )
+            log.warning(f"Background init completed with {failed}/{len(services)} failures")
         else:
             log.info(f"Background init completed: {len(services)} services")
 
@@ -199,9 +200,10 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         initialize_chroma_triggers_store,
         init_cloudinary,
         validate_startup_requirements,
-        init_vfs,
+        init_juicefs_mount,
+        init_sandbox_pool,
         init_posthog,
-        init_opik,
+        init_langfuse,
     )
 
     for register in registrations:
@@ -214,18 +216,24 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     # In production FastAPI we schedule them to initialize in the background.
     eager_services = [
         (init_mongodb_async, "mongodb"),
+        (redis_cache.verify_connection, "redis"),
         (init_reminder_service, "reminder_service"),
         (init_workflow_service, "workflow_service"),
-        (get_vfs, "vfs"),
+        # JuiceFS mount must be live before any tool call touches /mnt/jfs.
+        # The provider is a no-op when R2/JFS settings are unconfigured, so
+        # this is safe to include unconditionally.
+        (lambda: providers.aget("juicefs_mount"), "juicefs_mount"),
     ]
+
+    # Outbound bot-message queues must exist before any executor reply or
+    # reminder is published — declared in both the API and the ARQ worker.
+    eager_services.append((declare_outbound_topology_on_startup, "outbound_topology"))
 
     # Context-specific services: WebSocket only needed for web interface
     if context == "main_app":
         eager_services.append((init_websocket_consumer, "websocket_consumer"))
 
-    startup_services: list[tuple[Callable[[], Awaitable[object]], str]] = list(
-        eager_services
-    )
+    startup_services: list[tuple[Callable[[], Awaitable[object]], str]] = list(eager_services)
     startup_services.append(
         (
             lambda: providers.initialize_auto_providers(
@@ -241,8 +249,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     # warm up in background.
     if context == "main_app" and not settings.ENABLE_LAZY_LOADING:
         log.info(
-            "Hot reloading disabled: scheduling warmup tasks in background "
-            "(non-blocking startup)"
+            "Hot reloading disabled: scheduling warmup tasks in background (non-blocking startup)"
         )
 
         _spawn_background_services(
@@ -289,7 +296,7 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
     # Cancel any background warmup tasks first.
     if _background_tasks:
         log.info(f"Cancelling {len(_background_tasks)} background tasks")
-        for task in list(_background_tasks):
+        for task in _background_tasks:
             if not task.done():
                 task.cancel()
         await asyncio.gather(*_background_tasks, return_exceptions=True)
@@ -303,16 +310,14 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
         (close_workflow_scheduler, "workflow_scheduler"),
         (close_checkpointer_manager, "checkpointer_manager"),
         (close_mcp_client_pool, "mcp_client_pool"),
+        # Both contexts open a RabbitMQ connection at startup (outbound topology
+        # declaration + publishing), so close the publisher unconditionally.
+        (close_publisher_async, "publisher"),
     ]
 
-    # Context-specific cleanup: additional services only for FastAPI
+    # Context-specific cleanup: the WebSocket event consumer only runs in FastAPI.
     if context == "main_app":
-        shutdown_services.extend(
-            [
-                (close_websocket_async, "websocket"),  # WebSocket event consumer
-                (close_publisher_async, "publisher"),  # Message queue publisher
-            ]
-        )
+        shutdown_services.append((close_websocket_async, "websocket"))
 
     if not shutdown_services:
         log.info(f"No shutdown tasks for {context}")
@@ -330,9 +335,7 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
         # Log failures without stopping other cleanup operations
         for i, result in enumerate(shutdown_results):
             if isinstance(result, Exception):
-                log.error(
-                    f"Error during {context} {shutdown_service_names[i]} shutdown: {result}"
-                )
+                log.error(f"Error during {context} {shutdown_service_names[i]} shutdown: {result}")
 
         log.info(f"{context} services shutdown completed")
 

@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
+import { Tab, Tabs } from "@heroui/tabs";
 import {
   Cancel01Icon,
   CodeIcon,
@@ -9,15 +10,20 @@ import {
   Download01Icon,
   File01Icon,
 } from "@icons";
+import { formatFileSize } from "@shared/utils";
 import { useCallback, useEffect, useState, type WheelEvent } from "react";
-import { type VFSReadResponse, vfsApi } from "@/features/chat/api/vfsApi";
+import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { useArtifactText } from "@/features/chat/hooks/useArtifactText";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 interface FileViewerPanelProps {
+  conversationId: string;
   path: string;
   filename: string;
   contentType: string;
+  sizeBytes?: number;
+  inlineBody?: string;
 }
 
 type ViewMode = "preview" | "source";
@@ -68,12 +74,6 @@ function getLanguage(filename: string): string {
   return langMap[ext] || "text";
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function buildHtmlPreviewDocument(content: string): string {
   const previewStyles = `
     <style>
@@ -120,13 +120,14 @@ function FileContentRenderer({
   filename: string;
   viewMode: ViewMode;
 }) {
-  const markdownClassName = "px-4 pb-3";
+  const markdownClassName = "px-3 pb-2";
 
   if (viewMode === "source") {
     const language = getLanguage(filename);
     return (
       <MarkdownRenderer
         className={markdownClassName}
+        hideCodeToolbar
         content={`\`\`\`${language}\n${content}\n\`\`\``}
       />
     );
@@ -144,7 +145,7 @@ function FileContentRenderer({
         <iframe
           title={filename}
           srcDoc={previewDoc}
-          className="block h-full w-full border-0 bg-white"
+          className="block h-full w-full bg-white"
           sandbox=""
         />
       </div>
@@ -169,20 +170,85 @@ function FileContentRenderer({
   );
 }
 
+interface FileViewerBodyProps {
+  isImage: boolean;
+  loading: boolean;
+  error: boolean;
+  content: string | null;
+  contentType: string;
+  filename: string;
+  conversationId: string;
+  path: string;
+  viewMode: ViewMode;
+}
+
+function FileViewerBody({
+  isImage,
+  loading,
+  error,
+  content,
+  contentType,
+  filename,
+  conversationId,
+  path,
+  viewMode,
+}: Readonly<FileViewerBodyProps>) {
+  if (isImage) {
+    return (
+      <div className="flex h-full items-center justify-center bg-zinc-950 p-4">
+        <img
+          src={sessionFilesApi.artifactUrl(conversationId, path)}
+          alt={filename}
+          className="max-h-full max-w-full object-contain"
+        />
+      </div>
+    );
+  }
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-red-400">Failed to load file</p>
+      </div>
+    );
+  }
+  if (content === null) {
+    return null;
+  }
+  return (
+    <FileContentRenderer
+      content={content}
+      contentType={contentType}
+      filename={filename}
+      viewMode={viewMode}
+    />
+  );
+}
+
 export default function FileViewerPanel({
+  conversationId,
   path,
   filename,
   contentType,
+  sizeBytes,
+  inlineBody,
 }: FileViewerPanelProps) {
-  const [fileData, setFileData] = useState<VFSReadResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const isImage = contentType.startsWith("image/");
+  const {
+    text: content,
+    loading,
+    error,
+  } = useArtifactText(conversationId, path, inlineBody, !isImage);
   const [copied, setCopied] = useState(false);
   const closeSidebar = useRightSidebar((state) => state.close);
 
-  const effectiveContentType = fileData?.content_type || contentType;
-
-  const isPreviewable = PREVIEWABLE_CONTENT_TYPES.has(effectiveContentType);
+  const isPreviewable = PREVIEWABLE_CONTENT_TYPES.has(contentType) || isImage;
 
   const [viewMode, setViewMode] = useState<ViewMode>(
     isPreviewable ? "preview" : "source",
@@ -190,69 +256,42 @@ export default function FileViewerPanel({
 
   useEffect(() => {
     setViewMode(isPreviewable ? "preview" : "source");
-  }, [isPreviewable, path]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    setLoading(true);
-    setError(null);
-
-    vfsApi
-      .readFile(path)
-      .then((data) => {
-        if (!cancelled) {
-          setFileData(data);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          const message =
-            err instanceof Error ? err.message : "Failed to load file";
-          setError(message);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [path]);
+  }, [isPreviewable]);
 
   const handleCopy = useCallback(async () => {
-    if (!fileData) return;
+    if (content === null) return;
 
     try {
-      await navigator.clipboard.writeText(fileData.content);
+      await navigator.clipboard.writeText(content);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
       // no-op
     }
-  }, [fileData]);
+  }, [content]);
 
   const handleDownload = useCallback(() => {
-    if (!fileData) return;
-
-    const blob = new Blob([fileData.content], { type: effectiveContentType });
-    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = url;
+    if (isImage || content === null) {
+      // For binary artifacts (images etc.) anchor to the auth-gated URL —
+      // we never fetched the body and don't want to.
+      link.href = sessionFilesApi.artifactUrl(conversationId, path);
+    } else {
+      const blob = new Blob([content], { type: contentType });
+      link.href = URL.createObjectURL(blob);
+    }
     link.download = filename;
+    link.rel = "noopener";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [effectiveContentType, fileData, filename]);
+    if (!isImage && content !== null) URL.revokeObjectURL(link.href);
+  }, [content, contentType, conversationId, filename, isImage, path]);
 
   const ext = getExtension(filename).toUpperCase();
-  const sizeLabel = fileData ? ` · ${formatSize(fileData.size_bytes)}` : "";
-  const isHtmlPreview =
-    effectiveContentType === "text/html" && viewMode === "preview";
+  const sizeLabel =
+    sizeBytes === undefined ? "" : ` · ${formatFileSize(sizeBytes)}`;
+  const isHtmlPreview = contentType === "text/html" && viewMode === "preview";
 
   const handleContentWheel = useCallback(
     (event: WheelEvent<HTMLDivElement>) => {
@@ -278,27 +317,35 @@ export default function FileViewerPanel({
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-zinc-950">
-      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-zinc-800 bg-zinc-900 px-2">
+    <div className="flex h-full min-h-0 flex-col bg-zinc-800">
+      <div className="flex h-12 shrink-0 items-center gap-2 bg-zinc-800 px-2">
         {isPreviewable ? (
-          <div className="flex rounded-md border border-zinc-700 bg-zinc-950 p-0.5">
-            <button
-              type="button"
-              onClick={() => setViewMode("preview")}
-              className={`rounded-sm p-1.5 transition-colors ${viewMode === "preview" ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"}`}
-              aria-label="Preview mode"
-            >
-              <File01Icon size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("source")}
-              className={`rounded-sm p-1.5 transition-colors ${viewMode === "source" ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"}`}
-              aria-label="Code mode"
-            >
-              <CodeIcon size={16} />
-            </button>
-          </div>
+          <Tabs
+            aria-label="View mode"
+            selectedKey={viewMode}
+            onSelectionChange={(key) => setViewMode(key as ViewMode)}
+            size="sm"
+            variant="solid"
+          >
+            <Tab
+              key="preview"
+              title={
+                <div className="flex items-center gap-1.5">
+                  <File01Icon size={14} />
+                  <span>Preview</span>
+                </div>
+              }
+            />
+            <Tab
+              key="source"
+              title={
+                <div className="flex items-center gap-1.5">
+                  <CodeIcon size={14} />
+                  <span>Code</span>
+                </div>
+              }
+            />
+          </Tabs>
         ) : null}
 
         <p className="min-w-0 flex-1 truncate text-sm text-zinc-200">
@@ -317,7 +364,7 @@ export default function FileViewerPanel({
             variant="light"
             onClick={handleCopy}
             aria-label="Copy file"
-            isDisabled={!fileData}
+            isDisabled={content === null}
           >
             <Copy01Icon size={16} />
           </Button>
@@ -327,7 +374,7 @@ export default function FileViewerPanel({
             variant="light"
             onClick={handleDownload}
             aria-label="Download file"
-            isDisabled={!fileData}
+            isDisabled={!isImage && content === null}
           >
             <Download01Icon size={16} />
           </Button>
@@ -345,29 +392,19 @@ export default function FileViewerPanel({
 
       <div
         className={`min-h-0 flex-1 ${isHtmlPreview ? "overflow-hidden" : "overflow-y-auto overscroll-contain"}`}
-        style={{ touchAction: "pan-x pan-y" }}
         onWheel={handleContentWheel}
       >
-        {loading ? (
-          <div className="flex h-full items-center justify-center">
-            <Spinner size="lg" />
-          </div>
-        ) : null}
-
-        {error ? (
-          <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-red-400">{error}</p>
-          </div>
-        ) : null}
-
-        {!loading && !error && fileData ? (
-          <FileContentRenderer
-            content={fileData.content}
-            contentType={effectiveContentType}
-            filename={filename}
-            viewMode={viewMode}
-          />
-        ) : null}
+        <FileViewerBody
+          isImage={isImage}
+          loading={loading}
+          error={error}
+          content={content}
+          contentType={contentType}
+          filename={filename}
+          conversationId={conversationId}
+          path={path}
+          viewMode={viewMode}
+        />
       </div>
     </div>
   );

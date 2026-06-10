@@ -1,6 +1,5 @@
-import { Surface } from "heroui-native";
 import { Pressable, View } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import Animated, { FadeInDown, FadeOutUp } from "react-native-reanimated";
 import { AppIcon, Cancel01Icon, LinkBackwardIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
@@ -23,57 +22,52 @@ export function ReplyPreviewBar({ replyTo, onDismiss }: ReplyPreviewBarProps) {
 
   return (
     <Animated.View
-      entering={FadeIn.duration(200)}
-      exiting={FadeOut.duration(150)}
+      entering={FadeInDown.duration(200)}
+      exiting={FadeOutUp.duration(150)}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.sm,
+        backgroundColor: "rgba(63,63,70,0.4)",
+      }}
     >
-      <Surface
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.sm,
-          borderTopWidth: 1,
-          borderTopColor: "rgba(99,102,241,0.25)",
-          backgroundColor: "rgba(99,102,241,0.06)",
-        }}
-      >
-        <AppIcon
-          icon={LinkBackwardIcon}
-          size={iconSize.sm - 2}
-          color="#6366f1"
-          style={{ marginRight: spacing.xs }}
-        />
+      <AppIcon
+        icon={LinkBackwardIcon}
+        size={iconSize.sm - 2}
+        color="#71717a"
+        style={{ marginRight: spacing.xs }}
+      />
 
-        <View style={{ flex: 1, overflow: "hidden" }}>
-          <Text
-            style={{
-              fontSize: fontSize.xs,
-              color: "#6366f1",
-              fontWeight: "600",
-              marginBottom: 1,
-            }}
-          >
-            Replying to {label}
-          </Text>
-          <Text
-            style={{
-              fontSize: fontSize.xs + 1,
-              color: "#a1a1aa",
-            }}
-            numberOfLines={1}
-          >
-            {preview}
-          </Text>
-        </View>
-
-        <Pressable
-          onPress={onDismiss}
-          hitSlop={8}
-          style={{ marginLeft: spacing.sm }}
+      <View style={{ flex: 1, overflow: "hidden" }}>
+        <Text
+          style={{
+            fontSize: fontSize.xs,
+            color: "#71717a",
+            fontWeight: "600",
+            marginBottom: 1,
+          }}
         >
-          <AppIcon icon={Cancel01Icon} size={iconSize.sm - 2} color="#8e8e93" />
-        </Pressable>
-      </Surface>
+          Replying to {label}
+        </Text>
+        <Text
+          style={{
+            fontSize: fontSize.xs + 1,
+            color: "#a1a1aa",
+          }}
+          numberOfLines={1}
+        >
+          {preview}
+        </Text>
+      </View>
+
+      <Pressable
+        onPress={onDismiss}
+        hitSlop={8}
+        style={{ marginLeft: spacing.sm }}
+      >
+        <AppIcon icon={Cancel01Icon} size={iconSize.sm - 2} color="#71717a" />
+      </Pressable>
     </Animated.View>
   );
 }

@@ -6,12 +6,12 @@ import pytest
 
 from app.utils.integration_checker import (
     TOOL_INTEGRATION_MAPPING,
+    build_integration_connection_message,
     check_and_prompt_integration,
     check_user_has_integration,
     get_required_integration_for_tool_category,
     stream_integration_connection_prompt,
 )
-
 
 # ---------------------------------------------------------------------------
 # get_required_integration_for_tool_category
@@ -43,9 +43,7 @@ class TestGetRequiredIntegrationForToolCategory:
     def test_mapping_matches_module_constant(self) -> None:
         """Ensure the function uses the TOOL_INTEGRATION_MAPPING dict."""
         for category, integration_id in TOOL_INTEGRATION_MAPPING.items():
-            assert (
-                get_required_integration_for_tool_category(category) == integration_id
-            )
+            assert get_required_integration_for_tool_category(category) == integration_id
 
 
 # ---------------------------------------------------------------------------
@@ -88,9 +86,7 @@ class TestCheckUserHasIntegration:
         assert result is False
 
     @patch("app.utils.integration_checker.get_integration_scopes")
-    async def test_returns_false_when_access_token_empty(
-        self, mock_get_scopes: MagicMock
-    ) -> None:
+    async def test_returns_false_when_access_token_empty(self, mock_get_scopes: MagicMock) -> None:
         result = await check_user_has_integration("", "gmail")
         assert result is False
         mock_get_scopes.assert_not_called()
@@ -129,9 +125,7 @@ class TestCheckUserHasIntegration:
         mock_token_repo: MagicMock,
     ) -> None:
         mock_get_scopes.return_value = ["scope_a"]
-        mock_token_repo.get_token_by_auth_token = AsyncMock(
-            side_effect=Exception("DB error")
-        )
+        mock_token_repo.get_token_by_auth_token = AsyncMock(side_effect=Exception("DB error"))
 
         result = await check_user_has_integration("valid_token", "gmail")
         assert result is False
@@ -230,15 +224,10 @@ class TestStreamIntegrationConnectionPrompt:
         mock_writer = MagicMock()
         mock_get_writer.return_value = mock_writer
 
-        await stream_integration_connection_prompt(
-            "gmail", message="Custom message here"
-        )
+        await stream_integration_connection_prompt("gmail", message="Custom message here")
 
         call_data = mock_writer.call_args[0][0]
-        assert (
-            call_data["integration_connection_required"]["message"]
-            == "Custom message here"
-        )
+        assert call_data["integration_connection_required"]["message"] == "Custom message here"
 
     @patch("app.utils.integration_checker.get_stream_writer")
     @patch("app.utils.integration_checker.get_integration_by_id")
@@ -366,9 +355,7 @@ class TestCheckAndPromptIntegration:
         mock_get_req.return_value = "gmail"
         mock_check.return_value = False
 
-        result = await check_and_prompt_integration(
-            "token", "gmail", tool_name="send_email"
-        )
+        result = await check_and_prompt_integration("token", "gmail", tool_name="send_email")
         assert result is False
         mock_stream.assert_awaited_once_with(
             integration_id="gmail",
@@ -465,3 +452,83 @@ class TestCheckAndPromptIntegration:
         assert result is True
         mock_check.assert_not_awaited()
         mock_stream.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# build_integration_connection_message
+# ---------------------------------------------------------------------------
+
+_FAKE_FRONTEND = "https://app.example.com"
+
+
+@pytest.mark.unit
+class TestBuildIntegrationConnectionMessage:
+    """The connect message is platform-aware: UI points at the card, non-UI
+    embeds the connect URL inline so bot users can act on it."""
+
+    def test_ui_source_points_to_card_without_url(self) -> None:
+        with patch(
+            "app.utils.integration_checker.get_config",
+            return_value={"configurable": {"source_category": "ui"}},
+        ):
+            msg = build_integration_connection_message("Gmail")
+        assert "Gmail" in msg
+        assert "card" in msg.lower()
+        assert "http" not in msg
+        assert "/integrations" not in msg
+
+    @pytest.mark.parametrize("category", ["bot", "bg"])
+    def test_non_ui_source_includes_connect_url(self, category: str) -> None:
+        with (
+            patch(
+                "app.utils.integration_checker.get_config",
+                return_value={"configurable": {"source_category": category}},
+            ),
+            patch("app.utils.integration_checker.settings") as mock_settings,
+        ):
+            mock_settings.FRONTEND_URL = _FAKE_FRONTEND
+            msg = build_integration_connection_message("Gmail")
+        assert f"{_FAKE_FRONTEND}/integrations" in msg
+        assert "Gmail" in msg
+
+    def test_outside_runnable_context_defaults_to_url(self) -> None:
+        # get_config raises RuntimeError outside a graph run -> treat as non-UI.
+        with (
+            patch(
+                "app.utils.integration_checker.get_config",
+                side_effect=RuntimeError("no runnable context"),
+            ),
+            patch("app.utils.integration_checker.settings") as mock_settings,
+        ):
+            mock_settings.FRONTEND_URL = _FAKE_FRONTEND
+            msg = build_integration_connection_message("Slack")
+        assert f"{_FAKE_FRONTEND}/integrations" in msg
+
+    @pytest.mark.parametrize("category", ["bot", "bg"])
+    def test_non_ui_prefers_login_free_connect_link(self, category: str) -> None:
+        """When a minted login-free link is supplied, the bot reply uses THAT —
+        not the generic /integrations page (which requires a GAIA login)."""
+        magic = "https://api.example.com/api/v1/integrations/connect-link?t=abc.def.ghi"
+        with (
+            patch(
+                "app.utils.integration_checker.get_config",
+                return_value={"configurable": {"source_category": category}},
+            ),
+            patch("app.utils.integration_checker.settings") as mock_settings,
+        ):
+            mock_settings.FRONTEND_URL = _FAKE_FRONTEND
+            msg = build_integration_connection_message("Gmail", magic)
+        assert magic in msg
+        assert f"{_FAKE_FRONTEND}/integrations" not in msg
+
+    def test_ui_ignores_connect_link_even_when_supplied(self) -> None:
+        """On UI the card carries the link; the agent text stays URL-free."""
+        with patch(
+            "app.utils.integration_checker.get_config",
+            return_value={"configurable": {"source_category": "ui"}},
+        ):
+            msg = build_integration_connection_message(
+                "Gmail", "https://api.example.com/api/v1/integrations/connect-link?t=abc"
+            )
+        assert "http" not in msg
+        assert "card" in msg.lower()

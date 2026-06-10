@@ -6,89 +6,44 @@ import {
   CursorMagicSelection03Icon,
   DateTimeIcon,
   Mail01Icon,
-  PlayIcon,
-  TimeScheduleIcon,
   UserCircle02Icon,
 } from "@icons";
 import Image from "next/image";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { formatRunCount } from "@/utils/formatters";
+import {
+  resolveCreatorAvatar,
+  resolveCreatorName,
+} from "@/features/workflows/utils/creator";
+import { cn } from "@/lib/utils";
 
 import type { Workflow } from "../../api/workflowApi";
-import { getBrowserTimezone } from "../../utils/browserTimezone";
-
-/**
- * Format a UTC date to a localized time string in the specified timezone.
- *
- * @param utcDate - Date object in UTC
- * @param timezone - IANA timezone name (e.g., "America/New_York") or offset string (e.g., "+05:30")
- * @returns Formatted time string like "9:00 AM" or "9:00 AM IST"
- */
-function formatTimeInTimezone(utcDate: Date, timezone: string): string {
-  try {
-    // Check if timezone is an offset string like "+05:30" or "-08:00"
-    const offsetMatch = timezone.match(/^([+-])(\d{2}):(\d{2})$/);
-
-    if (offsetMatch) {
-      // For offset strings, we can't use Intl directly with the offset
-      // We need to manually calculate the time
-      const sign = offsetMatch[1] === "+" ? 1 : -1;
-      const hours = parseInt(offsetMatch[2], 10);
-      const minutes = parseInt(offsetMatch[3], 10);
-      const offsetMs = sign * (hours * 60 + minutes) * 60 * 1000;
-
-      // Create a new date adjusted by the offset
-      const localDate = new Date(utcDate.getTime() + offsetMs);
-
-      // Format without timezone name since we only have an offset
-      return localDate.toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-        timeZone: "UTC", // Use UTC since we already applied the offset
-      });
-    }
-
-    // For IANA timezone names, use Intl.DateTimeFormat
-    return utcDate.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-      timeZone: timezone,
-      timeZoneName: "short",
-    });
-  } catch {
-    // Fallback to browser timezone if the timezone is invalid
-    return utcDate.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-      timeZoneName: "short",
-    });
-  }
-}
 
 /**
  * Get relative time display (e.g., "in 2h", "in 3d")
  */
 function getRelativeTime(nextRun: Date, now: Date): string {
   const diffMs = nextRun.getTime() - now.getTime();
-  const diffMinutes = Math.floor(diffMs / (1000 * 60));
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffHours / 24);
+  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+  const totalHours = Math.floor(totalMinutes / 60);
+  const totalDays = Math.floor(totalHours / 24);
 
-  if (diffDays > 0) {
-    return `in ${diffDays}d`;
-  } else if (diffHours > 0) {
-    return `in ${diffHours}h`;
-  } else if (diffMinutes > 0) {
-    return `in ${diffMinutes}m`;
+  const remHours = totalHours % 24;
+  const remMinutes = totalMinutes % 60;
+
+  if (totalDays > 0) {
+    return remHours > 0 ? `in ${totalDays}d ${remHours}h` : `in ${totalDays}d`;
+  } else if (totalHours > 0) {
+    return remMinutes > 0
+      ? `in ${totalHours}h ${remMinutes}m`
+      : `in ${totalHours}h`;
+  } else if (totalMinutes > 0) {
+    return `in ${totalMinutes}m`;
   } else {
     return "soon";
   }
 }
 
-// Utility function for calculating next run display
+// Utility function for calculating next run relative time display
 export function getNextRunDisplay(workflow: Workflow): string | null {
   const { trigger_config } = workflow;
 
@@ -99,15 +54,10 @@ export function getNextRunDisplay(workflow: Workflow): string | null {
 
     // Check if next run is in the future
     if (nextRun > now) {
-      // Get the workflow's stored timezone, fallback to browser timezone
-      const workflowTimezone =
-        (trigger_config.timezone as string) || getBrowserTimezone();
-
-      // Format: "9:00 AM IST (in 2h)"
-      const formattedTime = formatTimeInTimezone(nextRun, workflowTimezone);
-      const relativeTime = getRelativeTime(nextRun, now);
-
-      return `${formattedTime} (${relativeTime})`;
+      // Return only the relative time — the trigger label already shows
+      // the scheduled time in the user's local timezone, so we avoid
+      // displaying the same time twice.
+      return getRelativeTime(nextRun, now);
     }
   }
 
@@ -121,7 +71,7 @@ interface TriggerIconProps {
   size?: number;
 }
 
-export function TriggerIcon({
+function TriggerIcon({
   triggerType,
   integrationId,
   size = 20,
@@ -176,51 +126,31 @@ export function TriggerDisplay({
   nextRunText,
   className = "",
 }: TriggerDisplayProps) {
-  if (triggerLabel !== "Manual Trigger")
+  if (triggerLabel === "Manual Trigger" || !triggerLabel) {
     return (
-      <div className={`flex flex-wrap items-center gap-2 ${className}`}>
-        <div className="flex items-center gap-1 text-xs text-zinc-500">
-          <div className="w-4">
-            <TriggerIcon
-              triggerType={triggerType}
-              integrationId={integrationId}
-              size={17}
-            />
-          </div>
-          {triggerLabel}
-        </div>
-
-        {nextRunText && (
-          <div className="flex items-center gap-1 text-xs text-zinc-500">
-            <TimeScheduleIcon width={15} height={15} />
-            {nextRunText}
-          </div>
-        )}
-      </div>
+      <Chip size="sm" variant="flat" radius="sm" className="text-xs">
+        Manual
+      </Chip>
     );
-}
+  }
 
-// Reusable Run Count Component
-interface RunCountDisplayProps {
-  totalExecutions: number;
-  className?: string;
-}
-
-export function RunCountDisplay({
-  totalExecutions,
-  className = "",
-}: RunCountDisplayProps) {
-  const runCount = formatRunCount(totalExecutions);
-
-  if (runCount !== "Never run")
-    return (
-      <div
-        className={`flex items-center gap-1 text-xs text-zinc-500 ${className}`}
-      >
-        <PlayIcon width={15} height={15} className="w-4 text-zinc-500" />
-        <span className="text-nowrap">{formatRunCount(totalExecutions)}</span>
+  return (
+    <div
+      className={cn("flex items-center gap-1 text-xs text-zinc-500", className)}
+    >
+      <div className="w-4">
+        <TriggerIcon
+          triggerType={triggerType}
+          integrationId={integrationId}
+          size={16}
+        />
       </div>
-    );
+      <span>
+        {triggerLabel}
+        {nextRunText ? ` (${nextRunText})` : ""}
+      </span>
+    </div>
+  );
 }
 
 // Reusable Activation Status Chip
@@ -287,13 +217,16 @@ export function CreatorAvatar({
   size = 27,
   showTooltip = true,
 }: CreatorAvatarProps) {
+  const avatarSrc = resolveCreatorAvatar(creator);
+  const displayName = resolveCreatorName(creator);
+
   const avatar = (
     <div className="flex items-center gap-2">
       <div className="flex h-7 w-7 items-center justify-center rounded-full">
-        {creator.avatar || creator.id === "system" ? (
+        {avatarSrc ? (
           <Image
-            src={creator.avatar || "/images/logos/experience_black_bg.png"}
-            alt={creator.name}
+            src={avatarSrc}
+            alt={displayName}
             width={size}
             height={size}
             className="rounded-full h-7 w-7"
@@ -309,7 +242,7 @@ export function CreatorAvatar({
 
   return (
     <Tooltip
-      content={`Created by ${creator.name}`}
+      content={`Created by ${displayName}`}
       showArrow
       closeDelay={0}
       delay={0}

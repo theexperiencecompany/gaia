@@ -71,8 +71,8 @@ Providers are registered (not initialized) during `unified_startup()` in `app/co
 
 Pre-model hooks in `app/agents/core/nodes/`:
 
-- `filter_messages_node` — trims history to fit context window
-- `manage_system_prompts_node` — injects dynamic system prompt
+- `filter_messages_node` — strips unanswered tool calls from AI messages (does NOT trim by length; context-window trimming is the summarization middleware's job)
+- `manage_system_prompts_node` — keeps only the latest of each system-message slot (static prompt / dynamic-context / todo-context / time) and drops stale copies, to hold the prompt-cache prefix stable; it does not inject prompts (that's `construct_langchain_messages`)
 - `follow_up_actions_node` — end-of-graph hook on `comms_agent` only
 
 ### Tools
@@ -86,6 +86,85 @@ Pre-model hooks in `app/agents/core/nodes/`:
 - Use `ruff` for linting and formatting (not black/flake8/isort).
 - Raise `AppError` (from `app/utils/errors.py`) for domain errors — it serializes to a structured JSON response automatically.
 - Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields, `log.info(...)` / `log.error(...)` to emit.
+
+### Tooling and the autofix hook
+
+After every `.py` edit, a PostToolUse hook runs `uvx ruff format` then `uvx ruff check --fix` on the file. Formatting, import order/grouping, `Optional[X]` → `X | None`, `Union[X, Y]` → `X | Y`, lowercase generics, unused imports, mutable default args, bare `except`, and `print` are corrected automatically — do not hand-fix them.
+
+What the hook does NOT fix, you handle:
+
+- **Type errors** — `nx type-check api` (mypy strict). Add the missing annotation or correct the type. Use `Any` only for genuinely untyped third-party code.
+- **Lint warnings ruff can't auto-resolve** — `nx lint api`, read the rule, fix the cause.
+
+Python 3.11+: use modern syntax (`X | Y` unions, `match` statements).
+
+## File & Structural Organization
+
+One domain per file. Never let a file span multiple domains.
+
+- `app/models/` — SQLAlchemy / MongoDB document models, one file per domain (`todo_models.py`).
+- `app/schemas/` — Pydantic request/response schemas, one file per domain. Separate `CreateRequest`, `UpdateRequest`, `Response`.
+- `app/services/` — business logic, one file per domain. No route handling.
+- `app/api/v1/endpoints/` — route handlers, one file per domain. No business logic.
+- `app/db/` — DB client setup and connection utilities only.
+- `app/constants/` — constants by domain (`cache.py`, `llm.py`, `auth.py`). Never hardcode values.
+
+## Pydantic Models
+
+- `BaseModel` for all schemas; `model_config = ConfigDict(from_attributes=True)` on ORM-mapped models.
+- `Field(description="...")` on fields that appear in API docs; constraints inline (`Field(min_length=1, max_length=255)`).
+- Naming: `CreateTodoRequest`, `UpdateTodoRequest`, `TodoResponse`, `TodoModel`.
+
+## FastAPI — Route Handlers
+
+One `APIRouter` per domain with `prefix` and `tags`. Every handler follows the same 3-step contract:
+
+1. `log.set()` with everything known at the start (user, operation, IDs).
+2. Delegate all work to a service function.
+3. `log.set()` again with result IDs, then return `JSONResponse`.
+
+```python
+@router.post("/todos", response_model=TodoResponse, status_code=201)
+async def create_todo(
+    payload: CreateTodoRequest,
+    user: dict = Depends(get_current_user),
+) -> JSONResponse:
+    log.set(user={"id": user["user_id"]}, todo={"operation": "create"})
+    result = await create_todo_service(payload, user)
+    log.set(todo={"id": result["_id"]})
+    return JSONResponse(content=result)
+```
+
+- Always set `response_model=` on the decorator; use correct status codes (`201` create, `204` delete, `404` not found).
+- Never return raw dicts — always `JSONResponse` or a Pydantic response model.
+
+## Service Layer
+
+Services are async module-level functions, not classes.
+
+- No service classes with `__init__`, instance methods, or injected dependencies. If grouping is needed, use a class with `@staticmethod` methods only — never `self`.
+- Services access MongoDB collections directly via `app.db.mongodb.collections` — no repository layer.
+- Keep one-off query logic in the service function where it is used; return domain models, not raw DB documents.
+
+```python
+# wrong
+class TodoService:
+    def __init__(self, db):
+        self.db = db
+    async def get_todo(self, todo_id: str): ...
+
+# correct
+async def get_todo(todo_id: str, user_id: str) -> TodoModel | None:
+    return await todos_collection.find_one({"_id": todo_id, "user_id": user_id})
+```
+
+## Anti-Patterns
+
+- No sync DB/HTTP calls in async endpoints — all I/O must be `async`.
+- No `time.sleep()` — use `asyncio.sleep()`; use `asyncio.gather()` for concurrent independent ops.
+- No global mutable state — pass dependencies explicitly.
+- No monolithic service files spanning multiple domains.
+- No copying logic from `gaia-shared` into app code — import it.
 
 ## Database
 
@@ -122,6 +201,49 @@ Default `addopts`: `-m "not composio" --strict-markers -n 4` — four parallel w
 Run composio tests (needs credentials): `uv run pytest tests/composio -v`
 
 Run e2e tests (needs live services): `nx run api:test:e2e`
+
+## Native vs Dockered API (JuiceFS trade-off)
+
+The API can run two ways in dev. They are **not** equivalent — the difference matters whenever you touch workspace v2, file uploads, artifacts, or sandbox file ops.
+
+| Mode | How | Port | JuiceFS mount | Hot reload |
+|---|---|---|---|---|
+| **Native** (default) | `mise dev` / `nx dev api` | host:8000 | not available | `uvicorn --reload` |
+| **Dockered** | `mise dev:vm` / `docker compose --profile backend up -d` | host:8000 → container:80 | mounted at `/mnt/jfs` | `WATCHFILES_FORCE_POLLING` |
+
+### Why this split exists
+
+JuiceFS is the host-side FUSE mount that backs workspace v2 (per-session FS, uploads, artifacts, skill installs). Mounting FUSE on Linux needs `CAP_SYS_ADMIN` + `/dev/fuse` + `apparmor:unconfined`. A native macOS process can't grant itself those — they only exist inside the dockered container. So the API code on the host has no `/mnt/jfs`, and `_require_mount()` in `app/services/storage/juicefs.py` raises `JuiceFSUnavailable`.
+
+The compose file profile-gates `gaia-backend` (`profiles: ["backend", "all"]`) precisely so `mise dev` can give you a native API with fast iteration without forcing the JuiceFS plumbing on every dev session.
+
+### What works in native mode
+
+- Chat (LLM calls, message persistence, SSE streaming)
+- Memory, todos, reminders, integrations, workflows, payments — anything Mongo/Postgres-only
+- Most agent tool calls
+- Sandbox tools that don't depend on the API seeding files via JuiceFS first
+
+### What raises `JuiceFSUnavailable` in native mode
+
+All of these call `_require_mount()` in `app/services/storage/juicefs.py`:
+
+- `write_session_file` — user file uploads from the chat UI
+- `ensure_user_workspace` — first-time workspace bootstrap for a user
+- `write_skill_file` / `ensure_user_skills_dir` — installing skills to the user's workspace
+- The artifact watcher in `app/services/sandbox/artifact_watcher.py` — needs to tail `/mnt/jfs/.accesslog`
+- Any service path under `app/services/storage/sessions/` that touches the FS
+
+If you hit `JuiceFSUnavailable` while running natively, **that is expected** — the fix is to switch to `mise dev:vm`, not to "fix" the error. Do not silence the exception, do not add a no-op fallback, do not stub `_is_mounted` to return `True`. The mount being missing is a load-bearing signal that JuiceFS-dependent features need the dockered API.
+
+### When to use which
+
+- **Default to native (`mise dev`).** Faster start, port 8000 free, `uv` commands work directly, hot reload is instant.
+- **Switch to `mise dev:vm`** when your task touches `app/services/storage/`, `app/services/sandbox/`, file upload endpoints, artifact streaming, workspace v2 in general, or you start seeing `JuiceFSUnavailable` in logs.
+
+### Coding-agent note
+
+If you are an agent fixing a bug here and you see `JuiceFSUnavailable`: do **not** wrap it in `try/except: pass`, do **not** stub the storage helpers, and do **not** create a fake `/mnt/jfs` directory. The user's `mise dev` is intentionally configured to surface this. Either tell the user to switch to `mise dev:vm` for tasks that actually exercise JuiceFS, or confirm with them that the failing code path isn't relevant to the current task before changing anything.
 
 ## Environment
 
@@ -174,3 +296,4 @@ nx run-many -t lint --projects=web,desktop
 - **Background memory storage**: `store_user_message_memory()` is fire-and-forget in `_core_agent_logic()`. Use the `_background_tasks` set pattern to prevent garbage collection of running tasks.
 - **`UJSONResponse`** is the default response class (faster JSON serialization). Custom error handlers in `app_factory.py` return plain `JSONResponse` to avoid double-serialization issues.
 - **`ENABLE_LAZY_LOADING=true`** (default) means startup blocks until services initialize. Setting it to `false` makes the server start immediately and warm up in the background — safe for requests because `LazyLoader` uses per-provider locks.
+- **Sandbox user has no `sudo`.** The `gaia-coder` template strips the sandbox user from the `sudo` and `wheel` groups (see `apps/api/scripts/build_e2b_template.py`). Drive root-needing operations (mount.sh, accesslog tail) through e2b's `sbx.commands.run(..., user="root")` parameter — never prefix shell commands with `sudo` in API code, the call will fail. JuiceFS itself runs under `/etc/gaia/jfs_launcher.py` which marks the daemon non-dumpable (`PR_SET_DUMPABLE=0`) so its `/proc/<pid>/{environ,cmdline}` are unreadable to the unprivileged user. `/proc` is mounted `hidepid=invisible` so even PID enumeration is denied. Verify after template rebuilds with `apps/api/scripts/verify_sandbox_hardening.sh`.

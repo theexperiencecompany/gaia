@@ -4,11 +4,11 @@ Single service approach - simple and maintainable.
 """
 
 import json
-from typing import List
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.rate_limiter import limiter
-from shared.py.wide_events import log
 from app.models.payment_models import (
     CreateSubscriptionRequest,
     PaymentVerificationResponse,
@@ -17,12 +17,12 @@ from app.models.payment_models import (
 )
 from app.services.payments.payment_service import payment_service
 from app.services.payments.payment_webhook_service import payment_webhook_service
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from shared.py.wide_events import log
 
 router = APIRouter()
 
 
-@router.get("/plans", response_model=List[PlanResponse])
+@router.get("/plans", response_model=list[PlanResponse])
 @limiter.limit("30/minute")
 async def get_plans_endpoint(request: Request, active_only: bool = True):
     """Get all available subscription plans."""
@@ -30,7 +30,7 @@ async def get_plans_endpoint(request: Request, active_only: bool = True):
     try:
         return await payment_service.get_plans(active_only=active_only)
     except Exception as e:
-        log.error(f"Error getting plans: {str(e)}")
+        log.error(f"Error getting plans: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to get plans")
 
 
@@ -60,7 +60,7 @@ async def create_subscription_endpoint(
             user_id, subscription_data.product_id, subscription_data.quantity
         )
     except Exception as e:
-        log.error(f"Error creating subscription: {str(e)}")
+        log.error(f"Error creating subscription: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to create subscription")
 
 
@@ -83,7 +83,7 @@ async def verify_payment_endpoint(
         result = await payment_service.verify_payment_completion(user_id)
         return PaymentVerificationResponse(**result)
     except Exception as e:
-        log.error(f"Error verifying payment: {str(e)}")
+        log.error(f"Error verifying payment: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to verify payment")
 
 
@@ -105,7 +105,7 @@ async def get_subscription_status_endpoint(
     try:
         return await payment_service.get_user_subscription_status(user_id)
     except Exception as e:
-        log.error(f"Error getting subscription status: {str(e)}")
+        log.error(f"Error getting subscription status: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to get subscription status")
 
 

@@ -1,6 +1,9 @@
 import asyncio
 from contextlib import asynccontextmanager
-from typing import Optional, cast
+from typing import cast
+
+from langchain_core.language_models import LanguageModelLike
+from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agents.core.graph_builder.checkpointer_manager import (
     get_checkpointer_manager,
@@ -13,6 +16,7 @@ from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.agents.llm.client import init_llm
+from app.agents.llm.retry_policies import COMMS_RETRY_POLICY, EXECUTOR_RETRY_POLICY
 from app.agents.middleware import create_comms_middleware, create_executor_middleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools import memory_tools
@@ -22,19 +26,18 @@ from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.core.tool_runtime_config import (
     build_executor_child_tool_runtime_config,
 )
-from app.agents.tools.executor_tool import call_executor
+from app.agents.tools.executor_tool import call_executor, cancel_executor
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
-from shared.py.wide_events import log
+from app.agents.tools.wait_for_subagents_tool import wait_for_subagents as wait_for_subagents_tool
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
-from langchain_core.language_models import LanguageModelLike
-from langgraph.checkpoint.memory import InMemorySaver
+from shared.py.wide_events import log
 
 
 @asynccontextmanager
 async def build_executor_graph(
-    chat_llm: Optional[LanguageModelLike] = None,
+    chat_llm: LanguageModelLike | None = None,
     in_memory_checkpointer: bool = False,
 ):
     """Construct and compile the executor agent graph with handoff tools."""
@@ -51,11 +54,12 @@ async def build_executor_graph(
     tool_dict = tool_registry.get_tool_dict()
     tool_dict.update({"handoff": handoff_tool})
     tool_dict.update({t.name: t for t in todo_tools})
+    tool_dict.update({"wait_for_subagents": wait_for_subagents_tool})
 
     todo_hook = create_todo_pre_model_hook(source="executor")
 
-    # Build excluded tool names for spawn_subagent: handoff and all subagent:-prefixed
-    excluded_subagent_tools = {"handoff"}
+    # Spawned subagents must not see executor-only orchestration tools.
+    excluded_subagent_tools = {"handoff", "wait_for_subagents"}
 
     middleware = create_executor_middleware(
         subagent_excluded_tools=excluded_subagent_tools,
@@ -91,32 +95,47 @@ async def build_executor_graph(
             "handoff",
             "plan_tasks",
             "update_tasks",
-            "vfs_read",
-            "vfs_cmd",
+            "read",
+            "bash",
             "deep_research",
+            "wait_for_subagents",
+            "read_manual",
+            "create_tracked_todo",
+            "update_tracked_todo",
+            "update_tracked_todo_canvas",
+            "complete_tracked_todo",
+            "search_todo_context",
+            "list_tracked_todos",
         ],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
+        agent_retry_policy=EXECUTOR_RETRY_POLICY,
     )
 
     checkpointer_manager = await get_checkpointer_manager()
 
-    model_name = getattr(chat_llm, "model_name", None) or getattr(
-        chat_llm, "model", None
-    )
+    model_name = getattr(chat_llm, "model_name", None) or getattr(chat_llm, "model", None)
 
     if in_memory_checkpointer or not checkpointer_manager:
         in_memory_checkpointer_instance = InMemorySaver()
-        graph = builder.compile(
-            checkpointer=in_memory_checkpointer_instance, store=store
-        )
-        log.debug("Graph compiled with in-memory checkpointer")
+        graph = builder.compile(checkpointer=in_memory_checkpointer_instance, store=store)
+        # Surface fallback at WARNING — users silently lose conversation memory
+        # when Postgres checkpointer is unavailable.
+        if not in_memory_checkpointer:
+            log.warning(
+                "checkpointer_fallback_to_memory",
+                graph="comms",
+                reason="checkpointer_manager_unavailable",
+                model=model_name,
+            )
+        else:
+            log.info("graph_compiled_in_memory", graph="comms", model=model_name)
         log.set(agent={"model": model_name})
         yield graph
     else:
         postgres_checkpointer = checkpointer_manager.get_checkpointer()
         graph = builder.compile(checkpointer=postgres_checkpointer, store=store)
-        log.debug("Graph compiled with PostgreSQL checkpointer")
+        log.info("graph_compiled_postgres", graph="comms", model=model_name)
         log.set(agent={"model": model_name})
         yield graph
 
@@ -138,7 +157,7 @@ async def build_executor_agent():
 
 @asynccontextmanager
 async def build_comms_graph(
-    chat_llm: Optional[LanguageModelLike] = None,
+    chat_llm: LanguageModelLike | None = None,
     in_memory_checkpointer: bool = False,
 ):
     """Build the comms agent graph with only the executor tool."""
@@ -147,6 +166,7 @@ async def build_comms_graph(
 
     tool_registry = {
         "call_executor": call_executor,
+        "cancel_executor": cancel_executor,
         "add_memory": memory_tools.add_memory,
         "search_memory": memory_tools.search_memory,
     }
@@ -164,25 +184,22 @@ async def build_comms_graph(
         agent_name="comms_agent",
         tool_registry=tool_registry,
         disable_retrieve_tools=True,
-        initial_tool_ids=["call_executor", "add_memory", "search_memory"],
+        initial_tool_ids=["call_executor", "cancel_executor", "add_memory", "search_memory"],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
         end_graph_hooks=[
             follow_up_actions_node,
         ],
+        agent_retry_policy=COMMS_RETRY_POLICY,
     )
 
     checkpointer_manager = await get_checkpointer_manager()
 
-    model_name = getattr(chat_llm, "model_name", None) or getattr(
-        chat_llm, "model", None
-    )
+    model_name = getattr(chat_llm, "model_name", None) or getattr(chat_llm, "model", None)
 
     if in_memory_checkpointer or not checkpointer_manager:
         in_memory_checkpointer_instance = InMemorySaver()
-        graph = builder.compile(
-            checkpointer=in_memory_checkpointer_instance, store=store
-        )
+        graph = builder.compile(checkpointer=in_memory_checkpointer_instance, store=store)
         log.debug("Comms graph compiled with in-memory checkpointer")
         log.set(agent={"model": model_name})
         yield graph

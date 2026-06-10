@@ -4,56 +4,65 @@ import pytest
 
 
 def test_suppressed_tools_match_tool_fields():
-    from app.models.chat_models import tool_fields
     from app.agents.prompts.openui_prompts import OPENUI_SUPPRESSED_TOOLS
+    from app.models.chat_models import tool_fields
 
     for tool in tool_fields:
-        assert tool in OPENUI_SUPPRESSED_TOOLS, (
-            f"{tool} missing from OPENUI_SUPPRESSED_TOOLS"
-        )
+        assert tool in OPENUI_SUPPRESSED_TOOLS, f"{tool} missing from OPENUI_SUPPRESSED_TOOLS"
 
 
 def test_no_extra_suppressed_tools():
-    from app.models.chat_models import tool_fields
     from app.agents.prompts.openui_prompts import OPENUI_SUPPRESSED_TOOLS
+    from app.models.chat_models import tool_fields
 
     tool_fields_set = set(tool_fields)
     for tool in OPENUI_SUPPRESSED_TOOLS:
-        assert tool in tool_fields_set, (
-            f"{tool} in OPENUI_SUPPRESSED_TOOLS but not in tool_fields"
-        )
+        assert tool in tool_fields_set, f"{tool} in OPENUI_SUPPRESSED_TOOLS but not in tool_fields"
 
 
 def test_instructions_contains_each_suppressed_tool():
     from app.agents.prompts.openui_prompts import (
-        OPENUI_SUPPRESSED_TOOLS,
         OPENUI_INSTRUCTIONS,
+        OPENUI_SUPPRESSED_TOOLS,
     )
 
     for tool in OPENUI_SUPPRESSED_TOOLS:
-        assert tool in OPENUI_INSTRUCTIONS, (
-            f"Tool {tool} not mentioned in OPENUI_INSTRUCTIONS"
-        )
+        assert tool in OPENUI_INSTRUCTIONS, f"Tool {tool} not mentioned in OPENUI_INSTRUCTIONS"
 
 
 def test_instructions_contains_all_component_names():
     from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 
     components = [
-        "DataCard",
-        "ResultList",
-        "ComparisonTable",
-        "StatusCard",
-        "ActionCard",
-        "TagGroup",
+        # Layout containers
+        "Stack",
+        "Card",
+        "Grid",
+        "Row",
+        "Column",
+        "Separator",
+        # Primitives
+        "TextContent",
+        "CardHeader",
+        "Tag",
+        "TagBlock",
+        "Callout",
+        "Stat",
+        "Col",
+        "Table",
+        "Button",
+        "Buttons",
+        "Progress",
+        "Avatar",
+        "Checkbox",
+        "Radio",
+        # Layout & data
+        "CopyableContent",
         "FileTree",
         "Accordion",
         "TabsBlock",
-        "ProgressList",
-        "StatRow",
-        "SelectableList",
-        "AvatarList",
-        "KbdBlock",
+        "KbdRow",
+        # Analytics
         "BarChart",
         "LineChart",
         "AreaChart",
@@ -61,19 +70,19 @@ def test_instructions_contains_all_component_names():
         "ScatterChart",
         "RadarChart",
         "GaugeChart",
-        "ImageBlock",
+        # Content
         "ImageGallery",
         "VideoBlock",
         "AudioPlayer",
         "MapBlock",
-        "CalendarMini",
         "NumberTicker",
         "Carousel",
-        "TreeView",
+        # Timeline
         "Timeline",
-        "AlertBanner",
         "Steps",
+        # Code
         "CodeDiff",
+        # Documents
         "TextDocument",
     ]
     for name in components:
@@ -106,9 +115,7 @@ def test_enable_openui_removed_from_settings():
     import ast
     import pathlib
 
-    settings_path = (
-        pathlib.Path(__file__).parent.parent / "app" / "config" / "settings.py"
-    )
+    settings_path = pathlib.Path(__file__).parent.parent / "app" / "config" / "settings.py"
     source = settings_path.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(settings_path))
 

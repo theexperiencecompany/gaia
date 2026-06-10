@@ -1,13 +1,14 @@
 import { Button } from "@heroui/button";
-import { UndoIcon } from "@icons";
+import { Tooltip } from "@heroui/tooltip";
+import { ShuffleIcon } from "@icons";
+import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
-import { useCallback, useMemo, useState } from "react";
-import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
+import WorkflowModal from "@/features/workflows/components/WorkflowModal";
 import { useExploreWorkflows } from "@/features/workflows/hooks/useExploreWorkflows";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { useComposerTextActions } from "@/stores/composerStore";
 import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 
 const shuffleArray = <T,>(array: T[]): T[] => {
@@ -19,17 +20,62 @@ const shuffleArray = <T,>(array: T[]): T[] => {
   return shuffled;
 };
 
-interface ChatSuggestionsProps {
-  onSubmitSuggestion?: () => void;
+interface SuggestionCardProps {
+  workflow: CommunityWorkflow;
+  index: number;
+  onCardClick: (workflow: CommunityWorkflow) => void;
 }
 
-export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
+const SuggestionCard = memo(function SuggestionCard({
+  workflow,
+  index,
+  onCardClick,
+}: SuggestionCardProps) {
+  const shouldReduceMotion = useReducedMotion();
+
+  const handleClick = useCallback(() => {
+    onCardClick(workflow);
+  }, [onCardClick, workflow]);
+
+  return (
+    <m.div
+      initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{
+        duration: shouldReduceMotion ? 0 : 0.3,
+        delay: shouldReduceMotion ? 0 : index * 0.05,
+        ease: "easeOut",
+      }}
+    >
+      <UnifiedWorkflowCard
+        communityWorkflow={workflow}
+        variant="suggestion"
+        showExecutions={true}
+        actionButtonLabel="Try"
+        onCardClick={handleClick}
+        primaryAction="none"
+      />
+    </m.div>
+  );
+});
+
+export const ChatSuggestions: React.FC = () => {
   const { workflows: allWorkflows } = useExploreWorkflows();
   const [currentSuggestions, setCurrentSuggestions] = useState<
     CommunityWorkflow[]
   >([]);
-  const { clearInputText } = useComposerTextActions();
-  const { setContextualLoading } = useLoadingText();
+  const [selectedWorkflow, setSelectedWorkflow] =
+    useState<CommunityWorkflow | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Clear selectedWorkflow only after the modal's exit animation finishes —
+  // dropping it synchronously on close unmounts the modal mid-animation and
+  // produces a flash. The 250ms matches HeroUI's modal exit transition.
+  useEffect(() => {
+    if (isModalOpen || !selectedWorkflow) return;
+    const timer = globalThis.setTimeout(() => setSelectedWorkflow(null), 250);
+    return () => globalThis.clearTimeout(timer);
+  }, [isModalOpen, selectedWorkflow]);
 
   // Filter for only featured workflows
   const featuredWorkflows = useMemo(
@@ -41,7 +87,7 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
   );
 
   // Set initial suggestions when featured workflows are available
-  useMemo(() => {
+  useEffect(() => {
     if (featuredWorkflows.length > 0 && currentSuggestions.length === 0) {
       const initialSuggestions = shuffleArray(featuredWorkflows).slice(0, 3);
       setCurrentSuggestions(initialSuggestions);
@@ -69,54 +115,69 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
     }
   }, [currentSuggestions, featuredWorkflows]);
 
+  const handleSuggestionClick = useCallback((workflow: CommunityWorkflow) => {
+    setSelectedWorkflow(workflow);
+    setIsModalOpen(true);
+  }, []);
+
+  const draftData = useMemo(() => {
+    if (!selectedWorkflow) return null;
+    return {
+      suggested_title: selectedWorkflow.title,
+      suggested_description: selectedWorkflow.description,
+      prompt: selectedWorkflow.prompt || selectedWorkflow.description,
+      trigger_type: "manual" as const,
+    };
+  }, [selectedWorkflow]);
+
   return (
-    <div className="w-full max-w-4xl mt-10">
-      <div className="mb-2 flex w-full items-end justify-between px-1 text-zinc-400">
-        <span className="text-sm font-light">Suggestions</span>
-        <Button isIconOnly size="sm" variant="light" onPress={handleShuffle}>
-          <UndoIcon width={16} height={16} className="text-zinc-400" />
-        </Button>
+    <section
+      className="w-full max-w-4xl mt-10"
+      aria-label="Workflow suggestions"
+    >
+      <div className="mb-2 flex w-full items-end justify-between px-1 text-zinc-300">
+        <h2 className="text-sm font-light">Suggestions</h2>
+        <Tooltip content="Shuffle suggestions" placement="top">
+          <Button
+            isIconOnly
+            size="sm"
+            variant="light"
+            aria-label="Shuffle suggestions"
+            onPress={handleShuffle}
+          >
+            <ShuffleIcon width={16} height={16} className="text-zinc-300" />
+          </Button>
+        </Tooltip>
       </div>
 
       {currentSuggestions.length === 0 && (
-        <div className="text-sm text-zinc-400 flex items-center justify-center py-8">
+        <div className="text-sm text-zinc-300 flex items-center justify-center py-8">
           No Suggestions found
         </div>
       )}
 
-      <m.div
-        className="grid w-full grid-cols-3 gap-4"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -20 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
-      >
+      <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
         {currentSuggestions.map((workflow, index) => (
-          <m.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{
-              duration: 0.3,
-              delay: index * 0.05,
-              ease: "easeOut",
-            }}
+          <SuggestionCard
             key={workflow.id}
-          >
-            <UnifiedWorkflowCard
-              communityWorkflow={workflow}
-              variant="suggestion"
-              showExecutions={true}
-              showDescriptionAsTooltip={true}
-              actionButtonLabel="Try"
-              onActionComplete={() => {
-                setContextualLoading(true, workflow.title);
-                clearInputText();
-              }}
-            />
-          </m.div>
+            workflow={workflow}
+            index={index}
+            onCardClick={handleSuggestionClick}
+          />
         ))}
-      </m.div>
-    </div>
+      </div>
+
+      {selectedWorkflow && draftData && (
+        <WorkflowModal
+          isOpen={isModalOpen}
+          onOpenChange={setIsModalOpen}
+          mode="create"
+          draftData={draftData}
+          predefinedSteps={selectedWorkflow.steps}
+          createAndSend
+        />
+      )}
+    </section>
   );
 };
 

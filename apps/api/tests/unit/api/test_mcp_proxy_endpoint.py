@@ -8,8 +8,8 @@ and error handling are verified.
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
 API = "/api/v1/mcp"
 
@@ -151,9 +151,7 @@ class TestProxyResourcesList:
         assert resp.status_code == 500
         assert "resources/list failed" in resp.json()["detail"]
 
-    async def test_resources_list_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_resources_list_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(
             f"{API}/proxy/resources/list",
             json={"server_url": "https://example.com/mcp"},
@@ -185,9 +183,7 @@ class TestProxyResourceTemplatesList:
         data = resp.json()
         assert len(data["resource_templates"]) == 1
 
-    async def test_templates_list_camel_case_response(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_templates_list_camel_case_response(self, client: AsyncClient) -> None:
         """Server returns camelCase keys — endpoint normalises them."""
         mock_result = {
             "resourceTemplates": [{"uriTemplate": "file:///{x}", "name": "t"}],
@@ -215,9 +211,7 @@ class TestProxyResourceTemplatesList:
             new_callable=AsyncMock,
         ) as mock_get:
             mock_client = AsyncMock()
-            mock_client.list_resource_templates_on_server.side_effect = RuntimeError(
-                "err"
-            )
+            mock_client.list_resource_templates_on_server.side_effect = RuntimeError("err")
             mock_get.return_value = mock_client
             resp = await client.post(
                 f"{API}/proxy/resources/templates/list",
@@ -225,9 +219,7 @@ class TestProxyResourceTemplatesList:
             )
         assert resp.status_code == 500
 
-    async def test_templates_list_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_templates_list_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(
             f"{API}/proxy/resources/templates/list",
             json={"server_url": "https://example.com/mcp"},
@@ -284,9 +276,7 @@ class TestProxyResourceRead:
         resp = await client.post(f"{API}/proxy/resources/read", json={})
         assert resp.status_code == 422
 
-    async def test_resource_read_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_resource_read_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(
             f"{API}/proxy/resources/read",
             json={"server_url": "https://example.com/mcp", "uri": "file:///a.txt"},
@@ -350,9 +340,7 @@ class TestProxyPromptsList:
         assert resp.status_code == 500
         assert "prompts/list failed" in resp.json()["detail"]
 
-    async def test_prompts_list_requires_auth(
-        self, unauthed_client: AsyncClient
-    ) -> None:
+    async def test_prompts_list_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(
             f"{API}/proxy/prompts/list",
             json={"server_url": "https://example.com/mcp"},

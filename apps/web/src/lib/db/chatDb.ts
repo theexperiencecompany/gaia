@@ -16,6 +16,7 @@ export interface IConversation {
   userId?: string;
   starred?: boolean;
   isSystemGenerated?: boolean;
+  isOnboardingConversation?: boolean;
   systemPurpose?: SystemPurpose | null;
   isUnread?: boolean;
   source?: string; // ConversationSource from backend (web, telegram, discord, etc.)
@@ -403,8 +404,9 @@ class ChatDexie extends Dexie {
   }
 
   public async clearAll(): Promise<void> {
-    await messageQueue.enqueue(() =>
-      (this as Dexie).transaction(
+    const conversationIds = await messageQueue.enqueue(async () => {
+      const ids = await this.conversations.toCollection().primaryKeys();
+      await (this as Dexie).transaction(
         "rw",
         this.conversations,
         this.messages,
@@ -412,8 +414,12 @@ class ChatDexie extends Dexie {
           await this.messages.clear();
           await this.conversations.clear();
         },
-      ),
-    );
+      );
+      return ids;
+    });
+
+    // Emit event for store synchronization
+    dbEventEmitter.emitConversationsDeletedBulk(conversationIds);
   }
 
   public async cleanupOrphanedOptimisticMessages(

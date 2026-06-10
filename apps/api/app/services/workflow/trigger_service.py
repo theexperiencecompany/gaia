@@ -5,15 +5,14 @@ Provides high-level trigger operations that delegate to provider-specific handle
 Handles Composio trigger reference counting to prevent premature deletion.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.mongodb.collections import workflows_collection
-from app.models.trigger_config import WorkflowTriggerSchema
 from app.models.workflow_models import TriggerConfig
 from app.services.triggers import get_handler_by_name
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.wide_events import log
 
 
 class TriggerService:
@@ -24,7 +23,7 @@ class TriggerService:
     """
 
     @staticmethod
-    async def get_all_workflow_triggers() -> List[Dict[str, Any]]:
+    async def get_all_workflow_triggers() -> list[dict[str, Any]]:
         """
         Get all available workflow triggers from OAuth integrations.
 
@@ -61,66 +60,21 @@ class TriggerService:
         return triggers
 
     @staticmethod
-    def get_trigger_by_slug(slug: str) -> Optional[WorkflowTriggerSchema]:
-        """Get a workflow trigger schema by its slug."""
-        for integration in OAUTH_INTEGRATIONS:
-            for trigger_config in integration.associated_triggers:
-                if (
-                    trigger_config.workflow_trigger_schema
-                    and trigger_config.workflow_trigger_schema.slug == slug
-                ):
-                    return trigger_config.workflow_trigger_schema
-        return None
-
-    @staticmethod
-    async def get_trigger_reference_count(trigger_id: str) -> int:
-        """
-        Count how many workflows reference a specific Composio trigger ID.
-
-        Composio uses upsert for triggers, so multiple workflows may share
-        the same trigger ID if they have identical configurations.
-
-        Args:
-            trigger_id: The Composio trigger ID to check
-
-        Returns:
-            Number of workflows referencing this trigger
-        """
-        try:
-            count = await workflows_collection.count_documents(
-                {"trigger_config.composio_trigger_ids": trigger_id}
-            )
-            return count
-        except Exception as e:
-            log.error(f"Error counting trigger references for {trigger_id}: {e}")
-            return 0
-
-    @staticmethod
     async def get_triggers_safe_to_delete(
-        trigger_ids: List[str], excluding_workflow_id: Optional[str] = None
-    ) -> List[str]:
-        """
-        Filter trigger IDs to only those safe to delete from Composio.
+        trigger_ids: list[str], excluding_workflow_id: str | None = None
+    ) -> list[str]:
+        """Filter trigger IDs to those safe to delete from Composio.
 
         A trigger is safe to delete if no other workflows reference it.
-        When excluding_workflow_id is provided, we check if any OTHER workflows
-        reference the trigger (used during workflow deletion/update).
-
-        Args:
-            trigger_ids: List of Composio trigger IDs to check
-            excluding_workflow_id: Workflow ID to exclude from reference count
-
-        Returns:
-            List of trigger IDs that are safe to delete
+        ``excluding_workflow_id`` is excluded from the reference count (used
+        during workflow deletion/update).
         """
         safe_to_delete = []
 
         for trigger_id in trigger_ids:
             try:
                 # Build query to count references
-                query: Dict[str, Any] = {
-                    "trigger_config.composio_trigger_ids": trigger_id
-                }
+                query: dict[str, Any] = {"trigger_config.composio_trigger_ids": trigger_id}
 
                 # Exclude the current workflow if provided
                 if excluding_workflow_id:
@@ -148,23 +102,12 @@ class TriggerService:
         trigger_name: str,
         trigger_config: TriggerConfig,
         raise_on_failure: bool = False,
-    ) -> List[str]:
-        """
-        Register triggers for a workflow using the appropriate handler.
+    ) -> list[str]:
+        """Register triggers for a workflow using the appropriate handler.
 
-        Args:
-            user_id: The user ID
-            workflow_id: The workflow ID
-            trigger_name: The trigger name (e.g., 'calendar_event_created')
-            trigger_config: The TriggerConfig object with properly typed trigger_data
-            raise_on_failure: If True, raise TriggerRegistrationError when no triggers created
-
-        Returns:
-            List of registered Composio trigger IDs
-
-        Raises:
-            TypeError: If trigger_data type doesn't match expected type
-            TriggerRegistrationError: If raise_on_failure=True and no triggers were created
+        Returns the registered Composio trigger IDs (may be empty on success, e.g.
+        account-level Gmail has no per-workflow IDs). With ``raise_on_failure``,
+        raises TriggerRegistrationError when the handler is missing or raises.
         """
         handler = get_handler_by_name(trigger_name)
         if not handler:
@@ -176,27 +119,17 @@ class TriggerService:
 
         try:
             # Pass TriggerConfig directly - handlers validate trigger_data type
-            trigger_ids = await handler.register(
-                user_id, workflow_id, trigger_name, trigger_config
-            )
-
-            if not trigger_ids and raise_on_failure:
-                raise TriggerRegistrationError(
-                    f"Failed to register any triggers for '{trigger_name}'. "
-                    "This may be due to permission issues or invalid configuration.",
-                    trigger_name,
-                )
-
+            trigger_ids = await handler.register(user_id, workflow_id, trigger_name, trigger_config)
             return trigger_ids
         except TypeError as e:
             # Re-raise TypeError for type validation failures
-            log.error(f"Type validation error registering triggers: {str(e)}")
+            log.error(f"Type validation error registering triggers: {e!s}")
             raise
         except TriggerRegistrationError:
             # Re-raise our custom exception
             raise
         except Exception as e:
-            error_msg = f"Error registering triggers: {type(e).__name__}: {str(e)}"
+            error_msg = f"Error registering triggers: {type(e).__name__}: {e!s}"
             log.error(error_msg)
             log.exception("Full traceback:")
             if raise_on_failure:
@@ -207,24 +140,15 @@ class TriggerService:
     async def unregister_triggers(
         user_id: str,
         trigger_name: str,
-        trigger_ids: List[str],
-        workflow_id: Optional[str] = None,
+        trigger_ids: list[str],
+        workflow_id: str | None = None,
     ) -> bool:
-        """
-        Unregister triggers using the appropriate handler.
+        """Unregister triggers using the appropriate handler.
 
-        Only deletes triggers from Composio if no other workflows reference them.
-        This is important because Composio uses upsert - multiple workflows may
-        share the same trigger ID if they have identical configurations.
-
-        Args:
-            user_id: The user ID
-            trigger_name: The trigger name to find the right handler
-            trigger_ids: List of Composio trigger IDs to unregister
-            workflow_id: The workflow being deleted/updated (to exclude from ref count)
-
-        Returns:
-            True if operation completed (even if some triggers weren't deleted due to refs)
+        Only deletes triggers from Composio when no other workflows reference
+        them: Composio upserts, so workflows with identical configs share a
+        trigger ID. Returns True once the operation completes, even if some
+        triggers were kept due to remaining references.
         """
         if not trigger_ids:
             return True

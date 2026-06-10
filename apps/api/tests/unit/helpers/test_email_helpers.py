@@ -1,7 +1,7 @@
 """Tests for app.helpers.email_helpers — email processing and storage utilities."""
 
-from datetime import datetime, timezone
-from typing import Generator
+from collections.abc import Generator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,7 +15,6 @@ from app.helpers.email_helpers import (
     store_emails_to_mem0,
     store_single_profile,
 )
-
 
 # ---------------------------------------------------------------------------
 # _build_user_context
@@ -418,15 +417,11 @@ class TestStoreEmailsToMem0:
             mock_svc.store_memory_batch = AsyncMock(return_value=True)
             yield mock_svc
 
-    async def test_empty_list_returns_early(
-        self, mock_memory_service: AsyncMock
-    ) -> None:
+    async def test_empty_list_returns_early(self, mock_memory_service: AsyncMock) -> None:
         await store_emails_to_mem0("user_1", [])
         mock_memory_service.store_memory_batch.assert_not_called()
 
-    async def test_calls_store_memory_batch(
-        self, mock_memory_service: AsyncMock
-    ) -> None:
+    async def test_calls_store_memory_batch(self, mock_memory_service: AsyncMock) -> None:
         processed = [
             {
                 "content": "Email body text",
@@ -450,9 +445,7 @@ class TestStoreEmailsToMem0:
         call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
         assert call_kwargs["user_id"] == "user_42"
 
-    async def test_async_mode_default_true(
-        self, mock_memory_service: AsyncMock
-    ) -> None:
+    async def test_async_mode_default_true(self, mock_memory_service: AsyncMock) -> None:
         processed = [
             {
                 "content": "Body",
@@ -494,9 +487,7 @@ class TestStoreEmailsToMem0:
         assert call_kwargs["metadata"]["user_name"] == "Alice"
         assert call_kwargs["metadata"]["user_email"] == "alice@x.com"
 
-    async def test_messages_built_correctly(
-        self, mock_memory_service: AsyncMock
-    ) -> None:
+    async def test_messages_built_correctly(self, mock_memory_service: AsyncMock) -> None:
         processed = [
             {
                 "content": "Email text here",
@@ -615,9 +606,7 @@ class TestMarkEmailProcessingComplete:
         call_args = mock_collection.update_one.call_args
         # First positional arg is the filter
         filter_doc = call_args[0][0]
-        assert (
-            str(filter_doc["_id"]) == "507f1f77bcf86cd799439011"
-        )  # pragma: allowlist secret
+        assert str(filter_doc["_id"]) == "507f1f77bcf86cd799439011"  # pragma: allowlist secret
         # Second positional arg is the update
         update_doc = call_args[0][1]
         assert update_doc["$set"]["email_memory_processed"] is True
@@ -644,7 +633,7 @@ class TestMarkEmailProcessingComplete:
         update_doc = mock_collection.update_one.call_args[0][1]
         ts = update_doc["$set"]["email_memory_processed_at"]
         assert isinstance(ts, datetime)
-        assert ts.tzinfo == timezone.utc
+        assert ts.tzinfo == UTC
 
 
 # ---------------------------------------------------------------------------
@@ -704,9 +693,7 @@ class TestStoreSingleProfile:
         call_kwargs = mock_memory_service.store_memory_batch.call_args.kwargs
         assert call_kwargs["metadata"]["user_name"] == "Alice"
 
-    async def test_default_async_mode_true(
-        self, mock_memory_service: AsyncMock
-    ) -> None:
+    async def test_default_async_mode_true(self, mock_memory_service: AsyncMock) -> None:
         await store_single_profile(
             "user_1",
             "twitter",

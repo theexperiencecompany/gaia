@@ -1,6 +1,8 @@
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { Pressable, View } from "react-native";
+import { AppIcon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { selectionHaptic } from "@/lib/haptics";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { SORT_OPTIONS, type SortOption } from "../types/todo-types";
 
@@ -30,16 +32,22 @@ export const SortPickerSheet = forwardRef<
     activeSort?.field === option.field &&
     activeSort?.direction === option.direction;
 
+  const handleSelect = (option: SortOption) => {
+    selectionHaptic();
+    onSelect(option);
+    setIsOpen(false);
+  };
+
   return (
     <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
       <BottomSheet.Portal>
         <BottomSheet.Overlay />
         <BottomSheet.Content
-          snapPoints={["50%"]}
+          snapPoints={["55%"]}
           enableDynamicSizing={false}
           enablePanDownToClose
           backgroundStyle={{ backgroundColor: "#1c1c1e" }}
-          handleIndicatorStyle={{ backgroundColor: "#4b5563", width: 40 }}
+          handleIndicatorStyle={{ backgroundColor: "#3f3f46", width: 40 }}
         >
           <View style={{ paddingHorizontal: 16, paddingBottom: 32 }}>
             <View
@@ -52,13 +60,20 @@ export const SortPickerSheet = forwardRef<
               }}
             >
               <Text
-                style={{ fontSize: 17, fontWeight: "600", color: "#f1f5f9" }}
+                style={{ fontSize: 17, fontWeight: "600", color: "#f4f4f5" }}
               >
                 Sort by
               </Text>
               {activeSort && (
-                <Pressable onPress={onClear} hitSlop={8}>
-                  <Text style={{ fontSize: 14, color: "#6b7280" }}>Clear</Text>
+                <Pressable
+                  onPress={() => {
+                    selectionHaptic();
+                    onClear();
+                    setIsOpen(false);
+                  }}
+                  hitSlop={8}
+                >
+                  <Text style={{ fontSize: 14, color: "#71717a" }}>Clear</Text>
                 </Pressable>
               )}
             </View>
@@ -68,39 +83,33 @@ export const SortPickerSheet = forwardRef<
               return (
                 <Pressable
                   key={`${option.field}-${option.direction}`}
-                  onPress={() => onSelect(option)}
+                  onPress={() => handleSelect(option)}
                   style={({ pressed }) => ({
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    paddingVertical: 13,
-                    paddingHorizontal: 12,
-                    borderRadius: 8,
-                    marginBottom: 2,
+                    paddingVertical: 14,
+                    paddingHorizontal: 14,
+                    borderRadius: 12,
+                    marginBottom: 4,
                     backgroundColor: active
-                      ? "rgba(99,102,241,0.15)"
+                      ? "rgba(0,187,255,0.12)"
                       : pressed
-                        ? "rgba(255,255,255,0.05)"
-                        : "transparent",
+                        ? "rgba(63,63,70,0.40)"
+                        : "rgba(39,39,42,0.30)",
                   })}
                 >
                   <Text
                     style={{
                       fontSize: 15,
-                      color: active ? "#a5b4fc" : "#d1d5db",
+                      color: active ? "#00bbff" : "#e4e4e7",
+                      fontWeight: active ? "600" : "500",
                     }}
                   >
                     {option.label}
                   </Text>
                   {active && (
-                    <View
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 4,
-                        backgroundColor: "#a5b4fc",
-                      }}
-                    />
+                    <AppIcon icon={Tick02Icon} size={16} color="#00bbff" />
                   )}
                 </Pressable>
               );
@@ -111,3 +120,5 @@ export const SortPickerSheet = forwardRef<
     </BottomSheet>
   );
 });
+
+SortPickerSheet.displayName = "SortPickerSheet";

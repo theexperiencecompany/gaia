@@ -1,4 +1,5 @@
 import { apiService } from "@/lib/api/service";
+import type { CommunityWorkflowsResponse } from "@/types/features/workflowTypes";
 
 import type {
   CommunityIntegration,
@@ -6,6 +7,7 @@ import type {
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
   Integration,
+  IntegrationInstructions,
   PublicIntegrationResponse,
   UserIntegrationsResponse,
 } from "../types";
@@ -92,6 +94,32 @@ export const integrationsApi = {
   },
 
   /**
+   * Get the user's custom instructions for one integration.
+   */
+  getIntegrationInstructions: async (
+    integrationId: string,
+  ): Promise<IntegrationInstructions> => {
+    return await apiService.get<IntegrationInstructions>(
+      `/integrations/users/me/integrations/${integrationId}/instructions`,
+      { silent: true },
+    );
+  },
+
+  /**
+   * Save the user's custom instructions for one integration.
+   */
+  updateIntegrationInstructions: async (
+    integrationId: string,
+    content: string,
+  ): Promise<IntegrationInstructions> => {
+    return await apiService.put<IntegrationInstructions>(
+      `/integrations/users/me/integrations/${integrationId}/instructions`,
+      { content },
+      { silent: true },
+    );
+  },
+
+  /**
    * Connect an integration using the unified backend endpoint.
    */
   connectIntegration: async (
@@ -101,7 +129,11 @@ export const integrationsApi = {
     if (typeof window === "undefined")
       return { status: "error", name: "Unknown" };
 
-    const redirectPath = window.location.pathname + window.location.search;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("integration");
+    url.searchParams.delete("oauth_success");
+    url.searchParams.delete("oauth_error");
+    const redirectPath = url.pathname + url.search;
 
     const response = (await apiService.post(
       `/integrations/connect/${integrationId.toLowerCase()}`,
@@ -140,17 +172,12 @@ export const integrationsApi = {
   },
 
   /**
-   * Disconnect an integration.
+   * Disconnect an integration. The success toast is fired by the hook caller
+   * (useIntegrations.disconnectIntegration) — don't double up here.
    */
   disconnectIntegration: async (integrationId: string): Promise<void> => {
     try {
-      await apiService.delete(
-        `/integrations/${integrationId}`,
-        {},
-        {
-          successMessage: "Integration disconnected successfully",
-        },
-      );
+      await apiService.delete(`/integrations/${integrationId}`);
     } catch (error) {
       console.error(`Failed to disconnect ${integrationId}:`, error);
       throw error;
@@ -443,5 +470,19 @@ export const integrationsApi = {
       integrations: PublicIntegrationResponse[];
       query: string;
     };
+  },
+
+  /**
+   * Get community workflows related to an integration by slug or native ID
+   */
+  getRelatedWorkflows: async (
+    identifier: string,
+    limit: number = 10,
+  ): Promise<CommunityWorkflowsResponse> => {
+    const response = await apiService.get(
+      `/integrations/public/${encodeURIComponent(identifier)}/workflows?limit=${limit}`,
+      { silent: true },
+    );
+    return response as CommunityWorkflowsResponse;
   },
 };

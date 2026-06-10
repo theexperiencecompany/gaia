@@ -2,11 +2,9 @@
 Base Composio response model.
 """
 
-from typing import Any, TypeVar
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
-
-T = TypeVar("T", bound=BaseModel)
 
 
 class ComposioResponse(BaseModel):
@@ -17,7 +15,3 @@ class ComposioResponse(BaseModel):
     successful: bool
     error: str | None = None
     data: dict[str, Any]
-
-    def parse_data(self, model: type[T]) -> T:
-        """Parse the data field into a typed model."""
-        return model.model_validate(self.data)

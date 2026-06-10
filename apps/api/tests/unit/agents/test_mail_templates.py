@@ -4,7 +4,6 @@ import base64
 import email.message
 from unittest.mock import patch
 
-
 from app.agents.templates.mail_templates import (
     GmailMessageParser,
     _get_text_from_html,
@@ -16,7 +15,6 @@ from app.agents.templates.mail_templates import (
     process_list_messages_response,
     thread_template,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -116,9 +114,7 @@ class TestGetTextFromHtml:
 
 class TestGmailMessageParserRaw:
     def test_parse_raw_email_success(self):
-        raw = _make_raw_email(
-            subject="Important", sender="a@b.com", body_text="content"
-        )
+        raw = _make_raw_email(subject="Important", sender="a@b.com", body_text="content")
         msg = _make_gmail_message(raw=raw)
 
         parser = GmailMessageParser(msg)
@@ -322,86 +318,13 @@ class TestGmailMessageParserPayload:
         msg = _make_gmail_message()
 
         parser = GmailMessageParser(msg)
-        with patch.object(
-            parser, "_parse_with_email_parser", side_effect=Exception("parse fail")
-        ):
+        with patch.object(parser, "_parse_with_email_parser", side_effect=Exception("parse fail")):
             assert parser.parse() is False
             assert parser._parsed is False
 
 
 # ---------------------------------------------------------------------------
-# GmailMessageParser — Composio messages
-# ---------------------------------------------------------------------------
-
-
-class TestGmailMessageParserComposio:
-    def test_composio_text_message(self):
-        msg = {"id": "c1", "message_text": "Hello from Composio", "labelIds": []}
-
-        parser = GmailMessageParser(msg)
-        parser._handle_composio_message()
-
-        assert parser._parsed is True
-        assert parser.text_content == "Hello from Composio"
-
-    def test_composio_html_message(self):
-        msg = {"id": "c2", "message_text": "<p>HTML content</p>", "labelIds": []}
-
-        parser = GmailMessageParser(msg)
-        parser._handle_composio_message()
-
-        assert parser._parsed is True
-        assert (
-            "HTML content" in parser.html_content
-            or "HTML content" in parser.text_content
-        )
-
-    def test_text_content_composio_html_extraction(self):
-        """text_content should extract text from HTML for composio messages."""
-        msg = {
-            "id": "c3",
-            "message_text": "<div>Rich <b>text</b></div>",
-            "labelIds": [],
-        }
-        parser = GmailMessageParser(msg)
-        # Call _handle_composio_message to set _parsed = True and create email_message
-        parser._handle_composio_message()
-        text = parser.text_content
-        assert "Rich" in text
-
-    def test_text_content_composio_plain_text(self):
-        msg = {
-            "id": "c4",
-            "message_text": "Just plain text",
-            "labelIds": [],
-        }
-        parser = GmailMessageParser(msg)
-        parser._handle_composio_message()
-        assert parser.text_content == "Just plain text"
-
-    def test_html_content_composio_returns_html(self):
-        msg = {
-            "id": "c5",
-            "message_text": "<p>Hello</p>",
-            "labelIds": [],
-        }
-        parser = GmailMessageParser(msg)
-        parser._handle_composio_message()
-        assert parser.html_content == "<p>Hello</p>"
-
-    def test_html_content_composio_plain_returns_empty(self):
-        msg = {
-            "id": "c6",
-            "message_text": "no html here",
-            "labelIds": [],
-        }
-        parser = GmailMessageParser(msg)
-        parser._handle_composio_message()
-        assert parser.html_content == ""
-
-
-# ---------------------------------------------------------------------------
-# GmailMessageParser — labels, is_read, has_attachments
+# GmailMessageParser — labels, is_read
 # ---------------------------------------------------------------------------
 
 
@@ -420,17 +343,6 @@ class TestGmailMessageParserLabels:
         msg = _make_gmail_message(label_ids=["INBOX", "UNREAD"])
         parser = GmailMessageParser(msg)
         assert parser.is_read is False
-
-    def test_has_attachments_by_label(self):
-        msg = _make_gmail_message(label_ids=["HAS_ATTACHMENT"])
-        parser = GmailMessageParser(msg)
-        assert parser.has_attachments is True
-
-    def test_has_attachments_false(self):
-        msg = _make_gmail_message(label_ids=["INBOX"])
-        parser = GmailMessageParser(msg)
-        # No attachments in parsed or label
-        assert parser.has_attachments is False
 
     def test_no_label_ids_returns_empty_list(self):
         msg = {"id": "x"}

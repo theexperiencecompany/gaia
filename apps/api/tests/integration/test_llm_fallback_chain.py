@@ -18,8 +18,8 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage
+import pytest
 
 from app.agents.llm.client import (
     PROVIDER_MODELS,
@@ -36,10 +36,6 @@ from app.config.model_pricing import (
     ModelPricing,
     calculate_token_cost,
     get_model_pricing,
-)
-from app.constants.llm import (
-    DEFAULT_GEMINI_FREE_MODEL_NAME,
-    OPENROUTER_BASE_URL,
 )
 from app.core.lazy_loader import MissingKeyStrategy, ProviderRegistry
 
@@ -77,9 +73,7 @@ class TestProviderPriorityOrdering:
             "openrouter": mock_openrouter,
         }
 
-        ordered = _get_ordered_providers(
-            available, preferred_provider=None, fallback_enabled=True
-        )
+        ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
 
         assert len(ordered) == 3
         assert ordered[0]["name"] == "gemini"
@@ -128,9 +122,7 @@ class TestProviderPriorityOrdering:
 
     def test_no_providers_available_returns_empty(self) -> None:
         """Empty available dict yields empty ordered list."""
-        ordered = _get_ordered_providers(
-            {}, preferred_provider=None, fallback_enabled=True
-        )
+        ordered = _get_ordered_providers({}, preferred_provider=None, fallback_enabled=True)
         assert ordered == []
 
     def test_fallback_disabled_no_preferred_still_returns_priority_order(self) -> None:
@@ -140,9 +132,7 @@ class TestProviderPriorityOrdering:
 
         # When no ordered (preferred) providers, fallback_enabled=False still adds from priority
         # because the condition is `if fallback_enabled or not ordered`
-        ordered = _get_ordered_providers(
-            available, preferred_provider=None, fallback_enabled=False
-        )
+        ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=False)
 
         assert len(ordered) == 1
         assert ordered[0]["name"] == "openai"
@@ -172,9 +162,7 @@ class TestProviderInitialization:
 
         available = {"gemini": mock_gemini, "openai": mock_openai}
 
-        with patch(
-            "app.agents.llm.client._get_available_providers", return_value=available
-        ):
+        with patch("app.agents.llm.client._get_available_providers", return_value=available):
             init_llm()
 
         # Primary is gemini, and configurable_alternatives is called with openai
@@ -189,9 +177,7 @@ class TestProviderInitialization:
 
         available = {"gemini": mock_gemini, "openai": mock_openai}
 
-        with patch(
-            "app.agents.llm.client._get_available_providers", return_value=available
-        ):
+        with patch("app.agents.llm.client._get_available_providers", return_value=available):
             init_llm(preferred_provider="openai")
 
         # openai should be primary — its configurable_alternatives should be called
@@ -199,17 +185,13 @@ class TestProviderInitialization:
 
     def test_init_llm_invalid_provider_raises_value_error(self) -> None:
         """Requesting a non-existent provider raises ValueError."""
-        with pytest.raises(
-            ValueError, match="Invalid preferred_provider 'nonexistent'"
-        ):
+        with pytest.raises(ValueError, match="Invalid preferred_provider 'nonexistent'"):
             init_llm(preferred_provider="nonexistent")
 
     def test_init_llm_no_providers_raises_runtime_error(self) -> None:
         """When no providers are configured, init_llm raises RuntimeError."""
         with patch("app.agents.llm.client._get_available_providers", return_value={}):
-            with pytest.raises(
-                RuntimeError, match="No LLM providers are properly configured"
-            ):
+            with pytest.raises(RuntimeError, match="No LLM providers are properly configured"):
                 init_llm()
 
     def test_init_llm_preferred_unavailable_no_fallback_uses_priority(self) -> None:
@@ -233,69 +215,29 @@ class TestProviderInitialization:
 
 @pytest.mark.integration
 class TestFreeLLMMode:
-    """Verify init_llm(use_free=True) and get_free_llm_chain()."""
+    """Verify get_free_llm_chain()."""
 
-    def test_init_llm_use_free_returns_openrouter_model(self) -> None:
-        """use_free=True returns a ChatOpenAI pointed at OpenRouter with the free model."""
+    def test_get_free_llm_chain_returns_gemini(self) -> None:
+        """get_free_llm_chain returns a single Gemini LLM when GOOGLE_API_KEY exists."""
         with patch("app.agents.llm.client.settings") as mock_settings:
-            mock_settings.OPENROUTER_API_KEY = "test-key"
-            mock_settings.FRONTEND_URL = "https://test.example.com"
-
-            with patch("app.agents.llm.client.ChatOpenAI") as mock_chat:
-                mock_chat.return_value = _make_mock_llm("free_llm")
-                init_llm(use_free=True)
-
-                mock_chat.assert_called_once()
-                call_kwargs = mock_chat.call_args[1]
-                assert call_kwargs["model"] == DEFAULT_GEMINI_FREE_MODEL_NAME
-                assert call_kwargs["base_url"] == OPENROUTER_BASE_URL
-                assert call_kwargs["streaming"] is False
-
-    def test_init_llm_use_free_no_key_raises(self) -> None:
-        """use_free=True without OPENROUTER_API_KEY raises RuntimeError."""
-        with patch("app.agents.llm.client.settings") as mock_settings:
-            mock_settings.OPENROUTER_API_KEY = None
-
-            with pytest.raises(RuntimeError, match="OpenRouter API key not configured"):
-                init_llm(use_free=True)
-
-    def test_get_free_llm_chain_with_both_keys(self) -> None:
-        """get_free_llm_chain returns two LLMs when both OpenRouter and Google keys exist."""
-        with patch("app.agents.llm.client.settings") as mock_settings:
-            mock_settings.OPENROUTER_API_KEY = "or-key"
             mock_settings.GOOGLE_API_KEY = "google-key"
-            mock_settings.FRONTEND_URL = "https://test.example.com"
 
-            with (
-                patch("app.agents.llm.client.ChatOpenAI") as mock_openai,
-                patch("app.agents.llm.client.ChatGoogleGenerativeAI") as mock_gemini,
-            ):
-                mock_openai.return_value = _make_mock_llm("openrouter")
+            with patch("app.agents.llm.client.ChatGoogleGenerativeAI") as mock_gemini:
                 mock_gemini.return_value = _make_mock_llm("gemini")
 
                 chain = get_free_llm_chain()
 
-                assert len(chain) == 2
-
-    def test_get_free_llm_chain_openrouter_only(self) -> None:
-        """get_free_llm_chain returns one LLM when only OpenRouter key exists."""
-        with patch("app.agents.llm.client.settings") as mock_settings:
-            mock_settings.OPENROUTER_API_KEY = "or-key"
-            mock_settings.GOOGLE_API_KEY = None
-            mock_settings.FRONTEND_URL = "https://test.example.com"
-
-            with patch("app.agents.llm.client.ChatOpenAI") as mock_openai:
-                mock_openai.return_value = _make_mock_llm("openrouter")
-                chain = get_free_llm_chain()
                 assert len(chain) == 1
+                mock_gemini.assert_called_once()
 
-    def test_get_free_llm_chain_no_keys_raises(self) -> None:
-        """get_free_llm_chain with no API keys raises RuntimeError."""
+    def test_get_free_llm_chain_no_google_key_raises(self) -> None:
+        """get_free_llm_chain raises RuntimeError when GOOGLE_API_KEY is missing."""
         with patch("app.agents.llm.client.settings") as mock_settings:
-            mock_settings.OPENROUTER_API_KEY = None
             mock_settings.GOOGLE_API_KEY = None
 
-            with pytest.raises(RuntimeError, match="No free LLM providers configured"):
+            with pytest.raises(
+                RuntimeError, match="No LLM provider configured for auxiliary tasks"
+            ):
                 get_free_llm_chain()
 
 
@@ -339,9 +281,7 @@ class TestInvokeWithFallback:
 
         messages = [HumanMessage(content="hello")]
 
-        with pytest.raises(
-            RuntimeError, match="All LLM providers failed.*provider 2 down"
-        ):
+        with pytest.raises(RuntimeError, match="All LLM providers failed.*provider 2 down"):
             await invoke_with_fallback([llm1, llm2], messages)
 
         llm1.ainvoke.assert_awaited_once()
@@ -444,9 +384,7 @@ class TestModelPricing:
         ):
             pricing = await get_model_pricing("gpt-4o")
 
-        assert pricing == ModelPricing(
-            input_cost_per_1k=0.005, output_cost_per_1k=0.015
-        )
+        assert pricing == ModelPricing(input_cost_per_1k=0.005, output_cost_per_1k=0.015)
 
     async def test_get_model_pricing_handles_exception_gracefully(self) -> None:
         """On exception from the model service, DEFAULT_PRICING is returned."""
@@ -466,9 +404,7 @@ class TestModelPricing:
             new_callable=AsyncMock,
             return_value=ModelPricing(input_cost_per_1k=0.01, output_cost_per_1k=0.03),
         ):
-            cost = await calculate_token_cost(
-                "test-model", input_tokens=2000, output_tokens=1000
-            )
+            cost = await calculate_token_cost("test-model", input_tokens=2000, output_tokens=1000)
 
         assert cost["input_cost"] == 0.02  # 2000/1000 * 0.01
         assert cost["output_cost"] == 0.03  # 1000/1000 * 0.03
@@ -481,9 +417,7 @@ class TestModelPricing:
             new_callable=AsyncMock,
             return_value=DEFAULT_PRICING,
         ):
-            cost = await calculate_token_cost(
-                "test-model", input_tokens=0, output_tokens=0
-            )
+            cost = await calculate_token_cost("test-model", input_tokens=0, output_tokens=0)
 
         assert cost["input_cost"] == 0.0
         assert cost["output_cost"] == 0.0
@@ -498,8 +432,7 @@ class TestProviderConstants:
         """Every provider in PROVIDER_PRIORITY must have a corresponding entry in PROVIDER_MODELS."""
         for priority, provider_name in PROVIDER_PRIORITY.items():
             assert provider_name in PROVIDER_MODELS, (
-                f"PROVIDER_PRIORITY[{priority}] = '{provider_name}' "
-                f"not found in PROVIDER_MODELS"
+                f"PROVIDER_PRIORITY[{priority}] = '{provider_name}' not found in PROVIDER_MODELS"
             )
 
     def test_default_priority_is_gemini(self) -> None:

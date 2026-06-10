@@ -95,9 +95,9 @@ export const entry: ComparisonData = {
     "Open source and self-hostable — full data ownership, no training on your data, deployable on your own infrastructure",
   ],
   competitorAdvantages: [
-    "Best-in-class general reasoning, coding, and long-form writing powered by GPT-5 — far broader than any single-purpose tool",
-    "Massive ecosystem of custom GPTs, plugins, and MCP integrations that extend its capabilities across many domains",
-    "Advanced Voice mode, image generation (DALL-E), video generation (Sora on Pro), and deep research make it a versatile all-in-one AI for creative and analytical tasks",
+    "World's most-used AI with 900M+ weekly users — unmatched brand recognition and ecosystem of custom GPTs and MCP integrations",
+    "GPT-5 delivers state-of-the-art reasoning, coding, and long-form writing across the broadest range of general-purpose tasks",
+    "Advanced Voice mode, DALL-E image generation, Sora video generation (Pro), and Deep Research make it the most versatile all-in-one AI for creative and analytical work",
   ],
   verdict:
     "ChatGPT is an exceptional on-demand AI for writing, research, coding, and conversation — but it waits for you to ask. GAIA is built for people who want an AI that actively runs their digital life: triaging email, executing calendar actions, managing tasks, and automating workflows across 50+ tools without being prompted each time.",

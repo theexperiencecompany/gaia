@@ -1,9 +1,11 @@
 import secrets
-from typing import Optional
 from urllib.parse import quote
 
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import JSONResponse, RedirectResponse
 import httpx
-from shared.py.wide_events import log
+from workos import WorkOSClient
+
 from app.config.oauth_config import get_integration_by_config
 from app.config.settings import settings
 from app.constants.auth import (
@@ -19,17 +21,16 @@ from app.db.redis import redis_cache
 from app.helpers.mcp_helpers import get_api_base_url
 from app.services.composio.composio_service import get_composio_service
 from app.services.oauth.oauth_service import handle_oauth_connection, store_user_info
-from app.services.oauth.oauth_state_service import validate_and_consume_oauth_state
-from fastapi import APIRouter, BackgroundTasks, HTTPException
-from fastapi.responses import JSONResponse, RedirectResponse
-from workos import WorkOSClient
+from app.services.oauth.oauth_state_service import (
+    is_safe_redirect_path,
+    validate_and_consume_oauth_state,
+)
+from shared.py.wide_events import log
 
 router = APIRouter()
 http_async_client = httpx.AsyncClient()
 
-workos = WorkOSClient(
-    api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID
-)
+workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
 
 
 @router.get("/client-metadata.json")
@@ -64,7 +65,7 @@ async def get_client_metadata():
 
 
 @router.get("/login/workos")
-async def login_workos(return_url: Optional[str] = None):
+async def login_workos(return_url: str | None = None):
     """
     Start the WorkOS SSO authentication flow.
 
@@ -91,9 +92,7 @@ async def login_workos(return_url: Optional[str] = None):
 
 async def _store_mobile_redirect(state: str, redirect_uri: str) -> None:
     """Store mobile redirect URI in Redis with TTL."""
-    await redis_cache.client.setex(
-        f"mobile_redirect:{state}", MOBILE_REDIRECT_TTL, redirect_uri
-    )
+    await redis_cache.client.setex(f"mobile_redirect:{state}", MOBILE_REDIRECT_TTL, redirect_uri)
 
 
 async def _get_and_delete_mobile_redirect(state: str) -> str | None:
@@ -106,7 +105,7 @@ async def _get_and_delete_mobile_redirect(state: str) -> str | None:
 
 
 @router.get("/login/workos/mobile")
-async def login_workos_mobile(redirect_uri: Optional[str] = None):
+async def login_workos_mobile(redirect_uri: str | None = None):
     """
     Start WorkOS SSO flow for mobile apps (Expo).
 
@@ -122,9 +121,7 @@ async def login_workos_mobile(redirect_uri: Optional[str] = None):
     await _store_mobile_redirect(state, mobile_callback)
 
     log.set(oauth_flow_type=OAUTH_FLOW_MOBILE)
-    log.info(
-        f"Mobile OAuth started with redirect_uri: {mobile_callback}, state: {state[:8]}..."
-    )
+    log.info(f"Mobile OAuth started with redirect_uri: {mobile_callback}, state: {state[:8]}...")
 
     authorization_url = workos.user_management.get_authorization_url(
         provider="authkit",
@@ -134,10 +131,36 @@ async def login_workos_mobile(redirect_uri: Optional[str] = None):
     return {"url": authorization_url}
 
 
+@router.get("/login/google/mobile")
+async def login_google_mobile(redirect_uri: str | None = None):
+    """
+    Start Google OAuth flow directly for mobile apps, bypassing the WorkOS hosted UI.
+    Users go straight to Google's sign-in page instead of the WorkOS selection screen.
+
+    Args:
+        redirect_uri: The deep link URI to redirect back to (from Linking.createURL)
+    """
+    state = secrets.token_urlsafe(32)
+    mobile_callback = redirect_uri or MOBILE_DEEP_LINK
+    await _store_mobile_redirect(state, mobile_callback)
+
+    log.set(oauth_flow_type=OAUTH_FLOW_MOBILE)
+    log.info(
+        f"Mobile Google OAuth started with redirect_uri: {mobile_callback}, state: {state[:8]}..."
+    )
+
+    authorization_url = workos.user_management.get_authorization_url(
+        provider="GoogleOAuth",
+        redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
+        state=state,
+    )
+    return {"url": authorization_url}
+
+
 @router.get("/workos/mobile/callback")
 async def workos_mobile_callback(
-    code: Optional[str] = None,
-    state: Optional[str] = None,
+    code: str | None = None,
+    state: str | None = None,
 ) -> RedirectResponse:
     """
     Handle WorkOS SSO callback for mobile (Expo) apps.
@@ -150,9 +173,7 @@ async def workos_mobile_callback(
 
     if not mobile_redirect:
         mobile_redirect = MOBILE_DEEP_LINK
-        log.warning(
-            f"No stored redirect URI for state, using default: {mobile_redirect}"
-        )
+        log.warning(f"No stored redirect URI for state, using default: {mobile_redirect}")
 
     log.set(oauth_flow_type=OAUTH_FLOW_MOBILE)
     log.info(f"Mobile OAuth callback, redirecting to: {mobile_redirect}")
@@ -200,10 +221,8 @@ async def workos_mobile_callback(
         return RedirectResponse(url=f"{mobile_redirect}?error={e.detail}")
 
     except Exception as e:
-        log.error(f"Unexpected error during WorkOS mobile callback: {str(e)}")
-        return RedirectResponse(
-            url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error=server_error"
-        )
+        log.error(f"Unexpected error during WorkOS mobile callback: {e!s}")
+        return RedirectResponse(url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error=server_error")
 
 
 @router.get("/login/workos/desktop")
@@ -225,7 +244,7 @@ async def login_workos_desktop():
 
 @router.get("/workos/desktop/callback")
 async def workos_desktop_callback(
-    code: Optional[str] = None,
+    code: str | None = None,
 ) -> RedirectResponse:
     """
     Handle the WorkOS SSO callback for desktop app.
@@ -276,23 +295,21 @@ async def workos_desktop_callback(
 
         # Return token via deep link - desktop app will handle storage
         token = auth_response.sealed_session or auth_response.access_token
-        return RedirectResponse(
-            url=f"{DESKTOP_DEEP_LINK}?token={quote(token, safe='')}"
-        )
+        return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?token={quote(token, safe='')}")
 
     except HTTPException as e:
         log.error(f"HTTP error during WorkOS desktop auth: {e.detail}")
         return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error={e.detail}")
 
     except Exception as e:
-        log.error(f"Unexpected error during WorkOS desktop callback: {str(e)}")
+        log.error(f"Unexpected error during WorkOS desktop callback: {e!s}")
         return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error=server_error")
 
 
 @router.get("/workos/callback")
 async def workos_callback(
-    code: Optional[str] = None,
-    state: Optional[str] = None,
+    code: str | None = None,
+    state: str | None = None,
 ) -> RedirectResponse:
     """
     Handle the WorkOS SSO callback.
@@ -317,9 +334,7 @@ async def workos_callback(
         # Validate code parameter
         if not code:
             log.error("No authorization code received from WorkOS")
-            return RedirectResponse(
-                url=f"{settings.FRONTEND_URL}/login?error=missing_code"
-            )
+            return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=missing_code")
 
         auth_response = workos.user_management.authenticate_with_code(
             code=code,
@@ -351,17 +366,11 @@ async def workos_callback(
         user_id, is_new_user = await store_user_info(name, email, picture_url)
         log.set(user_id=str(user_id), is_new_user=is_new_user)
 
-        # Redirect to return_url if provided, otherwise default /redirect
-        destination = return_url or f"{settings.FRONTEND_URL}/redirect"
-        # Ensure return_url is a relative path on our frontend (prevent open redirect)
-        if return_url and not return_url.startswith("/"):
-            destination = f"{settings.FRONTEND_URL}/redirect"
+        # Redirect to return_url if provided and safe, otherwise default /redirect
+        if return_url and is_safe_redirect_path(return_url):
+            destination = f"{settings.FRONTEND_URL}{return_url}"
         else:
-            destination = (
-                f"{settings.FRONTEND_URL}{return_url}"
-                if return_url
-                else f"{settings.FRONTEND_URL}/redirect"
-            )
+            destination = f"{settings.FRONTEND_URL}/redirect"
 
         response = RedirectResponse(url=destination)
 
@@ -381,7 +390,7 @@ async def workos_callback(
         return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error={e.detail}")
 
     except Exception as e:
-        log.error(f"Unexpected error during WorkOS callback: {str(e)}")
+        log.error(f"Unexpected error during WorkOS callback: {e!s}")
         return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=server_error")
 
 
@@ -390,8 +399,8 @@ async def composio_callback(
     status: str,
     state: str,
     background_tasks: BackgroundTasks,
-    connectedAccountId: Optional[str] = None,
-    error: Optional[str] = None,
+    connectedAccountId: str | None = None,
+    error: str | None = None,
 ):
     """
     Handle Composio OAuth callback after successful/failed connection.
@@ -410,9 +419,7 @@ async def composio_callback(
     state_data = await validate_and_consume_oauth_state(state)
     if not state_data:
         log.error(f"Invalid OAuth state token: {state}")
-        return RedirectResponse(
-            url=f"{settings.FRONTEND_URL}/redirect?oauth_error=invalid_state"
-        )
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/redirect?oauth_error=invalid_state")
 
     redirect_path = state_data["redirect_path"]
     expected_user_id = state_data["user_id"]
@@ -430,22 +437,16 @@ async def composio_callback(
     # Ensure we have connectedAccountId for success status
     if not connectedAccountId:
         log.error("Connected account ID missing for successful connection")
-        return RedirectResponse(
-            url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=failed"
-        )
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=failed")
 
     composio_service = get_composio_service()
     try:
         # Retrieve connected account details
-        connected_account = composio_service.get_connected_account_by_id(
-            connectedAccountId
-        )
+        connected_account = composio_service.get_connected_account_by_id(connectedAccountId)
 
         if not connected_account:
             log.error(f"Connected account not found: {connectedAccountId}")
-            return RedirectResponse(
-                url=f"{settings.FRONTEND_URL}/redirect?oauth_error=failed"
-            )
+            return RedirectResponse(url=f"{settings.FRONTEND_URL}/redirect?oauth_error=failed")
 
         # Extract essential information
         config_id = connected_account.auth_config.id
@@ -453,9 +454,7 @@ async def composio_callback(
 
         if not user_id:
             log.error(f"User ID missing for account: {connectedAccountId}")
-            return RedirectResponse(
-                url=f"{settings.FRONTEND_URL}/redirect?oauth_error=failed"
-            )
+            return RedirectResponse(url=f"{settings.FRONTEND_URL}/redirect?oauth_error=failed")
 
         # Find integration configuration by auth config ID
         integration_config = get_integration_by_config(config_id)
@@ -496,10 +495,7 @@ async def composio_callback(
 
     except Exception as e:
         log.error(
-            f"Unexpected error in Composio callback: {str(e)}, "
-            f"accountId={connectedAccountId}",
+            f"Unexpected error in Composio callback: {e!s}, accountId={connectedAccountId}",
             exc_info=True,
         )
-        return RedirectResponse(
-            url=f"{settings.FRONTEND_URL}/redirect?oauth_error=failed"
-        )
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/redirect?oauth_error=failed")

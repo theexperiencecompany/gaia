@@ -184,12 +184,14 @@ export function useNotifications(
     return result;
   }, [allNotifications, options.status, limit]);
 
+  // Count unread from the full fetched set, not the status/limit-sliced view, so
+  // the badge reflects every loaded unread notification (not just the first page).
   const unreadCount = useMemo(
     () =>
-      notifications.filter(
+      allNotifications.filter(
         (notification) => notification.status === NotificationStatus.DELIVERED,
       ).length,
-    [notifications],
+    [allNotifications],
   );
 
   // Initial fetch — skipped if store is already populated

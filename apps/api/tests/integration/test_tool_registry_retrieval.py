@@ -19,11 +19,11 @@ Key production modules under test
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import chromadb
-import numpy as np
-import pytest
 from langchain_core.embeddings import Embeddings
 from langchain_core.tools import BaseTool, tool
 from langgraph.store.base import GetOp, PutOp, SearchOp
+import numpy as np
+import pytest
 
 from app.agents.tools.core.registry import ToolCategory, ToolRegistry
 from app.db.chroma.chroma_store import ChromaStore
@@ -33,7 +33,6 @@ from app.db.chroma.chroma_tools_store import (
     _get_existing_tools_from_chroma,
     index_tools_to_store,
 )
-
 
 # ---------------------------------------------------------------------------
 # Deterministic embedding function for semantic retrieval tests
@@ -286,9 +285,7 @@ class TestToolIndexing:
 
         # Verify each tool is retrievable
         for name in tools_to_index:
-            results = await semantic_store.abatch(
-                [GetOp(namespace=("general",), key=name)]
-            )
+            results = await semantic_store.abatch([GetOp(namespace=("general",), key=name)])
             assert results[0] is not None, f"Tool '{name}' was not stored"
             assert results[0].key == name
             assert results[0].value["description"] == tool_set[name].description
@@ -358,8 +355,7 @@ class TestToolIndexing:
         import hashlib
 
         tools_signature = "|".join(
-            f"{t.name}:{getattr(t, 'description', '')[:200]}"
-            for t, _ in tools_with_space
+            f"{t.name}:{getattr(t, 'description', '')[:200]}" for t, _ in tools_with_space
         )
         expected_hash = hashlib.sha256(tools_signature.encode()).hexdigest()[:16]
 
@@ -445,9 +441,7 @@ class TestSemanticRetrievalAccuracy:
         top_tool_names = [item.key for item in items[:5]]
         calendar_tools = {"create_calendar_event", "schedule_meeting"}
         found_calendar = set(top_tool_names) & calendar_tools
-        assert len(found_calendar) > 0, (
-            f"Expected calendar tools in top 5, got: {top_tool_names}"
-        )
+        assert len(found_calendar) > 0, f"Expected calendar tools in top 5, got: {top_tool_names}"
 
     async def test_file_query_returns_file_tools(self, indexed_store):
         """Query 'upload a file' should rank file-related tools highest."""
@@ -467,9 +461,7 @@ class TestSemanticRetrievalAccuracy:
         top_tool_names = [item.key for item in items[:3]]
         file_tools = {"upload_file", "download_file"}
         found_file = set(top_tool_names) & file_tools
-        assert len(found_file) > 0, (
-            f"Expected file tools in top 3, got: {top_tool_names}"
-        )
+        assert len(found_file) > 0, f"Expected file tools in top 3, got: {top_tool_names}"
 
 
 # ---------------------------------------------------------------------------
@@ -539,9 +531,7 @@ class TestToolDeduplication:
 class TestRetrievalAfterAdditions:
     """Index tools, add more, verify all are searchable."""
 
-    async def test_original_tools_still_searchable_after_additions(
-        self, semantic_store, tool_set
-    ):
+    async def test_original_tools_still_searchable_after_additions(self, semantic_store, tool_set):
         """Index 10 tools, add 5 more, verify all 15 are in the store and searchable."""
         tool_names = list(tool_set.keys())
         first_batch = tool_names[:10]
@@ -564,9 +554,7 @@ class TestRetrievalAfterAdditions:
 
         # Verify first batch tools are retrievable
         for name in first_batch:
-            result = await semantic_store.abatch(
-                [GetOp(namespace=("general",), key=name)]
-            )
+            result = await semantic_store.abatch([GetOp(namespace=("general",), key=name)])
             assert result[0] is not None, f"Tool '{name}' missing after first batch"
 
         # Index second batch
@@ -586,9 +574,7 @@ class TestRetrievalAfterAdditions:
 
         # Verify ALL tools are still retrievable (originals not degraded)
         for name in first_batch + second_batch:
-            result = await semantic_store.abatch(
-                [GetOp(namespace=("general",), key=name)]
-            )
+            result = await semantic_store.abatch([GetOp(namespace=("general",), key=name)])
             assert result[0] is not None, f"Tool '{name}' missing after second batch"
 
         # Verify semantic search returns results from both batches
@@ -709,9 +695,7 @@ class TestAmbiguousQueryHandling:
         )
 
         items = results[0]
-        assert len(items) >= 2, (
-            f"Expected at least 2 results for 'create' query, got {len(items)}"
-        )
+        assert len(items) >= 2, f"Expected at least 2 results for 'create' query, got {len(items)}"
 
 
 # ---------------------------------------------------------------------------
@@ -742,9 +726,7 @@ class TestEmptyCollectionQuery:
 
     async def test_get_from_empty_store_returns_none(self, semantic_store):
         """GetOp on empty store should return None."""
-        results = await semantic_store.abatch(
-            [GetOp(namespace=("general",), key="nonexistent")]
-        )
+        results = await semantic_store.abatch([GetOp(namespace=("general",), key="nonexistent")])
         assert results[0] is None
 
     async def test_search_nonexistent_namespace_returns_empty(self, indexed_store):
@@ -789,9 +771,7 @@ class TestToolSchemaIntegrity:
             ]
         )
 
-        results = await semantic_store.abatch(
-            [GetOp(namespace=("general",), key="send_email")]
-        )
+        results = await semantic_store.abatch([GetOp(namespace=("general",), key="send_email")])
         item = results[0]
         assert item is not None
         assert item.key == "send_email"
@@ -821,10 +801,7 @@ class TestToolSchemaIntegrity:
         op = put_ops[0]
         assert op.namespace == ("general",)
         assert op.key == "test_tool"
-        assert (
-            op.value["description"]
-            == "A specific tool description that must be preserved"
-        )
+        assert op.value["description"] == "A specific tool description that must be preserved"
         assert op.value["tool_hash"] == "test_hash"
 
     async def test_schema_integrity_through_search(self, semantic_store):
@@ -948,9 +925,7 @@ class TestRetrievalWithNamespaceFiltering:
         assert "slack::tool_c" not in result
 
         # Filter to multiple namespaces
-        result = await _get_existing_tools_from_chroma(
-            col, namespaces={"gmail", "slack"}
-        )
+        result = await _get_existing_tools_from_chroma(col, namespaces={"gmail", "slack"})
         assert "general::tool_a" not in result
         assert "gmail::tool_b" in result
         assert "slack::tool_c" in result

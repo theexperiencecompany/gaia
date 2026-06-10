@@ -7,7 +7,6 @@ This module contains endpoints for creating, retrieving, updating, and deleting 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from shared.py.wide_events import log
 from app.decorators import tiered_rate_limit
 from app.models.notes_models import NoteModel, NoteResponse
 from app.services.notes_service import (
@@ -17,6 +16,7 @@ from app.services.notes_service import (
     get_note,
     update_note,
 )
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -43,7 +43,7 @@ async def create_note_endpoint(
         log.set(outcome="success")
         return result
     except Exception as e:
-        log.error(f"Error creating note: {str(e)}")
+        log.error(f"Error creating note: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create note",
@@ -69,7 +69,7 @@ async def get_note_endpoint(note_id: str, user: dict = Depends(get_current_user)
         log.set(outcome="success")
         return result
     except Exception as e:
-        log.error(f"Error getting note {note_id}: {str(e)}")
+        log.error(f"Error getting note {note_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve note",
@@ -94,7 +94,7 @@ async def get_all_notes_endpoint(user: dict = Depends(get_current_user)):
         log.set(outcome="success")
         return notes
     except Exception as e:
-        log.error(f"Error listing notes: {str(e)}")
+        log.error(f"Error listing notes: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve notes",
@@ -126,7 +126,7 @@ async def update_note_endpoint(
         log.set(outcome="success")
         return result
     except Exception as e:
-        log.error(f"Error updating note {note_id}: {str(e)}")
+        log.error(f"Error updating note {note_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update note",
@@ -152,7 +152,7 @@ async def delete_note_endpoint(
         log.set(note_id=note_id)
         log.set(outcome="success")
     except Exception as e:
-        log.error(f"Error deleting note {note_id}: {str(e)}")
+        log.error(f"Error deleting note {note_id}: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete note",

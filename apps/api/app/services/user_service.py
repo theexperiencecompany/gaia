@@ -1,14 +1,14 @@
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
-from shared.py.wide_events import log
-from app.db.mongodb.collections import users_collection
-from app.utils.oauth_utils import upload_user_picture
 from bson import ObjectId
 from fastapi import HTTPException
 
+from app.db.mongodb.collections import users_collection
+from app.utils.oauth_utils import upload_user_picture
+from shared.py.wide_events import log
 
-async def get_user_by_id(user_id: str) -> Optional[dict]:
+
+async def get_user_by_id(user_id: str) -> dict | None:
     """Get user by ID from database."""
     log.set(service="user_service", user_id=user_id)
     try:
@@ -21,35 +21,13 @@ async def get_user_by_id(user_id: str) -> Optional[dict]:
         raise HTTPException(status_code=404, detail="User not found")
 
 
-async def get_user_by_email(email: str) -> Optional[dict]:
-    """Get user by email from database."""
-    try:
-        user = await users_collection.find_one({"email": email})
-        if user:
-            user["_id"] = str(user["_id"])
-        return user
-    except Exception as e:
-        log.error(f"Error fetching user by email {email}: {e}")
-        raise HTTPException(status_code=404, detail="User not found")
-
-
 async def update_user_profile(
     user_id: str,
-    name: Optional[str] = None,
-    picture_data: Optional[bytes] = None,
-    data: Optional[dict] = None,
+    name: str | None = None,
+    picture_data: bytes | None = None,
+    data: dict | None = None,
 ) -> dict:
-    """
-    Update user profile information.
-
-    Args:
-        user_id: User ID
-        name: New name (optional)
-        picture_data: New profile picture data (optional)
-
-    Returns:
-        Updated user data
-    """
+    """Update user profile information."""
     log.set(
         service="user_service",
         user_id=user_id,
@@ -62,9 +40,7 @@ async def update_user_profile(
             raise HTTPException(status_code=404, detail="User not found")
 
         update_data: dict = (
-            {"updated_at": datetime.now(timezone.utc), **data}
-            if data
-            else {"updated_at": datetime.now(timezone.utc)}
+            {"updated_at": datetime.now(UTC), **data} if data else {"updated_at": datetime.now(UTC)}
         )
 
         # Update name if provided
@@ -76,9 +52,7 @@ async def update_user_profile(
             try:
                 # Generate public_id for Cloudinary
                 user_email = user.get("email", "")
-                public_id = (
-                    f"user_{user_email.replace('@', '_at_').replace('.', '_dot_')}"
-                )
+                public_id = f"user_{user_email.replace('@', '_at_').replace('.', '_dot_')}"
 
                 # Upload to Cloudinary
                 picture_url = await upload_user_picture(picture_data, public_id)
@@ -86,14 +60,10 @@ async def update_user_profile(
 
             except Exception as e:
                 log.error(f"Error uploading profile picture: {e}")
-                raise HTTPException(
-                    status_code=500, detail="Failed to upload profile picture"
-                )
+                raise HTTPException(status_code=500, detail="Failed to upload profile picture")
 
         # Update database
-        await users_collection.update_one(
-            {"_id": ObjectId(user_id)}, {"$set": update_data}
-        )
+        await users_collection.update_one({"_id": ObjectId(user_id)}, {"$set": update_data})
 
         # Fetch and return updated user
         updated_user = await get_user_by_id(user_id)

@@ -3,10 +3,11 @@ Workflow worker functions for ARQ task processing.
 Contains all workflow-related background tasks and execution logic.
 """
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime
 from uuid import uuid4
 from zoneinfo import ZoneInfo
+
+from bson import ObjectId
 
 from app.agents.prompts.workflow_prompts import (
     TODO_WORKFLOW_DESCRIPTION_TEMPLATE,
@@ -17,7 +18,6 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     tiered_rate_limit,
 )
 from app.core.websocket_manager import get_websocket_manager
-from shared.py.wide_events import WorkflowContext, log, wide_task
 from app.db.mongodb.collections import todos_collection
 from app.models.chat_models import MessageModel
 from app.models.message_models import (
@@ -28,7 +28,6 @@ from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
     ActionType,
-    ChannelConfig,
     NotificationAction,
     NotificationContent,
     NotificationRequest,
@@ -40,6 +39,7 @@ from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
     TriggerType,
+    Workflow,
 )
 from app.services.notification_service import notification_service
 from app.services.todos.todo_service import TodoService
@@ -50,8 +50,8 @@ from app.services.workflow.conversation_service import (
 )
 from app.services.workflow.scheduler import WorkflowScheduler
 from app.services.workflow.service import WorkflowService
-from bson import ObjectId
-from langchain_core.callbacks import UsageMetadataCallbackHandler
+from app.utils.timezone import format_local_time
+from shared.py.wide_events import WorkflowContext, log, wide_task
 
 
 async def process_workflow_generation_task(
@@ -72,16 +72,12 @@ async def process_workflow_generation_task(
     Returns:
         Processing result message
     """
-    async with wide_task(
-        "process_workflow_generation_task", todo_id=todo_id, user_id=user_id
-    ):
+    async with wide_task("process_workflow_generation_task", todo_id=todo_id, user_id=user_id):
         log.info(f"Processing workflow generation for todo {todo_id}: {title}")
 
         try:
             # Build short card description plus detailed execution prompt
-            workflow_description = TODO_WORKFLOW_DESCRIPTION_TEMPLATE.format(
-                title=title
-            )
+            workflow_description = TODO_WORKFLOW_DESCRIPTION_TEMPLATE.format(title=title)
             workflow_prompt = TODO_WORKFLOW_PROMPT_TEMPLATE.format(
                 title=title,
                 details_section=f"**Details:** {description}" if description else "",
@@ -106,13 +102,11 @@ async def process_workflow_generation_task(
                 # Verify workflow actually has steps before linking
                 if not workflow.steps or len(workflow.steps) == 0:
                     reason = workflow.error_message or "unknown error"
-                    raise ValueError(
-                        f"Workflow {workflow.id} created but has no steps — {reason}"
-                    )
+                    raise ValueError(f"Workflow {workflow.id} created but has no steps — {reason}")
 
                 update_data = {
                     "workflow_id": workflow.id,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
 
                 result = await todos_collection.update_one(
@@ -132,9 +126,7 @@ async def process_workflow_generation_task(
                         )
                     )
 
-                    await TodoService._invalidate_cache(
-                        user_id, None, todo_id, "update"
-                    )
+                    await TodoService._invalidate_cache(user_id, None, todo_id, "update")
 
                     try:
                         websocket_manager = get_websocket_manager()
@@ -158,15 +150,11 @@ async def process_workflow_generation_task(
                     await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
 
                     return f"Successfully generated standalone workflow {workflow.id} for todo {todo_id}"
-                else:
-                    raise ValueError(f"Todo {todo_id} not found or not updated")
+                raise ValueError(f"Todo {todo_id} not found or not updated")
 
-            else:
-                # Mark workflow generation as failed
-                log.error(
-                    f"Failed to generate workflow for todo {todo_id}: No workflow created"
-                )
-                raise ValueError("Workflow generation failed: No workflow created")
+            # Mark workflow generation as failed
+            log.error(f"Failed to generate workflow for todo {todo_id}: No workflow created")
+            raise ValueError("Workflow generation failed: No workflow created")
 
         except Exception as e:
             # Clear the generating flag on failure too
@@ -197,20 +185,35 @@ async def process_workflow_generation_task(
             raise
 
 
-async def execute_workflow_by_id(
-    ctx: dict, workflow_id: str, context: Optional[dict] = None
-) -> str:
+async def _rearm_if_scheduled(
+    scheduler: WorkflowScheduler, workflow: Workflow | None, context: dict | None
+) -> None:
+    """Arm the next occurrence for cron-scheduled recurring workflows.
+
+    Only scheduler-originated fires (trigger_type=schedule) advance the schedule;
+    manual and integration-triggered runs must not shift it. A workflow deactivated
+    while a fire was in flight must not be re-armed back into the scheduled loop —
+    liveness is governed by `activated`.
+    """
+    if workflow is None or not workflow.repeat or not workflow.activated:
+        return
+    trigger_type = context.get("trigger_type") if context else None
+    if trigger_type != TriggerType.SCHEDULE.value:
+        return
+    await scheduler.handle_recurring_task(workflow, (workflow.occurrence_count or 0) + 1)
+
+
+async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | None = None) -> str:
     """
     Execute a workflow by ID with proper execution count tracking.
     """
     async with wide_task("execute_workflow_by_id", workflow_id=workflow_id):
-        actual_fire_utc = datetime.now(timezone.utc)
+        actual_fire_utc = datetime.now(UTC)
         log.set(actual_fire_utc=actual_fire_utc.isoformat())
         log.info(f"Processing workflow execution: {workflow_id}")
 
         scheduler = WorkflowScheduler()
         workflow = None
-        execution_messages = []
         execution_id = None
 
         # Import execution service
@@ -227,9 +230,7 @@ async def execute_workflow_by_id(
                 return f"Workflow {workflow_id} not found"
 
             # Determine trigger type from context
-            trigger_type = (
-                context.get("trigger_type", "manual") if context else "manual"
-            )
+            trigger_type = context.get("trigger_type", "manual") if context else "manual"
             log.set(
                 workflow=WorkflowContext(
                     id=workflow_id,
@@ -238,10 +239,23 @@ async def execute_workflow_by_id(
                 )
             )
 
+            # Scheduler-originated fires: atomically claim the occurrence (scheduled ->
+            # executing) so a concurrent recovery scan can't double-execute a workflow
+            # whose previous fire is still running. Manual/integration "run now" fires
+            # don't go through the scan and must not be status-gated.
+            if trigger_type == TriggerType.SCHEDULE.value and not (
+                await scheduler.claim_scheduled_for_execution(workflow_id)
+            ):
+                log.warning(
+                    f"Workflow {workflow_id} not in scheduled state "
+                    f"(already claimed or running); skipping duplicate scheduled fire"
+                )
+                return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
+
             scheduled_at = getattr(workflow, "scheduled_at", None)
             if isinstance(scheduled_at, datetime):
                 if scheduled_at.tzinfo is None:
-                    scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+                    scheduled_at = scheduled_at.replace(tzinfo=UTC)
                 drift = int((actual_fire_utc - scheduled_at).total_seconds())
                 log.set(
                     scheduled_at_utc=scheduled_at.isoformat(),
@@ -261,8 +275,11 @@ async def execute_workflow_by_id(
             )
             execution_id = execution.execution_id
 
-            # Execute the workflow
-            execution_messages = await execute_workflow_as_chat(
+            # Run the workflow as a silent chat turn. The executor does all the
+            # steps and its result is delivered as the completion notification
+            # from the background delivery path (gated by workflow_id), so there
+            # is no separate notification call here.
+            conversation_id = await execute_workflow_as_chat(
                 workflow, {"user_id": workflow.user_id}, context or {}
             )
 
@@ -271,24 +288,22 @@ async def execute_workflow_by_id(
                 workflow_id, workflow.user_id, is_successful=True
             )
 
-            # Store messages and send notification
-            conversation = await create_workflow_completion_notification(
-                workflow, execution_messages, workflow.user_id
-            )
-
             # Complete execution record with success
-            summary = f"Executed {len(execution_messages)} steps successfully"
-            conversation_id = (
-                conversation.get("conversation_id") if conversation else None
-            )
             await complete_execution(
                 execution_id=execution_id,
                 status="success",
-                summary=summary,
+                summary="Workflow executed",
                 conversation_id=conversation_id,
             )
 
-            return f"Workflow {workflow_id} executed successfully with {len(execution_messages)} messages"
+            # Arm the next occurrence (scheduled recurring workflows only). A re-arm
+            # failure must not turn a successful execution into a reported failure.
+            try:
+                await _rearm_if_scheduled(scheduler, workflow, context)
+            except Exception as rearm_err:
+                log.error("Failed to re-arm workflow %s: %s" % (workflow_id, rearm_err))
+
+            return f"Workflow {workflow_id} executed successfully"
 
         except Exception as e:
             log.exception(
@@ -320,9 +335,7 @@ async def execute_workflow_by_id(
                 try:
                     if isinstance(e, RateLimitExceededException):
                         title = f"Workflow Failed: {workflow.title}"
-                        detail: dict[str, str] = (
-                            e.detail if isinstance(e.detail, dict) else {}
-                        )
+                        detail: dict[str, str] = e.detail if isinstance(e.detail, dict) else {}
                         plan_required = detail.get("plan_required", "pro").upper()
                         reset_time_str = detail.get("reset_time", "")
 
@@ -331,10 +344,14 @@ async def execute_workflow_by_id(
                             try:
                                 reset_dt = datetime.fromisoformat(reset_time_str)
                                 if reset_dt.tzinfo is None:
-                                    reset_dt = reset_dt.replace(tzinfo=timezone.utc)
-                                reset_dt_utc = reset_dt.astimezone(timezone.utc)
-                                formatted_reset = reset_dt_utc.strftime(
-                                    "%b %d at %I:%M %p UTC"
+                                    reset_dt = reset_dt.replace(tzinfo=UTC)
+                                try:
+                                    reset_user = await get_user_by_id(workflow.user_id)
+                                    reset_tz = reset_user.get("timezone") if reset_user else None
+                                except Exception:
+                                    reset_tz = None
+                                formatted_reset = format_local_time(
+                                    reset_dt, reset_tz, fmt="%b %d at %I:%M %p %Z"
                                 )
                                 body = (
                                     f"'{workflow.title}' couldn't run — "
@@ -383,11 +400,6 @@ async def execute_workflow_by_id(
                                 body=body,
                                 actions=[upgrade_action] if upgrade_action else None,
                             ),
-                            channels=[
-                                ChannelConfig(
-                                    channel_type="inapp", enabled=True, priority=1
-                                )
-                            ],
                             metadata={
                                 "workflow_id": workflow.id,
                                 "error_type": type(e).__name__,
@@ -397,6 +409,13 @@ async def execute_workflow_by_id(
                 except Exception as notify_err:
                     log.debug("Failed to send failure notification: %s" % notify_err)
 
+            # Still arm the next occurrence — a transient failure (rate limit, LLM
+            # error) must not permanently kill a recurring workflow.
+            try:
+                await _rearm_if_scheduled(scheduler, workflow, context)
+            except Exception as rearm_err:
+                log.error("Failed to re-arm workflow %s: %s" % (workflow_id, rearm_err))
+
             return "Error executing workflow %s: %s" % (workflow_id, str(e))
 
         finally:
@@ -405,24 +424,21 @@ async def execute_workflow_by_id(
 
 
 @tiered_rate_limit("trigger_workflow_executions")
-async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
-    """
-    Execute workflow as a single chat session, just like normal user chat.
-    This creates proper tool calls and messages identical to normal chat flow.
+async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> str:
+    """Run a workflow as a silent chat turn and return its conversation id.
 
-    Args:
-        workflow: The workflow object to execute
-        user: User dict containing user_id (for rate limiting compatibility)
-        context: Optional execution context
-
-    Returns:
-        List of MessageModel objects from the execution
+    The workflow is fed to the agent exactly like an interactive chat turn (same
+    ``call_agent_silent`` entry, same ``selectedWorkflow`` awareness). Comms
+    delegates the whole workflow to the executor, which runs every step and
+    synthesizes one result. That result is delivered as the workflow-completion
+    notification from the background executor path (gated by ``workflow_id`` in
+    the trigger context), so this function only kicks off the run and persists
+    the trigger message; it does not build or send the result here.
     """
 
     # Avoid circular import
     from app.agents.core.agent import call_agent_silent
 
-    # Extract user_id from user dict for backward compatibility
     user_id = user["user_id"]
 
     try:
@@ -441,9 +457,7 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
         except Exception as e:
             log.warning(f"Could not get user data for {user_id}: {e}")
             user_data = {"user_id": user_id}
-            user_time = datetime.now(timezone.utc)
-
-        user_model_config = None
+            user_time = datetime.now(UTC)
 
         # Get or create the workflow conversation for thread context
         conversation = await get_or_create_workflow_conversation(
@@ -451,33 +465,41 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
             user_id=user_id,
             workflow_title=workflow.title,
         )
-        log.set(
-            conversation_context_found=bool(
-                conversation and conversation.get("conversation_id")
-            )
-        )
-
-        # Convert workflow steps to the format expected by SelectedWorkflowData
-        workflow_steps = []
-        for step in workflow.steps:
-            workflow_steps.append(
-                {
-                    "id": step.id,
-                    "title": step.title,
-                    "description": step.description,
-                    "category": step.category,
-                }
-            )
+        conversation_id = conversation["conversation_id"]
+        log.set(conversation_context_found=bool(conversation_id))
 
         selected_workflow_data = SelectedWorkflowData(
             id=workflow.id,
             title=workflow.title,
             description=workflow.description,
             prompt=workflow.prompt,
-            steps=workflow_steps,
+            steps=[
+                {
+                    "id": step.id,
+                    "title": step.title,
+                    "description": step.description,
+                    "category": step.category,
+                }
+                for step in workflow.steps
+            ],
         )
 
-        # Create a simple MessageRequestWithHistory for workflow execution
+        # Persist the trigger as the user message. The text is left empty so the
+        # UI renders just the workflow card (via selectedWorkflow), not a literal
+        # "Run workflow: ..." bubble. The result is saved by the delivery path.
+        trigger_message = MessageModel(
+            type="user",
+            response="",
+            date=datetime.now(UTC).isoformat(),
+            message_id=str(uuid4()),
+            selectedWorkflow=selected_workflow_data,
+        )
+        await add_workflow_execution_messages(
+            conversation_id=conversation_id,
+            workflow_execution_messages=[trigger_message],
+            user_id=user_id,
+        )
+
         request = MessageRequestWithHistory(
             message=f"Execute workflow: {workflow.title}",
             messages=[],
@@ -487,61 +509,36 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
             selectedWorkflow=selected_workflow_data,
         )
 
-        usage_metadata_callback = UsageMetadataCallbackHandler()
-
-        # Execute using the same logic as normal chat
-        complete_message, tool_data = await call_agent_silent(
+        # Same entry as chat, silent. workflow_id/title in the trigger context
+        # routes the executor's final result to the completion notification.
+        await call_agent_silent(
             request=request,
-            conversation_id=conversation["conversation_id"],
+            conversation_id=conversation_id,
             user=user_data,
             user_time=user_time,
-            user_model_config=user_model_config,
-            trigger_context=context,
-            usage_metadata_callback=usage_metadata_callback,
+            trigger_context={
+                **(context or {}),
+                "workflow_id": workflow.id,
+                "workflow_title": workflow.title,
+                "execution_mode": "background",
+            },
         )
 
-        # Create execution messages with proper tool data
-        execution_messages = []
-
-        # Capture base timestamp to ensure proper message ordering
-        base_timestamp = datetime.now(timezone.utc)
-
-        # Create a simple user message showing workflow execution (like frontend)
-        # This message gets the base timestamp to ensure it appears first
-        user_message = MessageModel(
-            type="user",
-            response="",
-            date=base_timestamp.isoformat(),
-            message_id=str(uuid4()),
-            selectedWorkflow=selected_workflow_data,
-        )
-        execution_messages.append(user_message)
-
-        # Create the bot message with complete response and tool data
-        # Add 1 second to timestamp to ensure it appears after the workflow card
-        bot_timestamp = base_timestamp + timedelta(seconds=1)
-        bot_message = MessageModel(
-            type="bot",
-            response=complete_message,
-            date=bot_timestamp.isoformat(),
-            message_id=str(uuid4()),
-            # metadata=token_metadata,  # Include token usage metadata
-            **tool_data,  # Include all captured tool data
-        )
-        execution_messages.append(bot_message)
-
-        return execution_messages
+        return conversation_id
 
     except Exception as e:
-        log.error(f"Failed to execute workflow {workflow.id} as chat: {str(e)}")
-        # Return error message
-        error_message = MessageModel(
-            type="bot",
-            response=f"❌ **Workflow Execution Failed**\n\nWorkflow: {workflow.title}\nError: {str(e)}",
-            date=datetime.now(timezone.utc).isoformat(),
-            message_id=str(uuid4()),
+        # Re-raise so caller marks execution as failed instead of fake-success.
+        log.error(
+            "workflow_chat_execution_failed",
+            workflow_id=workflow.id,
+            workflow_title=getattr(workflow, "title", None),
+            user_id=user.get("user_id") if isinstance(user, dict) else None,
+            error_type=type(e).__name__,
+            error=str(e)[:500],
+            outcome="agent_error",
+            exc_info=True,
         )
-        return [error_message]
+        raise
 
 
 async def regenerate_workflow_steps(
@@ -564,9 +561,7 @@ async def regenerate_workflow_steps(
     Returns:
         Processing result message
     """
-    async with wide_task(
-        "regenerate_workflow_steps", workflow_id=workflow_id, user_id=user_id
-    ):
+    async with wide_task("regenerate_workflow_steps", workflow_id=workflow_id, user_id=user_id):
         log.info(
             f"Regenerating workflow steps: {workflow_id} for user {user_id}, reason: {regeneration_reason}"
         )
@@ -600,9 +595,7 @@ async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> 
     Returns:
         Processing result message
     """
-    async with wide_task(
-        "generate_workflow_steps", workflow_id=workflow_id, user_id=user_id
-    ):
+    async with wide_task("generate_workflow_steps", workflow_id=workflow_id, user_id=user_id):
         log.info(f"Generating workflow steps: {workflow_id} for user {user_id}")
 
         # Import here to avoid circular imports
@@ -647,102 +640,3 @@ async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> 
         result = f"Successfully generated steps for workflow {workflow_id}"
         log.info(result)
         return result
-
-
-async def create_workflow_completion_notification(
-    workflow, execution_messages, user_id: str
-):
-    """Store workflow execution messages and send completion notification."""
-
-    # Get or create conversation (required for storage)
-    conversation = await get_or_create_workflow_conversation(
-        workflow_id=workflow.id,
-        user_id=user_id,
-        workflow_title=workflow.title,
-    )
-    log.info(
-        f"Workflow conversation: {conversation['conversation_id']} for workflow {workflow.id}"
-    )
-
-    # Store execution messages
-    if execution_messages:
-        try:
-            log.info(
-                f"Storing {len(execution_messages)} messages to conversation {conversation['conversation_id']}"
-            )
-            await add_workflow_execution_messages(
-                conversation_id=conversation["conversation_id"],
-                workflow_execution_messages=execution_messages,
-                user_id=user_id,
-            )
-            log.info(
-                f"Successfully stored {len(execution_messages)} messages for workflow {workflow.id}"
-            )
-        except Exception as storage_error:
-            log.exception(
-                f"Failed to store messages for workflow {workflow.id}: {storage_error}",
-            )
-            raise  # Re-raise to ensure storage failures are visible
-    else:
-        log.warning(f"No execution messages to store for workflow {workflow.id}")
-
-    # Send notification (best effort - don't fail if this breaks)
-    try:
-        # Extract final bot response for external channel delivery
-        bot_messages = (
-            [m for m in execution_messages if m.type == "bot"]
-            if execution_messages
-            else []
-        )
-        bot_response = bot_messages[-1].response if bot_messages else ""
-        message_parts = [
-            p.strip() for p in bot_response.split("<NEW_MESSAGE_BREAK>") if p.strip()
-        ]
-
-        # Format completion timestamp
-        completed_at = datetime.now(timezone.utc)
-        formatted_time = completed_at.strftime("%I:%M %p UTC, %b %d")
-
-        await notification_service.create_notification(
-            NotificationRequest(
-                user_id=user_id,
-                source=NotificationSourceEnum.WORKFLOW_COMPLETED,
-                type=NotificationType.SUCCESS,
-                content=NotificationContent(
-                    title=f"Workflow Completed: {workflow.title}",
-                    body=f"Completed at {formatted_time}",
-                    actions=[
-                        NotificationAction(
-                            type=ActionType.REDIRECT,
-                            label="View Results",
-                            style=ActionStyle.PRIMARY,
-                            config=ActionConfig(
-                                redirect=RedirectConfig(
-                                    url=f"/c/{conversation['conversation_id']}",
-                                    open_in_new_tab=False,
-                                    close_notification=True,
-                                )
-                            ),
-                        )
-                    ],
-                    rich_content={
-                        "type": "workflow_execution",
-                        "messages": message_parts,
-                        "workflow_id": workflow.id,
-                        "conversation_id": conversation["conversation_id"],
-                    },
-                ),
-                channels=[
-                    ChannelConfig(channel_type="inapp", enabled=True, priority=1)
-                ],
-                metadata={
-                    "workflow_id": workflow.id,
-                    "conversation_id": conversation["conversation_id"],
-                },
-            )
-        )
-        log.info(f"Notification sent for workflow {workflow.id}")
-    except Exception as e:
-        log.error(f"Failed to send notification for workflow {workflow.id}: {e}")
-
-    return conversation

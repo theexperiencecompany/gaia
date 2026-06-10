@@ -22,7 +22,6 @@ import type { DeepResearchResults, SearchResults } from "./searchTypes";
 import type { TodoToolData } from "./todoToolTypes";
 import type {
   CodeData,
-  DocumentData,
   GoalDataMessageType,
   GoogleDocsData,
   ImageData,
@@ -65,6 +64,8 @@ export interface BotMessageData extends BaseMessageData {
   // Retry callbacks
   onRetry?: () => void;
   isRetrying?: boolean;
+
+  animateParts?: boolean;
 }
 
 // Message type for conversations (combines user and bot data)
@@ -83,7 +84,6 @@ export type {
   CodeData,
   ContactData,
   DeepResearchResults,
-  DocumentData,
   EmailComposeData,
   EmailSentData,
   EmailThreadData,

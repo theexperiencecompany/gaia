@@ -173,7 +173,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "100 * (sum(rate(arq_task_total{status=\"error\"}[5m])) / clamp_min(sum(rate(arq_task_total[5m])), 0.0001))",
+          "expr": "100 * ((sum(rate(arq_task_total{status=\"error\"}[5m])) or vector(0)) / clamp_min(sum(rate(arq_task_total[5m])), 0.0001))",
           "instant": true,
           "refId": "A",
           "legendFormat": ""
@@ -449,7 +449,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (level) (count_over_time({service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\"} [$__interval]))",
+          "expr": "sum by (level) (count_over_time({service=~\"arq_worker|gaia-backend\"} | json | logger=\"WORKER\" [$__interval]))",
           "interval": "5m",
           "legendFormat": "{{level}}",
           "refId": "A"
@@ -687,7 +687,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\", level=~\"ERROR|WARNING\"} | json",
+          "expr": "{service=~\"arq_worker|gaia-backend\"} | json | logger=\"WORKER\" | level=~\"ERROR|WARNING\"",
           "legendFormat": "",
           "refId": "A"
         }
@@ -723,7 +723,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\"} | json | message = \"worker_task\"",
+          "expr": "{service=~\"arq_worker|gaia-backend\"} | json | logger=\"WORKER\" | message = \"worker_task\"",
           "legendFormat": "",
           "refId": "A"
         }

@@ -8,13 +8,13 @@ Mocks only HTTP calls (httpx) and database I/O boundaries. All MCP client
 logic, OAuth discovery, token management, and PKCE generation run for real.
 """
 
-from datetime import datetime, timedelta, timezone
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlparse
 
+from cryptography.fernet import Fernet
 import httpx
 import pytest
-from cryptography.fernet import Fernet
 
 from app.models.mcp_config import MCPConfig
 from app.services.mcp.mcp_client import MCPClient
@@ -37,7 +37,6 @@ from app.utils.mcp_oauth_utils import (
     validate_token_response,
 )
 from app.utils.mcp_utils import generate_pkce_pair
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -182,9 +181,7 @@ class TestOAuthDiscovery:
                 "app.services.mcp.oauth_discovery.validate_oauth_endpoints",
             ),
         ):
-            result = await discover_oauth_config(
-                token_store, integration_id, mcp_config
-            )
+            result = await discover_oauth_config(token_store, integration_id, mcp_config)
 
         assert result["authorization_endpoint"] == "https://auth.example.com/authorize"
         assert result["token_endpoint"] == "https://auth.example.com/token"
@@ -395,9 +392,7 @@ class TestAuthorizationURLGeneration:
         oauth_config["client_id_metadata_document_supported"] = False
 
         resolved = MagicMock()
-        resolved.mcp_config = _make_mcp_config(
-            client_id="cid", oauth_scopes=["openid", "profile"]
-        )
+        resolved.mcp_config = _make_mcp_config(client_id="cid", oauth_scopes=["openid", "profile"])
 
         client.token_store.create_oauth_state = AsyncMock(return_value="state-2")
         client.token_store.store_oauth_nonce = AsyncMock()
@@ -434,19 +429,20 @@ class TestTokenExchange:
     """Test handle_oauth_callback: code-for-token exchange with PKCE."""
 
     async def test_successful_token_exchange_stores_tokens(self):
-        """After successful code exchange, tokens are stored and connect is called."""
+        """After successful code exchange, tokens are stored and connect is dispatched.
+
+        handle_oauth_callback now backgrounds the MCP connect to keep the
+        OAuth redirect under ~1.5s. It returns [] immediately; the connect
+        completes on a fire-and-forget task that the test doesn't await.
+        """
         client = MCPClient(user_id="test-user")
         client.token_store = _make_token_store()
 
         # Verify state succeeds, returns code_verifier
-        client.token_store.verify_oauth_state = AsyncMock(
-            return_value=(True, "test-code-verifier")
-        )
+        client.token_store.verify_oauth_state = AsyncMock(return_value=(True, "test-code-verifier"))
         client.token_store.store_oauth_tokens = AsyncMock()
         client.token_store.get_and_delete_oauth_nonce = AsyncMock(return_value=None)
-        client.token_store.get_dcr_client = AsyncMock(
-            return_value={"client_id": "dcr-cid"}
-        )
+        client.token_store.get_dcr_client = AsyncMock(return_value={"client_id": "dcr-cid"})
         client.token_store.delete_credentials = AsyncMock()
         client.token_store.delete_dcr_client = AsyncMock()
 
@@ -463,12 +459,12 @@ class TestTokenExchange:
             "expires_in": 3600,
         }
 
-        mock_tools = [MagicMock(name="tool1")]
-
         mock_http_response = httpx.Response(
             status_code=200,
             json=token_response,
         )
+
+        connect_mock = AsyncMock(return_value=[MagicMock(name="tool1")])
 
         with (
             patch(
@@ -480,12 +476,12 @@ class TestTokenExchange:
                 "_discover_oauth_config",
                 new=AsyncMock(return_value=oauth_config),
             ),
-            patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http_cls,
-            patch.object(
-                client,
-                "connect",
-                new=AsyncMock(return_value=mock_tools),
+            patch(
+                "app.services.mcp.mcp_client.update_user_integration_status",
+                new=AsyncMock(),
             ),
+            patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http_cls,
+            patch.object(client, "connect", new=connect_mock),
         ):
             mock_http_instance = AsyncMock()
             mock_http_instance.post = AsyncMock(return_value=mock_http_response)
@@ -499,8 +495,13 @@ class TestTokenExchange:
                 state="valid-state",
                 redirect_uri="https://app.example.com/callback",
             )
+            # Yield so the dispatched background connect task runs.
+            await asyncio.sleep(0)
 
-        assert tools is mock_tools
+        # New contract: returns immediately with an empty list while the
+        # actual MCP connect runs in the background.
+        assert tools == []
+        connect_mock.assert_awaited_once_with("exchange-int")
         # Verify tokens were stored with correct values
         client.token_store.store_oauth_tokens.assert_awaited_once()
         call_kwargs = client.token_store.store_oauth_tokens.call_args[1]
@@ -527,9 +528,7 @@ class TestTokenExchange:
         """When token endpoint returns error, ValueError with details is raised."""
         client = MCPClient(user_id="test-user")
         client.token_store = _make_token_store()
-        client.token_store.verify_oauth_state = AsyncMock(
-            return_value=(True, "verifier")
-        )
+        client.token_store.verify_oauth_state = AsyncMock(return_value=(True, "verifier"))
         client.token_store.get_dcr_client = AsyncMock(return_value={"client_id": "cid"})
         client.token_store.get_and_delete_oauth_nonce = AsyncMock(return_value=None)
 
@@ -575,9 +574,7 @@ class TestTokenExchange:
         """Token response with non-Bearer type raises ValueError."""
         client = MCPClient(user_id="test-user")
         client.token_store = _make_token_store()
-        client.token_store.verify_oauth_state = AsyncMock(
-            return_value=(True, "verifier")
-        )
+        client.token_store.verify_oauth_state = AsyncMock(return_value=(True, "verifier"))
         client.token_store.get_dcr_client = AsyncMock(return_value={"client_id": "cid"})
         client.token_store.get_and_delete_oauth_nonce = AsyncMock(return_value=None)
 
@@ -660,9 +657,7 @@ class TestTokenRefresh:
             mock_instance.__aexit__ = AsyncMock(return_value=False)
             mock_cls.return_value = mock_instance
 
-            result = await try_refresh_token(
-                token_store, "refresh-int", mcp_config, oauth_config
-            )
+            result = await try_refresh_token(token_store, "refresh-int", mcp_config, oauth_config)
 
         assert result is True
         token_store.store_oauth_tokens.assert_awaited_once()
@@ -679,9 +674,7 @@ class TestTokenRefresh:
         mcp_config = _make_mcp_config()
         oauth_config = _oauth_discovery_dict()
 
-        result = await try_refresh_token(
-            token_store, "no-refresh-int", mcp_config, oauth_config
-        )
+        result = await try_refresh_token(token_store, "no-refresh-int", mcp_config, oauth_config)
 
         assert result is False
 
@@ -706,9 +699,7 @@ class TestTokenRefresh:
             mock_instance.__aexit__ = AsyncMock(return_value=False)
             mock_cls.return_value = mock_instance
 
-            result = await try_refresh_token(
-                token_store, "fail-refresh", mcp_config, oauth_config
-            )
+            result = await try_refresh_token(token_store, "fail-refresh", mcp_config, oauth_config)
 
         assert result is False
 
@@ -722,9 +713,7 @@ class TestTokenRefresh:
         mcp_config = _make_mcp_config(client_id=None)
         oauth_config = _oauth_discovery_dict()
 
-        result = await try_refresh_token(
-            token_store, "no-cid-int", mcp_config, oauth_config
-        )
+        result = await try_refresh_token(token_store, "no-cid-int", mcp_config, oauth_config)
 
         assert result is False
 
@@ -787,17 +776,13 @@ class TestTokenRevocation:
 
         with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_cls:
             mock_instance = AsyncMock()
-            mock_instance.post = AsyncMock(
-                side_effect=httpx.ConnectError("Connection refused")
-            )
+            mock_instance.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
             mock_instance.__aexit__ = AsyncMock(return_value=False)
             mock_cls.return_value = mock_instance
 
             # Should not raise despite connection error
-            await revoke_tokens(
-                token_store, "fail-revoke-int", mcp_config, oauth_config
-            )
+            await revoke_tokens(token_store, "fail-revoke-int", mcp_config, oauth_config)
 
 
 # ---------------------------------------------------------------------------
@@ -807,11 +792,11 @@ class TestTokenRevocation:
 
 @pytest.mark.integration
 class TestConnectionPooling:
-    """Test MCPClientPool: reuse, LRU eviction, TTL cleanup."""
+    """Test MCPClientPool: reuse, LRU eviction at capacity."""
 
     async def test_pool_reuses_client_for_same_user(self):
         """Getting the same user_id twice returns the same MCPClient instance."""
-        pool = MCPClientPool(max_clients=10, ttl_seconds=300)
+        pool = MCPClientPool(max_clients=10)
 
         with patch("app.services.mcp.mcp_client.MCPClient") as mock_cls:
             mock_client = MagicMock()
@@ -825,7 +810,7 @@ class TestConnectionPooling:
 
     async def test_pool_creates_different_clients_for_different_users(self):
         """Different user_ids get separate MCPClient instances."""
-        pool = MCPClientPool(max_clients=10, ttl_seconds=300)
+        pool = MCPClientPool(max_clients=10)
 
         with patch("app.services.mcp.mcp_client.MCPClient") as mock_cls:
             mock_cls.side_effect = lambda user_id: MagicMock(user_id=user_id)
@@ -838,7 +823,7 @@ class TestConnectionPooling:
 
     async def test_pool_evicts_lru_at_capacity(self):
         """When pool is full, the least recently used client is evicted."""
-        pool = MCPClientPool(max_clients=2, ttl_seconds=300)
+        pool = MCPClientPool(max_clients=2)
 
         with patch("app.services.mcp.mcp_client.MCPClient") as mock_cls:
             evicted_client = MagicMock()
@@ -863,27 +848,9 @@ class TestConnectionPooling:
         # The oldest client should have been closed
         evicted_client.close_all_client_sessions.assert_awaited_once()
 
-    async def test_pool_cleanup_stale_removes_expired(self):
-        """cleanup_stale removes clients that haven't been used within TTL."""
-        pool = MCPClientPool(max_clients=10, ttl_seconds=1)
-
-        stale_client = MagicMock()
-        stale_client.close_all_client_sessions = AsyncMock()
-
-        # Inject a stale entry directly
-        pool._clients["stale-user"] = PooledClient(
-            client=stale_client,
-            last_used=datetime.now(timezone.utc) - timedelta(seconds=10),
-        )
-
-        await pool.cleanup_stale()
-
-        assert pool.size == 0
-        stale_client.close_all_client_sessions.assert_awaited_once()
-
     async def test_pool_shutdown_closes_all(self):
         """shutdown() closes all pooled clients."""
-        pool = MCPClientPool(max_clients=10, ttl_seconds=300)
+        pool = MCPClientPool(max_clients=10)
 
         mock_clients = []
         for uid in ["u1", "u2", "u3"]:
@@ -918,9 +885,7 @@ class TestToolDiscovery:
         ]
 
         with (
-            patch(
-                "app.services.mcp.mcp_tools_store.integrations_collection"
-            ) as mock_col,
+            patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col,
             patch(
                 "app.services.mcp.mcp_tools_store.delete_cache",
                 new=AsyncMock(),
@@ -958,9 +923,7 @@ class TestToolDiscovery:
         """store_tools is a no-op for empty tool list."""
         store = MCPToolsStore()
 
-        with patch(
-            "app.services.mcp.mcp_tools_store.integrations_collection"
-        ) as mock_col:
+        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col:
             mock_col.update_one = AsyncMock()
             await store.store_tools("empty-int", [])
             mock_col.update_one.assert_not_awaited()
@@ -975,9 +938,7 @@ class TestToolDiscovery:
             ]
         }
 
-        with patch(
-            "app.services.mcp.mcp_tools_store.integrations_collection"
-        ) as mock_col:
+        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col:
             mock_col.find_one = AsyncMock(return_value=stored_doc)
 
             result = await store.get_tools("my-int")
@@ -990,9 +951,7 @@ class TestToolDiscovery:
         """get_tools returns None when integration has no stored tools."""
         store = MCPToolsStore()
 
-        with patch(
-            "app.services.mcp.mcp_tools_store.integrations_collection"
-        ) as mock_col:
+        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col:
             mock_col.find_one = AsyncMock(return_value=None)
             result = await store.get_tools("missing-int")
 
@@ -1031,15 +990,11 @@ class TestErrorHandling:
     def test_validate_pkce_rejects_plain_only(self):
         """validate_pkce_support raises when only plain is supported."""
         with pytest.raises(ValueError, match="insecure"):
-            validate_pkce_support(
-                {"code_challenge_methods_supported": ["plain"]}, "test-int"
-            )
+            validate_pkce_support({"code_challenge_methods_supported": ["plain"]}, "test-int")
 
     def test_validate_pkce_accepts_s256(self):
         """validate_pkce_support succeeds when S256 is supported."""
-        validate_pkce_support(
-            {"code_challenge_methods_supported": ["S256"]}, "test-int"
-        )
+        validate_pkce_support({"code_challenge_methods_supported": ["S256"]}, "test-int")
 
     def test_validate_token_response_rejects_missing_access_token(self):
         """validate_token_response raises when access_token is missing."""
@@ -1054,15 +1009,11 @@ class TestErrorHandling:
     def test_validate_token_response_rejects_non_bearer(self):
         """validate_token_response raises for non-Bearer token type."""
         with pytest.raises(ValueError, match="Unsupported token_type"):
-            validate_token_response(
-                {"access_token": "at", "token_type": "MAC"}, "test-int"
-            )
+            validate_token_response({"access_token": "at", "token_type": "MAC"}, "test-int")
 
     def test_validate_token_response_accepts_bearer(self):
         """validate_token_response succeeds with valid Bearer response."""
-        validate_token_response(
-            {"access_token": "at", "token_type": "Bearer"}, "test-int"
-        )
+        validate_token_response({"access_token": "at", "token_type": "Bearer"}, "test-int")
 
     def test_parse_oauth_error_response_extracts_fields(self):
         """parse_oauth_error_response extracts error info from JSON responses."""
@@ -1173,9 +1124,7 @@ class TestConcurrentConnectionIsolation:
 
         def make_adapter_for(integration_id):
             mock_adapter = MagicMock()
-            mock_adapter.create_tools = AsyncMock(
-                return_value=adapter_tools_map[integration_id]
-            )
+            mock_adapter.create_tools = AsyncMock(return_value=adapter_tools_map[integration_id])
             return mock_adapter
 
         adapter_call_count = 0

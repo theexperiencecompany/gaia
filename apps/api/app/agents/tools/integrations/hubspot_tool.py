@@ -1,67 +1,71 @@
 """HubSpot tools using Composio custom tool infrastructure."""
 
-from typing import Any, Dict, List
+from typing import Any
 
-import httpx
 from composio import Composio
 
-from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
+from app.services.composio.proxy_client import proxy_request_sync
+from shared.py.wide_events import log
+
+HUBSPOT_TOOLKIT = "HUBSPOT"
 
 
-def register_hubspot_custom_tools(composio: Composio) -> List[str]:
+def register_hubspot_custom_tools(composio: Composio) -> list[str]:
     """Register HubSpot tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="HUBSPOT")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get HubSpot CRM context snapshot: recent contacts and deals.
 
         Zero required parameters. Returns current CRM state for situational awareness.
         """
         log.set(tool={"integration": "hubspot", "action": "gather_context"})
-        token = auth_credentials.get("access_token")
-        if not token:
-            raise ValueError("Missing access_token in auth_credentials")
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        }
+        user_id = auth_credentials.get("user_id")
+        if not user_id:
+            raise ValueError("Missing user_id in auth_credentials")
 
-        contacts: List[Dict[str, Any]] = []
+        contacts: list[dict[str, Any]] = []
         try:
-            resp = httpx.get(
-                "https://api.hubapi.com/crm/v3/objects/contacts",
-                headers=headers,
-                params={
-                    "limit": 10,
-                    "properties": "firstname,lastname,email,hs_lead_status",
-                    "sort": "-createdate",
-                },
-                timeout=15,
+            data = (
+                proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=HUBSPOT_TOOLKIT,
+                    endpoint="https://api.hubapi.com/crm/v3/objects/contacts",
+                    method="GET",
+                    query={
+                        "limit": 10,
+                        "properties": "firstname,lastname,email,hs_lead_status",
+                        "sort": "-createdate",
+                    },
+                )
+                or {}
             )
-            resp.raise_for_status()
-            contacts = resp.json().get("results", [])
+            contacts = data.get("results", [])
         except Exception as e:
             log.debug(f"HubSpot contacts fetch failed: {e}")
 
-        deals: List[Dict[str, Any]] = []
+        deals: list[dict[str, Any]] = []
         try:
-            resp = httpx.get(
-                "https://api.hubapi.com/crm/v3/objects/deals",
-                headers=headers,
-                params={
-                    "limit": 10,
-                    "properties": "dealname,amount,dealstage,closedate",
-                    "sort": "-createdate",
-                },
-                timeout=15,
+            data = (
+                proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=HUBSPOT_TOOLKIT,
+                    endpoint="https://api.hubapi.com/crm/v3/objects/deals",
+                    method="GET",
+                    query={
+                        "limit": 10,
+                        "properties": "dealname,amount,dealstage,closedate",
+                        "sort": "-createdate",
+                    },
+                )
+                or {}
             )
-            resp.raise_for_status()
-            deals = resp.json().get("results", [])
+            deals = data.get("results", [])
         except Exception as e:
             log.debug(f"HubSpot deals fetch failed: {e}")
 

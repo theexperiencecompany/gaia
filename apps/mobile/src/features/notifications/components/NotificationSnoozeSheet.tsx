@@ -173,7 +173,7 @@ export const NotificationSnoozeSheet = forwardRef<NotificationSnoozeSheetRef>(
                   hitSlop={8}
                   style={{ opacity: 0.6 }}
                 >
-                  <AppIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
+                  <AppIcon icon={Cancel01Icon} size={18} color="#71717a" />
                 </Pressable>
               </View>
 
@@ -208,7 +208,7 @@ export const NotificationSnoozeSheet = forwardRef<NotificationSnoozeSheetRef>(
                       <Text
                         style={{
                           fontSize: fontSize.xs,
-                          color: "#8e8e93",
+                          color: "#71717a",
                           marginTop: 2,
                         }}
                       >
@@ -251,14 +251,14 @@ export const NotificationSnoozeSheet = forwardRef<NotificationSnoozeSheetRef>(
                     <Text
                       style={{
                         fontSize: fontSize.xs,
-                        color: "#8e8e93",
+                        color: "#71717a",
                         marginTop: 2,
                       }}
                     >
                       Pick a specific date and time
                     </Text>
                   </View>
-                  <AppIcon icon={AlarmClockIcon} size={16} color="#8e8e93" />
+                  <AppIcon icon={AlarmClockIcon} size={16} color="#71717a" />
                 </Pressable>
 
                 {/* Inline date/time picker for custom option */}

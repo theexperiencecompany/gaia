@@ -226,8 +226,10 @@ export const useIntegrations = (): UseIntegrationsReturn => {
           integration: integrationId,
         });
         toast.success("Integration disconnected");
-        // Refetch all data
-        await queryClient.refetchQueries({ queryKey: ["integrations"] });
+        // Invalidate (not refetch) so the UI updates in the background while
+        // the modal closes immediately. Awaiting refetch here blocked the
+        // sidebar for the duration of three integration GETs.
+        queryClient.invalidateQueries({ queryKey: ["integrations"] });
       } catch (error) {
         toast.error(
           `Failed to disconnect: ${error instanceof Error ? error.message : "Unknown error"}`,

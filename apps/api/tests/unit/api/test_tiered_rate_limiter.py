@@ -1,6 +1,6 @@
 """Tests for tiered rate limiter middleware."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -43,15 +43,13 @@ class TestRateLimitExceededException:
         assert "PRO" in exc.detail["message"]  # type: ignore[index]
 
     def test_with_reset_time(self) -> None:
-        reset = datetime(2026, 4, 1, tzinfo=timezone.utc)
+        reset = datetime(2026, 4, 1, tzinfo=UTC)
         exc = RateLimitExceededException("file_upload", reset_time=reset)
         assert exc.detail["reset_time"] == reset.isoformat()  # type: ignore[index]
 
     def test_with_all_fields(self) -> None:
-        reset = datetime(2026, 4, 1, tzinfo=timezone.utc)
-        exc = RateLimitExceededException(
-            "file_upload", plan_required="pro", reset_time=reset
-        )
+        reset = datetime(2026, 4, 1, tzinfo=UTC)
+        exc = RateLimitExceededException("file_upload", plan_required="pro", reset_time=reset)
         assert exc.detail["plan_required"] == "pro"  # type: ignore[index]
         assert exc.detail["reset_time"] == reset.isoformat()  # type: ignore[index]
 
@@ -78,7 +76,7 @@ class TestTieredRateLimiterHelpers:
 
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
     def test_get_ttl_positive(self, mock_reset: MagicMock) -> None:
-        future = datetime(2027, 3, 21, tzinfo=timezone.utc)
+        future = datetime(2027, 3, 21, tzinfo=UTC)
         mock_reset.return_value = future
         ttl = self.limiter._get_ttl(RateLimitPeriod.DAY)
         assert isinstance(ttl, int)
@@ -112,7 +110,7 @@ class TestCheckAndIncrement:
         from app.config.rate_limits import RateLimitConfig
 
         mock_limits.return_value = RateLimitConfig(day=100, month=1000)
-        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=timezone.utc)
+        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
         self.limiter.redis.get = AsyncMock(return_value="5")
 
         # Mock pipeline
@@ -133,9 +131,7 @@ class TestCheckAndIncrement:
             "app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task",
             side_effect=_noop_create_task,
         ):
-            result = await self.limiter.check_and_increment(
-                "user1", "chat_messages", PlanType.PRO
-            )
+            result = await self.limiter.check_and_increment("user1", "chat_messages", PlanType.PRO)
 
         assert "day" in result or "month" in result
 
@@ -154,14 +150,12 @@ class TestCheckAndIncrement:
         from app.config.rate_limits import RateLimitConfig
 
         mock_limits.return_value = RateLimitConfig(day=10, month=100)
-        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=timezone.utc)
+        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
         # Current usage already at limit
         self.limiter.redis.get = AsyncMock(return_value="10")
 
         with pytest.raises(RateLimitExceededException):
-            await self.limiter.check_and_increment(
-                "user1", "chat_messages", PlanType.FREE
-            )
+            await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
 
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_limits_for_plan")
@@ -179,15 +173,13 @@ class TestCheckAndIncrement:
         from app.config.rate_limits import RateLimitConfig
 
         mock_limits.return_value = RateLimitConfig(day=0, month=0)
-        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=timezone.utc)
+        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
 
         with patch(
             "app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task",
             side_effect=_noop_create_task,
         ):
-            result = await self.limiter.check_and_increment(
-                "user1", "chat_messages", PlanType.FREE
-            )
+            result = await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
 
         assert result == {}
 
@@ -206,14 +198,12 @@ class TestCheckAndIncrement:
         from app.config.rate_limits import RateLimitConfig
 
         mock_limits.return_value = RateLimitConfig(day=100, month=1000)
-        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=timezone.utc)
+        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
         self.limiter.redis.get = AsyncMock(return_value="5")
         self.limiter.redis.redis = None
 
         with pytest.raises(Exception, match="Redis connection not available"):
-            await self.limiter.check_and_increment(
-                "user1", "chat_messages", PlanType.FREE
-            )
+            await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
 
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_limits_for_plan")
@@ -231,7 +221,7 @@ class TestCheckAndIncrement:
         from app.config.rate_limits import RateLimitConfig
 
         mock_limits.return_value = RateLimitConfig(day=100, month=0)
-        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=timezone.utc)
+        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
         self.limiter.redis.get = AsyncMock(return_value="5")
 
         pipe_mock = AsyncMock()
@@ -259,9 +249,7 @@ class TestCheckAndIncrement:
             "app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task",
             side_effect=_noop_create_task,
         ):
-            await self.limiter.check_and_increment(
-                "user1", "chat_messages", PlanType.FREE
-            )
+            await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
 
         assert call_count == 2  # First attempt fails, second succeeds
 
@@ -281,7 +269,7 @@ class TestCheckAndIncrement:
         from app.config.rate_limits import RateLimitConfig
 
         mock_limits.return_value = RateLimitConfig(day=10, month=0)
-        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=timezone.utc)
+        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
         # First check returns 9 (under limit), but pipeline read returns 10
         self.limiter.redis.get = AsyncMock(side_effect=["9", "10"])
 
@@ -300,9 +288,7 @@ class TestCheckAndIncrement:
             side_effect=_noop_create_task,
         ):
             with pytest.raises(RateLimitExceededException):
-                await self.limiter.check_and_increment(
-                    "user1", "chat_messages", PlanType.FREE
-                )
+                await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +312,7 @@ class TestSyncUsageRealTime:
         mock_reset: MagicMock,
         mock_save: AsyncMock,
     ) -> None:
-        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=timezone.utc)
+        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
         self.limiter._collect_feature_usage = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
         await self.limiter._sync_usage_real_time(
@@ -399,7 +385,7 @@ class TestCollectFeatureUsage:
         from app.config.rate_limits import RateLimitConfig
 
         mock_limits.return_value = RateLimitConfig(day=100, month=0)
-        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=timezone.utc)
+        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
         self.limiter.redis.get = AsyncMock(return_value="5")
 
         result = await self.limiter._collect_feature_usage("user1", PlanType.PRO)
@@ -526,9 +512,7 @@ class TestTieredRateLimitDecorator:
         assert result == "ok"
 
     @patch("app.api.v1.middleware.tiered_rate_limiter.payment_service")
-    async def test_decorator_raises_401_when_no_user_id(
-        self, mock_pay: MagicMock
-    ) -> None:
+    async def test_decorator_raises_401_when_no_user_id(self, mock_pay: MagicMock) -> None:
         from fastapi import HTTPException
 
         @tiered_rate_limit("file_upload")

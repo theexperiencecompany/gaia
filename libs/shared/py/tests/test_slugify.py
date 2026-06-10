@@ -4,7 +4,6 @@ import pytest
 
 from shared.py.utils.slugify import slugify
 
-
 # ---------------------------------------------------------------------------
 # Basic conversion
 # ---------------------------------------------------------------------------
@@ -256,7 +255,7 @@ class TestSlugifyEdgeCases:
         assert slugify("a; b; c") == "a-b-c"
 
     def test_quotes_stripped(self):
-        assert slugify("it's a \"test\"") == "its-a-test"
+        assert slugify('it\'s a "test"') == "its-a-test"
 
     def test_very_long_single_word(self):
         word = "a" * 200

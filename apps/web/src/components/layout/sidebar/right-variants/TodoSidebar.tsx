@@ -9,6 +9,7 @@ import type React from "react";
 import { useState } from "react";
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useUser } from "@/features/auth/hooks/useUser";
+import CanvasViewer from "@/features/todo/components/CanvasViewer";
 import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
 import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
 import WorkflowSection from "@/features/todo/components/WorkflowSection";
@@ -129,6 +130,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
               ) : (
                 <h1
                   onClick={() => setIsEditingTitle(true)}
+                  style={{ wordBreak: "break-all" }}
                   className={`cursor-pointer text-2xl leading-tight font-medium transition-colors hover:text-zinc-200 ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
                 >
                   {todo.title}
@@ -164,6 +166,11 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             >
               {todo.description || "Add a description..."}
             </p>
+          )}
+
+          {/* Canvas working memory — only for gaia-tracked todos */}
+          {todo.vfs_path && (
+            <CanvasViewer todoId={todo.id} todoTitle={todo.title} />
           )}
 
           {/* Editable Fields */}

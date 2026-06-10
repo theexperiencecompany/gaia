@@ -10,14 +10,13 @@ app.core.websocket_manager with mock WebSocket objects at the I/O boundary.
 """
 
 import json
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.core.websocket_consumer import WebSocketEventConsumer
 from app.core.websocket_manager import WebSocketManager
-from app.services.notification_service import NotificationService
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -68,9 +67,7 @@ class TestWebSocketConnectionManagement:
         assert USER_A in manager.connections
         assert ws in manager.connections[USER_A]
 
-    def test_remove_connection_deregisters_user(
-        self, manager: WebSocketManager
-    ) -> None:
+    def test_remove_connection_deregisters_user(self, manager: WebSocketManager) -> None:
         ws = _make_ws()
         manager.add_connection(USER_A, ws)
         manager.remove_connection(USER_A, ws)
@@ -78,17 +75,13 @@ class TestWebSocketConnectionManagement:
         # User key should be cleaned up entirely when last connection is removed
         assert USER_A not in manager.connections
 
-    def test_remove_nonexistent_connection_is_noop(
-        self, manager: WebSocketManager
-    ) -> None:
+    def test_remove_nonexistent_connection_is_noop(self, manager: WebSocketManager) -> None:
         """Removing a connection that was never added must not raise."""
         ws = _make_ws()
         manager.remove_connection("ghost-user", ws)
         assert "ghost-user" not in manager.connections
 
-    def test_add_multiple_connections_same_user(
-        self, manager: WebSocketManager
-    ) -> None:
+    def test_add_multiple_connections_same_user(self, manager: WebSocketManager) -> None:
         ws1 = _make_ws()
         ws2 = _make_ws()
         manager.add_connection(USER_A, ws1)
@@ -98,9 +91,7 @@ class TestWebSocketConnectionManagement:
         assert ws1 in manager.connections[USER_A]
         assert ws2 in manager.connections[USER_A]
 
-    def test_remove_one_of_multiple_connections(
-        self, manager: WebSocketManager
-    ) -> None:
+    def test_remove_one_of_multiple_connections(self, manager: WebSocketManager) -> None:
         ws1 = _make_ws()
         ws2 = _make_ws()
         manager.add_connection(USER_A, ws1)
@@ -117,9 +108,7 @@ class TestWebSocketConnectionManagement:
 class TestWebSocketConnectionCount:
     """Connection count tracking accuracy after connect/disconnect cycles."""
 
-    def test_connection_count_after_add_remove_cycles(
-        self, manager: WebSocketManager
-    ) -> None:
+    def test_connection_count_after_add_remove_cycles(self, manager: WebSocketManager) -> None:
         sockets = [_make_ws() for _ in range(5)]
 
         for ws in sockets:
@@ -136,9 +125,7 @@ class TestWebSocketConnectionCount:
             manager.remove_connection(USER_A, ws)
         assert USER_A not in manager.connections
 
-    def test_multiple_users_tracked_independently(
-        self, manager: WebSocketManager
-    ) -> None:
+    def test_multiple_users_tracked_independently(self, manager: WebSocketManager) -> None:
         ws_a = _make_ws()
         ws_b = _make_ws()
         manager.add_connection(USER_A, ws_a)
@@ -162,7 +149,7 @@ class TestWebSocketMessageRouting:
         ws = _make_ws()
         manager.add_connection(USER_A, ws)
 
-        message: Dict[str, Any] = {"type": "notification", "body": "hello"}
+        message: dict[str, Any] = {"type": "notification", "body": "hello"}
         await manager.broadcast_to_user(USER_A, message)
 
         ws.send_json.assert_awaited_once_with(message)
@@ -403,15 +390,12 @@ class TestWebSocketConsumerMessageHandling:
         with patch("app.core.websocket_consumer.websocket_manager", manager):
             await consumer._handle_websocket_message(fake_message)
 
-        ws.send_json.assert_awaited_once_with(
-            {"type": "new_notification", "id": "n-123"}
-        )
+        ws.send_json.assert_awaited_once_with({"type": "new_notification", "id": "n-123"})
 
     @patch("app.core.websocket_manager.is_main_app", return_value=True)
     async def test_consumer_ignores_unknown_message_type(
         self, _mock_main: MagicMock, manager: WebSocketManager
     ) -> None:
-
         ws = _make_ws()
         manager.add_connection(USER_A, ws)
 
@@ -436,7 +420,6 @@ class TestWebSocketConsumerMessageHandling:
     async def test_consumer_handles_malformed_json(
         self, _mock_main: MagicMock, manager: WebSocketManager
     ) -> None:
-
         fake_message = AsyncMock()
         fake_message.body = b"not valid json{{"
         fake_message.process = MagicMock()
@@ -491,33 +474,3 @@ class TestWebSocketConsumerMessageHandling:
             await consumer._handle_websocket_message(fake_message)
 
         assert broken_ws not in manager.connections.get(USER_A, set())
-
-
-@pytest.mark.integration
-class TestNotificationServiceWebSocketBridge:
-    """NotificationService thin wrappers delegate to WebSocketManager."""
-
-    def test_add_websocket_connection_delegates(
-        self, manager: WebSocketManager
-    ) -> None:
-
-        svc = NotificationService()
-        ws = _make_ws()
-
-        with patch("app.services.notification_service.websocket_manager", manager):
-            svc.add_websocket_connection(USER_A, ws)
-
-        assert ws in manager.connections[USER_A]
-
-    def test_remove_websocket_connection_delegates(
-        self, manager: WebSocketManager
-    ) -> None:
-
-        svc = NotificationService()
-        ws = _make_ws()
-
-        with patch("app.services.notification_service.websocket_manager", manager):
-            svc.add_websocket_connection(USER_A, ws)
-            svc.remove_websocket_connection(USER_A, ws)
-
-        assert USER_A not in manager.connections

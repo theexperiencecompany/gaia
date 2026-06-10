@@ -18,19 +18,6 @@ export default function fetchDate(): string {
   return new Date().toISOString();
 }
 
-export const parsingDate = (isoString: string) => {
-  const withoutTimezone = isoString.replace(/([+-]\d{2}:\d{2})$/, "");
-  const date = new Date(withoutTimezone);
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "numeric",
-    minute: "numeric",
-    hour12: true,
-  }).format(date);
-};
-
 export function parseDate(isoDateString: string): string {
   const date = new Date(isoDateString);
   const now = new Date();
@@ -90,15 +77,6 @@ export function parseDate(isoDateString: string): string {
   const day = date.getDate();
 
   return `${day}${nth(day)} ${month} '${year} (${formattedTime})`;
-}
-
-export function parseDate2(isoDateString: string): string {
-  const date = new Date(isoDateString);
-  const optionsMonth: Intl.DateTimeFormatOptions = { month: "short" };
-  const month = date.toLocaleString(navigator.language, optionsMonth);
-  const day = date.getDate();
-
-  return `${day}${nth(day)} ${month}`.trim();
 }
 
 /**

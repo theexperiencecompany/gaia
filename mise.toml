@@ -156,12 +156,17 @@ echo "Setup complete! Run 'mise dev' to start development servers."
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks.dev]
-description = "Run API + web in parallel (starts Docker automatically)"
+description = "Run API + web natively + infra in Docker. API runs on host (hot reload, port 8000). JuiceFS-dependent paths (workspace v2, sandbox file ops, artifact streaming) raise JuiceFSUnavailable on this path — use `mise dev:vm` for those."
 run = "nx run docker:docker:up && nx run-many -t dev --projects=api,web --parallel=2"
 
 [tasks."dev:api"]
-description = "Run ONLY API server (starts Docker automatically)"
+description = "Run ONLY API server natively + infra in Docker. Same JuiceFS caveat as `mise dev` — see `mise dev:vm` for the dockered-API variant."
 run = "nx run docker:docker:up && nx dev api"
+
+[tasks."dev:vm"]
+description = "Run the API in a container (hot reload via the mounted apps/api/app dir + JuiceFS FUSE mount) + web natively. Use this when working on workspace v2, file uploads, artifact streaming, or sandbox file ops. The container is required because JuiceFS mounts via FUSE, which a native macOS/Windows process cannot provide. Also starts voice-agent-worker as a side effect of the `backend` profile."
+env = { COMPOSE_PROFILES = "backend" }
+run = "nx run docker:docker:up && nx dev web"
 
 [tasks."dev:web"]
 description = "Run ONLY web (starts Docker automatically)"
@@ -174,6 +179,11 @@ run = "nx run docker:docker:up && nx run-many -t dev --projects=api,mobile --par
 [tasks."dev:bots"]
 description = "Run ALL bots (Discord, Telegram, Slack, WhatsApp) in parallel"
 run = "nx run-many -t dev --projects=bot-discord,bot-telegram,bot-slack,bot-whatsapp --parallel=4"
+
+[tasks."dev:arq"]
+description = "Run API + web + arq worker"
+run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web --parallel=3"
+
 
 [tasks."dev:full"]
 description = "Run API + web + arq worker + voice agent + all bots in parallel"

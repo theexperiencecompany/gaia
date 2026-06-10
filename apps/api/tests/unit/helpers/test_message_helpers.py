@@ -2,8 +2,8 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import SystemMessage
+import pytest
 
 from app.helpers.message_helpers import (
     _get_gaia_knowledge_section,
@@ -14,7 +14,6 @@ from app.helpers.message_helpers import (
     format_reply_context,
     format_tool_selection_message,
     format_workflow_execution_message,
-    get_memory_message,
 )
 from app.models.message_models import (
     FileData,
@@ -23,31 +22,48 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 
-
 # ---------------------------------------------------------------------------
 # create_system_message
 # ---------------------------------------------------------------------------
 
 
 class TestCreateSystemMessage:
-    def test_comms_agent(self) -> None:
-        msg = create_system_message(user_name="Alice", agent_type="comms")
-        assert isinstance(msg, SystemMessage)
-        assert "Alice" in msg.content
+    """The main system prompt must be byte-identical across users/channels so
+    implicit LLM caching hits. No `{user_name}` interpolation lives here —
+    dynamic context flows via build_dynamic_context_message."""
 
-    def test_executor_agent(self) -> None:
-        msg = create_system_message(user_name="Bob", agent_type="executor")
-        assert isinstance(msg, SystemMessage)
-        # Executor template may or may not include user_name; just verify it rendered
-        assert len(msg.content) > 0
+    def test_comms_agent_static_is_per_channel(self) -> None:
+        """Different user_name must produce identical content on the same
+        channel (byte-stable prefix). Different channels produce different
+        content (OpenUI on web, platform restrictions on WhatsApp)."""
+        web_a = create_system_message(user_name="Foo", agent_type="comms", source="web")
+        web_b = create_system_message(user_name="Bar", agent_type="comms", source="web")
+        whatsapp = create_system_message(user_name="Foo", agent_type="comms", source="whatsapp")
+        assert isinstance(web_a, SystemMessage)
+        assert web_a.content == web_b.content
+        assert web_a.content != whatsapp.content
+        # Output-format addenda should be inline in the static per-channel
+        # prompt — web has OpenUI, text-only has platform restrictions.
+        assert ":::openui" in web_a.content
+        assert "Platform Context" in whatsapp.content
 
-    def test_default_name(self) -> None:
+    def test_executor_agent_is_static(self) -> None:
+        msg_a = create_system_message(user_name="Bob", agent_type="executor")
+        msg_b = create_system_message(user_name="Dana", agent_type="executor")
+        assert isinstance(msg_a, SystemMessage)
+        assert msg_a.content == msg_b.content
+        assert len(msg_a.content) > 0
+
+    def test_default_name_not_injected(self) -> None:
         msg = create_system_message()
-        assert "there" in msg.content
+        # "there" used to be injected as user_name fallback; no longer.
+        assert "{user_name}" not in msg.content
 
     def test_unknown_agent_type_defaults_to_comms(self) -> None:
         msg = create_system_message(user_name="X", agent_type="unknown")  # type: ignore[arg-type]
+        comms = create_system_message(agent_type="comms")
         assert isinstance(msg, SystemMessage)
+        assert msg.content == comms.content
 
 
 # ---------------------------------------------------------------------------
@@ -147,112 +163,10 @@ class TestGetGaiaKnowledgeSection:
     @pytest.mark.asyncio
     async def test_exception_returns_empty(self) -> None:
         with patch("app.helpers.message_helpers.gaia_knowledge_service") as mock_svc:
-            mock_svc.search_knowledge = AsyncMock(
-                side_effect=RuntimeError("chroma fail")
-            )
+            mock_svc.search_knowledge = AsyncMock(side_effect=RuntimeError("chroma fail"))
             result = await _get_gaia_knowledge_section("q")
 
         assert result == ""
-
-
-# ---------------------------------------------------------------------------
-# get_memory_message
-# ---------------------------------------------------------------------------
-
-
-class TestGetMemoryMessage:
-    @pytest.mark.asyncio
-    async def test_full_context(self) -> None:
-        with (
-            patch(
-                "app.helpers.message_helpers._get_user_memories_section",
-                new_callable=AsyncMock,
-                return_value="\nMemory section",
-            ),
-            patch(
-                "app.helpers.message_helpers._get_gaia_knowledge_section",
-                new_callable=AsyncMock,
-                return_value="\nKnowledge section",
-            ),
-            patch(
-                "app.helpers.message_helpers.format_user_preferences_for_agent",
-                return_value="Profession: Engineer",
-            ),
-        ):
-            msg = await get_memory_message(
-                user_id="u1",
-                query="hello",
-                user_name="Alice",
-                user_timezone="America/New_York",
-                user_preferences={"profession": "engineer"},
-            )
-
-        assert isinstance(msg, SystemMessage)
-        assert "Alice" in msg.content
-        assert "Profession: Engineer" in msg.content
-        assert "America/New_York" in msg.content
-        assert "Memory section" in msg.content
-        assert "Knowledge section" in msg.content
-
-    @pytest.mark.asyncio
-    async def test_no_optional_fields(self) -> None:
-        with (
-            patch(
-                "app.helpers.message_helpers._get_user_memories_section",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-            patch(
-                "app.helpers.message_helpers._get_gaia_knowledge_section",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-        ):
-            msg = await get_memory_message(
-                user_id="u1",
-                query="hi",
-            )
-
-        assert isinstance(msg, SystemMessage)
-        assert "UTC" in msg.content
-
-    @pytest.mark.asyncio
-    async def test_invalid_timezone(self) -> None:
-        with (
-            patch(
-                "app.helpers.message_helpers._get_user_memories_section",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-            patch(
-                "app.helpers.message_helpers._get_gaia_knowledge_section",
-                new_callable=AsyncMock,
-                return_value="",
-            ),
-        ):
-            msg = await get_memory_message(
-                user_id="u1",
-                query="hi",
-                user_timezone="Invalid/TZ",
-            )
-
-        # Should still return a message (warning is logged, timezone skipped)
-        assert isinstance(msg, SystemMessage)
-
-    @pytest.mark.asyncio
-    async def test_error_returns_minimal_context(self) -> None:
-        with patch(
-            "app.helpers.message_helpers.format_user_preferences_for_agent",
-            side_effect=RuntimeError("boom"),
-        ):
-            msg = await get_memory_message(
-                user_id="u1",
-                query="hi",
-                user_preferences={"x": "y"},
-            )
-
-        assert isinstance(msg, SystemMessage)
-        assert "UTC" in msg.content
 
 
 # ---------------------------------------------------------------------------
@@ -508,12 +422,12 @@ class TestFormatReplyContext:
 
 class TestFormatFilesList:
     def test_no_files(self) -> None:
-        assert format_files_list(None) == "No files uploaded."
-        assert format_files_list([]) == "No files uploaded."
+        assert format_files_list(None) == ""
+        assert format_files_list([]) == ""
 
     def test_empty_file_ids(self) -> None:
         files = [FileData(fileId="f1", url="u", filename="test.txt")]
-        assert format_files_list(files, file_ids=[]) == "No files uploaded."
+        assert format_files_list(files, file_ids=[]) == ""
 
     def test_all_files(self) -> None:
         files = [
@@ -523,7 +437,7 @@ class TestFormatFilesList:
         result = format_files_list(files)
         assert "a.txt" in result
         assert "b.pdf" in result
-        assert "f1" in result
+        assert "user-uploaded/" in result
 
     def test_filtered_by_ids(self) -> None:
         files = [
@@ -536,9 +450,14 @@ class TestFormatFilesList:
 
     def test_no_matching_ids(self) -> None:
         files = [FileData(fileId="f1", url="u", filename="a.txt")]
-        assert format_files_list(files, file_ids=["f99"]) == "No files uploaded."
+        assert format_files_list(files, file_ids=["f99"]) == ""
 
     def test_file_ids_none_returns_all(self) -> None:
         files = [FileData(fileId="f1", url="u", filename="a.txt")]
         result = format_files_list(files, file_ids=None)
         assert "a.txt" in result
+
+    def test_conversation_id_in_path(self) -> None:
+        files = [FileData(fileId="f1", url="u", filename="a.txt")]
+        result = format_files_list(files, conversation_id="conv123")
+        assert "/workspace/sessions/conv123/user-uploaded/a.txt" in result

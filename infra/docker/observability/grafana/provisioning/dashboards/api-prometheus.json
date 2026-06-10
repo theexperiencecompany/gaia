@@ -124,7 +124,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(1 - (sum(rate(http_requests_total{job=\"gaia-api\", status=~\"5..\", handler!~\"/metrics|/health.*|/favicon.ico\"}[30d])) / sum(rate(http_requests_total{job=\"gaia-api\", handler!~\"/metrics|/health.*|/favicon.ico\"}[30d])))) * 100",
+          "expr": "(1 - ((sum(rate(http_requests_total{job=\"gaia-api\", status=~\"5..\", handler!~\"/metrics|/health.*|/favicon.ico\"}[30d])) or vector(0)) / clamp_min(sum(rate(http_requests_total{job=\"gaia-api\", handler!~\"/metrics|/health.*|/favicon.ico\"}[30d])), 0.0001))) * 100",
           "instant": true,
           "refId": "A",
           "legendFormat": ""
@@ -192,7 +192,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(1 - ((sum(rate(http_requests_total{job=\"gaia-api\", status=~\"5..\", handler!~\"/metrics|/health.*|/favicon.ico\"}[30d])) / sum(rate(http_requests_total{job=\"gaia-api\", handler!~\"/metrics|/health.*|/favicon.ico\"}[30d]))) / 0.001)) * 100",
+          "expr": "(1 - (((sum(rate(http_requests_total{job=\"gaia-api\", status=~\"5..\", handler!~\"/metrics|/health.*|/favicon.ico\"}[30d])) or vector(0)) / clamp_min(sum(rate(http_requests_total{job=\"gaia-api\", handler!~\"/metrics|/health.*|/favicon.ico\"}[30d])), 0.0001)) / 0.001)) * 100",
           "instant": true,
           "refId": "A",
           "legendFormat": ""
@@ -260,7 +260,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(sum(rate(http_requests_total{job=\"gaia-api\", status=~\"5..\", handler!~\"/metrics|/health.*|/favicon.ico\"}[1h])) / sum(rate(http_requests_total{job=\"gaia-api\", handler!~\"/metrics|/health.*|/favicon.ico\"}[1h]))) / 0.001",
+          "expr": "((sum(rate(http_requests_total{job=\"gaia-api\", status=~\"5..\", handler!~\"/metrics|/health.*|/favicon.ico\"}[1h])) or vector(0)) / clamp_min(sum(rate(http_requests_total{job=\"gaia-api\", handler!~\"/metrics|/health.*|/favicon.ico\"}[1h])), 0.0001)) / 0.001",
           "instant": true,
           "refId": "A",
           "legendFormat": ""
@@ -328,7 +328,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(sum(rate(http_requests_total{job=\"gaia-api\", status=~\"5..\", handler!~\"/metrics|/health.*|/favicon.ico\"}[6h])) / sum(rate(http_requests_total{job=\"gaia-api\", handler!~\"/metrics|/health.*|/favicon.ico\"}[6h]))) / 0.001",
+          "expr": "((sum(rate(http_requests_total{job=\"gaia-api\", status=~\"5..\", handler!~\"/metrics|/health.*|/favicon.ico\"}[6h])) or vector(0)) / clamp_min(sum(rate(http_requests_total{job=\"gaia-api\", handler!~\"/metrics|/health.*|/favicon.ico\"}[6h])), 0.0001)) / 0.001",
           "instant": true,
           "refId": "A",
           "legendFormat": ""
@@ -757,7 +757,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "100 * sum(rate(http_requests_total{job=\"gaia-api\", status=~\"5..\", handler!~\"/metrics|/health.*|/favicon.ico\"}[$__rate_interval])) / sum(rate(http_requests_total{job=\"gaia-api\", handler!~\"/metrics|/health.*|/favicon.ico\"}[$__rate_interval]))",
+          "expr": "100 * (sum(rate(http_requests_total{job=\"gaia-api\", status=~\"5..\", handler!~\"/metrics|/health.*|/favicon.ico\"}[$__rate_interval])) or vector(0)) / clamp_min(sum(rate(http_requests_total{job=\"gaia-api\", handler!~\"/metrics|/health.*|/favicon.ico\"}[$__rate_interval])), 0.0001)",
           "legendFormat": "5xx %",
           "refId": "A"
         }

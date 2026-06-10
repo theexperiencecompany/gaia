@@ -1,15 +1,12 @@
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
-from typing import Any, Callable, Coroutine, Dict
+from datetime import UTC, datetime
+from typing import Any
 
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRequest,
     NotificationStatus,
 )
-
-# Type alias for a platform send function: async (text) -> error_string | None
-SendFn = Callable[[str], Coroutine[Any, Any, str | None]]
 
 
 class ChannelAdapter(ABC):
@@ -25,14 +22,12 @@ class ChannelAdapter(ABC):
         pass
 
     @abstractmethod
-    async def transform(self, notification: NotificationRequest) -> Dict[str, Any]:
+    async def transform(self, notification: NotificationRequest) -> dict[str, Any]:
         """Transform notification content for this channel."""
         pass
 
     @abstractmethod
-    async def deliver(
-        self, content: Dict[str, Any], user_id: str
-    ) -> ChannelDeliveryStatus:
+    async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
         """Deliver notification via this channel."""
         pass
 
@@ -42,7 +37,7 @@ class ChannelAdapter(ABC):
         return ChannelDeliveryStatus(
             channel_type=self.channel_type,
             status=NotificationStatus.DELIVERED,
-            delivered_at=datetime.now(timezone.utc),
+            delivered_at=datetime.now(UTC),
         )
 
     def _error(self, message: str) -> ChannelDeliveryStatus:

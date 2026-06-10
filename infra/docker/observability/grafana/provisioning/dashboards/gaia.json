@@ -242,7 +242,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.95, {service=~\"$service\"} | json | message = \"http_request\" | unwrap duration_ms [$__range])",
+          "expr": "quantile_over_time(0.95, {service=~\"$service\"} | json message=\"message\", duration_ms=\"duration_ms\" | message = \"http_request\" | unwrap duration_ms [$__range])",
           "instant": true,
           "legendFormat": "p95",
           "refId": "A"
@@ -311,7 +311,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({service=~\"$service\", level=\"ERROR\"} [$__range]))",
+          "expr": "sum(count_over_time({service=~\"$service\"} | json | level=\"ERROR\" [$__range]))",
           "instant": true,
           "legendFormat": "",
           "refId": "A"
@@ -557,7 +557,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (level) (count_over_time({service=~\"$service\"} [$__interval]))",
+          "expr": "sum by (level) (count_over_time({service=~\"$service\"} | json | __error__=\"\" [$__interval]))",
           "interval": "5m",
           "legendFormat": "{{level}}",
           "refId": "A"
@@ -650,7 +650,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.50, {service=~\"$service\"} | json | message = \"http_request\" | unwrap duration_ms [5m])",
+          "expr": "quantile_over_time(0.50, {service=~\"$service\"} | json message=\"message\", duration_ms=\"duration_ms\" | message = \"http_request\" | unwrap duration_ms [5m])",
           "interval": "5m",
           "legendFormat": "p50",
           "refId": "A"
@@ -660,7 +660,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.95, {service=~\"$service\"} | json | message = \"http_request\" | unwrap duration_ms [5m])",
+          "expr": "quantile_over_time(0.95, {service=~\"$service\"} | json message=\"message\", duration_ms=\"duration_ms\" | message = \"http_request\" | unwrap duration_ms [5m])",
           "interval": "5m",
           "legendFormat": "p95",
           "refId": "B"
@@ -670,7 +670,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.99, {service=~\"$service\"} | json | message = \"http_request\" | unwrap duration_ms [5m])",
+          "expr": "quantile_over_time(0.99, {service=~\"$service\"} | json message=\"message\", duration_ms=\"duration_ms\" | message = \"http_request\" | unwrap duration_ms [5m])",
           "interval": "5m",
           "legendFormat": "p99",
           "refId": "C"
@@ -707,7 +707,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service=~\"$service\", level=~\"ERROR|WARNING\"} | json",
+          "expr": "{service=~\"$service\"} | json | level=~\"ERROR|WARNING\"",
           "legendFormat": "",
           "refId": "A"
         }

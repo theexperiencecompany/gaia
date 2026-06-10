@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+import pytest
 
 from app.agents.core.nodes.follow_up_actions_node import (
     FollowUpActions,
@@ -172,12 +172,18 @@ class TestFollowUpActionsNode:
         assert {"main_response_complete": True} in written_values
         assert {"follow_up_actions": suggested_actions} in written_values
 
-        # The real template must have been formatted with the tool names —
-        # verify they appear in the SystemMessage content sent to the LLM.
+        # The node now assembles [static_system, dynamic_context, human].
+        # Tool names live in the dynamic-context message so the static
+        # system prefix stays byte-identical across users.
         assert len(captured_llm_inputs) == 1
-        system_msg_content = captured_llm_inputs[0][0].content
-        assert "calendar" in system_msg_content
-        assert "gmail" in system_msg_content
+        msgs = captured_llm_inputs[0]
+        assert len(msgs) == 3
+        dynamic_context = msgs[1].content
+        assert "calendar" in dynamic_context
+        assert "gmail" in dynamic_context
+        # Static prefix must NOT embed per-user data.
+        assert "calendar" not in msgs[0].content
+        assert "gmail" not in msgs[0].content
 
     @pytest.mark.asyncio
     async def test_happy_path_no_user_id_falls_back_to_tool_registry(self):
@@ -274,13 +280,13 @@ class TestFollowUpActionsNode:
             await follow_up_actions_node(state, config, store)
 
         assert len(captured_invocations) == 1
-        # The messages list passed to invoke_with_fallback is [SystemMessage, HumanMessage]
+        # [static_system, dynamic_context, human_message]
         llm_msgs = captured_invocations[0]
-        assert len(llm_msgs) == 2
+        assert len(llm_msgs) == 3
 
         # The HumanMessage content is the pretty-printed slice of recent_messages.
         # With 6 input messages and a window of 4, only messages 2-5 must appear.
-        human_msg = llm_msgs[1]
+        human_msg = llm_msgs[2]
         for i in range(2, 6):
             assert f"message {i}" in human_msg.content
 

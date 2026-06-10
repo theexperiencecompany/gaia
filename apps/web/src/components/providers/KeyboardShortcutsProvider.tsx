@@ -99,28 +99,8 @@ export default function KeyboardShortcutsProvider({
 
   // ===========================================
   // CREATE: C key (context-aware)
-  // Uses keyup to avoid conflict with g>c sequence
   // ===========================================
-  useHotkeys(
-    "c",
-    (e) => {
-      // Ignore if any modifier key is pressed (e.g., Ctrl+C for copy)
-      if (e.ctrlKey || e.metaKey || e.altKey) {
-        console.log("Modifier key pressed, ignoring 'c' shortcut");
-        return;
-      }
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable
-      ) {
-        return;
-      }
-      createActionRef.current?.();
-    },
-    // { enableOnFormTags: false, keyup: true, keydown: false },
-  );
+  useHotkeys("c", () => createActionRef.current?.(), hotkeyOptions);
 
   // ===========================================
   // NAVIGATION SHORTCUTS: G > X sequences

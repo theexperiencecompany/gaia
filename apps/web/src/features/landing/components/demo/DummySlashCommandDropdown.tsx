@@ -112,11 +112,6 @@ const dummyTools = {
       category: "documents",
       required_integration: null,
     },
-    {
-      name: "generate_document",
-      category: "documents",
-      required_integration: null,
-    },
     // Notifications tools
     {
       name: "get_notifications",

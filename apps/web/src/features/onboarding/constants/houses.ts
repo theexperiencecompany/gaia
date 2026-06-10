@@ -1,19 +1,10 @@
-import type { House } from "@/features/onboarding/hooks/usePersonalizationData";
+import type { House } from "@/features/onboarding/types/websocket";
 
-export const HOUSES: Record<House, { image: string }> = {
-  frostpeak: {
-    image:
-      "https://i.pinimg.com/1200x/bf/1a/99/bf1a99c4c2cd8f378b9e4493f71e7e64.jpg",
-  },
-  greenvale: {
-    image:
-      "https://i.pinimg.com/1200x/3b/3e/11/3b3e1167fcfb0933070b6064ce9c72cd.jpg",
-  },
+const HOUSES: Record<House, { image: string }> = {
+  frostpeak: { image: "/images/wallpapers/holo/frostpeak.jpg" },
+  greenvale: { image: "/images/wallpapers/holo/greenvale.jpg" },
   mistgrove: { image: "/images/wallpapers/holo/mistgrove.png" },
-  bluehaven: {
-    image:
-      "https://i.pinimg.com/1200x/27/0a/74/270a74bdc412f9eeae4d2403ebc9bd63.jpg",
-  },
+  bluehaven: { image: "/images/wallpapers/holo/bluehaven.jpg" },
 };
 
 /**

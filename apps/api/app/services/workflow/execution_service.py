@@ -4,23 +4,22 @@ Workflow Execution Service.
 Service functions for tracking workflow execution history.
 """
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 from uuid import uuid4
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import workflow_executions_collection
 from app.models.workflow_execution_models import (
     WorkflowExecution,
     WorkflowExecutionsResponse,
 )
+from shared.py.wide_events import log
 
 
 async def create_execution(
     workflow_id: str,
     user_id: str,
     trigger_type: str = "manual",
-    conversation_id: Optional[str] = None,
+    conversation_id: str | None = None,
 ) -> WorkflowExecution:
     """
     Create a new workflow execution record with status 'running'.
@@ -39,7 +38,7 @@ async def create_execution(
         workflow_id=workflow_id,
         user_id=user_id,
         status="running",
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
         trigger_type=trigger_type,
         conversation_id=conversation_id,
     )
@@ -61,9 +60,9 @@ async def create_execution(
 async def complete_execution(
     execution_id: str,
     status: str,
-    summary: Optional[str] = None,
-    error_message: Optional[str] = None,
-    conversation_id: Optional[str] = None,
+    summary: str | None = None,
+    error_message: str | None = None,
+    conversation_id: str | None = None,
 ) -> bool:
     """
     Update an execution record on completion.
@@ -78,12 +77,10 @@ async def complete_execution(
     Returns:
         True if update succeeded, False otherwise
     """
-    completed_at = datetime.now(timezone.utc)
+    completed_at = datetime.now(UTC)
 
     # Calculate duration
-    execution = await workflow_executions_collection.find_one(
-        {"execution_id": execution_id}
-    )
+    execution = await workflow_executions_collection.find_one({"execution_id": execution_id})
     if not execution:
         log.warning(f"Execution {execution_id} not found for completion")
         return False
@@ -152,10 +149,7 @@ async def get_workflow_executions(
 
     # Get paginated executions, sorted by most recent first
     cursor = (
-        workflow_executions_collection.find(query)
-        .sort("started_at", -1)
-        .skip(offset)
-        .limit(limit)
+        workflow_executions_collection.find(query).sort("started_at", -1).skip(offset).limit(limit)
     )
 
     executions = []

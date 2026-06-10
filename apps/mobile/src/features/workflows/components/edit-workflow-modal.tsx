@@ -1,16 +1,14 @@
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
-import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  TextInput,
-  View,
-} from "react-native";
+import { Image as ExpoImage } from "expo-image";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Pressable, TextInput, View } from "react-native";
+import { AppIcon, Clock04Icon, PlayIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
+import { WORKFLOW_COLORS } from "../constants/colors";
 import { useWorkflowActions } from "../hooks/use-workflow-actions";
+import type { TriggerConfig } from "../types/trigger-types";
 import type {
   UpdateWorkflowPayload,
   Workflow,
@@ -21,22 +19,13 @@ import {
   type ScheduleConfig,
   toCronExpression,
 } from "./schedule-builder";
+import { type TriggerMode, TriggerModeTabs } from "./trigger-mode-tabs";
+import {
+  type TriggerOption,
+  TriggerPickerSheet,
+  type TriggerPickerSheetRef,
+} from "./trigger-picker-sheet";
 import { WorkflowStepsEditor } from "./workflow-steps-editor";
-
-const INLINE_TRIGGER_OPTIONS = [
-  { id: "manual", label: "Manual" },
-  { id: "scheduled", label: "Scheduled" },
-  { id: "gmail", label: "Gmail" },
-  { id: "slack", label: "Slack" },
-  { id: "google_calendar", label: "Google Calendar" },
-  { id: "github", label: "GitHub" },
-  { id: "linear", label: "Linear" },
-  { id: "notion", label: "Notion" },
-  { id: "google_sheets", label: "Google Sheets" },
-  { id: "google_docs", label: "Google Docs" },
-  { id: "asana", label: "Asana" },
-  { id: "todoist", label: "Todoist" },
-] as const;
 
 interface EditWorkflowModalProps {
   visible: boolean;
@@ -91,6 +80,35 @@ function scheduleConfigFromCron(cron: string | undefined): ScheduleConfig {
   return { preset: "custom", customCron: cron };
 }
 
+function modeFromTriggerType(type: string | undefined): TriggerMode {
+  if (!type || type === "manual") return "manual";
+  if (type === "schedule" || type === "scheduled") return "schedule";
+  return "trigger";
+}
+
+interface RawTriggerConfig {
+  type?: string;
+  trigger_name?: string;
+  trigger_slug?: string;
+  integration_id?: string;
+  cron_expression?: string;
+}
+
+function deriveSelectedTrigger(
+  raw: RawTriggerConfig | undefined,
+): TriggerOption | null {
+  if (!raw) return null;
+  const slug = raw.trigger_slug ?? raw.trigger_name;
+  if (!slug) return null;
+  return {
+    id: slug,
+    label: slug,
+    description: "",
+    category: "integration",
+    requiresIntegration: raw.integration_id,
+  };
+}
+
 export function EditWorkflowModal({
   visible,
   workflow,
@@ -103,10 +121,17 @@ export function EditWorkflowModal({
   const [description, setDescription] = useState("");
   const [prompt, setPrompt] = useState("");
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
-  const [inlineTrigger, setInlineTrigger] = useState<string>("manual");
+  const [mode, setMode] = useState<TriggerMode>("manual");
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>(
     DEFAULT_SCHEDULE_CONFIG,
   );
+  const [selectedTrigger, setSelectedTrigger] = useState<TriggerOption | null>(
+    null,
+  );
+  const [triggerConfig, setTriggerConfig] = useState<TriggerConfig | null>(
+    null,
+  );
+  const triggerPickerRef = useRef<TriggerPickerSheetRef>(null);
 
   // Seed fields whenever a different workflow is loaded
   useEffect(() => {
@@ -115,32 +140,73 @@ export function EditWorkflowModal({
       setDescription(workflow.description ?? "");
       setPrompt(workflow.prompt ?? "");
       setSteps(workflow.steps ?? []);
-      setInlineTrigger(workflow.trigger_config?.type ?? "manual");
+      const triggerType = workflow.trigger_config?.type;
+      setMode(modeFromTriggerType(triggerType));
       setScheduleConfig(
         scheduleConfigFromCron(workflow.trigger_config?.cron_expression),
       );
+      if (
+        triggerType &&
+        triggerType !== "manual" &&
+        triggerType !== "schedule" &&
+        triggerType !== "scheduled"
+      ) {
+        const raw = workflow.trigger_config as unknown as RawTriggerConfig;
+        setSelectedTrigger(deriveSelectedTrigger(raw));
+        setTriggerConfig({
+          ...(workflow.trigger_config as unknown as TriggerConfig),
+          type: triggerType,
+          enabled: workflow.activated,
+        });
+      } else {
+        setSelectedTrigger(null);
+        setTriggerConfig(null);
+      }
     }
   }, [workflow]);
 
+  const buildTriggerConfig = (): UpdateWorkflowPayload["trigger_config"] => {
+    if (!workflow) return undefined;
+    if (mode === "manual") {
+      return {
+        type: "manual",
+        enabled: workflow.activated,
+        trigger_name: "Manual",
+      };
+    }
+    if (mode === "schedule") {
+      return {
+        type: "schedule",
+        enabled: workflow.activated,
+        trigger_name: "Schedule",
+        cron_expression: toCronExpression(scheduleConfig),
+      };
+    }
+    if (selectedTrigger && triggerConfig) {
+      return {
+        ...triggerConfig,
+        type: "integration",
+        enabled: workflow.activated,
+        trigger_name: selectedTrigger.id,
+        trigger_slug: selectedTrigger.id,
+        integration_id: selectedTrigger.requiresIntegration,
+      };
+    }
+    return {
+      type: "manual",
+      enabled: workflow.activated,
+      trigger_name: "Manual",
+    };
+  };
+
   const handleSave = async () => {
     if (!workflow || !title.trim()) return;
-
-    const triggerConfig: UpdateWorkflowPayload["trigger_config"] = {
-      type: inlineTrigger,
-      enabled: workflow.activated,
-      trigger_name:
-        INLINE_TRIGGER_OPTIONS.find((t) => t.id === inlineTrigger)?.label ??
-        inlineTrigger,
-      ...(inlineTrigger === "scheduled"
-        ? { cron_expression: toCronExpression(scheduleConfig) }
-        : {}),
-    };
 
     const payload: UpdateWorkflowPayload = {
       title: title.trim(),
       description: description.trim() || undefined,
       prompt: prompt.trim(),
-      trigger_config: triggerConfig,
+      trigger_config: buildTriggerConfig(),
       steps: steps.map((s, i) => ({ ...s, order: i + 1 })),
     };
     const updated = await updateWorkflow(workflow.id, payload);
@@ -149,7 +215,17 @@ export function EditWorkflowModal({
     }
   };
 
-  const canSubmit = title.trim().length > 0;
+  const canSubmit =
+    title.trim().length > 0 && (mode !== "trigger" || selectedTrigger !== null);
+
+  const inputStyle = {
+    backgroundColor: "#1c1c1e",
+    borderRadius: moderateScale(12, 0.5),
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    fontSize: fontSize.sm,
+    color: "#fff",
+  } as const;
 
   return (
     <BottomSheet
@@ -190,14 +266,7 @@ export function EditWorkflowModal({
                 Title *
               </Text>
               <TextInput
-                style={{
-                  backgroundColor: "#1c1c1e",
-                  borderRadius: moderateScale(12, 0.5),
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: spacing.md,
-                  fontSize: fontSize.sm,
-                  color: "#fff",
-                }}
+                style={inputStyle}
                 placeholder="Workflow title"
                 placeholderTextColor="#555"
                 value={title}
@@ -211,18 +280,21 @@ export function EditWorkflowModal({
                 Description
               </Text>
               <TextInput
-                style={{
-                  backgroundColor: "#1c1c1e",
-                  borderRadius: moderateScale(12, 0.5),
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: spacing.md,
-                  fontSize: fontSize.sm,
-                  color: "#fff",
-                }}
+                style={[
+                  inputStyle,
+                  {
+                    minHeight: 72,
+                    maxHeight: 160,
+                    textAlignVertical: "top",
+                    lineHeight: 20,
+                  },
+                ]}
                 placeholder="What does this workflow do?"
                 placeholderTextColor="#555"
                 value={description}
                 onChangeText={setDescription}
+                multiline
+                numberOfLines={3}
                 maxLength={300}
               />
             </View>
@@ -232,16 +304,10 @@ export function EditWorkflowModal({
                 Prompt / Instructions
               </Text>
               <TextInput
-                style={{
-                  backgroundColor: "#1c1c1e",
-                  borderRadius: moderateScale(12, 0.5),
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: spacing.md,
-                  fontSize: fontSize.sm,
-                  color: "#fff",
-                  minHeight: 100,
-                  textAlignVertical: "top",
-                }}
+                style={[
+                  inputStyle,
+                  { minHeight: 100, textAlignVertical: "top" },
+                ]}
                 placeholder="Instructions for GAIA..."
                 placeholderTextColor="#555"
                 value={prompt}
@@ -251,57 +317,22 @@ export function EditWorkflowModal({
               />
             </View>
 
-            {/* Steps editor */}
             <WorkflowStepsEditor steps={steps} onChange={setSteps} />
 
-            {/* Trigger selector — horizontal scrollable chips */}
-            <View style={{ gap: spacing.xs }}>
+            <View style={{ gap: spacing.sm }}>
               <Text style={{ fontSize: fontSize.xs, color: "#8a9099" }}>
                 Trigger
               </Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: spacing.sm }}
-                keyboardShouldPersistTaps="handled"
-              >
-                {INLINE_TRIGGER_OPTIONS.map((option) => {
-                  const isSelected = inlineTrigger === option.id;
-                  return (
-                    <Pressable
-                      key={option.id}
-                      onPress={() => setInlineTrigger(option.id)}
-                      style={{
-                        paddingHorizontal: spacing.md,
-                        paddingVertical: spacing.sm,
-                        borderRadius: moderateScale(20, 0.5),
-                        borderWidth: 1,
-                        borderColor: isSelected ? "#00bbff" : "#3f3f46",
-                        backgroundColor: isSelected ? "#00bbff20" : "#27272a",
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: fontSize.xs,
-                          fontWeight: "500",
-                          color: isSelected ? "#00bbff" : "#a1a1aa",
-                        }}
-                      >
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+              <TriggerModeTabs value={mode} onChange={setMode} />
 
-              {/* Schedule builder — shown when scheduled trigger is selected */}
-              {inlineTrigger === "scheduled" && (
+              {mode === "manual" ? (
+                <ManualPanel />
+              ) : mode === "schedule" ? (
                 <View
                   style={{
                     backgroundColor: "#1c1c1e",
                     borderRadius: moderateScale(12, 0.5),
                     padding: spacing.md,
-                    marginTop: spacing.xs,
                   }}
                 >
                   <ScheduleBuilder
@@ -309,6 +340,11 @@ export function EditWorkflowModal({
                     onChange={setScheduleConfig}
                   />
                 </View>
+              ) : (
+                <TriggerPanel
+                  selected={selectedTrigger}
+                  onPick={() => triggerPickerRef.current?.open()}
+                />
               )}
             </View>
 
@@ -321,21 +357,29 @@ export function EditWorkflowModal({
             <View
               style={{
                 flexDirection: "row",
-                gap: spacing.sm,
+                gap: 12,
                 marginTop: spacing.sm,
               }}
             >
               <Pressable
                 onPress={onClose}
-                style={{
+                style={({ pressed }) => ({
                   flex: 1,
+                  height: 48,
                   borderRadius: moderateScale(12, 0.5),
-                  paddingVertical: spacing.md,
                   alignItems: "center",
-                  backgroundColor: "rgba(255,255,255,0.07)",
-                }}
+                  justifyContent: "center",
+                  backgroundColor: "#3f3f46",
+                  opacity: pressed ? 0.85 : 1,
+                })}
               >
-                <Text style={{ fontSize: fontSize.sm, color: "#aaa" }}>
+                <Text
+                  style={{
+                    fontSize: fontSize.sm,
+                    fontWeight: "600",
+                    color: "#e4e4e7",
+                  }}
+                >
                   Cancel
                 </Text>
               </Pressable>
@@ -344,14 +388,16 @@ export function EditWorkflowModal({
                   void handleSave();
                 }}
                 disabled={!canSubmit || isUpdating}
-                style={{
-                  flex: 2,
+                style={({ pressed }) => ({
+                  flex: 1,
+                  height: 48,
                   borderRadius: moderateScale(12, 0.5),
-                  paddingVertical: spacing.md,
                   alignItems: "center",
+                  justifyContent: "center",
                   backgroundColor:
-                    canSubmit && !isUpdating ? "#00bbff" : "#333",
-                }}
+                    canSubmit && !isUpdating ? "#00bbff" : "#1f3540",
+                  opacity: pressed ? 0.85 : 1,
+                })}
               >
                 {isUpdating ? (
                   <ActivityIndicator size="small" color="#000" />
@@ -359,8 +405,8 @@ export function EditWorkflowModal({
                   <Text
                     style={{
                       fontSize: fontSize.sm,
-                      fontWeight: "600",
-                      color: canSubmit ? "#000" : "#666",
+                      fontWeight: "700",
+                      color: canSubmit ? "#000" : "#52525b",
                     }}
                   >
                     Save
@@ -371,6 +417,197 @@ export function EditWorkflowModal({
           </BottomSheetScrollView>
         </BottomSheet.Content>
       </BottomSheet.Portal>
+
+      <TriggerPickerSheet
+        ref={triggerPickerRef}
+        onSelect={setSelectedTrigger}
+        onSaveConfig={(trigger, config) => {
+          setSelectedTrigger(trigger);
+          setTriggerConfig(config);
+        }}
+      />
     </BottomSheet>
+  );
+}
+
+function ManualPanel() {
+  const { spacing, fontSize, moderateScale } = useResponsive();
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.md,
+        backgroundColor: "#1c1c1e",
+        borderRadius: moderateScale(12, 0.5),
+        padding: spacing.md,
+      }}
+    >
+      <View
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 999,
+          backgroundColor: WORKFLOW_COLORS.surfaceMuted,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <AppIcon icon={PlayIcon} size={16} color={WORKFLOW_COLORS.primary} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text
+          style={{
+            fontSize: fontSize.sm,
+            color: WORKFLOW_COLORS.textPrimary,
+            fontWeight: "600",
+          }}
+        >
+          Run on demand
+        </Text>
+        <Text
+          style={{
+            fontSize: fontSize.xs,
+            color: WORKFLOW_COLORS.textZinc500,
+            marginTop: 2,
+          }}
+        >
+          You decide exactly when to start this workflow.
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+interface TriggerPanelProps {
+  selected: TriggerOption | null;
+  onPick: () => void;
+}
+
+function TriggerPanel({ selected, onPick }: TriggerPanelProps) {
+  const { spacing, fontSize, moderateScale } = useResponsive();
+
+  if (!selected) {
+    return (
+      <Pressable
+        onPress={onPick}
+        style={({ pressed }) => ({
+          backgroundColor: "#1c1c1e",
+          borderRadius: moderateScale(12, 0.5),
+          padding: spacing.md,
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 4,
+          opacity: pressed ? 0.85 : 1,
+          minHeight: 80,
+        })}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.sm,
+          }}
+        >
+          <AppIcon
+            icon={Clock04Icon}
+            size={16}
+            color={WORKFLOW_COLORS.primary}
+          />
+          <Text
+            style={{
+              fontSize: fontSize.sm,
+              color: WORKFLOW_COLORS.primary,
+              fontWeight: "600",
+            }}
+          >
+            Choose a trigger
+          </Text>
+        </View>
+        <Text
+          style={{
+            fontSize: fontSize.xs,
+            color: WORKFLOW_COLORS.textZinc500,
+            textAlign: "center",
+          }}
+        >
+          Run automatically when something happens in Gmail, Slack, GitHub,
+          Linear, and more.
+        </Text>
+      </Pressable>
+    );
+  }
+
+  return (
+    <Pressable
+      onPress={onPick}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.md,
+        backgroundColor: "#1c1c1e",
+        borderRadius: moderateScale(12, 0.5),
+        padding: spacing.md,
+        opacity: pressed ? 0.85 : 1,
+      })}
+    >
+      <View
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 999,
+          backgroundColor: WORKFLOW_COLORS.surfaceMuted,
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+        }}
+      >
+        {selected.iconUrl ? (
+          <ExpoImage
+            source={{ uri: selected.iconUrl }}
+            style={{ width: 22, height: 22 }}
+            contentFit="contain"
+          />
+        ) : (
+          <AppIcon
+            icon={Clock04Icon}
+            size={16}
+            color={WORKFLOW_COLORS.textMuted}
+          />
+        )}
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text
+          style={{
+            fontSize: fontSize.sm,
+            color: WORKFLOW_COLORS.textPrimary,
+            fontWeight: "600",
+          }}
+          numberOfLines={1}
+        >
+          {selected.label}
+        </Text>
+        {selected.description ? (
+          <Text
+            style={{
+              fontSize: fontSize.xs,
+              color: WORKFLOW_COLORS.textZinc500,
+            }}
+            numberOfLines={1}
+          >
+            {selected.description}
+          </Text>
+        ) : null}
+      </View>
+      <Text
+        style={{
+          fontSize: fontSize.xs,
+          color: WORKFLOW_COLORS.primary,
+          fontWeight: "600",
+        }}
+      >
+        Change
+      </Text>
+    </Pressable>
   );
 }

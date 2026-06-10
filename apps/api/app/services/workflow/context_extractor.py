@@ -8,10 +8,10 @@ This module provides functionality to:
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
-from shared.py.wide_events import log
 from app.config.oauth_config import get_toolkit_to_integration_map
+from shared.py.wide_events import log
 
 
 @dataclass
@@ -20,8 +20,8 @@ class ExtractedContext:
 
     suggested_title: str
     summary: str
-    workflow_steps: List[Dict[str, Any]]
-    integrations_used: List[str] = field(default_factory=list)
+    workflow_steps: list[dict[str, Any]]
+    integrations_used: list[str] = field(default_factory=list)
 
 
 class WorkflowContextExtractor:
@@ -51,8 +51,8 @@ class WorkflowContextExtractor:
     async def extract_from_thread(
         cls,
         thread_id: str,
-        max_output_chars: Optional[int] = None,
-    ) -> Optional[ExtractedContext]:
+        max_output_chars: int | None = None,
+    ) -> ExtractedContext | None:
         """
         Extract workflow context from a conversation thread.
 
@@ -82,7 +82,7 @@ class WorkflowContextExtractor:
             return None
 
     @classmethod
-    async def _fetch_messages(cls, thread_id: str) -> List:
+    async def _fetch_messages(cls, thread_id: str) -> list:
         """Fetch messages from thread checkpointer."""
         from app.agents.core.graph_builder.checkpointer_manager import (
             get_checkpointer_manager,
@@ -102,15 +102,15 @@ class WorkflowContextExtractor:
     @classmethod
     def _build_context(
         cls,
-        messages: List,
+        messages: list,
         max_output_chars: int,
     ) -> ExtractedContext:
         """Build context from message list."""
         from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-        steps: List[Dict[str, Any]] = []
-        integrations: Set[str] = set()
-        tool_outputs: Dict[str, str] = {}  # tool_call_id -> output
+        steps: list[dict[str, Any]] = []
+        integrations: set[str] = set()
+        tool_outputs: dict[str, str] = {}  # tool_call_id -> output
         current_agent = "executor"
         first_human_message = ""
 
@@ -193,9 +193,7 @@ class WorkflowContextExtractor:
 
         # Build summary
         if steps:
-            integration_list = (
-                ", ".join(sorted(integrations)) if integrations else "general tools"
-            )
+            integration_list = ", ".join(sorted(integrations)) if integrations else "general tools"
             summary = f"Workflow with {len(steps)} steps using {integration_list}"
         else:
             summary = "No executable steps found in conversation"
@@ -251,7 +249,7 @@ class WorkflowContextExtractor:
     def _build_description(
         cls,
         tool_name: str,
-        args: Dict[str, Any],
+        args: dict[str, Any],
         output: str,
     ) -> str:
         """Build step description from tool details.

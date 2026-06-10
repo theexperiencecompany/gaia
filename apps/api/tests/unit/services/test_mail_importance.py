@@ -3,12 +3,11 @@
 Covers:
 - get_email_importance_summaries (all emails, important only, error)
 - get_single_email_importance_summary (found, not found, error)
-- process_email_comprehensive_analysis (success, parse error, outer exception)
 - get_bulk_email_importance_summaries (found, partial match, error)
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,18 +19,18 @@ def _make_email_doc(
     message_id: str = "msg-1",
     user_id: str = "user-1",
     is_important: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return {
         "_id": MagicMock(),  # ObjectId mock
         "user_id": user_id,
         "message_id": message_id,
         "is_important": is_important,
-        "analyzed_at": datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc),
+        "analyzed_at": datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC),
         "subject": "Test email",
     }
 
 
-def _mock_cursor(docs: List[Dict[str, Any]]) -> MagicMock:
+def _mock_cursor(docs: list[dict[str, Any]]) -> MagicMock:
     """Build a mock async cursor that supports .sort().limit().to_list()."""
     cursor = MagicMock()
     cursor.sort.return_value = cursor
@@ -165,93 +164,6 @@ class TestGetSingleEmailImportanceSummary:
         result = await get_single_email_importance_summary("user-1", "msg-1")
         assert result is not None
         assert "analyzed_at" not in result["email"]
-
-
-class TestProcessEmailComprehensiveAnalysis:
-    @pytest.mark.asyncio
-    @patch(f"{MODULE}.email_comprehensive_parser")
-    @patch(f"{MODULE}.init_llm")
-    async def test_success_with_string_response(
-        self, mock_init_llm: MagicMock, mock_parser: MagicMock
-    ) -> None:
-        mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = '{"is_important": true}'
-        mock_init_llm.return_value = mock_llm
-
-        mock_result = MagicMock()
-        mock_parser.get_format_instructions.return_value = "format instructions"
-        mock_parser.parse.return_value = mock_result
-
-        from app.services.mail.email_importance_service import (
-            process_email_comprehensive_analysis,
-        )
-
-        result = await process_email_comprehensive_analysis(
-            "Subject", "sender@test.com", "2024-01-15", "Email body"
-        )
-        assert result is mock_result
-        mock_init_llm.assert_called_once_with(preferred_provider="gemini")
-
-    @pytest.mark.asyncio
-    @patch(f"{MODULE}.email_comprehensive_parser")
-    @patch(f"{MODULE}.init_llm")
-    async def test_success_with_object_response(
-        self, mock_init_llm: MagicMock, mock_parser: MagicMock
-    ) -> None:
-        response_obj = MagicMock()
-        response_obj.text = '{"is_important": false}'
-        # Make isinstance(response, str) return False
-        mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = response_obj
-        mock_init_llm.return_value = mock_llm
-
-        mock_result = MagicMock()
-        mock_parser.get_format_instructions.return_value = "fmt"
-        mock_parser.parse.return_value = mock_result
-
-        from app.services.mail.email_importance_service import (
-            process_email_comprehensive_analysis,
-        )
-
-        result = await process_email_comprehensive_analysis(
-            "Subject", "sender@test.com", "2024-01-15", "Body"
-        )
-        assert result is mock_result
-
-    @pytest.mark.asyncio
-    @patch(f"{MODULE}.email_comprehensive_parser")
-    @patch(f"{MODULE}.init_llm")
-    async def test_parse_error_returns_none(
-        self, mock_init_llm: MagicMock, mock_parser: MagicMock
-    ) -> None:
-        mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = "bad json"
-        mock_init_llm.return_value = mock_llm
-
-        mock_parser.get_format_instructions.return_value = "fmt"
-        mock_parser.parse.side_effect = ValueError("parse fail")
-
-        from app.services.mail.email_importance_service import (
-            process_email_comprehensive_analysis,
-        )
-
-        result = await process_email_comprehensive_analysis(
-            "Subject", "sender@test.com", "2024-01-15", "Body"
-        )
-        # The outer except catches ValueError raised by the inner except
-        assert result is None
-
-    @pytest.mark.asyncio
-    @patch(f"{MODULE}.init_llm", side_effect=RuntimeError("llm init fail"))
-    async def test_outer_exception_returns_none(self, _mock: MagicMock) -> None:
-        from app.services.mail.email_importance_service import (
-            process_email_comprehensive_analysis,
-        )
-
-        result = await process_email_comprehensive_analysis(
-            "Subject", "sender@test.com", "2024-01-15", "Body"
-        )
-        assert result is None
 
 
 class TestGetBulkEmailImportanceSummaries:

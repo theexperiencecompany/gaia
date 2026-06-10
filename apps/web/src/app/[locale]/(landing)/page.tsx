@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import LandingPageClient from "@/app/[locale]/(landing)/client";
 import JsonLd from "@/components/seo/JsonLd";
+import { getLatestRelease } from "@/features/landing/utils/getLatestRelease";
 import {
   getTimeOfDay,
   type TimeOfDay,
@@ -25,6 +26,12 @@ const HERO_WALLPAPER_PATHS: Record<TimeOfDay, string> = {
   night: "/images/wallpapers/swiss_night.webp",
 };
 
+// ISR: give the homepage a stable incremental-cache entry so OpenNext's cache
+// interception serves it without booting the full Next server (the worker
+// cold-start path). Also refreshes the time-of-day seed hourly instead of
+// freezing it at build time.
+export const revalidate = 3600;
+
 export const metadata: Metadata = generatePageMetadata({
   title: siteConfig.name,
   path: "/",
@@ -44,6 +51,7 @@ export const metadata: Metadata = generatePageMetadata({
 
 export default function LandingPage() {
   const initialTimeOfDay = getTimeOfDay();
+  const latestRelease = getLatestRelease();
   const organizationSchema = generateOrganizationSchema();
   const websiteSchema = generateWebSiteSchema();
   const webPageSchema = generateWebPageSchema(
@@ -77,7 +85,10 @@ export default function LandingPage() {
           faqSchema,
         ]}
       />
-      <LandingPageClient initialTimeOfDay={initialTimeOfDay} />
+      <LandingPageClient
+        initialTimeOfDay={initialTimeOfDay}
+        latestRelease={latestRelease}
+      />
     </>
   );
 }

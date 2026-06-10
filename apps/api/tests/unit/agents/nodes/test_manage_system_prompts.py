@@ -1,183 +1,155 @@
-import pytest
+"""Tests for manage_system_prompts_node after the prompt-ordering rework.
+
+The node now keeps exactly ONE static main prompt and ONE dynamic-context
+prompt. Stacking every turn's timestamped dynamic-context message would
+shatter the implicit-cache prefix, so older ones are dropped. The legacy
+``memory_message=True`` marker is still recognised as a dynamic-context flag
+for back-compat with older persisted state.
+"""
+
+from typing import cast
 from unittest.mock import MagicMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
+from langchain_core.runnables import RunnableConfig
+import pytest
 
 from app.agents.core.nodes.manage_system_prompts import (
-    _is_memory_system_message,
+    _is_dynamic_context,
     manage_system_prompts_node,
 )
+from app.override.langgraph_bigtool.utils import State
 
 
-def _sys(content, memory=False):
-    kwargs = {"memory_message": True} if memory else {}
-    return SystemMessage(content=content, additional_kwargs=kwargs)
+def _static(content: str) -> SystemMessage:
+    return SystemMessage(content=content)
 
 
-def _config():
-    return {"configurable": {"user_id": "u1", "thread_id": "t1"}}
+def _dynamic(content: str, marker: str = "dynamic_context") -> SystemMessage:
+    return SystemMessage(content=content, additional_kwargs={marker: True})
 
 
-def _store():
+def _config() -> RunnableConfig:
+    return cast(RunnableConfig, {"configurable": {"user_id": "u1", "thread_id": "t1"}})
+
+
+def _store() -> MagicMock:
     return MagicMock()
 
 
 @pytest.mark.unit
-class TestIsMemorySystemMessage:
-    def test_memory_flag_in_additional_kwargs(self):
-        msg = SystemMessage(
-            content="memory", additional_kwargs={"memory_message": True}
-        )
-        assert _is_memory_system_message(msg) is True
+class TestIsDynamicContext:
+    def test_dynamic_context_marker(self) -> None:
+        msg = SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True})
+        assert _is_dynamic_context(msg) is True
 
-    def test_memory_flag_in_model_extra(self):
+    def test_legacy_memory_message_marker_treated_as_dynamic(self) -> None:
+        msg = SystemMessage(content="ctx", additional_kwargs={"memory_message": True})
+        assert _is_dynamic_context(msg) is True
+
+    def test_marker_in_model_extra(self) -> None:
         class FakeMsg:
-            additional_kwargs = {}
-            model_extra = {"memory_message": True}
+            additional_kwargs: dict = {}
+            model_extra = {"dynamic_context": True}
 
-        assert _is_memory_system_message(FakeMsg()) is True
+        assert _is_dynamic_context(cast(AnyMessage, FakeMsg())) is True
 
-    def test_no_memory_flag(self):
-        msg = SystemMessage(content="regular")
-        assert _is_memory_system_message(msg) is False
+    def test_plain_system_message(self) -> None:
+        assert _is_dynamic_context(SystemMessage(content="plain")) is False
 
 
 @pytest.mark.unit
 class TestManageSystemPrompts:
-    def test_keeps_latest_non_memory_system_prompt(self):
+    def test_keeps_latest_static_prompt(self) -> None:
         msgs = [
-            _sys("old prompt"),
+            _static("old prompt"),
             HumanMessage(content="hi"),
-            _sys("latest prompt"),
+            _static("latest prompt"),
         ]
-        state = {"messages": msgs}
-
-        result = manage_system_prompts_node(state, _config(), _store())
-
+        result = manage_system_prompts_node(cast(State, {"messages": msgs}), _config(), _store())
         system_msgs = [m for m in result["messages"] if m.type == "system"]
         assert len(system_msgs) == 1
         assert system_msgs[0].content == "latest prompt"
 
-    def test_preserves_all_memory_messages(self):
+    def test_keeps_only_latest_dynamic_context(self) -> None:
         msgs = [
-            _sys("mem1", memory=True),
-            _sys("mem2", memory=True),
-            HumanMessage(content="hi"),
+            _dynamic("ctx1"),
+            _dynamic("ctx2"),
+            _dynamic("ctx3"),
         ]
-        state = {"messages": msgs}
-
-        result = manage_system_prompts_node(state, _config(), _store())
-
-        system_msgs = [m for m in result["messages"] if m.type == "system"]
-        assert len(system_msgs) == 2
-
-    def test_removes_older_non_memory_prompts(self):
-        msgs = [
-            _sys("oldest"),
-            _sys("middle"),
-            HumanMessage(content="hi"),
-            _sys("newest"),
-        ]
-        state = {"messages": msgs}
-
-        result = manage_system_prompts_node(state, _config(), _store())
-
+        result = manage_system_prompts_node(cast(State, {"messages": msgs}), _config(), _store())
         system_msgs = [m for m in result["messages"] if m.type == "system"]
         assert len(system_msgs) == 1
-        assert system_msgs[0].content == "newest"
+        assert system_msgs[0].content == "ctx3"
 
-    def test_empty_messages(self):
-        state = {"messages": []}
+    def test_keeps_latest_of_each_kind(self) -> None:
+        """Stacked main + dynamic prompts collapse to one of each, latest."""
+        msgs = [
+            _static("old main"),
+            _dynamic("old ctx"),
+            HumanMessage(content="q"),
+            _dynamic("new ctx"),
+            _static("new main"),
+        ]
+        result = manage_system_prompts_node(cast(State, {"messages": msgs}), _config(), _store())
+        contents = [m.content for m in result["messages"] if m.type == "system"]
+        assert set(contents) == {"new main", "new ctx"}
 
+    def test_empty_messages(self) -> None:
+        state = cast(State, {"messages": []})
         result = manage_system_prompts_node(state, _config(), _store())
-
         assert result["messages"] == []
 
-    def test_only_memory_messages(self):
+    def test_non_system_messages_preserved(self) -> None:
         msgs = [
-            _sys("mem1", memory=True),
-            _sys("mem2", memory=True),
-            _sys("mem3", memory=True),
-        ]
-        state = {"messages": msgs}
-
-        result = manage_system_prompts_node(state, _config(), _store())
-
-        system_msgs = [m for m in result["messages"] if m.type == "system"]
-        assert len(system_msgs) == 3
-
-    def test_non_system_messages_preserved(self):
-        msgs = [
-            _sys("prompt"),
+            _static("prompt"),
             HumanMessage(content="hello"),
             AIMessage(content="hi there"),
             ToolMessage(content="result", tool_call_id="tc1"),
         ]
-        state = {"messages": msgs}
+        result = manage_system_prompts_node(cast(State, {"messages": msgs}), _config(), _store())
+        types = [m.type for m in result["messages"]]
+        assert types.count("human") == 1
+        assert types.count("ai") == 1
+        assert types.count("tool") == 1
+        assert types.count("system") == 1
 
-        result = manage_system_prompts_node(state, _config(), _store())
+    def test_system_messages_moved_to_front(self) -> None:
+        """Kept system messages must appear BEFORE any human/ai message.
 
-        result_messages = result["messages"]
-        types = [m.type for m in result_messages]
-        assert "human" in types
-        assert "ai" in types
-        assert "tool" in types
-        assert len(result_messages) == 4
-
-    def test_mixed_memory_and_non_memory(self):
+        ``langchain-google-genai``'s ``_parse_chat_history`` silently drops any
+        ``SystemMessage`` that appears after a non-system message in the list
+        — so leaving system messages in their original position would wipe
+        out the system prompt and destroy implicit caching. The node
+        rewrites the list as ``[static, dynamic, ...non_system...]``.
+        """
         msgs = [
-            _sys("old non-mem"),
-            _sys("mem1", memory=True),
-            HumanMessage(content="q"),
-            _sys("mem2", memory=True),
-            AIMessage(content="a"),
-            _sys("latest non-mem"),
-        ]
-        state = {"messages": msgs}
-
-        result = manage_system_prompts_node(state, _config(), _store())
-
-        system_msgs = [m for m in result["messages"] if m.type == "system"]
-        contents = [m.content for m in system_msgs]
-        assert "old non-mem" not in contents
-        assert "mem1" in contents
-        assert "mem2" in contents
-        assert "latest non-mem" in contents
-        assert len(system_msgs) == 3
-
-    def test_output_message_order_preserved(self):
-        # Mix of system (one to be dropped, one memory, one kept) and non-system
-        # Expected output order after filtering: mem1, human, mem2, ai, latest
-        msgs = [
-            _sys("old prompt"),
-            _sys("mem1", memory=True),
+            _static("old prompt"),
+            _dynamic("ctx1"),
             HumanMessage(content="hello"),
-            _sys("mem2", memory=True),
+            _dynamic("ctx2"),
             AIMessage(content="reply"),
-            _sys("latest prompt"),
+            _static("latest prompt"),
         ]
-        state = {"messages": msgs}
+        result = manage_system_prompts_node(cast(State, {"messages": msgs}), _config(), _store())
+        actual = [m.content for m in result["messages"]]
+        # Output: static first, dynamic second, then the non-system messages in
+        # their original relative order.
+        assert actual == ["latest prompt", "ctx2", "hello", "reply"]
 
-        result = manage_system_prompts_node(state, _config(), _store())
-
-        output = result["messages"]
-        expected_contents = ["mem1", "hello", "mem2", "reply", "latest prompt"]
-        actual_contents = [m.content if hasattr(m, "content") else "" for m in output]
-        assert actual_contents == expected_contents
-
-    def test_silent_exception_returns_unmodified_state(self):
-        msgs = [
-            HumanMessage(content="hello"),
-            _sys("latest prompt"),
-        ]
-        state = {"messages": msgs}
-
+    def test_silent_exception_returns_unmodified_state(self) -> None:
+        msgs = [HumanMessage(content="hello"), _static("latest prompt")]
+        state = cast(State, {"messages": msgs})
         with patch(
-            "app.agents.core.nodes.manage_system_prompts._is_memory_system_message",
+            "app.agents.core.nodes.manage_system_prompts._is_dynamic_context",
             side_effect=RuntimeError("unexpected failure"),
         ):
             result = manage_system_prompts_node(state, _config(), _store())
-
-        # No exception must propagate
         assert result is state
         assert result["messages"] is msgs

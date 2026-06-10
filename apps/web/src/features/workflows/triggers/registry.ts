@@ -121,20 +121,6 @@ export function getTriggerHandler(slug: string): RegisteredHandler | undefined {
 }
 
 /**
- * Get all registered trigger handlers.
- */
-export function getAllHandlers(): RegisteredHandler[] {
-  return handlers;
-}
-
-/**
- * Get all registered trigger slugs.
- */
-export function getAllTriggerSlugs(): string[] {
-  return Array.from(slugToHandler.keys());
-}
-
-/**
  * Create default config for a trigger slug.
  *
  * @param slug - The trigger slug

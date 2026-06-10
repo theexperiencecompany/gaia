@@ -23,8 +23,8 @@ log.get() into the final emitted event. For worker tasks use wide_task().
 import contextlib
 import contextvars
 import time
-import uuid
 from typing import Any, TypedDict
+import uuid
 
 from loguru import logger as _loguru
 
@@ -42,9 +42,7 @@ _wide_event: contextvars.ContextVar[dict[str, Any] | None] = contextvars.Context
 _max_level: contextvars.ContextVar[str] = contextvars.ContextVar(
     "wide_event_max_level", default="INFO"
 )
-_trace_id: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "wide_event_trace_id", default=""
-)
+_trace_id: contextvars.ContextVar[str] = contextvars.ContextVar("wide_event_trace_id", default="")
 
 
 def _generate_trace_id() -> str:
@@ -52,12 +50,16 @@ def _generate_trace_id() -> str:
 
 
 class UserContext(TypedDict, total=False):
+    """Identity and plan of the authenticated user for the current request."""
+
     id: str
     email: str
     plan: str
 
 
 class ChatContext(TypedDict, total=False):
+    """Per chat-turn context: conversation, stream, attached files and tool routing."""
+
     conversation_id: str
     stream_id: str
     is_new_conversation: bool
@@ -71,15 +73,34 @@ class ChatContext(TypedDict, total=False):
 
 
 class ModelContext(TypedDict, total=False):
+    """LLM-invocation accounting: model identity, token usage, cost and retry bookkeeping."""
+
     name: str
     provider: str
     tokens_used: int
     input_tokens: int
     output_tokens: int
     cost_usd: float
+    # Caching / accounting fields added by the caching-optimization work.
+    # Populated by the @after_model middleware hook via
+    # `usage_metadata.input_token_details.cache_read` and
+    # `cached_content_token_count`.
+    cached_tokens: int
+    cache_hit_rate: float  # cached_tokens / max(input_tokens, 1)
+    credits_charged: float
+    step_index: int  # monotonic step counter within a single agent run
+    agent_name: str  # "comms_agent" | "executor_agent" | "<subagent>"
+    handoff_latency_ms: float  # call_executor/handoff → first LLM token
+    retrieve_tools_calls_per_run: int
+    # Retry / error bookkeeping.
+    retry_attempt: int
+    retry_of: str  # error_type of the previous failed attempt
+    call_failed: bool
 
 
 class ConversationContext(TypedDict, total=False):
+    """Conversation CRUD/operation context (create, list, delete, star, …)."""
+
     id: str
     operation: str  # "create"|"list"|"get"|"delete"|"delete_all"|"star"|"pin_message"|"update_messages"|"batch_sync"|"mark_read"|"mark_unread"|"update_description"
     page: int
@@ -91,6 +112,8 @@ class ConversationContext(TypedDict, total=False):
 
 
 class TodoContext(TypedDict, total=False):
+    """Todo and project operation context (CRUD, bulk ops, search, subtasks)."""
+
     id: str
     operation: str  # "create"|"list"|"get"|"update"|"delete"|"bulk_update"|"bulk_delete"|"bulk_move"|"bulk_complete"|"counts"|"create_project"|"list_projects"|"update_project"|"delete_project"|"subtask_op"
     priority: str
@@ -107,6 +130,8 @@ class TodoContext(TypedDict, total=False):
 
 
 class MemoryContext(TypedDict, total=False):
+    """Long-term memory operation context."""
+
     operation: str  # "create"|"get_all"|"delete"|"delete_all"
     memory_id: str
     content_length: int
@@ -115,6 +140,8 @@ class MemoryContext(TypedDict, total=False):
 
 
 class CalendarContext(TypedDict, total=False):
+    """Calendar operation context (events, preferences, batch ops)."""
+
     calendar_id: str
     operation: str  # "list_calendars"|"get_events"|"create_event"|"update_event"|"delete_event"|"get_preferences"|"update_preferences"|"batch_create"|"batch_update"|"batch_delete"
     event_count: int
@@ -122,6 +149,8 @@ class CalendarContext(TypedDict, total=False):
 
 
 class GoalContext(TypedDict, total=False):
+    """Goal and roadmap operation context."""
+
     id: str
     operation: str  # "create"|"get"|"update"|"delete"|"list"|"generate_roadmap"|"update_node"
     roadmap_node_count: int
@@ -129,6 +158,8 @@ class GoalContext(TypedDict, total=False):
 
 
 class ReminderContext(TypedDict, total=False):
+    """Reminder operation context (including recurrence and next run time)."""
+
     id: str
     operation: str  # "create"|"list"|"get"|"update"|"delete"
     recurrence: str  # "once"|"daily"|"weekly"|"custom"
@@ -137,6 +168,8 @@ class ReminderContext(TypedDict, total=False):
 
 
 class WorkflowContext(TypedDict, total=False):
+    """Workflow definition and execution context."""
+
     id: str
     title: str
     trigger_type: str
@@ -148,6 +181,8 @@ class WorkflowContext(TypedDict, total=False):
 
 
 class SearchContext(TypedDict, total=False):
+    """Cross-entity search operation context."""
+
     query: str
     mode: str
     result_count: int
@@ -155,12 +190,16 @@ class SearchContext(TypedDict, total=False):
 
 
 class PaymentContext(TypedDict, total=False):
+    """Billing and subscription operation context."""
+
     operation: str  # "get_status"|"create_checkout"|"cancel_subscription"|"webhook"|"get_plans"
     plan_type: str
     provider: str
 
 
 class OnboardingContext(TypedDict, total=False):
+    """User onboarding-flow operation context."""
+
     operation: str  # "get_status"|"update_step"|"complete"|"set_house"|"update_personality"
     step: str
     house: str
@@ -168,6 +207,8 @@ class OnboardingContext(TypedDict, total=False):
 
 
 class IntegrationContext(TypedDict, total=False):
+    """Integration management operation context."""
+
     id: str
     name: str
     operation: str  # "create"|"update"|"delete"|"publish"|"unpublish"|"list"|"get"
@@ -176,6 +217,8 @@ class IntegrationContext(TypedDict, total=False):
 
 
 class ImageContext(TypedDict, total=False):
+    """Image generation/analysis operation context."""
+
     operation: str  # "generate"|"analyze"|"generate_stream"
     prompt_length: int
     file_name: str
@@ -183,6 +226,8 @@ class ImageContext(TypedDict, total=False):
 
 
 class BotContext(TypedDict, total=False):
+    """Chat-bot platform operation context."""
+
     platform: str  # "discord"|"slack"|"telegram"
     operation: str
 
@@ -253,26 +298,31 @@ class WideEventLogger:
     # --- Loguru-compatible message methods ---
 
     def debug(self, message: str, **kwargs: Any) -> None:
+        """Emit a debug log line; not recorded in the wide event."""
         _loguru.opt(depth=1).debug(message, **kwargs)
 
     def info(self, message: str, **kwargs: Any) -> None:
+        """Emit an info log line; not recorded in the wide event (info is noise there)."""
         # Emit real-time Loguru line for visibility.
         # Does NOT add to wide event — info messages are noise there.
         _loguru.opt(depth=1).info(message, **kwargs)
 
     def warning(self, message: str, **kwargs: Any) -> None:
+        """Log a warning, append it to the event's ``warnings`` and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
         _loguru.opt(depth=1, exception=exc_info).warning(message, **kwargs)
         self._append("warnings", message, **kwargs)
         self._bump("WARNING")
 
     def error(self, message: str, **kwargs: Any) -> None:
+        """Log an error, append it to the event's ``errors`` and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
         _loguru.opt(depth=1, exception=exc_info).error(message, **kwargs)
         self._append("errors", message, **kwargs)
         self._bump("ERROR")
 
     def critical(self, message: str, **kwargs: Any) -> None:
+        """Log a critical error, append it to the event's ``errors`` and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
         _loguru.opt(depth=1, exception=exc_info).critical(message, **kwargs)
         self._append("errors", message, **kwargs)
@@ -312,12 +362,15 @@ class WideEventLogger:
 
     # --- Private helpers ---
 
-    def _append(self, key: str, message: str, **kwargs: Any) -> None:
+    def _append(self, category: str, message: str, **kwargs: Any) -> None:
+        # NB: the first parameter is `category` (not `key`) on purpose — callers
+        # routinely pass a `key=` field (e.g. redis ops log the cache key), and a
+        # parameter named `key` would collide with it ("multiple values for 'key'").
         current = _wide_event.get() or {}
         entry: dict[str, Any] = {"msg": message, **kwargs}
-        items = list(current.get(key, []))
+        items = list(current.get(category, []))
         items.append(entry)
-        _wide_event.set({**current, key: items})
+        _wide_event.set({**current, category: items})
 
     def _bump(self, level: str) -> None:
         current = _max_level.get()

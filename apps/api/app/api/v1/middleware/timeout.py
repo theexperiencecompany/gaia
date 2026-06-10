@@ -12,8 +12,9 @@ from typing import Any
 
 import anyio
 from fastapi.responses import JSONResponse
-from shared.py.wide_events import log
 from starlette.types import ASGIApp, Receive, Scope, Send
+
+from shared.py.wide_events import log
 
 TIMEOUT_EXCLUDE_PREFIXES: tuple[str, ...] = (
     "/api/v1/chat-stream",

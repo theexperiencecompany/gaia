@@ -116,7 +116,7 @@ export function RealtimeNotificationsList() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
-            tintColor="#8e8e93"
+            tintColor="#71717a"
             colors={["#16c1ff"]}
           />
         }

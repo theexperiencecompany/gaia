@@ -1,8 +1,4 @@
-import asyncio
-import sys
-
 from app.core.lazy_loader import providers
-from shared.py.wide_events import log
 from app.core.websocket_consumer import (
     start_websocket_consumer,
     stop_websocket_consumer,
@@ -11,25 +7,7 @@ from app.db.postgresql import close_postgresql_db
 from app.db.rabbitmq import get_rabbitmq_publisher
 from app.services.reminder_service import reminder_scheduler
 from app.services.workflow.scheduler import workflow_scheduler
-
-
-def setup_event_loop_policy() -> None:
-    """
-    Set up the optimal event loop policy for the current platform.
-
-    Uses uvloop on Unix-like systems for better performance,
-    falls back to default event loop policy on Windows or if uvloop is unavailable.
-    """
-    if sys.platform != "win32":
-        try:
-            import uvloop
-
-            asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-            log.info("Using uvloop event loop policy")
-        except ImportError:
-            log.warning("uvloop not available, using default event loop policy")
-    else:
-        log.info("Windows detected, using default event loop policy")
+from shared.py.wide_events import log
 
 
 async def init_reminder_service():

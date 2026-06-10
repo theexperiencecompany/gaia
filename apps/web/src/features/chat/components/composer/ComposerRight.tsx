@@ -6,6 +6,7 @@ import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEven
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useComposerFiles } from "@/stores/composerStore";
+import { useIsMainResponseStreaming } from "@/stores/loadingStore";
 
 interface RightSideProps {
   handleFormSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
@@ -20,25 +21,28 @@ export default function RightSide({
   selectedTool,
   setvoiceModeActive: _setvoiceModeActive,
 }: RightSideProps) {
-  const { isLoading, stopStream } = useLoading();
+  const { stopStream } = useLoading();
   const { selectedWorkflow } = useWorkflowSelection();
   const { selectedCalendarEvent } = useCalendarEventSelection();
   const { uploadedFiles } = useComposerFiles();
+  // Only the INITIAL response phase locks the composer (send → main_response_complete).
+  // Once the agent has acknowledged the task, the composer unlocks so the user
+  // can queue the next message while a background executor keeps running.
+  const isResponding = useIsMainResponseStreaming();
   const hasText = (searchbarText || "").trim().length > 0;
   const hasSelectedTool = selectedTool != null;
   const hasSelectedWorkflow = selectedWorkflow != null;
   const hasSelectedCalendarEvent = selectedCalendarEvent != null;
   const hasFiles = uploadedFiles.length > 0;
-  const isDisabled =
-    isLoading ||
-    (!hasText &&
-      !hasSelectedTool &&
-      !hasSelectedWorkflow &&
-      !hasSelectedCalendarEvent &&
-      !hasFiles);
+  const hasContent =
+    hasText ||
+    hasSelectedTool ||
+    hasSelectedWorkflow ||
+    hasSelectedCalendarEvent ||
+    hasFiles;
 
   const getTooltipContent = () => {
-    if (isLoading) return "Stop generation";
+    if (isResponding) return "Stop generation";
 
     if (hasSelectedCalendarEvent && !hasText && !hasSelectedTool && !hasFiles) {
       return `Send with calendar event: ${selectedCalendarEvent?.summary}`;
@@ -67,13 +71,7 @@ export default function RightSide({
       return `Send with ${uploadedFiles.length} file${uploadedFiles.length > 1 ? "s" : ""}`;
     }
 
-    if (
-      !hasText &&
-      !hasSelectedTool &&
-      !hasSelectedWorkflow &&
-      !hasFiles &&
-      !hasSelectedCalendarEvent
-    ) {
+    if (!hasContent) {
       return "Message requires content";
     }
 
@@ -86,56 +84,37 @@ export default function RightSide({
   };
 
   const handleButtonPress = () => {
-    if (isLoading) {
+    if (isResponding) {
       stopStream();
     } else {
       handleFormSubmit();
     }
   };
 
+  let buttonColor: "default" | "primary" = "default";
+  if (!isResponding && hasContent) {
+    buttonColor = "primary";
+  }
+
   return (
     <div className="ml-2 flex items-center gap-2">
-      {/* <Tooltip content="Voice Mode" placement="left" color="primary" showArrow>
-        <Button
-          isIconOnly
-          aria-label="Voice Mode"
-          className="h-9 min-h-9 w-9 max-w-9 min-w-9"
-          color="default"
-          radius="full"
-          type="button"
-          onPress={() => setvoiceModeActive()}
-        >
-          <AiVoiceIcon className="text-zinc-400" />
-        </Button>
-      </Tooltip> */}
-
       <Tooltip
         content={getTooltipContent()}
         placement="right"
-        color={isLoading ? "danger" : "primary"}
+        color={isResponding ? "danger" : "primary"}
         showArrow
       >
         <Button
           isIconOnly
-          aria-label={isLoading ? "Stop generation" : "Send message"}
-          className={`h-9 min-h-9 w-9 max-w-9 min-w-9 ${isLoading ? "cursor-pointer" : ""}`}
-          color={
-            isLoading
-              ? "default"
-              : hasText ||
-                  hasSelectedTool ||
-                  hasSelectedWorkflow ||
-                  hasFiles ||
-                  hasSelectedCalendarEvent
-                ? "primary"
-                : "default"
-          }
-          disabled={!isLoading && isDisabled}
+          aria-label={isResponding ? "Stop generation" : "Send message"}
+          className={`h-9 min-h-9 w-9 max-w-9 min-w-9 ${isResponding ? "cursor-pointer" : ""}`}
+          color={buttonColor}
+          disabled={!isResponding && !hasContent}
           radius="full"
           type="submit"
           onPress={handleButtonPress}
         >
-          {isLoading ? (
+          {isResponding ? (
             <StopIcon
               color="lightgray"
               width={20}
@@ -143,17 +122,7 @@ export default function RightSide({
               fill="lightgray"
             />
           ) : (
-            <ArrowUp02Icon
-              color={
-                hasText ||
-                hasSelectedTool ||
-                hasSelectedWorkflow ||
-                hasFiles ||
-                hasSelectedCalendarEvent
-                  ? "black"
-                  : "gray"
-              }
-            />
+            <ArrowUp02Icon color={hasContent ? "black" : "gray"} />
           )}
         </Button>
       </Tooltip>

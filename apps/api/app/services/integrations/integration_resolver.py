@@ -7,13 +7,12 @@ across mcp_client.py, integrations.py, and integration_service.py.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
-from shared.py.wide_events import log
 from app.config.oauth_config import get_integration_by_id
 from app.db.mongodb.collections import integrations_collection
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
+from shared.py.wide_events import log
 
 
 @dataclass
@@ -27,11 +26,11 @@ class ResolvedIntegration:
     managed_by: str
     source: str  # "platform" or "custom"
     requires_auth: bool
-    auth_type: Optional[str]  # "none", "oauth", "bearer"
-    mcp_config: Optional[MCPConfig]
+    auth_type: str | None  # "none", "oauth", "bearer"
+    mcp_config: MCPConfig | None
     # Original sources for backward compatibility
-    platform_integration: Optional[OAuthIntegration]
-    custom_doc: Optional[dict]
+    platform_integration: OAuthIntegration | None
+    custom_doc: dict | None
 
 
 class IntegrationResolver:
@@ -43,16 +42,8 @@ class IntegrationResolver:
     """
 
     @staticmethod
-    async def resolve(integration_id: str) -> Optional[ResolvedIntegration]:
-        """
-        Resolve an integration from either platform config or MongoDB.
-
-        Args:
-            integration_id: The integration ID to look up
-
-        Returns:
-            ResolvedIntegration if found, None otherwise
-        """
+    async def resolve(integration_id: str) -> ResolvedIntegration | None:
+        """Resolve an integration from either platform config or MongoDB."""
         log.set(integration={"provider": integration_id, "action": "resolve"})
         # Try platform integration first (from code)
         platform_integration = get_integration_by_id(integration_id)
@@ -67,10 +58,7 @@ class IntegrationResolver:
                 auth_type = platform_integration.mcp_config.auth_type or (
                     "oauth" if requires_auth else "none"
                 )
-            elif platform_integration.composio_config:
-                requires_auth = True
-                auth_type = "oauth"
-            elif platform_integration.managed_by == "self":
+            elif platform_integration.composio_config or platform_integration.managed_by == "self":
                 requires_auth = True
                 auth_type = "oauth"
 
@@ -89,9 +77,7 @@ class IntegrationResolver:
             )
 
         # Try custom integration from MongoDB
-        custom_doc = await integrations_collection.find_one(
-            {"integration_id": integration_id}
-        )
+        custom_doc = await integrations_collection.find_one({"integration_id": integration_id})
 
         if custom_doc:
             mcp_config = None
@@ -103,9 +89,7 @@ class IntegrationResolver:
                 # mcp_config is authoritative, but log if document-level values conflict
                 doc_requires_auth = custom_doc.get("requires_auth", False)
                 mcp_requires_auth = mcp_config.requires_auth
-                mcp_auth_type = mcp_config.auth_type or (
-                    "oauth" if mcp_requires_auth else "none"
-                )
+                mcp_auth_type = mcp_config.auth_type or ("oauth" if mcp_requires_auth else "none")
 
                 # Warn about inconsistencies and fix them
                 if doc_requires_auth != mcp_requires_auth:
@@ -149,41 +133,13 @@ class IntegrationResolver:
         return None
 
     @staticmethod
-    async def get_mcp_config(integration_id: str) -> Optional[MCPConfig]:
-        """
-        Get MCPConfig for an integration from either source.
-
-        Args:
-            integration_id: The integration ID to look up
-
-        Returns:
-            MCPConfig if found and integration is MCP-based, None otherwise
-        """
+    async def get_mcp_config(integration_id: str) -> MCPConfig | None:
+        """Get the MCPConfig for an integration from either source, if MCP-based."""
         resolved = await IntegrationResolver.resolve(integration_id)
         return resolved.mcp_config if resolved else None
 
     @staticmethod
-    async def get_server_url(integration_id: str) -> Optional[str]:
-        """
-        Get server URL for an MCP integration.
-
-        Args:
-            integration_id: The integration ID
-
-        Returns:
-            Server URL string if found, None otherwise
-        """
+    async def get_server_url(integration_id: str) -> str | None:
+        """Get the server URL for an MCP integration, if any."""
         mcp_config = await IntegrationResolver.get_mcp_config(integration_id)
         return mcp_config.server_url if mcp_config else None
-
-    @staticmethod
-    async def is_mcp_integration(integration_id: str) -> bool:
-        """Check if an integration is MCP-based."""
-        resolved = await IntegrationResolver.resolve(integration_id)
-        return resolved is not None and resolved.managed_by == "mcp"
-
-    @staticmethod
-    async def requires_authentication(integration_id: str) -> bool:
-        """Check if an integration requires authentication."""
-        resolved = await IntegrationResolver.resolve(integration_id)
-        return resolved.requires_auth if resolved else False

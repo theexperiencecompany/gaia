@@ -76,7 +76,7 @@ export default function WorkflowPage() {
         .filter((v, i, a) => a.indexOf(v) === i) || [],
     categories: workflow.categories || ["featured"],
     published_id: workflow.id,
-    slug: workflow.slug || workflow.id,
+    slug: workflow.slug,
     steps: workflow.steps,
     creator: workflow.creator,
   });
@@ -169,8 +169,8 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleCommunityWorkflowClick = (workflowId: string) => {
-    router.push(`/use-cases/${workflowId}`);
+  const handleCommunityWorkflowClick = (slug: string) => {
+    router.push(`/use-cases/${slug}`);
   };
 
   const renderGrid = <T extends { id: string }>(
@@ -214,7 +214,7 @@ export default function WorkflowPage() {
     }
 
     return (
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-6 @md:grid-cols-2 @3xl:grid-cols-3 @5xl:grid-cols-4">
         {items.map((item) => renderItem(item))}
       </div>
     );
@@ -245,7 +245,10 @@ export default function WorkflowPage() {
   );
 
   return (
-    <div className="space-y-8 overflow-y-auto p-4 sm:p-6 md:p-8" ref={pageRef}>
+    <div
+      className="@container space-y-8 overflow-y-auto p-4 sm:p-6 md:p-8"
+      ref={pageRef}
+    >
       <div className="mb-6">
         <CommunityBanner onCreateWorkflow={onCreateOpen} />
       </div>
@@ -283,6 +286,7 @@ export default function WorkflowPage() {
             hideUserWorkflows={true}
             exploreWorkflows={exploreWorkflows}
             disableCentering={true}
+            noMaxWidth={true}
           />
         ) : null,
         undefined,
@@ -308,9 +312,7 @@ export default function WorkflowPage() {
                 communityWorkflow={workflow}
                 variant="community"
                 showCreator={true}
-                onCardClick={() =>
-                  handleCommunityWorkflowClick(workflow.slug ?? workflow.id)
-                }
+                onCardClick={() => handleCommunityWorkflowClick(workflow.slug)}
               />
             ),
           )

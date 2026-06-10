@@ -1,15 +1,15 @@
 """Unit tests for app.utils.todo_vector_utils."""
 
-from datetime import datetime, timezone
-from typing import Generator, Any
+from collections.abc import Generator
+from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from bson import ObjectId
+import pytest
 
 from app.models.todo_models import Priority, TodoResponse
 from app.utils.todo_vector_utils import (
-    bulk_index_todos,
     create_todo_content_for_embedding,
     delete_todo_embedding,
     hybrid_search_todos,
@@ -18,14 +18,13 @@ from app.utils.todo_vector_utils import (
     update_todo_embedding,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 USER_ID = "507f1f77bcf86cd799439011"
 TODO_ID = "507f1f77bcf86cd799439099"
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
 def _make_todo_data(**overrides: Any) -> dict:
@@ -527,9 +526,7 @@ class TestSemanticSearchTodos:
             new_callable=AsyncMock,
             return_value=[fallback_todo],
         ) as mock_search:
-            results = await semantic_search_todos(
-                "q", USER_ID, include_traditional_search=True
-            )
+            results = await semantic_search_todos("q", USER_ID, include_traditional_search=True)
             assert len(results) == 1
             assert results[0].title == "Fallback result"
             mock_search.assert_awaited_once_with("q", USER_ID)
@@ -537,9 +534,7 @@ class TestSemanticSearchTodos:
     async def test_exception_without_traditional_search_returns_empty(self) -> None:
         self.mock_chroma.side_effect = RuntimeError("vector db down")
 
-        results = await semantic_search_todos(
-            "q", USER_ID, include_traditional_search=False
-        )
+        results = await semantic_search_todos("q", USER_ID, include_traditional_search=False)
         assert results == []
 
     async def test_multiple_results_preserve_order(self) -> None:
@@ -580,134 +575,6 @@ class TestSemanticSearchTodos:
         assert len(results) == 2
         assert results[0].title == "First"
         assert results[1].title == "Second"
-
-
-# ===========================================================================
-# bulk_index_todos
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestBulkIndexTodos:
-    @pytest.fixture(autouse=True)
-    def _patch_deps(self) -> Generator[None, None, None]:
-        patcher_log = patch("app.utils.todo_vector_utils.log", new_callable=MagicMock)
-        self.mock_log = patcher_log.start()
-        yield
-        patcher_log.stop()
-
-    def _mock_cursor(self, batches: list[list[dict]]) -> MagicMock:
-        """Create a mock cursor that returns batches via to_list calls."""
-        call_count = 0
-
-        async def _to_list(length: int) -> list[dict]:
-            nonlocal call_count
-            if call_count < len(batches):
-                batch = batches[call_count]
-                call_count += 1
-                return batch
-            return []
-
-        cursor = MagicMock()
-        cursor.skip.return_value = cursor
-        cursor.limit.return_value = cursor
-        cursor.to_list = AsyncMock(side_effect=_to_list)
-        return cursor
-
-    async def test_success_returns_count(self) -> None:
-        oid1 = ObjectId()
-        oid2 = ObjectId()
-        batch = [
-            {"_id": oid1, "title": "Todo 1", "user_id": USER_ID},
-            {"_id": oid2, "title": "Todo 2", "user_id": USER_ID},
-        ]
-
-        with (
-            patch(
-                "app.utils.todo_vector_utils.todos_collection",
-            ) as mock_col,
-            patch(
-                "app.utils.todo_vector_utils.store_todo_embedding",
-                new_callable=AsyncMock,
-                return_value=True,
-            ) as mock_store,
-        ):
-            mock_col.find.return_value = self._mock_cursor([batch])
-            result = await bulk_index_todos(USER_ID, batch_size=100)
-            assert result == 2
-            assert mock_store.await_count == 2
-
-    async def test_partial_failures_counted_separately(self) -> None:
-        oid1 = ObjectId()
-        oid2 = ObjectId()
-        oid3 = ObjectId()
-        batch = [
-            {"_id": oid1, "title": "T1", "user_id": USER_ID},
-            {"_id": oid2, "title": "T2", "user_id": USER_ID},
-            {"_id": oid3, "title": "T3", "user_id": USER_ID},
-        ]
-
-        call_count = 0
-
-        async def _store_side_effect(*args: Any, **kwargs: Any) -> bool:
-            nonlocal call_count
-            call_count += 1
-            # Second todo fails
-            return call_count != 2
-
-        with (
-            patch(
-                "app.utils.todo_vector_utils.todos_collection",
-            ) as mock_col,
-            patch(
-                "app.utils.todo_vector_utils.store_todo_embedding",
-                new_callable=AsyncMock,
-                side_effect=_store_side_effect,
-            ),
-        ):
-            mock_col.find.return_value = self._mock_cursor([batch])
-            result = await bulk_index_todos(USER_ID, batch_size=100)
-            assert result == 2  # 3 total, 1 failed
-
-    async def test_empty_todos_returns_zero(self) -> None:
-        with patch(
-            "app.utils.todo_vector_utils.todos_collection",
-        ) as mock_col:
-            mock_col.find.return_value = self._mock_cursor([[]])
-            result = await bulk_index_todos(USER_ID)
-            assert result == 0
-
-    async def test_exception_returns_zero(self) -> None:
-        with patch(
-            "app.utils.todo_vector_utils.todos_collection",
-        ) as mock_col:
-            mock_col.find.side_effect = RuntimeError("DB down")
-            result = await bulk_index_todos(USER_ID)
-            assert result == 0
-
-    async def test_multiple_batches(self) -> None:
-        """When there are more todos than batch_size, multiple batches are fetched."""
-        batch1 = [
-            {"_id": ObjectId(), "title": f"T{i}", "user_id": USER_ID} for i in range(3)
-        ]
-        batch2 = [
-            {"_id": ObjectId(), "title": "T3", "user_id": USER_ID},
-        ]
-
-        with (
-            patch(
-                "app.utils.todo_vector_utils.todos_collection",
-            ) as mock_col,
-            patch(
-                "app.utils.todo_vector_utils.store_todo_embedding",
-                new_callable=AsyncMock,
-                return_value=True,
-            ) as mock_store,
-        ):
-            mock_col.find.return_value = self._mock_cursor([batch1, batch2])
-            result = await bulk_index_todos(USER_ID, batch_size=3)
-            assert result == 4
-            assert mock_store.await_count == 4
 
 
 # ===========================================================================
@@ -885,9 +752,7 @@ class TestHybridSearchTodos:
                 return_value=[high_todo, low_todo],
             ),
         ):
-            results = await hybrid_search_todos(
-                "query", USER_ID, priority=Priority.HIGH
-            )
+            results = await hybrid_search_todos("query", USER_ID, priority=Priority.HIGH)
             assert all(r.priority == Priority.HIGH for r in results)
 
     async def test_project_id_filter_applied_to_traditional(self) -> None:

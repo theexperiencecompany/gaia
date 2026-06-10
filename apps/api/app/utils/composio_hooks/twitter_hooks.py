@@ -153,9 +153,7 @@ def twitter_search_before_hook(
 
 
 @register_after_hook(tools=["TWITTER_RECENT_SEARCH", "TWITTER_FULL_ARCHIVE_SEARCH"])
-def twitter_search_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+def twitter_search_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process search response and send tweet data to frontend."""
     log.set(twitter_tool=tool, toolkit=toolkit)
     try:
@@ -185,9 +183,7 @@ def twitter_search_after_hook(
         processed_tweets = []
         for tweet in tweets:
             author_id = tweet.get("author_id")
-            author = users_map.get(
-                author_id, {"username": "unknown", "name": "Unknown"}
-            )
+            author = users_map.get(author_id, {"username": "unknown", "name": "Unknown"})
 
             processed_tweet = {
                 "id": tweet.get("id"),
@@ -204,9 +200,7 @@ def twitter_search_after_hook(
             payload = {
                 "twitter_search_data": {
                     "tweets": processed_tweets,
-                    "result_count": data.get("meta", {}).get(
-                        "result_count", len(processed_tweets)
-                    ),
+                    "result_count": data.get("meta", {}).get("result_count", len(processed_tweets)),
                     "next_token": data.get("meta", {}).get("next_token"),
                 },
             }
@@ -230,9 +224,7 @@ def twitter_search_after_hook(
 
         return {
             "tweets": llm_tweets,
-            "result_count": data.get("meta", {}).get(
-                "result_count", len(processed_tweets)
-            ),
+            "result_count": data.get("meta", {}).get("result_count", len(processed_tweets)),
             "has_more": bool(data.get("meta", {}).get("next_token")),
         }
 
@@ -241,12 +233,8 @@ def twitter_search_after_hook(
         return response.get("data", {})
 
 
-@register_after_hook(
-    tools=["TWITTER_USER_LOOKUP_BY_USERNAME", "TWITTER_USER_LOOKUP_BY_USERNAMES"]
-)
-def twitter_user_lookup_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+@register_after_hook(tools=["TWITTER_USER_LOOKUP_BY_USERNAME", "TWITTER_USER_LOOKUP_BY_USERNAMES"])
+def twitter_user_lookup_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process user lookup and stream profile data to frontend."""
     try:
         writer = get_stream_writer()
@@ -258,13 +246,7 @@ def twitter_user_lookup_after_hook(
         user_data = data.get("data", data)
 
         # Handle both single user and multiple users
-        users = (
-            user_data
-            if isinstance(user_data, list)
-            else [user_data]
-            if user_data
-            else []
-        )
+        users = user_data if isinstance(user_data, list) else [user_data] if user_data else []
 
         processed_users = []
         for user in users:
@@ -310,9 +292,7 @@ def twitter_user_lookup_after_hook(
 
 
 @register_after_hook(tools=["TWITTER_USER_HOME_TIMELINE_BY_USER_ID"])
-def twitter_timeline_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+def twitter_timeline_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process timeline and stream tweets to frontend."""
     try:
         writer = get_stream_writer()
@@ -339,9 +319,7 @@ def twitter_timeline_after_hook(
         processed_tweets = []
         for tweet in tweets:
             author_id = tweet.get("author_id")
-            author = users_map.get(
-                author_id, {"username": "unknown", "name": "Unknown"}
-            )
+            author = users_map.get(author_id, {"username": "unknown", "name": "Unknown"})
 
             processed_tweets.append(
                 {
@@ -367,9 +345,7 @@ def twitter_timeline_after_hook(
             "tweets": [
                 {
                     "id": t["id"],
-                    "text": t["text"][:200] + "..."
-                    if len(t["text"]) > 200
-                    else t["text"],
+                    "text": t["text"][:200] + "..." if len(t["text"]) > 200 else t["text"],
                     "author": t["author"].get("username"),
                     "likes": t["public_metrics"].get("like_count", 0),
                 }
@@ -383,12 +359,8 @@ def twitter_timeline_after_hook(
         return response.get("data", {})
 
 
-@register_after_hook(
-    tools=["TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER_FOLLOWING_BY_USER_ID"]
-)
-def twitter_followers_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+@register_after_hook(tools=["TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER_FOLLOWING_BY_USER_ID"])
+def twitter_followers_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
     """Process followers/following list and stream to frontend."""
     try:
         writer = get_stream_writer()

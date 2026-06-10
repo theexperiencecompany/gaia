@@ -1,7 +1,10 @@
 apiVersion: 1
 
-# Slack contact point. Set SLACK_ALERT_WEBHOOK_URL in the Grafana container's
-# environment (via docker-compose .env) before enabling alerts in production.
+# Slack contact point. The webhook URL is NOT committed — Grafana reads it at
+# provision time from the `gaia_grafana_slack_webhook` swarm secret via the
+# $__file{} reference. The secret is mounted into the grafana service
+# (see docker-compose.prod.yml); create it once with:
+#   printf '%s' "$WEBHOOK" | docker secret create gaia_grafana_slack_webhook -
 contactPoints:
   - orgId: 1
     name: slack-alerts
@@ -9,8 +12,7 @@ contactPoints:
       - uid: slack-alerts
         type: slack
         settings:
-          url: $SLACK_ALERT_WEBHOOK_URL
-          recipient: "${SLACK_ALERT_CHANNEL:-#alerts}"
+          url: $__file{/run/secrets/gaia_grafana_slack_webhook}
           title: "{{ template \"slack.default.title\" . }}"
           text: "{{ template \"slack.default.text\" . }}"
         disableResolveMessage: false

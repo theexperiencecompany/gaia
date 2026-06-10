@@ -8,7 +8,7 @@ build_initial_state, build_agent_config, execute_graph_streaming.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -43,9 +43,7 @@ class TestCallAgentReal:
             patches[6],
             patches[7],
         ):
-            async with build_comms_graph(
-                chat_llm=fake_llm, in_memory_checkpointer=True
-            ) as graph:
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
                 body = MessageRequestWithHistory(
                     message="Hi there",
                     messages=[{"role": "user", "content": "Hi there"}],
@@ -69,7 +67,7 @@ class TestCallAgentReal:
                         request=body,
                         conversation_id="call-agent-conv-1",
                         user={"user_id": "agent-user-1", "name": "Test"},
-                        user_time=datetime.now(timezone.utc),
+                        user_time=datetime.now(UTC),
                     )
 
                     chunks = []
@@ -102,7 +100,7 @@ class TestCallAgentReal:
                 request=body,
                 conversation_id="call-agent-conv-2",
                 user={"user_id": "agent-user-2"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
             chunks = []

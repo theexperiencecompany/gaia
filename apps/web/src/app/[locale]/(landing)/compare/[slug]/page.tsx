@@ -32,7 +32,8 @@ interface PageProps {
 }
 
 export async function generateStaticParams() {
-  return getAllComparisonSlugs().map((slug) => ({ slug }));
+  const slugs = await getAllComparisonSlugs();
+  return slugs.map((slug) => ({ slug }));
 }
 
 export const dynamicParams = false;

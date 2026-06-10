@@ -13,6 +13,24 @@
  */
 
 /**
+ * Metadata for a file previously uploaded via {@link GaiaClient.uploadFile}.
+ *
+ * Mirrors the backend `FileData` schema in
+ * `apps/api/app/models/message_models.py`. Sent alongside chat requests so
+ * the agent can ground its response in the file's stored metadata (URL,
+ * filename, type) without re-fetching from the database.
+ */
+export interface BotFileData {
+  fileId: string;
+  url: string;
+  filename: string;
+  /** MIME type or coarse classification (e.g. `"image"`, `"file"`). */
+  type?: string;
+  /** Optional human-readable status. Defaults to the upload service's value. */
+  message?: string;
+}
+
+/**
  * Represents a chat request sent to the GAIA bot API.
  */
 export interface ChatRequest {
@@ -24,6 +42,18 @@ export interface ChatRequest {
   platformUserId: string;
   /** Optional channel ID where the conversation is happening. */
   channelId?: string;
+  /**
+   * IDs of files the user has attached to this message. The agent loads each
+   * file's metadata + content from MongoDB / ChromaDB and grounds its reply
+   * in the file contents.
+   */
+  fileIds?: string[];
+  /**
+   * Full file metadata for the attached files. Sent alongside `fileIds` so
+   * the agent can resolve URLs/filenames without an extra DB lookup, matching
+   * the web app's chat payload shape.
+   */
+  fileData?: BotFileData[];
 }
 
 /**
@@ -41,6 +71,12 @@ export interface BotConfig {
    * disabled when absent (safe for local development).
    */
   posthogApiKey?: string;
+  /**
+   * RabbitMQ connection URL for consuming backend-originated outbound
+   * messages. Optional — the outbound consumer is disabled when absent (safe
+   * for local development without a broker).
+   */
+  rabbitmqUrl?: string;
 }
 
 /**

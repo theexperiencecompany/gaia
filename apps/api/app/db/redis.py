@@ -19,23 +19,24 @@ Pattern deletion:
     await delete_cache("user:*")  # Delete all user keys
 """
 
-from typing import Any, Optional
+from typing import Any
 
+from pydantic import TypeAdapter
+from pydantic.type_adapter import TypeAdapter as TypeAdapterType
 import redis.asyncio as redis
+
 from app.config.settings import settings
-from shared.py.wide_events import log
 from app.constants.cache import (
     DEFAULT_CACHE_TTL,
     ONE_YEAR_TTL,
 )
-from pydantic import TypeAdapter
-from pydantic.type_adapter import TypeAdapter as TypeAdapterType
+from shared.py.wide_events import log
 
 # Re-export for backwards compatibility
 CACHE_TTL = DEFAULT_CACHE_TTL
 
 
-def serialize_any(data: Any, model: Optional[type] = None) -> str:
+def serialize_any(data: Any, model: type | None = None) -> str:
     """
     Serialize Python objects to JSON string using Pydantic TypeAdapter.
 
@@ -61,7 +62,7 @@ def serialize_any(data: Any, model: Optional[type] = None) -> str:
     return adapter.dump_json(data).decode()
 
 
-def deserialize_any(json_str: str, model: Optional[type] = None) -> Any:
+def deserialize_any(json_str: str, model: type | None = None) -> Any:
     """
     Deserialize JSON string back to Python objects with optional type validation.
 
@@ -92,6 +93,13 @@ def deserialize_any(json_str: str, model: Optional[type] = None) -> Any:
 
 
 class RedisCache:
+    """Async Redis wrapper with type-safe (de)serialization and graceful degradation.
+
+    The client is created lazily (``redis.from_url`` does not connect on
+    construction); call ``verify_connection`` at startup to assert reachability.
+    When Redis is unavailable, read/write helpers no-op instead of raising.
+    """
+
     def __init__(self, redis_url="redis://localhost:6379", default_ttl=3600):
         self.redis_url = settings.REDIS_URL or redis_url
         self.default_ttl = default_ttl
@@ -99,16 +107,46 @@ class RedisCache:
 
         if self.redis_url:
             try:
+                # NB: from_url is lazy — it does NOT connect here. Real
+                # connectivity is asserted by verify_connection() at startup.
                 self.redis = redis.from_url(self.redis_url, decode_responses=True)
-                log.set(db={"connection_status": "connected", "backend": "redis"})
-                log.info("Redis connection initialized.")
+                log.set(db={"connection_status": "configured", "backend": "redis"})
+                log.info("Redis client configured (connection verified at startup).")
             except Exception as e:
                 log.set(db={"connection_status": "error", "backend": "redis"})
-                log.error(f"Failed to connect to Redis: {e}")
+                log.error(f"Failed to create Redis client: {e}")
         else:
             log.warning("REDIS_URL is not set. Caching will be disabled.")
 
-    async def get(self, key: str, model: Optional[type] = None):
+    async def verify_connection(self) -> None:
+        """Assert Redis is actually reachable, and scream if it is not.
+
+        Redis backs caching, SSE streaming, rate limiting and stream
+        cancellation, so an unavailable Redis is a real outage — surface it
+        loudly instead of silently degrading (the prior behavior optimistically
+        reported "connected" because ``from_url`` connects lazily). Fails fast
+        in production; logs loudly elsewhere so local dev still runs.
+        """
+        if self.redis is None:
+            message = "Redis is UNAVAILABLE: REDIS_URL is not configured."
+            log.set(db={"connection_status": "unavailable", "backend": "redis"})
+            log.error(message)
+            if settings.ENV == "production":
+                raise ConnectionError(message)
+            return
+
+        try:
+            await self.redis.ping()
+            log.set(db={"connection_status": "verified", "backend": "redis"})
+            log.info("Redis connection verified.")
+        except Exception as e:
+            message = f"Redis is UNAVAILABLE: ping failed ({type(e).__name__}: {e})"
+            log.set(db={"connection_status": "error", "backend": "redis"})
+            log.error(message)
+            if settings.ENV == "production":
+                raise ConnectionError(message) from e
+
+    async def get(self, key: str, model: type | None = None):
         """
         Retrieve cached value by key with optional type validation.
 
@@ -138,12 +176,16 @@ class RedisCache:
                 return deserialize_any(value, model)
             return None
         except Exception as e:
-            log.error(f"Error accessing Redis for key {key}: {e}")
+            log.error(
+                "redis_op_failed",
+                op="get",
+                key=key,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
             return None
 
-    async def set(
-        self, key: str, value: Any, ttl: int = 3600, model: Optional[type] = None
-    ):
+    async def set(self, key: str, value: Any, ttl: int = 3600, model: type | None = None):
         """
         Store value in cache with TTL and optional type validation.
 
@@ -170,7 +212,14 @@ class RedisCache:
             json_str = serialize_any(value, model)
             await self.redis.setex(key, ttl, json_str)
         except Exception as e:
-            log.error(f"Error setting Redis key {key}: {e}")
+            log.error(
+                "redis_op_failed",
+                op="set",
+                key=key,
+                ttl=ttl,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
 
     async def delete(self, key: str):
         """
@@ -184,7 +233,13 @@ class RedisCache:
             await self.redis.delete(key)
             log.info(f"Cache deleted for key: {key}")
         except Exception as e:
-            log.error(f"Error deleting Redis key {key}: {e}")
+            log.error(
+                "redis_op_failed",
+                op="delete",
+                key=key,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
 
     @property
     def client(self):
@@ -203,7 +258,7 @@ redis_cache = RedisCache()
 
 
 # Wrappers for RedisCache instance methods
-async def get_cache(key: str, model: Optional[type] = None):
+async def get_cache(key: str, model: type | None = None) -> Any:
     """
     Convenience wrapper for retrieving cached values.
 
@@ -220,9 +275,7 @@ async def get_cache(key: str, model: Optional[type] = None):
     return await redis_cache.get(key, model)
 
 
-async def set_cache(
-    key: str, value: Any, ttl: int = ONE_YEAR_TTL, model: Optional[type] = None
-):
+async def set_cache(key: str, value: Any, ttl: int = ONE_YEAR_TTL, model: type | None = None):
     """
     Convenience wrapper for storing cached values.
 

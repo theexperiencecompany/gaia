@@ -2,14 +2,13 @@
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
+from pydantic_settings import SettingsConfigDict
+
 from shared.py.logging import get_contextual_logger
 from shared.py.secrets import inject_infisical_secrets
 from shared.py.settings import BaseAppSettings
-
-from pydantic_settings import SettingsConfigDict
 
 logger = get_contextual_logger("config")
 
@@ -25,12 +24,12 @@ class VoiceAgentSettings(BaseAppSettings):
     GAIA_BACKEND_URL: str = "http://localhost:8000"
 
     # ElevenLabs TTS
-    ELEVENLABS_API_KEY: Optional[str] = None
-    ELEVENLABS_VOICE_ID: Optional[str] = None
+    ELEVENLABS_API_KEY: str | None = None
+    ELEVENLABS_VOICE_ID: str | None = None
     ELEVENLABS_TTS_MODEL: str = "eleven_turbo_v2_5"
 
     # Deepgram STT (used by livekit-plugins-deepgram)
-    DEEPGRAM_API_KEY: Optional[str] = None
+    DEEPGRAM_API_KEY: str | None = None
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
@@ -38,7 +37,7 @@ class VoiceAgentSettings(BaseAppSettings):
     )
 
 
-_settings_instance: Optional[VoiceAgentSettings] = None
+_settings_instance: VoiceAgentSettings | None = None
 
 
 @lru_cache(maxsize=1)

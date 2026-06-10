@@ -22,19 +22,19 @@ Tests cover:
 - DELETE /api/v1/workflows/{id}
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from httpx import AsyncClient
+import pytest
 
+from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
     PublicWorkflowsResponse,
     Workflow,
     WorkflowExecutionResponse,
     WorkflowStatusResponse,
 )
-from app.models.workflow_execution_models import WorkflowExecutionsResponse
 
 BASE_URL = "/api/v1/workflows"
 
@@ -45,6 +45,23 @@ _WF_COLLECTION = "app.api.v1.endpoints.workflows.workflows_collection"
 _GET_EXECUTIONS = "app.api.v1.endpoints.workflows.get_executions"
 _GEN_SLUG = "app.api.v1.endpoints.workflows.generate_unique_workflow_slug"
 _RESET_DEFAULT = "app.api.v1.endpoints.workflows.reset_system_workflow_to_default"
+
+
+def _async_iter(items: list):
+    """Return a Mongo-cursor-shaped async iterator over the given items."""
+
+    class _Cursor:
+        def __init__(self, docs):
+            self._docs = list(docs)
+
+        def __aiter__(self):
+            return self._gen()
+
+        async def _gen(self):
+            for d in self._docs:
+                yield d
+
+    return _Cursor(items)
 
 
 def _make_workflow(**overrides) -> Workflow:
@@ -70,8 +87,8 @@ def _make_workflow(**overrides) -> Workflow:
         "total_executions": 0,
         "successful_executions": 0,
         "last_executed_at": None,
-        "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
-        "updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+        "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
     }
     base.update(overrides)
     return Workflow(**base)
@@ -119,9 +136,7 @@ class TestCreateWorkflow:
         )
         assert response.status_code == 422
 
-    async def test_create_workflow_missing_prompt_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_create_workflow_missing_prompt_returns_422(self, client: AsyncClient):
         response = await client.post(
             BASE_URL,
             json={
@@ -249,9 +264,7 @@ class TestExecuteWorkflow:
 
         assert response.status_code == 400
 
-    async def test_execute_workflow_service_error_returns_500(
-        self, client: AsyncClient
-    ):
+    async def test_execute_workflow_service_error_returns_500(self, client: AsyncClient):
         with patch(
             f"{_WF_SERVICE}.execute_workflow",
             new_callable=AsyncMock,
@@ -332,7 +345,7 @@ class TestGetWorkflowStatus:
             current_step_index=0,
             total_steps=3,
             progress_percentage=0.0,
-            last_updated=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            last_updated=datetime(2025, 1, 1, tzinfo=UTC),
             error_message=None,
             logs=[],
         )
@@ -490,18 +503,14 @@ class TestRegenerateSteps:
 
         assert response.status_code == 500
 
-    async def test_regenerate_steps_missing_instruction_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_regenerate_steps_missing_instruction_returns_422(self, client: AsyncClient):
         response = await client.post(
             f"{BASE_URL}/wf_abc123/regenerate-steps",
             json={},
         )
         assert response.status_code == 422
 
-    async def test_regenerate_steps_service_error_returns_500(
-        self, client: AsyncClient
-    ):
+    async def test_regenerate_steps_service_error_returns_500(self, client: AsyncClient):
         with patch(
             f"{_WF_SERVICE}.regenerate_workflow_steps",
             new_callable=AsyncMock,
@@ -754,12 +763,12 @@ class TestGetPublicWorkflow:
             "trigger_config": {"type": "manual", "enabled": True},
             "activated": True,
             "is_public": True,
+            "creator_info": [{"name": "Test User", "picture": None}],
         }
         with (
             patch(
-                f"{_WF_COLLECTION}.find_one",
-                new_callable=AsyncMock,
-                return_value=mock_doc,
+                f"{_WF_COLLECTION}.aggregate",
+                return_value=_async_iter([mock_doc]),
             ),
             patch(
                 "app.api.v1.endpoints.workflows.transform_workflow_document",
@@ -771,16 +780,9 @@ class TestGetPublicWorkflow:
         assert response.status_code == 200
 
     async def test_get_public_workflow_not_found_returns_404(self, client: AsyncClient):
-        with (
-            patch(
-                f"{_WF_COLLECTION}.find_one",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "app.api.v1.endpoints.workflows.parse_workflow_slug",
-                return_value=None,
-            ),
+        with patch(
+            f"{_WF_COLLECTION}.aggregate",
+            return_value=_async_iter([]),
         ):
             response = await client.get(f"{BASE_URL}/public/nonexistent-slug")
 

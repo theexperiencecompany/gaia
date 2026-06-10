@@ -123,7 +123,7 @@ export function MemorySection() {
           <Spinner />
         </View>
       ) : filteredMemories.length === 0 ? (
-        <Card variant="secondary" className="rounded-3xl bg-surface">
+        <Card variant="secondary" className="rounded-2xl bg-surface">
           <Card.Body className="items-center px-5 py-10">
             <Text style={{ color: "#71717a", fontSize: fontSize.sm }}>
               {search ? `No memories matching "${search}"` : "No memories yet"}
@@ -199,7 +199,7 @@ export function MemorySection() {
         >
           <Card
             variant="secondary"
-            className="w-full rounded-3xl bg-surface"
+            className="w-full rounded-2xl bg-surface"
             onTouchEnd={(e) => e.stopPropagation()}
           >
             <Card.Body className="gap-4 px-5 py-5">

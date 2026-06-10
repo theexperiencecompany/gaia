@@ -1,24 +1,23 @@
 """Unit tests for the todo service layer.
 
 Covers:
-- TodoService: CRUD, bulk ops, search, stats, caching, reindexing
+- TodoService: CRUD, bulk ops, search, stats, caching
 - ProjectService: CRUD, cache, default inbox protection
 - Compatibility wrappers (module-level functions)
 - todo_bulk_service: bulk_complete, bulk_move, bulk_delete
-- todo_count_service: update_project_todo_count, sync_all_project_counts
 - sync_service: sync_goal_node_completion, sync_subtask_to_goal_completion,
                 create_goal_project_and_todo, _get_or_create_goals_project,
                 cache invalidation helpers
 """
 
-import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+import uuid
 
-import pytest
 from bson import ObjectId
 from fastapi import HTTPException
+import pytest
 
 from app.models.todo_models import (
     BulkMoveRequest,
@@ -52,19 +51,12 @@ from app.services.todos.todo_bulk_service import (
     bulk_delete_todos as bulk_service_delete_todos,
     bulk_move_todos as bulk_service_move_todos,
 )
-from app.services.todos.todo_count_service import (
-    sync_all_project_counts,
-    update_project_todo_count,
-)
+
+# Also test the compatibility wrappers at module level
 from app.services.todos.todo_service import (
     ProjectService,
     TodoService,
     _get_workflow_categories_for_todos,
-)
-
-# Also test the compatibility wrappers at module level
-from app.services.todos.todo_service import (
-    bulk_index_existing_todos,
     create_project,
     create_todo,
     delete_project,
@@ -92,7 +84,7 @@ FAKE_USER_ID_2 = "507f1f77bcf86cd799439022"
 FAKE_TODO_ID = str(ObjectId())
 FAKE_PROJECT_ID = str(ObjectId())
 FAKE_INBOX_ID = str(ObjectId())
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -242,10 +234,6 @@ def mock_vector_utils():
             new_callable=AsyncMock,
         ) as m_delete,
         patch(
-            "app.services.todos.todo_service.bulk_index_todos",
-            new_callable=AsyncMock,
-        ) as m_bulk,
-        patch(
             "app.services.todos.todo_service.vector_search",
             new_callable=AsyncMock,
         ) as m_vsearch,
@@ -258,7 +246,6 @@ def mock_vector_utils():
             "store": m_store,
             "update": m_update,
             "delete": m_delete,
-            "bulk": m_bulk,
             "vector_search": m_vsearch,
             "hybrid_search": m_hybrid,
         }
@@ -289,9 +276,7 @@ def mock_sync_subtask():
 
 @pytest.mark.unit
 class TestGetWorkflowCategories:
-    async def test_no_todos_with_workflow_returns_empty(
-        self, mock_workflows_collection
-    ):
+    async def test_no_todos_with_workflow_returns_empty(self, mock_workflows_collection):
         todos = [_make_todo_doc()]  # no workflow_id
         result = await _get_workflow_categories_for_todos(todos, FAKE_USER_ID)
         assert result == {}
@@ -300,9 +285,7 @@ class TestGetWorkflowCategories:
         result = await _get_workflow_categories_for_todos([], FAKE_USER_ID)
         assert result == {}
 
-    async def test_returns_categories_for_linked_workflows(
-        self, mock_workflows_collection
-    ):
+    async def test_returns_categories_for_linked_workflows(self, mock_workflows_collection):
         wf_id = "wf_123"
         todo = _make_todo_doc(workflow_id=wf_id)
         todo_id = str(todo["_id"])
@@ -387,17 +370,13 @@ class TestInvalidateCache:
 
     async def test_update_clears_individual_and_list_caches(self, mock_cache):
         _, _, m_del, m_del_pattern = mock_cache
-        await TodoService._invalidate_cache(
-            FAKE_USER_ID, todo_id=FAKE_TODO_ID, operation="update"
-        )
+        await TodoService._invalidate_cache(FAKE_USER_ID, todo_id=FAKE_TODO_ID, operation="update")
         m_del.assert_any_await(f"todo:{FAKE_USER_ID}:{FAKE_TODO_ID}")
         m_del_pattern.assert_any_await(f"todos:{FAKE_USER_ID}:*")
 
     async def test_delete_clears_individual_and_list_caches(self, mock_cache):
         _, _, m_del, m_del_pattern = mock_cache
-        await TodoService._invalidate_cache(
-            FAKE_USER_ID, todo_id=FAKE_TODO_ID, operation="delete"
-        )
+        await TodoService._invalidate_cache(FAKE_USER_ID, todo_id=FAKE_TODO_ID, operation="delete")
         m_del.assert_any_await(f"todo:{FAKE_USER_ID}:{FAKE_TODO_ID}")
         m_del_pattern.assert_any_await(f"todos:{FAKE_USER_ID}:*")
 
@@ -505,11 +484,9 @@ class TestBuildQuery:
         assert query["due_date"] is None
 
     async def test_due_date_range(self, mock_projects_collection):
-        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        end = datetime(2026, 12, 31, tzinfo=timezone.utc)
-        params = TodoSearchParams(
-            due_date_start=start, due_date_end=end, project_id="x"
-        )
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        end = datetime(2026, 12, 31, tzinfo=UTC)
+        params = TodoSearchParams(due_date_start=start, due_date_end=end, project_id="x")
         query = await TodoService._build_query(FAKE_USER_ID, params)
         assert query["due_date"]["$gte"] == start
         assert query["due_date"]["$lte"] == end
@@ -520,16 +497,12 @@ class TestBuildQuery:
         assert "$lt" in query["due_date"]
         assert query["completed"] is False
 
-    async def test_overdue_false_with_has_due_date_not_false(
-        self, mock_projects_collection
-    ):
+    async def test_overdue_false_with_has_due_date_not_false(self, mock_projects_collection):
         params = TodoSearchParams(overdue=False, project_id="x")
         query = await TodoService._build_query(FAKE_USER_ID, params)
         assert "$or" in query
 
-    async def test_no_inbox_default_when_filters_applied(
-        self, mock_projects_collection
-    ):
+    async def test_no_inbox_default_when_filters_applied(self, mock_projects_collection):
         """When any filter like completed is set, don't default to inbox."""
         params = TodoSearchParams(completed=False)
         query = await TodoService._build_query(FAKE_USER_ID, params)
@@ -567,9 +540,7 @@ class TestCreateTodo:
 
         todo_input = TodoModel(title="Buy groceries")
 
-        with patch(
-            "app.services.workflow.queue_service.WorkflowQueueService"
-        ) as mock_wq:
+        with patch("app.services.workflow.queue_service.WorkflowQueueService") as mock_wq:
             mock_wq.queue_todo_workflow_generation = AsyncMock()
             result = await TodoService.create_todo(todo_input, FAKE_USER_ID)
 
@@ -600,9 +571,7 @@ class TestCreateTodo:
 
         todo_input = TodoModel(title="With project", project_id=FAKE_PROJECT_ID)
 
-        with patch(
-            "app.services.workflow.queue_service.WorkflowQueueService"
-        ) as mock_wq:
+        with patch("app.services.workflow.queue_service.WorkflowQueueService") as mock_wq:
             mock_wq.queue_todo_workflow_generation = AsyncMock()
             result = await TodoService.create_todo(todo_input, FAKE_USER_ID)
 
@@ -648,9 +617,7 @@ class TestCreateTodo:
         subtask = SubTask(title="Step 1")
         todo_input = TodoModel(title="With subtask", subtasks=[subtask])
 
-        with patch(
-            "app.services.workflow.queue_service.WorkflowQueueService"
-        ) as mock_wq:
+        with patch("app.services.workflow.queue_service.WorkflowQueueService") as mock_wq:
             mock_wq.queue_todo_workflow_generation = AsyncMock()
             result = await TodoService.create_todo(todo_input, FAKE_USER_ID)
 
@@ -682,9 +649,7 @@ class TestCreateTodo:
         todo_input = TodoModel(title="Ghost insert")
 
         with (
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService"
-            ) as mock_wq,
+            patch("app.services.workflow.queue_service.WorkflowQueueService") as mock_wq,
             pytest.raises(ValueError, match="Failed to create todo"),
         ):
             mock_wq.queue_todo_workflow_generation = AsyncMock()
@@ -716,14 +681,10 @@ class TestCreateTodo:
                 new_callable=AsyncMock,
                 side_effect=Exception("Embedding service down"),
             ),
-            patch(
-                "app.services.workflow.queue_service.WorkflowQueueService"
-            ) as mock_wq,
+            patch("app.services.workflow.queue_service.WorkflowQueueService") as mock_wq,
         ):
             mock_wq.queue_todo_workflow_generation = AsyncMock()
-            result = await TodoService.create_todo(
-                TodoModel(title="Still works"), FAKE_USER_ID
-            )
+            result = await TodoService.create_todo(TodoModel(title="Still works"), FAKE_USER_ID)
 
         assert isinstance(result, TodoResponse)
 
@@ -749,9 +710,7 @@ class TestCreateTodo:
 
         todo_input = TodoModel(title="Labeled todo", labels=["work", "urgent"])
 
-        with patch(
-            "app.services.workflow.queue_service.WorkflowQueueService"
-        ) as mock_wq:
+        with patch("app.services.workflow.queue_service.WorkflowQueueService") as mock_wq:
             mock_wq.queue_todo_workflow_generation = AsyncMock()
             result = await TodoService.create_todo(todo_input, FAKE_USER_ID)
 
@@ -795,9 +754,7 @@ class TestGetTodo:
         assert result.title == "Cached Todo"
         mock_todos_collection.find_one.assert_not_awaited()
 
-    async def test_found_in_db(
-        self, mock_todos_collection, mock_cache, mock_workflows_collection
-    ):
+    async def test_found_in_db(self, mock_todos_collection, mock_cache, mock_workflows_collection):
         m_get, m_set, _, _ = mock_cache
         m_get.return_value = None
 
@@ -1134,9 +1091,7 @@ class TestUpdateTodo:
         updated_doc = _make_todo_doc(todo_id=FAKE_TODO_ID, subtasks=subtasks)
         mock_todos_collection.find_one_and_update = AsyncMock(return_value=updated_doc)
 
-        updates = TodoUpdateRequest(
-            subtasks=[SubTask(id=subtask_id, title="Step", completed=True)]
-        )
+        updates = TodoUpdateRequest(subtasks=[SubTask(id=subtask_id, title="Step", completed=True)])
         await TodoService.update_todo(FAKE_TODO_ID, updates, FAKE_USER_ID)
 
         mock_sync_subtask.assert_awaited()
@@ -1227,6 +1182,9 @@ class TestDeleteTodo:
     async def test_success(self, mock_todos_collection, mock_cache, mock_vector_utils):
         mock_result = MagicMock()
         mock_result.deleted_count = 1
+        mock_todos_collection.find_one = AsyncMock(
+            return_value={"_id": FAKE_TODO_ID, "user_id": FAKE_USER_ID}
+        )
         mock_todos_collection.delete_one = AsyncMock(return_value=mock_result)
 
         await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
@@ -1244,11 +1202,12 @@ class TestDeleteTodo:
         with pytest.raises(ValueError, match="not found"):
             await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
 
-    async def test_vector_delete_failure_does_not_raise(
-        self, mock_todos_collection, mock_cache
-    ):
+    async def test_vector_delete_failure_does_not_raise(self, mock_todos_collection, mock_cache):
         mock_result = MagicMock()
         mock_result.deleted_count = 1
+        mock_todos_collection.find_one = AsyncMock(
+            return_value={"_id": FAKE_TODO_ID, "user_id": FAKE_USER_ID}
+        )
         mock_todos_collection.delete_one = AsyncMock(return_value=mock_result)
 
         with patch(
@@ -1280,9 +1239,7 @@ class TestBulkUpdateTodos:
 
         # Mock fetch for reindexing
         mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[_make_todo_doc(tid) for tid in todo_ids]
-        )
+        mock_cursor.to_list = AsyncMock(return_value=[_make_todo_doc(tid) for tid in todo_ids])
         mock_todos_collection.find = MagicMock(return_value=mock_cursor)
 
         request = BulkUpdateRequest(
@@ -1369,9 +1326,7 @@ class TestBulkDeleteTodos:
         assert isinstance(result, BulkOperationResponse)
         assert "Deleted 2 todos" in result.message
 
-    async def test_vector_cleanup_failure_swallowed(
-        self, mock_todos_collection, mock_cache
-    ):
+    async def test_vector_cleanup_failure_swallowed(self, mock_todos_collection, mock_cache):
         todo_ids = [str(ObjectId())]
 
         mock_cursor = AsyncMock()
@@ -1425,9 +1380,7 @@ class TestBulkMoveTodos:
     ):
         mock_projects_collection.find_one = AsyncMock(return_value=None)
 
-        request = BulkMoveRequest(
-            todo_ids=[str(ObjectId())], project_id=FAKE_PROJECT_ID
-        )
+        request = BulkMoveRequest(todo_ids=[str(ObjectId())], project_id=FAKE_PROJECT_ID)
 
         with pytest.raises(ValueError, match="not found"):
             await TodoService.bulk_move_todos(request, FAKE_USER_ID)
@@ -1447,9 +1400,7 @@ class TestBulkMoveTodos:
         mock_result.modified_count = 0
         mock_todos_collection.update_many = AsyncMock(return_value=mock_result)
 
-        request = BulkMoveRequest(
-            todo_ids=[str(ObjectId())], project_id=FAKE_PROJECT_ID
-        )
+        request = BulkMoveRequest(todo_ids=[str(ObjectId())], project_id=FAKE_PROJECT_ID)
         result = await TodoService.bulk_move_todos(request, FAKE_USER_ID)
         assert result.success == []
 
@@ -1515,9 +1466,7 @@ class TestCalculateStats:
         assert len(result.labels) == 2
         m_set.assert_awaited_once()
 
-    async def test_empty_aggregation_returns_default_stats(
-        self, mock_todos_collection, mock_cache
-    ):
+    async def test_empty_aggregation_returns_default_stats(self, mock_todos_collection, mock_cache):
         m_get, _, _, _ = mock_cache
         m_get.return_value = None
 
@@ -1529,9 +1478,7 @@ class TestCalculateStats:
         assert result.total == 0
         assert result.completion_rate == pytest.approx(0.0)
 
-    async def test_zero_total_no_division_error(
-        self, mock_todos_collection, mock_cache
-    ):
+    async def test_zero_total_no_division_error(self, mock_todos_collection, mock_cache):
         m_get, _, _, _ = mock_cache
         m_get.return_value = None
 
@@ -1561,9 +1508,7 @@ class TestCalculateStats:
 
 @pytest.mark.unit
 class TestSearchTodos:
-    async def test_empty_query_returns_empty_list(
-        self, mock_todos_collection, mock_cache
-    ):
+    async def test_empty_query_returns_empty_list(self, mock_todos_collection, mock_cache):
         params = TodoSearchParams(q=None, mode=SearchMode.SEMANTIC)
         result = await TodoService._search_todos(FAKE_USER_ID, params)
         assert result.meta.total == 0
@@ -1593,9 +1538,7 @@ class TestSearchTodos:
         ]
         mock_vector_utils["vector_search"].return_value = fake_responses
 
-        params = TodoSearchParams(
-            q="test query", mode=SearchMode.SEMANTIC, page=2, per_page=10
-        )
+        params = TodoSearchParams(q="test query", mode=SearchMode.SEMANTIC, page=2, per_page=10)
         result = await TodoService._search_todos(FAKE_USER_ID, params)
 
         assert result.meta.total == 15
@@ -1615,28 +1558,9 @@ class TestSearchTodos:
         agg_cursor.to_list = AsyncMock(return_value=[])
         mock_todos_collection.aggregate = MagicMock(return_value=agg_cursor)
 
-        params = TodoSearchParams(
-            q="hybrid test", mode=SearchMode.HYBRID, include_stats=True
-        )
+        params = TodoSearchParams(q="hybrid test", mode=SearchMode.HYBRID, include_stats=True)
         result = await TodoService._search_todos(FAKE_USER_ID, params)
         assert result.stats is not None
-
-
-# ===========================================================================
-# TodoService.reindex_todos
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestReindexTodos:
-    async def test_delegates_to_bulk_index(self, mock_vector_utils):
-        mock_vector_utils["bulk"].return_value = 42
-
-        result = await TodoService.reindex_todos(FAKE_USER_ID, batch_size=50)
-
-        assert result["indexed"] == 42
-        assert result["status"] == "completed"
-        mock_vector_utils["bulk"].assert_awaited_once_with(FAKE_USER_ID, 50)
 
 
 # ===========================================================================
@@ -1707,9 +1631,7 @@ class TestProjectServiceCreate:
         mock_projects_collection.find_one = AsyncMock(side_effect=_find_one_side_effect)
 
         with pytest.raises(ValueError, match="Failed to create project"):
-            await ProjectService.create_project(
-                ProjectCreate(name="Broken"), FAKE_USER_ID
-            )
+            await ProjectService.create_project(ProjectCreate(name="Broken"), FAKE_USER_ID)
 
 
 @pytest.mark.unit
@@ -1735,9 +1657,7 @@ class TestProjectServiceList:
         assert len(result) == 1
         assert isinstance(result[0], ProjectResponse)
 
-    async def test_fetches_from_db_and_caches(
-        self, mock_projects_collection, mock_cache
-    ):
+    async def test_fetches_from_db_and_caches(self, mock_projects_collection, mock_cache):
         m_get, m_set, _, _ = mock_cache
         m_get.return_value = None
 
@@ -1783,9 +1703,7 @@ class TestProjectServiceUpdate:
         )
         assert isinstance(result, ProjectResponse)
 
-    async def test_not_found_raises_value_error(
-        self, mock_projects_collection, mock_cache
-    ):
+    async def test_not_found_raises_value_error(self, mock_projects_collection, mock_cache):
         mock_projects_collection.find_one = AsyncMock(return_value=None)
 
         with pytest.raises(ValueError, match="not found"):
@@ -1795,12 +1713,8 @@ class TestProjectServiceUpdate:
                 FAKE_USER_ID,
             )
 
-    async def test_cannot_update_default_inbox(
-        self, mock_projects_collection, mock_cache
-    ):
-        inbox_doc = _make_project_doc(
-            project_id=FAKE_PROJECT_ID, is_default=True, name="Inbox"
-        )
+    async def test_cannot_update_default_inbox(self, mock_projects_collection, mock_cache):
+        inbox_doc = _make_project_doc(project_id=FAKE_PROJECT_ID, is_default=True, name="Inbox")
         mock_projects_collection.find_one = AsyncMock(return_value=inbox_doc)
 
         with pytest.raises(ValueError, match="Cannot update default"):
@@ -1841,20 +1755,14 @@ class TestProjectServiceDelete:
         mock_todos_collection.update_many.assert_awaited_once()
         mock_projects_collection.delete_one.assert_awaited_once()
 
-    async def test_not_found_raises_value_error(
-        self, mock_projects_collection, mock_cache
-    ):
+    async def test_not_found_raises_value_error(self, mock_projects_collection, mock_cache):
         mock_projects_collection.find_one = AsyncMock(return_value=None)
 
         with pytest.raises(ValueError, match="not found"):
             await ProjectService.delete_project(FAKE_PROJECT_ID, FAKE_USER_ID)
 
-    async def test_cannot_delete_default_inbox(
-        self, mock_projects_collection, mock_cache
-    ):
-        inbox_doc = _make_project_doc(
-            project_id=FAKE_PROJECT_ID, is_default=True, name="Inbox"
-        )
+    async def test_cannot_delete_default_inbox(self, mock_projects_collection, mock_cache):
+        inbox_doc = _make_project_doc(project_id=FAKE_PROJECT_ID, is_default=True, name="Inbox")
         mock_projects_collection.find_one = AsyncMock(return_value=inbox_doc)
 
         with pytest.raises(ValueError, match="Cannot delete default"):
@@ -1869,9 +1777,7 @@ class TestProjectServiceDelete:
 @pytest.mark.unit
 class TestCompatibilityWrappers:
     async def test_create_todo_wrapper(self):
-        with patch.object(
-            TodoService, "create_todo", new_callable=AsyncMock
-        ) as mock_create:
+        with patch.object(TodoService, "create_todo", new_callable=AsyncMock) as mock_create:
             mock_response = MagicMock(spec=TodoResponse)
             mock_create.return_value = mock_response
 
@@ -1890,9 +1796,7 @@ class TestCompatibilityWrappers:
             assert result == mock_response
 
     async def test_get_all_todos_wrapper(self):
-        with patch.object(
-            TodoService, "list_todos", new_callable=AsyncMock
-        ) as mock_list:
+        with patch.object(TodoService, "list_todos", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = TodoListResponse(
                 data=[],
                 meta=PaginationMeta(
@@ -1908,9 +1812,7 @@ class TestCompatibilityWrappers:
             assert result == []
 
     async def test_update_todo_wrapper(self):
-        with patch.object(
-            TodoService, "update_todo", new_callable=AsyncMock
-        ) as mock_update:
+        with patch.object(TodoService, "update_todo", new_callable=AsyncMock) as mock_update:
             mock_response = MagicMock(spec=TodoResponse)
             mock_update.return_value = mock_response
             updates = TodoUpdateRequest(title="Wrap")
@@ -1918,16 +1820,12 @@ class TestCompatibilityWrappers:
             assert result == mock_response
 
     async def test_delete_todo_wrapper(self):
-        with patch.object(
-            TodoService, "delete_todo", new_callable=AsyncMock
-        ) as mock_del:
+        with patch.object(TodoService, "delete_todo", new_callable=AsyncMock) as mock_del:
             await delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
             mock_del.assert_awaited_once()
 
     async def test_search_todos_wrapper(self):
-        with patch.object(
-            TodoService, "list_todos", new_callable=AsyncMock
-        ) as mock_list:
+        with patch.object(TodoService, "list_todos", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = TodoListResponse(
                 data=[],
                 meta=PaginationMeta(
@@ -1943,17 +1841,13 @@ class TestCompatibilityWrappers:
             assert result == []
 
     async def test_get_todo_stats_wrapper(self):
-        with patch.object(
-            TodoService, "_calculate_stats", new_callable=AsyncMock
-        ) as mock_stats:
+        with patch.object(TodoService, "_calculate_stats", new_callable=AsyncMock) as mock_stats:
             mock_stats.return_value = TodoStats(total=5, completed=2, pending=3)
             result = await get_todo_stats(FAKE_USER_ID)
             assert result["total"] == 5
 
     async def test_get_todos_by_date_range_wrapper(self):
-        with patch.object(
-            TodoService, "list_todos", new_callable=AsyncMock
-        ) as mock_list:
+        with patch.object(TodoService, "list_todos", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = TodoListResponse(
                 data=[],
                 meta=PaginationMeta(
@@ -1965,32 +1859,26 @@ class TestCompatibilityWrappers:
                     has_prev=False,
                 ),
             )
-            start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-            end = datetime(2026, 12, 31, tzinfo=timezone.utc)
+            start = datetime(2026, 1, 1, tzinfo=UTC)
+            end = datetime(2026, 12, 31, tzinfo=UTC)
             result = await get_todos_by_date_range(FAKE_USER_ID, start, end)
             assert result == []
 
     async def test_get_all_labels_wrapper(self):
-        with patch.object(
-            TodoService, "_calculate_stats", new_callable=AsyncMock
-        ) as mock_stats:
+        with patch.object(TodoService, "_calculate_stats", new_callable=AsyncMock) as mock_stats:
             mock_stats.return_value = TodoStats(labels=[{"name": "work", "count": 5}])
             result = await get_all_labels(FAKE_USER_ID)
             assert len(result) == 1
             assert result[0]["name"] == "work"
 
     async def test_get_all_labels_empty(self):
-        with patch.object(
-            TodoService, "_calculate_stats", new_callable=AsyncMock
-        ) as mock_stats:
+        with patch.object(TodoService, "_calculate_stats", new_callable=AsyncMock) as mock_stats:
             mock_stats.return_value = TodoStats()
             result = await get_all_labels(FAKE_USER_ID)
             assert result == []
 
     async def test_get_todos_by_label_wrapper(self):
-        with patch.object(
-            TodoService, "list_todos", new_callable=AsyncMock
-        ) as mock_list:
+        with patch.object(TodoService, "list_todos", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = TodoListResponse(
                 data=[],
                 meta=PaginationMeta(
@@ -2006,9 +1894,7 @@ class TestCompatibilityWrappers:
             assert result == []
 
     async def test_semantic_search_todos_wrapper(self):
-        with patch.object(
-            TodoService, "list_todos", new_callable=AsyncMock
-        ) as mock_list:
+        with patch.object(TodoService, "list_todos", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = TodoListResponse(
                 data=[],
                 meta=PaginationMeta(
@@ -2027,9 +1913,7 @@ class TestCompatibilityWrappers:
             assert call_args[1].mode == SearchMode.SEMANTIC
 
     async def test_hybrid_search_todos_wrapper(self):
-        with patch.object(
-            TodoService, "list_todos", new_callable=AsyncMock
-        ) as mock_list:
+        with patch.object(TodoService, "list_todos", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = TodoListResponse(
                 data=[],
                 meta=PaginationMeta(
@@ -2047,25 +1931,19 @@ class TestCompatibilityWrappers:
             assert call_args[1].mode == SearchMode.HYBRID
 
     async def test_create_project_wrapper(self):
-        with patch.object(
-            ProjectService, "create_project", new_callable=AsyncMock
-        ) as mock_create:
+        with patch.object(ProjectService, "create_project", new_callable=AsyncMock) as mock_create:
             mock_create.return_value = MagicMock(spec=ProjectResponse)
             await create_project(ProjectCreate(name="Wrap"), FAKE_USER_ID)
             mock_create.assert_awaited_once()
 
     async def test_get_all_projects_wrapper(self):
-        with patch.object(
-            ProjectService, "list_projects", new_callable=AsyncMock
-        ) as mock_list:
+        with patch.object(ProjectService, "list_projects", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
             result = await get_all_projects(FAKE_USER_ID)
             assert result == []
 
     async def test_update_project_wrapper(self):
-        with patch.object(
-            ProjectService, "update_project", new_callable=AsyncMock
-        ) as mock_up:
+        with patch.object(ProjectService, "update_project", new_callable=AsyncMock) as mock_up:
             mock_up.return_value = MagicMock(spec=ProjectResponse)
             await update_project(
                 FAKE_PROJECT_ID,
@@ -2075,19 +1953,9 @@ class TestCompatibilityWrappers:
             mock_up.assert_awaited_once()
 
     async def test_delete_project_wrapper(self):
-        with patch.object(
-            ProjectService, "delete_project", new_callable=AsyncMock
-        ) as mock_del:
+        with patch.object(ProjectService, "delete_project", new_callable=AsyncMock) as mock_del:
             await delete_project(FAKE_PROJECT_ID, FAKE_USER_ID)
             mock_del.assert_awaited_once()
-
-    async def test_bulk_index_existing_todos_wrapper(self):
-        with patch.object(
-            TodoService, "reindex_todos", new_callable=AsyncMock
-        ) as mock_reindex:
-            mock_reindex.return_value = {"indexed": 10}
-            result = await bulk_index_existing_todos(FAKE_USER_ID, 50)
-            assert result == {"indexed": 10}
 
 
 # ===========================================================================
@@ -2134,9 +2002,7 @@ class TestBulkCompleteTodos:
         assert len(result) == 2
         assert all(isinstance(r, TodoResponse) for r in result)
 
-    async def test_none_modified_raises_404(
-        self, mock_bulk_todos_collection, mock_bulk_cache
-    ):
+    async def test_none_modified_raises_404(self, mock_bulk_todos_collection, mock_bulk_cache):
         mock_result = MagicMock()
         mock_result.modified_count = 0
         mock_bulk_todos_collection.update_many = AsyncMock(return_value=mock_result)
@@ -2145,12 +2011,8 @@ class TestBulkCompleteTodos:
             await bulk_complete_todos([str(ObjectId())], FAKE_USER_ID)
         assert exc_info.value.status_code == 404
 
-    async def test_db_error_raises_500(
-        self, mock_bulk_todos_collection, mock_bulk_cache
-    ):
-        mock_bulk_todos_collection.update_many = AsyncMock(
-            side_effect=Exception("DB error")
-        )
+    async def test_db_error_raises_500(self, mock_bulk_todos_collection, mock_bulk_cache):
+        mock_bulk_todos_collection.update_many = AsyncMock(side_effect=Exception("DB error"))
 
         with pytest.raises(HTTPException) as exc_info:
             await bulk_complete_todos([str(ObjectId())], FAKE_USER_ID)
@@ -2178,39 +2040,27 @@ class TestBulkServiceMoveTodos:
 
             # Updated todos query
             updated_cursor = AsyncMock()
-            updated_cursor.to_list = AsyncMock(
-                return_value=[_make_todo_doc(todo_ids[0])]
-            )
+            updated_cursor.to_list = AsyncMock(return_value=[_make_todo_doc(todo_ids[0])])
 
             # Two find calls: first for old project IDs, second for updated todos
-            mock_bulk_todos_collection.find = MagicMock(
-                side_effect=[old_cursor, updated_cursor]
-            )
+            mock_bulk_todos_collection.find = MagicMock(side_effect=[old_cursor, updated_cursor])
 
             mock_result = MagicMock()
             mock_result.modified_count = 1
             mock_bulk_todos_collection.update_many = AsyncMock(return_value=mock_result)
 
-            result = await bulk_service_move_todos(
-                todo_ids, FAKE_PROJECT_ID, FAKE_USER_ID
-            )
+            result = await bulk_service_move_todos(todo_ids, FAKE_PROJECT_ID, FAKE_USER_ID)
             assert len(result) == 1
 
-    async def test_project_not_found_raises_404(
-        self, mock_bulk_todos_collection, mock_bulk_cache
-    ):
+    async def test_project_not_found_raises_404(self, mock_bulk_todos_collection, mock_bulk_cache):
         with patch("app.db.mongodb.collections.projects_collection") as mock_projects:
             mock_projects.find_one = AsyncMock(return_value=None)
 
             with pytest.raises(HTTPException) as exc_info:
-                await bulk_service_move_todos(
-                    [str(ObjectId())], FAKE_PROJECT_ID, FAKE_USER_ID
-                )
+                await bulk_service_move_todos([str(ObjectId())], FAKE_PROJECT_ID, FAKE_USER_ID)
             assert exc_info.value.status_code == 404
 
-    async def test_none_modified_raises_404(
-        self, mock_bulk_todos_collection, mock_bulk_cache
-    ):
+    async def test_none_modified_raises_404(self, mock_bulk_todos_collection, mock_bulk_cache):
         with patch("app.db.mongodb.collections.projects_collection") as mock_projects:
             mock_projects.find_one = AsyncMock(
                 return_value={
@@ -2228,9 +2078,7 @@ class TestBulkServiceMoveTodos:
             mock_bulk_todos_collection.update_many = AsyncMock(return_value=mock_result)
 
             with pytest.raises(HTTPException) as exc_info:
-                await bulk_service_move_todos(
-                    [str(ObjectId())], FAKE_PROJECT_ID, FAKE_USER_ID
-                )
+                await bulk_service_move_todos([str(ObjectId())], FAKE_PROJECT_ID, FAKE_USER_ID)
             assert exc_info.value.status_code == 404
 
 
@@ -2253,9 +2101,7 @@ class TestBulkServiceDeleteTodos:
         await bulk_service_delete_todos(todo_ids, FAKE_USER_ID)
         mock_bulk_todos_collection.delete_many.assert_awaited_once()
 
-    async def test_none_deleted_raises_404(
-        self, mock_bulk_todos_collection, mock_bulk_cache
-    ):
+    async def test_none_deleted_raises_404(self, mock_bulk_todos_collection, mock_bulk_cache):
         pre_cursor = AsyncMock()
         pre_cursor.to_list = AsyncMock(return_value=[])
         mock_bulk_todos_collection.find = MagicMock(return_value=pre_cursor)
@@ -2268,93 +2114,16 @@ class TestBulkServiceDeleteTodos:
             await bulk_service_delete_todos([str(ObjectId())], FAKE_USER_ID)
         assert exc_info.value.status_code == 404
 
-    async def test_db_error_raises_500(
-        self, mock_bulk_todos_collection, mock_bulk_cache
-    ):
+    async def test_db_error_raises_500(self, mock_bulk_todos_collection, mock_bulk_cache):
         pre_cursor = AsyncMock()
         pre_cursor.to_list = AsyncMock(return_value=[])
         mock_bulk_todos_collection.find = MagicMock(return_value=pre_cursor)
 
-        mock_bulk_todos_collection.delete_many = AsyncMock(
-            side_effect=Exception("DB error")
-        )
+        mock_bulk_todos_collection.delete_many = AsyncMock(side_effect=Exception("DB error"))
 
         with pytest.raises(HTTPException) as exc_info:
             await bulk_service_delete_todos([str(ObjectId())], FAKE_USER_ID)
         assert exc_info.value.status_code == 500
-
-
-# ===========================================================================
-# todo_count_service
-# ===========================================================================
-
-
-@pytest.fixture
-def mock_count_todos_collection():
-    with patch("app.services.todos.todo_count_service.todos_collection") as mock_col:
-        mock_col.count_documents = AsyncMock(return_value=0)
-        yield mock_col
-
-
-@pytest.fixture
-def mock_count_projects_collection():
-    with patch("app.services.todos.todo_count_service.projects_collection") as mock_col:
-        mock_col.update_one = AsyncMock()
-        mock_col.find = MagicMock()
-        yield mock_col
-
-
-@pytest.mark.unit
-class TestUpdateProjectTodoCount:
-    async def test_updates_count(
-        self, mock_count_todos_collection, mock_count_projects_collection
-    ):
-        mock_count_todos_collection.count_documents = AsyncMock(return_value=7)
-
-        await update_project_todo_count(FAKE_PROJECT_ID, FAKE_USER_ID)
-
-        mock_count_projects_collection.update_one.assert_awaited_once()
-        call_args = mock_count_projects_collection.update_one.call_args
-        assert call_args[0][1] == {"$set": {"todo_count": 7}}
-
-    async def test_exception_is_caught(
-        self, mock_count_todos_collection, mock_count_projects_collection
-    ):
-        mock_count_todos_collection.count_documents = AsyncMock(
-            side_effect=Exception("DB down")
-        )
-        # Should not raise
-        await update_project_todo_count(FAKE_PROJECT_ID, FAKE_USER_ID)
-
-
-@pytest.mark.unit
-class TestSyncAllProjectCounts:
-    async def test_syncs_all_projects(
-        self, mock_count_todos_collection, mock_count_projects_collection
-    ):
-        projects = [
-            {"_id": ObjectId(), "is_default": False},
-            {"_id": ObjectId(), "is_default": True},
-        ]
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(return_value=projects)
-        mock_count_projects_collection.find = MagicMock(return_value=mock_cursor)
-
-        mock_count_todos_collection.count_documents = AsyncMock(return_value=3)
-
-        await sync_all_project_counts(FAKE_USER_ID)
-
-        assert mock_count_projects_collection.update_one.await_count == 2
-
-    async def test_exception_is_caught(
-        self, mock_count_todos_collection, mock_count_projects_collection
-    ):
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(side_effect=Exception("DB down"))
-        mock_count_projects_collection.find = MagicMock(return_value=mock_cursor)
-
-        # Should not raise
-        await sync_all_project_counts(FAKE_USER_ID)
 
 
 # ===========================================================================
@@ -2453,9 +2222,7 @@ class TestSyncGoalNodeCompletion:
     ):
         mock_sync_goals_collection.find_one = AsyncMock(return_value=None)
 
-        result = await sync_goal_node_completion(
-            str(ObjectId()), "node_1", True, FAKE_USER_ID
-        )
+        result = await sync_goal_node_completion(str(ObjectId()), "node_1", True, FAKE_USER_ID)
         assert result is False
 
     async def test_node_not_found_returns_false(
@@ -2498,9 +2265,7 @@ class TestSyncGoalNodeCompletion:
         }
         mock_sync_goals_collection.find_one = AsyncMock(return_value=goal_doc)
 
-        result = await sync_goal_node_completion(
-            str(goal_doc["_id"]), "node_1", True, FAKE_USER_ID
-        )
+        result = await sync_goal_node_completion(str(goal_doc["_id"]), "node_1", True, FAKE_USER_ID)
         assert result is False
 
     async def test_no_todo_modified_returns_false(
@@ -2528,9 +2293,7 @@ class TestSyncGoalNodeCompletion:
         mock_result.modified_count = 0
         mock_sync_todos_collection.update_one = AsyncMock(return_value=mock_result)
 
-        result = await sync_goal_node_completion(
-            str(goal_doc["_id"]), "node_1", True, FAKE_USER_ID
-        )
+        result = await sync_goal_node_completion(str(goal_doc["_id"]), "node_1", True, FAKE_USER_ID)
         assert result is False
 
     async def test_exception_returns_false(
@@ -2539,13 +2302,9 @@ class TestSyncGoalNodeCompletion:
         mock_sync_todos_collection,
         mock_sync_cache,
     ):
-        mock_sync_goals_collection.find_one = AsyncMock(
-            side_effect=Exception("DB error")
-        )
+        mock_sync_goals_collection.find_one = AsyncMock(side_effect=Exception("DB error"))
 
-        result = await sync_goal_node_completion(
-            str(ObjectId()), "node_1", True, FAKE_USER_ID
-        )
+        result = await sync_goal_node_completion(str(ObjectId()), "node_1", True, FAKE_USER_ID)
         assert result is False
 
 
@@ -2568,9 +2327,7 @@ class TestSyncSubtaskToGoalCompletion:
         mock_result.modified_count = 1
         mock_sync_goals_collection.update_one = AsyncMock(return_value=mock_result)
 
-        result = await sync_subtask_to_goal_completion(
-            FAKE_TODO_ID, "sub_1", True, FAKE_USER_ID
-        )
+        result = await sync_subtask_to_goal_completion(FAKE_TODO_ID, "sub_1", True, FAKE_USER_ID)
         assert result is True
 
     async def test_goal_not_found_returns_false(
@@ -2581,9 +2338,7 @@ class TestSyncSubtaskToGoalCompletion:
     ):
         mock_sync_goals_collection.find_one = AsyncMock(return_value=None)
 
-        result = await sync_subtask_to_goal_completion(
-            FAKE_TODO_ID, "sub_1", True, FAKE_USER_ID
-        )
+        result = await sync_subtask_to_goal_completion(FAKE_TODO_ID, "sub_1", True, FAKE_USER_ID)
         assert result is False
 
     async def test_no_node_modified_returns_false(
@@ -2599,9 +2354,7 @@ class TestSyncSubtaskToGoalCompletion:
         mock_result.modified_count = 0
         mock_sync_goals_collection.update_one = AsyncMock(return_value=mock_result)
 
-        result = await sync_subtask_to_goal_completion(
-            FAKE_TODO_ID, "sub_1", True, FAKE_USER_ID
-        )
+        result = await sync_subtask_to_goal_completion(FAKE_TODO_ID, "sub_1", True, FAKE_USER_ID)
         assert result is False
 
     async def test_exception_returns_false(
@@ -2610,13 +2363,9 @@ class TestSyncSubtaskToGoalCompletion:
         mock_sync_todos_collection,
         mock_sync_cache,
     ):
-        mock_sync_goals_collection.find_one = AsyncMock(
-            side_effect=Exception("DB error")
-        )
+        mock_sync_goals_collection.find_one = AsyncMock(side_effect=Exception("DB error"))
 
-        result = await sync_subtask_to_goal_completion(
-            FAKE_TODO_ID, "sub_1", True, FAKE_USER_ID
-        )
+        result = await sync_subtask_to_goal_completion(FAKE_TODO_ID, "sub_1", True, FAKE_USER_ID)
         assert result is False
 
 
@@ -2633,9 +2382,7 @@ class TestCreateGoalProjectAndTodo:
         project_oid = ObjectId()
 
         # Goals project exists
-        mock_sync_projects_collection.find_one = AsyncMock(
-            return_value={"_id": project_oid}
-        )
+        mock_sync_projects_collection.find_one = AsyncMock(return_value={"_id": project_oid})
 
         roadmap_data = {
             "nodes": [
@@ -2675,9 +2422,7 @@ class TestCreateGoalProjectAndTodo:
         mock_sync_projects_collection,
         mock_sync_cache,
     ):
-        mock_sync_projects_collection.find_one = AsyncMock(
-            side_effect=Exception("DB down")
-        )
+        mock_sync_projects_collection.find_one = AsyncMock(side_effect=Exception("DB down"))
 
         with pytest.raises(Exception, match="DB down"):
             await create_goal_project_and_todo(
@@ -2690,20 +2435,14 @@ class TestCreateGoalProjectAndTodo:
 
 @pytest.mark.unit
 class TestGetOrCreateGoalsProject:
-    async def test_returns_existing(
-        self, mock_sync_projects_collection, mock_sync_cache
-    ):
+    async def test_returns_existing(self, mock_sync_projects_collection, mock_sync_cache):
         project_oid = ObjectId()
-        mock_sync_projects_collection.find_one = AsyncMock(
-            return_value={"_id": project_oid}
-        )
+        mock_sync_projects_collection.find_one = AsyncMock(return_value={"_id": project_oid})
 
         result = await _get_or_create_goals_project(FAKE_USER_ID)
         assert result == str(project_oid)
 
-    async def test_creates_new_project(
-        self, mock_sync_projects_collection, mock_sync_cache
-    ):
+    async def test_creates_new_project(self, mock_sync_projects_collection, mock_sync_cache):
         mock_sync_projects_collection.find_one = AsyncMock(return_value=None)
 
         mock_result = MagicMock()

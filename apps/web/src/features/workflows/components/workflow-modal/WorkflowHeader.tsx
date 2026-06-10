@@ -7,26 +7,30 @@ import {
 } from "@heroui/dropdown";
 import { Input, Textarea } from "@heroui/input";
 import {
+  Cancel01Icon,
   Delete02Icon,
-  LinkSquare02Icon,
   MoreVerticalIcon,
-  PlayIcon,
+  ReloadIcon,
+  ToggleOffIcon,
+  ToggleOnIcon,
 } from "@icons";
-import { useRouter } from "next/navigation";
 import { type Control, Controller, type FieldErrors } from "react-hook-form";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
-import { type Workflow, workflowApi } from "../../api/workflowApi";
+import type { Workflow } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 
 interface WorkflowHeaderProps {
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "preview";
   control: Control<WorkflowFormData>;
   errors: FieldErrors<WorkflowFormData>;
   currentWorkflow: Workflow | null;
-  onWorkflowChange: (workflow: Workflow | null) => void;
+  isActivated: boolean;
+  isTogglingActivation: boolean;
+  onToggleActivation: (activated: boolean) => void;
+  isPublic?: boolean;
+  onUnpublish?: () => void | Promise<void>;
   onDelete: () => void;
-  onRefetchWorkflows: () => void;
+  onResetToDefault?: () => void | Promise<void>;
 }
 
 export default function WorkflowHeader({
@@ -34,52 +38,17 @@ export default function WorkflowHeader({
   control,
   errors,
   currentWorkflow,
-  onWorkflowChange,
+  isActivated,
+  isTogglingActivation,
+  onToggleActivation,
+  isPublic,
+  onUnpublish,
   onDelete,
-  onRefetchWorkflows,
+  onResetToDefault,
 }: WorkflowHeaderProps) {
-  const router = useRouter();
-
-  const handlePublishToggle = async () => {
-    if (!currentWorkflow?.id) return;
-
-    try {
-      if (currentWorkflow.is_public) {
-        trackEvent(ANALYTICS_EVENTS.WORKFLOWS_UNPUBLISHED, {
-          workflow_id: currentWorkflow.id,
-          workflow_title: currentWorkflow.title,
-        });
-        await workflowApi.unpublishWorkflow(currentWorkflow.id);
-        onWorkflowChange(
-          currentWorkflow ? { ...currentWorkflow, is_public: false } : null,
-        );
-      } else {
-        trackEvent(ANALYTICS_EVENTS.WORKFLOWS_PUBLISHED, {
-          workflow_id: currentWorkflow.id,
-          workflow_title: currentWorkflow.title,
-          step_count: currentWorkflow.steps?.length || 0,
-        });
-        await workflowApi.publishWorkflow(currentWorkflow.id);
-        onWorkflowChange(
-          currentWorkflow ? { ...currentWorkflow, is_public: true } : null,
-        );
-        if (currentWorkflow.id) {
-          router.push(
-            `/use-cases/${currentWorkflow.slug ?? currentWorkflow.id}`,
-          );
-        }
-      }
-      await onRefetchWorkflows();
-    } catch (error) {
-      console.error("Error publishing/unpublishing workflow:", error);
-    }
-  };
-
-  const handleMarketplaceView = () => {
-    if (currentWorkflow?.id) {
-      router.push(`/use-cases/${currentWorkflow.slug ?? currentWorkflow.id}`);
-    }
-  };
+  const isSystemWorkflow = !!currentWorkflow?.is_system_workflow;
+  const showUnpublish = !!isPublic && !!onUnpublish;
+  const showReset = isSystemWorkflow && !!onResetToDefault;
 
   return (
     <div className="flex flex-col pt-5">
@@ -107,53 +76,74 @@ export default function WorkflowHeader({
           )}
         />
 
-        {mode === "edit" && (
-          <Dropdown placement="bottom-end" className="max-w-100">
+        {mode === "edit" && currentWorkflow && (
+          <Dropdown placement="bottom-end" className="w-64">
             <DropdownTrigger>
               <Button variant="flat" size="sm" isIconOnly>
                 <MoreVerticalIcon />
               </Button>
             </DropdownTrigger>
             <DropdownMenu
-              onAction={async (key) => {
-                if (key === "publish") {
-                  await handlePublishToggle();
-                } else if (key === "marketplace") {
-                  handleMarketplaceView();
+              disabledKeys={isTogglingActivation ? ["activation"] : []}
+              onAction={(key) => {
+                if (key === "activation") {
+                  onToggleActivation(!isActivated);
+                } else if (key === "unpublish" && onUnpublish) {
+                  onUnpublish();
+                } else if (key === "reset" && onResetToDefault) {
+                  onResetToDefault();
                 } else if (key === "delete") {
-                  await onDelete();
+                  onDelete();
                 }
               }}
             >
               <DropdownItem
-                key="publish"
-                startContent={<PlayIcon className="relative top-1 h-4 w-4" />}
+                key="activation"
+                startContent={
+                  isActivated ? (
+                    <ToggleOffIcon className="h-4 w-4" />
+                  ) : (
+                    <ToggleOnIcon className="h-4 w-4" />
+                  )
+                }
                 classNames={{
                   description: "text-wrap",
                   base: "items-start!",
                 }}
                 description={
-                  currentWorkflow?.is_public
-                    ? "Remove from community marketplace"
-                    : "Share to community marketplace"
+                  isActivated
+                    ? "Stop this workflow from running"
+                    : "Allow this workflow to run"
                 }
               >
-                {currentWorkflow?.is_public
-                  ? "Unpublish Workflow"
-                  : "Publish Workflow"}
+                {isActivated ? "Disable" : "Enable"}
               </DropdownItem>
 
-              {currentWorkflow?.is_public ? (
+              {showUnpublish ? (
                 <DropdownItem
-                  key="marketplace"
-                  startContent={<LinkSquare02Icon className="h-4 w-4" />}
+                  key="unpublish"
+                  startContent={<Cancel01Icon className="h-4 w-4" />}
                   classNames={{
                     description: "text-wrap",
                     base: "items-start!",
                   }}
-                  description="Open community marketplace"
+                  description="Remove from community marketplace"
                 >
-                  View on Marketplace
+                  Unpublish
+                </DropdownItem>
+              ) : null}
+
+              {showReset ? (
+                <DropdownItem
+                  key="reset"
+                  startContent={<ReloadIcon className="h-4 w-4" />}
+                  classNames={{
+                    description: "text-wrap",
+                    base: "items-start!",
+                  }}
+                  description="Restore this workflow to its original GAIA-provided definition"
+                >
+                  Reset to Default
                 </DropdownItem>
               ) : null}
 

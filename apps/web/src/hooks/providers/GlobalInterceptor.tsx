@@ -1,31 +1,17 @@
 "use client";
 
 /**
- * GlobalInterceptor Component
+ * Mounts global, route-agnostic listeners that need to run anywhere the
+ * user might land after an external redirect (OAuth, etc.).
  *
- * This component isolates the axios interceptor setup to prevent potential
- * server-side rendering issues and organize global side effects.
- *
- * Purpose:
- * 1. Separates axios interceptor logic from the main providers layout
- * 2. Ensures useAxiosInterceptor runs in a controlled client-side context
- * 3. Prevents potential SSR/hydration issues with axios configuration
- * 4. Makes the provider architecture more modular and maintainable
- *
- * The interceptor sets up:
- * - Request/response interceptors for authentication
- * - Error handling for 401/403 responses
- * - Token refresh logic
- * - Request/response logging in development
- *
- * This component returns null since it only performs side effects.
+ * Axios error handling is NOT mounted here — it lives in
+ * `useAxiosInterceptor`, called only inside the (main) app shell, so
+ * background-fetch errors never surface toasts on landing pages.
  */
 
-import useAxiosInterceptor from "@/hooks/api/useAxiosInterceptor";
 import { useOAuthSuccessToast } from "@/hooks/useOAuthSuccessToast";
 
 const GlobalInterceptor = () => {
-  useAxiosInterceptor();
   useOAuthSuccessToast();
   return null;
 };

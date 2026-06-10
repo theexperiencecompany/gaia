@@ -12,18 +12,6 @@ export type {
   TodoUpdate,
 } from "@gaia/shared/types";
 
-export interface Subtask {
-  id: string;
-  title: string;
-  completed: boolean;
-}
-
-export interface TodoProject {
-  id: string;
-  name: string;
-  color?: string;
-}
-
 export interface TodoCreate {
   title: string;
   description?: string;
@@ -43,7 +31,13 @@ export interface TodoCounts {
   overdue: number;
 }
 
-export type FilterTab = "all" | "today" | "upcoming" | "completed";
+export type FilterTab =
+  | "all"
+  | "today"
+  | "upcoming"
+  | "inbox"
+  | "overdue"
+  | "completed";
 
 export interface SortOption {
   field: "created_at" | "due_date" | "priority" | "title";

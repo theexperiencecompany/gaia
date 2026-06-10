@@ -10,6 +10,10 @@ import type { ReactNode } from "react";
  * the 15KB out of the critical path.
  *
  * See https://motion.dev/docs/react-reduce-bundle-size for the pattern.
+ *
+ * Audit: every animated JSX node in the tree uses `<m.*>` (216 usages, 0
+ * uses of `<motion.*>` as of this branch). `strict` mode is on in dev so a
+ * future regression to the eager `motion` component throws loudly.
  */
 const loadFeatures = () =>
   import("motion/react").then((res) => res.domAnimation);
@@ -19,5 +23,12 @@ export default function LazyMotionProvider({
 }: {
   children: ReactNode;
 }) {
-  return <LazyMotion features={loadFeatures}>{children}</LazyMotion>;
+  return (
+    <LazyMotion
+      features={loadFeatures}
+      strict={process.env.NODE_ENV !== "production"}
+    >
+      {children}
+    </LazyMotion>
+  );
 }

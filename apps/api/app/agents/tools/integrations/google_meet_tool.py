@@ -1,81 +1,91 @@
 """Google Meet custom tools using Composio custom tool infrastructure."""
 
 import datetime
-from typing import Any, Dict, List
+from typing import Any
 
-import httpx
-from app.models.common_models import GatherContextInput
 from composio import Composio
 
-_http_client = httpx.Client(timeout=30)
+from app.models.common_models import GatherContextInput
+from app.services.composio.proxy_client import proxy_request_sync
+from shared.py.wide_events import log
+
+GOOGLE_MEET_TOOLKIT = "GOOGLEMEET"
 
 
-def register_google_meet_custom_tools(composio: Composio) -> List[str]:
+def register_google_meet_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="GOOGLEMEET")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get Google Meet context snapshot: upcoming meetings with Meet links.
 
         Zero required parameters. Returns user profile and scheduled Meet calls.
         """
-        token = auth_credentials.get("access_token")
-        if not token:
-            raise ValueError("Missing access_token in auth_credentials")
+        user_id = auth_credentials.get("user_id")
+        if not user_id:
+            raise ValueError("Missing user_id in auth_credentials")
 
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/json",
-        }
+        me: dict[str, Any] = {}
+        try:
+            me = (
+                proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=GOOGLE_MEET_TOOLKIT,
+                    endpoint="https://www.googleapis.com/oauth2/v3/userinfo",
+                    method="GET",
+                )
+                or {}
+            )
+        except Exception as e:
+            log.debug(f"Google Meet userinfo fetch failed: {e}")
 
-        # Get user profile
-        me_resp = _http_client.get(
-            "https://www.googleapis.com/oauth2/v3/userinfo",
-            headers=headers,
-        )
-        me_resp.raise_for_status()
-        me = me_resp.json()
-
-        # Get upcoming calendar events that have conferenceData (Meet links)
+        # The calendar fetch may fail if the GOOGLEMEET connection lacks
+        # calendar scope. The legacy tool gated on status_code == 200 and
+        # returned an empty list — preserve that behavior so the whole tool
+        # doesn't error out when only the profile is accessible.
+        events_data: dict[str, Any] = {}
         now = datetime.datetime.utcnow().isoformat() + "Z"
-        events_resp = _http_client.get(
-            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
-            headers=headers,
-            params={
-                "timeMin": now,
-                "maxResults": 5,
-                "singleEvents": "true",
-                "orderBy": "startTime",
-                "fields": "items(id,summary,start,end,conferenceData,htmlLink)",
-            },
-        )
-        upcoming_meets: List[Dict[str, Any]] = []
-        if events_resp.status_code == 200:
-            items = events_resp.json().get("items", [])
-            for event in items:
-                conf = event.get("conferenceData", {})
-                if not conf:
-                    continue
-                entry_points = conf.get("entryPoints", [])
-                meet_link = next(
-                    (
-                        ep.get("uri")
-                        for ep in entry_points
-                        if ep.get("entryPointType") == "video"
-                    ),
-                    None,
+        try:
+            events_data = (
+                proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=GOOGLE_MEET_TOOLKIT,
+                    endpoint="https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                    method="GET",
+                    query={
+                        "timeMin": now,
+                        "maxResults": 5,
+                        "singleEvents": "true",
+                        "orderBy": "startTime",
+                        "fields": "items(id,summary,start,end,conferenceData,htmlLink)",
+                    },
                 )
-                start = event.get("start", {})
-                upcoming_meets.append(
-                    {
-                        "id": event.get("id"),
-                        "summary": event.get("summary", "")[:100],
-                        "start": start.get("dateTime") or start.get("date"),
-                        "meet_link": meet_link,
-                    }
-                )
+                or {}
+            )
+        except Exception as e:
+            log.debug(f"Google Meet calendar fetch failed: {e}")
+
+        upcoming_meets: list[dict[str, Any]] = []
+        for event in events_data.get("items", []):
+            conf = event.get("conferenceData", {})
+            if not conf:
+                continue
+            entry_points = conf.get("entryPoints", [])
+            meet_link = next(
+                (ep.get("uri") for ep in entry_points if ep.get("entryPointType") == "video"),
+                None,
+            )
+            start = event.get("start", {})
+            upcoming_meets.append(
+                {
+                    "id": event.get("id"),
+                    "summary": event.get("summary", "")[:100],
+                    "start": start.get("dateTime") or start.get("date"),
+                    "meet_link": meet_link,
+                }
+            )
 
         return {
             "user": {

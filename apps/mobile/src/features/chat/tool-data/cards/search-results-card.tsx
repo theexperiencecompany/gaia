@@ -1,182 +1,209 @@
-import { Card, Chip, PressableFeedback } from "heroui-native";
+import type { ImageResult, SearchResults, WebResult } from "@gaia/shared";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useEffect, useState } from "react";
-import { Image, Linking, View } from "react-native";
+import { Image, Linking, Pressable, ScrollView, View } from "react-native";
 import Animated, {
+  FadeInRight,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withSequence,
   withTiming,
 } from "react-native-reanimated";
-import {
-  AppIcon,
-  Globe02Icon,
-  News01Icon,
-  Search01Icon,
-} from "@/components/icons";
+import { Search01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-
-export interface WebResult {
-  title?: string;
-  url?: string;
-  content?: string;
-  snippet?: string;
-  score?: number;
-}
-
-export interface NewsResult {
-  title?: string;
-  url?: string;
-  content?: string;
-  score?: number;
-}
-
-export interface SearchResults {
-  /** Streaming status — present only during live updates */
-  status?: "running" | "complete" | "error";
-  progress?: string;
-
-  web?: WebResult[];
-  images?: string[];
-  news?: NewsResult[];
-  answer?: string;
-  query?: string;
-  response_time?: number;
-  request_id?: string;
-}
+import {
+  FaviconImage,
+  NewsResultCard,
+  ToolCardHeader,
+  ToolCardInner,
+  ToolCardShell,
+  WebResultRow,
+} from "@/features/chat/tool-data/primitives";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 
 // ---------------------------------------------------------------------------
-// Helpers
+// SourcesPill — stacked favicons + "Search Results" label
+// Mirrors web's SourcesButton: HeroUI Button variant="flat" radius="full"
+// size="sm", 4 stacked favicons (-space-x-3, h-5 w-5 rounded-full border-2
+// border-zinc-900). Tapping opens the WebResultsSheet bottom-sheet.
 // ---------------------------------------------------------------------------
 
-function getHostname(url?: string): string {
-  if (!url) return "";
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
-}
+const FAVICON_OUTER_SIZE = 20; // h-5 w-5
+const FAVICON_INNER_SIZE = 14; // sits inside the 2px border
 
-// ---------------------------------------------------------------------------
-// Shared sub-components
-// ---------------------------------------------------------------------------
-
-function FaviconImage({ url }: { url?: string }) {
-  const [errored, setErrored] = useState(false);
-  const hostname = getHostname(url);
-
-  if (!hostname || errored) {
-    return (
-      <View className="w-4 h-4 rounded-full bg-white/10 items-center justify-center">
-        <AppIcon icon={Globe02Icon} size={10} color="#8e8e93" />
-      </View>
-    );
-  }
+function SourcesPill({
+  web,
+  onPress,
+}: {
+  web: WebResult[];
+  onPress: () => void;
+}) {
+  const previewFavicons = web.slice(0, 4);
 
   return (
-    <Image
-      source={{
-        uri: `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`,
+    <View className="flex-row">
+      <Pressable
+        onPress={onPress}
+        android_ripple={{ color: "rgba(255,255,255,0.08)", borderless: false }}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          paddingHorizontal: 12,
+          paddingVertical: 6,
+          borderRadius: 9999,
+          backgroundColor: "#27272a", // zinc-800 (HeroUI flat)
+          alignSelf: "flex-start",
+        }}
+      >
+        {/* Overlapping favicon circles — mirrors web's -space-x-3 (12px) */}
+        <View className="flex-row">
+          {previewFavicons.map((result, index) => (
+            <View
+              key={(result.url ?? "") + (result.title ?? index)}
+              style={{
+                marginLeft: index === 0 ? 0 : -12,
+                width: FAVICON_OUTER_SIZE,
+                height: FAVICON_OUTER_SIZE,
+                borderRadius: FAVICON_OUTER_SIZE / 2,
+                backgroundColor: "#3f3f46", // zinc-700
+                borderWidth: 2,
+                borderColor: "#18181b", // zinc-900
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+                zIndex: previewFavicons.length - index,
+              }}
+            >
+              <FaviconImage url={result.url} size={FAVICON_INNER_SIZE} />
+            </View>
+          ))}
+        </View>
+        <Text className="text-zinc-300 text-sm font-medium">
+          Search Results
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// WebResultsSheet — bottom-sheet popover equivalent
+// Mirrors web's PopoverContent → WebResults: rounded-2xl bg-zinc-800,
+// scrollable list of WebResultRow. Bottom-sheet handles the "popover" UX.
+// ---------------------------------------------------------------------------
+
+function WebResultsSheet({
+  web,
+  isOpen,
+  onOpenChange,
+}: {
+  web: WebResult[];
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <BottomSheet isOpen={isOpen} onOpenChange={onOpenChange}>
+      <BottomSheet.Portal>
+        <BottomSheet.Overlay />
+        <BottomSheet.Content
+          snapPoints={["60%", "85%"]}
+          enableDynamicSizing={false}
+          enablePanDownToClose
+          backgroundStyle={{ backgroundColor: "#27272a" }}
+          handleIndicatorStyle={{ backgroundColor: "#52525b", width: 40 }}
+        >
+          <View className="px-4 pt-1 pb-3">
+            <Text className="text-zinc-100 text-base font-semibold">
+              Sources
+            </Text>
+            <Text className="text-zinc-500 text-xs mt-0.5">
+              {web.length} {web.length === 1 ? "result" : "results"}
+            </Text>
+          </View>
+          <BottomSheetScrollView
+            contentContainerStyle={{ paddingBottom: 24 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {web.map((result, index) => (
+              <WebResultRow
+                key={(result.url ?? "") + (result.title ?? "")}
+                result={result}
+                isLast={index === web.length - 1}
+              />
+            ))}
+          </BottomSheetScrollView>
+        </BottomSheet.Content>
+      </BottomSheet.Portal>
+    </BottomSheet>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ImageResults — horizontal scroll of 128×128 rounded tiles with alternating
+// ±8deg rotation. Web uses overlapping (-space-x-14) tiles with the same
+// rotation, but the overlap doesn't translate cleanly to RN, so we use a
+// horizontal ScrollView (tap-to-open) per port spec.
+// ---------------------------------------------------------------------------
+
+const IMAGE_TILE_SIZE = 128;
+
+function ImageTile({ imageUrl, index }: { imageUrl: string; index: number }) {
+  const rotation = index % 2 === 0 ? "8deg" : "-8deg";
+
+  return (
+    <Animated.View
+      entering={FadeInRight.delay(index * 60).duration(180)}
+      style={{
+        transform: [{ rotate: rotation }],
+        marginRight: 16,
       }}
-      style={{ width: 14, height: 14, borderRadius: 7 }}
-      onError={() => setErrored(true)}
-    />
+    >
+      <Pressable onPress={() => Linking.openURL(imageUrl)}>
+        <Image
+          source={{ uri: imageUrl }}
+          style={{
+            width: IMAGE_TILE_SIZE,
+            height: IMAGE_TILE_SIZE,
+            borderRadius: 16,
+            backgroundColor: "#27272a",
+          }}
+          resizeMode="cover"
+        />
+      </Pressable>
+    </Animated.View>
   );
 }
 
-function WebResultItem({ result }: { result: WebResult }) {
-  const hostname = getHostname(result.url);
-  const description = result.content || result.snippet;
-
-  return (
-    <PressableFeedback
-      onPress={() => result.url && Linking.openURL(result.url)}
-    >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "flex-start",
-          padding: 12,
-          gap: 10,
-        }}
-      >
-        <View style={{ marginTop: 2 }}>
-          <FaviconImage url={result.url} />
-        </View>
-        <View className="flex-1 gap-0.5">
-          <Text
-            style={{ fontSize: 13, color: "#e4e4e7", fontWeight: "500" }}
-            numberOfLines={2}
-          >
-            {result.title || hostname || "Untitled"}
-          </Text>
-          {!!description && (
-            <Text style={{ fontSize: 12, color: "#8e8e93" }} numberOfLines={2}>
-              {description}
-            </Text>
-          )}
-          {!!hostname && (
-            <Text
-              className="text-[11px] text-[#00bbff] mt-0.5"
-              numberOfLines={1}
-            >
-              {hostname}
-            </Text>
-          )}
-        </View>
-      </View>
-    </PressableFeedback>
+function ImageResults({ images }: { images: ImageResult[] }) {
+  const validImages = images.filter(
+    (url): url is string => typeof url === "string" && url.length > 0,
   );
-}
 
-function NewsResultItem({ article }: { article: NewsResult }) {
-  const hostname = getHostname(article.url);
-  const description = article.content;
+  if (validImages.length === 0) return null;
 
   return (
-    <PressableFeedback
-      onPress={() => article.url && Linking.openURL(article.url)}
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+      }}
     >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "flex-start",
-          padding: 12,
-          gap: 10,
-        }}
-      >
-        <View style={{ marginTop: 2 }}>
-          <FaviconImage url={article.url} />
-        </View>
-        <View className="flex-1 gap-0.5">
-          <Text
-            style={{ fontSize: 13, color: "#e4e4e7", fontWeight: "500" }}
-            numberOfLines={2}
-          >
-            {article.title || "Untitled"}
-          </Text>
-          {!!description && (
-            <Text style={{ fontSize: 12, color: "#8e8e93" }} numberOfLines={2}>
-              {description}
-            </Text>
-          )}
-          {!!hostname && (
-            <Text
-              className="text-[11px] text-[#00bbff] mt-0.5"
-              numberOfLines={1}
-            >
-              {hostname}
-            </Text>
-          )}
-        </View>
-      </View>
-    </PressableFeedback>
+      {validImages.map((imageUrl, index) => (
+        <ImageTile key={imageUrl} imageUrl={imageUrl} index={index} />
+      ))}
+    </ScrollView>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Running / streaming state
+// Running / streaming state — kept from previous mobile implementation since
+// web doesn't have an explicit running view in SearchResultsTabs (it just
+// renders nothing until the data arrives). We keep a minimal running card so
+// the chat bubble shows progress instead of disappearing mid-stream.
 // ---------------------------------------------------------------------------
 
 function PulsingDot() {
@@ -210,157 +237,79 @@ function SearchRunningCard({ data }: { data: SearchResults }) {
   const progressText = data.progress ?? "Searching the web...";
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Header */}
-        <View className="flex-row items-center gap-2 mb-3">
-          <View className="w-5 h-5 rounded-md bg-[#00bbff]/15 items-center justify-center">
-            <AppIcon icon={Search01Icon} size={12} color="#00bbff" />
-          </View>
-          <Text className="text-xs font-medium text-[#00bbff]">Web Search</Text>
-          <View className="ml-auto">
-            <PulsingDot />
-          </View>
-        </View>
-
-        {/* Query */}
-        {!!queryText && (
-          <View className="rounded-xl bg-white/5 border border-white/8 px-3 py-2 mb-3">
-            <Text className="text-xs text-muted mb-0.5">Query</Text>
-            <Text className="text-sm text-foreground font-medium">
-              "{queryText}"
-            </Text>
-          </View>
-        )}
-
-        {/* Progress */}
-        <Text className="text-xs text-muted">{progressText}</Text>
-      </Card.Body>
-    </Card>
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={Search01Icon}
+        title="Web Search"
+        trailing={<PulsingDot />}
+      />
+      {!!queryText && (
+        <ToolCardInner dense className="mb-2">
+          <Text className="text-zinc-500 text-xs mb-0.5">Query</Text>
+          <Text className="text-zinc-100 text-sm font-medium">
+            &quot;{queryText}&quot;
+          </Text>
+        </ToolCardInner>
+      )}
+      <Text className="text-zinc-400 text-xs">{progressText}</Text>
+    </ToolCardShell>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Complete state
+// SearchCompleteCard — flat stacked sections (no outer card chrome)
+// Mirrors web's SearchResultsTabs: <div className="space-y-6"> with three
+// optional sections (SourcesButton → ImageResults → NewsResults). No
+// ToolCardShell wrapping — the web version renders flat in the bubble area.
 // ---------------------------------------------------------------------------
 
 function SearchCompleteCard({ data }: { data: SearchResults }) {
-  const [expanded, setExpanded] = useState(false);
   const webResults = data.web ?? [];
+  const imageResults = data.images ?? [];
   const newsResults = data.news ?? [];
-  const totalResults = webResults.length + newsResults.length;
 
-  // Show up to 5 web results before collapsing
-  const MAX_VISIBLE = 5;
-  const visibleWebResults = expanded
-    ? webResults
-    : webResults.slice(0, MAX_VISIBLE);
-  const hasMore = webResults.length > MAX_VISIBLE || newsResults.length > 0;
+  const hasWeb = webResults.length > 0;
+  const hasImages = imageResults.length > 0;
+  const hasNews = newsResults.length > 0;
+
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+
+  if (!hasWeb && !hasImages && !hasNews) return null;
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Header */}
-        <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-row items-center gap-2">
-            <AppIcon icon={Search01Icon} size={14} color="#8e8e93" />
-            <Text className="text-xs text-muted">Search Results</Text>
-          </View>
-          <View className="flex-row items-center gap-2">
-            {totalResults > 0 && (
-              <Chip
-                size="sm"
-                variant="secondary"
-                color="default"
-                animation="disable-all"
-              >
-                <Chip.Label>
-                  {totalResults} result{totalResults !== 1 ? "s" : ""}
-                </Chip.Label>
-              </Chip>
-            )}
-          </View>
-        </View>
+    <View style={{ marginHorizontal: 16, marginVertical: 4 }}>
+      {/* space-y-6 = 24px gap between sections */}
+      <View style={{ gap: 24 }}>
+        {hasWeb && (
+          <SourcesPill web={webResults} onPress={() => setSourcesOpen(true)} />
+        )}
 
-        {/* Query */}
-        {!!data.query && (
-          <View className="rounded-xl bg-white/5 border border-white/8 px-3 py-2 mb-3">
-            <Text className="text-xs text-muted mb-0.5">Query</Text>
-            <Text className="text-sm text-foreground font-medium">
-              "{data.query}"
-            </Text>
+        {hasImages && (
+          <View style={{ marginHorizontal: -16 }}>
+            <ImageResults images={imageResults} />
           </View>
         )}
 
-        {/* Answer snippet */}
-        {!!data.answer && (
-          <View className="rounded-xl bg-white/5 border border-white/8 px-3 py-2 mb-3">
-            <Text className="text-xs text-muted mb-0.5">Answer</Text>
-            <Text className="text-sm text-foreground" numberOfLines={4}>
-              {data.answer}
-            </Text>
-          </View>
-        )}
-
-        {/* Web results */}
-        {visibleWebResults.length > 0 && (
-          <View className="rounded-xl bg-white/5 border border-white/8 overflow-hidden">
-            {visibleWebResults.map((result, index) => (
-              <View key={result.url || result.title || String(index)}>
-                {index > 0 && (
-                  <View
-                    style={{
-                      height: 1,
-                      backgroundColor: "rgba(255,255,255,0.07)",
-                      marginVertical: 4,
-                    }}
-                  />
-                )}
-                <WebResultItem result={result} />
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* News results (only when expanded) */}
-        {expanded && newsResults.length > 0 && (
-          <View className="rounded-xl bg-white/5 border border-white/8 overflow-hidden mt-2">
-            <View className="flex-row items-center gap-1.5 py-2 px-3 border-b border-white/8">
-              <AppIcon icon={News01Icon} size={12} color="#8e8e93" />
-              <Text className="text-[11px] text-muted font-medium">News</Text>
-            </View>
+        {hasNews && (
+          <View style={{ gap: 8 }}>
             {newsResults.map((article, index) => (
-              <View key={article.url || article.title || String(index)}>
-                {index > 0 && (
-                  <View
-                    style={{
-                      height: 1,
-                      backgroundColor: "rgba(255,255,255,0.07)",
-                      marginVertical: 4,
-                    }}
-                  />
-                )}
-                <NewsResultItem article={article} />
-              </View>
+              <NewsResultCard
+                key={article.url || article.title || String(index)}
+                article={article}
+              />
             ))}
           </View>
         )}
+      </View>
 
-        {/* Expand / collapse */}
-        {hasMore && (
-          <PressableFeedback
-            onPress={() => setExpanded((prev) => !prev)}
-            className="mt-2.5 py-1.5 items-center"
-          >
-            <Text className="text-xs text-[#00bbff] font-medium">
-              {expanded
-                ? "Show less"
-                : `Show all ${totalResults} result${totalResults !== 1 ? "s" : ""}`}
-            </Text>
-          </PressableFeedback>
-        )}
-      </Card.Body>
-    </Card>
+      {hasWeb && (
+        <WebResultsSheet
+          web={webResults}
+          isOpen={sourcesOpen}
+          onOpenChange={setSourcesOpen}
+        />
+      )}
+    </View>
   );
 }
 

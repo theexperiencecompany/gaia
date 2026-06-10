@@ -7,87 +7,8 @@ import pytest
 
 from app.utils.internet_utils import (
     fetch_url_metadata,
-    is_valid_url,
     scrape_url_metadata,
 )
-
-
-# ---------------------------------------------------------------------------
-# is_valid_url
-# ---------------------------------------------------------------------------
-
-
-class TestIsValidUrl:
-    """Tests for is_valid_url helper."""
-
-    @pytest.mark.parametrize(
-        "url",
-        [
-            "https://example.com",
-            "https://example.com",
-            "https://example.com:8080/path/to/page",
-            "https://sub.domain.example.com/page?q=1#frag",
-            "https://example.com/path/to/resource.html",
-        ],
-        ids=[
-            "http_scheme",
-            "https_scheme",
-            "url_with_port_and_path",
-            "subdomain_with_query_and_fragment",
-            "url_with_file_extension",
-        ],
-    )
-    def test_valid_urls(self, url: str) -> None:
-        """Valid HTTP/HTTPS URLs with proper netloc return True."""
-        assert is_valid_url(url) is True
-
-    @pytest.mark.parametrize(
-        "url,reason",
-        [
-            ("ftp://example.com", "ftp_scheme"),
-            ("https://", "no_netloc"),
-            ("https://192.168.1.1", "ip_address"),
-            ("", "empty_string"),
-            ("not-a-url", "plain_string_no_scheme"),
-            ("://missing-scheme.com", "missing_scheme"),
-            ("https://10.0.0.1", "private_ip"),
-            ("https://255.255.255.255", "broadcast_ip"),
-        ],
-        ids=[
-            "ftp_scheme",
-            "no_netloc",
-            "ip_address",
-            "empty_string",
-            "plain_string_no_scheme",
-            "missing_scheme",
-            "private_ip",
-            "broadcast_ip",
-        ],
-    )
-    def test_invalid_urls(self, url: str, reason: str) -> None:
-        """URLs with wrong scheme, missing netloc, or IP addresses return False."""
-        assert is_valid_url(url) is False
-
-    def test_none_input(self) -> None:
-        """None input returns False (caught by the except branch)."""
-        # urlparse(None) raises TypeError in some Python versions
-        assert is_valid_url(None) is False  # type: ignore[arg-type]
-
-    def test_malformed_url(self) -> None:
-        """Malformed input that lacks scheme returns False."""
-        assert is_valid_url("ht!tp://bad url with spaces") is False
-
-    def test_ip_with_port_rejected(self) -> None:
-        """IP address with a port — the netloc includes the port so the regex
-        won't match the bare IP pattern.  This is an edge case in the current
-        implementation (IP:port is NOT rejected).  Documenting actual behavior."""
-        # netloc = "192.168.1.1:8080" — the regex r"^\d+\.\d+\.\d+\.\d+$"
-        # does not match because of the :8080, so this passes.
-        result = is_valid_url("https://192.168.1.1:8080")
-        # The current implementation allows this because the regex only matches
-        # bare IP addresses.  We test the actual behavior, not the ideal.
-        assert result is True
-
 
 # ---------------------------------------------------------------------------
 # scrape_url_metadata
@@ -241,9 +162,7 @@ class TestScrapeUrlMetadata:
         assert result["url"] == "https://example.com"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
-    async def test_http_error_returns_empty_metadata(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_http_error_returns_empty_metadata(self, mock_client_cls: MagicMock) -> None:
         """HTTP error (4xx/5xx) returns dict with all-None fields except url."""
         mock_client = AsyncMock()
         mock_client.get.return_value = _mock_response("", status_code=500)
@@ -259,9 +178,7 @@ class TestScrapeUrlMetadata:
         assert result["url"] == "https://example.com/fail"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
-    async def test_timeout_returns_empty_metadata(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_timeout_returns_empty_metadata(self, mock_client_cls: MagicMock) -> None:
         """Timeout during request returns dict with all-None fields except url."""
         mock_client = AsyncMock()
         mock_client.get.side_effect = httpx.TimeoutException("timed out")
@@ -303,9 +220,7 @@ class TestScrapeUrlMetadata:
         assert result["description"] == "desc"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
-    async def test_relative_favicon_converted_to_absolute(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_relative_favicon_converted_to_absolute(self, mock_client_cls: MagicMock) -> None:
         """Relative favicon href is joined with the base URL to form an absolute path."""
         mock_client = AsyncMock()
         mock_client.get.return_value = _mock_response(HTML_RELATIVE_FAVICON)
@@ -316,9 +231,7 @@ class TestScrapeUrlMetadata:
         assert result["favicon"] == "https://example.com/static/icon.png"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
-    async def test_og_image_used_as_website_image(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_og_image_used_as_website_image(self, mock_client_cls: MagicMock) -> None:
         """When no logo tag is present, og:image is used as website_image."""
         mock_client = AsyncMock()
         mock_client.get.return_value = _mock_response(HTML_OG_IMAGE_AS_WEBSITE_IMAGE)
@@ -386,9 +299,7 @@ class TestScrapeUrlMetadata:
         assert result["favicon"] == "https://example.com/apple-touch.png"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
-    async def test_logo_link_tag_used_as_website_image(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_logo_link_tag_used_as_website_image(self, mock_client_cls: MagicMock) -> None:
         """link rel=logo tag href is used as website_image."""
         mock_client = AsyncMock()
         mock_client.get.return_value = _mock_response(HTML_LOGO_LINK_TAG)
@@ -399,9 +310,7 @@ class TestScrapeUrlMetadata:
         assert result["website_image"] == "https://example.com/link-logo.png"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
-    async def test_empty_html_returns_all_none(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_empty_html_returns_all_none(self, mock_client_cls: MagicMock) -> None:
         """Completely empty HTML returns all-None fields except url."""
         mock_client = AsyncMock()
         mock_client.get.return_value = _mock_response(HTML_EMPTY)
@@ -417,9 +326,7 @@ class TestScrapeUrlMetadata:
         assert result["url"] == "https://example.com"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
-    async def test_og_image_used_as_favicon_fallback(
-        self, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_og_image_used_as_favicon_fallback(self, mock_client_cls: MagicMock) -> None:
         """When no favicon link tag exists, og:image is used as favicon fallback."""
         mock_client = AsyncMock()
         mock_client.get.return_value = _mock_response(HTML_OG_IMAGE_AS_WEBSITE_IMAGE)
@@ -518,9 +425,7 @@ class TestFetchUrlMetadata:
         result = await fetch_url_metadata("https://example.com")
 
         mock_get_cache.assert_awaited_once()
-        mock_collection.find_one.assert_awaited_once_with(
-            {"url": "https://example.com"}
-        )
+        mock_collection.find_one.assert_awaited_once_with({"url": "https://example.com"})
         # Should not re-scrape or re-cache
         mock_set_cache.assert_not_awaited()
         assert result.title == "DB Title"

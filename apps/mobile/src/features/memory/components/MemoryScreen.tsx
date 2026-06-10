@@ -1,4 +1,3 @@
-import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -13,13 +12,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Add01Icon,
   AppIcon,
-  ArrowLeft01Icon,
   BrainIcon,
   Delete02Icon,
   Search01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BackButton } from "@/shared/components/ui/back-button";
 import type { Memory } from "../api/memory-api";
 import { useMemory } from "../hooks/useMemory";
 import { MemoryItem } from "./MemoryItem";
@@ -82,7 +81,6 @@ function EmptyState({ search }: { search: string }) {
 }
 
 export function MemoryScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { spacing, fontSize } = useResponsive();
   const {
@@ -160,19 +158,7 @@ export function MemoryScreen() {
           gap: spacing.md,
         }}
       >
-        <Pressable
-          onPress={() => router.back()}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 999,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(255,255,255,0.05)",
-          }}
-        >
-          <AppIcon icon={ArrowLeft01Icon} size={18} color={C.text} />
-        </Pressable>
+        <BackButton />
         <View style={{ flex: 1 }}>
           <Text
             style={{

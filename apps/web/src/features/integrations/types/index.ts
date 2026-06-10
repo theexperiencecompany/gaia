@@ -18,6 +18,13 @@ export type IntegrationCategoryValue =
   | "capabilities"
   | "other";
 
+export interface IntegrationInstructions {
+  integrationId: string;
+  content: string;
+  updatedBy: "user" | "agent";
+  updatedAt: string | null;
+}
+
 export interface Integration {
   id: string;
   name: string;
@@ -50,24 +57,6 @@ export interface IntegrationStatus {
   lastConnected?: string;
   error?: string;
   metadata?: Record<string, unknown>;
-}
-
-export interface IntegrationCategory {
-  id: string;
-  name: string;
-  description: string;
-  integrations: Integration[];
-}
-
-export type IntegrationAction =
-  | "connect"
-  | "disconnect"
-  | "settings"
-  | "refresh";
-
-export interface IntegrationActionEvent {
-  integration: Integration;
-  action: IntegrationAction;
 }
 
 // Marketplace API Types - matches backend IntegrationResponse with camelCase aliases
@@ -155,22 +144,6 @@ export interface CreateCustomIntegrationResponse {
 export interface IntegrationConnectionData {
   integration_id: string;
   message: string;
-}
-
-export interface IntegrationInfo {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  connected: boolean;
-  iconUrl?: string | null;
-  source?: string;
-}
-
-export interface IntegrationListData {
-  integrations: IntegrationInfo[];
-  total_count: number;
-  connected_count: number;
 }
 
 /**

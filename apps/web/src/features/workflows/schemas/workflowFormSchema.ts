@@ -13,6 +13,7 @@ import { z } from "zod";
 
 import type { Workflow } from "@/types/features/workflowTypes";
 import { getBrowserTimezone } from "../utils/browserTimezone";
+import { describeCron } from "../utils/cronUtils";
 
 // =============================================================================
 // TRIGGER CONFIG SCHEMAS
@@ -22,7 +23,13 @@ import { getBrowserTimezone } from "../utils/browserTimezone";
 const scheduleTriggerConfigSchema = z.object({
   type: z.literal("schedule"),
   enabled: z.boolean(),
-  cron_expression: z.string().min(1, "Cron expression is required"),
+  cron_expression: z
+    .string()
+    .trim()
+    .min(1, "Cron expression is required")
+    .refine((value) => describeCron(value).isValid, {
+      message: "Invalid cron expression",
+    }),
   timezone: z.string().min(1),
   next_run: z.string().optional(),
 });

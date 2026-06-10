@@ -16,7 +16,6 @@ from app.services.tools.tools_service import (
     merge_tools_responses,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -148,9 +147,7 @@ class TestBuildToolsResponse:
         tool = _mock_tool("my_tool")
         cat = _mock_category(tools=[tool], integration_name=None)
         mock_registry = AsyncMock()
-        mock_registry.get_all_category_objects = MagicMock(
-            return_value={"general": cat}
-        )
+        mock_registry.get_all_category_objects = MagicMock(return_value={"general": cat})
 
         mock_mcp_store = MagicMock()
         mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value={})
@@ -326,9 +323,7 @@ class TestBuildToolsResponse:
         mock_mcp_store = MagicMock()
         mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value={})
 
-        custom_integrations = [
-            {"integration_id": "my_int", "name": "My Int", "icon_url": None}
-        ]
+        custom_integrations = [{"integration_id": "my_int", "name": "My Int", "icon_url": None}]
 
         with (
             patch(
@@ -363,9 +358,7 @@ class TestBuildToolsResponse:
         mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value={})
         mock_mcp_store.get_tools = AsyncMock(return_value=[])
 
-        custom_integrations = [
-            {"integration_id": "empty_int", "name": "Empty", "icon_url": None}
-        ]
+        custom_integrations = [{"integration_id": "empty_int", "name": "Empty", "icon_url": None}]
 
         with (
             patch(
@@ -393,13 +386,9 @@ class TestBuildToolsResponse:
 
         mock_mcp_store = MagicMock()
         mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value={})
-        mock_mcp_store.get_tools = AsyncMock(
-            return_value=[{"name": None}, {"name": "valid_tool"}]
-        )
+        mock_mcp_store.get_tools = AsyncMock(return_value=[{"name": None}, {"name": "valid_tool"}])
 
-        custom_integrations = [
-            {"integration_id": "cust_1", "name": "Cust", "icon_url": None}
-        ]
+        custom_integrations = [{"integration_id": "cust_1", "name": "Cust", "icon_url": None}]
 
         with (
             patch(
@@ -520,9 +509,7 @@ class TestGetToolCategories:
         cat1 = _mock_category(tools=[_mock_tool("t1"), _mock_tool("t2")])
         cat2 = _mock_category(tools=[_mock_tool("t3")])
         mock_registry = AsyncMock()
-        mock_registry.get_all_category_objects = MagicMock(
-            return_value={"c1": cat1, "c2": cat2}
-        )
+        mock_registry.get_all_category_objects = MagicMock(return_value={"c1": cat1, "c2": cat2})
 
         with patch(
             "app.services.tools.tools_service.get_tool_registry",
@@ -560,9 +547,7 @@ class TestGetUserMcpTools:
         mock_col.aggregate = MagicMock(return_value=mock_cursor)
 
         mock_mcp_store = MagicMock()
-        mock_mcp_store.get_tools = AsyncMock(
-            return_value=[{"name": "tool_a"}, {"name": "tool_b"}]
-        )
+        mock_mcp_store.get_tools = AsyncMock(return_value=[{"name": "tool_a"}, {"name": "tool_b"}])
 
         with (
             patch(
@@ -654,9 +639,7 @@ class TestGetUserMcpTools:
         mock_col.aggregate = MagicMock(return_value=mock_cursor)
 
         mock_mcp_store = MagicMock()
-        mock_mcp_store.get_tools = AsyncMock(
-            return_value=[{"name": None}, {"name": "valid"}]
-        )
+        mock_mcp_store.get_tools = AsyncMock(return_value=[{"name": None}, {"name": "valid"}])
 
         with (
             patch(

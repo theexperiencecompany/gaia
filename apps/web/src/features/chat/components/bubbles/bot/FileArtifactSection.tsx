@@ -2,9 +2,10 @@ import { Button } from "@heroui/button";
 import { Card, CardBody } from "@heroui/card";
 import { Chip } from "@heroui/chip";
 import { CodeIcon, Download01Icon, File01Icon } from "@icons";
+import { formatFileSize } from "@shared/utils";
 import type React from "react";
-import { useCallback } from "react";
-import { vfsApi } from "@/features/chat/api/vfsApi";
+import { useCallback, useMemo } from "react";
+import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
@@ -48,6 +49,28 @@ const FILE_TYPE_CONFIG: Record<
   sh: { label: "Shell", color: "default", icon: "code" },
 };
 
+const EXT_CONTENT_TYPE: Record<string, string> = {
+  html: "text/html",
+  htm: "text/html",
+  md: "text/markdown",
+  markdown: "text/markdown",
+  tex: "text/x-latex",
+  json: "application/json",
+  csv: "text/csv",
+  txt: "text/plain",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  pdf: "application/pdf",
+};
+
+function basename(path: string): string {
+  return path.split("/").pop() || path;
+}
+
 function getFileConfig(filename: string) {
   const ext = filename.split(".").pop()?.toLowerCase() || "";
   return (
@@ -59,49 +82,73 @@ function getFileConfig(filename: string) {
   );
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+function resolveContentType(artifact: ArtifactData, filename: string): string {
+  if (artifact.content_type) return artifact.content_type;
+  const ext = filename.split(".").pop()?.toLowerCase() || "";
+  return EXT_CONTENT_TYPE[ext] || "application/octet-stream";
+}
+
+/** De-dupe by path (last wins) and drop removed artifacts — artifacts are
+ * pushed repeatedly in real time, so without this the same file would stack
+ * duplicate cards. */
+function normalize(input: ArtifactData | ArtifactData[]): ArtifactData[] {
+  const list = Array.isArray(input) ? input : [input];
+  const byPath = new Map<string, ArtifactData>();
+  for (const a of list) {
+    if (!a?.session_id || !a.path) continue;
+    if (a.event === "remove") {
+      byPath.delete(a.path);
+      continue;
+    }
+    byPath.set(a.path, a);
+  }
+  return Array.from(byPath.values());
 }
 
 function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
   const { setContent, open } = useRightSidebar();
   const isMobile = useIsMobile();
-  const config = getFileConfig(artifact.filename);
+
+  const conversationId = artifact.session_id;
+  const filename = basename(artifact.path);
+  const contentType = resolveContentType(artifact, filename);
+  const config = getFileConfig(filename);
 
   const handleOpen = useCallback(() => {
     const shouldUseSheet =
       isMobile || (typeof window !== "undefined" && window.innerWidth < 768);
-
     setContent(
       <FileViewerPanel
+        conversationId={conversationId}
         path={artifact.path}
-        filename={artifact.filename}
-        contentType={artifact.content_type}
+        filename={filename}
+        contentType={contentType}
+        sizeBytes={artifact.size_bytes}
+        inlineBody={artifact.body}
       />,
     );
     open(shouldUseSheet ? "sheet" : "artifact");
-  }, [artifact, isMobile, open, setContent]);
+  }, [
+    artifact.body,
+    artifact.path,
+    artifact.size_bytes,
+    contentType,
+    conversationId,
+    filename,
+    isMobile,
+    open,
+    setContent,
+  ]);
 
-  const handleDownload = useCallback(async () => {
-    try {
-      const response = await vfsApi.readFile(artifact.path);
-      const blob = new Blob([response.content], {
-        type: artifact.content_type,
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = artifact.filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch {
-      // Silent fail - download unavailable
-    }
-  }, [artifact]);
+  const handleDownload = useCallback(() => {
+    const link = document.createElement("a");
+    link.href = sessionFilesApi.artifactUrl(conversationId, artifact.path);
+    link.download = filename;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [artifact.path, conversationId, filename]);
 
   return (
     <Card
@@ -131,12 +178,12 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
                   {config.label}
                 </Chip>
                 <p className="truncate text-sm font-medium text-white">
-                  {artifact.filename}
+                  {filename}
                 </p>
               </div>
 
               <p className="text-xs text-zinc-400/90">
-                {formatSize(artifact.size_bytes)} · Click to open
+                {formatFileSize(artifact.size_bytes)} · Click to open
               </p>
             </div>
           </div>
@@ -158,7 +205,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                void handleDownload();
+                handleDownload();
               }}
               aria-label="Download artifact"
             >
@@ -174,14 +221,14 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
 const FileArtifactSection: React.FC<FileArtifactSectionProps> = ({
   artifact_data,
 }) => {
-  const artifacts = Array.isArray(artifact_data)
-    ? artifact_data
-    : [artifact_data];
+  const artifacts = useMemo(() => normalize(artifact_data), [artifact_data]);
+
+  if (artifacts.length === 0) return null;
 
   return (
     <div className="mt-3 flex flex-col gap-2">
-      {artifacts.map((artifact, index) => (
-        <ArtifactCard key={`${artifact.path}-${index}`} artifact={artifact} />
+      {artifacts.map((artifact) => (
+        <ArtifactCard key={artifact.path} artifact={artifact} />
       ))}
     </div>
   );

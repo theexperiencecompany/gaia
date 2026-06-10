@@ -16,25 +16,20 @@ Add a new provider
 """
 
 import asyncio
-import inspect
+from collections.abc import Awaitable, Callable
 from enum import Enum
+import inspect
 from threading import Lock
 from typing import (
     Any,
-    Awaitable,
-    Callable,
-    Dict,
     Generic,
-    List,
-    Optional,
-    Set,
     TypeVar,
     Union,
     cast,
 )
 
-from shared.py.wide_events import log
 from app.utils.exceptions import ConfigurationError
+from shared.py.wide_events import log
 
 T = TypeVar("T")
 
@@ -49,31 +44,23 @@ class MissingKeyStrategy(Enum):
 
 
 class LazyLoader(Generic[T]):
-    """
-    Lazy loader that defers provider initialization until first get() access.
-    Supports both sync and async loader functions.
+    """Defers provider initialization until first get() access.
 
-    Features:
-    - Thread-safe singleton pattern per loader
-    - Configurable error handling for missing values
-    - Validation caching to avoid repeated checks
-    - Flexible warning system at registration time
-    - Type safety with generics
-    - Support for global context providers (like Cloudinary)
-    - Support for both sync and async loader functions
+    Thread-safe singleton per loader; supports sync/async loaders, global-context
+    providers (e.g. Cloudinary), and configurable missing-key handling.
     """
 
     def __init__(
         self,
         loader_func: Union[Callable[[], T], Callable[[], Awaitable[T]]],
-        required_keys: Optional[List[Any]] = None,
+        required_keys: list[Any] | None = None,
         strategy: MissingKeyStrategy = MissingKeyStrategy.ERROR,
-        warning_message: Optional[str] = None,
-        provider_name: Optional[str] = None,
-        validate_values_func: Optional[Callable[[List[Any]], bool]] = None,
+        warning_message: str | None = None,
+        provider_name: str | None = None,
+        validate_values_func: Callable[[list[Any]], bool] | None = None,
         is_global_context: bool = False,
         auto_initialize: bool = False,
-        dependencies: Optional[List[str]] = None,
+        dependencies: list[str] | None = None,
     ):
         """
         Initialize lazy loader.
@@ -101,13 +88,11 @@ class LazyLoader(Generic[T]):
         # Check if the loader function is async
         self.is_async = inspect.iscoroutinefunction(loader_func)
 
-        self._instance: Optional[T] = None
+        self._instance: T | None = None
         self._is_configured = False  # For global context providers
         self._lock = Lock()
         self._async_lock = asyncio.Lock() if self.is_async else None
-        self._warned_indices: Set[int] = (
-            set()
-        )  # Track warned value indices for WARN_ONCE
+        self._warned_indices: set[int] = set()  # Track warned value indices for WARN_ONCE
 
         # Check availability at registration time and log warnings
         self._check_availability_and_warn()
@@ -129,10 +114,7 @@ class LazyLoader(Generic[T]):
             except Exception as e:
                 if self.strategy == MissingKeyStrategy.ERROR:
                     raise
-                else:
-                    log.warning(
-                        f"Auto-initialization failed for '{self.provider_name}': {e}"
-                    )
+                log.warning(f"Auto-initialization failed for '{self.provider_name}': {e}")
 
     def _check_availability_and_warn(self):
         """Check availability at registration time and log warnings if needed."""
@@ -140,9 +122,7 @@ class LazyLoader(Generic[T]):
 
         if not missing_indices:
             # All values available
-            if self.validate_values_func and not self.validate_values_func(
-                self.required_keys
-            ):
+            if self.validate_values_func and not self.validate_values_func(self.required_keys):
                 # Custom validation failed
                 message = f"Value validation failed for provider '{self.provider_name}'"
                 if self.strategy in [
@@ -170,7 +150,7 @@ class LazyLoader(Generic[T]):
             if self.strategy == MissingKeyStrategy.WARN_ONCE:
                 self._warned_indices.update(missing_indices)
 
-    def get(self) -> Optional[Union[T, bool]]:
+    def get(self) -> Union[T, bool] | None:
         """Get the provider instance synchronously. Only works for sync loader functions."""
         if self.is_async and not self.auto_initialize:
             raise RuntimeError(
@@ -180,24 +160,24 @@ class LazyLoader(Generic[T]):
         # Quick check without lock for already initialized instances
         if self.is_global_context and self._is_configured:
             return True  # type: ignore[return-value]
-        elif not self.is_global_context and self._instance is not None:
+        if not self.is_global_context and self._instance is not None:
             return self._instance
 
         with self._lock:
             # Double-check locking pattern
             if self.is_global_context and self._is_configured:
                 return True  # type: ignore[return-value]
-            elif not self.is_global_context and self._instance is not None:
+            if not self.is_global_context and self._instance is not None:
                 return self._instance
 
             return self._initialize_sync()
 
-    async def aget(self) -> Optional[Union[T, bool]]:
+    async def aget(self) -> Union[T, bool] | None:
         """Get the provider instance asynchronously. Works for both sync and async loader functions."""
         # Quick check without lock for already initialized instances
         if self.is_global_context and self._is_configured:
             return True  # type: ignore[return-value]
-        elif not self.is_global_context and self._instance is not None:
+        if not self.is_global_context and self._instance is not None:
             return self._instance
 
         if self.is_async:
@@ -209,7 +189,7 @@ class LazyLoader(Generic[T]):
                 # Double-check locking pattern
                 if self.is_global_context and self._is_configured:
                     return True  # type: ignore[return-value]
-                elif not self.is_global_context and self._instance is not None:
+                if not self.is_global_context and self._instance is not None:
                     return self._instance
 
                 return await self._initialize_async()
@@ -219,12 +199,12 @@ class LazyLoader(Generic[T]):
                 # Double-check locking pattern
                 if self.is_global_context and self._is_configured:
                     return True  # type: ignore[return-value]
-                elif not self.is_global_context and self._instance is not None:
+                if not self.is_global_context and self._instance is not None:
                     return self._instance
 
                 return self._initialize_sync()
 
-    def _initialize_sync(self) -> Optional[Union[T, bool]]:
+    def _initialize_sync(self) -> Union[T, bool] | None:
         """Initialize the provider instance or configure global context synchronously."""
         if self.is_async:
             raise RuntimeError(
@@ -246,33 +226,27 @@ class LazyLoader(Generic[T]):
                 # For global context providers, call the function for side effects
                 self.loader_func()
                 self._is_configured = True
-                log.info(
-                    f"Successfully configured global provider: {self.provider_name}"
-                )
+                log.info(f"Successfully configured global provider: {self.provider_name}")
                 return True  # type: ignore[return-value]
-            else:
-                # For instance-based providers, store and return the instance
-                result = self.loader_func()
-                if inspect.iscoroutine(result):
-                    raise RuntimeError(
-                        f"Sync initialization called on async loader function for '{self.provider_name}'"
-                    )
-                self._instance = cast(T, result)
-                log.info(f"Successfully initialized provider: {self.provider_name}")
-                return self._instance
+            # For instance-based providers, store and return the instance
+            result = self.loader_func()
+            if inspect.iscoroutine(result):
+                raise RuntimeError(
+                    f"Sync initialization called on async loader function for '{self.provider_name}'"
+                )
+            self._instance = cast(T, result)
+            log.info(f"Successfully initialized provider: {self.provider_name}")
+            return self._instance
 
         except Exception as e:
-            error_msg = (
-                f"Failed to initialize provider '{self.provider_name}': {str(e)}"
-            )
+            error_msg = f"Failed to initialize provider '{self.provider_name}': {e!s}"
             log.error(error_msg)
 
             if self.strategy == MissingKeyStrategy.ERROR:
                 raise ConfigurationError(error_msg) from e
-            else:
-                return None
+            return None
 
-    async def _initialize_async(self) -> Optional[Union[T, bool]]:
+    async def _initialize_async(self) -> Union[T, bool] | None:
         """Initialize the provider instance or configure global context asynchronously."""
         # Check if required values are valid
         missing_indices = self._check_required_keys()
@@ -302,42 +276,36 @@ class LazyLoader(Generic[T]):
                             f"Unexpected coroutine from sync loader function for '{self.provider_name}'"
                         )
                 self._is_configured = True
-                log.info(
-                    f"Successfully configured global provider: {self.provider_name}"
-                )
+                log.info(f"Successfully configured global provider: {self.provider_name}")
                 return True  # type: ignore[return-value]
-            else:
-                # For instance-based providers, store and return the instance
-                if self.is_async:
-                    result = self.loader_func()
-                    if inspect.iscoroutine(result):
-                        self._instance = await result
-                    else:
-                        raise RuntimeError(
-                            f"Expected coroutine from async loader function for '{self.provider_name}'"
-                        )
+            # For instance-based providers, store and return the instance
+            if self.is_async:
+                result = self.loader_func()
+                if inspect.iscoroutine(result):
+                    self._instance = await result
                 else:
-                    result = self.loader_func()
-                    if inspect.iscoroutine(result):
-                        raise RuntimeError(
-                            f"Unexpected coroutine from sync loader function for '{self.provider_name}'"
-                        )
-                    self._instance = cast(T, result)
-                log.info(f"Successfully initialized provider: {self.provider_name}")
-                return self._instance
+                    raise RuntimeError(
+                        f"Expected coroutine from async loader function for '{self.provider_name}'"
+                    )
+            else:
+                result = self.loader_func()
+                if inspect.iscoroutine(result):
+                    raise RuntimeError(
+                        f"Unexpected coroutine from sync loader function for '{self.provider_name}'"
+                    )
+                self._instance = cast(T, result)
+            log.info(f"Successfully initialized provider: {self.provider_name}")
+            return self._instance
 
         except Exception as e:
-            error_msg = (
-                f"Failed to initialize provider '{self.provider_name}': {str(e)}"
-            )
+            error_msg = f"Failed to initialize provider '{self.provider_name}': {e!s}"
             log.error(error_msg)
 
             if self.strategy == MissingKeyStrategy.ERROR:
                 raise ConfigurationError(error_msg) from e
-            else:
-                return None
+            return None
 
-    def _check_required_keys(self) -> Set[int]:
+    def _check_required_keys(self) -> set[int]:
         """Check which required values are missing/invalid."""
         missing_indices = set()
         for i, value in enumerate(self.required_keys):
@@ -353,9 +321,7 @@ class LazyLoader(Generic[T]):
             return True
         return False
 
-    def _handle_missing_values_on_get(
-        self, missing_indices: Set[int]
-    ) -> Optional[Union[T, bool]]:
+    def _handle_missing_values_on_get(self, missing_indices: set[int]) -> Union[T, bool] | None:
         """Handle missing values when get() is called."""
         if self.strategy == MissingKeyStrategy.ERROR:
             indices_str = ", ".join(f"index {i}" for i in missing_indices)
@@ -367,7 +333,7 @@ class LazyLoader(Generic[T]):
         # For non-error strategies, just return None (warning already logged at registration)
         return None
 
-    def _handle_validation_failure_on_get(self) -> Optional[Union[T, bool]]:
+    def _handle_validation_failure_on_get(self) -> Union[T, bool] | None:
         """Handle custom validation failure when get() is called."""
         if self.strategy == MissingKeyStrategy.ERROR:
             raise ConfigurationError(
@@ -397,8 +363,7 @@ class LazyLoader(Generic[T]):
         """Check if the provider is already initialized."""
         if self.is_global_context:
             return self._is_configured
-        else:
-            return self._instance is not None
+        return self._instance is not None
 
     def reset(self):
         """Reset the loader (useful for testing)."""
@@ -435,15 +400,13 @@ class LazyLoader(Generic[T]):
 
 
 class ProviderRegistry:
-    def _check_cyclic_dependency(self, name: str, visited: Optional[list] = None):
+    def _check_cyclic_dependency(self, name: str, visited: list | None = None):
         """Check for cyclic dependencies starting from provider 'name'. Raises ConfigurationError if a cycle is found."""
         if visited is None:
             visited = []
         if name in visited:
             cycle_path = visited + [name]
-            raise ConfigurationError(
-                f"Cyclic dependency detected: {' -> '.join(cycle_path)}"
-            )
+            raise ConfigurationError(f"Cyclic dependency detected: {' -> '.join(cycle_path)}")
         visited.append(name)
         loader = self._providers.get(name)
         if loader:
@@ -457,21 +420,21 @@ class ProviderRegistry:
     """
 
     def __init__(self) -> None:
-        self._providers: Dict[str, LazyLoader] = {}
+        self._providers: dict[str, LazyLoader] = {}
         self._lock = Lock()
-        self._auto_init_providers: Set[str] = set()
+        self._auto_init_providers: set[str] = set()
 
     def register(
         self,
         name: str,
         loader_func: Union[Callable[[], T], Callable[[], Awaitable[T]]],
-        required_keys: Optional[List[Any]] = None,
+        required_keys: list[Any] | None = None,
         strategy: MissingKeyStrategy = MissingKeyStrategy.WARN,
-        warning_message: Optional[str] = None,
-        validate_values_func: Optional[Callable[[List[Any]], bool]] = None,
+        warning_message: str | None = None,
+        validate_values_func: Callable[[list[Any]], bool] | None = None,
         is_global_context: bool = False,
         auto_initialize: bool = False,
-        dependencies: Optional[List[str]] = None,
+        dependencies: list[str] | None = None,
     ) -> LazyLoader[T]:
         """Register a new provider."""
         with self._lock:
@@ -537,18 +500,14 @@ class ProviderRegistry:
                 except Exception as e:
                     errors.append((name, e))
                     provider = self._providers.get(name)
-                    provider_strategy = (
-                        provider.strategy if provider else MissingKeyStrategy.WARN
-                    )
+                    provider_strategy = provider.strategy if provider else MissingKeyStrategy.WARN
                     if provider_strategy == MissingKeyStrategy.ERROR:
                         log.error(f"Auto-initialization failed for '{name}': {e}")
                     else:
                         log.warning(f"Auto-initialization failed for '{name}': {e}")
 
         with self._lock:
-            names = [
-                name for name in self._auto_init_providers if name in self._providers
-            ]
+            names = [name for name in self._auto_init_providers if name in self._providers]
         if not names:
             return
 
@@ -594,9 +553,7 @@ class ProviderRegistry:
                     errors.append(
                         (
                             name,
-                            ConfigurationError(
-                                f"Provider '{name}' is not available for warmup"
-                            ),
+                            ConfigurationError(f"Provider '{name}' is not available for warmup"),
                         )
                     )
 
@@ -634,7 +591,7 @@ class ProviderRegistry:
             failed = ", ".join(name for name, _ in errors)
             raise RuntimeError(f"Provider warmup failed for: {failed}")
 
-    def get(self, name: str) -> Optional[Any]:
+    def get(self, name: str) -> Any | None:
         """Get a provider instance by name synchronously - only works for sync providers."""
         if name not in self._providers:
             raise KeyError(f"Provider '{name}' not found in registry")
@@ -650,7 +607,7 @@ class ProviderRegistry:
                     self.get(dep)
         return loader.get()
 
-    async def aget(self, name: str) -> Optional[Any]:
+    async def aget(self, name: str) -> Any | None:
         """Get a provider instance by name asynchronously - works for both sync and async providers."""
         if name not in self._providers:
             raise KeyError(f"Provider '{name}' not found in registry")
@@ -669,12 +626,6 @@ class ProviderRegistry:
                         self.get(dep)
         return await loader.aget()
 
-    def get_loader(self, name: str) -> LazyLoader:
-        """Get the loader itself (not the instance)."""
-        if name not in self._providers:
-            raise KeyError(f"Provider '{name}' not found in registry")
-        return self._providers[name]
-
     def is_available(self, name: str) -> bool:
         """Check if a provider is available."""
         if name not in self._providers:
@@ -687,18 +638,6 @@ class ProviderRegistry:
             return False
         return self._providers[name].is_initialized()
 
-    def list_providers(self) -> Dict[str, Dict[str, bool]]:
-        """List all providers with their status."""
-        return {
-            name: {
-                "available": loader.is_available(),
-                "initialized": loader.is_initialized(),
-                "is_global_context": loader.is_global_context,
-                "is_async": loader.is_async,
-            }
-            for name, loader in self._providers.items()
-        }
-
 
 # Global registry instance
 providers = ProviderRegistry()
@@ -707,13 +646,13 @@ providers = ProviderRegistry()
 # Decorator for easy provider registration
 def lazy_provider(
     name: str,
-    required_keys: Optional[List[Any]] = None,
+    required_keys: list[Any] | None = None,
     strategy: MissingKeyStrategy = MissingKeyStrategy.WARN,
-    warning_message: Optional[str] = None,
-    validate_values_func: Optional[Callable[[List[Any]], bool]] = None,
+    warning_message: str | None = None,
+    validate_values_func: Callable[[list[Any]], bool] | None = None,
     is_global_context: bool = False,
     auto_initialize: bool = False,
-    dependencies: Optional[List[str]] = None,
+    dependencies: list[str] | None = None,
 ) -> Callable[
     [Callable[..., Any]],
     Callable[[], LazyLoader[Any]],

@@ -1,10 +1,11 @@
 "use client";
 
 import { Tooltip } from "@heroui/react";
-import { ArrowRight01Icon, CheckmarkCircle02Icon } from "@icons";
+import { CheckmarkCircle02Icon } from "@icons";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
+import { ChevronRight } from "@/components/shared/icons";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import TodoModal from "@/features/todo/components/TodoModal";
 import { usePathname } from "@/i18n/navigation";
@@ -73,12 +74,12 @@ export default function TodosHeader() {
         </Link>
         {pageTitle !== "Inbox" && (
           <>
-            <ArrowRight01Icon width={18} height={17} />
+            <ChevronRight width={18} height={17} />
             <span className="text-zinc-300">{pageTitle}</span>
           </>
         )}
 
-        <ArrowRight01Icon width={18} height={17} />
+        <ChevronRight width={18} height={17} />
         <span className="text-sm text-zinc-400">
           {taskCount} {taskCount === 1 ? "task" : "tasks"}
         </span>

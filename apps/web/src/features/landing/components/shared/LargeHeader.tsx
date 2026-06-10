@@ -1,4 +1,9 @@
 import { Chip } from "@heroui/chip";
+import type { ReactNode } from "react";
+
+import { cn } from "@/lib/utils";
+
+import { SoftBlurInBlock, TextSoftBlurIn } from "./TextSoftBlurIn";
 
 export default function LargeHeader({
   chipText,
@@ -7,12 +12,17 @@ export default function LargeHeader({
   chipText2,
   centered = false,
 }: {
-  chipText?: string;
-  chipText2?: string;
-  headingText: string;
-  subHeadingText?: string;
+  chipText?: ReactNode;
+  chipText2?: ReactNode;
+  headingText: ReactNode;
+  subHeadingText?: ReactNode;
   centered?: boolean;
 }) {
+  const headingClass = cn(
+    "relative z-2 my-2 text-4xl font-medium sm:text-5xl md:text-7xl font-serif!",
+    centered ? "text-center" : "text-left",
+  );
+
   return (
     <div
       className={`flex max-w-(--breakpoint-xl) flex-col ${centered ? "items-center text-center" : "items-start text-left"}`}
@@ -30,17 +40,24 @@ export default function LargeHeader({
           </Chip>
         )}
       </div>
-      <h2
-        className={`relative z-2 my-2 flex gap-4 text-4xl font-medium sm:text-5xl md:text-7xl ${centered ? "items-center justify-center" : "items-start justify-start"} font-serif!`}
-      >
-        {headingText}
-      </h2>
+
+      {typeof headingText === "string" ? (
+        <TextSoftBlurIn text={headingText} as="h2" className={headingClass} />
+      ) : (
+        <SoftBlurInBlock as="h2" className={headingClass}>
+          {headingText}
+        </SoftBlurInBlock>
+      )}
+
       {!!subHeadingText && (
-        <div
-          className={`max-w-(--breakpoint-md) text-base sm:text-xl text-zinc-400 ${centered ? "text-center" : ""} font-light`}
+        <SoftBlurInBlock
+          className={cn(
+            "max-w-(--breakpoint-md) text-base sm:text-xl text-zinc-400 font-light",
+            centered && "text-center",
+          )}
         >
           {subHeadingText}
-        </div>
+        </SoftBlurInBlock>
       )}
     </div>
   );

@@ -143,12 +143,10 @@ class DynamicToolNode(ToolNode):
         the parent ToolNode._afunc which handles InjectedState injection,
         Command returns, InjectedToolCallId, and validation.
         Only regular tool calls go through the middleware wrap_tool_call chain
-        (e.g. VFSCompactionMiddleware).
+        (e.g. WorkspaceCompactionMiddleware).
         """
         tool_calls, _ = self._parse_input(input)
-        all_parent_routed = all(
-            self._needs_parent_routing(tc.get("name", "")) for tc in tool_calls
-        )
+        all_parent_routed = all(self._needs_parent_routing(tc.get("name", "")) for tc in tool_calls)
         if all_parent_routed:
             return await super()._afunc(input, config, runtime)
         delegate_state = self._extract_state(input)

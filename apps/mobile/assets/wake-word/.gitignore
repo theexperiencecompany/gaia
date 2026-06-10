@@ -1,0 +1,4 @@
+# ONNX models are too large for git per the repo's >500 KB policy. They are
+# copied from libs/wake-word/models/ at build time via
+# scripts/fetch-wake-word-models.sh.
+*.onnx

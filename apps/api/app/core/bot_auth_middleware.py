@@ -10,17 +10,20 @@ This middleware sets request.state.user and request.state.authenticated,
 allowing bot requests to use the same endpoints as normal web auth.
 """
 
-from typing import Any, Awaitable, Callable, Dict, Optional
+from collections.abc import Awaitable, Callable
+import secrets
+from typing import Any
+
+from fastapi import Request, Response
+from jose import JWTError
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp
 
 from app.config.settings import settings
 from app.constants.cache import TEN_MINUTES_TTL
 from app.db.redis import get_cache, set_cache
 from app.services.bot_token_service import verify_bot_session_token
 from app.services.platform_link_service import PlatformLinkService
-from fastapi import Request, Response
-from jose import JWTError
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
 
 
 class BotAuthMiddleware(BaseHTTPMiddleware):
@@ -37,7 +40,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
         app: ASGIApp,
-        exclude_paths: Optional[list[str]] = None,
+        exclude_paths: list[str] | None = None,
     ):
         super().__init__(app)
         self.exclude_paths = exclude_paths or [
@@ -81,9 +84,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
 
             if api_key and self._verify_api_key(api_key):
                 if platform and platform_user_id:
-                    user_info = await self._authenticate_platform(
-                        platform, platform_user_id
-                    )
+                    user_info = await self._authenticate_platform(platform, platform_user_id)
                     if user_info:
                         request.state.user = user_info
                         request.state.authenticated = True
@@ -102,11 +103,12 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         bot_api_key = getattr(settings, "GAIA_BOT_API_KEY", None)
         if not bot_api_key:
             return False
-        return api_key == bot_api_key
+        # Timing-safe comparison to avoid leaking the key via response-time diffs.
+        return secrets.compare_digest(api_key.encode(), bot_api_key.encode())
 
     async def _authenticate_platform(
         self, platform: str, platform_user_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Authenticate via platform ID lookup with caching."""
         cache_key = f"bot_user:{platform}:{platform_user_id}"
         cached_user_info = await get_cache(cache_key)
@@ -114,9 +116,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         if cached_user_info and cached_user_info.get("user_id"):
             return cached_user_info
 
-        user_data = await PlatformLinkService.get_user_by_platform_id(
-            platform, platform_user_id
-        )
+        user_data = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
 
         if not user_data:
             return None
@@ -133,7 +133,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         await set_cache(cache_key, user_info, ttl=TEN_MINUTES_TTL)
         return user_info
 
-    async def _authenticate_jwt(self, token: str) -> Optional[Dict[str, Any]]:
+    async def _authenticate_jwt(self, token: str) -> dict[str, Any] | None:
         """Authenticate via JWT session token with caching."""
         try:
             payload = verify_bot_session_token(token)

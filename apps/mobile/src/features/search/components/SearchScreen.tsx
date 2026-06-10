@@ -12,13 +12,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AppIcon,
-  ArrowLeft01Icon,
   Cancel01Icon,
   Clock01Icon,
   Search01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BackButton } from "@/shared/components/ui/back-button";
 import type {
   SearchConversationResult,
   SearchMessageResult,
@@ -251,21 +251,7 @@ export function SearchScreen() {
         }}
       >
         {/* Back button */}
-        <Pressable
-          onPress={() => router.back()}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 999,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(255,255,255,0.05)",
-            flexShrink: 0,
-          }}
-          hitSlop={8}
-        >
-          <AppIcon icon={ArrowLeft01Icon} size={iconSize.sm} color="#fff" />
-        </Pressable>
+        <BackButton />
 
         {/* Input container */}
         <View

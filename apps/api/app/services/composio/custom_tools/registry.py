@@ -1,7 +1,21 @@
-from typing import Callable, Dict, List, Tuple
+from collections.abc import Callable
 
+from composio import Composio
+
+from app.agents.tools.integrations.airtable_tool import (
+    register_airtable_custom_tools,
+)
+from app.agents.tools.integrations.asana_tool import (
+    register_asana_custom_tools,
+)
 from app.agents.tools.integrations.calendar_tool import (
     register_calendar_custom_tools,
+)
+from app.agents.tools.integrations.clickup_tool import (
+    register_clickup_custom_tools,
+)
+from app.agents.tools.integrations.github_tool import (
+    register_github_custom_tools,
 )
 from app.agents.tools.integrations.google_docs_tool import (
     register_google_docs_custom_tools,
@@ -18,6 +32,9 @@ from app.agents.tools.integrations.google_sheets_tool import (
 from app.agents.tools.integrations.google_tasks_tool import (
     register_google_tasks_custom_tools,
 )
+from app.agents.tools.integrations.hubspot_tool import (
+    register_hubspot_custom_tools,
+)
 from app.agents.tools.integrations.instagram_tool import (
     register_instagram_custom_tools,
 )
@@ -27,50 +44,34 @@ from app.agents.tools.integrations.linear_tool import (
 from app.agents.tools.integrations.linkedin_tool import (
     register_linkedin_custom_tools,
 )
+from app.agents.tools.integrations.microsoft_teams_tool import (
+    register_microsoft_teams_custom_tools,
+)
 from app.agents.tools.integrations.notion_tool import (
     register_notion_custom_tools,
 )
 from app.agents.tools.integrations.reddit_tool import (
     register_reddit_custom_tools,
 )
-from app.agents.tools.integrations.twitter_tool import (
-    register_twitter_custom_tools,
-)
 from app.agents.tools.integrations.slack_tool import (
     register_slack_custom_tools,
-)
-from app.agents.tools.integrations.github_tool import (
-    register_github_custom_tools,
-)
-from app.agents.tools.integrations.hubspot_tool import (
-    register_hubspot_custom_tools,
-)
-from app.agents.tools.integrations.airtable_tool import (
-    register_airtable_custom_tools,
-)
-from app.agents.tools.integrations.asana_tool import (
-    register_asana_custom_tools,
-)
-from app.agents.tools.integrations.clickup_tool import (
-    register_clickup_custom_tools,
-)
-from app.agents.tools.integrations.trello_tool import (
-    register_trello_custom_tools,
 )
 from app.agents.tools.integrations.todoist_tool import (
     register_todoist_custom_tools,
 )
-from app.agents.tools.integrations.microsoft_teams_tool import (
-    register_microsoft_teams_custom_tools,
+from app.agents.tools.integrations.trello_tool import (
+    register_trello_custom_tools,
+)
+from app.agents.tools.integrations.twitter_tool import (
+    register_twitter_custom_tools,
 )
 from app.agents.tools.integrations.urgency_tool import (
     register_urgency_custom_tools,
 )
-from shared.py.wide_events import log
 from app.services.composio.custom_tools.gmail_tools import (
     register_gmail_custom_tools,
 )
-from composio import Composio
+from shared.py.wide_events import log
 
 
 class CustomToolsRegistry:
@@ -87,12 +88,12 @@ class CustomToolsRegistry:
 
     def __init__(self) -> None:
         self._composio: Composio | None = None
-        self._tools_by_toolkit: Dict[str, List[str]] = {}
+        self._tools_by_toolkit: dict[str, list[str]] = {}
         self._registered_toolkits: set[str] = set()
 
     def _toolkit_registrations(
         self,
-    ) -> List[Tuple[str, Callable[["Composio"], List[str]]]]:
+    ) -> list[tuple[str, Callable[["Composio"], list[str]]]]:
         """Return the canonical list of toolkit registrations."""
         return [
             ("gmail", register_gmail_custom_tools),
@@ -126,12 +127,7 @@ class CustomToolsRegistry:
         return len(self._registered_toolkits) == expected_count
 
     def initialize(self, composio: Composio) -> None:
-        """
-        Initialize the registry with Composio client and register all custom tools.
-
-        Args:
-            composio: The Composio client instance
-        """
+        """Initialize the registry with the Composio client and register all custom tools."""
         if self._composio is composio and self._is_fully_initialized():
             return
 
@@ -158,15 +154,9 @@ class CustomToolsRegistry:
     def _register_toolkit(
         self,
         toolkit: str,
-        register_func: Callable[["Composio"], List[str]],
+        register_func: Callable[["Composio"], list[str]],
     ) -> None:
-        """
-        Register custom tools for a specific toolkit.
-
-        Args:
-            toolkit: The toolkit name (e.g., 'gmail')
-            register_func: Function that registers tools and returns their names
-        """
+        """Register custom tools for a specific toolkit."""
         if self._composio is None:
             raise RuntimeError("Registry not initialized. Call initialize() first.")
 
@@ -184,32 +174,11 @@ class CustomToolsRegistry:
             custom_tools_registered_count=len(tool_names),
             custom_tools_names=tool_names,
         )
-        log.info(
-            f"Registered {len(tool_names)} custom tools for {normalized_toolkit} toolkit"
-        )
+        log.info(f"Registered {len(tool_names)} custom tools for {normalized_toolkit} toolkit")
 
-    def get_tool_names(self, toolkit: str) -> List[str]:
-        """
-        Get list of custom tool names for a specific toolkit.
-
-        Args:
-            toolkit: The toolkit name (e.g., 'gmail', 'slack')
-
-        Returns:
-            List of custom tool names, or empty list if none exist
-        """
+    def get_tool_names(self, toolkit: str) -> list[str]:
+        """Get the custom tool names for a toolkit, or an empty list if none exist."""
         return self._tools_by_toolkit.get(toolkit.lower(), [])
-
-    def get_all_tool_names(self) -> List[str]:
-        """Get all registered custom tool names across all toolkits."""
-        all_tools = []
-        for tools in self._tools_by_toolkit.values():
-            all_tools.extend(tools)
-        return all_tools
-
-    def get_registered_toolkits(self) -> List[str]:
-        """Get list of toolkits that have custom tools registered."""
-        return sorted(self._registered_toolkits)
 
     @property
     def is_initialized(self) -> bool:

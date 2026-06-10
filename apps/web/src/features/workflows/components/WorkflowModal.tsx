@@ -1,11 +1,16 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { InformationCircleIcon } from "@icons";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useHotkeys } from "react-hotkeys-hook";
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import WorkflowDescriptionField from "@/features/workflows/components/workflow-modal/WorkflowDescriptionField";
 import WorkflowFooter from "@/features/workflows/components/workflow-modal/WorkflowFooter";
 import WorkflowHeader from "@/features/workflows/components/workflow-modal/WorkflowHeader";
@@ -14,9 +19,11 @@ import WorkflowRightPanel from "@/features/workflows/components/workflow-modal/W
 import WorkflowTriggerSection from "@/features/workflows/components/workflow-modal/WorkflowTriggerSection";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { usePlatform } from "@/hooks/ui/usePlatform";
+import { useRouter } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
+import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
 import { type Workflow, workflowApi } from "../api/workflowApi";
 import {
   getDefaultFormValues,
@@ -29,7 +36,8 @@ import { useWorkflowsStore } from "../stores/workflowsStore";
 import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
 import { createDefaultTriggerConfig } from "../triggers/registry";
 import { hasValidTriggerName, isIntegrationTrigger } from "../triggers/types";
-import { findTriggerSchema } from "../triggers/utils";
+
+import { findTriggerSchema, getTriggerDisplayInfo } from "../triggers/utils";
 import { getBrowserTimezone } from "../utils/browserTimezone";
 
 interface WorkflowModalProps {
@@ -37,10 +45,22 @@ interface WorkflowModalProps {
   onOpenChange: (open: boolean) => void;
   onWorkflowSaved?: (workflowId: string) => void;
   onWorkflowDeleted?: (workflowId: string) => void;
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "preview";
   existingWorkflow?: Workflow | null;
   /** Pre-fill form from AI-generated draft data */
   draftData?: WorkflowDraftData | null;
+  /**
+   * Pre-built steps from a public/community workflow. When provided:
+   * - the steps are forwarded to create so the backend skips regeneration
+   * - the integration chip selector is hidden
+   * - a read-only preview panel renders alongside the form
+   */
+  predefinedSteps?: PublicWorkflowStep[];
+  /**
+   * When true, the create button shows "Create and Send" and the workflow is
+   * immediately executed in the chat after creation.
+   */
+  createAndSend?: boolean;
 }
 
 export default function WorkflowModal({
@@ -51,7 +71,10 @@ export default function WorkflowModal({
   mode,
   existingWorkflow,
   draftData,
+  predefinedSteps,
+  createAndSend = false,
 }: WorkflowModalProps) {
+  const hasPredefinedSteps = !!predefinedSteps && predefinedSteps.length > 0;
   const {
     isCreating,
     error: creationError,
@@ -85,11 +108,48 @@ export default function WorkflowModal({
     resetToForm,
   } = useWorkflowModalStore();
 
+  const router = useRouter();
+
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+
   // Single source of truth for workflow data
   const [currentWorkflow, setCurrentWorkflow] = useState<Workflow | null>(null);
 
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Selected integration slugs for hinting step generation
+  const [selectedIntegrationSlugs, setSelectedIntegrationSlugs] = useState<
+    string[]
+  >([]);
+
   // Fetch trigger schemas for slug normalization
   const { data: triggerSchemas } = useTriggerSchemas();
+
+  const { integrations, connectIntegration } = useIntegrations();
+  const [isConnecting, setIsConnecting] = useState(false);
+  const missingIntegration = (() => {
+    if (!currentWorkflow) return null;
+    if (currentWorkflow.trigger_config.type !== "integration") return null;
+    const display = getTriggerDisplayInfo(
+      currentWorkflow,
+      integrations,
+      triggerSchemas,
+    );
+    if (!display.integration) return null;
+    if (display.integration.status === "connected") return null;
+    return display.integration;
+  })();
+  const handleConnectMissingIntegration = useCallback(async () => {
+    if (!missingIntegration || isConnecting) return;
+    setIsConnecting(true);
+    try {
+      await connectIntegration(missingIntegration.id);
+    } catch (err) {
+      console.error("Failed to connect integration", err);
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [missingIntegration, isConnecting, connectIntegration]);
 
   // React Hook Form setup
   const form = useForm<WorkflowFormData>({
@@ -106,12 +166,29 @@ export default function WorkflowModal({
     formState: { errors },
   } = form;
 
+  // Defer the form reset until after the modal's exit animation finishes —
+  // resetting synchronously on close blanks out the visible form fields while
+  // the modal is still fading out, which reads as an abrupt close. The delay
+  // matches HeroUI's modal exit transition.
+  useEffect(() => {
+    if (isOpen) return;
+    const timer = globalThis.setTimeout(() => {
+      resetFormValues(getDefaultFormValues());
+      setSelectedIntegrationSlugs([]);
+      resetToForm();
+      clearCreationError();
+    }, 250);
+    return () => globalThis.clearTimeout(timer);
+  }, [isOpen, resetFormValues, resetToForm, clearCreationError]);
+
   // Manage the single workflow state from all sources
   useEffect(() => {
     if (existingWorkflow) {
       setCurrentWorkflow(existingWorkflow);
+      setSelectedIntegrationSlugs(existingWorkflow.selected_integrations ?? []);
     } else {
       setCurrentWorkflow(null);
+      setSelectedIntegrationSlugs([]);
     }
   }, [existingWorkflow]);
 
@@ -178,12 +255,20 @@ export default function WorkflowModal({
   useHotkeys(
     "mod+enter",
     () => {
-      if (isOpen && creationPhase === "form" && !isSaveDisabled()) {
+      if (
+        isOpen &&
+        creationPhase === "form" &&
+        mode !== "preview" &&
+        !isSaveDisabled()
+      ) {
         handleSubmit(handleSave)();
       }
     },
-    { enableOnFormTags: true, enabled: isOpen && creationPhase === "form" },
-    [isOpen, creationPhase, isSaveDisabled],
+    {
+      enableOnFormTags: true,
+      enabled: isOpen && creationPhase === "form" && mode !== "preview",
+    },
+    [isOpen, creationPhase, isSaveDisabled, mode],
   );
 
   // Handle initial step generation (for empty workflows)
@@ -193,7 +278,7 @@ export default function WorkflowModal({
 
   // Initialize form data based on mode and currentWorkflow
   useEffect(() => {
-    if (mode === "edit" && currentWorkflow) {
+    if ((mode === "edit" || mode === "preview") && currentWorkflow) {
       const formValues = workflowToFormData(currentWorkflow);
       resetFormValues(formValues);
       // Initialize activation state from current workflow
@@ -206,7 +291,7 @@ export default function WorkflowModal({
     // Handle draft data from AI-generated workflow
     if (mode === "create" && draftData) {
       const activeTab =
-        draftData.trigger_type === "scheduled"
+        draftData.trigger_type === "schedule"
           ? "schedule"
           : draftData.trigger_type === "integration"
             ? "trigger"
@@ -215,7 +300,7 @@ export default function WorkflowModal({
       let triggerConfig: WorkflowFormData["trigger_config"];
       let selectedTriggerValue = "";
 
-      if (draftData.trigger_type === "scheduled") {
+      if (draftData.trigger_type === "schedule") {
         triggerConfig = {
           type: "schedule" as const,
           enabled: true,
@@ -289,6 +374,13 @@ export default function WorkflowModal({
 
     const currentFormData = workflowToFormData(existingWorkflow);
 
+    const persistedSlugs = [...(existingWorkflow.selected_integrations ?? [])]
+      .sort((a, b) => a.localeCompare(b))
+      .join(",");
+    const currentSlugs = [...selectedIntegrationSlugs]
+      .sort((a, b) => a.localeCompare(b))
+      .join(",");
+
     return (
       formData.title !== currentFormData.title ||
       formData.description !== currentFormData.description ||
@@ -296,14 +388,9 @@ export default function WorkflowModal({
       formData.activeTab !== currentFormData.activeTab ||
       formData.selectedTrigger !== currentFormData.selectedTrigger ||
       JSON.stringify(formData.trigger_config) !==
-        JSON.stringify(currentFormData.trigger_config)
+        JSON.stringify(currentFormData.trigger_config) ||
+      persistedSlugs !== currentSlugs
     );
-  };
-
-  const handleFormReset = () => {
-    resetFormValues(getDefaultFormValues());
-    resetToForm();
-    clearCreationError();
   };
 
   const handleSave = async (data: WorkflowFormData) => {
@@ -312,18 +399,13 @@ export default function WorkflowModal({
     if (mode === "create") {
       setCreationPhase("creating");
 
-      // Log the request for debugging
-      console.log("Creating workflow with data:", data);
-
       // Validate the trigger config before sending
       try {
         const validationResult = workflowFormSchema.safeParse(data);
         if (!validationResult.success) {
-          console.error("Form validation failed:", validationResult.error);
           setCreationPhase("error");
           return;
         }
-        console.log("Form validation passed");
       } catch (validationError) {
         console.error("Form validation error:", validationError);
         setCreationPhase("error");
@@ -336,37 +418,60 @@ export default function WorkflowModal({
         description: data.description || undefined,
         prompt: data.prompt,
         trigger_config: data.trigger_config,
-        generate_immediately: true, // Generate steps immediately
+        // When predefined steps are supplied (from a community/featured
+        // workflow), forward them so the backend reuses them instead of
+        // regenerating a fresh plan.
+        steps: hasPredefinedSteps
+          ? predefinedSteps?.map((step) => ({
+              id: step.id ?? "",
+              title: step.title,
+              description: step.description,
+              category: step.category,
+            }))
+          : undefined,
+        generate_immediately: !hasPredefinedSteps,
+        selected_integrations:
+          selectedIntegrationSlugs.length > 0
+            ? selectedIntegrationSlugs
+            : undefined,
       };
 
       const result = await createWorkflow(createRequest);
 
       if (result.success && result.workflow) {
+        const createdWorkflow = result.workflow;
         trackEvent(ANALYTICS_EVENTS.WORKFLOWS_CREATED, {
-          workflow_id: result.workflow.id,
-          workflow_title: result.workflow.title,
-          step_count: result.workflow.steps?.length || 0,
+          workflow_id: createdWorkflow.id,
+          workflow_title: createdWorkflow.title,
+          step_count: createdWorkflow.steps?.length || 0,
           trigger_type: data.trigger_config.type,
           has_schedule: data.trigger_config.type === "schedule",
         });
 
         // Update currentWorkflow with the newly created workflow
-        setCurrentWorkflow(result.workflow);
+        setCurrentWorkflow(createdWorkflow);
         setCreationPhase("success");
 
         // Show success toast
         toast.success("Workflow created successfully!", {
-          description: `${result.workflow.steps?.length || 0} steps generated`,
+          description: `${createdWorkflow.steps?.length || 0} steps generated`,
           duration: 3000,
         });
 
         // Optimistic update: add to store immediately for instant UI feedback
-        addToStore(result.workflow);
+        addToStore(createdWorkflow);
 
         // Notify parent callbacks if provided (for backwards compatibility)
-        if (onWorkflowSaved) onWorkflowSaved(result.workflow.id);
+        if (onWorkflowSaved) onWorkflowSaved(createdWorkflow.id);
         await fetchWorkflows();
 
+        // In createAndSend mode, auto-execute the workflow in chat after
+        // creation. Fire selectWorkflow BEFORE closing — the parent gates the
+        // modal render on local state and unmounts us synchronously on close,
+        // which would kill any post-close effect.
+        if (createAndSend) {
+          selectWorkflow(createdWorkflow, { autoSend: true });
+        }
         handleClose();
       } else {
         setCreationPhase("error");
@@ -384,14 +489,30 @@ export default function WorkflowModal({
         trigger_config: {
           ...data.trigger_config,
         },
+        selected_integrations: selectedIntegrationSlugs,
       };
+
+      // Decide if step regeneration is needed BEFORE persisting,
+      // so the comparison runs against the previous truth.
+      const previousFormData = workflowToFormData(currentWorkflow);
+      const previousSlugs = [...(currentWorkflow.selected_integrations ?? [])]
+        .sort((a, b) => a.localeCompare(b))
+        .join(",");
+      const currentSlugs = [...selectedIntegrationSlugs]
+        .sort((a, b) => a.localeCompare(b))
+        .join(",");
+      const stepRelevantChanged =
+        data.prompt !== previousFormData.prompt ||
+        data.description !== previousFormData.description ||
+        JSON.stringify(data.trigger_config) !==
+          JSON.stringify(previousFormData.trigger_config) ||
+        previousSlugs !== currentSlugs;
 
       const updatedWorkflow = await workflowApi.updateWorkflow(
         currentWorkflow.id,
         updateRequest,
       );
 
-      // Update currentWorkflow with the updated data
       if (updatedWorkflow) {
         setCurrentWorkflow({
           ...currentWorkflow,
@@ -400,20 +521,68 @@ export default function WorkflowModal({
         });
       }
 
-      // Optimistic update: update in store immediately
       updateInStore(currentWorkflow.id, updateRequest);
+
+      if (stepRelevantChanged) {
+        // Modal stays open with a visible regen indicator until the user
+        // dismisses it.
+        setIsRegeneratingSteps(true);
+        setRegenerationError(null);
+        try {
+          const regenResult = await workflowApi.regenerateWorkflowSteps(
+            currentWorkflow.id,
+            {
+              instruction: "Update steps to match the new workflow definition",
+              force_different_tools: false,
+              selected_integrations:
+                selectedIntegrationSlugs.length > 0
+                  ? selectedIntegrationSlugs
+                  : undefined,
+            },
+          );
+
+          if (regenResult.workflow) {
+            setCurrentWorkflow(regenResult.workflow);
+            toast.success("Workflow updated", {
+              description: `${regenResult.workflow.steps?.length || 0} steps regenerated`,
+              duration: 3000,
+            });
+          }
+        } catch (regenError) {
+          console.error("Failed to regenerate steps after update:", regenError);
+          const message =
+            regenError instanceof Error
+              ? regenError.message
+              : "Failed to regenerate steps";
+          setRegenerationError(message);
+          toast.error("Saved, but failed to regenerate steps", {
+            description: message,
+          });
+        } finally {
+          setIsRegeneratingSteps(false);
+        }
+      } else {
+        toast.success("Workflow updated", { duration: 3000 });
+      }
 
       if (onWorkflowSaved) onWorkflowSaved(currentWorkflow.id);
 
       await fetchWorkflows();
-      handleClose();
     } catch (error) {
       console.error("Failed to update workflow:", error);
+      toast.error("Failed to update workflow", {
+        description:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred. Please try again.",
+        duration: 4000,
+      });
     }
   };
 
   const handleClose = () => {
-    handleFormReset();
+    // Reset is handled by the close-animation effect — calling it here would
+    // blank the form while the modal is still visibly fading out.
     onOpenChange(false);
   };
 
@@ -434,29 +603,42 @@ export default function WorkflowModal({
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (mode === "edit" && existingWorkflow) {
-      try {
-        trackEvent(ANALYTICS_EVENTS.WORKFLOWS_DELETED, {
-          workflow_id: existingWorkflow.id,
-          workflow_title: existingWorkflow.title,
-          step_count: existingWorkflow.steps?.length || 0,
-          is_public: existingWorkflow.is_public,
-        });
+      setIsDeleteConfirmOpen(true);
+    }
+  };
 
-        // Call the actual delete API
-        await workflowApi.deleteWorkflow(existingWorkflow.id);
+  const confirmDelete = async () => {
+    if (!(mode === "edit" && existingWorkflow)) return;
+    setIsDeleting(true);
+    try {
+      trackEvent(ANALYTICS_EVENTS.WORKFLOWS_DELETED, {
+        workflow_id: existingWorkflow.id,
+        workflow_title: existingWorkflow.title,
+        step_count: existingWorkflow.steps?.length || 0,
+        is_public: existingWorkflow.is_public,
+      });
 
-        // Optimistic update: remove from store immediately
-        removeFromStore(existingWorkflow.id);
+      await workflowApi.deleteWorkflow(existingWorkflow.id);
+      removeFromStore(existingWorkflow.id);
 
-        if (onWorkflowDeleted) onWorkflowDeleted(existingWorkflow.id);
+      if (onWorkflowDeleted) onWorkflowDeleted(existingWorkflow.id);
 
-        await fetchWorkflows();
-        handleClose();
-      } catch (error) {
-        console.error("Failed to delete workflow:", error);
-      }
+      await fetchWorkflows();
+      setIsDeleteConfirmOpen(false);
+      handleClose();
+    } catch (error) {
+      console.error("Failed to delete workflow:", error);
+      toast.error("Failed to delete workflow", {
+        description:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred",
+        duration: 4000,
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -511,6 +693,10 @@ export default function WorkflowModal({
         {
           instruction,
           force_different_tools: forceDifferentTools,
+          selected_integrations:
+            selectedIntegrationSlugs.length > 0
+              ? selectedIntegrationSlugs
+              : undefined,
         },
       );
 
@@ -537,6 +723,38 @@ export default function WorkflowModal({
       setRegenerationError(errorMessage);
       setIsRegeneratingSteps(false);
     }
+  };
+
+  const handlePublishToggle = async () => {
+    if (!currentWorkflow?.id) return;
+    try {
+      if (currentWorkflow.is_public) {
+        trackEvent(ANALYTICS_EVENTS.WORKFLOWS_UNPUBLISHED, {
+          workflow_id: currentWorkflow.id,
+          workflow_title: currentWorkflow.title,
+        });
+        await workflowApi.unpublishWorkflow(currentWorkflow.id);
+        setCurrentWorkflow({ ...currentWorkflow, is_public: false });
+      } else {
+        trackEvent(ANALYTICS_EVENTS.WORKFLOWS_PUBLISHED, {
+          workflow_id: currentWorkflow.id,
+          workflow_title: currentWorkflow.title,
+          step_count: currentWorkflow.steps?.length || 0,
+        });
+        const result = await workflowApi.publishWorkflow(currentWorkflow.id);
+        const slug = result.slug ?? currentWorkflow.slug;
+        setCurrentWorkflow({ ...currentWorkflow, is_public: true, slug });
+        if (slug) router.push(`/use-cases/${slug}`);
+      }
+      await fetchWorkflows();
+    } catch (error) {
+      console.error("Error publishing/unpublishing workflow:", error);
+    }
+  };
+
+  const handleMarketplaceView = () => {
+    if (!currentWorkflow?.slug) return;
+    router.push(`/use-cases/${currentWorkflow.slug}`);
   };
 
   // Handle regeneration with specific instruction
@@ -592,24 +810,18 @@ export default function WorkflowModal({
         trigger_type: existingWorkflow.trigger_config.type,
       });
 
-      // Close modal first to ensure clean state
+      // Fire selectWorkflow before closing — the parent may unmount us
+      // synchronously, which would drop any post-close effect.
+      selectWorkflow(existingWorkflow, { autoSend: true });
       onOpenChange(false);
-
-      // Then navigate after modal starts closing
-      // Small delay ensures modal close animation begins and component cleanup doesn't interfere
-      setTimeout(() => {
-        selectWorkflow(existingWorkflow, { autoSend: true });
-        console.log(
-          "Workflow selected for manual execution in chat with auto-send",
-        );
-      }, 50);
     } catch (error) {
       console.error("Failed to select workflow for execution:", error);
     }
   };
 
   const getButtonText = () => {
-    if (mode === "edit") return isCreating ? "Saving..." : "Save Changes";
+    if (mode === "edit") return isCreating ? "Saving..." : "Save";
+    if (createAndSend) return isCreating ? "Creating..." : "Create and Send";
     return isCreating ? "Creating..." : "Create Workflow";
   };
 
@@ -619,106 +831,210 @@ export default function WorkflowModal({
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onOpenChange={(open) => {
-        if (!open) handleFormReset();
-        onOpenChange(open);
-      }}
-      // isDismissable={false}
-      hideCloseButton
-      size={mode === "create" ? "3xl" : "4xl"}
-      className={`max-h-[71vh] bg-secondary-bg ${mode !== "create" ? "min-w-[80vw]" : ""}`}
-      backdrop="blur"
-    >
-      <ModalContent>
-        <ModalBody className="min-h-0 overflow-hidden pr-2">
-          {creationPhase === "form" ? (
-            <div className="flex min-h-0 flex-1 gap-8">
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="min-h-0 flex-1 space-y-5 overflow-y-auto ">
-                  <WorkflowHeader
-                    mode={mode}
-                    control={control}
-                    errors={errors}
-                    currentWorkflow={currentWorkflow}
-                    onWorkflowChange={setCurrentWorkflow}
-                    onDelete={handleDelete}
-                    onRefetchWorkflows={fetchWorkflows}
-                  />
-
-                  <WorkflowTriggerSection
-                    activeTab={formData.activeTab}
-                    selectedTrigger={formData.selectedTrigger}
-                    triggerConfig={formData.trigger_config}
-                    onActiveTabChange={handleActiveTabChange}
-                    onSelectedTriggerChange={(trigger) =>
-                      setValue("selectedTrigger", trigger)
-                    }
-                    onTriggerConfigChange={(config) =>
-                      setValue("trigger_config", config)
-                    }
-                  />
-
-                  <div>
-                    <div className="border-t border-zinc-800 mb-2" />
-                    <div className="space-y-4">
-                      <WorkflowDescriptionField
+    <>
+      <Modal
+        isOpen={isOpen}
+        onOpenChange={onOpenChange}
+        hideCloseButton
+        size={mode === "create" && !hasPredefinedSteps ? "3xl" : "4xl"}
+        className={`max-h-[71vh] bg-secondary-bg ${mode !== "create" || hasPredefinedSteps ? "min-w-[80vw]" : ""}`}
+        backdrop="blur"
+      >
+        <ModalContent>
+          <ModalBody className="min-h-0 overflow-hidden pr-2">
+            {creationPhase === "form" ? (
+              <div className="flex min-h-0 flex-1 gap-8">
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <fieldset
+                    disabled={mode === "preview"}
+                    className="contents disabled:cursor-default"
+                  >
+                    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto ">
+                      {missingIntegration && (
+                        <div className="flex items-center justify-between gap-3 rounded-2xl bg-amber-400/10 px-3 py-2.5 text-sm text-amber-300">
+                          <span>
+                            This workflow is disabled because{" "}
+                            <span className="font-medium">
+                              {missingIntegration.name}
+                            </span>{" "}
+                            isn't connected. Connect it to start running.
+                          </span>
+                          <Button
+                            color="primary"
+                            size="sm"
+                            isLoading={isConnecting}
+                            onPress={handleConnectMissingIntegration}
+                          >
+                            Connect {missingIntegration.name}
+                          </Button>
+                        </div>
+                      )}
+                      <WorkflowHeader
+                        mode={mode}
                         control={control}
                         errors={errors}
-                        setValue={setValue}
-                        mode={mode}
+                        currentWorkflow={currentWorkflow}
+                        isActivated={isActivated}
+                        isTogglingActivation={isTogglingActivation}
+                        onToggleActivation={handleActivationToggle}
+                        isPublic={!!currentWorkflow?.is_public}
+                        onUnpublish={handlePublishToggle}
+                        onDelete={handleDelete}
+                        onResetToDefault={handleResetToDefault}
+                      />
+
+                      <WorkflowTriggerSection
+                        activeTab={formData.activeTab}
+                        selectedTrigger={formData.selectedTrigger}
+                        triggerConfig={formData.trigger_config}
+                        onActiveTabChange={handleActiveTabChange}
+                        onSelectedTriggerChange={(trigger) =>
+                          setValue("selectedTrigger", trigger)
+                        }
+                        onTriggerConfigChange={(config) =>
+                          setValue("trigger_config", config)
+                        }
+                        isPreview={mode === "preview"}
+                      />
+
+                      <div>
+                        <div className="border-t border-zinc-800 mb-2" />
+                        <div className="space-y-4">
+                          <WorkflowDescriptionField
+                            control={control}
+                            errors={errors}
+                            setValue={setValue}
+                            mode={mode === "preview" ? "edit" : mode}
+                            isPreview={mode === "preview"}
+                            selectedIntegrationSlugs={selectedIntegrationSlugs}
+                            onIntegrationSlugsChange={
+                              setSelectedIntegrationSlugs
+                            }
+                            showIntegrationSelector={!hasPredefinedSteps}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </fieldset>
+
+                  {mode === "preview" ? (
+                    <PreviewFooter onClose={handleClose} />
+                  ) : (
+                    <WorkflowFooter
+                      existingWorkflow={!!existingWorkflow}
+                      hasSteps={
+                        !!currentWorkflow?.steps &&
+                        currentWorkflow.steps.length > 0
+                      }
+                      onRunWorkflow={handleRunWorkflow}
+                      onCancel={handleClose}
+                      onSave={() => handleSubmit(handleSave)()}
+                      isSaveDisabled={isSaveDisabled()}
+                      isCreating={isCreating}
+                      modifierKeyName={modifierKeyName}
+                      buttonText={getButtonText()}
+                      isPublic={!!currentWorkflow?.is_public}
+                      onPublishToggle={handlePublishToggle}
+                      onViewMarketplace={
+                        currentWorkflow?.slug
+                          ? handleMarketplaceView
+                          : undefined
+                      }
+                    />
+                  )}
+                </div>
+
+                {mode === "create" && hasPredefinedSteps && (
+                  <div className="flex w-96 min-h-0 flex-col overflow-hidden rounded-2xl bg-zinc-950/30 p-3">
+                    <div className="mb-2 flex items-center justify-between px-1">
+                      <span className="text-sm font-medium text-zinc-300">
+                        Steps
+                      </span>
+                      <span className="rounded-full bg-primary/20 px-1.5 py-0.5 text-xs text-primary">
+                        {predefinedSteps?.length}
+                      </span>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto">
+                      <WorkflowSteps
+                        steps={(predefinedSteps ?? []).map((step) => ({
+                          id: step.id ?? "",
+                          title: step.title,
+                          description: step.description,
+                          category: step.category,
+                        }))}
                       />
                     </div>
                   </div>
-                </div>
+                )}
 
-                <WorkflowFooter
-                  mode={mode}
-                  existingWorkflow={!!existingWorkflow}
-                  isSystemWorkflow={existingWorkflow?.is_system_workflow}
-                  isActivated={isActivated}
-                  isTogglingActivation={isTogglingActivation}
-                  onToggleActivation={handleActivationToggle}
-                  hasSteps={
-                    !!currentWorkflow?.steps && currentWorkflow.steps.length > 0
-                  }
-                  onRunWorkflow={handleRunWorkflow}
-                  onResetToDefault={handleResetToDefault}
-                  onCancel={handleClose}
-                  onSave={() => handleSubmit(handleSave)()}
-                  isSaveDisabled={isSaveDisabled()}
-                  isCreating={isCreating}
-                  modifierKeyName={modifierKeyName}
-                  buttonText={getButtonText()}
-                />
+                {(mode === "edit" || mode === "preview") &&
+                  existingWorkflow && (
+                    <fieldset
+                      disabled={mode === "preview"}
+                      className="contents disabled:cursor-default"
+                    >
+                      <WorkflowRightPanel
+                        workflow={currentWorkflow}
+                        workflowId={existingWorkflow.id}
+                        isGenerating={isGeneratingSteps}
+                        isRegenerating={isRegeneratingSteps}
+                        regenerationError={regenerationError}
+                        onRegenerateWithReason={handleRegenerateWithReason}
+                        onInitialGeneration={handleInitialGeneration}
+                        onClearError={() => setRegenerationError(null)}
+                        isPreview={mode === "preview"}
+                      />
+                    </fieldset>
+                  )}
               </div>
+            ) : (
+              <WorkflowLoadingState
+                phase={creationPhase}
+                mode={mode}
+                error={creationError}
+                workflow={currentWorkflow}
+                onClose={handleClose}
+                onRetry={() => setCreationPhase("form")}
+              />
+            )}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
+      {mode === "edit" && existingWorkflow && (
+        <ConfirmationDialog
+          isOpen={isDeleteConfirmOpen}
+          title="Delete workflow"
+          message={`Are you sure you want to delete "${existingWorkflow.title}"? This action cannot be undone.`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          variant="destructive"
+          isLoading={isDeleting}
+          onConfirm={confirmDelete}
+          onCancel={() => setIsDeleteConfirmOpen(false)}
+        />
+      )}
+    </>
+  );
+}
 
-              {mode === "edit" && existingWorkflow && (
-                <WorkflowRightPanel
-                  workflow={currentWorkflow}
-                  workflowId={existingWorkflow.id}
-                  isGenerating={isGeneratingSteps}
-                  isRegenerating={isRegeneratingSteps}
-                  regenerationError={regenerationError}
-                  onRegenerateWithReason={handleRegenerateWithReason}
-                  onInitialGeneration={handleInitialGeneration}
-                  onClearError={() => setRegenerationError(null)}
-                />
-              )}
-            </div>
-          ) : (
-            <WorkflowLoadingState
-              phase={creationPhase}
-              mode={mode}
-              error={creationError}
-              workflow={currentWorkflow}
-              onClose={handleClose}
-              onRetry={() => setCreationPhase("form")}
-            />
-          )}
-        </ModalBody>
-      </ModalContent>
-    </Modal>
+function PreviewFooter({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="mt-6 pt-4 pb-3">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-start gap-2 rounded-2xl bg-zinc-800 px-3 py-2.5 text-xs text-zinc-300">
+          <InformationCircleIcon
+            height={16}
+            className="mt-0.5 shrink-0 text-zinc-400"
+          />
+          <span>
+            Don't worry, you can customise all the details later from the
+            Workflows page.
+          </span>
+        </div>
+        <Button color="primary" onPress={onClose}>
+          Close
+        </Button>
+      </div>
+    </div>
   );
 }

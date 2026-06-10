@@ -1,15 +1,11 @@
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any
 
-from shared.py.wide_events import log
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
+
+from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.decorators import with_doc, with_rate_limiting
-from app.templates.docstrings.notification_tool_docs import (
-    GET_NOTIFICATION_COUNT,
-    GET_NOTIFICATION_PREFERENCES,
-    GET_NOTIFICATIONS,
-    MARK_NOTIFICATIONS_READ,
-    SEARCH_NOTIFICATIONS,
-    SEND_NOTIFICATION,
-)
 from app.models.notification.notification_models import (
     BulkActions,
     ChannelConfig,
@@ -19,14 +15,18 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationType,
 )
-from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.services.notification_service import notification_service
-from app.utils.notification.channel_preferences import fetch_channel_preferences
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
-
+from app.templates.docstrings.notification_tool_docs import (
+    GET_NOTIFICATION_COUNT,
+    GET_NOTIFICATION_PREFERENCES,
+    GET_NOTIFICATIONS,
+    MARK_NOTIFICATIONS_READ,
+    SEARCH_NOTIFICATIONS,
+    SEND_NOTIFICATION,
+)
 from app.utils.chat_utils import get_user_id_from_config
+from app.utils.notification.channel_preferences import fetch_channel_preferences
+from shared.py.wide_events import log
 
 
 @tool
@@ -35,17 +35,13 @@ from app.utils.chat_utils import get_user_id_from_config
 async def get_notifications(
     config: RunnableConfig,
     status: Annotated[
-        Optional[NotificationStatus], "Filter by notification status"
+        NotificationStatus | None, "Filter by notification status"
     ] = NotificationStatus.DELIVERED,
-    notification_type: Annotated[
-        Optional[NotificationType], "Filter by notification type"
-    ] = None,
-    source: Annotated[
-        Optional[NotificationSourceEnum], "Filter by notification source"
-    ] = None,
+    notification_type: Annotated[NotificationType | None, "Filter by notification type"] = None,
+    source: Annotated[NotificationSourceEnum | None, "Filter by notification source"] = None,
     limit: Annotated[int, "Maximum number of notifications to return"] = 50,
     offset: Annotated[int, "Number of notifications to skip for pagination"] = 0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get user notifications with filtering options."""
     try:
         log.set(tool={"name": "get_notifications", "action": "get"})
@@ -70,7 +66,7 @@ async def get_notifications(
         return {"notifications": notifications}
 
     except Exception as e:
-        log.error(f"Error getting notifications: {str(e)}")
+        log.error(f"Error getting notifications: {e!s}")
         return {"error": str(e), "notifications": []}
 
 
@@ -79,14 +75,10 @@ async def get_notifications(
 @with_doc(SEARCH_NOTIFICATIONS)
 async def search_notifications(
     config: RunnableConfig,
-    query: Annotated[
-        str, "Search query to match against notification titles and content"
-    ],
-    status: Annotated[
-        Optional[NotificationStatus], "Filter by notification status"
-    ] = None,
+    query: Annotated[str, "Search query to match against notification titles and content"],
+    status: Annotated[NotificationStatus | None, "Filter by notification status"] = None,
     limit: Annotated[int, "Maximum number of results to return"] = 20,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Search notifications by content."""
     try:
         log.set(tool={"name": "search_notifications", "action": "search"})
@@ -127,7 +119,7 @@ async def search_notifications(
         return {"notifications": matching_notifications}
 
     except Exception as e:
-        log.error(f"Error searching notifications: {str(e)}")
+        log.error(f"Error searching notifications: {e!s}")
         return {"error": str(e), "notifications": []}
 
 
@@ -136,10 +128,8 @@ async def search_notifications(
 @with_doc(GET_NOTIFICATION_COUNT)
 async def get_notification_count(
     config: RunnableConfig,
-    status: Annotated[
-        Optional[NotificationStatus], "Filter by notification status"
-    ] = None,
-) -> Dict[str, Any]:
+    status: Annotated[NotificationStatus | None, "Filter by notification status"] = None,
+) -> dict[str, Any]:
     """Get count of notifications."""
     try:
         log.set(tool={"name": "get_notification_count", "action": "count"})
@@ -154,7 +144,7 @@ async def get_notification_count(
         return {"count": total_count}
 
     except Exception as e:
-        log.error(f"Error getting notification count: {str(e)}")
+        log.error(f"Error getting notification count: {e!s}")
         return {"error": str(e), "count": 0}
 
 
@@ -163,8 +153,8 @@ async def get_notification_count(
 @with_doc(MARK_NOTIFICATIONS_READ)
 async def mark_notifications_read(
     config: RunnableConfig,
-    notification_ids: Annotated[List[str], "List of notification IDs to mark as read"],
-) -> Dict[str, Any]:
+    notification_ids: Annotated[list[str], "List of notification IDs to mark as read"],
+) -> dict[str, Any]:
     """Mark one or more notifications as read."""
     try:
         log.set(tool={"name": "mark_notifications_read", "action": "mark_read"})
@@ -177,9 +167,7 @@ async def mark_notifications_read(
 
         # Handle single notification
         if len(notification_ids) == 1:
-            single_result = await notification_service.mark_as_read(
-                notification_ids[0], user_id
-            )
+            single_result = await notification_service.mark_as_read(notification_ids[0], user_id)
             success = bool(single_result)
         else:
             # Handle multiple notifications
@@ -193,7 +181,7 @@ async def mark_notifications_read(
         return {"success": success}
 
     except Exception as e:
-        log.error(f"Error marking notifications as read: {str(e)}")
+        log.error(f"Error marking notifications as read: {e!s}")
         return {"error": str(e), "success": False}
 
 
@@ -203,18 +191,16 @@ async def mark_notifications_read(
 async def send_notification(
     config: RunnableConfig,
     message: Annotated[str, "Notification body text — keep it concise and actionable"],
-    title: Annotated[
-        Optional[str], "Short notification title (defaults to 'GAIA')"
-    ] = None,
+    title: Annotated[str | None, "Short notification title (defaults to 'GAIA')"] = None,
     channels: Annotated[
-        Optional[List[str]],
+        list[str] | None,
         "Channel names to target ('whatsapp', 'telegram', 'inapp'). Omit to use all user-enabled channels.",
     ] = None,
     notification_type: Annotated[
-        Optional[NotificationType],
+        NotificationType | None,
         "Notification type: 'info', 'success', 'warning', or 'error'",
     ] = NotificationType.INFO,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Send a notification to the user on their connected channels."""
     try:
         log.set(tool={"name": "send_notification", "action": "send"})
@@ -229,7 +215,7 @@ async def send_notification(
         resolved_type = notification_type or NotificationType.INFO
 
         # Build channel configs when specific channels are requested
-        channel_configs: List[ChannelConfig] = []
+        channel_configs: list[ChannelConfig] = []
         if channels:
             channel_configs = [ChannelConfig(channel_type=ch) for ch in channels]
         # Empty list triggers auto-injection of all user-enabled channels in the orchestrator
@@ -269,7 +255,7 @@ async def send_notification(
         }
 
     except Exception as e:
-        log.error(f"Error sending notification: {str(e)}")
+        log.error(f"Error sending notification: {e!s}")
         return {"error": str(e), "success": False}
 
 
@@ -278,7 +264,7 @@ async def send_notification(
 @with_doc(GET_NOTIFICATION_PREFERENCES)
 async def get_notification_preferences(
     config: RunnableConfig,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get the user's notification channel preferences."""
     try:
         log.set(tool={"name": "get_notification_preferences", "action": "get"})
@@ -294,13 +280,11 @@ async def get_notification_preferences(
         return {
             "preferences": all_preferences,
             "available_channels": list(all_preferences.keys()),
-            "enabled_channels": [
-                ch for ch, enabled in all_preferences.items() if enabled
-            ],
+            "enabled_channels": [ch for ch, enabled in all_preferences.items() if enabled],
         }
 
     except Exception as e:
-        log.error(f"Error fetching notification preferences: {str(e)}")
+        log.error(f"Error fetching notification preferences: {e!s}")
         return {"error": str(e), "preferences": {}}
 
 

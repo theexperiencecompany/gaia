@@ -1,64 +1,59 @@
 """Unit tests for subagent_runner.py and subagent_helpers.py."""
 
-import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langchain_core.messages import (
     AIMessageChunk,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
+import pytest
 
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     build_initial_messages,
-    call_subagent,
-    check_subagent_integration,
     execute_subagent_stream,
-    get_subagent_by_id,
-    get_subagent_integrations,
     prepare_executor_execution,
-    prepare_subagent_execution,
 )
-
+from app.models.mcp_config import SubAgentConfig
+from app.models.subagent_models import Subagent
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _make_integration(
-    integration_id: str = "github",
-    short_name: str = "gh",
-    has_subagent: bool = True,
+def _make_subagent_config(agent_name: str = "github_agent") -> SubAgentConfig:
+    return SubAgentConfig(
+        has_subagent=True,
+        agent_name=agent_name,
+        tool_space="github_space",
+        handoff_tool_name="call_github",
+        domain="github",
+        capabilities="github stuff",
+        use_cases="github use",
+        system_prompt="You are the GitHub agent.",
+    )
+
+
+def _make_subagent(
+    subagent_id: str = "github",
+    short_name: str | None = "gh",
     agent_name: str = "github_agent",
     provider: str = "github",
-):
-    """Create a mock OAuthIntegration with subagent_config."""
-    subagent_cfg = MagicMock()
-    subagent_cfg.has_subagent = has_subagent
-    subagent_cfg.agent_name = agent_name
-    subagent_cfg.system_prompt = "You are the GitHub agent."
-
-    integration = MagicMock()
-    integration.id = integration_id
-    integration.name = integration_id.title()
-    integration.short_name = short_name
-    integration.provider = provider
-    integration.subagent_config = subagent_cfg
-    return integration
-
-
-def _make_integration_no_subagent(integration_id: str = "stripe"):
-    integration = MagicMock()
-    integration.id = integration_id
-    integration.name = integration_id.title()
-    integration.short_name = None
-    integration.subagent_config = None
-    return integration
+    managed_by: str = "composio",
+) -> Subagent:
+    """Create a real Subagent instance for tests."""
+    return Subagent(
+        id=subagent_id,
+        name=subagent_id.title(),
+        provider=provider,
+        managed_by=managed_by,  # type: ignore[arg-type]
+        config=_make_subagent_config(agent_name=agent_name),
+        short_name=short_name,
+    )
 
 
 def _make_ctx(**overrides) -> SubagentExecutionContext:
@@ -76,94 +71,38 @@ def _make_ctx(**overrides) -> SubagentExecutionContext:
     return SubagentExecutionContext(**defaults)  # type: ignore[arg-type]
 
 
-FAKE_INTEGRATIONS = [
-    _make_integration("github", "gh", True, "github_agent"),
-    _make_integration("gmail", "gmail", True, "gmail_agent"),
-    _make_integration_no_subagent("stripe"),
-]
+FAKE_SUBAGENTS = (
+    _make_subagent("github", "gh", "github_agent", "github"),
+    _make_subagent("gmail", "gmail", "gmail_agent", "gmail"),
+)
 
 
-# ---------------------------------------------------------------------------
-# get_subagent_integrations
-# ---------------------------------------------------------------------------
+def _make_integration(
+    integration_id: str = "github",
+    short_name: str = "gh",
+    has_subagent: bool = True,
+    agent_name: str = "github_agent",
+    provider: str = "github",
+) -> MagicMock:
+    """Subagent-shaped fixture for `get_subagent_by_id` (used by
+    `build_subagent_system_prompt`).
 
+    Mirrors the `Subagent` dataclass surface: `.id`, `.name`, `.short_name`,
+    `.provider`, and `.config` with `.agent_name`, `.system_prompt`, and
+    `.has_subagent`.
+    """
+    subagent_cfg = MagicMock()
+    subagent_cfg.has_subagent = has_subagent
+    subagent_cfg.agent_name = agent_name
+    subagent_cfg.system_prompt = "You are the GitHub agent."
 
-@pytest.mark.unit
-class TestGetSubagentIntegrations:
-    def test_filters_integrations_with_subagent(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-            FAKE_INTEGRATIONS,
-        ):
-            result = get_subagent_integrations()
-
-        assert len(result) == 2
-        ids = [i.id for i in result]
-        assert "github" in ids
-        assert "gmail" in ids
-        assert "stripe" not in ids
-
-    def test_empty_integrations(self):
-        with patch("app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS", []):
-            assert get_subagent_integrations() == []
-
-
-# ---------------------------------------------------------------------------
-# get_subagent_by_id
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestGetSubagentById:
-    def test_find_by_id(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-            FAKE_INTEGRATIONS,
-        ):
-            result = get_subagent_by_id("github")
-        assert result is not None
-        assert result.id == "github"
-
-    def test_find_by_short_name(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-            FAKE_INTEGRATIONS,
-        ):
-            result = get_subagent_by_id("gh")
-        assert result is not None
-        assert result.id == "github"
-
-    def test_case_insensitive(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-            FAKE_INTEGRATIONS,
-        ):
-            result = get_subagent_by_id("GITHUB")
-        assert result is not None
-
-    def test_not_found(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-            FAKE_INTEGRATIONS,
-        ):
-            result = get_subagent_by_id("nonexistent")
-        assert result is None
-
-    def test_integration_without_subagent_not_returned(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-            FAKE_INTEGRATIONS,
-        ):
-            result = get_subagent_by_id("stripe")
-        assert result is None
-
-    def test_strips_whitespace(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-            FAKE_INTEGRATIONS,
-        ):
-            result = get_subagent_by_id("  github  ")
-        assert result is not None
+    subagent = MagicMock()
+    subagent.id = integration_id
+    subagent.name = integration_id.title()
+    subagent.short_name = short_name
+    subagent.provider = provider
+    subagent.config = subagent_cfg
+    return subagent
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +113,12 @@ class TestGetSubagentById:
 @pytest.mark.unit
 class TestBuildInitialMessages:
     @pytest.mark.asyncio
-    async def test_returns_three_messages(self):
+    async def test_returns_four_messages(self):
+        """Shape is [static, dynamic_context, time_msg, human_task].
+
+        The time HumanMessage is separated from the user task so minute
+        ticks don't reset the ``system_instruction`` cache boundary.
+        """
         sys_msg = SystemMessage(content="System prompt")
         ctx_msg = SystemMessage(content="Context")
 
@@ -190,11 +134,15 @@ class TestBuildInitialMessages:
                 task="Do the thing",
             )
 
-        assert len(result) == 3
+        assert len(result) == 4
         assert result[0] is sys_msg
         assert result[1] is ctx_msg
+        # result[2] is the build_current_time_message HumanMessage
         assert isinstance(result[2], HumanMessage)
-        assert result[2].content == "Do the thing"
+        assert result[2].additional_kwargs.get("time_context") is True
+        # result[3] is the task
+        assert isinstance(result[3], HumanMessage)
+        assert result[3].content == "Do the thing"
 
     @pytest.mark.asyncio
     async def test_human_message_has_visible_to(self):
@@ -210,7 +158,8 @@ class TestBuildInitialMessages:
                 task="task",
             )
 
-        human_msg = result[2]
+        # Task HumanMessage is now at index 3 (after the time_msg at 2)
+        human_msg = result[3]
         assert "my_agent" in human_msg.additional_kwargs["visible_to"]
 
     @pytest.mark.asyncio
@@ -267,146 +216,6 @@ class TestBuildInitialMessages:
         kwargs = mock_ctx.call_args.kwargs
         assert kwargs["user_id"] == "uid-1"
         assert kwargs["subagent_id"] == "github_agent"
-
-
-# ---------------------------------------------------------------------------
-# prepare_subagent_execution
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestPrepareSubagentExecution:
-    @pytest.mark.asyncio
-    async def test_happy_path(self):
-        mock_graph = MagicMock(name="subagent_graph")
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-                FAKE_INTEGRATIONS,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.providers.aget",
-                new_callable=AsyncMock,
-                return_value=mock_graph,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.build_agent_config",
-                return_value={"configurable": {"thread_id": "github_conv-1"}},
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.create_subagent_system_message",
-                new_callable=AsyncMock,
-                return_value=SystemMessage(content="GitHub system"),
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-                new_callable=AsyncMock,
-                return_value=SystemMessage(content="ctx"),
-            ),
-            patch("app.agents.core.subagents.subagent_runner.log"),
-        ):
-            ctx, error = await prepare_subagent_execution(
-                subagent_id="github",
-                task="List my repos",
-                user={"user_id": "u1", "email": "t@t.com", "name": "T"},
-                user_time=datetime.now(timezone.utc),
-                conversation_id="conv-1",
-            )
-
-        assert error is None
-        assert ctx is not None
-        assert ctx.agent_name == "github_agent"
-        assert ctx.integration_id == "github"
-        assert ctx.subagent_graph is mock_graph
-
-    @pytest.mark.asyncio
-    async def test_subagent_not_found_error(self):
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-                FAKE_INTEGRATIONS,
-            ),
-            patch("app.agents.core.subagents.subagent_runner.log"),
-        ):
-            ctx, error = await prepare_subagent_execution(
-                subagent_id="nonexistent",
-                task="task",
-                user={"user_id": "u1"},
-                user_time=datetime.now(timezone.utc),
-                conversation_id="conv-1",
-            )
-
-        assert ctx is None
-        assert error is not None
-        assert "not found" in error
-
-    @pytest.mark.asyncio
-    async def test_graph_not_available_error(self):
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-                FAKE_INTEGRATIONS,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.providers.aget",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch("app.agents.core.subagents.subagent_runner.log"),
-        ):
-            ctx, error = await prepare_subagent_execution(
-                subagent_id="github",
-                task="task",
-                user={"user_id": "u1"},
-                user_time=datetime.now(timezone.utc),
-                conversation_id="conv-1",
-            )
-
-        assert ctx is None
-        assert "not available" in error
-
-    @pytest.mark.asyncio
-    async def test_strips_subagent_prefix(self):
-        """subagent_id like 'subagent:github' should resolve to 'github'."""
-        mock_graph = MagicMock(name="subagent_graph")
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-                FAKE_INTEGRATIONS,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.providers.aget",
-                new_callable=AsyncMock,
-                return_value=mock_graph,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.build_agent_config",
-                return_value={"configurable": {"thread_id": "t"}},
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.create_subagent_system_message",
-                new_callable=AsyncMock,
-                return_value=SystemMessage(content="sys"),
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-                new_callable=AsyncMock,
-                return_value=SystemMessage(content="ctx"),
-            ),
-            patch("app.agents.core.subagents.subagent_runner.log"),
-        ):
-            ctx, error = await prepare_subagent_execution(
-                subagent_id="subagent:github",
-                task="task",
-                user={"user_id": "u1"},
-                user_time=datetime.now(timezone.utc),
-                conversation_id="conv-1",
-            )
-
-        assert error is None
-        assert ctx is not None
 
 
 # ---------------------------------------------------------------------------
@@ -512,7 +321,7 @@ class TestExecuteSubagentStream:
         stream_writer = MagicMock()
 
         async def _fake_astream(*args, **kwargs):
-            yield ("updates", {"node1": {"messages": []}})
+            yield ("updates", {"agent": {"messages": []}})
 
         mock_graph = MagicMock()
         mock_graph.astream = _fake_astream
@@ -528,6 +337,52 @@ class TestExecuteSubagentStream:
         ):
             await execute_subagent_stream(ctx, stream_writer=stream_writer)
 
+        stream_writer.assert_called_once()
+        call_data = stream_writer.call_args[0][0]
+        assert call_data["tool_data"] == tool_entry
+
+    @pytest.mark.asyncio
+    async def test_non_agent_node_updates_skipped(self):
+        """Updates from non-agent nodes (pre-model hooks) must not emit tool_data.
+
+        When a subagent runs a second time with the same checkpoint, LangGraph
+        replays historical AIMessages via filter_messages_node / manage_system_prompts_node
+        "updates" events. Without the guard these stale tool_calls get re-emitted,
+        causing cumulative duplication in the UI (e.g. "13 tools" instead of 3).
+        """
+        tool_entry = {"name": "web_search", "args": {"q": "test"}}
+        stream_writer = MagicMock()
+
+        async def _fake_astream(*args, **kwargs):
+            # Simulate pre-model hook nodes replaying historical messages
+            yield ("updates", {"filter_messages_node": {"messages": []}})
+            yield ("updates", {"manage_system_prompts_node": {"messages": []}})
+            # Only the "agent" node should produce tool_data
+            yield ("updates", {"agent": {"messages": []}})
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph)
+
+        call_count = 0
+
+        def _extract_side_effect(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            return [("tc-1", tool_entry)]
+
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            patch(
+                "app.agents.core.subagents.subagent_runner.extract_tool_entries_from_update",
+                new_callable=AsyncMock,
+                side_effect=_extract_side_effect,
+            ),
+        ):
+            await execute_subagent_stream(ctx, stream_writer=stream_writer)
+
+        # extract_tool_entries_from_update should only be called once (for "agent" node)
+        assert call_count == 1
         stream_writer.assert_called_once()
         call_data = stream_writer.call_args[0][0]
         assert call_data["tool_data"] == tool_entry
@@ -619,7 +474,7 @@ class TestExecuteSubagentStream:
         metadata = {"icon_url": "https://icon.png", "name": "Custom MCP"}
 
         async def _fake_astream(*args, **kwargs):
-            yield ("updates", {"node": {"messages": []}})
+            yield ("updates", {"agent": {"messages": []}})
 
         mock_graph = MagicMock()
         mock_graph.astream = _fake_astream
@@ -637,46 +492,6 @@ class TestExecuteSubagentStream:
 
         call_kwargs = mock_extract.call_args.kwargs
         assert call_kwargs["integration_metadata"] is metadata
-
-
-# ---------------------------------------------------------------------------
-# check_subagent_integration
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestCheckSubagentIntegration:
-    @pytest.mark.asyncio
-    async def test_connected_returns_none(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.check_integration_status",
-            new_callable=AsyncMock,
-            return_value=True,
-        ):
-            result = await check_subagent_integration("github", "u1")
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_not_connected_returns_message(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.check_integration_status",
-            new_callable=AsyncMock,
-            return_value=False,
-        ):
-            result = await check_subagent_integration("github", "u1")
-        assert result is not None
-        assert "not connected" in result
-
-    @pytest.mark.asyncio
-    async def test_exception_returns_none(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.check_integration_status",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("network error"),
-        ):
-            with patch("app.agents.core.subagents.subagent_runner.log"):
-                result = await check_subagent_integration("github", "u1")
-        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -718,7 +533,7 @@ class TestPrepareExecutorExecution:
                     "email": "t@t.com",
                     "user_name": "Test",
                 },
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert error is None
@@ -737,7 +552,7 @@ class TestPrepareExecutorExecution:
             ctx, error = await prepare_executor_execution(
                 task="task",
                 configurable={"user_id": "u1", "thread_id": "t1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert ctx is None
@@ -747,6 +562,7 @@ class TestPrepareExecutorExecution:
     async def test_direct_handoff_hint_injected(self):
         """When tool_category matches a known subagent, a hint is injected."""
         mock_graph = MagicMock(name="executor_graph")
+        github = _make_subagent("github", "gh", "github_agent", "github")
 
         with (
             patch(
@@ -768,8 +584,8 @@ class TestPrepareExecutorExecution:
                 return_value=SystemMessage(content="ctx"),
             ),
             patch(
-                "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-                FAKE_INTEGRATIONS,
+                "app.agents.core.subagents.subagent_runner.get_subagent_by_id",
+                return_value=github,
             ),
         ):
             ctx, error = await prepare_executor_execution(
@@ -780,7 +596,7 @@ class TestPrepareExecutorExecution:
                     "tool_category": "github",
                     "selected_tool": "github_search_repos",
                 },
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         assert error is None
@@ -818,7 +634,7 @@ class TestPrepareExecutorExecution:
                     "user_id": "u1",
                     "thread_id": "t1",
                 },
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         human_msg = ctx.initial_state["messages"][-1]
@@ -851,7 +667,7 @@ class TestPrepareExecutorExecution:
             ctx, error = await prepare_executor_execution(
                 task="task",
                 configurable={"user_id": "u1", "thread_id": "t1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
                 stream_id="my-stream-id",
             )
 
@@ -885,322 +701,11 @@ class TestPrepareExecutorExecution:
             await prepare_executor_execution(
                 task="task",
                 configurable={"user_id": "u1", "thread_id": "t1"},
-                user_time=datetime.now(timezone.utc),
+                user_time=datetime.now(UTC),
             )
 
         call_kwargs = mock_build_config.call_args.kwargs
         assert call_kwargs["vfs_session_id"] == "t1"
-
-
-# ---------------------------------------------------------------------------
-# call_subagent (direct invocation with streaming)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestCallSubagent:
-    @pytest.mark.asyncio
-    async def test_happy_path_streaming(self):
-        chunk = AIMessageChunk(content="Response!")
-
-        async def _fake_astream(*args, **kwargs):
-            yield ("messages", (chunk, {}))
-
-        mock_graph = MagicMock()
-        mock_graph.astream = _fake_astream
-
-        mock_ctx = _make_ctx(subagent_graph=mock_graph, agent_name="github_agent")
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_runner.prepare_subagent_execution",
-                new_callable=AsyncMock,
-                return_value=(mock_ctx, None),
-            ),
-            patch("app.agents.core.subagents.subagent_runner.log"),
-            patch(
-                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
-                new_callable=AsyncMock,
-                return_value=False,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.extract_tool_entries_from_update",
-                new_callable=AsyncMock,
-                return_value=[],
-            ),
-        ):
-            chunks = []
-            async for c in call_subagent(
-                subagent_id="github",
-                query="List repos",
-                user={"user_id": "u1"},
-                conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
-            ):
-                chunks.append(c)
-
-        # Should have: response chunk, nostream complete_message, DONE
-        response_chunks = [c for c in chunks if '"response"' in c]
-        assert len(response_chunks) == 1
-        assert "Response!" in response_chunks[0]
-
-        done_chunks = [c for c in chunks if "DONE" in c]
-        assert len(done_chunks) == 1
-
-    @pytest.mark.asyncio
-    async def test_prepare_failure_yields_error(self):
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_runner.prepare_subagent_execution",
-                new_callable=AsyncMock,
-                return_value=(None, "Subagent not found"),
-            ),
-            patch("app.agents.core.subagents.subagent_runner.log"),
-        ):
-            chunks = []
-            async for c in call_subagent(
-                subagent_id="nonexistent",
-                query="hello",
-                user={"user_id": "u1"},
-                conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
-            ):
-                chunks.append(c)
-
-        assert len(chunks) == 2
-        parsed = json.loads(chunks[0].replace("data: ", "").strip())
-        assert "error" in parsed
-        assert "DONE" in chunks[1]
-
-    @pytest.mark.asyncio
-    async def test_integration_check_failure_yields_error(self):
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-                FAKE_INTEGRATIONS,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.check_subagent_integration",
-                new_callable=AsyncMock,
-                return_value="Not connected!",
-            ),
-            patch("app.agents.core.subagents.subagent_runner.log"),
-        ):
-            chunks = []
-            async for c in call_subagent(
-                subagent_id="github",
-                query="hello",
-                user={"user_id": "u1"},
-                conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
-                skip_integration_check=False,
-            ):
-                chunks.append(c)
-
-        assert len(chunks) == 2
-        parsed = json.loads(chunks[0].replace("data: ", "").strip())
-        assert "Not connected!" in parsed["error"]
-
-    @pytest.mark.asyncio
-    async def test_integration_check_skipped_by_default(self):
-        """skip_integration_check=True (default) means no check_integration_status call."""
-
-        async def _fake_astream(*args, **kwargs):
-            return
-            yield  # NOSONAR — intentionally unreachable: makes this an async generator
-
-        mock_graph = MagicMock()
-        mock_graph.astream = _fake_astream
-        mock_ctx = _make_ctx(subagent_graph=mock_graph)
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_runner.prepare_subagent_execution",
-                new_callable=AsyncMock,
-                return_value=(mock_ctx, None),
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.check_subagent_integration",
-                new_callable=AsyncMock,
-            ) as mock_check,
-            patch("app.agents.core.subagents.subagent_runner.log"),
-            patch(
-                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
-                new_callable=AsyncMock,
-                return_value=False,
-            ),
-        ):
-            async for _ in call_subagent(
-                subagent_id="github",
-                query="hello",
-                user={"user_id": "u1"},
-                conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
-            ):
-                pass
-
-        mock_check.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_cancellation_stops_stream(self):
-        chunk1 = AIMessageChunk(content="First")
-        chunk2 = AIMessageChunk(content="Second")
-
-        async def _fake_astream(*args, **kwargs):
-            yield ("messages", (chunk1, {}))
-            yield ("messages", (chunk2, {}))
-
-        mock_graph = MagicMock()
-        mock_graph.astream = _fake_astream
-        mock_ctx = _make_ctx(subagent_graph=mock_graph)
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_runner.prepare_subagent_execution",
-                new_callable=AsyncMock,
-                return_value=(mock_ctx, None),
-            ),
-            patch("app.agents.core.subagents.subagent_runner.log"),
-            patch(
-                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
-                new_callable=AsyncMock,
-                side_effect=[False, True],
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.extract_tool_entries_from_update",
-                new_callable=AsyncMock,
-                return_value=[],
-            ),
-        ):
-            chunks = []
-            async for c in call_subagent(
-                subagent_id="github",
-                query="hello",
-                user={"user_id": "u1"},
-                conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
-                stream_id="s-1",
-            ):
-                chunks.append(c)
-
-        response_chunks = [c for c in chunks if '"response"' in c]
-        # Only first chunk should be there
-        assert len(response_chunks) == 1
-        assert "First" in response_chunks[0]
-
-    @pytest.mark.asyncio
-    async def test_tool_data_streamed(self):
-        tool_entry = {"name": "search", "args": {}}
-
-        async def _fake_astream(*args, **kwargs):
-            yield ("updates", {"node": {"messages": []}})
-
-        mock_graph = MagicMock()
-        mock_graph.astream = _fake_astream
-        mock_ctx = _make_ctx(subagent_graph=mock_graph)
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_runner.prepare_subagent_execution",
-                new_callable=AsyncMock,
-                return_value=(mock_ctx, None),
-            ),
-            patch("app.agents.core.subagents.subagent_runner.log"),
-            patch(
-                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
-                new_callable=AsyncMock,
-                return_value=False,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.extract_tool_entries_from_update",
-                new_callable=AsyncMock,
-                return_value=[("tc-1", tool_entry)],
-            ),
-        ):
-            chunks = []
-            async for c in call_subagent(
-                subagent_id="github",
-                query="hello",
-                user={"user_id": "u1"},
-                conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
-            ):
-                chunks.append(c)
-
-        tool_chunks = [c for c in chunks if "tool_data" in c]
-        assert len(tool_chunks) == 1
-
-    @pytest.mark.asyncio
-    async def test_custom_events_streamed(self):
-        async def _fake_astream(*args, **kwargs):
-            yield ("custom", {"progress": "done"})
-
-        mock_graph = MagicMock()
-        mock_graph.astream = _fake_astream
-        mock_ctx = _make_ctx(subagent_graph=mock_graph)
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_runner.prepare_subagent_execution",
-                new_callable=AsyncMock,
-                return_value=(mock_ctx, None),
-            ),
-            patch("app.agents.core.subagents.subagent_runner.log"),
-            patch(
-                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
-                new_callable=AsyncMock,
-                return_value=False,
-            ),
-        ):
-            chunks = []
-            async for c in call_subagent(
-                subagent_id="github",
-                query="hello",
-                user={"user_id": "u1"},
-                conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
-            ):
-                chunks.append(c)
-
-        custom_chunks = [c for c in chunks if "progress" in c]
-        assert len(custom_chunks) == 1
-
-    @pytest.mark.asyncio
-    async def test_final_nostream_and_done_always_yielded(self):
-        async def _fake_astream(*args, **kwargs):
-            return
-            yield  # NOSONAR — intentionally unreachable: makes this an async generator
-
-        mock_graph = MagicMock()
-        mock_graph.astream = _fake_astream
-        mock_ctx = _make_ctx(subagent_graph=mock_graph)
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_runner.prepare_subagent_execution",
-                new_callable=AsyncMock,
-                return_value=(mock_ctx, None),
-            ),
-            patch("app.agents.core.subagents.subagent_runner.log"),
-            patch(
-                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
-                new_callable=AsyncMock,
-                return_value=False,
-            ),
-        ):
-            chunks = []
-            async for c in call_subagent(
-                subagent_id="github",
-                query="hello",
-                user={"user_id": "u1"},
-                conversation_id="conv-1",
-                user_time=datetime.now(timezone.utc),
-            ):
-                chunks.append(c)
-
-        # nostream with complete_message and DONE
-        assert any("nostream:" in c for c in chunks)
-        assert any("DONE" in c for c in chunks)
 
 
 # ---------------------------------------------------------------------------
@@ -1218,26 +723,33 @@ from app.agents.core.subagents.subagent_helpers import (  # noqa: E402
 @pytest.mark.unit
 class TestBuildSubagentSystemPrompt:
     @pytest.mark.asyncio
-    async def test_returns_base_prompt_with_metadata(self):
+    async def test_returns_static_base_prompt_without_user_metadata(self):
+        """The static subagent prompt must be byte-identical across users.
+
+        Provider metadata (usernames, emails) flows through the dynamic
+        context message — see create_agent_context_message — so the static
+        prefix the LLM receives stays cacheable.
+        """
         integration = _make_integration("github")
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
                 return_value=integration,
             ),
             patch(
                 "app.agents.core.subagents.subagent_helpers.get_provider_metadata",
                 new_callable=AsyncMock,
                 return_value={"Username": "testuser"},
-            ),
+            ) as mock_meta,
             patch("app.agents.core.subagents.subagent_helpers.log"),
         ):
             result = await build_subagent_system_prompt("github", user_id="u1")
 
         assert "You are the GitHub agent." in result
-        assert "USER CONTEXT FOR GITHUB" in result
-        assert "testuser" in result
+        assert "USER CONTEXT FOR GITHUB" not in result
+        assert "testuser" not in result
+        mock_meta.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_no_metadata_when_no_user_id(self):
@@ -1245,7 +757,7 @@ class TestBuildSubagentSystemPrompt:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
                 return_value=integration,
             ),
             patch(
@@ -1275,7 +787,7 @@ class TestBuildSubagentSystemPrompt:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
                 return_value=integration,
             ),
             patch(
@@ -1296,7 +808,7 @@ class TestBuildSubagentSystemPrompt:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
                 return_value=integration,
             ),
             patch(
@@ -1317,7 +829,7 @@ class TestBuildSubagentSystemPrompt:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
                 return_value=integration,
             ),
             patch(
@@ -1363,7 +875,12 @@ class TestCreateSubagentSystemMessage:
 @pytest.mark.unit
 class TestCreateAgentContextMessage:
     @pytest.mark.asyncio
-    async def test_includes_utc_time(self):
+    async def test_returns_system_message_without_clock(self):
+        """The clock intentionally does NOT live in the dynamic-context
+        system message. It rides in a HumanMessage built by
+        ``build_current_time_message`` so the ``system_instruction`` prefix
+        stays stable across minute boundaries.
+        """
         with (
             patch(
                 "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
@@ -1381,7 +898,8 @@ class TestCreateAgentContextMessage:
             )
 
         assert isinstance(result, SystemMessage)
-        assert "Current UTC Time:" in result.content
+        assert "Current UTC Time:" not in result.content
+        assert "User Local Time:" not in result.content
 
     @pytest.mark.asyncio
     async def test_includes_user_name(self):
@@ -1424,7 +942,9 @@ class TestCreateAgentContextMessage:
             )
 
         assert "User Timezone Offset: +05:30" in result.content
-        assert "User Local Time:" in result.content
+        # Local clock moved out of the dynamic system message. It's emitted
+        # as a HumanMessage by ``build_current_time_message`` instead.
+        assert "User Local Time:" not in result.content
 
     @pytest.mark.asyncio
     async def test_memories_included(self):
@@ -1605,12 +1125,15 @@ class TestCreateAgentContextMessage:
                 configurable={"user_time": "not-a-valid-time"},
             )
 
-        # Should not raise
+        # Should not raise; clock doesn't live here any more.
         assert isinstance(result, SystemMessage)
-        assert "Current UTC Time:" in result.content
 
     @pytest.mark.asyncio
-    async def test_memory_message_flag(self):
+    async def test_dynamic_context_marker(self):
+        """Context messages carry ``dynamic_context`` in additional_kwargs so
+        manage_system_prompts_node can keep only the latest one per run. The
+        legacy ``memory_message`` key is still present for back-compat with
+        older persisted state."""
         with (
             patch(
                 "app.agents.core.subagents.subagent_helpers.memory_service.search_memories",
@@ -1625,5 +1148,5 @@ class TestCreateAgentContextMessage:
         ):
             result = await create_agent_context_message(configurable={})
 
-        # SystemMessage should have memory_message=True
-        assert getattr(result, "memory_message", False) is True
+        assert result.additional_kwargs.get("dynamic_context") is True
+        assert result.additional_kwargs.get("memory_message") is True

@@ -6,7 +6,6 @@ Defines integrations, scopes, display properties, and subagent configurations.
 """
 
 from functools import cache
-from typing import Dict, List, Optional
 
 from app.agents.prompts.memory_prompts import (
     AGENTMAIL_MEMORY_PROMPT,
@@ -84,19 +83,6 @@ from app.agents.prompts.subagent_prompts import (
     YELP_AGENT_SYSTEM_PROMPT,
     ZOOM_AGENT_SYSTEM_PROMPT,
 )
-from app.constants.mcp import INSTACART_MCP_SERVER_URL, YELP_MCP_SERVER_URL
-from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
-from app.langchain.core.subgraphs.slack_subgraph import SLACK_TOOLS
-from app.models.mcp_config import (
-    ComposioConfig,
-    MCPConfig,
-    OAuthScope,
-    ProviderMetadataConfig,
-    SubAgentConfig,
-    ToolMetadataConfig,
-    VariableExtraction,
-)
-from app.models.oauth_models import OAuthIntegration
 from app.config.oauth_content import (
     AGENTMAIL_CONTENT,
     AIRTABLE_CONTENT,
@@ -107,16 +93,16 @@ from app.config.oauth_content import (
     DEEPWIKI_CONTENT,
     GITHUB_CONTENT,
     GMAIL_CONTENT,
-    GOOGLEDOCS_CONTENT,
     GOOGLE_MAPS_CONTENT,
-    GOOGLEMEET_CONTENT,
     GOOGLECALENDAR_CONTENT,
+    GOOGLEDOCS_CONTENT,
+    GOOGLEMEET_CONTENT,
     GOOGLESHEETS_CONTENT,
     GOOGLETASKS_CONTENT,
     HACKERNEWS_CONTENT,
     HUBSPOT_CONTENT,
-    INSTAGRAM_CONTENT,
     INSTACART_CONTENT,
+    INSTAGRAM_CONTENT,
     LINEAR_CONTENT,
     LINKEDIN_CONTENT,
     MICROSOFT_TEAMS_CONTENT,
@@ -131,6 +117,19 @@ from app.config.oauth_content import (
     YELP_CONTENT,
     ZOOM_CONTENT,
 )
+from app.constants.mcp import INSTACART_MCP_SERVER_URL, YELP_MCP_SERVER_URL
+from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
+from app.langchain.core.subgraphs.slack_subgraph import SLACK_TOOLS
+from app.models.mcp_config import (
+    ComposioConfig,
+    MCPConfig,
+    OAuthScope,
+    ProviderMetadataConfig,
+    SubAgentConfig,
+    ToolMetadataConfig,
+    VariableExtraction,
+)
+from app.models.oauth_models import OAuthIntegration
 from app.models.trigger_config import (
     TriggerConfig,
     TriggerConfigFieldSchema,
@@ -138,7 +137,7 @@ from app.models.trigger_config import (
 )
 
 # Define all integrations dynamically
-OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
+OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
     # Individual Google integrations
     OAuthIntegration(
         id="googlecalendar",
@@ -224,7 +223,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             tool_space="googlecalendar",
             handoff_tool_name="call_calendar_agent",
             domain="calendar and event management",
-            capabilities="creating events, scheduling meetings, managing availability, setting reminders, updating calendar entries, and organizing schedules",
+            capabilities="creating events, scheduling meetings, managing availability, setting event notifications, updating calendar entries, and organizing schedules",
             use_cases="scheduling meetings, managing calendar events, checking availability, or any calendar-related task",
             system_prompt=CALENDAR_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
@@ -370,8 +369,8 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             tool_space="reminders",
             handoff_tool_name="call_reminder_agent",
             domain="scheduling and time-based notifications",
-            capabilities="creating reminders, scheduling notifications, setting recurring reminders, managing reminder statuses, searching reminders",
-            use_cases="scheduling reminders, setting up recurring notifications, managing time-based alerts, or any reminder-related task",
+            capabilities="creating reminders and timed pings ('remind me to ...', 'ping me', 'alert me at ...', 'notify me in N minutes', 'set a timer'), scheduling one-off and recurring notifications that fire at a set time, managing reminder statuses, searching reminders",
+            use_cases="any 'remind me' / 'ping me' / 'alert me' / 'notify me at' / 'set a timer' request — a time-based notification that fires at a scheduled time (NOT a todo list item)",
             system_prompt=REMINDER_AGENT_SYSTEM_PROMPT,
             use_direct_tools=True,
             disable_retrieve_tools=True,
@@ -615,12 +614,8 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                     tool="NOTION_GET_ABOUT_ME",
                     variables=[
                         VariableExtraction(name="user_id", field_path="id"),
-                        VariableExtraction(
-                            name="workspace_id", field_path="bot.workspace_id"
-                        ),
-                        VariableExtraction(
-                            name="workspace_name", field_path="bot.workspace_name"
-                        ),
+                        VariableExtraction(name="workspace_id", field_path="bot.workspace_id"),
+                        VariableExtraction(name="workspace_name", field_path="bot.workspace_name"),
                     ],
                 ),
             ],
@@ -1122,9 +1117,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                     tool="LINEAR_GET_CURRENT_USER",
                     variables=[
                         VariableExtraction(name="user_id", field_path="user.id"),
-                        VariableExtraction(
-                            name="username", field_path="user.displayName"
-                        ),
+                        VariableExtraction(name="username", field_path="user.displayName"),
                         VariableExtraction(name="email", field_path="user.email"),
                     ],
                 ),
@@ -1972,13 +1965,13 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
 
 
 @cache
-def get_integration_by_id(integration_id: str) -> Optional[OAuthIntegration]:
+def get_integration_by_id(integration_id: str) -> OAuthIntegration | None:
     """Get an integration by its ID."""
     return next((i for i in OAUTH_INTEGRATIONS if i.id == integration_id), None)
 
 
 @cache
-def get_integration_scopes(integration_id: str) -> List[str]:
+def get_integration_scopes(integration_id: str) -> list[str]:
     """Get the OAuth scopes for a specific integration."""
     integration = get_integration_by_id(integration_id)
     if not integration:
@@ -1987,13 +1980,13 @@ def get_integration_scopes(integration_id: str) -> List[str]:
 
 
 @cache
-def get_short_name_mapping() -> Dict[str, str]:
+def get_short_name_mapping() -> dict[str, str]:
     """Get mapping of short names to integration IDs."""
     return {i.short_name: i.id for i in OAUTH_INTEGRATIONS if i.short_name}
 
 
 @cache
-def get_composio_social_configs() -> Dict[str, ComposioConfig]:
+def get_composio_social_configs() -> dict[str, ComposioConfig]:
     """Get COMPOSIO_SOCIAL_CONFIGS from integrations managed by Composio."""
     configs = {}
     for integration in OAUTH_INTEGRATIONS:
@@ -2003,7 +1996,7 @@ def get_composio_social_configs() -> Dict[str, ComposioConfig]:
 
 
 @cache
-def get_integration_by_config(auth_config_id: str) -> Optional[OAuthIntegration]:
+def get_integration_by_config(auth_config_id: str) -> OAuthIntegration | None:
     """Get an integration by its Composio auth config ID."""
     return next(
         (
@@ -2015,31 +2008,8 @@ def get_integration_by_config(auth_config_id: str) -> Optional[OAuthIntegration]
     )
 
 
-@cache
-def get_subagent_integrations() -> List[OAuthIntegration]:
-    """Get all platform integrations that have subagent configurations.
-
-    Returns:
-        List of OAuthIntegration objects with has_subagent=True
-    """
-    return [
-        integration
-        for integration in OAUTH_INTEGRATIONS
-        if integration.subagent_config and integration.subagent_config.has_subagent
-    ]
-
-
-def get_memory_extraction_prompt(integration_id: str) -> Optional[str]:
-    """Get the memory extraction prompt for a specific integration.
-
-    This is the single source of truth for memory prompts.
-
-    Args:
-        integration_id: The integration ID (e.g., 'slack', 'github')
-
-    Returns:
-        The memory extraction prompt for this integration, or None if not found
-    """
+def get_memory_extraction_prompt(integration_id: str) -> str | None:
+    """Get the memory extraction prompt for an integration, or None. Single source of truth."""
     integration = get_integration_by_id(integration_id)
     if not integration or not integration.subagent_config:
         return None
@@ -2047,15 +2017,11 @@ def get_memory_extraction_prompt(integration_id: str) -> Optional[str]:
 
 
 @cache
-def get_toolkit_to_integration_map() -> Dict[str, str]:
-    """Get mapping of Composio toolkit names to integration IDs.
+def get_toolkit_to_integration_map() -> dict[str, str]:
+    """Map Composio toolkit names (e.g. 'GMAIL') to integration IDs (e.g. 'gmail').
 
-    This is the single source of truth for tool prefix -> integration category mapping.
-    Used by workflow context extractor to infer categories from tool names.
-
-    Returns:
-        Dict mapping toolkit name (e.g., 'GMAIL', 'GOOGLECALENDAR') to integration ID
-        (e.g., 'gmail', 'googlecalendar')
+    Single source of truth for tool-prefix -> integration-category mapping; used by the
+    workflow context extractor to infer categories from tool names.
     """
     mapping = {}
     for integration in OAUTH_INTEGRATIONS:

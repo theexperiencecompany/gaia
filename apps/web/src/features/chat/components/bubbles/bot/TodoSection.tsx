@@ -1,62 +1,67 @@
 "use client";
 
-import {
-  ArrowRight01Icon,
-  CalendarIcon,
-  CheckmarkCircle02Icon,
-  Flag02Icon,
-  Folder02Icon,
-  GridIcon,
-  PlayIcon,
-  Tick02Icon,
-} from "@icons";
-import { formatToolDueDate } from "@shared/tool-utils";
+import { ScrollShadow } from "@heroui/scroll-shadow";
+import { CheckmarkCircle02Icon } from "@icons";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
+import TodoItem from "@/features/todo/components/TodoItem";
+import { useTodoStore } from "@/stores/todoStore";
 import type {
+  TodoItem as ChatTodoItem,
+  TodoProject as ChatTodoProject,
   TodoAction,
-  TodoItem,
-  TodoProject,
   TodoToolStats,
 } from "@/types/features/todoToolTypes";
-import { Priority } from "@/types/features/todoTypes";
+import type { Project, Todo } from "@/types/features/todoTypes";
 
 interface TodoSectionProps {
-  todos?: TodoItem[];
-  projects?: TodoProject[];
+  todos?: ChatTodoItem[];
+  projects?: ChatTodoProject[];
   stats?: TodoToolStats;
   action?: TodoAction;
   message?: string;
 }
 
-const priorityConfig = {
-  [Priority.HIGH]: {
-    color: "danger" as const,
-    icon: <Flag02Icon className="h-3 w-3" />,
-    bgColor: "bg-red-500/10",
-    textColor: "text-red-500",
-  },
-  [Priority.MEDIUM]: {
-    color: "warning" as const,
-    icon: <Flag02Icon className="h-3 w-3" />,
-    bgColor: "bg-yellow-500/10",
-    textColor: "text-yellow-500",
-  },
-  [Priority.LOW]: {
-    color: "primary" as const,
-    icon: <Flag02Icon className="h-3 w-3" />,
-    bgColor: "bg-blue-500/10",
-    textColor: "text-blue-500",
-  },
-  [Priority.NONE]: {
-    color: "default" as const,
-    icon: null,
-    bgColor: "",
-    textColor: "text-gray-500",
-  },
-};
+// Adapt the streamed chat task payload to the canonical task model the shared
+// TodoItem component (used on the todos page) expects, so chat and page render
+// identically and can never drift. Missing optional fields (scheduled_at,
+// vfs_path, etc.) are simply absent — TodoItem renders them conditionally.
+function toCanonicalTodo(t: ChatTodoItem): Todo {
+  return {
+    id: t.id,
+    user_id: "",
+    title: t.title,
+    description: t.description,
+    labels: t.labels ?? [],
+    due_date: t.due_date,
+    due_date_timezone: t.due_date_timezone,
+    priority: t.priority,
+    project_id: t.project_id ?? "",
+    completed: t.completed,
+    subtasks: (t.subtasks ?? []).map((s) => ({
+      id: s.id,
+      title: s.title,
+      completed: s.completed,
+      created_at: t.created_at,
+    })),
+    workflow_id: t.workflow?.id,
+    created_at: t.created_at,
+    updated_at: t.updated_at,
+  };
+}
+
+function toCanonicalProject(p: ChatTodoProject): Project {
+  return {
+    id: p.id,
+    user_id: "",
+    name: p.name,
+    description: p.description,
+    color: p.color,
+    is_default: p.is_default ?? false,
+    todo_count: p.todo_count ?? 0,
+    created_at: "",
+    updated_at: "",
+  };
+}
 
 export default function TodoSection({
   todos,
@@ -66,59 +71,7 @@ export default function TodoSection({
   message,
 }: TodoSectionProps) {
   const router = useRouter();
-  const [expandedTodos, setExpandedTodos] = useState<Set<string>>(new Set());
-  const { selectWorkflow } = useWorkflowSelection();
-
-  const toggleTodoExpansion = (todoId: string) => {
-    const newExpanded = new Set(expandedTodos);
-    if (newExpanded.has(todoId)) {
-      newExpanded.delete(todoId);
-    } else {
-      newExpanded.add(todoId);
-    }
-    setExpandedTodos(newExpanded);
-  };
-  const handleRunWorkflow = (todo: TodoItem) => {
-    if (!todo.workflow) return;
-
-    try {
-      // Convert the todo workflow to the expected format
-      const workflowData = {
-        id: todo.workflow.id,
-        title: `${todo.title} Workflow`,
-        description: `Execute workflow for todo: ${todo.title}`,
-        steps: todo.workflow.steps.map(
-          (step: {
-            id: string;
-            title: string;
-            description: string;
-            category: string;
-          }) => ({
-            id: step.id,
-            title: step.title,
-            description: step.description,
-            category: step.category,
-          }),
-        ),
-      };
-
-      // Use selectWorkflow to store and navigate to chat with auto-send
-      selectWorkflow(workflowData, { autoSend: true });
-
-      console.log(
-        "Todo workflow selected for manual execution in chat with auto-send",
-      );
-    } catch (error) {
-      console.error("Failed to select workflow for execution:", error);
-    }
-  };
-
-  const isOverdue = (date: string) => {
-    return (
-      new Date(date) < new Date() &&
-      !todos?.find((t) => t.due_date === date)?.completed
-    );
-  };
+  const updateTodo = useTodoStore((s) => s.updateTodo);
 
   // Statistics View
   if (action === "stats" && stats) {
@@ -209,194 +162,34 @@ export default function TodoSection({
     );
   }
 
-  // Todos List View
+  // Todos List View — reuse the canonical todos-page TodoItem. No card chrome:
+  // just the rows, clicking opens the task on the todos page.
   if (todos && todos.length > 0) {
+    // Build the projects lookup TodoItem needs from the streamed projects plus
+    // any project embedded inline on a task.
+    const projectMap = new Map<string, Project>();
+    for (const p of projects ?? []) projectMap.set(p.id, toCanonicalProject(p));
+    for (const t of todos) {
+      if (t.project && !projectMap.has(t.project.id)) {
+        projectMap.set(t.project.id, toCanonicalProject(t.project));
+      }
+    }
+    const projectList = Array.from(projectMap.values());
+
     return (
-      <div className="mt-3 w-fit min-w-[450px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="text-sm">
-            {action === "search"
-              ? "search Results"
-              : action === "create"
-                ? "New Task"
-                : action === "update"
-                  ? "Updated Tasks"
-                  : "Tasks"}
-          </div>
-          <span className="text-xs text-zinc-500">
-            {todos.length} {todos.length === 1 ? "task" : "tasks"}
-          </span>
-        </div>
-        <div className="space-y-2">
-          {todos.map((todo) => {
-            const isExpanded = expandedTodos.has(todo.id);
-            const hasDetails =
-              todo.description ||
-              (todo.subtasks && todo.subtasks.length > 0) ||
-              todo.workflow;
-
-            return (
-              <div
-                key={todo.id}
-                className="cursor-pointer rounded-xl bg-zinc-900 p-3 transition-colors hover:bg-zinc-900/70"
-                onClick={() => router.push(`/todos?todoId=${todo.id}`)}
-              >
-                {/* todo Header */}
-                <div className="flex items-start gap-3">
-                  <button
-                    type="button"
-                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${todo.completed ? "border-success bg-success" : "border-zinc-600 hover:border-zinc-500"}`}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {todo.completed && (
-                      <Tick02Icon className="h-2.5 w-2.5 text-white" />
-                    )}
-                  </button>
-
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <h4
-                        className={`text-sm font-medium ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
-                      >
-                        {todo.title}
-                      </h4>
-                      {hasDetails && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleTodoExpansion(todo.id);
-                          }}
-                          className="rounded p-1 hover:bg-zinc-900/70"
-                        >
-                          <ArrowRight01Icon
-                            className={`h-4 w-4 text-zinc-500 transition-transform ${isExpanded ? "rotate-90" : ""}`}
-                          />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* todo Metadata */}
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                      {todo.priority !== Priority.NONE && (
-                        <span
-                          className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${priorityConfig[todo.priority].bgColor} ${priorityConfig[todo.priority].textColor}`}
-                        >
-                          {priorityConfig[todo.priority].icon}
-                          {todo.priority}
-                        </span>
-                      )}
-
-                      {todo.due_date && (
-                        <span
-                          className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${isOverdue(todo.due_date) ? "bg-red-500/10 text-red-500" : "bg-zinc-800 text-zinc-400"}`}
-                        >
-                          <CalendarIcon className="h-3 w-3" />
-                          {formatToolDueDate(todo.due_date)}
-                        </span>
-                      )}
-
-                      {todo.project && (
-                        <span className="flex items-center gap-1 rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
-                          {todo.project.color ? (
-                            <div
-                              className="h-2 w-2 rounded-full"
-                              style={{
-                                backgroundColor: todo.project.color,
-                              }}
-                            />
-                          ) : (
-                            <Folder02Icon className="h-3 w-3" />
-                          )}
-                          {todo.project.name}
-                        </span>
-                      )}
-
-                      {todo.labels.map((label) => (
-                        <span
-                          key={label}
-                          className="flex items-center gap-1 rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400"
-                        >
-                          <GridIcon className="h-3 w-3" />
-                          {label}
-                        </span>
-                      ))}
-
-                      {todo.subtasks && todo.subtasks.length > 0 && (
-                        <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
-                          {todo.subtasks.filter((s) => s.completed).length}/
-                          {todo.subtasks.length} subtasks
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Expanded Content */}
-                    {isExpanded && (
-                      <div className="mt-3 space-y-3">
-                        {todo.description && (
-                          <p className="text-sm text-zinc-400">
-                            {todo.description}
-                          </p>
-                        )}
-
-                        {todo.subtasks && todo.subtasks.length > 0 && (
-                          <div className="space-y-1">
-                            <p className="text-xs font-medium text-zinc-500">
-                              Subtasks
-                            </p>
-                            {todo.subtasks.map((subtask) => (
-                              <div
-                                key={subtask.id}
-                                className="flex items-center gap-2 pl-2"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <div
-                                  className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${subtask.completed ? "border-success bg-success" : "border-zinc-600"}`}
-                                >
-                                  {subtask.completed && (
-                                    <Tick02Icon className="h-2.5 w-2.5 text-white" />
-                                  )}
-                                </div>
-                                <span
-                                  className={`text-xs ${subtask.completed ? "text-zinc-500 line-through" : "text-zinc-300"}`}
-                                >
-                                  {subtask.title}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Workflow Section */}
-                        {todo.workflow && (
-                          <div className="space-y-2">
-                            <p className="text-xs font-medium text-zinc-500">
-                              Workflow ({todo.workflow.steps.length} steps)
-                            </p>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 border-green-500/30 bg-green-500/20 text-green-400 hover:bg-green-500/30"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRunWorkflow(todo);
-                              }}
-                            >
-                              <PlayIcon className="mr-1 h-3 w-3" />
-                              Run Workflow
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        {message && <p className="mt-3 text-xs text-zinc-500">{message}</p>}
-      </div>
+      <ScrollShadow className="mt-3 flex max-h-[400px] w-full max-w-xl flex-col gap-2">
+        {todos.map((todo) => (
+          <TodoItem
+            key={todo.id}
+            todo={toCanonicalTodo(todo)}
+            projects={projectList}
+            isSelected={false}
+            onUpdate={(todoId, updates) => updateTodo(todoId, updates)}
+            onClick={(t) => router.push(`/todos?todoId=${t.id}`)}
+            className="rounded-2xl bg-zinc-800 hover:bg-zinc-800/80"
+          />
+        ))}
+      </ScrollShadow>
     );
   }
 
@@ -411,7 +204,7 @@ export default function TodoSection({
     );
   }
 
-  // Success/Action Message
+  // Success/Action Message (delete confirmations etc. that return no task rows)
   if (message && !todos && !stats && !projects) {
     const isDeleteAction = action === "delete";
     const iconColor = isDeleteAction ? "text-red-500" : "text-green-500";

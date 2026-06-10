@@ -3,9 +3,10 @@ Linear trigger handler.
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
-from shared.py.wide_events import log
+from composio.types import ToolExecutionResponse
+
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import (
     LinearCommentAddedPayload,
@@ -21,7 +22,7 @@ from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
-from composio.types import ToolExecutionResponse
+from shared.py.wide_events import log
 
 
 class LinearTriggerHandler(TriggerHandler):
@@ -46,11 +47,11 @@ class LinearTriggerHandler(TriggerHandler):
     }
 
     @property
-    def trigger_names(self) -> List[str]:
+    def trigger_names(self) -> list[str]:
         return self.SUPPORTED_TRIGGERS
 
     @property
-    def event_types(self) -> Set[str]:
+    def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
     async def get_config_options(
@@ -59,16 +60,14 @@ class LinearTriggerHandler(TriggerHandler):
         field_name: str,
         user_id: str,
         integration_id: str,
-        parent_ids: Optional[List[str]] = None,
+        parent_ids: list[str] | None = None,
         **kwargs: Any,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get dynamic options for Linear trigger config fields."""
         composio_service = get_composio_service()
 
         if field_name == "team_id":
-            tool = composio_service.get_tool(
-                "LINEAR_GET_ALL_LINEAR_TEAMS", user_id=user_id
-            )
+            tool = composio_service.get_tool("LINEAR_GET_ALL_LINEAR_TEAMS", user_id=user_id)
             if not tool:
                 log.error("Linear get all teams tool not found")
                 return []
@@ -105,7 +104,7 @@ class LinearTriggerHandler(TriggerHandler):
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
-    ) -> List[str]:
+    ) -> list[str]:
         """Register Linear triggers.
 
         Raises:
@@ -145,7 +144,7 @@ class LinearTriggerHandler(TriggerHandler):
                 trigger_name,
             )
 
-        composio_trigger_config: Dict[str, Any] = {}
+        composio_trigger_config: dict[str, Any] = {}
         if trigger_data.team_id:
             composio_trigger_config["team_id"] = trigger_data.team_id
 
@@ -158,8 +157,8 @@ class LinearTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: Dict[str, Any]
-    ) -> List[Workflow]:
+        self, event_type: str, trigger_id: str, data: dict[str, Any]
+    ) -> list[Workflow]:
         """Find workflows matching a Linear trigger event."""
         log.set(trigger={"provider": "linear", "event": event_type})
         try:
@@ -180,7 +179,7 @@ class LinearTriggerHandler(TriggerHandler):
                 log.debug(f"Linear payload validation failed: {e}")
 
             cursor = workflows_collection.find(query)
-            workflows: List[Workflow] = []
+            workflows: list[Workflow] = []
 
             async for workflow_doc in cursor:
                 try:

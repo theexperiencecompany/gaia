@@ -8,12 +8,12 @@ containing the platform user ID as a non-empty plain string. Optional keys: "use
 unlinked.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Optional
+
+from bson import ObjectId
 
 from app.db.mongodb.collections import users_collection
-from bson import ObjectId
 
 
 class Platform(str, Enum):
@@ -43,41 +43,9 @@ class PlatformLinkService:
     """Service for platform account linking operations."""
 
     @staticmethod
-    async def get_user_by_platform_id(
-        platform: str, platform_user_id: str
-    ) -> Optional[dict]:
-        """
-        Find a GAIA user by their platform account ID.
-
-        Queries by the nested .id field (new dict format only).
-
-        Args:
-            platform: Platform name (discord, slack, telegram, whatsapp)
-            platform_user_id: User's ID on the platform (plain string)
-
-        Returns:
-            User document if found, None otherwise
-        """
-        return await users_collection.find_one(
-            {f"platform_links.{platform}.id": platform_user_id}
-        )
-
-    @staticmethod
-    async def is_authenticated(platform: str, platform_user_id: str) -> bool:
-        """
-        Check if a platform user is linked to a GAIA account.
-
-        Args:
-            platform: Platform name
-            platform_user_id: User's ID on the platform
-
-        Returns:
-            True if linked, False otherwise
-        """
-        user = await PlatformLinkService.get_user_by_platform_id(
-            platform, platform_user_id
-        )
-        return user is not None
+    async def get_user_by_platform_id(platform: str, platform_user_id: str) -> dict | None:
+        """Find a GAIA user by their platform account ID (queries the nested .id field)."""
+        return await users_collection.find_one({f"platform_links.{platform}.id": platform_user_id})
 
     @staticmethod
     async def link_account(
@@ -85,29 +53,13 @@ class PlatformLinkService:
         platform: str,
         platform_user_id: str,
         _use_object_id: bool = False,
-        profile: Optional[dict] = None,
+        profile: dict | None = None,
     ) -> dict:
-        """
-        Link a platform account to a GAIA user.
+        """Link a platform account to a GAIA user.
 
-        Stores platform_user_id as a dict: {"id": "...", "username": "...", "display_name": "..."}.
-        The "username" and "display_name" keys are optional.
-
-        Args:
-            user_id: GAIA user ID (string representation of MongoDB _id)
-            platform: Platform name
-            platform_user_id: User's ID on the platform
-            use_object_id: Deprecated - no longer used
-            profile: Optional dict with "username" and/or "display_name" keys
-
-        Returns:
-            Result dict with status and details
-
-        Raises:
-            ValueError: If platform_user_id is empty
-            ValueError: If platform account already linked to a different user
-            ValueError: If user already has a different platform account linked
-            ValueError: If user not found
+        Stores the link as a dict {"id", "username"?, "display_name"?}. Raises
+        ValueError if the id is empty, the user is not found, or either side is
+        already linked to a different account.
         """
         platform_user_id = str(platform_user_id).strip()
         if not platform_user_id:
@@ -120,9 +72,7 @@ class PlatformLinkService:
             {f"platform_links.{platform}.id": platform_user_id}
         )
         if existing and str(existing.get("_id")) != user_id:
-            raise ValueError(
-                f"This {platform} account is already linked to another GAIA user"
-            )
+            raise ValueError(f"This {platform} account is already linked to another GAIA user")
 
         # Reject if the user already has a different platform ID stored
         user = await users_collection.find_one({"_id": query_value})
@@ -135,7 +85,7 @@ class PlatformLinkService:
                         f"Your account already has a different {platform} account linked"
                     )
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         # Build the stored dict value
         link_value: dict = {"id": platform_user_id}
@@ -166,23 +116,8 @@ class PlatformLinkService:
         }
 
     @staticmethod
-    async def unlink_account(
-        user_id: str, platform: str, _use_object_id: bool = False
-    ) -> dict:
-        """
-        Unlink a platform account from a GAIA user.
-
-        Args:
-            user_id: GAIA user ID (string representation of MongoDB _id)
-            platform: Platform name
-            use_object_id: Deprecated - no longer used
-
-        Returns:
-            Result dict with status
-
-        Raises:
-            ValueError: If user not found
-        """
+    async def unlink_account(user_id: str, platform: str, _use_object_id: bool = False) -> dict:
+        """Unlink a platform account from a GAIA user. Raises ValueError if the user is not found."""
         result = await users_collection.update_one(
             {"_id": ObjectId(user_id)},
             {
@@ -200,19 +135,19 @@ class PlatformLinkService:
 
     @staticmethod
     async def get_linked_platforms(user_id: str) -> dict:
+        """Get all linked platforms for a user, mapping platform name to connection details.
+
+        Only platforms stored as a dict with a non-empty "id" are returned;
+        legacy string/int values are skipped.
         """
-        Get all linked platforms for a user.
-
-        Only returns platforms where the stored value is a dict with a non-empty "id" key.
-        Legacy string/int values are skipped.
-
-        Args:
-            user_id: GAIA user ID (string representation of MongoDB _id)
-
-        Returns:
-            Dict mapping platform name to connection details
-        """
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        # Project only the link fields: this runs on the outbound delivery hot
+        # path (once per platform adapter, fanned out per notification), so
+        # fetching the whole user document would pull conversations/settings/etc.
+        # we never read here.
+        user = await users_collection.find_one(
+            {"_id": ObjectId(user_id)},
+            {"platform_links": 1, "platform_links_connected_at": 1},
+        )
 
         if not user:
             return {}

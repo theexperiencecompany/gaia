@@ -10,16 +10,13 @@ Uses Redis for temporary state storage with automatic expiration.
 """
 
 import secrets
-from typing import Optional
 
-from shared.py.wide_events import log
 from app.constants.cache import STATE_KEY_PREFIX, STATE_TOKEN_TTL
 from app.db.redis import redis_cache
+from shared.py.wide_events import log
 
 
-async def create_oauth_state(
-    user_id: str, redirect_path: str, integration_id: str
-) -> str:
+async def create_oauth_state(user_id: str, redirect_path: str, integration_id: str) -> str:
     """
     Create a secure state token for OAuth flow.
 
@@ -39,10 +36,8 @@ async def create_oauth_state(
     log.set(auth={"user_id": user_id, "provider": integration_id})
 
     # Validate redirect path - only allow safe paths
-    if not _is_safe_redirect_path(redirect_path):
-        log.warning(
-            f"Unsafe redirect path rejected for user {user_id}: {redirect_path}"
-        )
+    if not is_safe_redirect_path(redirect_path):
+        log.warning(f"Unsafe redirect path rejected for user {user_id}: {redirect_path}")
         # Default to safe path
         redirect_path = "/c"
 
@@ -62,15 +57,13 @@ async def create_oauth_state(
     await redis_client.hset(state_key, mapping=state_data)  # type: ignore[arg-type]
     await redis_client.expire(state_key, STATE_TOKEN_TTL)
 
-    log.info(
-        f"Created OAuth state token for user {user_id}, integration {integration_id}"
-    )
+    log.info(f"Created OAuth state token for user {user_id}, integration {integration_id}")
     return state_token
 
 
 async def validate_and_consume_oauth_state(
     state_token: str,
-) -> Optional[dict[str, str]]:
+) -> dict[str, str] | None:
     """
     Validate and consume an OAuth state token.
 
@@ -103,14 +96,10 @@ async def validate_and_consume_oauth_state(
             "integration_id": state_data.get("integration_id", ""),
         }
 
-        log.set(
-            auth={"user_id": result["user_id"], "provider": result["integration_id"]}
-        )
+        log.set(auth={"user_id": result["user_id"], "provider": result["integration_id"]})
 
         # Validate that we have all required fields
-        if not all(
-            [result["user_id"], result["redirect_path"], result["integration_id"]]
-        ):
+        if not all([result["user_id"], result["redirect_path"], result["integration_id"]]):
             log.warning(f"Incomplete OAuth state data for token: {state_token}")
             return None
 
@@ -128,7 +117,7 @@ async def validate_and_consume_oauth_state(
         return None
 
 
-def _is_safe_redirect_path(path: str) -> bool:
+def is_safe_redirect_path(path: str) -> bool:
     """
     Validate that a redirect path is safe.
 
@@ -140,7 +129,7 @@ def _is_safe_redirect_path(path: str) -> bool:
 
     Security checks:
         - No absolute URLs (must be relative paths)
-        - No protocol-relative URLs (//example.com)
+        - No protocol-relative URLs (//example.com or /\\example.com)
         - Must start with /
         - No javascript: or data: URLs
         - No path traversal attempts
@@ -152,10 +141,16 @@ def _is_safe_redirect_path(path: str) -> bool:
     if not path.startswith("/"):
         return False
 
+    # Reject backslashes — some browsers normalize `\` to `/`,
+    # making `/\evil.com` behave like a protocol-relative URL.
+    if "\\" in path:
+        return False
+
     lower_path = path.lower()
 
-    # Must not contain // anywhere (protocol-relative or absolute URL indicator)
-    if "//" in path:
+    # Must not contain // anywhere (protocol-relative or absolute URL indicator).
+    # Also reject the URL-encoded form which downstream layers may decode.
+    if "//" in path or "%2f%2f" in lower_path or "%5c" in lower_path:
         return False
 
     # Must not contain any URL protocols (http:, https:, ftp:, etc.)

@@ -1,12 +1,13 @@
 from io import BytesIO
 from typing import Any
 
+from fastapi import File, Form, HTTPException, UploadFile
 import httpx
+from PIL import Image
 import requests
+
 from app.agents.prompts.image_prompts import IMAGE_CAPTION_FORMATTER
 from app.utils.chat_utils import do_prompt_no_stream
-from fastapi import File, Form, HTTPException, UploadFile
-from PIL import Image
 
 http_async_client = httpx.AsyncClient(timeout=1000)
 
@@ -36,9 +37,7 @@ def compress_image(image_bytes, sizing=0.4, quality=85):
         return compressed_image_bytes
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to compress image: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to compress image: {e!s}")
 
 
 async def convert_image_to_text(

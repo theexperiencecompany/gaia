@@ -2,9 +2,9 @@
 Base scheduler models for task scheduling system.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
@@ -21,37 +21,32 @@ class ScheduledTaskStatus(str, Enum):
 
 
 class BaseScheduledTask(BaseModel):
-    """
-    Base model for any scheduled task.
+    """Base model for any scheduled task; domain models inherit and add their own fields."""
 
-    Contains all common scheduling-related fields that any scheduled task should have.
-    Domain-specific models should inherit from this and add their own fields.
-    """
-
-    id: Optional[str] = Field(None, alias="_id")
+    id: str | None = Field(None, alias="_id")
     user_id: str = Field(..., description="User ID who owns this task")
-    repeat: Optional[str] = Field(
-        None, description="Cron expression for recurring tasks"
+    repeat: str | None = Field(None, description="Cron expression for recurring tasks")
+    scheduled_at: datetime | None = Field(
+        default=None,
+        description="Next scheduled execution time; None when the task has no schedule "
+        "(e.g. a manual/integration workflow). A null value never matches the due-scan.",
     )
-    scheduled_at: datetime = Field(..., description="Next scheduled execution time")
     status: ScheduledTaskStatus = Field(
         default=ScheduledTaskStatus.SCHEDULED, description="Current status"
     )
     occurrence_count: int = Field(
         default=0, description="Number of times this task has been executed"
     )
-    max_occurrences: Optional[int] = Field(
-        None, description="Maximum number of executions (optional)"
-    )
-    stop_after: Optional[datetime] = Field(
+    max_occurrences: int | None = Field(None, description="Maximum number of executions (optional)")
+    stop_after: datetime | None = Field(
         None, description="Stop executing after this date (optional)"
     )
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Creation timestamp",
     )
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Last update timestamp",
     )
 
@@ -60,12 +55,22 @@ class BaseScheduledTask(BaseModel):
     def ensure_timezone_aware(cls, v):
         """Ensure datetime fields are timezone-aware (UTC if no timezone)."""
         if v is not None and v.tzinfo is None:
-            v = v.replace(tzinfo=timezone.utc)
+            v = v.replace(tzinfo=UTC)
         return v
 
-    @field_serializer("scheduled_at", "stop_after", "created_at", "updated_at")
-    def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
-        """Serialize datetime fields to ISO format strings."""
+    @field_serializer("scheduled_at", "stop_after", when_used="json")
+    def serialize_schedule_datetime(self, value: datetime | None) -> str | None:
+        """ISO strings for JSON only; python mode (Mongo writes) keeps native
+        datetimes so the scheduler's `scheduled_at: {"$lte": now}` scan matches."""
+        if value is not None:
+            return value.isoformat()
+        return None
+
+    @field_serializer("created_at", "updated_at", when_used="json")
+    def serialize_audit_datetime(self, value: datetime | None) -> str | None:
+        """ISO strings for JSON only; python mode (Mongo writes) keeps native
+        datetimes so these match the same type as status-update/migration writes
+        and sort correctly alongside them."""
         if value is not None:
             return value.isoformat()
         return None
@@ -76,21 +81,11 @@ class BaseScheduledTask(BaseModel):
 class ScheduleConfig(BaseModel):
     """Configuration for scheduling a task."""
 
-    repeat: Optional[str] = Field(
-        None, description="Cron expression for recurring tasks"
-    )
-    scheduled_at: Optional[datetime] = Field(
-        None, description="When to first execute the task"
-    )
-    max_occurrences: Optional[int] = Field(
-        None, description="Maximum number of executions"
-    )
-    stop_after: Optional[datetime] = Field(
-        None, description="Stop executing after this date"
-    )
-    base_time: Optional[datetime] = Field(
-        None, description="Base time for cron calculations"
-    )
+    repeat: str | None = Field(None, description="Cron expression for recurring tasks")
+    scheduled_at: datetime | None = Field(None, description="When to first execute the task")
+    max_occurrences: int | None = Field(None, description="Maximum number of executions")
+    stop_after: datetime | None = Field(None, description="Stop executing after this date")
+    base_time: datetime | None = Field(None, description="Base time for cron calculations")
 
     @field_validator("max_occurrences")
     @classmethod
@@ -104,7 +99,7 @@ class ScheduleConfig(BaseModel):
     def ensure_timezone_aware(cls, v):
         """Ensure datetime fields are timezone-aware (UTC if no timezone)."""
         if v is not None and v.tzinfo is None:
-            v = v.replace(tzinfo=timezone.utc)
+            v = v.replace(tzinfo=UTC)
         return v
 
     @field_validator("repeat")
@@ -122,19 +117,5 @@ class TaskExecutionResult(BaseModel):
     """Result of executing a scheduled task."""
 
     success: bool = Field(..., description="Whether the task executed successfully")
-    message: Optional[str] = Field(None, description="Result message or error details")
-    data: Optional[Dict[str, Any]] = Field(
-        default=None, description="Additional result data"
-    )
-
-
-class SchedulerTaskInfo(BaseModel):
-    """Information about a task in the scheduler."""
-
-    task_id: str = Field(..., description="Unique task identifier")
-    task_type: str = Field(
-        ..., description="Type of task (e.g., 'reminder', 'workflow')"
-    )
-    scheduled_at: datetime = Field(..., description="When the task is scheduled to run")
-    status: ScheduledTaskStatus = Field(..., description="Current task status")
-    user_id: str = Field(..., description="User who owns this task")
+    message: str | None = Field(None, description="Result message or error details")
+    data: dict[str, Any] | None = Field(default=None, description="Additional result data")

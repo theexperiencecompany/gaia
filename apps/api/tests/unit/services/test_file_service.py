@@ -1,23 +1,18 @@
 """Unit tests for file service operations."""
 
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from bson import ObjectId
 from fastapi import HTTPException
+import pytest
 
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
-from app.models.message_models import FileData
 from app.services.file_service import (
     _process_file_summary,
     _store_in_chromadb,
     _store_in_mongodb,
     delete_file_service,
-    deserialize_file,
-    fetch_files,
-    get_files,
     update_file_in_chromadb,
     update_file_service,
     upload_file_service,
@@ -59,15 +54,6 @@ def mock_chroma_client():
         mock_collection = AsyncMock()
         mock_chroma.get_langchain_client = AsyncMock(return_value=mock_collection)
         yield mock_chroma, mock_collection
-
-
-@pytest.fixture
-def mock_search_documents():
-    with patch(
-        "app.services.file_service.search_documents_by_similarity",
-        new_callable=AsyncMock,
-    ) as mock_search:
-        yield mock_search
 
 
 @pytest.fixture
@@ -449,9 +435,7 @@ class TestStoreInMongodb:
         assert "Failed to store file metadata" in exc_info.value.detail
 
     async def test_exception_propagates(self, mock_files_collection):
-        mock_files_collection.insert_one = AsyncMock(
-            side_effect=Exception("Connection lost")
-        )
+        mock_files_collection.insert_one = AsyncMock(side_effect=Exception("Connection lost"))
 
         with pytest.raises(Exception, match="Connection lost"):
             await _store_in_mongodb({"file_id": "f-1"})
@@ -480,9 +464,7 @@ class TestStoreInChromadb:
 
         mock_chroma_col.aadd_documents.assert_awaited_once()
         call_kwargs = mock_chroma_col.aadd_documents.call_args
-        documents = call_kwargs.kwargs.get("documents") or call_kwargs[1].get(
-            "documents"
-        )
+        documents = call_kwargs.kwargs.get("documents") or call_kwargs[1].get("documents")
         ids = call_kwargs.kwargs.get("ids") or call_kwargs[1].get("ids")
         assert len(documents) == 2
         assert len(ids) == 2
@@ -505,9 +487,7 @@ class TestStoreInChromadb:
 
         mock_chroma_col.aadd_documents.assert_awaited_once()
         call_kwargs = mock_chroma_col.aadd_documents.call_args
-        documents = call_kwargs.kwargs.get("documents") or call_kwargs[1].get(
-            "documents"
-        )
+        documents = call_kwargs.kwargs.get("documents") or call_kwargs[1].get("documents")
         ids = call_kwargs.kwargs.get("ids") or call_kwargs[1].get("ids")
         assert len(documents) == 1
         assert documents[0].page_content == "A plain text description"
@@ -530,17 +510,13 @@ class TestStoreInChromadb:
 
         mock_chroma_col.aadd_documents.assert_awaited_once()
         call_kwargs = mock_chroma_col.aadd_documents.call_args
-        documents = call_kwargs.kwargs.get("documents") or call_kwargs[1].get(
-            "documents"
-        )
+        documents = call_kwargs.kwargs.get("documents") or call_kwargs[1].get("documents")
         assert len(documents) == 1
         assert documents[0].page_content == "Summary of page 1"
 
     async def test_chromadb_fails_logged_not_raised(self, mock_chroma_client):
         mock_chroma_cls, mock_chroma_col = mock_chroma_client
-        mock_chroma_col.aadd_documents = AsyncMock(
-            side_effect=Exception("ChromaDB down")
-        )
+        mock_chroma_col.aadd_documents = AsyncMock(side_effect=Exception("ChromaDB down"))
 
         # Should not raise
         await _store_in_chromadb(
@@ -581,9 +557,7 @@ class TestStoreInChromadb:
         )
 
         call_kwargs = mock_chroma_col.aadd_documents.call_args
-        documents = call_kwargs.kwargs.get("documents") or call_kwargs[1].get(
-            "documents"
-        )
+        documents = call_kwargs.kwargs.get("documents") or call_kwargs[1].get("documents")
         for doc in documents:
             assert "conversation_id" not in doc.metadata
 
@@ -600,9 +574,7 @@ class TestStoreInChromadb:
         )
 
         call_kwargs = mock_chroma_col.aadd_documents.call_args
-        documents = call_kwargs.kwargs.get("documents") or call_kwargs[1].get(
-            "documents"
-        )
+        documents = call_kwargs.kwargs.get("documents") or call_kwargs[1].get("documents")
         assert documents[0].metadata["conversation_id"] == "conv-99"
 
 
@@ -705,280 +677,6 @@ class TestUpdateFileInChromadb:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
-class TestFetchFiles:
-    async def test_no_user_id_returns_context_unchanged(self):
-        context: Dict[str, Any] = {"query_text": "hello"}
-        result = await fetch_files(context)
-        assert result is context
-        assert "files_added" not in result
-
-    async def test_empty_last_message_returns_early(self):
-        context: Dict[str, Any] = {
-            "user_id": "user-abc",
-            "last_message": None,
-            "query_text": "hello",
-        }
-        result = await fetch_files(context)
-        assert result["files_added"] is False
-
-    async def test_empty_string_last_message_returns_early(self):
-        context: Dict[str, Any] = {
-            "user_id": "user-abc",
-            "last_message": "",
-            "query_text": "hello",
-        }
-        result = await fetch_files(context)
-        assert result["files_added"] is False
-
-    async def test_with_explicit_file_ids_from_db_lookup(self, mock_files_collection):
-        """When fileIds are provided but not in fileData, files are fetched from DB."""
-        mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {
-                    "_id": ObjectId(),
-                    "file_id": "f-1",
-                    "filename": "doc.pdf",
-                    "url": "https://example.com/doc.pdf",
-                    "description": "A doc",
-                    "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
-                    "updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
-                }
-            ]
-        )
-        mock_files_collection.find = MagicMock(return_value=mock_cursor)
-
-        context: Dict[str, Any] = {
-            "user_id": "user-abc",
-            "last_message": {"content": "Check this file"},
-            "query_text": "ab",
-            "fileIds": ["f-1"],
-            "fileData": [],
-            "conversation_id": None,
-        }
-        result = await fetch_files(context)
-        assert result["files_added"] is True
-        assert len(result["files_data"]) == 1
-        assert result["files_data"][0]["file_id"] == "f-1"
-
-    async def test_with_explicit_file_ids_missing_from_file_data(
-        self, mock_files_collection
-    ):
-        mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {
-                    "_id": ObjectId(),
-                    "file_id": "f-2",
-                    "filename": "report.pdf",
-                    "url": "https://example.com/report.pdf",
-                    "description": "A report",
-                    "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
-                    "updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
-                }
-            ]
-        )
-        mock_files_collection.find = MagicMock(return_value=mock_cursor)
-
-        context: Dict[str, Any] = {
-            "user_id": "user-abc",
-            "last_message": {"content": "Check this file"},
-            "query_text": "ab",
-            "fileIds": ["f-2"],
-            "fileData": [],
-            "conversation_id": None,
-        }
-        result = await fetch_files(context)
-        assert result["files_added"] is True
-        assert any(f["file_id"] == "f-2" for f in result["files_data"])
-
-    async def test_with_semantic_search(self, mock_search_documents):
-        mock_search_documents.return_value = [
-            {
-                "file_id": "f-semantic",
-                "url": "https://example.com/semantic.pdf",
-                "filename": "semantic.pdf",
-                "description": "Relevant file",
-                "content_type": "application/pdf",
-                "similarity_score": 0.95,
-            }
-        ]
-        context: Dict[str, Any] = {
-            "user_id": "user-abc",
-            "last_message": {"content": "Tell me about machine learning"},
-            "query_text": "Tell me about machine learning",
-            "fileIds": [],
-            "fileData": [],
-            "conversation_id": "conv-1",
-        }
-        result = await fetch_files(context)
-        assert result["files_added"] is True
-        assert any(f["file_id"] == "f-semantic" for f in result["files_data"])
-
-    async def test_semantic_search_fails_continues(self, mock_search_documents):
-        mock_search_documents.side_effect = Exception("Search engine down")
-
-        context: Dict[str, Any] = {
-            "user_id": "user-abc",
-            "last_message": {"content": "Tell me about something"},
-            "query_text": "Tell me about something",
-            "fileIds": [],
-            "fileData": [],
-            "conversation_id": None,
-        }
-        result = await fetch_files(context)
-        # Should not crash; no files found
-        assert result["files_added"] is False
-
-    async def test_short_query_skips_semantic_search(self, mock_search_documents):
-        context: Dict[str, Any] = {
-            "user_id": "user-abc",
-            "last_message": {"content": "hi"},
-            "query_text": "hi",
-            "fileIds": [],
-            "fileData": [],
-            "conversation_id": None,
-        }
-        result = await fetch_files(context)
-        mock_search_documents.assert_not_awaited()
-        assert result["files_added"] is False
-
-    async def test_query_exactly_3_chars_skips_semantic_search(
-        self, mock_search_documents
-    ):
-        context: Dict[str, Any] = {
-            "user_id": "user-abc",
-            "last_message": {"content": "abc"},
-            "query_text": "abc",
-            "fileIds": [],
-            "fileData": [],
-            "conversation_id": None,
-        }
-        await fetch_files(context)
-        mock_search_documents.assert_not_awaited()
-
-    async def test_query_4_chars_triggers_semantic_search(self, mock_search_documents):
-        mock_search_documents.return_value = []
-        context: Dict[str, Any] = {
-            "user_id": "user-abc",
-            "last_message": {"content": "abcd"},
-            "query_text": "abcd",
-            "fileIds": [],
-            "fileData": [],
-            "conversation_id": None,
-        }
-        await fetch_files(context)
-        mock_search_documents.assert_awaited_once()
-
-    async def test_semantic_results_deduplicated_with_explicit(
-        self, mock_files_collection, mock_search_documents
-    ):
-        mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {
-                    "_id": ObjectId(),
-                    "file_id": "f-1",
-                    "filename": "doc.pdf",
-                    "url": "https://example.com/doc.pdf",
-                    "description": "A doc",
-                    "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
-                    "updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
-                }
-            ]
-        )
-        mock_files_collection.find = MagicMock(return_value=mock_cursor)
-
-        mock_search_documents.return_value = [
-            {
-                "file_id": "f-1",  # same as explicit
-                "url": "https://example.com/doc.pdf",
-                "filename": "doc.pdf",
-                "description": "duplicate",
-                "content_type": "application/pdf",
-                "similarity_score": 0.9,
-            },
-            {
-                "file_id": "f-new",
-                "url": "https://example.com/new.pdf",
-                "filename": "new.pdf",
-                "description": "new file",
-                "content_type": "application/pdf",
-                "similarity_score": 0.85,
-            },
-        ]
-        context: Dict[str, Any] = {
-            "user_id": "user-abc",
-            "last_message": {"content": "Something about documents and more"},
-            "query_text": "Something about documents and more",
-            "fileIds": ["f-1"],
-            "fileData": [],
-            "conversation_id": None,
-        }
-        result = await fetch_files(context)
-        assert result["files_added"] is True
-        file_ids = [f["file_id"] for f in result["files_data"]]
-        assert file_ids.count("f-1") == 1
-        assert "f-new" in file_ids
-
-    async def test_no_files_found(self, mock_search_documents):
-        mock_search_documents.return_value = []
-        context: Dict[str, Any] = {
-            "user_id": "user-abc",
-            "last_message": {"content": "Tell me about something specific"},
-            "query_text": "Tell me about something specific",
-            "fileIds": [],
-            "fileData": [],
-            "conversation_id": None,
-        }
-        result = await fetch_files(context)
-        assert result["files_added"] is False
-
-    async def test_file_content_appended_to_message(self):
-        file_data = FileData(
-            fileId="f-1",
-            filename="doc.pdf",
-            url="https://example.com/doc.pdf",
-            type="application/pdf",
-        )
-        context: Dict[str, Any] = {
-            "user_id": "user-abc",
-            "last_message": {"content": "Original message"},
-            "query_text": "ab",
-            "fileIds": ["f-1"],
-            "fileData": [file_data],
-            "conversation_id": None,
-        }
-        result = await fetch_files(context)
-        assert "## File Information" in result["last_message"]["content"]
-        assert "Uploaded Files" in result["last_message"]["content"]
-
-    async def test_semantic_files_section_in_formatted_output(
-        self, mock_search_documents
-    ):
-        mock_search_documents.return_value = [
-            {
-                "file_id": "f-sem",
-                "url": "https://example.com/sem.pdf",
-                "filename": "semantic.pdf",
-                "description": "Relevant doc",
-                "content_type": "application/pdf",
-                "similarity_score": 0.8,
-            }
-        ]
-        context: Dict[str, Any] = {
-            "user_id": "user-abc",
-            "last_message": {"content": "Tell me about something"},
-            "query_text": "Tell me about something",
-            "fileIds": [],
-            "fileData": [],
-            "conversation_id": None,
-        }
-        result = await fetch_files(context)
-        assert "Relevant Files" in result["last_message"]["content"]
-
-
 # ---------------------------------------------------------------------------
 # delete_file_service
 # ---------------------------------------------------------------------------
@@ -1025,9 +723,7 @@ class TestDeleteFileService:
         assert "User ID is required" in exc_info.value.detail
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_file_not_found_raises_404(
-        self, mock_del_cache, mock_files_collection
-    ):
+    async def test_file_not_found_raises_404(self, mock_del_cache, mock_files_collection):
         mock_files_collection.find_one = AsyncMock(return_value=None)
 
         with pytest.raises(HTTPException) as exc_info:
@@ -1035,9 +731,7 @@ class TestDeleteFileService:
         assert exc_info.value.status_code == 404
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_mongo_delete_count_zero_raises_404(
-        self, mock_del_cache, mock_files_collection
-    ):
+    async def test_mongo_delete_count_zero_raises_404(self, mock_del_cache, mock_files_collection):
         mock_files_collection.find_one = AsyncMock(
             return_value={
                 "file_id": "f-1",
@@ -1221,9 +915,7 @@ class TestDeleteFileService:
 @pytest.mark.unit
 class TestUpdateFileService:
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_file_not_found_raises_404(
-        self, mock_del_cache, mock_files_collection
-    ):
+    async def test_file_not_found_raises_404(self, mock_del_cache, mock_files_collection):
         mock_files_collection.find_one = AsyncMock(return_value=None)
 
         with pytest.raises(HTTPException) as exc_info:
@@ -1235,9 +927,7 @@ class TestUpdateFileService:
         assert exc_info.value.status_code == 404
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_success_without_file_content(
-        self, mock_del_cache, mock_files_collection
-    ):
+    async def test_success_without_file_content(self, mock_del_cache, mock_files_collection):
         original_file = {
             "_id": ObjectId(),
             "file_id": "f-1",
@@ -1245,18 +935,16 @@ class TestUpdateFileService:
             "filename": "old.pdf",
             "type": "application/pdf",
             "description": "Old description",
-            "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
-            "updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
         }
         updated_file = {
             **original_file,
             "filename": "new.pdf",
-            "updated_at": datetime(2025, 6, 1, tzinfo=timezone.utc),
+            "updated_at": datetime(2025, 6, 1, tzinfo=UTC),
         }
 
-        mock_files_collection.find_one = AsyncMock(
-            side_effect=[original_file, updated_file]
-        )
+        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, updated_file])
         mock_update_result = MagicMock()
         mock_update_result.modified_count = 1
         mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
@@ -1282,17 +970,15 @@ class TestUpdateFileService:
             "type": "application/pdf",
             "description": "Old description",
             "conversation_id": "conv-1",
-            "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
-            "updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
         }
         updated_file = {
             **original_file,
             "description": "New summary from content",
         }
 
-        mock_files_collection.find_one = AsyncMock(
-            side_effect=[original_file, updated_file]
-        )
+        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, updated_file])
         mock_update_result = MagicMock()
         mock_update_result.modified_count = 1
         mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
@@ -1347,9 +1033,7 @@ class TestUpdateFileService:
             assert "Failed to process file" in exc_info.value.detail
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_chromadb_update_fails_continues(
-        self, mock_del_cache, mock_files_collection
-    ):
+    async def test_chromadb_update_fails_continues(self, mock_del_cache, mock_files_collection):
         original_file = {
             "_id": ObjectId(),
             "file_id": "f-1",
@@ -1357,14 +1041,12 @@ class TestUpdateFileService:
             "filename": "doc.pdf",
             "type": "application/pdf",
             "description": "old",
-            "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
-            "updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
         }
         updated_file = {**original_file, "description": "new desc"}
 
-        mock_files_collection.find_one = AsyncMock(
-            side_effect=[original_file, updated_file]
-        )
+        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, updated_file])
         mock_update_result = MagicMock()
         mock_update_result.modified_count = 1
         mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
@@ -1410,9 +1092,7 @@ class TestUpdateFileService:
         assert "not found after update" in exc_info.value.detail
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_no_conversation_id_uses_existing(
-        self, mock_del_cache, mock_files_collection
-    ):
+    async def test_no_conversation_id_uses_existing(self, mock_del_cache, mock_files_collection):
         original_file = {
             "_id": ObjectId(),
             "file_id": "f-1",
@@ -1421,14 +1101,12 @@ class TestUpdateFileService:
             "type": "application/pdf",
             "conversation_id": "conv-existing",
             "description": "desc",
-            "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
-            "updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
         }
         updated_file = {**original_file, "description": "updated desc"}
 
-        mock_files_collection.find_one = AsyncMock(
-            side_effect=[original_file, updated_file]
-        )
+        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, updated_file])
         mock_update_result = MagicMock()
         mock_update_result.modified_count = 1
         mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
@@ -1450,22 +1128,18 @@ class TestUpdateFileService:
         assert call_kwargs["conversation_id"] == "conv-existing"
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_modified_count_zero_still_returns(
-        self, mock_del_cache, mock_files_collection
-    ):
+    async def test_modified_count_zero_still_returns(self, mock_del_cache, mock_files_collection):
         original_file = {
             "_id": ObjectId(),
             "file_id": "f-1",
             "user_id": "user-abc",
             "filename": "doc.pdf",
             "type": "application/pdf",
-            "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
-            "updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
         }
 
-        mock_files_collection.find_one = AsyncMock(
-            side_effect=[original_file, original_file]
-        )
+        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, original_file])
         mock_update_result = MagicMock()
         mock_update_result.modified_count = 0  # no changes
         mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
@@ -1488,14 +1162,12 @@ class TestUpdateFileService:
             "user_id": "user-abc",
             "filename": "doc.pdf",
             "type": "application/pdf",
-            "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
-            "updated_at": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
         }
         updated_file = {**original_file, "filename": "renamed.pdf"}
 
-        mock_files_collection.find_one = AsyncMock(
-            side_effect=[original_file, updated_file]
-        )
+        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, updated_file])
         mock_update_result = MagicMock()
         mock_update_result.modified_count = 1
         mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
@@ -1518,163 +1190,6 @@ class TestUpdateFileService:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
-class TestGetFiles:
-    @patch(PATCH_GET_CACHE, new_callable=AsyncMock, return_value=None)
-    @patch(PATCH_SET_CACHE, new_callable=AsyncMock)
-    async def test_with_conversation_id(
-        self, mock_set_cache, mock_get_cache, mock_files_collection
-    ):
-        mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {
-                    "file_id": "f-1",
-                    "filename": "doc.pdf",
-                    "url": "https://example.com/doc.pdf",
-                    "type": "application/pdf",
-                },
-                {
-                    "file_id": "f-2",
-                    "filename": "img.png",
-                    "url": "https://example.com/img.png",
-                    "type": "image/png",
-                },
-            ]
-        )
-        mock_files_collection.find = MagicMock(return_value=mock_cursor)
-
-        result = await get_files(user_id="user-abc", conversation_id="conv-1")
-
-        assert len(result) == 2
-        assert isinstance(result[0], FileData)
-        assert result[0].fileId == "f-1"
-        assert result[1].fileId == "f-2"
-        mock_files_collection.find.assert_called_once_with(
-            {"user_id": "user-abc", "conversation_id": "conv-1"}
-        )
-
-    @patch(PATCH_GET_CACHE, new_callable=AsyncMock, return_value=None)
-    @patch(PATCH_SET_CACHE, new_callable=AsyncMock)
-    async def test_without_conversation_id(
-        self, mock_set_cache, mock_get_cache, mock_files_collection
-    ):
-        mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {
-                    "file_id": "f-1",
-                    "filename": "doc.pdf",
-                    "url": "https://example.com/doc.pdf",
-                    "type": "application/pdf",
-                },
-            ]
-        )
-        mock_files_collection.find = MagicMock(return_value=mock_cursor)
-
-        result = await get_files(user_id="user-abc", conversation_id=None)
-
-        assert len(result) == 1
-        mock_files_collection.find.assert_called_once_with({"user_id": "user-abc"})
-
-    @patch(PATCH_GET_CACHE, new_callable=AsyncMock, return_value=None)
-    @patch(PATCH_SET_CACHE, new_callable=AsyncMock)
-    async def test_empty_results(
-        self, mock_set_cache, mock_get_cache, mock_files_collection
-    ):
-        mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(return_value=[])
-        mock_files_collection.find = MagicMock(return_value=mock_cursor)
-
-        result = await get_files(user_id="user-abc")
-
-        assert result == []
-
-
 # ---------------------------------------------------------------------------
 # deserialize_file
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestDeserializeFile:
-    def test_valid_file(self):
-        file_doc = {
-            "file_id": "f-1",
-            "filename": "doc.pdf",
-            "url": "https://example.com/doc.pdf",
-            "type": "application/pdf",
-            "message": "Custom message",
-        }
-        result = deserialize_file(file_doc)
-        assert isinstance(result, FileData)
-        assert result.fileId == "f-1"
-        assert result.filename == "doc.pdf"
-        assert result.url == "https://example.com/doc.pdf"
-        assert result.type == "application/pdf"
-        assert result.message == "Custom message"
-
-    def test_valid_file_with_fileId_key(self):
-        file_doc = {
-            "fileId": "f-2",
-            "filename": "img.png",
-            "url": "https://example.com/img.png",
-            "type": "image/png",
-        }
-        result = deserialize_file(file_doc)
-        assert result.fileId == "f-2"
-
-    def test_valid_file_defaults(self):
-        file_doc = {
-            "file_id": "f-1",
-            "filename": "doc.pdf",
-            "url": "https://example.com/doc.pdf",
-            "type": "application/pdf",
-        }
-        result = deserialize_file(file_doc)
-        assert result.message == ""
-
-    def test_missing_file_id_raises_400(self):
-        file_doc = {
-            "filename": "doc.pdf",
-            "url": "https://example.com/doc.pdf",
-            "type": "application/pdf",
-        }
-        with pytest.raises(HTTPException) as exc_info:
-            deserialize_file(file_doc)
-        assert exc_info.value.status_code == 400
-        assert "Invalid file document" in exc_info.value.detail
-
-    def test_empty_file_id_raises_400(self):
-        file_doc = {
-            "file_id": "",
-            "fileId": "",
-            "filename": "doc.pdf",
-            "url": "https://example.com/doc.pdf",
-            "type": "application/pdf",
-        }
-        with pytest.raises(HTTPException) as exc_info:
-            deserialize_file(file_doc)
-        assert exc_info.value.status_code == 400
-
-    def test_file_id_prefers_file_id_over_fileId(self):
-        file_doc = {
-            "file_id": "from-file-id",
-            "fileId": "from-fileId",
-            "filename": "doc.pdf",
-            "url": "https://example.com/doc.pdf",
-            "type": "application/pdf",
-        }
-        result = deserialize_file(file_doc)
-        assert result.fileId == "from-file-id"
-
-    def test_falls_back_to_fileId(self):
-        file_doc = {
-            "file_id": "",
-            "fileId": "from-fileId",
-            "filename": "doc.pdf",
-            "url": "https://example.com/doc.pdf",
-            "type": "application/pdf",
-        }
-        result = deserialize_file(file_doc)
-        assert result.fileId == "from-fileId"

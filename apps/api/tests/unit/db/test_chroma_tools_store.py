@@ -4,8 +4,8 @@ import hashlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from langgraph.store.base import PutOp
+import pytest
 
 from app.db.chroma.chroma_tools_store import (
     _build_put_operations,
@@ -18,7 +18,8 @@ from app.db.chroma.chroma_tools_store import (
     delete_tools_by_namespace,
     index_tools_to_store,
 )
-
+from app.models.mcp_config import SubAgentConfig
+from app.models.subagent_models import Subagent
 
 # ---------------------------------------------------------------------------
 # _compute_tool_hash
@@ -44,7 +45,7 @@ class TestComputeToolHash:
             side_effect=OSError("no source"),
         ):
             result = await _compute_tool_hash(tool)
-        expected = hashlib.sha256("broken_tool::desc".encode()).hexdigest()
+        expected = hashlib.sha256(b"broken_tool::desc").hexdigest()
         assert result == expected
 
     async def test_hash_falls_back_on_type_error(self):
@@ -54,7 +55,7 @@ class TestComputeToolHash:
             side_effect=TypeError,
         ):
             result = await _compute_tool_hash(tool)
-        assert result == hashlib.sha256("t::d".encode()).hexdigest()
+        assert result == hashlib.sha256(b"t::d").hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -65,21 +66,27 @@ class TestComputeToolHash:
 @pytest.mark.asyncio
 class TestGetSubagentTools:
     async def test_returns_subagent_tools(self):
-        cfg = SimpleNamespace(
+        cfg = SubAgentConfig(
+            has_subagent=True,
+            agent_name="gmail_agent",
+            tool_space="gmail_space",
+            handoff_tool_name="call_gmail",
             domain="email",
             use_cases="send, read",
             capabilities="full CRUD",
-            has_subagent=True,
+            system_prompt="You are gmail.",
         )
-        integ = SimpleNamespace(
+        subagent = Subagent(
             id="gmail",
             name="Gmail",
+            provider="gmail",
+            managed_by="composio",
+            config=cfg,
             short_name="gmail",
-            subagent_config=cfg,
         )
         with patch(
-            "app.db.chroma.chroma_tools_store.get_subagent_integrations",
-            return_value=[integ],
+            "app.db.chroma.chroma_tools_store.all_subagents",
+            return_value=(subagent,),
         ):
             result = await _get_subagent_tools()
 
@@ -88,16 +95,12 @@ class TestGetSubagentTools:
         assert entry["namespace"] == "subagents"
         assert "Gmail" in entry["description"]
 
-    async def test_skips_integration_without_subagent_config(self):
-        integ = SimpleNamespace(
-            id="x",
-            name="X",
-            short_name="x",
-            subagent_config=None,
-        )
+    async def test_skips_when_registry_empty(self):
+        # Registry never surfaces entries without a config; an empty registry
+        # produces an empty result.
         with patch(
-            "app.db.chroma.chroma_tools_store.get_subagent_integrations",
-            return_value=[integ],
+            "app.db.chroma.chroma_tools_store.all_subagents",
+            return_value=(),
         ):
             result = await _get_subagent_tools()
         assert result == {}
@@ -127,9 +130,7 @@ class TestGetCurrentToolsWithHashes:
             patch(
                 "app.db.chroma.chroma_tools_store._get_subagent_tools",
                 new_callable=AsyncMock,
-                return_value={
-                    "subagents::subagent:x": {"hash": "h", "namespace": "subagents"}
-                },
+                return_value={"subagents::subagent:x": {"hash": "h", "namespace": "subagents"}},
             ),
         ):
             result = await _get_current_tools_with_hashes(registry)
@@ -431,9 +432,7 @@ class TestDeleteToolsByNamespace:
     async def test_returns_zero_when_store_unavailable(self):
         with patch("app.db.chroma.chroma_tools_store.providers") as mock_providers:
             mock_providers.aget = AsyncMock(return_value=None)
-            with patch(
-                "app.db.chroma.chroma_tools_store.delete_cache", new_callable=AsyncMock
-            ):
+            with patch("app.db.chroma.chroma_tools_store.delete_cache", new_callable=AsyncMock):
                 count = await delete_tools_by_namespace("ns")
         assert count == 0
 
@@ -464,9 +463,7 @@ class TestDeleteToolsByNamespace:
 
         with (
             patch("app.db.chroma.chroma_tools_store.providers") as mock_providers,
-            patch(
-                "app.db.chroma.chroma_tools_store.delete_cache", new_callable=AsyncMock
-            ),
+            patch("app.db.chroma.chroma_tools_store.delete_cache", new_callable=AsyncMock),
         ):
             mock_providers.aget = AsyncMock(return_value=mock_store)
             count = await delete_tools_by_namespace("ns")

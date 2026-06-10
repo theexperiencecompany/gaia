@@ -1,17 +1,24 @@
 """Unit tests for Pydantic model validation across chat, message, and user models."""
 
-import pytest
 from pydantic import ValidationError
+import pytest
 
 from app.models.chat_models import (
+    BatchSyncRequest,
     ConversationModel,
     ConversationSource,
+    ConversationSyncItem,
     ImageData,
     MessageModel,
+    SourceCategory,
     SystemPurpose,
     UpdateMessagesRequest,
-    ConversationSyncItem,
-    BatchSyncRequest,
+)
+from app.models.memory_models import (
+    CreateMemoryRequest,
+    MemoryEntry,
+    MemoryRelation,
+    MemorySearchResult,
 )
 from app.models.message_models import (
     FileData,
@@ -20,18 +27,9 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 from app.models.user_models import (
-    OnboardingData,
-    OnboardingPhase,
     OnboardingPreferences,
     OnboardingRequest,
     UserUpdateResponse,
-    BioStatus,
-)
-from app.models.memory_models import (
-    MemoryEntry,
-    MemoryRelation,
-    MemorySearchResult,
-    CreateMemoryRequest,
 )
 
 
@@ -103,9 +101,7 @@ class TestMessageModel:
         m = MessageModel(
             type="assistant",
             response="Done",
-            tool_data=[
-                {"tool_name": "search", "data": {"query": "test"}, "timestamp": None}
-            ],
+            tool_data=[{"tool_name": "search", "data": {"query": "test"}, "timestamp": None}],
         )
         assert len(m.tool_data) == 1
         assert m.tool_data[0]["tool_name"] == "search"
@@ -201,9 +197,7 @@ class TestBatchSyncRequest:
     def test_valid(self):
         r = BatchSyncRequest(
             conversations=[
-                ConversationSyncItem(
-                    conversation_id="c1", last_updated="2024-01-01T00:00:00Z"
-                ),
+                ConversationSyncItem(conversation_id="c1", last_updated="2024-01-01T00:00:00Z"),
                 ConversationSyncItem(conversation_id="c2"),
             ]
         )
@@ -322,9 +316,7 @@ class TestOnboardingPreferences:
         assert p.profession == "Developer"
 
     def test_empty_string_normalized_to_none(self):
-        p = OnboardingPreferences(
-            profession="", response_style="", custom_instructions=""
-        )
+        p = OnboardingPreferences(profession="", response_style="", custom_instructions="")
         assert p.profession is None
         assert p.response_style is None
         assert p.custom_instructions is None
@@ -336,21 +328,6 @@ class TestOnboardingPreferences:
     def test_custom_instructions_too_long(self):
         with pytest.raises(ValidationError):
             OnboardingPreferences(custom_instructions="x" * 501)
-
-
-@pytest.mark.unit
-class TestOnboardingData:
-    def test_defaults(self):
-        d = OnboardingData()
-        assert d.completed is False
-        assert d.phase == OnboardingPhase.INITIAL
-        assert d.bio_status == BioStatus.PENDING
-        assert d.house is None
-
-    def test_all_phases(self):
-        for phase in OnboardingPhase:
-            d = OnboardingData(phase=phase)
-            assert d.phase == phase
 
 
 @pytest.mark.unit
@@ -415,3 +392,48 @@ class TestMemoryModels:
     def test_create_memory_request_missing_content(self):
         with pytest.raises(ValidationError):
             CreateMemoryRequest()
+
+
+@pytest.mark.unit
+class TestConversationSourceCoerce:
+    """ConversationSource.coerce parses raw values into the enum (or None)."""
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("whatsapp", ConversationSource.WHATSAPP),
+            ("web", ConversationSource.WEB),
+            ("background", ConversationSource.BACKGROUND),
+            (ConversationSource.SLACK, ConversationSource.SLACK),
+        ],
+    )
+    def test_valid_values_coerce_to_enum(self, raw, expected):
+        assert ConversationSource.coerce(raw) is expected
+
+    @pytest.mark.parametrize("raw", [None, "", "nonsense", "gmail"])
+    def test_invalid_values_return_none(self, raw):
+        assert ConversationSource.coerce(raw) is None
+
+
+@pytest.mark.unit
+class TestSourceCategoryFromSource:
+    """SourceCategory.from_source maps a specific channel to its category."""
+
+    @pytest.mark.parametrize(
+        "source,category",
+        [
+            ("web", SourceCategory.UI),
+            ("mobile", SourceCategory.UI),
+            ("whatsapp", SourceCategory.BOT),
+            ("telegram", SourceCategory.BOT),
+            ("discord", SourceCategory.BOT),
+            ("slack", SourceCategory.BOT),
+            (ConversationSource.WHATSAPP, SourceCategory.BOT),
+            ("workflow_system", SourceCategory.BG),
+            ("background", SourceCategory.BG),
+            (None, SourceCategory.BG),
+            ("nonsense", SourceCategory.BG),
+        ],
+    )
+    def test_category_mapping(self, source, category):
+        assert SourceCategory.from_source(source) is category

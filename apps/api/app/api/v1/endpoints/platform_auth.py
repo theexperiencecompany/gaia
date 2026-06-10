@@ -1,12 +1,13 @@
-from typing import Callable, Optional
+from collections.abc import Callable
 from urllib.parse import urlencode
 
-import httpx
-from shared.py.wide_events import log
-from app.config.settings import settings
-from app.services.platform_link_service import PlatformLinkService
 from fastapi import APIRouter
 from fastapi.responses import RedirectResponse
+import httpx
+
+from app.config.settings import settings
+from app.services.platform_link_service import PlatformLinkService
+from shared.py.wide_events import log
 
 
 class PlatformOAuthConfig:
@@ -16,14 +17,14 @@ class PlatformOAuthConfig:
         self,
         platform: str,
         token_url: str,
-        get_client_id: Callable[[], Optional[str]],
-        get_client_secret: Callable[[], Optional[str]],
+        get_client_id: Callable[[], str | None],
+        get_client_secret: Callable[[], str | None],
         get_redirect_uri: Callable[[], str],
-        extract_user_id: Callable[[dict, Optional[str]], str],
-        user_info_url: Optional[str] = None,
-        extra_token_headers: Optional[dict] = None,
-        get_user_access_token: Optional[Callable[[dict], Optional[str]]] = None,
-        extract_profile_from_user_info: Optional[Callable[[dict], dict]] = None,
+        extract_user_id: Callable[[dict, str | None], str],
+        user_info_url: str | None = None,
+        extra_token_headers: dict | None = None,
+        get_user_access_token: Callable[[dict], str | None] | None = None,
+        extract_profile_from_user_info: Callable[[dict], dict] | None = None,
     ):
         self.platform = platform
         self.token_url = token_url
@@ -41,8 +42,7 @@ class PlatformOAuthConfig:
         self.extract_profile_from_user_info = extract_profile_from_user_info or (
             lambda user_data: {
                 "username": user_data.get("username"),
-                "display_name": user_data.get("global_name")
-                or user_data.get("username"),
+                "display_name": user_data.get("global_name") or user_data.get("username"),
             }
         )
 
@@ -55,9 +55,7 @@ PLATFORM_CONFIGS = {
         get_client_secret=lambda: settings.DISCORD_OAUTH_CLIENT_SECRET,
         get_redirect_uri=lambda: settings.DISCORD_OAUTH_REDIRECT_URI,
         user_info_url="https://discord.com/api/users/@me",
-        extract_user_id=lambda token_data, access_token: (
-            ""
-        ),  # uses user_info_url instead
+        extract_user_id=lambda token_data, access_token: "",  # uses user_info_url instead
         extra_token_headers={"Content-Type": "application/x-www-form-urlencoded"},
     ),
     "slack": PlatformOAuthConfig(
@@ -67,13 +65,9 @@ PLATFORM_CONFIGS = {
         get_client_secret=lambda: settings.SLACK_OAUTH_CLIENT_SECRET,
         get_redirect_uri=lambda: settings.SLACK_OAUTH_REDIRECT_URI,
         user_info_url="https://slack.com/api/users.identity",
-        extract_user_id=lambda token_data, access_token: token_data["authed_user"][
-            "id"
-        ],
+        extract_user_id=lambda token_data, access_token: token_data["authed_user"]["id"],
         # User token lives under authed_user, not at the top level
-        get_user_access_token=lambda data: data.get("authed_user", {}).get(
-            "access_token"
-        ),
+        get_user_access_token=lambda data: data.get("authed_user", {}).get("access_token"),
         # users.identity returns {"user": {"id": ..., "name": ...}}
         extract_profile_from_user_info=lambda user_data: {
             "username": user_data.get("user", {}).get("name"),
@@ -93,9 +87,9 @@ def _redirect_url(base: str, path: str, **params: str) -> str:
 
 
 async def _handle_platform_oauth_callback(
-    code: Optional[str],
-    state: Optional[str],
-    error: Optional[str],
+    code: str | None,
+    state: str | None,
+    error: str | None,
     config: PlatformOAuthConfig,
 ) -> RedirectResponse:
     """Generic OAuth callback handler for all platforms."""
@@ -107,26 +101,20 @@ async def _handle_platform_oauth_callback(
     if error:
         error_type = "cancelled" if error == "access_denied" else "failed"
         return RedirectResponse(
-            url=_redirect_url(
-                settings.FRONTEND_URL, fallback_path, oauth_error=error_type
-            )
+            url=_redirect_url(settings.FRONTEND_URL, fallback_path, oauth_error=error_type)
         )
 
     # Validate required params
     if not code or not state:
         return RedirectResponse(
-            url=_redirect_url(
-                settings.FRONTEND_URL, fallback_path, oauth_error="missing_params"
-            )
+            url=_redirect_url(settings.FRONTEND_URL, fallback_path, oauth_error="missing_params")
         )
 
     # Validate state token
     state_data = await validate_and_consume_oauth_state(state)
     if not state_data:
         return RedirectResponse(
-            url=_redirect_url(
-                settings.FRONTEND_URL, fallback_path, oauth_error="invalid_state"
-            )
+            url=_redirect_url(settings.FRONTEND_URL, fallback_path, oauth_error="invalid_state")
         )
 
     user_id = state_data["user_id"]
@@ -153,9 +141,7 @@ async def _handle_platform_oauth_callback(
             )
 
             if token_response.status_code != 200:
-                log.error(
-                    f"{config.platform} token exchange failed: {token_response.text}"
-                )
+                log.error(f"{config.platform} token exchange failed: {token_response.text}")
                 return RedirectResponse(
                     url=_redirect_url(
                         settings.FRONTEND_URL, redirect_path, oauth_error="token_failed"
@@ -184,9 +170,7 @@ async def _handle_platform_oauth_callback(
                 )
 
                 if user_response.status_code != 200:
-                    log.error(
-                        f"{config.platform} user fetch failed: {user_response.text}"
-                    )
+                    log.error(f"{config.platform} user fetch failed: {user_response.text}")
                     return RedirectResponse(
                         url=_redirect_url(
                             settings.FRONTEND_URL,
@@ -227,13 +211,10 @@ async def _handle_platform_oauth_callback(
                         oauth_error="already_linked",
                     )
                 )
-            else:
-                log.error(f"Failed to link account: {error_msg}")
-                return RedirectResponse(
-                    url=_redirect_url(
-                        settings.FRONTEND_URL, redirect_path, oauth_error="failed"
-                    )
-                )
+            log.error(f"Failed to link account: {error_msg}")
+            return RedirectResponse(
+                url=_redirect_url(settings.FRONTEND_URL, redirect_path, oauth_error="failed")
+            )
 
         # Redirect to settings with success message
         log.set(outcome="success")
@@ -248,33 +229,27 @@ async def _handle_platform_oauth_callback(
 
     except Exception as e:
         log.set(outcome="failed")
-        log.error(f"{config.platform} OAuth callback error: {str(e)}", exc_info=True)
+        log.error(f"{config.platform} OAuth callback error: {e!s}", exc_info=True)
         return RedirectResponse(
-            url=_redirect_url(
-                settings.FRONTEND_URL, redirect_path, oauth_error="failed"
-            )
+            url=_redirect_url(settings.FRONTEND_URL, redirect_path, oauth_error="failed")
         )
 
 
 @router.get("/discord/callback")
 async def discord_oauth_callback(
-    code: Optional[str] = None,
-    state: Optional[str] = None,
-    error: Optional[str] = None,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
 ):
     """Handle Discord OAuth callback."""
-    return await _handle_platform_oauth_callback(
-        code, state, error, PLATFORM_CONFIGS["discord"]
-    )
+    return await _handle_platform_oauth_callback(code, state, error, PLATFORM_CONFIGS["discord"])
 
 
 @router.get("/slack/callback")
 async def slack_oauth_callback(
-    code: Optional[str] = None,
-    state: Optional[str] = None,
-    error: Optional[str] = None,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
 ):
     """Handle Slack OAuth callback."""
-    return await _handle_platform_oauth_callback(
-        code, state, error, PLATFORM_CONFIGS["slack"]
-    )
+    return await _handle_platform_oauth_callback(code, state, error, PLATFORM_CONFIGS["slack"])

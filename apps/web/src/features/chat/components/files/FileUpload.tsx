@@ -246,7 +246,6 @@ export default function FileUpload({
       clearAllFiles();
     } catch (error) {
       console.error("Error uploading files:", error);
-      toast.error("Error uploading files. Please try again.");
 
       if (onFilesUploaded) {
         onFilesUploaded([]);

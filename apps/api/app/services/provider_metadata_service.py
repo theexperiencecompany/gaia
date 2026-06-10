@@ -6,30 +6,22 @@ when OAuth integrations are connected. This metadata is used to enhance agent
 system prompts with user context.
 """
 
+from datetime import UTC, datetime
 import json
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any
 
-from shared.py.wide_events import log
+from bson import ObjectId
+
 from app.config.oauth_config import get_integration_by_id
-from app.constants.cache import ONE_HOUR_TTL
+from app.constants.cache import PROVIDER_METADATA_CACHE_TTL
 from app.db.mongodb.collections import users_collection
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.services.composio.composio_service import get_composio_service
-from bson import ObjectId
+from shared.py.wide_events import log
 
 
-def _extract_nested_field(data: Dict[str, Any], field_path: str) -> Optional[str]:
-    """
-    Extract a value from a nested dictionary using dot notation.
-
-    Args:
-        data: The dictionary to extract from
-        field_path: Dot-separated path (e.g., "data.login" or "data.data.username")
-
-    Returns:
-        The extracted value as string, or None if not found
-    """
+def _extract_nested_field(data: dict[str, Any], field_path: str) -> str | None:
+    """Extract a value from a nested dict using dot-notation (e.g. "data.login")."""
     try:
         keys = field_path.split(".")
         value: Any = data
@@ -46,18 +38,8 @@ def _extract_nested_field(data: Dict[str, Any], field_path: str) -> Optional[str
 
 async def fetch_tool_response(
     user_id: str, tool_name: str, integration_id: str
-) -> Optional[Dict[str, Any]]:
-    """
-    Fetch response from a single tool.
-
-    Args:
-        user_id: The user ID to fetch info for
-        tool_name: The tool to call (e.g., "TWITTER_USER_LOOKUP_ME")
-        integration_id: The integration ID (for logging)
-
-    Returns:
-        The raw response from the tool as dict, or None if failed
-    """
+) -> dict[str, Any] | None:
+    """Call a single tool and return its raw response dict, or None on failure."""
     log.set(
         provider_metadata_user_id=user_id,
         provider_metadata_tool=tool_name,
@@ -87,7 +69,7 @@ async def fetch_tool_response(
         # Handle different response types
         if isinstance(data, dict):
             return data
-        elif isinstance(data, str):
+        if isinstance(data, str):
             try:
                 return json.loads(data)
             except json.JSONDecodeError:
@@ -102,32 +84,17 @@ async def fetch_tool_response(
         return None
 
 
-async def fetch_provider_user_info(
-    user_id: str, integration_id: str
-) -> Optional[Dict[str, str]]:
-    """
-    Fetch user info from a provider using configured tools and extract variables.
-
-    Iterates through all configured tools in metadata_config, calls each tool,
-    and extracts the configured variables from responses.
-
-    Args:
-        user_id: The user ID to fetch info for
-        integration_id: The integration ID (e.g., "github", "twitter")
-
-    Returns:
-        Dictionary of extracted variables (name -> value), or None if failed
-    """
-    log.set(
-        provider_metadata_user_id=user_id, provider_metadata_integration=integration_id
-    )
+async def fetch_provider_user_info(user_id: str, integration_id: str) -> dict[str, str] | None:
+    """Fetch user info from a provider, calling each tool in metadata_config and
+    extracting its configured variables into a name -> value dict (or None)."""
+    log.set(provider_metadata_user_id=user_id, provider_metadata_integration=integration_id)
     integration = get_integration_by_id(integration_id)
 
     if not integration or not integration.metadata_config:
         log.debug(f"No metadata config for integration {integration_id}")
         return None
 
-    metadata: Dict[str, str] = {}
+    metadata: dict[str, str] = {}
 
     # Iterate through each tool configuration
     for tool_config in integration.metadata_config.tools:
@@ -135,9 +102,7 @@ async def fetch_provider_user_info(
         response = await fetch_tool_response(user_id, tool_config.tool, integration_id)
 
         if not response:
-            log.warning(
-                f"Failed to fetch {tool_config.tool} for {integration_id}, skipping"
-            )
+            log.warning(f"Failed to fetch {tool_config.tool} for {integration_id}, skipping")
             continue
 
         # Extract each configured variable from the response
@@ -156,20 +121,8 @@ async def fetch_provider_user_info(
 
 
 @CacheInvalidator(key_patterns=["provider_metadata:{user_id}:{provider}"])
-async def store_provider_metadata(
-    user_id: str, provider: str, metadata: Dict[str, str]
-) -> bool:
-    """
-    Store provider metadata in the user's document.
-
-    Args:
-        user_id: The user ID
-        provider: The provider name (e.g., "github", "twitter")
-        metadata: The metadata to store
-
-    Returns:
-        True if successful, False otherwise
-    """
+async def store_provider_metadata(user_id: str, provider: str, metadata: dict[str, str]) -> bool:
+    """Store provider metadata in the user's document. Returns success."""
     log.set(
         provider_metadata_user_id=user_id,
         provider_metadata_provider=provider,
@@ -181,7 +134,7 @@ async def store_provider_metadata(
             {
                 "$set": {
                     f"provider_metadata.{provider}": metadata,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             },
         )
@@ -189,33 +142,22 @@ async def store_provider_metadata(
         if result.modified_count > 0:
             log.info(f"Stored {provider} metadata for user {user_id}: {metadata}")
             return True
-        else:
-            log.warning(f"No document updated for user {user_id}")
-            return False
+        log.warning(f"No document updated for user {user_id}")
+        return False
 
     except Exception as e:
         log.error(f"Error storing {provider} metadata for user {user_id}: {e}")
         return False
 
 
-@Cacheable(key_pattern="provider_metadata:{user_id}:{provider}", ttl=ONE_HOUR_TTL)
-async def get_provider_metadata(
-    user_id: str, provider: str
-) -> Optional[Dict[str, str]]:
-    """
-    Retrieve provider metadata for a user.
-
-    Args:
-        user_id: The user ID
-        provider: The provider name
-
-    Returns:
-        The metadata dictionary, or None if not found
-    """
+@Cacheable(
+    key_pattern="provider_metadata:{user_id}:{provider}",
+    ttl=PROVIDER_METADATA_CACHE_TTL,
+)
+async def get_provider_metadata(user_id: str, provider: str) -> dict[str, str] | None:
+    """Retrieve provider metadata for a user, or None if not found."""
     try:
-        user = await users_collection.find_one(
-            {"_id": ObjectId(user_id)}, {"provider_metadata": 1}
-        )
+        user = await users_collection.find_one({"_id": ObjectId(user_id)}, {"provider_metadata": 1})
 
         if not user:
             return None
@@ -228,45 +170,10 @@ async def get_provider_metadata(
         return None
 
 
-async def get_all_provider_metadata(user_id: str) -> Dict[str, Dict[str, str]]:
-    """
-    Retrieve all provider metadata for a user.
-
-    Args:
-        user_id: The user ID
-
-    Returns:
-        Dictionary of provider -> metadata mappings
-    """
-    try:
-        user = await users_collection.find_one(
-            {"_id": ObjectId(user_id)}, {"provider_metadata": 1}
-        )
-
-        if not user:
-            return {}
-
-        return user.get("provider_metadata", {})
-
-    except Exception as e:
-        log.error(f"Error getting all provider metadata for user {user_id}: {e}")
-        return {}
-
-
 async def fetch_and_store_provider_metadata(user_id: str, integration_id: str) -> bool:
-    """
-    Fetch user info from provider and store metadata in database.
+    """Fetch user info from a provider and store its metadata. Returns success.
 
-    This is the main entry point called after OAuth connection succeeds.
-    Uses the new multi-tool configuration to fetch from multiple tools
-    and extract configured variables.
-
-    Args:
-        user_id: The user ID
-        integration_id: The integration ID (e.g., "github", "twitter", "gmail")
-
-    Returns:
-        True if metadata was successfully fetched and stored, False otherwise
+    Main entry point called after an OAuth connection succeeds.
     """
     integration = get_integration_by_id(integration_id)
 

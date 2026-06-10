@@ -25,6 +25,11 @@ export interface Todo {
   completed: boolean;
   subtasks: SubTask[];
   workflow_id?: string;
+  vfs_path?: string;
+  scheduled_at?: string | null; // ISO datetime string
+  recurrence?: string | null; // 'daily' | 'weekly' | 'every_4h' | cron expression
+  expires_at?: string | null; // ISO datetime — when this task becomes irrelevant
+  references?: string[]; // IDs of related past tracked todos
   workflow_categories?: string[];
   starred?: boolean;
   created_at: string;
@@ -42,6 +47,9 @@ export interface TodoUpdate {
   completed?: boolean;
   subtasks?: SubTask[];
   workflow_id?: string;
+  scheduled_at?: string | null;
+  recurrence?: string | null;
+  expires_at?: string | null;
 }
 
 export interface TodoFilters {
@@ -85,4 +93,54 @@ export interface PaginationMeta {
 export interface TodoListResponse {
   data: Todo[];
   meta: PaginationMeta;
+}
+
+export enum WorkflowStatus {
+  NOT_STARTED = "not_started",
+  GENERATING = "generating",
+  COMPLETED = "completed",
+  FAILED = "failed",
+}
+
+export interface TodoCounts {
+  inbox: number;
+  today: number;
+  upcoming: number;
+  completed: number;
+  overdue: number;
+}
+
+export interface TodoCreate {
+  title: string;
+  description?: string;
+  labels?: string[];
+  due_date?: string;
+  due_date_timezone?: string;
+  priority?: Priority;
+  project_id?: string;
+  subtasks?: SubTask[];
+  scheduled_at?: string | null;
+  recurrence?: string | null;
+}
+
+export interface ProjectCreate {
+  name: string;
+  description?: string;
+  color?: string;
+}
+
+export interface ProjectUpdate {
+  name?: string;
+  description?: string;
+  color?: string;
+}
+
+export interface BulkMoveRequest {
+  todo_ids: string[];
+  project_id: string;
+}
+
+export interface TodoLabel {
+  name: string;
+  count: number;
 }

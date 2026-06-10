@@ -35,17 +35,10 @@ export async function generateStaticParams() {
 
     if (isDev) {
       const resp = await workflowApi.getExploreWorkflows(50, 0);
-      console.log(
-        `[SSG Use Cases] Generating ${resp.workflows.length} pages (dev mode)`,
-      );
-      return resp.workflows.map((w) => ({ slug: w.slug ?? w.id }));
+      return resp.workflows.flatMap((w) => (w.slug ? [{ slug: w.slug }] : []));
     }
 
-    const exploreLimit = 1000;
-    const exploreResp = await workflowApi.getExploreWorkflows(exploreLimit, 0);
-    const exploreParams = exploreResp.workflows.map((w) => ({
-      slug: w.slug ?? w.id,
-    }));
+    const exploreResp = await workflowApi.getExploreWorkflows(1000, 0);
 
     const { fetchAllPaginated } = await import("@/lib/fetchAll");
     const communityWorkflows = await fetchAllPaginated(
@@ -59,12 +52,10 @@ export async function generateStaticParams() {
       },
       100,
     );
-    const communityParams = communityWorkflows.map((w) => ({
-      slug: w.slug ?? w.id,
-    }));
 
-    const allParams = [...exploreParams, ...communityParams];
-    return allParams;
+    return [...exploreResp.workflows, ...communityWorkflows].flatMap((w) =>
+      w.slug ? [{ slug: w.slug }] : [],
+    );
   } catch (error) {
     console.error("Error generating static params for use-cases:", error);
     return [];
@@ -87,7 +78,7 @@ export async function generateMetadata({
         title: found.title,
         description: found.description || "",
         detailed_description: found.description,
-        slug: found.slug ?? found.id,
+        slug: found.slug,
         action_type: "workflow",
         integrations: found.steps?.map((s) => s.category) || [],
         categories: found.categories || ["featured"],
@@ -107,11 +98,18 @@ export async function generateMetadata({
     const response = await workflowApi.getPublicWorkflow(slug);
     const workflow = response.workflow;
 
+    if (!workflow.slug) {
+      return {
+        title: "Use Case Not Found",
+        description: "The requested use case could not be found.",
+      };
+    }
+
     const workflowAsUseCase: UseCase = {
       title: workflow.title,
       description: workflow.description || "",
       detailed_description: workflow.description,
-      slug: workflow.slug ?? workflow.id,
+      slug: workflow.slug,
       action_type: "workflow",
       integrations: workflow.steps?.map((s) => s.category) || [],
       categories: ["featured"],
@@ -149,7 +147,7 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
         integrations: found.steps?.map((s) => s.category) || [],
         categories: found.categories || ["featured"],
         published_id: found.id,
-        slug: found.slug ?? found.id,
+        slug: found.slug,
         steps: found.steps,
         creator: found.creator,
       } as UseCase;
@@ -159,7 +157,6 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
   }
 
   if (!useCase) {
-    // If not found in static data, try API as community workflow
     try {
       const response = await workflowApi.getPublicWorkflow(slug);
       const workflow = response.workflow;
@@ -169,33 +166,7 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
         redirect(`/use-cases/${workflow.slug}`);
       }
 
-      // If it's a public workflow, try to get it from community endpoint to get creator info
-      if (workflow.is_public) {
-        try {
-          const communityResponse = await workflowApi.getCommunityWorkflows(
-            100,
-            0,
-          );
-          const foundCommunityWorkflow = communityResponse.workflows.find(
-            (w) => w.id === workflow.id,
-          );
-
-          if (foundCommunityWorkflow) {
-            // Merge the community workflow data (which has creator) with the full workflow data
-            communityWorkflow = {
-              ...workflow,
-              creator: foundCommunityWorkflow.creator,
-            };
-          } else {
-            communityWorkflow = workflow;
-          }
-        } catch (error) {
-          console.error("Error fetching community workflow details:", error);
-          communityWorkflow = workflow;
-        }
-      } else {
-        communityWorkflow = workflow;
-      }
+      communityWorkflow = workflow;
     } catch (error) {
       console.error("Error fetching workflow:", error);
       notFound();

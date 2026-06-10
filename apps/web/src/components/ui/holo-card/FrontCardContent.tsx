@@ -1,7 +1,7 @@
-import Image from "next/image";
 import type React from "react";
 
-import { CARD_CLASSES, CARD_IMAGES, LOGO_SIZES } from "./constants";
+import { CARD_CLASSES } from "./constants";
+import { RotatingExperienceLogo } from "./RotatingExperienceLogo";
 
 interface FrontCardContentProps {
   name: string;
@@ -20,13 +20,17 @@ export const FrontCardContent: React.FC<FrontCardContentProps> = ({
 }) => {
   return (
     <>
-      <Image
-        src={CARD_IMAGES.EXPERIENCE_LOGO}
-        alt="Experience Logo"
-        className={CARD_CLASSES.EXPERIENCE_LOGO}
-        fill
-      />
-
+      <div
+        style={{
+          position: "absolute",
+          right: 32,
+          bottom: 32,
+          zIndex: 3,
+          pointerEvents: "none",
+        }}
+      >
+        <RotatingExperienceLogo size={96} />
+      </div>
       <div className={CARD_CLASSES.INFO_BOX}>
         <div
           className={
@@ -61,15 +65,6 @@ export const FrontCardContent: React.FC<FrontCardContentProps> = ({
             >
               {memberSince}
             </span>
-          </div>
-
-          <div className="flex gap-2">
-            <Image
-              src={CARD_IMAGES.EXPERIENCE_LOGO}
-              alt="Experience Logo"
-              width={LOGO_SIZES.EXPERIENCE.width}
-              height={LOGO_SIZES.EXPERIENCE.height}
-            />
           </div>
         </div>
       </div>

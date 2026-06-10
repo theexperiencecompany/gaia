@@ -1,6 +1,6 @@
 """Unit tests for Notion <-> Markdown bidirectional conversion utilities."""
 
-from typing import Any, Optional
+from typing import Any
 
 import pytest
 
@@ -23,7 +23,6 @@ from app.utils.notion_md import (
     _link,
     _quote,
     _strikethrough,
-    _table,
     _todo,
     _toggle,
     _underline,
@@ -33,9 +32,7 @@ from app.utils.notion_md import (
     markdown_to_notion_blocks,
     rich_text_to_markdown,
     simplify_block,
-    simplify_blocks,
 )
-
 
 # =============================================================================
 # Helper Formatters
@@ -153,9 +150,7 @@ class TestCodeBlock:
             ("multi\nline\ncode", "js", "```js\nmulti\nline\ncode\n```"),
         ],
     )
-    def test_code_block(
-        self, text: str, language: Optional[str], expected: str
-    ) -> None:
+    def test_code_block(self, text: str, language: str | None, expected: str) -> None:
         assert _code_block(text, language) == expected
 
 
@@ -210,7 +205,7 @@ class TestBullet:
             ("item", 0, "- item"),  # 0 is falsy, so acts like bulleted
         ],
     )
-    def test_bullet(self, text: str, count: Optional[int], expected: str) -> None:
+    def test_bullet(self, text: str, count: int | None, expected: str) -> None:
         assert _bullet(text, count) == expected
 
 
@@ -248,40 +243,6 @@ class TestAddTabSpace:
 
 
 @pytest.mark.unit
-class TestTable:
-    def test_empty_cells(self) -> None:
-        assert _table([]) == ""
-
-    def test_single_row_header_only(self) -> None:
-        result = _table([["A", "B", "C"]])
-        assert result == "| A | B | C |\n| --- | --- | --- |"
-
-    def test_multiple_rows(self) -> None:
-        cells = [["Name", "Age"], ["Alice", "30"], ["Bob", "25"]]
-        result = _table(cells)
-        lines = result.split("\n")
-        assert lines[0] == "| Name | Age |"
-        assert lines[1] == "| --- | --- |"
-        assert lines[2] == "| Alice | 30 |"
-        assert lines[3] == "| Bob | 25 |"
-
-    def test_rows_shorter_than_header_are_padded(self) -> None:
-        cells = [["A", "B", "C"], ["1"]]
-        result = _table(cells)
-        lines = result.split("\n")
-        assert lines[2] == "| 1 |  |  |"
-
-    def test_single_column(self) -> None:
-        cells = [["Header"], ["Value1"], ["Value2"]]
-        result = _table(cells)
-        lines = result.split("\n")
-        assert lines[0] == "| Header |"
-        assert lines[1] == "| --- |"
-        assert lines[2] == "| Value1 |"
-        assert lines[3] == "| Value2 |"
-
-
-@pytest.mark.unit
 class TestDivider:
     def test_divider(self) -> None:
         assert _divider() == "---"
@@ -304,9 +265,7 @@ class TestToggle:
             ("", "content", "content"),
         ],
     )
-    def test_toggle(
-        self, summary: Optional[str], children: Optional[str], expected: str
-    ) -> None:
+    def test_toggle(self, summary: str | None, children: str | None, expected: str) -> None:
         assert _toggle(summary, children) == expected
 
 
@@ -355,10 +314,7 @@ class TestCallout:
 @pytest.mark.unit
 class TestImage:
     def test_image(self) -> None:
-        assert (
-            _image("alt text", "https://img.com/a.png")
-            == "![alt text](https://img.com/a.png)"
-        )
+        assert _image("alt text", "https://img.com/a.png") == "![alt text](https://img.com/a.png)"
 
     def test_empty_alt(self) -> None:
         assert _image("", "https://img.com/a.png") == "![](https://img.com/a.png)"
@@ -452,9 +408,7 @@ class TestRichTextToMarkdown:
         assert rich_text_to_markdown(rich_text) == "Hello world"
 
     def test_equation_type(self) -> None:
-        rich_text = [
-            {"type": "equation", "equation": {"expression": "x^2 + y^2 = z^2"}}
-        ]
+        rich_text = [{"type": "equation", "equation": {"expression": "x^2 + y^2 = z^2"}}]
         assert rich_text_to_markdown(rich_text) == "$x^2 + y^2 = z^2$"
 
     def test_equation_missing_expression(self) -> None:
@@ -539,9 +493,7 @@ class TestBlockToMarkdown:
         block = {
             "type": "paragraph",
             "paragraph": {
-                "rich_text": [
-                    {"type": "text", "plain_text": "Hello world", "annotations": {}}
-                ]
+                "rich_text": [{"type": "text", "plain_text": "Hello world", "annotations": {}}]
             },
         }
         assert block_to_markdown(block) == "Hello world"
@@ -550,9 +502,7 @@ class TestBlockToMarkdown:
         block = {
             "type": "heading_1",
             "heading_1": {
-                "rich_text": [
-                    {"type": "text", "plain_text": "Title", "annotations": {}}
-                ]
+                "rich_text": [{"type": "text", "plain_text": "Title", "annotations": {}}]
             },
         }
         assert block_to_markdown(block) == "# Title"
@@ -561,9 +511,7 @@ class TestBlockToMarkdown:
         block = {
             "type": "heading_2",
             "heading_2": {
-                "rich_text": [
-                    {"type": "text", "plain_text": "Subtitle", "annotations": {}}
-                ]
+                "rich_text": [{"type": "text", "plain_text": "Subtitle", "annotations": {}}]
             },
         }
         assert block_to_markdown(block) == "## Subtitle"
@@ -572,9 +520,7 @@ class TestBlockToMarkdown:
         block = {
             "type": "heading_3",
             "heading_3": {
-                "rich_text": [
-                    {"type": "text", "plain_text": "Section", "annotations": {}}
-                ]
+                "rich_text": [{"type": "text", "plain_text": "Section", "annotations": {}}]
             },
         }
         assert block_to_markdown(block) == "### Section"
@@ -614,9 +560,7 @@ class TestBlockToMarkdown:
         block = {
             "type": "callout",
             "callout": {
-                "rich_text": [
-                    {"type": "text", "plain_text": "Important", "annotations": {}}
-                ],
+                "rich_text": [{"type": "text", "plain_text": "Important", "annotations": {}}],
                 "icon": {"type": "emoji", "emoji": "⚠️"},
             },
         }
@@ -626,9 +570,7 @@ class TestBlockToMarkdown:
         block = {
             "type": "callout",
             "callout": {
-                "rich_text": [
-                    {"type": "text", "plain_text": "Note", "annotations": {}}
-                ],
+                "rich_text": [{"type": "text", "plain_text": "Note", "annotations": {}}],
             },
         }
         assert block_to_markdown(block) == "> Note"
@@ -637,9 +579,7 @@ class TestBlockToMarkdown:
         block = {
             "type": "bulleted_list_item",
             "bulleted_list_item": {
-                "rich_text": [
-                    {"type": "text", "plain_text": "Item 1", "annotations": {}}
-                ]
+                "rich_text": [{"type": "text", "plain_text": "Item 1", "annotations": {}}]
             },
         }
         assert block_to_markdown(block) == "- Item 1"
@@ -649,9 +589,7 @@ class TestBlockToMarkdown:
             "type": "numbered_list_item",
             "numbered_list_item": {
                 "number": 3,
-                "rich_text": [
-                    {"type": "text", "plain_text": "Third item", "annotations": {}}
-                ],
+                "rich_text": [{"type": "text", "plain_text": "Third item", "annotations": {}}],
             },
         }
         assert block_to_markdown(block) == "3. Third item"
@@ -660,9 +598,7 @@ class TestBlockToMarkdown:
         block = {
             "type": "numbered_list_item",
             "numbered_list_item": {
-                "rich_text": [
-                    {"type": "text", "plain_text": "Item", "annotations": {}}
-                ],
+                "rich_text": [{"type": "text", "plain_text": "Item", "annotations": {}}],
             },
         }
         # number is None so _bullet returns bulleted style
@@ -673,9 +609,7 @@ class TestBlockToMarkdown:
             "type": "to_do",
             "to_do": {
                 "checked": True,
-                "rich_text": [
-                    {"type": "text", "plain_text": "Done task", "annotations": {}}
-                ],
+                "rich_text": [{"type": "text", "plain_text": "Done task", "annotations": {}}],
             },
         }
         assert block_to_markdown(block) == "- [x] Done task"
@@ -685,9 +619,7 @@ class TestBlockToMarkdown:
             "type": "to_do",
             "to_do": {
                 "checked": False,
-                "rich_text": [
-                    {"type": "text", "plain_text": "Pending", "annotations": {}}
-                ],
+                "rich_text": [{"type": "text", "plain_text": "Pending", "annotations": {}}],
             },
         }
         assert block_to_markdown(block) == "- [ ] Pending"
@@ -696,9 +628,7 @@ class TestBlockToMarkdown:
         block = {
             "type": "toggle",
             "toggle": {
-                "rich_text": [
-                    {"type": "text", "plain_text": "Toggle text", "annotations": {}}
-                ]
+                "rich_text": [{"type": "text", "plain_text": "Toggle text", "annotations": {}}]
             },
         }
         result = block_to_markdown(block)
@@ -829,9 +759,7 @@ class TestBlockToMarkdown:
             "type": "link_to_page",
             "link_to_page": {"type": "page_id", "page_id": "abc123"},
         }
-        assert (
-            block_to_markdown(block) == "[link_to_page](https://www.notion.so/abc123)"
-        )
+        assert block_to_markdown(block) == "[link_to_page](https://www.notion.so/abc123)"
 
     def test_link_to_page_database_id(self) -> None:
         block = {
@@ -873,9 +801,7 @@ class TestBlockToMarkdown:
         block = {
             "type": "synced_block",
             "synced_block": {
-                "rich_text": [
-                    {"type": "text", "plain_text": "synced", "annotations": {}}
-                ]
+                "rich_text": [{"type": "text", "plain_text": "synced", "annotations": {}}]
             },
         }
         assert block_to_markdown(block) == "synced"
@@ -900,9 +826,7 @@ class TestBlocksToMarkdown:
             {
                 "type": "paragraph",
                 "paragraph": {
-                    "rich_text": [
-                        {"type": "text", "plain_text": "Hello", "annotations": {}}
-                    ]
+                    "rich_text": [{"type": "text", "plain_text": "Hello", "annotations": {}}]
                 },
             }
         ]
@@ -913,33 +837,25 @@ class TestBlocksToMarkdown:
             {
                 "type": "numbered_list_item",
                 "numbered_list_item": {
-                    "rich_text": [
-                        {"type": "text", "plain_text": "First", "annotations": {}}
-                    ]
+                    "rich_text": [{"type": "text", "plain_text": "First", "annotations": {}}]
                 },
             },
             {
                 "type": "numbered_list_item",
                 "numbered_list_item": {
-                    "rich_text": [
-                        {"type": "text", "plain_text": "Second", "annotations": {}}
-                    ]
+                    "rich_text": [{"type": "text", "plain_text": "Second", "annotations": {}}]
                 },
             },
             {
                 "type": "paragraph",
                 "paragraph": {
-                    "rich_text": [
-                        {"type": "text", "plain_text": "Break", "annotations": {}}
-                    ]
+                    "rich_text": [{"type": "text", "plain_text": "Break", "annotations": {}}]
                 },
             },
             {
                 "type": "numbered_list_item",
                 "numbered_list_item": {
-                    "rich_text": [
-                        {"type": "text", "plain_text": "Restart", "annotations": {}}
-                    ]
+                    "rich_text": [{"type": "text", "plain_text": "Restart", "annotations": {}}]
                 },
             },
         ]
@@ -956,9 +872,7 @@ class TestBlocksToMarkdown:
             {
                 "type": "paragraph",
                 "paragraph": {
-                    "rich_text": [
-                        {"type": "text", "plain_text": "Visible", "annotations": {}}
-                    ]
+                    "rich_text": [{"type": "text", "plain_text": "Visible", "annotations": {}}]
                 },
             },
         ]
@@ -969,9 +883,7 @@ class TestBlocksToMarkdown:
             {
                 "type": "bulleted_list_item",
                 "bulleted_list_item": {
-                    "rich_text": [
-                        {"type": "text", "plain_text": "Parent", "annotations": {}}
-                    ]
+                    "rich_text": [{"type": "text", "plain_text": "Parent", "annotations": {}}]
                 },
                 "children": [
                     {
@@ -1000,9 +912,7 @@ class TestBlocksToMarkdown:
                 "id": "block-123",
                 "type": "paragraph",
                 "paragraph": {
-                    "rich_text": [
-                        {"type": "text", "plain_text": "Text", "annotations": {}}
-                    ]
+                    "rich_text": [{"type": "text", "plain_text": "Text", "annotations": {}}]
                 },
             }
         ]
@@ -1017,9 +927,7 @@ class TestBlocksToMarkdown:
                 "id": "parent-id",
                 "type": "bulleted_list_item",
                 "bulleted_list_item": {
-                    "rich_text": [
-                        {"type": "text", "plain_text": "Parent", "annotations": {}}
-                    ]
+                    "rich_text": [{"type": "text", "plain_text": "Parent", "annotations": {}}]
                 },
                 "children": [
                     {
@@ -1047,9 +955,7 @@ class TestBlocksToMarkdown:
             {
                 "type": "paragraph",
                 "paragraph": {
-                    "rich_text": [
-                        {"type": "text", "plain_text": "No ID", "annotations": {}}
-                    ]
+                    "rich_text": [{"type": "text", "plain_text": "No ID", "annotations": {}}]
                 },
             }
         ]
@@ -1072,17 +978,13 @@ class TestBlocksToMarkdown:
             {
                 "type": "heading_1",
                 "heading_1": {
-                    "rich_text": [
-                        {"type": "text", "plain_text": "Title", "annotations": {}}
-                    ]
+                    "rich_text": [{"type": "text", "plain_text": "Title", "annotations": {}}]
                 },
             },
             {
                 "type": "paragraph",
                 "paragraph": {
-                    "rich_text": [
-                        {"type": "text", "plain_text": "Body text", "annotations": {}}
-                    ]
+                    "rich_text": [{"type": "text", "plain_text": "Body text", "annotations": {}}]
                 },
             },
             {"type": "divider", "divider": {}},
@@ -1288,30 +1190,6 @@ class TestSimplifyBlock:
         assert result["text"] == "Hello World"
 
 
-@pytest.mark.unit
-class TestSimplifyBlocks:
-    def test_empty(self) -> None:
-        assert simplify_blocks([]) == []
-
-    def test_multiple_blocks(self) -> None:
-        blocks = [
-            {
-                "id": "1",
-                "type": "paragraph",
-                "paragraph": {"rich_text": [{"plain_text": "A"}]},
-            },
-            {
-                "id": "2",
-                "type": "paragraph",
-                "paragraph": {"rich_text": [{"plain_text": "B"}]},
-            },
-        ]
-        result = simplify_blocks(blocks)
-        assert len(result) == 2
-        assert result[0]["text"] == "A"
-        assert result[1]["text"] == "B"
-
-
 # =============================================================================
 # Extract Plain Text
 # =============================================================================
@@ -1432,10 +1310,7 @@ class TestMarkdownToNotionBlocks:
     def test_code_block_multiline(self) -> None:
         md = "```js\nline1\nline2\nline3\n```"
         result = markdown_to_notion_blocks(md)
-        assert (
-            result[0]["code"]["rich_text"][0]["text"]["content"]
-            == "line1\nline2\nline3"
-        )
+        assert result[0]["code"]["rich_text"][0]["text"]["content"] == "line1\nline2\nline3"
 
     def test_quote(self) -> None:
         result = markdown_to_notion_blocks("> A quote")

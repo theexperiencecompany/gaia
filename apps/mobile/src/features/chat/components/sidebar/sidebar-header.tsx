@@ -1,123 +1,130 @@
-import { Button, PressableFeedback, Surface } from "heroui-native";
-import { Image, TextInput, View } from "react-native";
+import { Image } from "expo-image";
+import { PressableFeedback } from "heroui-native";
+import { TextInput, View } from "react-native";
 import {
   AppIcon,
-  ArrowLeft01Icon,
   Cancel01Icon,
   PencilEdit02Icon,
   Search01Icon,
 } from "@/components/icons";
+import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
+const GaiaLogo = require("@shared/assets/logo/logo.svg");
+
 interface SidebarHeaderProps {
-  onNewChat: () => void;
-  onClose?: () => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  onNewChat?: () => void;
 }
 
+const SECTION_PADDING = 12;
+
 export function SidebarHeader({
-  onNewChat,
-  onClose,
   searchQuery,
   onSearchChange,
+  onNewChat,
 }: SidebarHeaderProps) {
-  const { spacing, fontSize, iconSize, moderateScale } = useResponsive();
+  const { spacing, fontSize, iconSize } = useResponsive();
 
   return (
-    <Surface
-      variant="transparent"
-      style={{
-        paddingHorizontal: spacing.md,
-        paddingTop: spacing.lg,
-        paddingBottom: spacing.sm,
-      }}
-    >
+    <View>
+      {/* Brand row: logo + wordmark + new chat button */}
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          gap: moderateScale(12, 0.5),
-          marginBottom: spacing.md,
-          paddingHorizontal: spacing.xs,
+          paddingHorizontal: SECTION_PADDING,
+          paddingTop: spacing.md,
+          paddingBottom: spacing.sm,
+          gap: 10,
         }}
       >
-        {onClose ? (
-          <PressableFeedback
-            onPress={onClose}
-            hitSlop={8}
-            style={{ padding: 4 }}
-          >
-            <AppIcon
-              icon={ArrowLeft01Icon}
-              size={iconSize.sm}
-              color="#a1a1aa"
-            />
-          </PressableFeedback>
-        ) : (
-          <Image
-            source={require("@shared/assets/logo/logo.webp")}
-            style={{
-              width: moderateScale(28, 0.5),
-              height: moderateScale(28, 0.5),
-            }}
-            resizeMode="contain"
-          />
-        )}
-        <View style={{ flex: 1 }}>
+        <Image
+          source={GaiaLogo}
+          style={{ width: 28, height: 28 }}
+          contentFit="contain"
+        />
+        <Text
+          style={{
+            fontSize: fontSize.lg,
+            fontWeight: "600",
+            color: "#e4e4e7",
+            letterSpacing: 0.2,
+            flex: 1,
+          }}
+        >
+          GAIA
+        </Text>
+        <PressableFeedback onPress={onNewChat} hitSlop={8}>
+          <AppIcon icon={PencilEdit02Icon} size={iconSize.md} color="#a1a1aa" />
+        </PressableFeedback>
+      </View>
+
+      {/* Search input — edge-to-edge with same horizontal padding as other sections */}
+      <View
+        style={{
+          paddingHorizontal: SECTION_PADDING,
+          paddingBottom: spacing.sm,
+        }}
+      >
+        <View style={{ position: "relative" }}>
           <TextInput
             placeholder="Search conversations..."
-            placeholderTextColor="#6b6b6e"
+            placeholderTextColor="#71717a"
             value={searchQuery}
             onChangeText={onSearchChange}
             style={{
-              flex: 1,
-              fontSize: fontSize.sm,
-              color: "#ffffff",
-              backgroundColor: "#1c1c1e",
-              borderRadius: moderateScale(10, 0.5),
-              paddingHorizontal: moderateScale(12, 0.5),
+              fontSize: fontSize.md,
+              color: "#e4e4e7",
+              backgroundColor: "#27272a",
+              borderRadius: 10,
+              paddingHorizontal: spacing.md,
               paddingVertical: spacing.sm,
-              paddingLeft: moderateScale(32, 0.5),
+              paddingLeft: spacing.xl,
+              paddingRight: searchQuery.length > 0 ? spacing.xl : spacing.md,
+              lineHeight: Math.round(fontSize.md * 1.5),
             }}
           />
           <View
             style={{
               position: "absolute",
-              left: moderateScale(10, 0.5),
+              left: spacing.sm + 2,
               top: 0,
               bottom: 0,
               justifyContent: "center",
             }}
             pointerEvents="none"
           >
-            <AppIcon icon={Search01Icon} size={iconSize.sm} color="#6b6b6e" />
+            <AppIcon
+              icon={Search01Icon}
+              size={iconSize.sm - 1}
+              color="#71717a"
+            />
           </View>
           {searchQuery.length > 0 && (
             <PressableFeedback
               onPress={() => onSearchChange("")}
+              hitSlop={8}
               style={{
                 position: "absolute",
-                right: moderateScale(8, 0.5),
+                right: 0,
                 top: 0,
                 bottom: 0,
+                width: spacing.xl,
                 justifyContent: "center",
-                paddingHorizontal: 4,
+                alignItems: "center",
               }}
             >
               <AppIcon
                 icon={Cancel01Icon}
                 size={iconSize.sm - 2}
-                color="#6b6b6e"
+                color="#71717a"
               />
             </PressableFeedback>
           )}
         </View>
-
-        <Button variant="secondary" size="sm" isIconOnly onPress={onNewChat}>
-          <AppIcon icon={PencilEdit02Icon} size={iconSize.sm} color="#ffffff" />
-        </Button>
       </View>
-    </Surface>
+    </View>
   );
 }

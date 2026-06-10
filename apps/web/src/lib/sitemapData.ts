@@ -14,7 +14,7 @@ import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
  * Sitemap IDs for different content types.
  * Each ID generates a separate sitemap file, accessible at /sitemap/{id}.xml
  */
-export const SITEMAP_IDS = {
+const SITEMAP_IDS = {
   STATIC: 0,
   BLOG: 1,
   EXPLORE: 2,
@@ -73,7 +73,7 @@ const BUILD_DATE = new Date().toISOString();
 type ChangeFreq = "daily" | "weekly" | "monthly" | "yearly";
 type StaticPage = { path: string; freq: ChangeFreq; priority: number };
 
-const TRANSLATED_STATIC_PAGES: Array<StaticPage> = [
+const TRANSLATED_STATIC_PAGES: StaticPage[] = [
   { path: "/compare", freq: "weekly", priority: 0.9 },
   { path: "/alternative-to", freq: "weekly", priority: 0.9 },
   { path: "/automate", freq: "weekly", priority: 0.8 },
@@ -81,7 +81,7 @@ const TRANSLATED_STATIC_PAGES: Array<StaticPage> = [
   { path: "/learn", freq: "weekly", priority: 0.8 },
 ];
 
-const UNTRANSLATED_STATIC_PAGES: Array<StaticPage> = [
+const UNTRANSLATED_STATIC_PAGES: StaticPage[] = [
   { path: "", freq: "daily", priority: 1.0 },
   { path: "/pricing", freq: "weekly", priority: 0.9 },
   { path: "/marketplace", freq: "weekly", priority: 0.9 },
@@ -145,15 +145,18 @@ async function getExploreWorkflowPages(
     }
     if (!response.ok) return [];
 
-    const data = await response.json();
-    return (data.workflows || []).map(
-      (wc: { id: string; created_at: string; categories?: string[] }) => ({
-        url: `${baseUrl}/use-cases/${wc.id}`,
-        lastModified: new Date(wc.created_at),
-        changeFrequency: "weekly" as const,
-        priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
-      }),
-    );
+    type ExploreWorkflow = {
+      slug: string;
+      created_at: string;
+      categories?: string[];
+    };
+    const data = (await response.json()) as { workflows?: ExploreWorkflow[] };
+    return (data.workflows ?? []).map((wc) => ({
+      url: `${baseUrl}/use-cases/${wc.slug}`,
+      lastModified: new Date(wc.created_at),
+      changeFrequency: "weekly" as const,
+      priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
+    }));
   } catch (error) {
     console.error("Error fetching explore workflows for sitemap:", error);
     return [];
@@ -183,18 +186,19 @@ async function getCommunityWorkflowPages(
         clearTimeout(timeout);
       }
       if (!response.ok) return [];
-      const data = await response.json();
-      return (data.workflows || []).map(
-        (workflow: { id: string; created_at: string }) => ({
-          url: `${baseUrl}/use-cases/${workflow.id}`,
-          lastModified: new Date(workflow.created_at),
-          changeFrequency: "weekly" as const,
-          priority: 0.6,
-        }),
-      );
+      type CommunityWorkflowEntry = { slug: string; created_at: string };
+      const data = (await response.json()) as {
+        workflows?: CommunityWorkflowEntry[];
+      };
+      return (data.workflows ?? []).map((workflow) => ({
+        url: `${baseUrl}/use-cases/${workflow.slug}`,
+        lastModified: new Date(workflow.created_at),
+        changeFrequency: "weekly" as const,
+        priority: 0.6,
+      }));
     }
 
-    const allWorkflows: Array<{ id: string; created_at: string }> =
+    const allWorkflows: Array<{ slug: string; created_at: string }> =
       await fetchAllPaginated(async (limit, offset) => {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10_000);
@@ -208,11 +212,15 @@ async function getCommunityWorkflowPages(
           clearTimeout(timeout);
         }
         if (!response.ok) return { items: [], total: 0, hasMore: false };
-        const data = await response.json();
+        type CommunityWorkflowEntry = { slug: string; created_at: string };
+        const data = (await response.json()) as {
+          workflows?: CommunityWorkflowEntry[];
+          total?: number;
+        };
         return {
-          items: data.workflows || [],
-          total: data.total || 0,
-          hasMore: data.workflows?.length === limit,
+          items: data.workflows ?? [],
+          total: data.total ?? 0,
+          hasMore: (data.workflows?.length ?? 0) === limit,
         };
       }, 100);
 
@@ -221,7 +229,7 @@ async function getCommunityWorkflowPages(
     );
 
     return allWorkflows.map((workflow) => ({
-      url: `${baseUrl}/use-cases/${workflow.id}`,
+      url: `${baseUrl}/use-cases/${workflow.slug}`,
       lastModified: new Date(workflow.created_at),
       changeFrequency: "weekly" as const,
       priority: 0.6,
@@ -255,50 +263,59 @@ async function getIntegrationPages(
         clearTimeout(timeout);
       }
       if (response.ok) {
-        const data = await response.json();
-        return (data.integrations || []).map(
-          (integration: {
-            slug: string;
-            publishedAt?: string;
-            createdAt?: string;
-          }) => ({
-            url: `${baseUrl}/marketplace/${integration.slug}`,
-            lastModified: new Date(
-              integration.publishedAt || integration.createdAt || Date.now(),
-            ),
-            changeFrequency: "weekly" as const,
-            priority: 0.7,
-          }),
-        );
+        type IntegrationEntry = {
+          slug: string;
+          publishedAt?: string;
+          createdAt?: string;
+        };
+        const data = (await response.json()) as {
+          integrations?: IntegrationEntry[];
+        };
+        return (data.integrations ?? []).map((integration) => ({
+          url: `${baseUrl}/marketplace/${integration.slug}`,
+          lastModified: new Date(
+            integration.publishedAt || integration.createdAt || Date.now(),
+          ),
+          changeFrequency: "weekly" as const,
+          priority: 0.7,
+        }));
       }
       return [];
     }
 
-    const allIntegrations: Array<{
+    type IntegrationEntry = {
       slug: string;
       publishedAt?: string;
       createdAt?: string;
-    }> = await fetchAllPaginated(async (limit, offset) => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10_000);
-      let response: Response;
-      try {
-        response = await fetch(
-          `${apiBaseUrl}/integrations/community?limit=${limit}&offset=${offset}`,
-          { next: { revalidate: 3600 }, signal: controller.signal },
-        );
-      } finally {
-        clearTimeout(timeout);
-      }
-      if (!response.ok) return { items: [], total: 0, hasMore: false };
+    };
+    const allIntegrations: IntegrationEntry[] = await fetchAllPaginated(
+      async (limit, offset) => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10_000);
+        let response: Response;
+        try {
+          response = await fetch(
+            `${apiBaseUrl}/integrations/community?limit=${limit}&offset=${offset}`,
+            { next: { revalidate: 3600 }, signal: controller.signal },
+          );
+        } finally {
+          clearTimeout(timeout);
+        }
+        if (!response.ok) return { items: [], total: 0, hasMore: false };
 
-      const data = await response.json();
-      return {
-        items: data.integrations || [],
-        total: data.total || 0,
-        hasMore: data.hasMore !== false,
-      };
-    }, 100);
+        const data = (await response.json()) as {
+          integrations?: IntegrationEntry[];
+          total?: number;
+          hasMore?: boolean;
+        };
+        return {
+          items: data.integrations ?? [],
+          total: data.total ?? 0,
+          hasMore: data.hasMore !== false,
+        };
+      },
+      100,
+    );
 
     console.log(
       `[Sitemap] Generated ${allIntegrations.length} integration pages`,
@@ -327,8 +344,10 @@ async function getIntegrationPages(
 /**
  * Comparison pages (GAIA vs competitors)
  */
-function getComparisonPages(baseUrl: string): MetadataRoute.Sitemap {
-  const slugs = getAllComparisonSlugs();
+async function getComparisonPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const slugs = await getAllComparisonSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/compare/${slug}`,
     lastModified: BUILD_DATE,
@@ -361,7 +380,7 @@ async function getPersonaPages(
     const { getAllPersonaSlugs } = await import(
       "@/features/personas/data/personasData"
     );
-    const slugs = getAllPersonaSlugs();
+    const slugs = await getAllPersonaSlugs();
     return slugs.map((slug) => ({
       url: `${baseUrl}/for/${slug}`,
       lastModified: BUILD_DATE,
@@ -377,8 +396,10 @@ async function getPersonaPages(
 /**
  * Glossary term pages (AI/productivity concepts)
  */
-function getGlossaryPages(baseUrl: string): MetadataRoute.Sitemap {
-  const slugs = getAllGlossaryTermSlugs();
+async function getGlossaryPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const slugs = await getAllGlossaryTermSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/learn/${slug}`,
     lastModified: BUILD_DATE,
@@ -390,8 +411,10 @@ function getGlossaryPages(baseUrl: string): MetadataRoute.Sitemap {
 /**
  * Alternative-to pages (GAIA as alternative to competitors)
  */
-function getAlternativePages(baseUrl: string): MetadataRoute.Sitemap {
-  const slugs = getAllAlternativeSlugs();
+async function getAlternativePages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const slugs = await getAllAlternativeSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/alternative-to/${slug}`,
     lastModified: BUILD_DATE,
@@ -403,8 +426,10 @@ function getAlternativePages(baseUrl: string): MetadataRoute.Sitemap {
 /**
  * Integration combo pages ([toolA] + [toolB] automation)
  */
-function getIntegrationComboPages(baseUrl: string): MetadataRoute.Sitemap {
-  const allCombos = getAllCombos();
+async function getIntegrationComboPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const allCombos = await getAllCombos();
   return allCombos
     .filter((c) => !c.canonicalSlug)
     .map((combo) => ({
@@ -413,6 +438,52 @@ function getIntegrationComboPages(baseUrl: string): MetadataRoute.Sitemap {
       changeFrequency: "monthly" as const,
       priority: 0.7,
     }));
+}
+
+/**
+ * Native (platform) integration pages — first-party integrations served at
+ * /marketplace/{slug}, distinct from the community integrations in shard 4.
+ */
+async function getNativeIntegrationPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  try {
+    const apiBaseUrl = getServerApiBaseUrl();
+    if (!apiBaseUrl) return [];
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    let response: Response;
+    try {
+      response = await fetch(`${apiBaseUrl}/integrations/config`, {
+        next: { revalidate: 3600 },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!response.ok) return [];
+
+    type ConfigIntegration = {
+      slug: string;
+      source?: string;
+      available?: boolean;
+    };
+    const data = (await response.json()) as {
+      integrations?: ConfigIntegration[];
+    };
+    return (data.integrations ?? [])
+      .filter((i) => i.source === "platform" && i.available !== false)
+      .map((i) => ({
+        url: `${baseUrl}/marketplace/${i.slug}`,
+        lastModified: BUILD_DATE,
+        changeFrequency: "weekly" as const,
+        priority: 0.8,
+      }));
+  } catch (error) {
+    console.error("Error fetching native integrations for sitemap:", error);
+    return [];
+  }
 }
 
 /**
@@ -449,17 +520,17 @@ export async function getSitemapEntries(
     case SITEMAP_IDS.INTEGRATIONS:
       return getIntegrationPages(baseUrl);
     case SITEMAP_IDS.COMPARISONS:
-      return withLocaleUrls(getComparisonPages(baseUrl), baseUrl);
+      return withLocaleUrls(await getComparisonPages(baseUrl), baseUrl);
     case SITEMAP_IDS.PERSONAS:
       return withLocaleUrls(await getPersonaPages(baseUrl), baseUrl);
     case SITEMAP_IDS.GLOSSARY:
-      return withLocaleUrls(getGlossaryPages(baseUrl), baseUrl);
+      return withLocaleUrls(await getGlossaryPages(baseUrl), baseUrl);
     case SITEMAP_IDS.ALTERNATIVES:
-      return withLocaleUrls(getAlternativePages(baseUrl), baseUrl);
+      return withLocaleUrls(await getAlternativePages(baseUrl), baseUrl);
     case SITEMAP_IDS.INTEGRATION_COMBOS:
-      return withLocaleUrls(getIntegrationComboPages(baseUrl), baseUrl);
+      return withLocaleUrls(await getIntegrationComboPages(baseUrl), baseUrl);
     case SITEMAP_IDS.NATIVE_INTEGRATIONS:
-      return [];
+      return getNativeIntegrationPages(baseUrl);
     default:
       return [];
   }

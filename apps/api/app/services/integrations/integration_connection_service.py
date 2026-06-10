@@ -3,11 +3,10 @@
 from functools import lru_cache
 from typing import Any, Literal
 
+from mcp_use.exceptions import OAuthAuthenticationError
 import pymongo.errors
 import redis
-from mcp_use.exceptions import OAuthAuthenticationError
 
-from shared.py.wide_events import log
 from app.config.oauth_config import (
     OAUTH_INTEGRATIONS,
     get_integration_by_id,
@@ -34,6 +33,7 @@ from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.utils.oauth_utils import build_google_oauth_url
+from shared.py.wide_events import log
 
 
 @lru_cache(maxsize=1)
@@ -46,9 +46,7 @@ def build_integrations_config() -> IntegrationsConfigResponse:
 
         auth_type_literal: Literal["none", "oauth", "bearer"] | None = None
         if integration.mcp_config:
-            auth_type_literal = (
-                "oauth" if integration.mcp_config.requires_auth else "none"
-            )
+            auth_type_literal = "oauth" if integration.mcp_config.requires_auth else "none"
 
         integration_configs.append(
             IntegrationConfigItem(
@@ -242,9 +240,7 @@ async def connect_composio_integration(
 
     await update_user_integration_status(user_id, integration_id, "created")
 
-    url = await composio_service.connect_account(
-        provider, user_id, state_token=state_token
-    )
+    url = await composio_service.connect_account(provider, user_id, state_token=state_token)
 
     log.set(
         integration={
@@ -315,9 +311,82 @@ async def connect_self_integration(
     )
 
 
-async def disconnect_integration(
-    user_id: str, integration_id: str
-) -> IntegrationSuccessResponse:
+async def initiate_integration_connection(
+    user_id: str,
+    integration_id: str,
+    *,
+    user_email: str = "",
+    redirect_path: str = "/integrations",
+    bearer_token: str | None = None,
+) -> ConnectIntegrationResponse | None:
+    """Resolve an integration and start its connect flow.
+
+    Single source of truth for the connect dispatch, shared by the
+    ``POST /connect/{id}`` endpoint and the login-free ``GET /connect-link``
+    entry point. Returns ``None`` when the integration does not exist (callers
+    map that to 404 / a friendly error); otherwise a ``ConnectIntegrationResponse``
+    whose ``redirect_url`` is the provider OAuth URL.
+    """
+    resolved = await IntegrationResolver.resolve(integration_id)
+    if not resolved:
+        return None
+
+    def _error(message: str) -> ConnectIntegrationResponse:
+        return ConnectIntegrationResponse(
+            status="error",
+            integration_id=integration_id,
+            name=resolved.name,
+            error=message,
+        )
+
+    if (
+        resolved.source == "platform"
+        and resolved.platform_integration
+        and not resolved.platform_integration.available
+    ):
+        return _error(f"Integration {integration_id} is not available yet")
+
+    provider = resolved.platform_integration.provider if resolved.platform_integration else None
+    try:
+        if resolved.managed_by == "mcp":
+            return await connect_mcp_integration(
+                user_id=user_id,
+                integration_id=integration_id,
+                integration_name=resolved.name,
+                requires_auth=resolved.requires_auth,
+                redirect_path=redirect_path,
+                server_url=resolved.mcp_config.server_url if resolved.mcp_config else None,
+                is_platform=resolved.source == "platform",
+                bearer_token=bearer_token,
+            )
+        if resolved.managed_by == "composio":
+            if not provider:
+                return _error("Provider not configured")
+            return await connect_composio_integration(
+                user_id=user_id,
+                integration_id=integration_id,
+                integration_name=resolved.name,
+                provider=provider,
+                redirect_path=redirect_path,
+            )
+        if resolved.managed_by == "self":
+            if not provider:
+                return _error("Provider not configured")
+            return await connect_self_integration(
+                user_id=user_id,
+                user_email=user_email,
+                integration_id=integration_id,
+                integration_name=resolved.name,
+                provider=provider,
+                redirect_path=redirect_path,
+            )
+        return _error(f"Unsupported integration type: {resolved.managed_by}")
+    except Exception as e:
+        log.error(f"Failed to initiate connection for {integration_id}: {e}")
+        return _error(str(e))
+
+
+async def disconnect_integration(user_id: str, integration_id: str) -> IntegrationSuccessResponse:
     """Disconnect an integration for the user."""
     log.set(integration={"provider": integration_id, "action": "disconnect"})
     resolved = await IntegrationResolver.resolve(integration_id)
@@ -333,23 +402,13 @@ async def disconnect_integration(
 
     elif resolved.managed_by == "composio":
         composio_service = get_composio_service()
-        provider = (
-            resolved.platform_integration.provider
-            if resolved.platform_integration
-            else None
-        )
+        provider = resolved.platform_integration.provider if resolved.platform_integration else None
         if not provider:
             raise ValueError(f"Provider not configured for {integration_id}")
-        await composio_service.delete_connected_account(
-            user_id=user_id, provider=provider
-        )
+        await composio_service.delete_connected_account(user_id=user_id, provider=provider)
 
     elif resolved.managed_by == "self":
-        provider = (
-            resolved.platform_integration.provider
-            if resolved.platform_integration
-            else None
-        )
+        provider = resolved.platform_integration.provider if resolved.platform_integration else None
         if not provider:
             raise ValueError(f"Provider not configured for {integration_id}")
         await token_repository.revoke_token(user_id=user_id, provider=provider)
@@ -378,9 +437,7 @@ async def disconnect_integration(
     )
 
 
-async def _invalidate_caches(
-    user_id: str, integration_id: str, managed_by: str
-) -> None:
+async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str) -> None:
     """Invalidate relevant caches after disconnect."""
     try:
         cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
@@ -388,6 +445,18 @@ async def _invalidate_caches(
         log.info(f"OAuth status cache invalidated for user {user_id}")
     except redis.RedisError as e:
         log.warning(f"Failed to invalidate OAuth status cache: {e}")
+
+    # Provider metadata cache (24h TTL) is keyed by integration.provider, not
+    # integration_id. Without this clear, disconnected integrations keep
+    # injecting stale metadata into subagent prompts until the TTL expires.
+    integration = get_integration_by_id(integration_id)
+    if integration and integration.provider:
+        try:
+            metadata_key = f"provider_metadata:{user_id}:{integration.provider}"
+            await delete_cache(metadata_key)
+            log.info(f"Provider metadata cache invalidated for {user_id}:{integration.provider}")
+        except redis.RedisError as e:
+            log.warning(f"Failed to invalidate provider metadata cache: {e}")
 
     # Determine whether to delete record or set status to "created"
     if managed_by == "mcp":
@@ -408,8 +477,6 @@ async def _invalidate_caches(
             # Custom integrations: preserve in workspace by setting status to "created"
             try:
                 await update_user_integration_status(user_id, integration_id, "created")
-                log.info(
-                    f"Updated status to 'created' for custom integration {integration_id}"
-                )
+                log.info(f"Updated status to 'created' for custom integration {integration_id}")
             except pymongo.errors.PyMongoError as e:
                 log.warning(f"Failed to update status: {e}")

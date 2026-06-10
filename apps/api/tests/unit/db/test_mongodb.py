@@ -13,7 +13,6 @@ import pytest
 
 from app.db.mongodb.mongodb import MongoDB, init_mongodb
 
-
 # ---------------------------------------------------------------------------
 # MongoDB class — __init__
 # ---------------------------------------------------------------------------
@@ -57,13 +56,9 @@ class TestMongoDBInit:
 
         assert exc_info.value.code == 1
 
-    @patch(
-        "app.db.mongodb.mongodb.AsyncIOMotorClient", side_effect=Exception("conn error")
-    )
+    @patch("app.db.mongodb.mongodb.AsyncIOMotorClient", side_effect=Exception("conn error"))
     @patch("app.db.mongodb.mongodb.log")
-    def test_motor_exception_exits(
-        self, mock_log: MagicMock, mock_motor: MagicMock
-    ) -> None:
+    def test_motor_exception_exits(self, mock_log: MagicMock, mock_motor: MagicMock) -> None:
         """Exception during Motor client creation should log error and exit."""
         with pytest.raises(SystemExit) as exc_info:
             MongoDB(uri="mongodb://bad-host:27017", db_name="test_db")
@@ -210,9 +205,7 @@ class TestInitMongodb:
 
     @patch("app.db.mongodb.mongodb.MongoDB")
     @patch("app.db.mongodb.mongodb.log")
-    def test_creates_instance_and_pings(
-        self, mock_log: MagicMock, mock_class: MagicMock
-    ) -> None:
+    def test_creates_instance_and_pings(self, mock_log: MagicMock, mock_class: MagicMock) -> None:
         """init_mongodb should create a MongoDB instance, call ping, and return it."""
         # Clear LRU cache from previous runs
         init_mongodb.cache_clear()
@@ -320,9 +313,7 @@ class TestCollectionsLazyLoading:
         mock_instance = MagicMock()
         col_a = MagicMock(name="col_a")
         col_b = MagicMock(name="col_b")
-        mock_instance.get_collection.side_effect = lambda n: (
-            col_a if n == "a" else col_b
-        )
+        mock_instance.get_collection.side_effect = lambda n: col_a if n == "a" else col_b
 
         with patch(
             "app.db.mongodb.collections._get_mongodb_instance",
@@ -480,9 +471,7 @@ class TestCreateAllIndexes:
                 p.stop()
 
     @patch("app.db.mongodb.indexes.log")
-    async def test_create_all_indexes_partial_failure(
-        self, mock_log: MagicMock
-    ) -> None:
+    async def test_create_all_indexes_partial_failure(self, mock_log: MagicMock) -> None:
         """Some index creators failing should be reported as exceptions, not crash."""
         index_creators = [
             "create_user_indexes",
@@ -542,9 +531,7 @@ class TestCreateAllIndexes:
                 p.stop()
 
     @patch("app.db.mongodb.indexes.log")
-    async def test_create_all_indexes_critical_error_propagates(
-        self, mock_log: MagicMock
-    ) -> None:
+    async def test_create_all_indexes_critical_error_propagates(self, mock_log: MagicMock) -> None:
         """A critical error in the orchestration itself should propagate."""
 
         async def _gather_explodes(*coros, **_kwargs):
@@ -667,10 +654,7 @@ class TestIndividualIndexCreators:
             text_calls = [
                 c
                 for c in mock_collection.create_index.call_args_list
-                if any(
-                    isinstance(arg, list) and any(t == "text" for _, t in arg)
-                    for arg in c.args
-                )
+                if any(isinstance(arg, list) and any(t == "text" for _, t in arg) for arg in c.args)
             ]
             assert len(text_calls) >= 1
 
@@ -679,9 +663,7 @@ class TestIndividualIndexCreators:
         mock_collection = AsyncMock()
 
         with (
-            patch(
-                "app.db.mongodb.indexes.processed_webhooks_collection", mock_collection
-            ),
+            patch("app.db.mongodb.indexes.processed_webhooks_collection", mock_collection),
             patch("app.db.mongodb.indexes.log"),
         ):
             from app.db.mongodb.indexes import create_processed_webhook_indexes
@@ -698,174 +680,6 @@ class TestIndividualIndexCreators:
             assert ttl_calls[0].kwargs["expireAfterSeconds"] == 2592000  # 30 days
 
 
-# ---------------------------------------------------------------------------
-# Indexes — get_index_status and log_index_summary
-# ---------------------------------------------------------------------------
-
-
-class TestIndexStatus:
-    """Tests for get_index_status and log_index_summary."""
-
-    async def test_get_index_status_returns_dict(self) -> None:
-        """get_index_status should return a dict mapping collection names to index names."""
-        mock_collection = MagicMock()
-        mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[{"name": "idx_1"}, {"name": "idx_2"}]
-        )
-        mock_collection.list_indexes.return_value = mock_cursor
-
-        # Patch all collections used in get_index_status
-        collection_names = [
-            "users_collection",
-            "conversations_collection",
-            "todos_collection",
-            "projects_collection",
-            "goals_collection",
-            "notes_collection",
-            "files_collection",
-            "mail_collection",
-            "calendars_collection",
-            "blog_collection",
-            "notifications_collection",
-            "reminders_collection",
-            "workflows_collection",
-            "vfs_nodes_collection",
-            "skills_collection",
-        ]
-
-        patches_dict = {
-            name: patch(f"app.db.mongodb.indexes.{name}", mock_collection)
-            for name in collection_names
-        }
-
-        for p in patches_dict.values():
-            p.start()
-
-        try:
-            with patch("app.db.mongodb.indexes.log"):
-                from app.db.mongodb.indexes import get_index_status
-
-                result = await get_index_status()
-
-            assert isinstance(result, dict)
-            assert "users" in result
-            assert result["users"] == ["idx_1", "idx_2"]
-        finally:
-            for p in patches_dict.values():
-                p.stop()
-
-    async def test_get_index_status_handles_error_per_collection(self) -> None:
-        """If list_indexes fails for one collection, its entry should contain the error."""
-        failing_collection = MagicMock()
-        failing_cursor = MagicMock()
-        failing_cursor.to_list = AsyncMock(side_effect=RuntimeError("network"))
-        failing_collection.list_indexes.return_value = failing_cursor
-
-        ok_collection = MagicMock()
-        ok_cursor = MagicMock()
-        ok_cursor.to_list = AsyncMock(return_value=[{"name": "_id_"}])
-        ok_collection.list_indexes.return_value = ok_cursor
-
-        collection_patches = {
-            "users_collection": failing_collection,
-            "conversations_collection": ok_collection,
-            "todos_collection": ok_collection,
-            "projects_collection": ok_collection,
-            "goals_collection": ok_collection,
-            "notes_collection": ok_collection,
-            "files_collection": ok_collection,
-            "mail_collection": ok_collection,
-            "calendars_collection": ok_collection,
-            "blog_collection": ok_collection,
-            "notifications_collection": ok_collection,
-            "reminders_collection": ok_collection,
-            "workflows_collection": ok_collection,
-            "vfs_nodes_collection": ok_collection,
-            "skills_collection": ok_collection,
-        }
-
-        applied_patches = []
-        for name, mock_obj in collection_patches.items():
-            p = patch(f"app.db.mongodb.indexes.{name}", mock_obj)
-            p.start()
-            applied_patches.append(p)
-
-        try:
-            with patch("app.db.mongodb.indexes.log"):
-                from app.db.mongodb.indexes import get_index_status
-
-                result = await get_index_status()
-
-            # The failing collection should have an ERROR entry
-            assert any("ERROR" in idx for idx in result.get("users", []))
-        finally:
-            for p in applied_patches:
-                p.stop()
-
-    async def test_get_index_status_top_level_error(self) -> None:
-        """A top-level exception should return an error dict."""
-
-        async def _gather_catastrophic(*coros, **_kwargs):
-            for c in coros:
-                c.close()
-            raise RuntimeError("catastrophic")
-
-        # Force a top-level exception by making asyncio.gather raise
-        with (
-            patch(
-                "app.db.mongodb.indexes.asyncio.gather",
-                side_effect=_gather_catastrophic,
-            ),
-            patch("app.db.mongodb.indexes.log"),
-        ):
-            from app.db.mongodb.indexes import get_index_status
-
-            # The function catches top-level exceptions
-            result = await get_index_status()
-            assert "error" in result
-
-    async def test_log_index_summary_calls_get_index_status(self) -> None:
-        """log_index_summary should call get_index_status and log results."""
-        mock_status = {"users": ["idx_1"], "todos": ["idx_1", "idx_2"]}
-
-        with (
-            patch(
-                "app.db.mongodb.indexes.get_index_status",
-                new_callable=AsyncMock,
-                return_value=mock_status,
-            ),
-            patch("app.db.mongodb.indexes.log") as mock_log,
-        ):
-            from app.db.mongodb.indexes import log_index_summary
-
-            await log_index_summary()
-
-            # Should log total count
-            info_msgs = [c[0][0] for c in mock_log.info.call_args_list]
-            assert any("Total" in m for m in info_msgs)
-
-    async def test_log_index_summary_warns_on_error_entries(self) -> None:
-        """Collections with ERROR entries should be logged as warnings."""
-        mock_status = {"users": ["ERROR: connection failed"]}
-
-        with (
-            patch(
-                "app.db.mongodb.indexes.get_index_status",
-                new_callable=AsyncMock,
-                return_value=mock_status,
-            ),
-            patch("app.db.mongodb.indexes.log") as mock_log,
-        ):
-            from app.db.mongodb.indexes import log_index_summary
-
-            await log_index_summary()
-
-            mock_log.warning.assert_called()
-
-
-# ---------------------------------------------------------------------------
-# Indexes — _backfill_integration_slugs
 # ---------------------------------------------------------------------------
 
 

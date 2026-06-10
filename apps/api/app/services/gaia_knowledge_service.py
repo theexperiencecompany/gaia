@@ -6,18 +6,19 @@ This service provides methods to store and search GAIA's self-knowledge
 """
 
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
-from shared.py.wide_events import log
-from app.db.chroma.chromadb import ChromaClient
 from pydantic import BaseModel, Field, field_validator
+
+from app.db.chroma.chromadb import ChromaClient
+from shared.py.wide_events import log
 
 
 class KnowledgeItem(BaseModel):
     """Schema for a single knowledge item."""
 
     content: str = Field(..., min_length=1, description="Knowledge content to store")
-    metadata: Optional[dict[str, Any]] = Field(
+    metadata: dict[str, Any] | None = Field(
         default_factory=lambda: {}, description="Optional metadata"
     )
 
@@ -45,19 +46,8 @@ class GaiaKnowledgeService:
     def __init__(self) -> None:
         self.collection_name = "gaia_knowledge"
 
-    async def search_knowledge(
-        self, query: str, limit: int = 5
-    ) -> List[KnowledgeResult]:
-        """
-        Search GAIA knowledge base using semantic similarity.
-
-        Args:
-            query: The search query
-            limit: Maximum number of results to return
-
-        Returns:
-            List of KnowledgeResult objects with content and relevance scores
-        """
+    async def search_knowledge(self, query: str, limit: int = 5) -> list[KnowledgeResult]:
+        """Search the GAIA knowledge base using semantic similarity."""
         log.set(
             service="gaia_knowledge_service",
             operation="search_knowledge",
@@ -83,53 +73,15 @@ class GaiaKnowledgeService:
                 for doc, score in results
             ]
 
-            log.info(
-                f"Found {len(knowledge_results)} knowledge results for query: {query[:50]}..."
-            )
+            log.info(f"Found {len(knowledge_results)} knowledge results for query: {query[:50]}...")
             return knowledge_results
 
         except Exception as e:
             log.error(f"Error searching GAIA knowledge: {e}")
             return []
 
-    async def add_knowledge(
-        self, content: str, metadata: Optional[dict[str, Any]] = None
-    ) -> bool:
-        """
-        Add a single knowledge item to the knowledge base.
-
-        Args:
-            content: The knowledge content to store
-            metadata: Optional metadata (source, section, etc.)
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            client = await ChromaClient.get_langchain_client(
-                collection_name=self.collection_name, create_if_not_exists=True
-            )
-
-            # Add document
-            await client.aadd_texts(texts=[content], metadatas=[metadata or {}])
-
-            log.debug(f"Added knowledge: {content[:50]}...")
-            return True
-
-        except Exception as e:
-            log.error(f"Error adding knowledge: {e}")
-            return False
-
-    async def add_knowledge_batch(self, items: List[KnowledgeItem]) -> int:
-        """
-        Add multiple knowledge items in batch.
-
-        Args:
-            items: List of KnowledgeItem objects (validated via Pydantic)
-
-        Returns:
-            Number of items successfully added
-        """
+    async def add_knowledge_batch(self, items: list[KnowledgeItem]) -> int:
+        """Add multiple knowledge items in batch. Returns the number added."""
         log.set(
             service="gaia_knowledge_service",
             operation="add_knowledge_batch",
@@ -159,12 +111,7 @@ class GaiaKnowledgeService:
             return 0
 
     async def clear_knowledge(self) -> bool:
-        """
-        Clear all knowledge from the collection (use with caution).
-
-        Returns:
-            True if successful, False otherwise
-        """
+        """Clear all knowledge from the collection (use with caution)."""
         try:
             # Get the async client to delete collection
             async_client = await ChromaClient.get_client()

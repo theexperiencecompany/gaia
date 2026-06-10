@@ -12,7 +12,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.models.message_models import MessageRequestWithHistory
-from app.services.chat_service import _save_conversation_async
+from app.services.chat.persistence import (
+    save_conversation_async as _save_conversation_async,
+)
 
 
 @pytest.mark.service
@@ -35,7 +37,7 @@ class TestSaveConversationAsyncReal:
         )
 
         with patch(
-            "app.services.chat_service._process_token_usage_and_cost",
+            "app.services.chat.persistence.process_token_usage_and_cost",
             new=AsyncMock(),
         ):
             await _save_conversation_async(
@@ -68,7 +70,7 @@ class TestSaveConversationAsyncReal:
         )
 
         with patch(
-            "app.services.chat_service._process_token_usage_and_cost",
+            "app.services.chat.persistence.process_token_usage_and_cost",
             new=AsyncMock(),
         ):
             await _save_conversation_async(
@@ -98,7 +100,7 @@ class TestSaveConversationAsyncReal:
         )
 
         with patch(
-            "app.services.chat_service._process_token_usage_and_cost",
+            "app.services.chat.persistence.process_token_usage_and_cost",
             new=AsyncMock(),
         ):
             await _save_conversation_async(
@@ -129,13 +131,11 @@ class TestSaveConversationAsyncReal:
         )
 
         tool_data = {
-            "tool_data": [
-                {"tool_name": "web_search", "data": {"query": "cats"}, "timestamp": "t"}
-            ]
+            "tool_data": [{"tool_name": "web_search", "data": {"query": "cats"}, "timestamp": "t"}]
         }
 
         with patch(
-            "app.services.chat_service._process_token_usage_and_cost",
+            "app.services.chat.persistence.process_token_usage_and_cost",
             new=AsyncMock(),
         ):
             await _save_conversation_async(
@@ -166,7 +166,7 @@ class TestSaveConversationAsyncReal:
         )
 
         with patch(
-            "app.services.chat_service._process_token_usage_and_cost",
+            "app.services.chat.persistence.process_token_usage_and_cost",
             new=AsyncMock(side_effect=Exception("payment service down")),
         ):
             await _save_conversation_async(
@@ -181,6 +181,4 @@ class TestSaveConversationAsyncReal:
             )
 
         doc = await conversations_collection.find_one({"conversation_id": conv_id})
-        assert len(doc["messages"]) == 2, (
-            "Messages must save even if token processing fails"
-        )
+        assert len(doc["messages"]) == 2, "Messages must save even if token processing fails"

@@ -1,13 +1,17 @@
 """Linear tools using Composio custom tool infrastructure.
 
-These tools provide Linear functionality using the access_token from Composio's
-auth_credentials. Uses Linear GraphQL API for all operations.
+Linear GraphQL calls go through `linear_utils.graphql_request`, which routes
+through Composio's proxy via `proxy_request_sync`. The proxy attaches the
+user's OAuth token server-side; tools only need `user_id` from
+`auth_credentials`.
 
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List
+from typing import Any
+
+from composio import Composio
 
 from app.decorators import with_doc
 from app.models.common_models import GatherContextInput
@@ -27,38 +31,16 @@ from app.models.linear_models import (
 )
 from app.templates.docstrings.linear_tool_docs import (
     CUSTOM_BULK_UPDATE_ISSUES as CUSTOM_BULK_UPDATE_ISSUES_DOC,
-)
-from app.templates.docstrings.linear_tool_docs import (
     CUSTOM_CREATE_ISSUE as CUSTOM_CREATE_ISSUE_DOC,
-)
-from app.templates.docstrings.linear_tool_docs import (
     CUSTOM_CREATE_ISSUE_RELATION as CUSTOM_CREATE_ISSUE_RELATION_DOC,
-)
-from app.templates.docstrings.linear_tool_docs import (
     CUSTOM_CREATE_SUB_ISSUES as CUSTOM_CREATE_SUB_ISSUES_DOC,
-)
-from app.templates.docstrings.linear_tool_docs import (
     CUSTOM_GET_ACTIVE_SPRINT as CUSTOM_GET_ACTIVE_SPRINT_DOC,
-)
-from app.templates.docstrings.linear_tool_docs import (
     CUSTOM_GET_ISSUE_ACTIVITY as CUSTOM_GET_ISSUE_ACTIVITY_DOC,
-)
-from app.templates.docstrings.linear_tool_docs import (
     CUSTOM_GET_ISSUE_FULL_CONTEXT as CUSTOM_GET_ISSUE_FULL_CONTEXT_DOC,
-)
-from app.templates.docstrings.linear_tool_docs import (
     CUSTOM_GET_MY_TASKS as CUSTOM_GET_MY_TASKS_DOC,
-)
-from app.templates.docstrings.linear_tool_docs import (
     CUSTOM_GET_NOTIFICATIONS as CUSTOM_GET_NOTIFICATIONS_DOC,
-)
-from app.templates.docstrings.linear_tool_docs import (
     CUSTOM_GET_WORKSPACE_CONTEXT as CUSTOM_GET_WORKSPACE_CONTEXT_DOC,
-)
-from app.templates.docstrings.linear_tool_docs import (
     CUSTOM_RESOLVE_CONTEXT as CUSTOM_RESOLVE_CONTEXT_DOC,
-)
-from app.templates.docstrings.linear_tool_docs import (
     CUSTOM_SEARCH_ISSUES as CUSTOM_SEARCH_ISSUES_DOC,
 )
 from app.utils.linear_utils import (
@@ -85,10 +67,9 @@ from app.utils.linear_utils import (
     priority_to_int,
     priority_to_str,
 )
-from composio import Composio
 
 
-def register_linear_custom_tools(composio: Composio) -> List[str]:
+def register_linear_custom_tools(composio: Composio) -> list[str]:
     """Register Linear tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="linear")
@@ -96,10 +77,10 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_RESOLVE_CONTEXT(
         request: ResolveContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Resolve fuzzy names to Linear IDs."""
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
 
         viewer_data = graphql_request(QUERY_VIEWER, None, auth_credentials)
         viewer = viewer_data.get("viewer", {})
@@ -118,9 +99,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             users_data = graphql_request(QUERY_USERS, None, auth_credentials)
             users = users_data.get("users", {}).get("nodes", [])
             active_users = [u for u in users if u.get("active", True)]
-            result["users"] = fuzzy_match(
-                request.user_name, active_users, "name", limit=3
-            )
+            result["users"] = fuzzy_match(request.user_name, active_users, "name", limit=3)
 
         if request.label_names:
             if request.team_id:
@@ -139,9 +118,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         if request.project_name:
             projects_data = graphql_request(QUERY_PROJECTS, None, auth_credentials)
             projects = projects_data.get("projects", {}).get("nodes", [])
-            result["projects"] = fuzzy_match(
-                request.project_name, projects, "name", limit=3
-            )
+            result["projects"] = fuzzy_match(request.project_name, projects, "name", limit=3)
 
         if request.state_name and request.team_id:
             states_data = graphql_request(
@@ -157,8 +134,8 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_GET_MY_TASKS(
         request: GetMyTasksInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get the current user's assigned issues."""
         viewer_data = graphql_request(QUERY_VIEWER, None, auth_credentials)
         viewer_id = viewer_data.get("viewer", {}).get("id")
@@ -186,9 +163,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             due_date = None
             if due_str:
                 try:
-                    due_date = datetime.fromisoformat(
-                        due_str.replace("Z", "+00:00")
-                    ).date()
+                    due_date = datetime.fromisoformat(due_str.replace("Z", "+00:00")).date()
                 except ValueError:
                     pass
 
@@ -216,7 +191,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             else:
                 filtered.append(issue)
 
-        def sort_key(issue: Dict) -> tuple:
+        def sort_key(issue: dict) -> tuple:
             p = issue.get("priority", 99)
             due = issue.get("dueDate") or "9999-12-31"
             return (p, due)
@@ -235,8 +210,8 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_SEARCH_ISSUES(
         request: SearchIssuesInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Search issues using natural language queries."""
         issues_data = graphql_request(
             QUERY_SEARCH_ISSUES,
@@ -282,8 +257,8 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_GET_ISSUE_FULL_CONTEXT(
         request: GetIssueFullContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get complete issue details in one call."""
         if not request.issue_id and not request.issue_identifier:
             raise ValueError("Provide either issue_id or issue_identifier")
@@ -291,22 +266,16 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         issue = None
 
         if request.issue_id:
-            data = graphql_request(
-                QUERY_ISSUE_BY_ID, {"id": request.issue_id}, auth_credentials
-            )
+            data = graphql_request(QUERY_ISSUE_BY_ID, {"id": request.issue_id}, auth_credentials)
             issue = data.get("issue")
         elif request.issue_identifier:
             parts = request.issue_identifier.split("-")
             if len(parts) != 2:
-                raise ValueError(
-                    f"Invalid identifier format: {request.issue_identifier}"
-                )
+                raise ValueError(f"Invalid identifier format: {request.issue_identifier}")
             try:
                 float(parts[1])
             except ValueError as e:
-                raise ValueError(
-                    f"Invalid issue number in: {request.issue_identifier}"
-                ) from e
+                raise ValueError(f"Invalid issue number in: {request.issue_identifier}") from e
 
             data = graphql_request(
                 QUERY_ISSUE_BY_IDENTIFIER,
@@ -316,9 +285,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             issue = data.get("issue")
 
         if not issue:
-            raise ValueError(
-                f"Issue not found: {request.issue_id or request.issue_identifier}"
-            )
+            raise ValueError(f"Issue not found: {request.issue_id or request.issue_identifier}")
 
         result = {
             "id": issue.get("id"),
@@ -395,14 +362,10 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                     entry["to"] = (h.get("toAssignee") or {}).get("name")
                 elif (h.get("addedLabels") or {}).get("nodes"):
                     entry["change"] = "labels_added"
-                    entry["labels"] = [
-                        label.get("name") for label in h["addedLabels"]["nodes"]
-                    ]
+                    entry["labels"] = [label.get("name") for label in h["addedLabels"]["nodes"]]
                 elif (h.get("removedLabels") or {}).get("nodes"):
                     entry["change"] = "labels_removed"
-                    entry["labels"] = [
-                        label.get("name") for label in h["removedLabels"]["nodes"]
-                    ]
+                    entry["labels"] = [label.get("name") for label in h["removedLabels"]["nodes"]]
                 else:
                     continue
                 result["activity"].append(entry)
@@ -420,11 +383,11 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_CREATE_ISSUE(
         request: CreateIssueInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Create an issue with full field support and optional sub-issues."""
         # Build input data
-        input_data: Dict[str, Any] = {
+        input_data: dict[str, Any] = {
             "teamId": request.team_id,
             "title": request.title,
         }
@@ -451,15 +414,13 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             input_data["parentId"] = request.parent_id
 
         # Create the main issue
-        result = graphql_request(
-            MUTATION_CREATE_ISSUE, {"input": input_data}, auth_credentials
-        )
+        result = graphql_request(MUTATION_CREATE_ISSUE, {"input": input_data}, auth_credentials)
         create_result = result.get("issueCreate", {})
         if not create_result.get("success"):
             raise RuntimeError("Failed to create issue")
 
         created = create_result.get("issue", {})
-        response: Dict[str, Any] = {
+        response: dict[str, Any] = {
             "issue": {
                 "id": created.get("id"),
                 "identifier": created.get("identifier"),
@@ -475,7 +436,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             errors = []
 
             for sub in request.sub_issues:
-                sub_input: Dict[str, Any] = {
+                sub_input: dict[str, Any] = {
                     "teamId": request.team_id,
                     "title": sub.title,
                     "parentId": parent_id,
@@ -514,24 +475,20 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_CREATE_SUB_ISSUES(
         request: CreateSubIssuesInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Create multiple sub-issues under a parent issue."""
         parent_id = request.parent_issue_id
 
         if not parent_id and request.parent_identifier:
             parts = request.parent_identifier.split("-")
             if len(parts) != 2:
-                raise ValueError(
-                    f"Invalid parent identifier: {request.parent_identifier}"
-                )
+                raise ValueError(f"Invalid parent identifier: {request.parent_identifier}")
             team_key = parts[0]
             try:
                 number = float(parts[1])
             except ValueError as e:
-                raise ValueError(
-                    f"Invalid issue number in: {request.parent_identifier}"
-                ) from e
+                raise ValueError(f"Invalid issue number in: {request.parent_identifier}") from e
 
             data = graphql_request(
                 QUERY_ISSUE_BY_IDENTIFIER,
@@ -545,9 +502,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         if not parent_id:
             raise ValueError("Could not resolve parent issue")
 
-        parent_data = graphql_request(
-            QUERY_ISSUE_BY_ID, {"id": parent_id}, auth_credentials
-        )
+        parent_data = graphql_request(QUERY_ISSUE_BY_ID, {"id": parent_id}, auth_credentials)
         parent_issue = parent_data.get("issue")
         if not parent_issue:
             raise ValueError("Parent issue not found")
@@ -560,7 +515,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         errors = []
 
         for sub_issue in request.sub_issues:
-            input_data: Dict[str, Any] = {
+            input_data: dict[str, Any] = {
                 "teamId": team_id,
                 "title": sub_issue.title,
                 "parentId": parent_id,
@@ -572,9 +527,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             if sub_issue.priority is not None:
                 input_data["priority"] = sub_issue.priority
 
-            result = graphql_request(
-                MUTATION_CREATE_ISSUE, {"input": input_data}, auth_credentials
-            )
+            result = graphql_request(MUTATION_CREATE_ISSUE, {"input": input_data}, auth_credentials)
             create_result = result.get("issueCreate", {})
             if create_result.get("success"):
                 created = create_result.get("issue", {})
@@ -599,8 +552,8 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_CREATE_ISSUE_RELATION(
         request: CreateIssueRelationInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Create a relationship between two issues."""
         type_mapping = {
             "blocks": "blocks",
@@ -639,8 +592,8 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_GET_ISSUE_ACTIVITY(
         request: GetIssueActivityInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get the change history for an issue."""
         issue_id = request.issue_id
 
@@ -674,9 +627,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         for h in history:
             entry = {
                 "timestamp": h.get("createdAt"),
-                "actor": (h.get("actor") or {}).get("name")
-                if h.get("actor")
-                else "System",
+                "actor": (h.get("actor") or {}).get("name") if h.get("actor") else "System",
             }
             if h.get("fromState") or h.get("toState"):
                 entry["change_type"] = "state"
@@ -685,14 +636,10 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             elif h.get("fromAssignee") or h.get("toAssignee"):
                 entry["change_type"] = "assignee"
                 entry["from"] = (
-                    (h.get("fromAssignee") or {}).get("name")
-                    if h.get("fromAssignee")
-                    else None
+                    (h.get("fromAssignee") or {}).get("name") if h.get("fromAssignee") else None
                 )
                 entry["to"] = (
-                    (h.get("toAssignee") or {}).get("name")
-                    if h.get("toAssignee")
-                    else None
+                    (h.get("toAssignee") or {}).get("name") if h.get("toAssignee") else None
                 )
             elif h.get("fromPriority") is not None or h.get("toPriority") is not None:
                 entry["change_type"] = "priority"
@@ -700,14 +647,10 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                 entry["to"] = priority_to_str(h.get("toPriority", 0))
             elif (h.get("addedLabels") or {}).get("nodes"):
                 entry["change_type"] = "labels_added"
-                entry["labels"] = [
-                    label.get("name") for label in h["addedLabels"]["nodes"]
-                ]
+                entry["labels"] = [label.get("name") for label in h["addedLabels"]["nodes"]]
             elif (h.get("removedLabels") or {}).get("nodes"):
                 entry["change_type"] = "labels_removed"
-                entry["labels"] = [
-                    label.get("name") for label in h["removedLabels"]["nodes"]
-                ]
+                entry["labels"] = [label.get("name") for label in h["removedLabels"]["nodes"]]
             else:
                 continue
             activities.append(entry)
@@ -723,22 +666,20 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_GET_ACTIVE_SPRINT(
         request: GetActiveSprintInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get the current/active sprint context."""
         data = graphql_request(QUERY_ACTIVE_CYCLES, None, auth_credentials)
         cycles = data.get("cycles", {}).get("nodes", [])
 
         if request.team_id:
-            cycles = [
-                c for c in cycles if c.get("team", {}).get("id") == request.team_id
-            ]
+            cycles = [c for c in cycles if c.get("team", {}).get("id") == request.team_id]
 
         limit = request.issues_per_state_limit
         sprints = []
         for cycle in cycles:
             issues = cycle.get("issues", {}).get("nodes", [])
-            by_state: Dict[str, List[Dict]] = {
+            by_state: dict[str, list[dict]] = {
                 "backlog": [],
                 "unstarted": [],
                 "started": [],
@@ -783,21 +724,19 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_BULK_UPDATE_ISSUES(
         request: BulkUpdateIssuesInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Batch update multiple issues at once."""
         if not request.issue_ids:
             raise ValueError("No issue IDs provided")
 
-        input_data: Dict[str, Any] = {}
+        input_data: dict[str, Any] = {}
         if request.state_id is not None:
             input_data["stateId"] = request.state_id
         if request.priority is not None:
             input_data["priority"] = request.priority
         if request.assignee_id is not None:
-            input_data["assigneeId"] = (
-                request.assignee_id if request.assignee_id else None
-            )
+            input_data["assigneeId"] = request.assignee_id if request.assignee_id else None
         if request.cycle_id is not None:
             input_data["cycleId"] = request.cycle_id if request.cycle_id else None
         if request.project_id is not None:
@@ -830,8 +769,8 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_GET_NOTIFICATIONS(
         request: GetNotificationsInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get the current user's notifications."""
         data = graphql_request(
             QUERY_NOTIFICATIONS,
@@ -871,8 +810,8 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_GET_WORKSPACE_CONTEXT(
         request: GetWorkspaceContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get full workspace context for session initialization."""
         viewer_data = graphql_request(QUERY_VIEWER, None, auth_credentials)
         viewer = viewer_data.get("viewer", {})
@@ -901,9 +840,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             due_str = issue.get("dueDate")
             if due_str:
                 try:
-                    due_date = datetime.fromisoformat(
-                        due_str.replace("Z", "+00:00")
-                    ).date()
+                    due_date = datetime.fromisoformat(due_str.replace("Z", "+00:00")).date()
                     if due_date < today:
                         overdue.append(format_issue_summary(issue))
                 except ValueError:
@@ -930,9 +867,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                     "active_cycle": t.get("activeCycle", {}).get("name")
                     if t.get("activeCycle")
                     else None,
-                    "cycle_progress": round(
-                        t.get("activeCycle", {}).get("progress", 0) * 100, 1
-                    )
+                    "cycle_progress": round(t.get("activeCycle", {}).get("progress", 0) * 100, 1)
                     if t.get("activeCycle")
                     else None,
                 }
@@ -949,8 +884,8 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        auth_credentials: dict[str, Any],
+    ) -> dict[str, Any]:
         """Get Linear workspace context snapshot: current user, teams, and urgent items.
 
         Zero required parameters. Returns full workspace state for session initialization.
@@ -979,9 +914,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             due_str = issue.get("dueDate")
             if due_str:
                 try:
-                    due_date = datetime.fromisoformat(
-                        due_str.replace("Z", "+00:00")
-                    ).date()
+                    due_date = datetime.fromisoformat(due_str.replace("Z", "+00:00")).date()
                     if due_date < today:
                         overdue.append(format_issue_summary(issue))
                 except ValueError:

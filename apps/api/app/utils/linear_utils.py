@@ -1,92 +1,72 @@
 """Linear utility functions for API operations.
 
-This module provides helper functions for Linear GraphQL API interactions including:
-- Access token extraction and header generation
-- GraphQL request helper
+This module provides helper functions for Linear GraphQL API interactions:
+- GraphQL request helper (routed through Composio's proxy)
 - Fuzzy name matching for entity resolution
 """
 
 from difflib import SequenceMatcher
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-import httpx
-
+from app.services.composio.proxy_client import proxy_request_sync
 from shared.py.wide_events import log
 
 LINEAR_GRAPHQL_ENDPOINT = "https://api.linear.app/graphql"
-
-# Reusable sync HTTP client
-_http_client = httpx.Client(timeout=30)
-
-
-def get_access_token(auth_credentials: Dict[str, Any]) -> str:
-    """Extract access token from auth_credentials."""
-    token = auth_credentials.get("access_token")
-    if not token:
-        raise ValueError("Missing access_token in auth_credentials")
-    return token
-
-
-def auth_headers(access_token: str) -> Dict[str, str]:
-    """Return headers for Linear GraphQL API requests."""
-    return {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
+LINEAR_TOOLKIT = "LINEAR"
 
 
 def graphql_request(
     query: str,
-    variables: Optional[Dict[str, Any]],
-    auth_credentials: Dict[str, Any],
-) -> Dict[str, Any]:
+    variables: dict[str, Any] | None,
+    auth_credentials: dict[str, Any],
+) -> dict[str, Any]:
     """
-    Execute a GraphQL request against Linear's API.
+    Execute a GraphQL request against Linear's API via Composio's proxy.
 
     Args:
         query: GraphQL query or mutation string
         variables: Optional variables for the query
-        auth_credentials: Auth credentials containing access_token
+        auth_credentials: Auth credentials dict; must contain `user_id`
 
     Returns:
         The 'data' field from the GraphQL response
 
     Raises:
-        Exception: If the request fails or returns errors
+        Exception: If the request fails or returns GraphQL errors
     """
-    access_token = get_access_token(auth_credentials)
-    headers = auth_headers(access_token)
+    user_id = auth_credentials.get("user_id")
+    if not user_id:
+        raise ValueError("Missing user_id in auth_credentials")
+
     log.set(operation="graphql_request", endpoint=LINEAR_GRAPHQL_ENDPOINT)
 
-    payload: Dict[str, Any] = {"query": query}
+    payload: dict[str, Any] = {"query": query}
     if variables:
         payload["variables"] = variables
 
-    resp = _http_client.post(
-        LINEAR_GRAPHQL_ENDPOINT,
-        headers=headers,
-        json=payload,
+    result = proxy_request_sync(
+        user_id=user_id,
+        toolkit=LINEAR_TOOLKIT,
+        endpoint=LINEAR_GRAPHQL_ENDPOINT,
+        method="POST",
+        body=payload,
     )
-    resp.raise_for_status()
-    result = resp.json()
 
-    if "errors" in result:
+    if isinstance(result, dict) and "errors" in result:
         error_messages = [e.get("message", str(e)) for e in result["errors"]]
-        log.error(
-            f"GraphQL Errors: {error_messages} Query: {query} Variables: {variables}"
-        )
+        log.error(f"GraphQL Errors: {error_messages} Query: {query} Variables: {variables}")
         raise Exception(f"GraphQL errors: {'; '.join(error_messages)}")
 
-    return result.get("data", {})
+    return result.get("data", {}) if isinstance(result, dict) else {}
 
 
 def fuzzy_match(
     query: str,
-    candidates: List[Dict[str, Any]],
+    candidates: list[dict[str, Any]],
     key: str,
     limit: int = 3,
     threshold: float = 0.4,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Fuzzy match a query string against a list of candidates.
 
@@ -162,7 +142,7 @@ def priority_to_str(priority: int) -> str:
     return mapping.get(priority, "none")
 
 
-def format_issue_summary(issue: Dict[str, Any]) -> Dict[str, Any]:
+def format_issue_summary(issue: dict[str, Any]) -> dict[str, Any]:
     """Format an issue into a concise summary for LLM consumption."""
     return {
         "id": issue.get("id"),
@@ -170,15 +150,11 @@ def format_issue_summary(issue: Dict[str, Any]) -> Dict[str, Any]:
         "title": issue.get("title"),
         "state": issue.get("state", {}).get("name") if issue.get("state") else None,
         "priority": priority_to_str(issue.get("priority", 0)),
-        "assignee": issue.get("assignee", {}).get("name")
-        if issue.get("assignee")
-        else None,
+        "assignee": issue.get("assignee", {}).get("name") if issue.get("assignee") else None,
         "dueDate": issue.get("dueDate"),
         "team": issue.get("team", {}).get("key") if issue.get("team") else None,
         "cycle": issue.get("cycle", {}).get("name") if issue.get("cycle") else None,
-        "parent": issue.get("parent", {}).get("identifier")
-        if issue.get("parent")
-        else None,
+        "parent": issue.get("parent", {}).get("identifier") if issue.get("parent") else None,
     }
 
 

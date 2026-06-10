@@ -16,6 +16,12 @@ interface ToolInfo {
 
 interface LoadingState {
   isLoading: boolean;
+  // True only while the comms agent is producing its INITIAL response — from
+  // send until `main_response_complete`. Unlike `isLoading` (which stays true
+  // through the background-executor phase to keep the loading animation alive),
+  // this clears once the agent has acknowledged the task ("on it"), which is
+  // when the composer unlocks so the user can queue the next message.
+  isMainResponseStreaming: boolean;
   loadingText: string;
   loadingTextKey: number;
   toolInfo?: ToolInfo;
@@ -23,6 +29,7 @@ interface LoadingState {
 
 interface LoadingActions {
   setIsLoading: (loading: boolean) => void;
+  setMainResponseStreaming: (streaming: boolean) => void;
   setLoadingText: (
     text: string | { text: string; toolInfo?: ToolInfo },
   ) => void;
@@ -41,6 +48,7 @@ const getInitialLoadingText = () => getRandomThinkingMessage();
 
 const initialState: LoadingState = {
   isLoading: false,
+  isMainResponseStreaming: false,
   loadingText: getInitialLoadingText(),
   loadingTextKey: 0,
   toolInfo: undefined,
@@ -66,6 +74,9 @@ export const useLoadingStore = create<LoadingStore>()(
           set({ isLoading }, false, "setIsLoading");
         }
       },
+
+      setMainResponseStreaming: (isMainResponseStreaming) =>
+        set({ isMainResponseStreaming }, false, "setMainResponseStreaming"),
 
       setLoadingText: (payload) => {
         set(
@@ -117,6 +128,9 @@ export const useLoadingStore = create<LoadingStore>()(
                 isLoading,
                 loadingTextKey: state.loadingTextKey + 1,
               };
+            // This is the send-time loading trigger — the initial response is
+            // now streaming, so lock the composer until main_response_complete.
+            if (isLoading) updates.isMainResponseStreaming = true;
             if (text !== undefined) updates.loadingText = text;
             else if (isLoading) {
               updates.loadingText = userMessage?.trim()
@@ -135,4 +149,5 @@ export const useLoadingStore = create<LoadingStore>()(
 );
 
 // Selectors
-export const useIsLoading = () => useLoadingStore((state) => state.isLoading);
+export const useIsMainResponseStreaming = () =>
+  useLoadingStore((state) => state.isMainResponseStreaming);

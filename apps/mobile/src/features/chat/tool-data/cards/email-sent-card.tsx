@@ -1,92 +1,66 @@
-import { Card, Chip, Divider } from "heroui-native";
+import type { EmailSentData } from "@gaia/shared";
+import { Chip } from "heroui-native";
 import { View } from "react-native";
-import { AppIcon, SentIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { GmailIcon } from "./gmail-icon";
 
-export interface EmailSentData {
-  to: string[];
-  subject: string;
-  body?: string;
-  message_id?: string;
-  sent_at?: string;
-}
+export type { EmailSentData };
 
-function formatSentTime(dateStr?: string): string {
-  if (!dateStr) return "";
-  const date = new Date(dateStr);
-  if (Number.isNaN(date.getTime())) return dateStr;
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
+// Ported 1:1 from apps/web/src/features/mail/components/EmailSentCard.tsx
+function formatTime(timestamp?: string): string {
+  if (!timestamp) return "Just now";
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "Just now";
+
+  const now = new Date();
+  const diffInSeconds = (now.getTime() - date.getTime()) / 1000;
+
+  if (diffInSeconds < 60) return "Just now";
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
     minute: "2-digit",
+    hour12: true,
   });
 }
 
 export function EmailSentCard({ data }: { data: EmailSentData }) {
-  const sentTime = formatSentTime(data.sent_at);
-  const toDisplay = data.to?.join(", ") || "";
-  const bodyPreview = data.body?.split("\n").find((l) => l.trim()) || "";
+  // Web reads only `timestamp`; backend sometimes sends `sent_at`. Same for
+  // recipients (`recipients` vs `to`). Fall through gracefully so backend
+  // variants render correctly.
+  const timestamp = data.timestamp ?? data.sent_at;
+  const recipients = data.recipients ?? data.to ?? [];
 
   return (
-    <Card
-      variant="secondary"
-      className="mx-4 my-2 rounded-2xl bg-[#171920] overflow-hidden"
-    >
-      <Card.Body className="py-0 px-0">
-        {/* Header */}
-        <View className="flex-row items-center gap-2 px-4 py-3">
-          <View className="rounded-full p-1.5 bg-green-500/15">
-            <AppIcon icon={SentIcon} size={13} color="#4ade80" />
-          </View>
-          <Text className="text-sm font-medium text-green-400 flex-1">
-            Email Sent
+    <View className="self-start mx-4 my-1 rounded-2xl bg-green-900/15 p-3.5">
+      {/* Header */}
+      <View className="mb-2 flex-row items-center justify-between">
+        <View className="flex-row items-center gap-2">
+          <GmailIcon width={20} height={20} />
+          <Text className="text-sm font-medium text-green-400">Email Sent</Text>
+        </View>
+        <Chip size="sm" variant="soft" color="success" animation="disable-all">
+          <Chip.Label>{formatTime(timestamp)}</Chip.Label>
+        </Chip>
+      </View>
+
+      {/* Email Details */}
+      <View className="gap-1">
+        {!!data.subject && (
+          <Text className="text-sm">
+            <Text className="text-zinc-400">Subject: </Text>
+            <Text className="text-zinc-200">{data.subject}</Text>
           </Text>
-          {sentTime ? (
-            <Chip
-              size="sm"
-              variant="secondary"
-              color="default"
-              className="bg-white/10"
-            >
-              <Chip.Label>{sentTime}</Chip.Label>
-            </Chip>
-          ) : null}
-        </View>
+        )}
 
-        <Divider className="bg-white/8" />
-
-        {/* Body */}
-        <View className="px-4 py-3 gap-2">
-          <View className="flex-row">
-            <Text className="text-[#8e8e93] text-sm" style={{ width: 52 }}>
-              To:
-            </Text>
-            <Text className="text-foreground text-sm flex-1" numberOfLines={2}>
-              {toDisplay}
-            </Text>
-          </View>
-          <View className="flex-row">
-            <Text className="text-[#8e8e93] text-sm" style={{ width: 52 }}>
-              Subject:
-            </Text>
-            <Text
-              className="text-foreground text-sm font-medium flex-1"
-              numberOfLines={1}
-            >
-              {data.subject || "No Subject"}
-            </Text>
-          </View>
-          {bodyPreview ? (
-            <>
-              <Divider className="bg-white/8" />
-              <Text className="text-[#8e8e93] text-xs" numberOfLines={2}>
-                {bodyPreview}
-              </Text>
-            </>
-          ) : null}
-        </View>
-      </Card.Body>
-    </Card>
+        {recipients.length > 0 && (
+          <Text className="text-sm">
+            <Text className="text-zinc-400">To: </Text>
+            <Text className="text-zinc-200">{recipients.join(", ")}</Text>
+          </Text>
+        )}
+      </View>
+    </View>
   );
 }

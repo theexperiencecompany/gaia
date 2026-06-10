@@ -6,6 +6,7 @@ import {
   CodeBlock,
   InlineCode,
 } from "@/features/chat/components/code-block/CodeBlock";
+import { useResponsive } from "@/lib/responsive";
 
 // -- Theme constants ----------------------------------------------------------
 
@@ -229,12 +230,19 @@ function blockKey(block: Block, idx: number): string {
 // -- Rendering components -----------------------------------------------------
 
 function InlineContent({ segments }: { segments: InlineSegment[] }) {
+  const { fontSize } = useResponsive();
   const handleLinkPress = useCallback((url: string) => {
     Linking.openURL(url);
   }, []);
 
   return (
-    <RNText style={{ color: COLORS.text, fontSize: 15, lineHeight: 22 }}>
+    <RNText
+      style={{
+        color: COLORS.text,
+        fontSize: fontSize.base,
+        lineHeight: Math.round(fontSize.base * 1.5),
+      }}
+    >
       {segments.map((seg, idx) => {
         const key = segmentKey(seg, idx);
         switch (seg.type) {
@@ -299,24 +307,45 @@ function HeadingBlock({
   level: number;
   segments: InlineSegment[];
 }) {
+  const { fontSize: responsiveFontSize } = useResponsive();
+
+  // Heading sizes mapped to design-system token scale
   const sizeMap: Record<number, number> = {
-    1: 24,
-    2: 21,
-    3: 18,
-    4: 16,
-    5: 15,
-    6: 14,
+    1: responsiveFontSize["3xl"], // 30px
+    2: responsiveFontSize["2xl"], // 24px
+    3: responsiveFontSize.xl, // 20px
+    4: responsiveFontSize.lg, // 18px
+    5: responsiveFontSize.base, // 16px
+    6: responsiveFontSize.sm, // 12px
   };
-  const fontSize = sizeMap[level] ?? 15;
+  const marginTopMap: Record<number, number> = {
+    1: 24,
+    2: 20,
+    3: 16,
+    4: 12,
+    5: 8,
+    6: 8,
+  };
+  const marginBottomMap: Record<number, number> = {
+    1: 16,
+    2: 12,
+    3: 8,
+    4: 8,
+    5: 4,
+    6: 4,
+  };
+  const fontSize = sizeMap[level] ?? responsiveFontSize.base;
+  const marginTop = marginTopMap[level] ?? 8;
+  const marginBottom = marginBottomMap[level] ?? 4;
 
   return (
-    <View style={{ marginTop: level <= 2 ? 12 : 8, marginBottom: 4 }}>
+    <View style={{ marginTop, marginBottom }}>
       <RNText
         style={{
           color: COLORS.text,
           fontSize,
           fontWeight: "700",
-          lineHeight: fontSize * 1.3,
+          lineHeight: Math.round(fontSize * 1.25),
         }}
       >
         {segments.map((seg, idx) => {
@@ -347,36 +376,83 @@ function HeadingBlock({
 }
 
 function BlockquoteBlock({ segments }: { segments: InlineSegment[] }) {
+  const { fontSize } = useResponsive();
+  const handleLinkPress = useCallback((url: string) => {
+    Linking.openURL(url);
+  }, []);
+
   return (
     <View
       style={{
         borderLeftWidth: 3,
         borderLeftColor: COLORS.blockquoteBorder,
         paddingLeft: 12,
-        paddingVertical: 4,
+        paddingVertical: 6,
         marginVertical: 6,
+        backgroundColor: "rgba(63,63,70,0.35)",
       }}
     >
       <RNText
         style={{
           color: COLORS.muted,
-          fontSize: 15,
-          lineHeight: 22,
+          fontSize: fontSize.base,
+          lineHeight: Math.round(fontSize.base * 1.5),
           fontStyle: "italic",
         }}
       >
         {segments.map((seg, idx) => {
           const key = segmentKey(seg, idx);
-          if (seg.type === "text") return <RNText key={key}>{seg.text}</RNText>;
-          if (seg.type === "bold")
-            return (
-              <RNText key={key} style={{ fontWeight: "700" }}>
-                {seg.text}
-              </RNText>
-            );
-          if (seg.type === "code")
-            return <InlineCode key={key}>{seg.text}</InlineCode>;
-          return <RNText key={key}>{seg.text}</RNText>;
+          switch (seg.type) {
+            case "text":
+              return <RNText key={key}>{seg.text}</RNText>;
+            case "bold":
+              return (
+                <RNText key={key} style={{ fontWeight: "700" }}>
+                  {seg.text}
+                </RNText>
+              );
+            case "italic":
+              return (
+                <RNText key={key} style={{ fontStyle: "italic" }}>
+                  {seg.text}
+                </RNText>
+              );
+            case "boldItalic":
+              return (
+                <RNText
+                  key={key}
+                  style={{ fontWeight: "700", fontStyle: "italic" }}
+                >
+                  {seg.text}
+                </RNText>
+              );
+            case "strikethrough":
+              return (
+                <RNText
+                  key={key}
+                  style={{ textDecorationLine: "line-through" }}
+                >
+                  {seg.text}
+                </RNText>
+              );
+            case "code":
+              return <InlineCode key={key}>{seg.text}</InlineCode>;
+            case "link":
+              return (
+                <RNText
+                  key={key}
+                  style={{
+                    color: COLORS.linkColor,
+                    textDecorationLine: "underline",
+                  }}
+                  onPress={() => handleLinkPress(seg.url)}
+                >
+                  {seg.text}
+                </RNText>
+              );
+            default:
+              return <RNText key={key}>{seg.text}</RNText>;
+          }
         })}
       </RNText>
     </View>
@@ -390,23 +466,43 @@ function ListBlock({
   ordered: boolean;
   items: InlineSegment[][];
 }) {
+  const { fontSize } = useResponsive();
   return (
-    <View style={{ marginVertical: 4, paddingLeft: 8 }}>
+    <View style={{ marginVertical: 4, paddingLeft: 16 }}>
       {items.map((item, idx) => (
         <View
           key={`li-${idx}-${item[0]?.text.slice(0, 12)}`}
-          style={{ flexDirection: "row", marginBottom: 3, paddingRight: 8 }}
+          style={{ flexDirection: "row", marginBottom: 8, paddingRight: 8 }}
         >
-          <RNText
-            style={{
-              color: COLORS.muted,
-              fontSize: 15,
-              lineHeight: 22,
-              width: ordered ? 24 : 16,
-            }}
-          >
-            {ordered ? `${idx + 1}.` : "\u2022"}
-          </RNText>
+          {ordered ? (
+            <RNText
+              style={{
+                color: COLORS.muted,
+                fontSize: fontSize.base,
+                lineHeight: Math.round(fontSize.base * 1.5),
+                width: 24,
+              }}
+            >
+              {`${idx + 1}.`}
+            </RNText>
+          ) : (
+            <View
+              style={{
+                width: 16,
+                alignItems: "center",
+                paddingTop: 8,
+              }}
+            >
+              <View
+                style={{
+                  width: 4,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: COLORS.muted,
+                }}
+              />
+            </View>
+          )}
           <View style={{ flex: 1 }}>
             <InlineContent segments={item} />
           </View>
@@ -422,7 +518,7 @@ function HorizontalRule() {
       style={{
         height: 1,
         backgroundColor: COLORS.hrColor,
-        marginVertical: 12,
+        marginVertical: 28,
       }}
     />
   );
@@ -562,7 +658,13 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
         switch (block.type) {
           case "paragraph":
             return (
-              <View key={key} style={{ marginVertical: 2 }}>
+              <View
+                key={key}
+                style={{
+                  marginTop: 0,
+                  marginBottom: idx < blocks.length - 1 ? 16 : 0,
+                }}
+              >
                 <InlineContent segments={block.segments} />
               </View>
             );

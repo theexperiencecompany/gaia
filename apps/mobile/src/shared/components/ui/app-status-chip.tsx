@@ -13,6 +13,9 @@ const STATUS_TONE_MAP = {
   warning: "warning",
   danger: "danger",
   error: "danger",
+  primary: "accent",
+  accent: "accent",
+  running: "accent",
 } as const;
 
 const STATUS_LABEL_MAP = {
@@ -26,6 +29,9 @@ const STATUS_LABEL_MAP = {
   warning: "Warning",
   danger: "Error",
   error: "Error",
+  primary: "Active",
+  accent: "Active",
+  running: "Running",
 } as const;
 
 export type AppStatusChipStatus = keyof typeof STATUS_TONE_MAP;

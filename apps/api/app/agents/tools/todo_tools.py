@@ -17,17 +17,10 @@ context into the latest non-memory SystemMessage before each LLM call.
 """
 
 from collections.abc import Callable
-from datetime import datetime, timezone
-from typing import Annotated, Any, Literal, Optional, cast
+from datetime import UTC, datetime
+from typing import Annotated, Any, Literal, cast
 from uuid import uuid4
 
-from app.agents.prompts.todo_prompts import (
-    PLAN_TASKS_DESCRIPTION,
-    TODO_SYSTEM_PROMPT,
-    UPDATE_TASKS_DESCRIPTION,
-)
-from shared.py.wide_events import log
-from app.override.langgraph_bigtool.utils import State
 from langchain.tools import InjectedToolCallId
 from langchain_core.messages import SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -37,6 +30,14 @@ from langgraph.prebuilt import InjectedState
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 from typing_extensions import TypedDict
+
+from app.agents.prompts.todo_prompts import (
+    PLAN_TASKS_DESCRIPTION,
+    TODO_SYSTEM_PROMPT,
+    UPDATE_TASKS_DESCRIPTION,
+)
+from app.override.langgraph_bigtool.utils import State
+from shared.py.wide_events import log
 
 TODO_TOOL_NAMES: set[str] = {"plan_tasks", "update_tasks"}
 
@@ -63,11 +64,9 @@ class TaskUpdate(TypedDict, total=False):
     To add a new task: provide only content (omit task_id and status).
     """
 
-    task_id: Optional[str]  # omit to add a new task
-    content: Optional[str]  # required when adding a new task
-    status: Optional[
-        Literal["in_progress", "completed", "cancelled"]
-    ]  # required when updating
+    task_id: str | None  # omit to add a new task
+    content: str | None  # required when adding a new task
+    status: Literal["in_progress", "completed", "cancelled"] | None  # required when updating
 
 
 def _emit_todo_progress(todos: list[Todo], source: str) -> None:
@@ -75,8 +74,7 @@ def _emit_todo_progress(todos: list[Todo], source: str) -> None:
     payload = {
         "todo_progress": {
             "todos": [
-                {"id": t["id"], "content": t["content"], "status": t["status"]}
-                for t in todos
+                {"id": t["id"], "content": t["content"], "status": t["status"]} for t in todos
             ],
             "source": source,
         }
@@ -130,7 +128,7 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
         todos: Annotated[list, InjectedState("todos")],
     ) -> Command[Any]:
         """Create a task plan for multi-step work."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         new_todos: list[Todo] = []
 
         for i, task in enumerate(tasks):
@@ -167,7 +165,7 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
         todos: Annotated[list, InjectedState("todos")],
     ) -> Command[Any]:
         """Update task statuses and/or add new tasks in a single call."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         updated_todos: list[Todo] = [dict(t) for t in todos]  # type: ignore[misc]
         todo_map = {t["id"]: t for t in updated_todos}
 
@@ -222,59 +220,60 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
 def create_todo_pre_model_hook(
     source: str = "executor",
 ) -> Callable[[State, RunnableConfig, BaseStore], State]:
-    """Create a pre-model hook that injects task context into system messages.
+    """Pre-model hook that emits a fresh ``todo_context`` SystemMessage each step.
 
-    Runs after manage_system_prompts_node. Reads todos from graph state
-    and appends TODO_SYSTEM_PROMPT + formatted task list to the latest
-    non-memory SystemMessage.
+    Kept in its own slot so the ``static + dynamic`` prefix stays byte-identical
+    across steps, preserving Gemini's implicit prompt cache.
 
     Args:
-        source: Identifier for logging (not used in hook logic)
+        source: Identifier for logging (not used in hook logic).
 
     Returns:
         Hook function with signature (State, RunnableConfig, BaseStore) -> State
     """
+    del source  # intentionally unused — kept for signature stability
 
-    def todo_pre_model_hook(
-        state: State, config: RunnableConfig, store: BaseStore
-    ) -> State:
-        todos = state.get("todos", [])
-
+    def todo_pre_model_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:
         messages = list(state.get("messages", []))
         if not messages:
             return state
 
-        # Find the latest non-memory system message
-        latest_sys_idx = None
-        for idx, msg in enumerate(messages):
-            if isinstance(msg, SystemMessage):
-                extra = msg.model_extra or {}
-                is_memory = msg.additional_kwargs.get(
-                    "memory_message", False
-                ) or extra.get("memory_message", False)
-                if not is_memory:
-                    latest_sys_idx = idx
+        def _is_todo_context(msg: Any) -> bool:
+            if not isinstance(msg, SystemMessage):
+                return False
+            if msg.additional_kwargs.get("todo_context", False):
+                return True
+            extra = msg.model_extra or {}
+            return bool(extra.get("todo_context", False)) if isinstance(extra, dict) else False
 
-        if latest_sys_idx is None:
-            return state
+        # Strip any prior todo_context SystemMessage. Without this, the next
+        # manage_system_prompts pass would drop the stale one anyway, but
+        # handling it here keeps the hook self-contained and idempotent.
+        filtered: list[Any] = [m for m in messages if not _is_todo_context(m)]
 
-        # Build todo context to append
+        todos = state.get("todos", [])
         parts = [TODO_SYSTEM_PROMPT]
-        todo_context = _format_todos(todos) if todos else ""
-        if todo_context:
-            parts.append(todo_context)
-        suffix = "\n\n".join(parts)
+        if todos:
+            parts.append(_format_todos(todos))
+        content = "\n\n".join(parts)
 
-        # Append to existing system message content
-        sys_msg = messages[latest_sys_idx]
-        base = sys_msg.content or ""
-        new_content = f"{base}\n\n{suffix}" if base else suffix
-
-        messages[latest_sys_idx] = SystemMessage(
-            content=new_content,
-            additional_kwargs=sys_msg.additional_kwargs,
+        todo_msg = SystemMessage(
+            content=content,
+            additional_kwargs={"todo_context": True},
         )
 
-        return cast(State, {**state, "messages": messages})
+        # Insert immediately after the leading contiguous run of
+        # SystemMessages so ``_parse_chat_history`` still promotes them all
+        # to Gemini's ``system_instruction`` (it silently drops any
+        # SystemMessage that appears after a non-system message).
+        insert_idx = 0
+        for m in filtered:
+            if isinstance(m, SystemMessage):
+                insert_idx += 1
+            else:
+                break
+        filtered.insert(insert_idx, todo_msg)
+
+        return cast(State, {**state, "messages": filtered})
 
     return todo_pre_model_hook

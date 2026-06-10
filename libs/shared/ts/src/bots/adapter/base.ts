@@ -36,6 +36,8 @@
 import { Analytics, BOT_EVENTS } from "../../analytics";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
+import type { OutboundAttachment } from "../consumer/envelope";
+import { OutboundConsumer } from "../consumer/outbound-consumer";
 import type {
   BotCommand,
   BotConfig,
@@ -43,13 +45,19 @@ import type {
   PlatformName,
   RichMessageTarget,
 } from "../types";
-import { formatBotError } from "../utils/formatters";
+import { formatBotError, renderForPlatform } from "../utils/formatters";
 import {
   type BotLogger,
   createBotLogger,
   hashLogIdentifier,
   sanitizeErrorForLog,
 } from "../utils/logger";
+import {
+  type IncomingMedia,
+  type MediaOutcome,
+  OUTBOUND_FILE_LIMITS,
+  processBotMedia,
+} from "../utils/media";
 import { BotServer } from "./base-server";
 
 /**
@@ -101,6 +109,7 @@ export abstract class BaseBotAdapter {
   protected logger: BotLogger = createBotLogger("shared", "base-adapter");
 
   private _botServer: BotServer | null = null;
+  private _outboundConsumer: OutboundConsumer | null = null;
 
   /**
    * Shared HTTP server for this bot process.
@@ -167,12 +176,18 @@ export abstract class BaseBotAdapter {
       await this.start();
       platformStarted = true;
 
+      // Consume backend-originated outbound messages (executor replies,
+      // reminders) and deliver them via this platform's send primitive.
+      this.startOutboundConsumer();
+
       // Start the server after registerEvents() so all routes are mounted.
       await this._botServer.start();
     } catch (error) {
       if (platformStarted) {
         await this.stop().catch(() => undefined);
       }
+      await this._outboundConsumer?.stop().catch(() => undefined);
+      this._outboundConsumer = null;
       await this._botServer?.stop().catch(() => undefined);
       this._botServer = null;
       throw error;
@@ -189,6 +204,10 @@ export abstract class BaseBotAdapter {
    */
   async shutdown(): Promise<void> {
     this.logger.info("shutdown_started");
+    if (this._outboundConsumer) {
+      await this._outboundConsumer.stop();
+      this._outboundConsumer = null;
+    }
     await this.stop();
     if (this._botServer) {
       await this._botServer.stop();
@@ -196,6 +215,30 @@ export abstract class BaseBotAdapter {
     }
     await this.analytics.shutdown();
     this.logger.info("shutdown_completed");
+  }
+
+  /**
+   * Starts the outbound RabbitMQ consumer for this platform, if configured.
+   *
+   * Fire-and-forget: the consumer connects and retries in the background so a
+   * slow or unavailable broker never blocks boot. Disabled (with a warning)
+   * when `RABBITMQ_URL` is unset, keeping local dev working without a broker.
+   */
+  private startOutboundConsumer(): void {
+    const url = this.config.rabbitmqUrl;
+    if (!url) {
+      this.logger.warn("outbound_consumer_disabled", {
+        reason: "RABBITMQ_URL not set",
+      });
+      return;
+    }
+    this._outboundConsumer = new OutboundConsumer(
+      this.platform,
+      url,
+      (id, text) => this.deliverOutbound(id, text),
+      (id, attachment) => this.deliverOutboundFile(id, attachment),
+    );
+    void this._outboundConsumer.start();
   }
 
   // ---------------------------------------------------------------------------
@@ -241,6 +284,75 @@ export abstract class BaseBotAdapter {
    * Called by {@link shutdown}. Should clean up connections, intervals, etc.
    */
   protected abstract stop(): Promise<void>;
+
+  /**
+   * Sends a single already-rendered message to `destinationId` on this
+   * platform. Called by the outbound RabbitMQ consumer for backend-originated
+   * messages. The text has already been run through `renderForPlatform` — do
+   * not convert it again; just hand it to the platform SDK.
+   */
+  protected abstract deliverOutbound(
+    destinationId: string,
+    text: string,
+  ): Promise<void>;
+
+  /**
+   * Fetches an outbound artifact's bytes, enforcing this platform's file-size
+   * cap. Returns the bytes, or `null` after sending a short "too large" note via
+   * {@link deliverOutbound} when the artifact exceeds the limit — so an oversized
+   * file tells the user instead of silently dead-lettering on a rejected upload.
+   *
+   * Adapter `deliverOutboundFile` overrides should fetch through this helper
+   * rather than calling `gaia.downloadArtifact` directly.
+   */
+  protected async fetchOutboundArtifact(
+    destinationId: string,
+    attachment: OutboundAttachment,
+  ): Promise<{ data: Buffer; contentType: string } | null> {
+    const artifact = await this.gaia.downloadArtifact(
+      attachment.conversation_id,
+      attachment.path,
+      { platform: this.platform, platformUserId: destinationId },
+    );
+    const limit = OUTBOUND_FILE_LIMITS[this.platform];
+    if (artifact.data.length > limit) {
+      this.logger.warn("outbound_file_too_large", {
+        platform: this.platform,
+        filename: attachment.filename,
+        bytes: artifact.data.length,
+        limit,
+      });
+      await this.deliverOutbound(
+        destinationId,
+        renderForPlatform(
+          `I generated *${attachment.filename}*, but it's too large to send on ${this.platform} (max ${Math.floor(limit / (1024 * 1024))} MB).`,
+          this.platform,
+        ),
+      );
+      return null;
+    }
+    return artifact;
+  }
+
+  /**
+   * Delivers a file artifact to `destinationId`. Called by the outbound consumer
+   * when an envelope carries an `attachment`. The default sends a short text note
+   * via {@link deliverOutbound}; platforms that support attachments (e.g.
+   * WhatsApp) override this to fetch the artifact bytes and upload them.
+   */
+  protected async deliverOutboundFile(
+    destinationId: string,
+    attachment: OutboundAttachment,
+  ): Promise<void> {
+    this.logger.warn("outbound_file_fallback_text", {
+      platform: this.platform,
+      filename: attachment.filename,
+    });
+    await this.deliverOutbound(
+      destinationId,
+      `I created *${attachment.filename}*, but I can't send files on ${this.platform} yet.`,
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Shared helpers — used by adapter subclasses
@@ -371,5 +483,66 @@ export abstract class BaseBotAdapter {
       channelId,
       profile,
     };
+  }
+
+  /** Users greeted this process, so the welcome fires at most once each. */
+  private readonly welcomedUsers = new Set<string>();
+
+  /**
+   * One-shot welcome gate shared by adapters that greet a user on first
+   * contact (Discord DM embed, WhatsApp text). Returns true the first time it
+   * sees a user this process and false thereafter, so a caller can guard its
+   * platform-specific welcome with a single check instead of each adapter
+   * maintaining its own `Set`.
+   */
+  protected shouldSendWelcome(userId: string): boolean {
+    if (this.welcomedUsers.has(userId)) return false;
+    this.welcomedUsers.add(userId);
+    return true;
+  }
+
+  /**
+   * Starts a typing indicator that refreshes until stopped.
+   *
+   * Platforms expire the "typing…" state after a few seconds, so it must be
+   * re-sent periodically during long operations. Adapters supply the
+   * platform-specific send call and the refresh cadence; this owns the
+   * immediate first send, the interval, swallowing transient send failures,
+   * and cleanup. Returns a `stop` function to call from a `finally`.
+   */
+  protected startTypingIndicator(
+    sendTyping: () => Promise<unknown>,
+    refreshMs: number,
+  ): () => void {
+    void sendTyping().catch(() => {});
+    const interval = setInterval(() => {
+      void sendTyping().catch(() => {});
+    }, refreshMs);
+    return () => clearInterval(interval);
+  }
+
+  /**
+   * Routes an inbound media message to the right action — transcribe audio,
+   * upload an image/document, or reject an unsupported/oversize payload —
+   * returning a {@link MediaOutcome} the adapter then sends through its own
+   * channel APIs.
+   *
+   * The platform-agnostic decision lives in {@link processBotMedia}; this base
+   * method injects the shared GAIA client and builds the user context so every
+   * adapter calls one inherited method and stays byte-for-byte consistent.
+   * `download` is a thunk so unsupported kinds never incur a download.
+   */
+  protected resolveIncomingMedia(
+    media: IncomingMedia,
+    download: () => Promise<Uint8Array>,
+    userId: string,
+    channelId?: string,
+  ): Promise<MediaOutcome> {
+    return processBotMedia(
+      this.gaia,
+      media,
+      download,
+      this.buildContext(userId, channelId),
+    );
   }
 }

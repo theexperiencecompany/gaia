@@ -25,6 +25,17 @@ interface UseIntegrationsResult {
   disconnect: (integrationId: string) => Promise<boolean>;
 }
 
+function patchStatus(
+  integrations: Integration[] | undefined,
+  integrationId: string,
+  status: Integration["status"],
+): Integration[] | undefined {
+  if (!integrations) return integrations;
+  return integrations.map((item) =>
+    item.id === integrationId ? { ...item, status } : item,
+  );
+}
+
 export function useIntegrations(): UseIntegrationsResult {
   const queryClient = useQueryClient();
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -97,28 +108,71 @@ export function useIntegrations(): UseIntegrationsResult {
 
   const connect = useCallback(
     async (integrationId: string): Promise<ConnectIntegrationResult> => {
+      const previous = queryClient.getQueryData<Integration[]>(
+        INTEGRATIONS_QUERY_KEY,
+      );
+
+      // Optimistic flip — instant feedback while OAuth resolves.
+      queryClient.setQueryData<Integration[] | undefined>(
+        INTEGRATIONS_QUERY_KEY,
+        (current) => patchStatus(current, integrationId, "connected"),
+      );
+
       const result = await connectIntegration(integrationId);
 
       if (result.success) {
-        // Poll for up to 5s after returning from OAuth browser to catch
-        // connection status changes that arrive before the WS event.
+        void Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        );
+        // Poll up to 5s in case the WS event lags the OAuth redirect.
         startOAuthPolling();
+      } else {
+        // Roll back on cancel/failure.
+        if (previous) {
+          queryClient.setQueryData(INTEGRATIONS_QUERY_KEY, previous);
+        }
+        if (!result.cancelled) {
+          void Haptics.notificationAsync(
+            Haptics.NotificationFeedbackType.Warning,
+          );
+        }
       }
 
       return result;
     },
-    [startOAuthPolling],
+    [queryClient, startOAuthPolling],
   );
 
   const disconnect = useCallback(
     async (integrationId: string): Promise<boolean> => {
+      const previous = queryClient.getQueryData<Integration[]>(
+        INTEGRATIONS_QUERY_KEY,
+      );
+
+      queryClient.setQueryData<Integration[] | undefined>(
+        INTEGRATIONS_QUERY_KEY,
+        (current) => patchStatus(current, integrationId, "not_connected"),
+      );
+
       const success = await disconnectIntegration(integrationId);
+
       if (success) {
+        void Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        );
         invalidateIntegrations();
+      } else {
+        if (previous) {
+          queryClient.setQueryData(INTEGRATIONS_QUERY_KEY, previous);
+        }
+        void Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Warning,
+        );
       }
+
       return success;
     },
-    [invalidateIntegrations],
+    [queryClient, invalidateIntegrations],
   );
 
   return {

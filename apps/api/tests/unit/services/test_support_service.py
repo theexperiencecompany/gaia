@@ -1,10 +1,10 @@
 """Unit tests for the support service (app/services/support_service.py)."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi import HTTPException, UploadFile
+import pytest
 
 from app.models.support_models import (
     SupportEmailNotification,
@@ -22,10 +22,8 @@ from app.services.support_service import (
     _upload_single_attachment,
     create_support_request,
     create_support_request_with_attachments,
-    get_all_support_requests,
     get_user_support_requests,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shared constants
@@ -61,9 +59,7 @@ def mock_cloudinary():
 @pytest.fixture
 def mock_upload_file_to_cloudinary():
     with patch("app.services.support_service.upload_file_to_cloudinary") as mock_upload:
-        mock_upload.return_value = (
-            "https://res.cloudinary.com/demo/support/ticket_file.png"
-        )
+        mock_upload.return_value = "https://res.cloudinary.com/demo/support/ticket_file.png"
         yield mock_upload
 
 
@@ -128,7 +124,7 @@ def _make_db_support_doc(
     req_type: str = "support",
 ) -> dict:
     """Create a support request document as it would exist in MongoDB."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return {
         "_id": request_id,
         "ticket_id": ticket_id,
@@ -164,18 +160,14 @@ class TestDeleteUploadedFiles:
 
         mock_cloudinary.destroy.assert_called_once_with("support/TICKET_file")
 
-    async def test_malformed_url_without_support_segment_is_skipped(
-        self, mock_cloudinary
-    ):
+    async def test_malformed_url_without_support_segment_is_skipped(self, mock_cloudinary):
         """URLs that do not contain 'support/' are silently skipped."""
         urls = ["https://example.com/other/path/file.png"]
         await _delete_uploaded_files(urls, "TICKET")
 
         mock_cloudinary.destroy.assert_not_called()
 
-    async def test_support_segment_at_end_without_filename_is_skipped(
-        self, mock_cloudinary
-    ):
+    async def test_support_segment_at_end_without_filename_is_skipped(self, mock_cloudinary):
         """URL where 'support' is the last segment (no filename after it) is skipped."""
         urls = ["https://res.cloudinary.com/demo/image/upload/support"]
         await _delete_uploaded_files(urls, "TICKET")
@@ -242,7 +234,7 @@ class TestUploadSingleAttachment:
             content_type="image/png",
             content=b"x" * 100,
         )
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         file_url, attachment_meta = await _upload_single_attachment(
             attachment=upload,
@@ -264,7 +256,7 @@ class TestUploadSingleAttachment:
             filename="doc.pdf",
             content_type="application/pdf",
         )
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         with pytest.raises(HTTPException) as exc_info:
             await _upload_single_attachment(
@@ -283,7 +275,7 @@ class TestUploadSingleAttachment:
         upload = _make_upload_file(filename="", content_type="image/png")
         # UploadFile.filename being falsy (empty string) triggers the check
         upload.filename = ""
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         with pytest.raises(HTTPException) as exc_info:
             await _upload_single_attachment(
@@ -301,7 +293,7 @@ class TestUploadSingleAttachment:
         """Attachment with None filename raises 400."""
         upload = _make_upload_file(content_type="image/png")
         upload.filename = None
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         with pytest.raises(HTTPException) as exc_info:
             await _upload_single_attachment(
@@ -322,7 +314,7 @@ class TestUploadSingleAttachment:
             content_type="image/png",
             content=oversized_content,
         )
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         with pytest.raises(HTTPException) as exc_info:
             await _upload_single_attachment(
@@ -336,9 +328,7 @@ class TestUploadSingleAttachment:
         assert exc_info.value.status_code == 400
         assert "exceeds maximum size" in exc_info.value.detail
 
-    async def test_file_exactly_at_max_size_succeeds(
-        self, mock_upload_file_to_cloudinary
-    ):
+    async def test_file_exactly_at_max_size_succeeds(self, mock_upload_file_to_cloudinary):
         """File exactly at max size should succeed."""
         content = b"x" * MAX_FILE_SIZE
         upload = _make_upload_file(
@@ -346,7 +336,7 @@ class TestUploadSingleAttachment:
             content_type="image/png",
             content=content,
         )
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         file_url, _ = await _upload_single_attachment(
             attachment=upload,
@@ -365,7 +355,7 @@ class TestUploadSingleAttachment:
             content_type="image/png",
             content=b"data",
         )
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         with patch(
             "app.services.support_service.upload_file_to_cloudinary",
@@ -392,7 +382,7 @@ class TestUploadSingleAttachment:
                 content_type=ctype,
                 content=b"data",
             )
-            current_time = datetime.now(timezone.utc)
+            current_time = datetime.now(UTC)
 
             file_url, meta = await _upload_single_attachment(
                 attachment=upload,
@@ -502,9 +492,7 @@ class TestCreateSupportRequest:
         mock_insert_result.inserted_id = REQUEST_ID
         mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
 
-        mock_support_collection.delete_one = AsyncMock(
-            side_effect=Exception("DB unreachable")
-        )
+        mock_support_collection.delete_one = AsyncMock(side_effect=Exception("DB unreachable"))
 
         mock_send_team_notification.side_effect = Exception("SMTP error")
 
@@ -595,9 +583,7 @@ class TestCreateSupportRequest:
         mock_insert_result.inserted_id = REQUEST_ID
         mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
 
-        mock_support_collection.delete_one = AsyncMock(
-            side_effect=Exception("rollback failed")
-        )
+        mock_support_collection.delete_one = AsyncMock(side_effect=Exception("rollback failed"))
 
         with patch(
             "app.services.support_service._send_support_email_notifications",
@@ -704,9 +690,7 @@ class TestCreateSupportRequestWithAttachments:
 
     async def test_too_many_attachments_raises_400(self, sample_request_data):
         """More than 5 attachments raises 400."""
-        attachments = [
-            _make_upload_file(f"img{i}.png", "image/png", b"data") for i in range(6)
-        ]
+        attachments = [_make_upload_file(f"img{i}.png", "image/png", b"data") for i in range(6)]
 
         with patch("app.services.support_service.log"):
             with pytest.raises(HTTPException) as exc_info:
@@ -732,9 +716,7 @@ class TestCreateSupportRequestWithAttachments:
         mock_insert_result.inserted_id = REQUEST_ID
         mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
 
-        attachments = [
-            _make_upload_file(f"img{i}.png", "image/png", b"data") for i in range(5)
-        ]
+        attachments = [_make_upload_file(f"img{i}.png", "image/png", b"data") for i in range(5)]
 
         with patch("app.services.support_service.log"):
             result = await create_support_request_with_attachments(
@@ -1033,7 +1015,7 @@ class TestSendSupportEmailNotifications:
             type=SupportRequestType.SUPPORT,
             title="Test Ticket",
             description="A description for the test ticket.",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             support_emails=SUPPORT_EMAILS,
             attachments=[],
         )
@@ -1109,9 +1091,7 @@ class TestGetUserSupportRequests:
         mock_support_collection.count_documents = AsyncMock(return_value=1)
 
         with patch("app.services.support_service.log"):
-            result = await get_user_support_requests(
-                user_id=USER_ID, page=1, per_page=10
-            )
+            result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)
 
         assert len(result["requests"]) == 1
         assert isinstance(result["requests"][0], SupportRequestResponse)
@@ -1145,9 +1125,7 @@ class TestGetUserSupportRequests:
         mock_support_collection.count_documents = AsyncMock(return_value=0)
 
         with patch("app.services.support_service.log"):
-            result = await get_user_support_requests(
-                user_id=USER_ID, page=1, per_page=10
-            )
+            result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)
 
         assert result["requests"] == []
         assert result["pagination"]["total"] == 0
@@ -1159,9 +1137,7 @@ class TestGetUserSupportRequests:
         mock_support_collection.count_documents = AsyncMock(return_value=25)
 
         with patch("app.services.support_service.log"):
-            result = await get_user_support_requests(
-                user_id=USER_ID, page=2, per_page=10
-            )
+            result = await get_user_support_requests(user_id=USER_ID, page=2, per_page=10)
 
         assert result["pagination"]["pages"] == 3
         assert result["pagination"]["page"] == 2
@@ -1179,9 +1155,7 @@ class TestGetUserSupportRequests:
 
     async def test_db_error_raises_500(self, mock_support_collection):
         """Database error raises 500."""
-        mock_support_collection.count_documents = AsyncMock(
-            side_effect=Exception("DB error")
-        )
+        mock_support_collection.count_documents = AsyncMock(side_effect=Exception("DB error"))
 
         with patch("app.services.support_service.log"):
             with pytest.raises(HTTPException) as exc_info:
@@ -1191,151 +1165,13 @@ class TestGetUserSupportRequests:
 
     async def test_multiple_documents_returned(self, mock_support_collection):
         """Multiple documents are all converted to response models."""
-        docs = [
-            _make_db_support_doc(request_id=f"id-{i}", ticket_id=f"T-{i}")
-            for i in range(3)
-        ]
+        docs = [_make_db_support_doc(request_id=f"id-{i}", ticket_id=f"T-{i}") for i in range(3)]
         self._setup_cursor(mock_support_collection, docs)
         mock_support_collection.count_documents = AsyncMock(return_value=3)
 
         with patch("app.services.support_service.log"):
-            result = await get_user_support_requests(
-                user_id=USER_ID, page=1, per_page=10
-            )
+            result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)
 
         assert len(result["requests"]) == 3
         for req in result["requests"]:
             assert isinstance(req, SupportRequestResponse)
-
-
-# ===========================================================================
-# get_all_support_requests
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestGetAllSupportRequests:
-    def _setup_cursor(self, mock_collection, docs):
-        """Configure the chained find().sort().skip().limit().to_list() mock."""
-        mock_cursor = MagicMock()
-        mock_cursor.sort.return_value = mock_cursor
-        mock_cursor.skip.return_value = mock_cursor
-        mock_cursor.limit.return_value = mock_cursor
-        mock_cursor.to_list = AsyncMock(return_value=docs)
-        mock_collection.find.return_value = mock_cursor
-        return mock_cursor
-
-    async def test_success_no_filters(self, mock_support_collection):
-        """Returns all requests without filters."""
-        doc = _make_db_support_doc()
-        self._setup_cursor(mock_support_collection, [doc])
-        mock_support_collection.count_documents = AsyncMock(return_value=1)
-
-        with patch("app.services.support_service.log"):
-            result = await get_all_support_requests(page=1, per_page=20)
-
-        assert len(result["requests"]) == 1
-        assert result["pagination"]["per_page"] == 20
-
-        # Verify empty query (no filters)
-        call_args = mock_support_collection.count_documents.call_args[0][0]
-        assert call_args == {}
-
-    async def test_with_status_filter(self, mock_support_collection):
-        """Status filter is included in the query."""
-        self._setup_cursor(mock_support_collection, [])
-        mock_support_collection.count_documents = AsyncMock(return_value=0)
-
-        with patch("app.services.support_service.log"):
-            await get_all_support_requests(
-                status_filter=SupportRequestStatus.IN_PROGRESS,
-            )
-
-        call_args = mock_support_collection.count_documents.call_args[0][0]
-        assert call_args["status"] == "in_progress"
-
-    async def test_with_type_filter(self, mock_support_collection):
-        """Type filter is included in the query."""
-        self._setup_cursor(mock_support_collection, [])
-        mock_support_collection.count_documents = AsyncMock(return_value=0)
-
-        with patch("app.services.support_service.log"):
-            await get_all_support_requests(
-                type_filter=SupportRequestType.FEATURE,
-            )
-
-        call_args = mock_support_collection.count_documents.call_args[0][0]
-        assert call_args["type"] == "feature"
-
-    async def test_with_both_filters(self, mock_support_collection):
-        """Both status and type filters are applied together."""
-        self._setup_cursor(mock_support_collection, [])
-        mock_support_collection.count_documents = AsyncMock(return_value=0)
-
-        with patch("app.services.support_service.log"):
-            await get_all_support_requests(
-                status_filter=SupportRequestStatus.OPEN,
-                type_filter=SupportRequestType.SUPPORT,
-            )
-
-        call_args = mock_support_collection.count_documents.call_args[0][0]
-        assert call_args["status"] == "open"
-        assert call_args["type"] == "support"
-
-    async def test_empty_results(self, mock_support_collection):
-        """No documents returns empty list with zero pagination."""
-        self._setup_cursor(mock_support_collection, [])
-        mock_support_collection.count_documents = AsyncMock(return_value=0)
-
-        with patch("app.services.support_service.log"):
-            result = await get_all_support_requests()
-
-        assert result["requests"] == []
-        assert result["pagination"]["total"] == 0
-        assert result["pagination"]["pages"] == 0
-
-    async def test_pagination_calculation(self, mock_support_collection):
-        """Pagination pages are computed with ceiling division."""
-        self._setup_cursor(mock_support_collection, [])
-        mock_support_collection.count_documents = AsyncMock(return_value=41)
-
-        with patch("app.services.support_service.log"):
-            result = await get_all_support_requests(page=1, per_page=20)
-
-        assert result["pagination"]["pages"] == 3
-        assert result["pagination"]["total"] == 41
-
-    async def test_pagination_skip_and_limit(self, mock_support_collection):
-        """Cursor uses correct skip and limit values."""
-        mock_cursor = self._setup_cursor(mock_support_collection, [])
-        mock_support_collection.count_documents = AsyncMock(return_value=100)
-
-        with patch("app.services.support_service.log"):
-            await get_all_support_requests(page=4, per_page=20)
-
-        mock_cursor.skip.assert_called_once_with(60)
-        mock_cursor.limit.assert_called_once_with(20)
-
-    async def test_db_error_raises_500(self, mock_support_collection):
-        """Database error raises 500."""
-        mock_support_collection.count_documents = AsyncMock(
-            side_effect=Exception("DB error")
-        )
-
-        with patch("app.services.support_service.log"):
-            with pytest.raises(HTTPException) as exc_info:
-                await get_all_support_requests()
-
-        assert exc_info.value.status_code == 500
-
-    async def test_sort_order_is_descending_by_created_at(
-        self, mock_support_collection
-    ):
-        """Results are sorted by created_at in descending order."""
-        mock_cursor = self._setup_cursor(mock_support_collection, [])
-        mock_support_collection.count_documents = AsyncMock(return_value=0)
-
-        with patch("app.services.support_service.log"):
-            await get_all_support_requests()
-
-        mock_cursor.sort.assert_called_once_with("created_at", -1)

@@ -1,10 +1,9 @@
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from bson import ObjectId
 from fastapi import HTTPException
 
-from shared.py.wide_events import log
 from app.config.oauth_config import (
     OAUTH_INTEGRATIONS,
     get_integration_scopes,
@@ -36,12 +35,13 @@ from app.services.provider_metadata_service import (
 from app.services.system_workflows.provisioner import provision_system_workflows
 from app.utils.email_utils import add_contact_to_resend, send_welcome_email
 from app.utils.redis_utils import RedisPoolManager
+from shared.py.wide_events import log
 
 
 async def store_user_info(
     name: str,
     email: str,
-    picture_url: Optional[str],
+    picture_url: str | None,
 ) -> tuple[ObjectId, bool]:
     """
     Stores user info from Google callback.
@@ -63,7 +63,7 @@ async def store_user_info(
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
 
-    current_time = datetime.now(timezone.utc)
+    current_time = datetime.now(UTC)
 
     # Check if user already exists
     existing_user = await users_collection.find_one({"email": email})
@@ -89,49 +89,48 @@ async def store_user_info(
                 login_method=LOGIN_METHOD_WORKOS,
             )
         except Exception as e:
-            log.error(f"Failed to track login in PostHog for {email}: {str(e)}")
+            log.error(f"Failed to track login in PostHog for {email}: {e!s}")
 
         return existing_user["_id"], False
-    else:
-        user_data = {
-            "name": name,
-            "email": email,
-            "picture": picture_url or "",
-            "created_at": current_time,
-            "updated_at": current_time,
-        }
+    user_data = {
+        "name": name,
+        "email": email,
+        "picture": picture_url or "",
+        "created_at": current_time,
+        "updated_at": current_time,
+    }
 
-        result = await users_collection.insert_one(user_data)
+    result = await users_collection.insert_one(user_data)
 
-        # Track signup event in PostHog (using email as distinct_id for consistency with frontend)
-        try:
-            track_signup(
-                user_id=email,  # PostHog distinct_id - use email for cross-platform consistency
-                email=email,
-                name=name,
-                signup_method=LOGIN_METHOD_WORKOS,
-            )
-            log.info(f"Signup tracked in PostHog for new user: {email}")
-        except Exception as e:
-            log.error(f"Failed to track signup in PostHog for {email}: {str(e)}")
+    # Track signup event in PostHog (using email as distinct_id for consistency with frontend)
+    try:
+        track_signup(
+            user_id=email,  # PostHog distinct_id - use email for cross-platform consistency
+            email=email,
+            name=name,
+            signup_method=LOGIN_METHOD_WORKOS,
+        )
+        log.info(f"Signup tracked in PostHog for new user: {email}")
+    except Exception as e:
+        log.error(f"Failed to track signup in PostHog for {email}: {e!s}")
 
-        # Send welcome email to new user
-        try:
-            await send_welcome_email(email, name)
-            log.info(f"Welcome email sent to new user: {email}")
-        except Exception as e:
-            log.error(f"Failed to send welcome email to {email}: {str(e)}")
-            # Don't raise exception - user creation should still succeed
+    # Send welcome email to new user
+    try:
+        await send_welcome_email(email, name)
+        log.info(f"Welcome email sent to new user: {email}")
+    except Exception as e:
+        log.error(f"Failed to send welcome email to {email}: {e!s}")
+        # Don't raise exception - user creation should still succeed
 
-        # Add contact to Resend audience
-        try:
-            await add_contact_to_resend(email, name)
-            log.info(f"Contact added to Resend audience for new user: {email}")
-        except Exception as e:
-            log.error(f"Failed to add contact to Resend audience for {email}: {str(e)}")
-            # Don't raise exception - user creation should still succeed
+    # Add contact to Resend audience
+    try:
+        await add_contact_to_resend(email, name)
+        log.info(f"Contact added to Resend audience for new user: {email}")
+    except Exception as e:
+        log.error(f"Failed to add contact to Resend audience for {email}: {e!s}")
+        # Don't raise exception - user creation should still succeed
 
-        return result.inserted_id, True
+    return result.inserted_id, True
 
 
 @Cacheable(ttl=86400, key_pattern=f"{OAUTH_STATUS_KEY}:{{user_id}}")
@@ -153,9 +152,7 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
     result = {}
 
     # Step 1: Get all user_integrations from MongoDB (canonical source)
-    user_ints = await user_integrations_collection.find({"user_id": user_id}).to_list(
-        100
-    )
+    user_ints = await user_integrations_collection.find({"user_id": user_id}).to_list(100)
     mongo_status = {
         doc["integration_id"]: doc.get("status") == INTEGRATION_STATUS_CONNECTED
         for doc in user_ints
@@ -202,9 +199,7 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
     if composio_providers:
         try:
             composio_service = get_composio_service()
-            status_map = await composio_service.check_connection_status(
-                composio_providers, user_id
-            )
+            status_map = await composio_service.check_connection_status(composio_providers, user_id)
             for integration_id, provider in composio_id_to_provider.items():
                 result[integration_id] = status_map.get(provider, False)
         except Exception as e:
@@ -266,7 +261,7 @@ async def check_multiple_integrations_status(
         }
     except Exception as e:
         log.error(f"Error checking multiple integrations status: {e}")
-        return {integration_id: False for integration_id in integration_ids}
+        return dict.fromkeys(integration_ids, False)
 
 
 async def handle_oauth_connection(
@@ -303,20 +298,26 @@ async def handle_oauth_connection(
     if integration_config.id == GMAIL_INTEGRATION_ID:
         log.info(f"Starting Gmail email processing for user {user_id}")
 
-        # Check if user has completed onboarding and update bio_status to processing
+        user_doc = None
         try:
             user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
-            if user_doc and user_doc.get("onboarding", {}).get("completed"):
-                current_bio_status = user_doc.get("onboarding", {}).get("bio_status")
+        except Exception as e:
+            log.error(f"Failed to load user_doc for {user_id}: {e}", exc_info=True)
 
-                # If bio was generated without Gmail, update status to processing
+        onboarding_completed = bool(user_doc and user_doc.get("onboarding", {}).get("completed"))
+
+        # If bio was generated without Gmail (post-onboarding reconnect),
+        # bump bio_status back to processing so the UI re-runs.
+        if onboarding_completed and user_doc:
+            try:
+                current_bio_status = user_doc.get("onboarding", {}).get("bio_status")
                 if current_bio_status in [BioStatus.NO_GMAIL, "no_gmail"]:
                     await users_collection.update_one(
                         {"_id": ObjectId(user_id)},
                         {
                             "$set": {
                                 "onboarding.bio_status": BioStatus.PROCESSING,
-                                "updated_at": datetime.now(timezone.utc),
+                                "updated_at": datetime.now(UTC),
                             }
                         },
                     )
@@ -324,8 +325,6 @@ async def handle_oauth_connection(
                         f"Updated bio_status to processing for user {user_id} "
                         f"(was {current_bio_status})"
                     )
-
-                    # Send WebSocket update to notify frontend
                     try:
                         if isinstance(user_id, str) and user_id:
                             await websocket_manager.broadcast_to_user(
@@ -335,24 +334,28 @@ async def handle_oauth_connection(
                                     "data": {"bio_status": BioStatus.PROCESSING},
                                 },
                             )
-                        else:
-                            log.warning(
-                                f"Cannot broadcast WebSocket update: user_id is not a valid string ({user_id})"
-                            )
                     except Exception as ws_error:
                         log.warning(f"Failed to send WebSocket update: {ws_error}")
-        except Exception as e:
-            log.error(
-                f"Error updating bio_status for user {user_id}: {e}", exc_info=True
-            )
+            except Exception as e:
+                log.error(
+                    f"Error updating bio_status for user {user_id}: {e}",
+                    exc_info=True,
+                )
 
-        # Queue Gmail processing via ARQ
-        try:
-            pool = await RedisPoolManager.get_pool()
-            await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
-            log.info(f"Queued Gmail processing job for user {user_id}")
-        except Exception as e:
-            log.error(f"Failed to queue Gmail processing: {e}", exc_info=True)
+        # During onboarding the pipeline enqueues this job itself; queuing here
+        # too would contend for Composio Gmail capacity with the visible scan.
+        if onboarding_completed:
+            try:
+                pool = await RedisPoolManager.get_pool()
+                await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
+                log.info(f"Queued Gmail processing job for user {user_id}")
+            except Exception as e:
+                log.error(f"Failed to queue Gmail processing: {e}", exc_info=True)
+        else:
+            log.info(
+                "Deferring Gmail->Mem0 ingestion until onboarding pipeline "
+                f"completes for user {user_id}"
+            )
 
     # Invalidate OAuth status cache for this user
     try:
@@ -362,14 +365,9 @@ async def handle_oauth_connection(
     except Exception as e:
         log.warning(f"Failed to invalidate OAuth status cache: {e}")
 
-    # Invalidate tool namespace cache so retrieval uses fresh integration status
-    try:
-        await delete_cache(f"tool_namespaces:{user_id}")
-        log.info(f"Tool namespaces cache invalidated for user {user_id}")
-    except Exception as e:
-        log.warning(f"Failed to invalidate tool namespaces cache: {e}")
-
     # Update user_integrations status in MongoDB
+    # The @CacheInvalidator on update_user_integration_status invalidates
+    # `tools:user:{user_id}:*` and `tool_namespaces:{user_id}` automatically.
     try:
         await update_user_integration_status(
             user_id, integration_config.id, INTEGRATION_STATUS_CONNECTED

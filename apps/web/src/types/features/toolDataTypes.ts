@@ -1,53 +1,10 @@
 // Tool data types for various AI-powered features
 
-/**
- * Progress data for tool execution updates from backend.
- */
-export interface ToolProgressData {
-  /** Display message for the tool execution */
-  message: string;
-  /** Raw tool name identifier */
-  tool_name: string;
-  /** Category for icon display */
-  tool_category?: string;
-  /** Whether to show category text in UI (default: true) */
-  show_category?: boolean;
-  /** Unique ID for this tool call */
-  tool_call_id?: string;
-  /** Tool input arguments */
-  inputs?: Record<string, unknown>;
-  /** Tool output result */
-  output?: string;
-  /** Icon URL for custom integrations */
-  icon_url?: string;
-  /** Friendly name of the integration (e.g., 'Researcher') */
-  integration_name?: string;
-}
-
-/**
- * Tool output data from backend when tool execution completes.
- */
-export interface ToolOutputData {
-  /** The tool_call_id this output corresponds to */
-  tool_call_id: string;
-  /** The output from the tool execution */
-  output: string;
-}
-
 // Define image data structure for image generation
 export type ImageData = {
   url: string;
   prompt?: string;
   improved_prompt?: string | null;
-};
-
-// Define document data structure for document processing
-export type DocumentData = {
-  filename: string;
-  url: string;
-  is_plain_text: boolean;
-  title: string;
-  metadata: Record<string, unknown>;
 };
 
 // Define memory data structure for memory operations
@@ -178,8 +135,8 @@ export type WorkflowDraftData = {
   suggested_description: string;
   /** Detailed prompt/instructions for the workflow execution */
   prompt: string;
-  /** Trigger type: manual, scheduled, or integration */
-  trigger_type: "manual" | "scheduled" | "integration";
+  /** Trigger type: manual, schedule, or integration */
+  trigger_type: "manual" | "schedule" | "integration";
   /** Trigger slug for integration triggers (e.g., GMAIL_NEW_GMAIL_MESSAGE) */
   trigger_slug?: string | null;
   /** Cron expression for scheduled triggers */
@@ -196,7 +153,7 @@ export type WorkflowCreatedData = {
   description: string;
   /** Trigger configuration */
   trigger_config: {
-    type: "manual" | "scheduled" | "integration";
+    type: "manual" | "schedule" | "integration";
     cron_expression?: string | null;
     trigger_name?: string | null;
     enabled?: boolean;
@@ -206,8 +163,19 @@ export type WorkflowCreatedData = {
 };
 
 export interface ArtifactData {
+  /** Conversation id the artifact belongs to (used to build fetch URLs). */
+  session_id: string;
+  /** "upsert"/"upload" add or refresh a card; "remove" drops it. */
+  event?: "upsert" | "remove" | "upload";
+  /** Path relative to the session's artifacts/ (or the upload name). */
   path: string;
-  filename: string;
-  content_type: string;
   size_bytes: number;
+  mtime?: number;
+  content_type?: string | null;
+  /**
+   * UTF-8 file contents inlined when small + textual. When present, the
+   * preview renders instantly without a follow-up fetch and survives reload
+   * via the persisted conversation. Absent for large or binary files.
+   */
+  body?: string;
 }

@@ -2,287 +2,61 @@
 Service functions for handling contact-related operations.
 """
 
-from typing import Any, Dict, List
-
-from shared.py.wide_events import log
-
-
-def _process_message_batch(
-    service, message_ids: List[str], filter_query: str | None = None
-) -> Dict[str, Dict[str, str]]:
-    """
-    Process a batch of message IDs and extract contacts using Gmail batch API.
-
-    Args:
-        service: Gmail service instance
-        message_ids: List of message IDs to process
-        filter_query: Optional query to filter contacts
-
-    Returns:
-        Dictionary of contacts (email -> contact info)
-    """
-    contact_dict = {}
-
-    try:
-        # Use Gmail batch request for better performance
-        batch = service.new_batch_http_request()
-
-        def add_message_callback(request_id, response, exception):
-            if exception:
-                log.warning(
-                    f"CONTACT_SERVICE: Error in batch request for message {request_id}: {exception}"
-                )
-                return
-
-            try:
-                # Extract headers
-                headers = {
-                    h["name"]: h["value"]
-                    for h in response.get("payload", {}).get("headers", [])
-                }
-
-                # Extract contacts from headers
-                for field in ["From", "To", "Cc", "Reply-To"]:
-                    if field in headers and headers[field]:
-                        addresses = headers[field].split(",")
-
-                        for address in addresses:
-                            address = address.strip()
-                            if not address:
-                                continue
-
-                            name = ""
-                            email = address
-
-                            # Handle format: "Name <email@example.com>"
-                            if "<" in address and ">" in address:
-                                name = address.split("<")[0].strip()
-                                email = address.split("<")[1].split(">")[0].strip()
-
-                            # Only add if it's a valid email address
-                            if "@" in email and "." in email:
-                                # Apply filter if provided
-                                if filter_query:
-                                    query_lower = filter_query.lower()
-                                    name_lower = name.lower() if name else ""
-                                    email_lower = email.lower()
-
-                                    if (
-                                        query_lower in name_lower
-                                        or query_lower in email_lower
-                                        or name_lower.startswith(query_lower)
-                                        or email_lower.startswith(query_lower)
-                                    ):
-                                        contact_dict[email] = {
-                                            "name": name,
-                                            "email": email,
-                                        }
-                                else:
-                                    contact_dict[email] = {"name": name, "email": email}
-
-            except Exception as e:
-                log.warning(f"CONTACT_SERVICE: Error processing message in batch: {e}")
-
-        # Add all messages to the batch request
-        for msg_id in message_ids:
-            batch.add(
-                service.users().messages().get(userId="me", id=msg_id, format="full"),
-                callback=add_message_callback,
-                request_id=msg_id,
-            )
-
-        # Execute the batch request
-        batch.execute()
-
-    except Exception as e:
-        log.error(f"CONTACT_SERVICE: Error in batch processing: {e}")
-        # Fallback to individual requests if batch fails
-        return _process_messages_individually(service, message_ids, filter_query)
-
-    return contact_dict
+from email.utils import getaddresses
+from typing import Any
 
 
-def _process_messages_individually(
-    service, message_ids: List[str], filter_query: str | None = None
-) -> Dict[str, Dict[str, str]]:
-    """
-    Fallback method to process messages individually if batch processing fails.
-    """
-    contact_dict = {}
-
-    for msg_id in message_ids[:20]:  # Limit to 20 messages for fallback
-        try:
-            msg = (
-                service.users()
-                .messages()
-                .get(userId="me", id=msg_id, format="full")
-                .execute()
-            )
-            headers = {
-                h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])
-            }
-
-            for field in ["From", "To", "Cc", "Reply-To"]:
-                if field in headers and headers[field]:
-                    addresses = headers[field].split(",")
-
-                    for address in addresses:
-                        address = address.strip()
-                        if not address:
-                            continue
-
-                        name = ""
-                        email = address
-
-                        if "<" in address and ">" in address:
-                            name = address.split("<")[0].strip()
-                            email = address.split("<")[1].split(">")[0].strip()
-
-                        if "@" in email and "." in email:
-                            if filter_query:
-                                query_lower = filter_query.lower()
-                                name_lower = name.lower() if name else ""
-                                email_lower = email.lower()
-
-                                if (
-                                    query_lower in name_lower
-                                    or query_lower in email_lower
-                                    or name_lower.startswith(query_lower)
-                                    or email_lower.startswith(query_lower)
-                                ):
-                                    contact_dict[email] = {"name": name, "email": email}
-                            else:
-                                contact_dict[email] = {"name": name, "email": email}
-
-        except Exception as e:
-            log.warning(f"CONTACT_SERVICE: Error processing message {msg_id}: {e}")
-            continue
-
-    return contact_dict
-
-
-def extract_contacts_from_messages_batch(
-    service,
-    message_ids: List[str],
+def build_contact_index(
+    messages: list[dict[str, Any]],
     filter_query: str | None = None,
-    batch_size: int = 50,
-) -> List[Dict[str, str]]:
-    """
-    Extract contacts from the given message IDs using batch processing for better performance.
+) -> dict[str, Any]:
+    """Extract unique contacts from already-fetched Gmail message payloads.
+
+    Used by the Composio-proxy variant of GET_CONTACT_LIST: instead of relying
+    on `googleapiclient` to fetch messages, callers fetch via the proxy and
+    pass the resulting message dicts (with `payload.headers`) into this helper.
 
     Args:
-        service: The Gmail service instance
-        message_ids: List of message IDs to extract contacts from
-        filter_query: Optional query to filter contacts by name/email
-        batch_size: Number of messages to process in each batch
+        messages: Gmail message payload dicts as returned by
+            `users.messages.get` with format=metadata or full
+        filter_query: Optional substring to filter contacts by name or email.
+            Gmail's `q=` matches anywhere in a message (subject, body, etc.),
+            so a search for "john" can return threads with hundreds of
+            unrelated participants. Without this filter the caller would see
+            every From/To/Cc/Reply-To address on every matched thread.
 
     Returns:
-        List of contacts with name and email
+        Dict with `success`, `contacts` (list of {name, email}), and `count`
     """
-    log.info(
-        f"CONTACT_SERVICE: Starting to extract contacts from {len(message_ids)} messages using batch processing"
-    )
+    contact_dict: dict[str, dict[str, str]] = {}
+    query_lower = filter_query.lower() if filter_query else None
 
-    # Limit the number of messages to process for performance
-    max_messages = min(len(message_ids), 100)  # Process max 100 messages
-    message_ids = message_ids[:max_messages]
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        headers = {
+            h["name"]: h["value"]
+            for h in message.get("payload", {}).get("headers", [])
+            if isinstance(h, dict) and "name" in h and "value" in h
+        }
 
-    contact_dict = {}  # To ensure uniqueness
+        # email.utils.getaddresses correctly handles names with embedded
+        # commas (e.g., '"Doe, John" <john@example.com>') that a naive
+        # split-on-comma would mangle.
+        raw_values = [
+            headers[field] for field in ("From", "To", "Cc", "Reply-To") if headers.get(field)
+        ]
+        for name, email in getaddresses(raw_values):
+            if "@" not in email or "." not in email:
+                continue
+            if query_lower and query_lower not in name.lower() and query_lower not in email.lower():
+                continue
+            if email not in contact_dict or (name and not contact_dict[email]["name"]):
+                contact_dict[email] = {"name": name, "email": email}
 
-    # Process messages in batches for better performance
-    for batch_start in range(0, len(message_ids), batch_size):
-        batch_end = min(batch_start + batch_size, len(message_ids))
-        batch_ids = message_ids[batch_start:batch_end]
-
-        log.debug(
-            f"CONTACT_SERVICE: Processing batch {batch_start // batch_size + 1}: {len(batch_ids)} messages"
-        )
-
-        # Use batch request to fetch multiple messages at once
-        batch_contacts = _process_message_batch(service, batch_ids, filter_query)
-
-        # Merge batch results
-        contact_dict.update(batch_contacts)
-
-    # Convert dict to list
-    contacts = list(contact_dict.values())
-
-    # Sort contacts alphabetically by name, then email
-    contacts.sort(key=lambda x: x["name"] if x["name"] else x["email"])
-
-    log.info(
-        f"CONTACT_SERVICE: Extracted {len(contacts)} unique contacts from {len(message_ids)} messages"
-    )
-    log.debug(f"CONTACT_SERVICE: Contacts found: {contacts}")
-
-    return contacts
-
-
-def get_gmail_contacts(
-    service: Any,
-    query: str,
-    max_results: int = 50,
-) -> Dict[str, Any]:
-    """
-    Search for contacts in Gmail using a query.
-
-    Args:
-        service: The Gmail service instance
-        query: Search query to filter contacts (e.g., email address, name, or any Gmail search query)
-        max_results: Maximum number of messages to analyze for contact extraction
-
-    Returns:
-        Dictionary with contacts information
-    """
-    try:
-        log.info(
-            f"CONTACT_SERVICE: Starting contact search with query: '{query}', max_results: {max_results}"
-        )
-
-        search_query = query
-        log.debug(f"CONTACT_SERVICE: Using search query: '{search_query}'")
-
-        search_results = (
-            service.users()
-            .messages()
-            .list(userId="me", q=search_query, maxResults=max_results)
-            .execute()
-        )
-
-        message_ids = [msg.get("id") for msg in search_results.get("messages", [])]
-        log.set(contacts={"query": query, "messages_found": len(message_ids)})
-        log.info(f"CONTACT_SERVICE: Search returned {len(message_ids)} messages")
-
-        # If messages found, extract contacts using optimized batch processing
-        if message_ids:
-            log.info(
-                f"CONTACT_SERVICE: Extracting contacts from {len(message_ids)} message IDs using batch processing"
-            )
-            contacts = extract_contacts_from_messages_batch(
-                service, message_ids, filter_query=query
-            )
-
-            result = {
-                "success": True,
-                "contacts": contacts,
-                "count": len(contacts),
-            }
-            log.set(contacts={"query": query, "contacts_extracted": len(contacts)})
-            log.info(
-                f"CONTACT_SERVICE: Returning {len(contacts)} contacts for query '{query}'"
-            )
-            return result
-        else:
-            log.info(f"CONTACT_SERVICE: No messages found for query '{query}'")
-            return {
-                "success": True,
-                "contacts": [],
-                "count": 0,
-                "message": f"No messages found matching query: {query}",
-            }
-
-    except Exception as e:
-        error_msg = f"CONTACT_SERVICE: Error getting Gmail contacts for query '{query}': {str(e)}"
-        log.error(error_msg)
-        log.exception("CONTACT_SERVICE: Full traceback:")
-        return {"success": False, "error": error_msg, "contacts": []}
+    contacts = sorted(contact_dict.values(), key=lambda x: x["name"] or x["email"])
+    return {
+        "success": True,
+        "contacts": contacts,
+        "count": len(contacts),
+    }

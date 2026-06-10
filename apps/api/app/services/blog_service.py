@@ -2,15 +2,13 @@
 Blog service module for handling blog-related operations with optimization.
 """
 
-from typing import List
-
 from fastapi import HTTPException, status
 
-from shared.py.wide_events import log
 from app.db.mongodb.collections import blog_collection
-from app.decorators.caching import Cacheable, CacheInvalidator
 from app.db.utils import serialize_document
-from app.models.blog_models import BlogPost, BlogPostCreate, BlogPostUpdate
+from app.decorators.caching import Cacheable
+from app.models.blog_models import BlogPost
+from shared.py.wide_events import log
 
 
 class BlogService:
@@ -20,11 +18,11 @@ class BlogService:
     @Cacheable(
         key_pattern="blogs:all:{page}:{limit}:{include_content}",
         ttl=3600,  # 1 hour cache
-        model=List[BlogPost],  # Type-safe list caching
+        model=list[BlogPost],  # Type-safe list caching
     )
     async def get_all_blogs(
         page: int = 1, limit: int = 20, include_content: bool = True
-    ) -> List[BlogPost]:
+    ) -> list[BlogPost]:
         """
         Get all blog posts with pagination and populated author details.
 
@@ -185,143 +183,18 @@ class BlogService:
 
         if not blogs:
             log.warning(f"Blog not found: {slug}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
 
         blog = blogs[0]
 
         # Handle fallback for missing authors
         if not blog.get("author_details"):
             blog["author_details"] = [
-                {"name": str(author_id), "role": "Author"}
-                for author_id in blog.get("authors", [])
+                {"name": str(author_id), "role": "Author"} for author_id in blog.get("authors", [])
             ]
 
         log.info(f"Retrieved blog: {slug}")
         return BlogPost(**serialize_document(blog))
-
-    @staticmethod
-    @CacheInvalidator(
-        key_patterns=[
-            "blogs:all:*",
-        ]
-    )
-    async def create_blog(blog_data: BlogPostCreate) -> BlogPost:
-        """
-        Create a new blog post.
-
-        Args:
-            blog_data: Blog post creation data
-
-        Returns:
-            Created blog post with author details
-
-        Raises:
-            HTTPException: If slug already exists
-        """
-        log.info(f"Creating blog with slug: {blog_data.slug}")
-
-        # Check if slug already exists
-        existing = await blog_collection.find_one({"slug": blog_data.slug})
-        if existing:
-            log.warning(f"Blog slug already exists: {blog_data.slug}")
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Blog post with this slug already exists",
-            )
-
-        # Insert blog post
-        blog_dict = blog_data.model_dump()
-        result = await blog_collection.insert_one(blog_dict)
-
-        if not result.inserted_id:
-            log.error("Failed to create blog post")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create blog post",
-            )
-
-        log.set(blog={"slug": blog_data.slug, "inserted_id": str(result.inserted_id)})
-        log.info(f"Blog created with ID: {result.inserted_id}")
-
-        # Return the created blog with populated authors
-        return await BlogService.get_blog_by_slug(blog_data.slug)
-
-    @staticmethod
-    @CacheInvalidator(
-        key_patterns=[
-            "blogs:all:*",
-            "blog:{slug}",
-        ]
-    )
-    async def update_blog(slug: str, update_data: BlogPostUpdate) -> BlogPost:
-        """
-        Update a blog post.
-
-        Args:
-            slug: Blog post slug
-            update_data: Update data
-
-        Returns:
-            Updated blog post with author details
-
-        Raises:
-            HTTPException: If blog post not found
-        """
-        log.info(f"Updating blog: {slug}")
-
-        # Build update dictionary (exclude None values)
-        update_dict = {
-            k: v for k, v in update_data.model_dump().items() if v is not None
-        }
-
-        if not update_dict:
-            log.info("No fields to update")
-            return await BlogService.get_blog_by_slug(slug)
-
-        # Update blog post
-        result = await blog_collection.update_one({"slug": slug}, {"$set": update_dict})
-
-        if result.matched_count == 0:
-            log.warning(f"Blog not found for update: {slug}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found"
-            )
-
-        log.info(f"Blog updated: {slug}")
-
-        # Return the updated blog with populated authors
-        return await BlogService.get_blog_by_slug(slug)
-
-    @staticmethod
-    @CacheInvalidator(
-        key_patterns=[
-            "blogs:all:*",
-            "blog:{slug}",
-        ]
-    )
-    async def delete_blog(slug: str) -> None:
-        """
-        Delete a blog post.
-
-        Args:
-            slug: Blog post slug
-
-        Raises:
-            HTTPException: If blog post not found
-        """
-        log.info(f"Deleting blog: {slug}")
-
-        result = await blog_collection.delete_one({"slug": slug})
-
-        if result.deleted_count == 0:
-            log.warning(f"Blog not found for deletion: {slug}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found"
-            )
-
-        log.info(f"Blog deleted: {slug}")
 
     @staticmethod
     async def get_blog_count() -> int:
@@ -331,7 +204,7 @@ class BlogService:
     @staticmethod
     async def search_blogs(
         query: str, page: int = 1, limit: int = 20, include_content: bool = True
-    ) -> List[BlogPost]:
+    ) -> list[BlogPost]:
         """
         Search blogs by title, content, or tags.
 

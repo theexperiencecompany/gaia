@@ -1,17 +1,19 @@
-from typing import Optional
-
-import html2text
-import httpx
 from bs4 import BeautifulSoup
 from firecrawl import FirecrawlApp
+import html2text
+import httpx
 from langgraph.config import get_stream_writer
 from tavily import TavilyClient
 
-from shared.py.wide_events import log
 from app.config.settings import settings
-from app.constants.cache import ONE_HOUR_TTL
+from app.constants.cache import (
+    ONE_HOUR_TTL,
+    WEB_SEARCH_CACHE_TTL,
+    WEBPAGE_FETCH_CACHE_TTL,
+)
 from app.decorators.caching import Cacheable
 from app.utils.exceptions import FetchError
+from shared.py.wide_events import log
 
 _HTTPX_HEADERS = {
     "User-Agent": (
@@ -59,20 +61,9 @@ async def fetch_tavily_search(
     query: str,
     count: int,
     search_topic: str = "general",
-    extra_params: Optional[dict] = None,
+    extra_params: dict | None = None,
 ) -> dict:
-    """
-    Call Tavily API with Redis caching.
-
-    Args:
-        query: The search query.
-        count: Number of results to return.
-        search_topic: Type of search ("general", "news", "finance").
-        extra_params: Additional search parameters.
-
-    Returns:
-        The search results as a dictionary, or an empty dict on error.
-    """
+    """Call the Tavily search API (Redis-cached). Returns {} on error."""
     log.set(
         operation="fetch_tavily_search",
         search_query=query,
@@ -105,18 +96,13 @@ async def fetch_tavily_search(
         return {}
 
 
-@Cacheable(key_pattern="search:{query}:{count}", ttl=ONE_HOUR_TTL, namespace="search")
+@Cacheable(
+    key_pattern="search:{query}:{count}",
+    ttl=WEB_SEARCH_CACHE_TTL,
+    namespace="search",
+)
 async def perform_search(query: str, count: int) -> dict:
-    """
-    Perform Tavily search and return comprehensive results.
-
-    Args:
-        query (str): The search query string.
-        count (int): Number of results to fetch per category.
-
-    Returns:
-        dict: Formatted search results with web, news, images, and videos data.
-    """
+    """Perform a Tavily search, returning web/news/images/answer results."""
     try:
         # Perform general search with all features enabled
         general_data = await fetch_tavily_search(query, count, "general")
@@ -149,19 +135,12 @@ async def perform_search(query: str, count: int) -> dict:
 
 
 @Cacheable(
-    key_pattern="firecrawl:{url}:{use_stealth}", ttl=ONE_HOUR_TTL, namespace="web"
+    key_pattern="firecrawl:{url}:{use_stealth}",
+    ttl=WEBPAGE_FETCH_CACHE_TTL,
+    namespace="web",
 )
 async def fetch_with_firecrawl(url: str, use_stealth: bool = False) -> str:
-    """
-    Fetch webpage content using Firecrawl with stealth mode support.
-
-    Args:
-        url: The URL to scrape
-        use_stealth: Whether to use stealth proxy mode
-
-    Returns:
-        The scraped content in markdown format
-    """
+    """Scrape a webpage to markdown via Firecrawl, retrying with stealth mode on block."""
     try:
         writer = get_stream_writer()
         writer({"progress": f"Fetching URL with Firecrawl: {url[:50]}..."})
@@ -176,8 +155,7 @@ async def fetch_with_firecrawl(url: str, use_stealth: bool = False) -> str:
             if result and hasattr(result, "markdown") and result.markdown:
                 writer({"progress": "Successfully fetched URL with Firecrawl"})
                 return result.markdown
-            else:
-                raise FetchError("No markdown content returned from Firecrawl", url=url)
+            raise FetchError("No markdown content returned from Firecrawl", url=url)
 
         except Exception as e:
             # If normal mode fails and we haven't tried stealth yet, retry with stealth
@@ -187,31 +165,24 @@ async def fetch_with_firecrawl(url: str, use_stealth: bool = False) -> str:
                     status in error_msg
                     for status in ["401", "403", "500", "blocked", "bot", "timeout"]
                 ):
-                    writer(
-                        {
-                            "progress": "Normal mode failed, retrying with stealth mode..."
-                        }
-                    )
+                    writer({"progress": "Normal mode failed, retrying with stealth mode..."})
 
                     # Retry with stealth mode - use proxy parameter
                     result = app.scrape(url, formats=["markdown"], proxy="stealth")
 
                     if result and hasattr(result, "markdown") and result.markdown:
-                        writer(
-                            {"progress": "Successfully fetched URL with stealth mode"}
-                        )
+                        writer({"progress": "Successfully fetched URL with stealth mode"})
                         return result.markdown
-                    else:
-                        raise FetchError(
-                            "No markdown content returned from Firecrawl stealth mode",
-                            url=url,
-                        )
+                    raise FetchError(
+                        "No markdown content returned from Firecrawl stealth mode",
+                        url=url,
+                    )
             raise e
 
     except ValueError as ve:
-        raise FetchError(f"Configuration error: {str(ve)}", url=url) from ve
+        raise FetchError(f"Configuration error: {ve!s}", url=url) from ve
     except Exception as e:
-        raise FetchError(f"Firecrawl error: {str(e)}", url=url) from e
+        raise FetchError(f"Firecrawl error: {e!s}", url=url) from e
 
 
 @Cacheable(key_pattern="httpx:{url}", ttl=ONE_HOUR_TTL, namespace="web")
@@ -263,7 +234,7 @@ async def fetch_with_httpx(url: str) -> str:
     except httpx.HTTPStatusError as e:
         raise FetchError(f"HTTP {e.response.status_code}", url=url) from e
     except Exception as e:
-        raise FetchError(f"httpx error: {str(e)}", url=url) from e
+        raise FetchError(f"httpx error: {e!s}", url=url) from e
 
 
 @Cacheable(key_pattern="ddg:{query}:{count}", ttl=ONE_HOUR_TTL, namespace="search")
@@ -282,6 +253,15 @@ async def search_with_duckduckgo(query: str, count: int = 5) -> dict:
                 data={"q": query},
             )
             response.raise_for_status()
+
+        # DDG Lite serves an anti-bot CAPTCHA (HTTP 202) that raise_for_status()
+        # treats as success; without this guard it parses as a silent "0 results".
+        if response.status_code == 202 or "bots use duckduckgo" in response.text[:2000].lower():
+            log.warning(
+                f"DuckDuckGo served a bot-challenge page "
+                f"(status {response.status_code}) for query: {query[:60]}"
+            )
+            return {"results": []}
 
         soup = BeautifulSoup(response.text, "lxml")
         results = []
@@ -310,3 +290,20 @@ async def search_with_duckduckgo(query: str, count: int = 5) -> dict:
     except Exception as e:
         log.error(f"DuckDuckGo search failed: {e}")
         return {"results": []}
+
+
+async def search_for_research(query: str, count: int = 5) -> dict:
+    """Search for the deep-research pipeline: Tavily primary, DuckDuckGo fallback.
+
+    Returns ``{"results": [...]}`` in the shared url/title/content/score shape.
+    """
+    try:
+        tavily_result = await fetch_tavily_search(query, count, "general")
+        results = tavily_result.get("results") if isinstance(tavily_result, dict) else None
+        if results:
+            return {"results": results}
+        log.warning(f"Tavily returned no results, falling back to DuckDuckGo for: {query[:60]}")
+    except Exception as e:
+        log.warning(f"Tavily research search failed, falling back to DuckDuckGo: {e}")
+
+    return await search_with_duckduckgo(query, count)

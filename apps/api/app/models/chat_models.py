@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, List, Optional, Union
+from typing import Union
 
 from pydantic import BaseModel
 from typing_extensions import TypedDict
@@ -10,27 +10,15 @@ from app.models.message_models import FileData, ReplyToMessageData, SelectedWork
 class ImageData(BaseModel):
     url: str
     prompt: str
-    improved_prompt: Optional[str] = None
-
-
-class MCPAppData(BaseModel):
-    tool_call_id: str
-    tool_name: str
-    server_url: str
-    resource_uri: str
-    html_content: str
-    csp: Optional[dict[str, Any]] = None
-    permissions: list[str] = []
-    tool_result: Optional[Any] = None
-    tool_arguments: dict[str, Any] = {}
+    improved_prompt: str | None = None
 
 
 class ToolDataEntry(TypedDict):
     """Unified structure for tool execution data."""
 
     tool_name: str
-    data: Union[dict, List, str, int, float, bool]
-    timestamp: Optional[str]
+    data: Union[dict, list, str, int, float, bool]
+    timestamp: str | None
 
 
 tool_fields = [
@@ -52,7 +40,6 @@ tool_fields = [
     "notification_data",
     "memory_data",
     "todo_data",
-    "document_data",
     "goal_data",
     "code_data",
     "google_docs_data",
@@ -71,23 +58,23 @@ tool_fields = [
 class MessageModel(BaseModel):
     type: str
     response: str
-    date: Optional[str] = None
-    image_data: Optional[ImageData] = None
-    disclaimer: Optional[str] = None
-    subtype: Optional[str] = None
-    file: Optional[bytes] = None
-    filename: Optional[str] = None
-    filetype: Optional[str] = None
-    message_id: Optional[str] = None
-    fileIds: Optional[List[str]] = []
-    fileData: Optional[List[FileData]] = []
-    selectedTool: Optional[str] = None
-    toolCategory: Optional[str] = None
-    selectedWorkflow: Optional[SelectedWorkflowData] = None
-    tool_data: Optional[List[ToolDataEntry]] = None
-    follow_up_actions: Optional[List[str]] = None
-    metadata: Optional[dict] = None
-    replyToMessage: Optional[ReplyToMessageData] = None
+    date: str | None = None
+    image_data: ImageData | None = None
+    disclaimer: str | None = None
+    subtype: str | None = None
+    file: bytes | None = None
+    filename: str | None = None
+    filetype: str | None = None
+    message_id: str | None = None
+    fileIds: list[str] | None = []
+    fileData: list[FileData] | None = []
+    selectedTool: str | None = None
+    toolCategory: str | None = None
+    selectedWorkflow: SelectedWorkflowData | None = None
+    tool_data: list[ToolDataEntry] | None = None
+    follow_up_actions: list[str] | None = None
+    metadata: dict | None = None
+    replyToMessage: ReplyToMessageData | None = None
 
 
 class SystemPurpose(str, Enum):
@@ -105,20 +92,80 @@ class ConversationSource(str, Enum):
     SLACK = "slack"
     WHATSAPP = "whatsapp"
     WORKFLOW_SYSTEM = "workflow_system"
+    BACKGROUND = "background"
+
+    @classmethod
+    def coerce(cls, value: "ConversationSource | str | None") -> "ConversationSource | None":
+        """Parse a raw source value (e.g. a stored string) into the enum.
+
+        Returns None for blank or unrecognised values so callers can compare on
+        enum members instead of raw strings.
+        """
+        if value is None or isinstance(value, cls):
+            return value
+        try:
+            return cls(value)
+        except ValueError:
+            return None
+
+
+class SourceCategory(str, Enum):
+    """Generalized origin of a graph invocation.
+
+    Coarser than ``ConversationSource``: every specific channel rolls up to one
+    of these so traces and tools can branch on "where did this run come from"
+    without enumerating every platform.
+    """
+
+    BG = "bg"  # autonomous background work (workflows, scheduled todos, sweeps)
+    UI = "ui"  # first-party clients (web, mobile, desktop)
+    BOT = "bot"  # messaging-platform bots (whatsapp, telegram, discord, slack)
+
+    @classmethod
+    def from_source(cls, source: "ConversationSource | str | None") -> "SourceCategory":
+        """Map a specific ``ConversationSource`` to its category.
+
+        Unknown / unset sources fall back to ``BG`` — the only callers that
+        leave the source blank are the silent background paths.
+        """
+        channel = ConversationSource.coerce(source)
+        if channel in _UI_SOURCES:
+            return cls.UI
+        if channel in BOT_CONVERSATION_SOURCES:
+            return cls.BOT
+        return cls.BG
+
+
+# Specific channels that belong to each generalized category. Single source of
+# truth for "which conversation sources are messaging-platform bots" — reused by
+# delivery routing and the web conversation-list filter. Members are enums so all
+# comparisons happen on ConversationSource, never raw strings.
+_UI_SOURCES: frozenset[ConversationSource] = frozenset(
+    {ConversationSource.WEB, ConversationSource.MOBILE}
+)
+BOT_CONVERSATION_SOURCES: frozenset[ConversationSource] = frozenset(
+    {
+        ConversationSource.WHATSAPP,
+        ConversationSource.TELEGRAM,
+        ConversationSource.DISCORD,
+        ConversationSource.SLACK,
+    }
+)
 
 
 class ConversationModel(BaseModel):
     conversation_id: str
     description: str = "New Chat"
-    is_system_generated: Optional[bool] = False
-    system_purpose: Optional[SystemPurpose] = None
-    is_unread: Optional[bool] = False
-    source: Optional[ConversationSource] = None
+    is_system_generated: bool | None = False
+    system_purpose: SystemPurpose | None = None
+    is_unread: bool | None = False
+    source: ConversationSource | None = None
+    is_onboarding_demo: bool = False
 
 
 class UpdateMessagesRequest(BaseModel):
     conversation_id: str
-    messages: List[MessageModel]
+    messages: list[MessageModel]
 
 
 class StarredUpdate(BaseModel):
@@ -135,8 +182,8 @@ class UpdateDescriptionRequest(BaseModel):
 
 class ConversationSyncItem(BaseModel):
     conversation_id: str
-    last_updated: Optional[str] = None
+    last_updated: str | None = None
 
 
 class BatchSyncRequest(BaseModel):
-    conversations: List[ConversationSyncItem]
+    conversations: list[ConversationSyncItem]
