@@ -158,7 +158,10 @@ void main() {
   float halo = haloFall * haloNoise * (1.0 - sphere);
   vec3 haloCol = mix(BRAND, ICE, 0.5 + 0.5 * sin(t * 0.23)) * halo;
   col += haloCol * (0.18 + 0.30 * u_intensity + 0.35 * u_pulse * (0.6 + 0.4 * sin(t * 7.0)));
-  alpha = max(alpha, halo * (0.30 + 0.30 * u_intensity));
+  // Sum (not max) the coverages: across the rim the sphere mask fades out
+  // while the halo is still translucent, and taking the max leaves an
+  // alpha dip there that shows through as a dark outline ring.
+  alpha = clamp(alpha + halo * (0.30 + 0.30 * u_intensity), 0.0, 1.0);
 
   // Soft tone mapping: hot spots roll off toward white instead of
   // clipping to flat saturated cyan, preserving hue variation.
