@@ -433,12 +433,28 @@ export default function ChatRenderer({
               // The orb replaces the wave spinner in the popup; the
               // loading text and tool info render exactly as on web.
               compact ? (
-                // Larger orb; negative right margin tucks the text in
+                // Slow continuous rotation + breathing on top of the
+                // shader so the loading orb reads as clearly alive even
+                // at this small size. Negative margins tuck the text in
                 // close (the canvas is mostly transparent glow padding).
-                <GaiaOrbLazy
-                  state="thinking"
-                  className="-my-3 -ml-2.5 -mr-2.5 size-14 shrink-0"
-                />
+                <m.div
+                  className="-my-3 -ml-2.5 -mr-2.5 shrink-0"
+                  animate={{ rotate: 360, scale: [1, 1.08, 1] }}
+                  transition={{
+                    rotate: {
+                      duration: 6,
+                      ease: "linear",
+                      repeat: Number.POSITIVE_INFINITY,
+                    },
+                    scale: {
+                      duration: 1.6,
+                      ease: "easeInOut",
+                      repeat: Number.POSITIVE_INFINITY,
+                    },
+                  }}
+                >
+                  <GaiaOrbLazy state="thinking" className="size-14" />
+                </m.div>
               ) : undefined
             }
           />
