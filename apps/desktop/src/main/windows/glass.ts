@@ -44,7 +44,18 @@ export function applyLiquidGlass(
       // Pin the glass to its active appearance — macOS subdues the
       // material when the window isn't key, which makes the popup's two
       // islands (only one can be focused) render visibly different.
-      liquidGlass.unstable_setSubdued(viewId, 0);
+      // Re-assert on every focus change: AppKit re-applies the subdued
+      // state when key-window status flips.
+      const pinAppearance = () => {
+        try {
+          liquidGlass.unstable_setSubdued(viewId, 0);
+        } catch {
+          // Best effort — private API.
+        }
+      };
+      pinAppearance();
+      win.on("focus", pinAppearance);
+      win.on("blur", pinAppearance);
       console.log("[Main] Liquid glass applied");
     } catch (err) {
       console.error("[Main] Failed to apply liquid glass:", err);

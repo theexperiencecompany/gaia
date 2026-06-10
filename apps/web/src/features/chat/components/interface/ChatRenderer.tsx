@@ -52,7 +52,15 @@ function CompactReveal({ children }: { children: ReactNode }) {
   return (
     <m.div
       initial={{ opacity: 0, y: 12, filter: "blur(8px)" }}
-      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+      animate={{
+        opacity: 1,
+        y: 0,
+        filter: "blur(0px)",
+        // Clear the filter once done — a lingering filter rasterizes the
+        // subtree, which leaves white AA halos around clip-path tails on
+        // transparent (liquid glass) windows.
+        transitionEnd: { filter: "none" },
+      }}
       transition={{ duration: 0.35, ease: [0.19, 1, 0.22, 1] }}
     >
       {children}

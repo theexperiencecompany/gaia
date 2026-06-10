@@ -26,3 +26,17 @@
 .compact-chat .imessage-bubble {
   max-width: none;
 }
+
+/*
+ * content-visibility:auto implies contain:paint, which CLIPS the
+ * iMessage tails (they extend 7px past the bubble box). On web the
+ * avatar spacer keeps tails inside the container; with avatars hidden
+ * here, containment slices them off. The feed is short — skip-render
+ * optimizations buy nothing, so disable them.
+ */
+.compact-chat .group,
+.compact-chat .cv-auto,
+.compact-chat .cv-chat-message {
+  contain-intrinsic-size: none !important;
+  content-visibility: visible !important;
+}
