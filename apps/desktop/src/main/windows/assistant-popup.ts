@@ -83,6 +83,17 @@ function easeOutQuart(t: number): number {
  * default `setBounds` animation is short, linear-ish, and visibly out
  * of sync with the content's motion.
  */
+/**
+ * NSPanels with `resizable: false` reject programmatic setBounds height
+ * changes — flip resizable around the mutation. The windows are
+ * frameless, so users never get resize handles either way.
+ */
+function setBoundsForced(win: BrowserWindow, bounds: Electron.Rectangle): void {
+  win.setResizable(true);
+  win.setBounds(bounds);
+  win.setResizable(false);
+}
+
 function animateFeedBounds(target: Electron.Rectangle): void {
   if (!feedWindow || feedWindow.isDestroyed()) return;
   if (resizeTimer) {
@@ -92,7 +103,7 @@ function animateFeedBounds(target: Electron.Rectangle): void {
 
   const start = feedWindow.getBounds();
   if (start.height === target.height && start.y === target.y) {
-    feedWindow.setBounds(target);
+    setBoundsForced(feedWindow, target);
     return;
   }
 
@@ -105,7 +116,7 @@ function animateFeedBounds(target: Electron.Rectangle): void {
     }
     const t = Math.min(1, (Date.now() - t0) / RESIZE_DURATION_MS);
     const e = easeOutQuart(t);
-    feedWindow.setBounds({
+    setBoundsForced(feedWindow, {
       x: target.x,
       y: target.y,
       width: target.width,
@@ -297,7 +308,7 @@ function layoutFeed(animate: boolean): void {
   if (animate && feedWindow.isVisible()) {
     animateFeedBounds(target);
   } else {
-    feedWindow.setBounds(target);
+    setBoundsForced(feedWindow, target);
   }
 
   if (!feedWindow.isVisible() && !dismissing) {
