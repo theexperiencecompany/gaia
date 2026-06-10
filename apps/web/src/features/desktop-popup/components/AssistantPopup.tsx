@@ -78,8 +78,10 @@ export default function AssistantPopup() {
 
   if (activationCount === 0) return null;
 
+  // p-1.5 (6px) frame: the X button overhangs the pill by 4px and must
+  // never clip at the window edge.
   return (
-    <div className="h-screen overflow-hidden p-0.5 text-zinc-100">
+    <div className="h-screen overflow-hidden p-1.5 text-zinc-100">
       <m.div
         key={activationCount}
         initial={{ opacity: 0, scale: 0.97, y: -8 }}

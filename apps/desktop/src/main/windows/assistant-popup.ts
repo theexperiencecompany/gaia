@@ -21,8 +21,8 @@ import { loadAppRoute } from "./load-url";
 /** Width of both popup windows, in px. */
 const POPUP_WIDTH = 420;
 
-/** Composer pill window height, in px. */
-const COMPOSER_HEIGHT = 52;
+/** Composer pill window height, in px (48px input + 6px frame each side). */
+const COMPOSER_HEIGHT = 60;
 
 /** Gap between the composer pill and the conversation card, in px. */
 const ISLAND_GAP = 8;
@@ -34,7 +34,7 @@ const MAX_SCREEN_FRACTION = 0.8;
 const POPUP_MARGIN = 16;
 
 /** Corner radius of the composer pill (half its height — a capsule). */
-const COMPOSER_CORNER_RADIUS = 26;
+const COMPOSER_CORNER_RADIUS = 30;
 
 /** Corner radius of the conversation card. */
 const FEED_CORNER_RADIUS = 24;
@@ -206,16 +206,6 @@ function pinToAllSpaces(win: BrowserWindow): void {
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 }
 
-/** Dismiss when focus has left BOTH islands (clicking away, like Siri). */
-function handleBlur(): void {
-  setTimeout(() => {
-    if (!popupShown || dismissing) return;
-    const composerFocused = composerWindow?.isFocused() ?? false;
-    const feedFocused = feedWindow?.isFocused() ?? false;
-    if (!composerFocused && !feedFocused) dismissAssistantPopup();
-  }, 80);
-}
-
 /**
  * Create both popup windows (hidden) and start loading their routes.
  *
@@ -230,9 +220,10 @@ export function createAssistantPopup(serverReady: () => boolean): void {
   );
   feedWindow = new BrowserWindow(islandOptions(200, useLiquidGlass, true));
 
+  // No blur-dismiss: the popup stays until Esc, the X button, the
+  // shortcut toggle, or a renderer-initiated dismissal.
   for (const win of [composerWindow, feedWindow]) {
     pinToAllSpaces(win);
-    win.on("blur", handleBlur);
   }
   composerWindow.on("closed", () => {
     composerWindow = null;

@@ -48,24 +48,26 @@ export function applyLiquidGlass(
       // state when key-window status flips.
       const pinAppearance = () => {
         try {
+          // The real selector is set_subduedState: (verified by runtime
+          // introspection of NSGlassEffectView). AppKit flips it back on
+          // its own schedule whenever key/main status changes, so a
+          // one-shot (or even delayed) re-assert loses the race — hold
+          // it with a keep-alive while the window is visible instead.
           liquidGlass.unstable_setSubdued(viewId, 0);
+          liquidGlass.unstable_setScrim(viewId, 0);
         } catch {
           // Best effort — private API.
         }
       };
-      // AppKit applies the subdued appearance asynchronously after window
-      // ordering, so re-assert shortly after each transition too. "show"
-      // matters most: windows shown with showInactive() never get
-      // focus/blur events yet still render the inactive material.
-      const pinNowAndSoon = () => {
-        pinAppearance();
-        setTimeout(pinAppearance, 80);
-        setTimeout(pinAppearance, 300);
-      };
-      pinNowAndSoon();
-      win.on("show", pinNowAndSoon);
-      win.on("focus", pinNowAndSoon);
-      win.on("blur", pinNowAndSoon);
+      pinAppearance();
+      const keepAlive = setInterval(() => {
+        if (win.isDestroyed()) {
+          clearInterval(keepAlive);
+          return;
+        }
+        if (win.isVisible()) pinAppearance();
+      }, 250);
+      win.on("closed", () => clearInterval(keepAlive));
       console.log("[Main] Liquid glass applied");
     } catch (err) {
       console.error("[Main] Failed to apply liquid glass:", err);

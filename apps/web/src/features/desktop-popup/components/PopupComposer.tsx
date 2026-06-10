@@ -1,7 +1,11 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
+import { Cancel01Icon } from "@icons";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { useConversation } from "@/features/chat/hooks/useConversation";
+import { useElectron } from "@/hooks/useElectron";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import { useIsMainResponseStreaming } from "@/stores/loadingStore";
 import type { PopupAgentState } from "../hooks/usePopupVoice";
@@ -30,11 +34,20 @@ export default function PopupComposer({
   const inputRef = useRef<HTMLInputElement>(null);
   const sendMessage = useSendMessage();
   const isStreaming = useIsMainResponseStreaming();
+  const { dismissPopup } = useElectron();
+  const { convoMessages } = useConversation();
+  const messageCount = convoMessages?.length ?? 0;
   const hasContent = text.trim().length > 0 && !disabled;
 
   useEffect(() => {
     if (active && !disabled) inputRef.current?.focus();
   }, [active, disabled]);
+
+  // Refocus on every new message so the user can keep typing without
+  // reaching for the mouse.
+  useEffect(() => {
+    if (messageCount > 0 && !disabled) inputRef.current?.focus();
+  }, [messageCount, disabled]);
 
   const handleSend = () => {
     if (!hasContent || isStreaming) return;
@@ -51,7 +64,18 @@ export default function PopupComposer({
   };
 
   return (
-    <div data-popup-composer>
+    <div data-popup-composer className="relative">
+      <Button
+        isIconOnly
+        size="sm"
+        radius="full"
+        variant="solid"
+        onPress={dismissPopup}
+        aria-label="Close"
+        className="-top-1 -right-1 absolute z-10 h-5 min-h-5 w-5 max-w-5 min-w-5 bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+      >
+        <Cancel01Icon className="size-3" />
+      </Button>
       <Input
         ref={inputRef}
         value={text}
