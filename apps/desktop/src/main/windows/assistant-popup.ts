@@ -30,8 +30,9 @@ const POPUP_MIN_HEIGHT = 64;
 /** Gap between the panel and the screen work-area edges, in px. */
 const POPUP_MARGIN = 16;
 
-/** Corner radius of the liquid-glass panel, in px. */
-const POPUP_CORNER_RADIUS = 28;
+/** Corner radius of the liquid-glass panel — half the pill height so the
+ * compact window reads as a perfect capsule. */
+const POPUP_CORNER_RADIUS = 32;
 
 /** Duration of the window opacity fade, in ms. */
 const FADE_DURATION_MS = 160;

@@ -10,5 +10,5 @@ export const POPUP_TRANSITION_SECONDS = 0.25;
 /** Window height when the conversation card is visible, in px. */
 export const POPUP_EXPANDED_HEIGHT = 620;
 
-/** Padding between the window edge and the content (p-3), in px. */
-export const POPUP_FRAME_PADDING_PX = 12;
+/** Padding between the window edge and the content (p-2), in px. */
+export const POPUP_FRAME_PADDING_PX = 8;

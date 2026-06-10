@@ -85,7 +85,7 @@ export default function AssistantPopup() {
     <div className="h-screen overflow-hidden text-zinc-100">
       <m.div
         key={activationCount}
-        className="flex h-full flex-col gap-3 p-3"
+        className="flex h-full flex-col gap-2 p-2"
         initial={{ opacity: 0, scale: 0.97, y: -8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{
