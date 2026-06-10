@@ -5,6 +5,7 @@ import { Cancel01Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useEffect, useState } from "react";
+import { useUser } from "@/features/auth/hooks/useUser";
 import { useElectron } from "@/hooks/useElectron";
 import { useChatStoreSync } from "@/stores/chatStore";
 import {
@@ -28,6 +29,8 @@ export default function AssistantPopup() {
   const { dismissPopup, onPopupActivate, onPopupDeactivate } = useElectron();
   const { agentState, activate, deactivate } = usePopupVoice();
   const [visible, setVisible] = useState(false);
+  const user = useUser();
+  const isAuthenticated = Boolean(user?.email);
 
   useChatStoreSync();
 
@@ -89,12 +92,20 @@ export default function AssistantPopup() {
               </Button>
               <PopupOrb state={agentState} />
               <p className="pt-2 text-xs text-zinc-400">
-                {AGENT_STATE_HINTS[agentState]}
+                {isAuthenticated
+                  ? AGENT_STATE_HINTS[agentState]
+                  : "Sign in from the GAIA window to start chatting"}
               </p>
             </header>
 
-            <PopupFeed />
-            <PopupComposer active={visible} />
+            {isAuthenticated ? (
+              <>
+                <PopupFeed />
+                <PopupComposer active={visible} />
+              </>
+            ) : (
+              <div className="flex-1" />
+            )}
           </m.div>
         )}
       </AnimatePresence>

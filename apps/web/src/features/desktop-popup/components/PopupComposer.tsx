@@ -53,8 +53,8 @@ export default function PopupComposer({ active }: PopupComposerProps) {
         radius="full"
         classNames={{
           inputWrapper:
-            "bg-zinc-800/60 backdrop-blur-xl data-[hover=true]:bg-zinc-800/80 group-data-[focus=true]:bg-zinc-800/80",
-          input: "text-sm text-zinc-100 placeholder:text-zinc-500",
+            "bg-white/10 backdrop-blur-xl data-[hover=true]:bg-white/15 group-data-[focus=true]:bg-white/15",
+          input: "text-sm text-zinc-100 placeholder:text-zinc-400",
         }}
       />
       <Button

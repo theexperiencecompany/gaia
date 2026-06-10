@@ -13,8 +13,10 @@
  * @module windows/assistant-popup
  */
 
+import { release } from "node:os";
 import { join } from "node:path";
 import { app, BrowserWindow, screen } from "electron";
+import liquidGlass from "electron-liquid-glass";
 import { loadAppRoute } from "./load-url";
 
 /** Popup panel width, in px. */
@@ -25,6 +27,9 @@ const POPUP_HEIGHT = 620;
 
 /** Gap between the panel and the screen work-area edges, in px. */
 const POPUP_MARGIN = 16;
+
+/** Corner radius of the liquid-glass panel, in px. */
+const POPUP_CORNER_RADIUS = 28;
 
 /** Duration of the window opacity fade, in ms. */
 const FADE_DURATION_MS = 160;
@@ -91,6 +96,12 @@ function fadeTo(win: BrowserWindow, target: number, onDone?: () => void): void {
  * @param serverReady - Returns `true` once the production server is up.
  */
 export function createAssistantPopup(serverReady: () => boolean): void {
+  // macOS 26 "Tahoe" (Darwin 25) ships native liquid glass; older macOS
+  // falls back to the HUD vibrancy material.
+  const useLiquidGlass =
+    process.platform === "darwin" &&
+    Number.parseInt(release().split(".")[0] ?? "0", 10) >= 25;
+
   popupWindow = new BrowserWindow({
     width: POPUP_WIDTH,
     height: POPUP_HEIGHT,
@@ -104,8 +115,12 @@ export function createAssistantPopup(serverReady: () => boolean): void {
     skipTaskbar: true,
     alwaysOnTop: true,
     hasShadow: true,
+    // Liquid glass needs a fully transparent window with NO vibrancy —
+    // the native NSGlassEffectView is attached after the page loads.
+    transparent: useLiquidGlass,
     backgroundColor: "#00000000",
-    vibrancy: process.platform === "darwin" ? "hud" : undefined,
+    vibrancy:
+      process.platform === "darwin" && !useLiquidGlass ? "hud" : undefined,
     visualEffectState: "active",
     roundedCorners: true,
     webPreferences: {
@@ -115,6 +130,21 @@ export function createAssistantPopup(serverReady: () => boolean): void {
       nodeIntegration: false,
     },
   });
+
+  if (useLiquidGlass) {
+    const win = popupWindow;
+    win.webContents.once("did-finish-load", () => {
+      try {
+        liquidGlass.addView(win.getNativeWindowHandle(), {
+          cornerRadius: POPUP_CORNER_RADIUS,
+          tintColor: "#00000022",
+        });
+        console.log("[Main] Liquid glass applied to assistant popup");
+      } catch (err) {
+        console.error("[Main] Failed to apply liquid glass:", err);
+      }
+    });
+  }
 
   // Float above fullscreen apps and follow the user across Spaces.
   popupWindow.setAlwaysOnTop(true, "screen-saver");
