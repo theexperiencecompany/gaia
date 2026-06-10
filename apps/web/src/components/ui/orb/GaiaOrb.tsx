@@ -163,6 +163,13 @@ void main() {
   // alpha dip there that shows through as a dark outline ring.
   alpha = clamp(alpha + halo * (0.30 + 0.30 * u_intensity), 0.0, 1.0);
 
+  // Light rim — a faint, thin line of light on the limb. Kept subtle:
+  // the inward fres glow and outward halo provide the fade; this only
+  // lifts the exact edge so it never reads dark.
+  float rim = exp(-pow((rr - R + 0.008) / 0.022, 2.0));
+  col += mix(BRAND, ICE, 0.45) * rim * (0.22 + 0.16 * u_intensity);
+  alpha = clamp(alpha + rim * 0.45, 0.0, 1.0);
+
   // Soft tone mapping: hot spots roll off toward white instead of
   // clipping to flat saturated cyan, preserving hue variation.
   col = col / (1.0 + col * 0.30);
