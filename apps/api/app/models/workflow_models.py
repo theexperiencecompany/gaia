@@ -195,6 +195,14 @@ class Workflow(BaseScheduledTask):
         default=True,
         description="Whether the workflow is activated and can be executed",
     )
+    notify_on_completion: bool = Field(
+        default=True,
+        description=(
+            "Whether GAIA sends the automatic completion notification when a run "
+            "finishes. When False the run is silent (failures still notify) and the "
+            "agent only notifies if the workflow's own instructions ask it to."
+        ),
+    )
     last_executed_at: datetime | None = Field(default=None)
 
     @field_serializer("last_executed_at")
@@ -341,6 +349,10 @@ class CreateWorkflowRequest(BaseModel):
     generate_immediately: bool = Field(
         default=False, description="Generate steps immediately vs background"
     )
+    notify_on_completion: bool = Field(
+        default=True,
+        description="Whether GAIA sends the automatic completion notification when a run finishes.",
+    )
     selected_integrations: list[str] | None = Field(
         default=None,
         description="Integration slugs selected by the user to hint step generation.",
@@ -384,6 +396,7 @@ class UpdateWorkflowRequest(BaseModel):
     steps: list[WorkflowStep] | None = Field(default=None)
     trigger_config: TriggerConfig | None = Field(default=None)
     activated: bool | None = Field(default=None)
+    notify_on_completion: bool | None = Field(default=None)
     selected_integrations: list[str] | None = Field(default=None)
 
     @field_validator("title", "prompt")

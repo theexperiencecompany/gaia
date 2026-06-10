@@ -4,7 +4,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
-from app.constants.notifications import CHANNEL_TYPE_INAPP
+from app.constants.notifications import ALL_AUTO_INJECTED_CHANNELS, CHANNEL_TYPE_INAPP
 from app.decorators import with_doc, with_rate_limiting
 from app.models.notification.notification_models import (
     BulkActions,
@@ -194,7 +194,8 @@ async def send_notification(
     title: Annotated[str | None, "Short notification title (defaults to 'GAIA')"] = None,
     channels: Annotated[
         list[str] | None,
-        "Channel names to target ('whatsapp', 'telegram', 'inapp'). Omit to use all user-enabled channels.",
+        "Channel names to target ('whatsapp', 'telegram', 'discord', 'slack', 'inapp'). "
+        "Omit to use all user-enabled channels.",
     ] = None,
     notification_type: Annotated[
         NotificationType | None,
@@ -214,9 +215,21 @@ async def send_notification(
         resolved_title = title or "GAIA"
         resolved_type = notification_type or NotificationType.INFO
 
-        # Build channel configs when specific channels are requested
+        # Build channel configs when specific channels are requested. Unknown
+        # channel names would otherwise be accepted and silently skipped at
+        # delivery, so reject them here where the LLM can read the error and
+        # self-correct.
         channel_configs: list[ChannelConfig] = []
         if channels:
+            unknown_channels = [ch for ch in channels if ch not in ALL_AUTO_INJECTED_CHANNELS]
+            if unknown_channels:
+                return {
+                    "error": (
+                        f"Unknown channel(s): {', '.join(unknown_channels)}. "
+                        f"Valid channels: {', '.join(ALL_AUTO_INJECTED_CHANNELS)}."
+                    ),
+                    "success": False,
+                }
             channel_configs = [ChannelConfig(channel_type=ch) for ch in channels]
         # Empty list triggers auto-injection of all user-enabled channels in the orchestrator
 
@@ -247,12 +260,21 @@ async def send_notification(
             }
         )
 
-        return {
+        result = {
             "success": True,
             "notification_id": record.id,
+            "title": resolved_title,
+            "message": message,
+            "notification_type": resolved_type.value,
             "status": record.status.value,
             "delivered_channels": delivered_channels,
         }
+
+        # Stream to frontend so the chat renders a "notification sent" card
+        writer = get_stream_writer()
+        writer({"send_notification_data": result})
+
+        return result
 
     except Exception as e:
         log.error(f"Error sending notification: {e!s}")

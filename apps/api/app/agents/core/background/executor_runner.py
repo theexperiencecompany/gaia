@@ -191,6 +191,7 @@ async def _deliver_bg_notification(
     returned_note: str = "",
     workflow_id: str | None = None,
     workflow_title: str = "",
+    workflow_notify_on_completion: bool = True,
 ) -> None:
     """Run comms once with the executor result, then save + deliver the message.
 
@@ -289,6 +290,7 @@ async def _deliver_bg_notification(
             user_id=user_id,
             notification_text=notification_text,
             message_id=bot_message.message_id,
+            notify_on_completion=workflow_notify_on_completion,
         )
         return
 
@@ -367,8 +369,16 @@ async def _dispatch_workflow_notification(
     user_id: str,
     notification_text: str,
     message_id: str,
+    notify_on_completion: bool = True,
 ) -> None:
-    """Send the proactive workflow completion/failure notification."""
+    """Send the proactive workflow completion/failure notification.
+
+    Failures always notify — the user must learn their automation broke. The
+    success notification respects the workflow's ``notify_on_completion``
+    setting: silent workflows keep their result in the conversation and leave
+    any user-facing alerting to the agent's own send_notification calls (driven
+    by the workflow's instructions).
+    """
     from app.services.workflow.notifications import (
         send_workflow_completion_notification,
         send_workflow_failure_notification,
@@ -380,6 +390,13 @@ async def _dispatch_workflow_notification(
             workflow_title=workflow_title,
             user_id=user_id,
         )
+    elif not notify_on_completion:
+        log.info(
+            "_deliver_bg_notification: completion notification skipped (workflow is silent)",
+            workflow_id=workflow_id,
+            message_id=message_id,
+        )
+        return
     else:
         await send_workflow_completion_notification(
             workflow_id=workflow_id,
@@ -459,6 +476,7 @@ async def _dispatch_executor_result(
     returned_note: str = "",
     workflow_id: str | None = None,
     workflow_title: str = "",
+    workflow_notify_on_completion: bool = True,
 ) -> None:
     """Hand the executor's terminal text to comms and surface the message to the user.
 
@@ -481,6 +499,7 @@ async def _dispatch_executor_result(
             returned_note=returned_note,
             workflow_id=workflow_id,
             workflow_title=workflow_title,
+            workflow_notify_on_completion=workflow_notify_on_completion,
         )
     except Exception as e:
         log.error("Background notification delivery failed", error=str(e))
@@ -497,6 +516,7 @@ async def _finalize_executor_run(
     user_message_id: str | None,
     workflow_id: str | None = None,
     workflow_title: str = "",
+    workflow_notify_on_completion: bool = True,
 ) -> None:
     """The full post-run cleanup: signal done, notify, tear down state, hand off lock."""
     was_cancelled = bool(stream_id) and await StreamManager.is_cancelled(stream_id)
@@ -532,6 +552,7 @@ async def _finalize_executor_run(
             returned_note=returned_note,
             workflow_id=workflow_id,
             workflow_title=workflow_title,
+            workflow_notify_on_completion=workflow_notify_on_completion,
         )
 
     if is_queued:
@@ -609,6 +630,7 @@ async def run_executor_background(
     # instead of a normal conversation message. Unset for interactive chat.
     workflow_id = configurable.get("workflow_id")
     workflow_title = configurable.get("workflow_title", "")
+    workflow_notify_on_completion = configurable.get("workflow_notify_on_completion", True)
     result_text = ""
     result_type = "final"
 
@@ -626,6 +648,7 @@ async def run_executor_background(
             user_message_id=user_message_id,
             workflow_id=workflow_id,
             workflow_title=workflow_title,
+            workflow_notify_on_completion=workflow_notify_on_completion,
         )
 
 

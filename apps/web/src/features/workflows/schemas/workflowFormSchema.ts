@@ -71,6 +71,7 @@ export const workflowFormSchema = z.object({
   activeTab: z.enum(["manual", "schedule", "trigger"]),
   selectedTrigger: z.string(),
   trigger_config: triggerConfigSchema,
+  notify_on_completion: z.boolean(),
 });
 
 // Export the inferred type
@@ -95,6 +96,7 @@ export const getDefaultFormValues = (): WorkflowFormData => ({
     cron_expression: "0 9 * * *", // Daily at 9 AM
     timezone: getBrowserTimezone(),
   },
+  notify_on_completion: true,
 });
 
 /**
@@ -138,5 +140,6 @@ export const workflowToFormData = (workflow: Workflow): WorkflowFormData => {
     activeTab,
     selectedTrigger,
     trigger_config: workflow.trigger_config,
+    notify_on_completion: workflow.notify_on_completion ?? true,
   };
 };

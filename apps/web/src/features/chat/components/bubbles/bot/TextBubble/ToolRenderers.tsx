@@ -53,6 +53,7 @@ import RedditCommentSection from "../RedditCommentSection";
 import RedditCreatedSection from "../RedditCreatedSection";
 import RedditPostSection from "../RedditPostSection";
 import RedditSearchSection from "../RedditSearchSection";
+import SendNotificationSection from "../SendNotificationSection";
 import SupportTicketSection from "../SupportTicketSection";
 import TodoSection from "../TodoSection";
 import TwitterSearchSection from "../TwitterSearchSection";
@@ -270,6 +271,12 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
           .notifications as NotificationRecord[]
       }
       title="Your Notifications"
+    />
+  ),
+  send_notification_data: (data, index) => (
+    <SendNotificationSection
+      key={`tool-notification-sent-${index}`}
+      send_notification_data={data}
     />
   ),
   integration_connection_required: (data, index) => {

@@ -210,6 +210,7 @@ class ChannelPreferences(BaseModel):
     telegram: bool = True
     discord: bool = True
     whatsapp: bool = True
+    slack: bool = True
 
 
 class ChannelPreferencesUpdate(BaseModel):
@@ -218,3 +219,4 @@ class ChannelPreferencesUpdate(BaseModel):
     telegram: bool | None = None
     discord: bool | None = None
     whatsapp: bool | None = None
+    slack: bool | None = None

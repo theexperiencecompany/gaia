@@ -38,6 +38,7 @@ tool_fields = [
     "search_results",
     "deep_research_results",
     "notification_data",
+    "send_notification_data",
     "memory_data",
     "todo_data",
     "goal_data",

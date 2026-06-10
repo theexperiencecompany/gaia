@@ -29,7 +29,12 @@ class InAppChannelAdapter(ChannelAdapter):
         return CHANNEL_TYPE_INAPP
 
     def can_handle(self, notification: NotificationRequest) -> bool:
-        return any(ch.channel_type == CHANNEL_TYPE_INAPP for ch in notification.channels)
+        # In-app is always deliverable. The orchestrator decides targeting:
+        # explicit requests look adapters up by channel_type, and auto-injection
+        # always includes inapp — checking the request's channel list here would
+        # silently skip the real-time push whenever channels are auto-injected
+        # (the list is empty in that mode).
+        return True
 
     async def transform(self, notification: NotificationRequest) -> dict[str, Any]:
         return {

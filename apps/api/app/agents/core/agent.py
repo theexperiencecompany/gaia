@@ -144,6 +144,9 @@ async def _core_agent_logic(
     if trigger_context and trigger_context.get("workflow_id"):
         config["configurable"]["workflow_id"] = trigger_context["workflow_id"]
         config["configurable"]["workflow_title"] = trigger_context.get("workflow_title", "")
+        config["configurable"]["workflow_notify_on_completion"] = trigger_context.get(
+            "workflow_notify_on_completion", True
+        )
 
     log.set(
         agent=dict(
