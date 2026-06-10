@@ -32,10 +32,16 @@ import type { MessageType } from "@/types/features/convoTypes";
 
 interface ChatRendererProps {
   convoMessages?: MessageType[];
+  /**
+   * Compact mode for narrow surfaces (assistant popup): no avatars and
+   * full-width bubbles.
+   */
+  compact?: boolean;
 }
 
 export default function ChatRenderer({
   convoMessages: propConvoMessages,
+  compact = false,
 }: ChatRendererProps) {
   const { convoMessages: storeConvoMessages } = useConversation();
   const convoMessages = propConvoMessages ?? storeConvoMessages;
@@ -326,6 +332,7 @@ export default function ChatRenderer({
                 date={isFollowedByBot ? undefined : messageProps.date}
                 isGroupedWithNext={isFollowedByBot}
                 isGroupedWithPrev={isPrecededByBot}
+                hideAvatar={compact}
               />
             );
           }
@@ -333,6 +340,8 @@ export default function ChatRenderer({
             <ChatBubbleUser
               key={message.message_id || index}
               {...messageProps}
+              hideAvatar={compact}
+              fullWidth={compact}
             />
           );
         },

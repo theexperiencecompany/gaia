@@ -36,9 +36,6 @@ const FADE_DURATION_MS = 160;
 /** Opacity animation tick interval, in ms (~60 fps). */
 const FADE_TICK_MS = 16;
 
-/** How long the renderer's exit animation runs before hiding, in ms. */
-const EXIT_ANIMATION_MS = 220;
-
 /** Reference to the popup window (if created). */
 let popupWindow: BrowserWindow | null = null;
 
@@ -163,12 +160,13 @@ export function showAssistantPopup(): void {
   dismissing = false;
 
   if (popupWindow.isVisible()) {
-    // A dismiss fade may be mid-flight — reclaim full opacity, otherwise
-    // the window stays stuck semi-translucent and everything looks washed out.
+    // Already open: just reclaim focus (and full opacity, in case a
+    // dismiss fade was mid-flight). No re-activation — replaying the
+    // entrance animation and acknowledgment sound on an open popup is
+    // jarring.
     fadeTo(popupWindow, 1);
     app.focus({ steal: true });
     popupWindow.focus();
-    popupWindow.webContents.send("popup-activate");
     return;
   }
 
@@ -192,8 +190,9 @@ export function showAssistantPopup(): void {
 }
 
 /**
- * Dismiss the popup: let the renderer play its exit animation
- * (`popup-deactivate`), then fade the window out and hide it.
+ * Dismiss the popup: one seamless window-level fade, then hide. The
+ * renderer keeps its content mounted (`popup-deactivate` only stops the
+ * voice session) so the close never reads as content-vanishing-first.
  */
 export function dismissAssistantPopup(): void {
   if (!popupWindow || popupWindow.isDestroyed()) return;
@@ -202,13 +201,10 @@ export function dismissAssistantPopup(): void {
 
   popupWindow.webContents.send("popup-deactivate");
 
-  setTimeout(() => {
+  fadeTo(popupWindow, 0, () => {
     if (!popupWindow || popupWindow.isDestroyed() || !dismissing) return;
-    fadeTo(popupWindow, 0, () => {
-      if (!popupWindow || popupWindow.isDestroyed() || !dismissing) return;
-      popupWindow.hide();
-      dismissing = false;
-      console.log("[Main] Assistant popup hidden");
-    });
-  }, EXIT_ANIMATION_MS);
+    popupWindow.hide();
+    dismissing = false;
+    console.log("[Main] Assistant popup hidden");
+  });
 }
