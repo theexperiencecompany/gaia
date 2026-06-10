@@ -153,24 +153,17 @@ void main() {
   // Tight outer glow hugging the limb — a hint of light bleed, not an
   // aura. Falloff normalized to the remaining canvas space so it dies
   // out well before the edge (no square clipping).
-  // Gentle exponent (~1.15) keeps a long, smooth tail so the blue fades
-  // out gradually instead of stopping at a visible boundary.
+  // One smooth glow envelope shapes BOTH color and alpha outward from
+  // the limb. Continuity is everything here: any separate rim band or
+  // alpha step at the boundary reads as a hard-cut outline. The alpha
+  // starts near the sphere's own coverage at the limb and the same
+  // falloff carries it to zero, so brightness decays with no seam.
   float haloFall = exp(-pow(max(rr - R + 0.02, 0.0) / (1.0 - R) * 4.2, 1.15));
-  float haloNoise = 0.70 + 0.30 * fbm(vec3(uv * 2.0, t * 0.18));
+  float haloNoise = 0.88 + 0.12 * fbm(vec3(uv * 2.0, t * 0.18));
   float halo = haloFall * haloNoise * (1.0 - sphere);
-  vec3 haloCol = mix(BRAND, ICE, 0.5 + 0.5 * sin(t * 0.23)) * halo;
-  col += haloCol * (0.18 + 0.30 * u_intensity + 0.35 * u_pulse * (0.6 + 0.4 * sin(t * 7.0)));
-  // Sum (not max) the coverages: across the rim the sphere mask fades out
-  // while the halo is still translucent, and taking the max leaves an
-  // alpha dip there that shows through as a dark outline ring.
-  alpha = clamp(alpha + halo * (0.30 + 0.30 * u_intensity), 0.0, 1.0);
-
-  // Light rim — a faint, thin line of light on the limb. Kept subtle:
-  // the inward fres glow and outward halo provide the fade; this only
-  // lifts the exact edge so it never reads dark.
-  float rim = exp(-pow((rr - R + 0.008) / 0.022, 2.0));
-  col += mix(BRAND, ICE, 0.45) * rim * (0.22 + 0.16 * u_intensity);
-  alpha = clamp(alpha + rim * 0.45, 0.0, 1.0);
+  vec3 haloCol = mix(BRAND, ICE, 0.35) * halo;
+  col += haloCol * (0.50 + 0.30 * u_intensity + 0.35 * u_pulse * (0.6 + 0.4 * sin(t * 7.0)));
+  alpha = clamp(alpha + halo * (0.80 + 0.15 * u_intensity), 0.0, 1.0);
 
   // Soft tone mapping: hot spots roll off toward white instead of
   // clipping to flat saturated cyan, preserving hue variation.
@@ -214,6 +207,9 @@ function createOrbRenderer(
     antialias: false,
     depth: false,
     stencil: false,
+    // Keeps the buffer readable (toDataURL/drawImage) for visual tests;
+    // negligible cost at orb sizes.
+    preserveDrawingBuffer: true,
   });
   if (!gl) {
     console.error("[GaiaOrb] WebGL2 unavailable");
