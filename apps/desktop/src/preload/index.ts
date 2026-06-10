@@ -126,15 +126,21 @@ const api = {
   /**
    * Subscribe to popup activation events.
    *
-   * Fired when the assistant popup is shown (wake word or shortcut)
-   * so the renderer can play its entrance animation and start
-   * listening.
+   * Fired when the assistant popup is shown so the renderer can play
+   * its entrance animation. The payload carries how it was summoned
+   * ("wake-word" | "shortcut") — the acknowledgment sound is scoped to
+   * voice activations.
    *
-   * @param callback - Handler invoked on activation.
+   * @param callback - Handler invoked with the activation payload.
    * @returns A cleanup function that removes the listener.
    */
-  onPopupActivate: (callback: () => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent) => callback();
+  onPopupActivate: (
+    callback: (data: { trigger: "wake-word" | "shortcut" }) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: { trigger: "wake-word" | "shortcut" },
+    ) => callback(data);
     ipcRenderer.on("popup-activate", handler);
     return () => ipcRenderer.removeListener("popup-activate", handler);
   },

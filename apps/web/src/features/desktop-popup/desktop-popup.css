@@ -34,7 +34,7 @@
  * here, containment slices them off. The feed is short — skip-render
  * optimizations buy nothing, so disable them.
  */
-.compact-chat .group,
+.compact-chat [style*="content-visibility"],
 .compact-chat .cv-auto,
 .compact-chat .cv-chat-message {
   contain-intrinsic-size: none !important;

@@ -47,11 +47,31 @@ interface ChatRendererProps {
   compact?: boolean;
 }
 
-/** Mount-once entrance used for every bubble in compact mode. */
-function CompactReveal({ children }: { children: ReactNode }) {
+/**
+ * Bubble keys that have already played their entrance. Module-level so
+ * list remounts (conversation-id swap, optimistic→real id transitions)
+ * don't replay the animation — replaying makes existing bubbles flash
+ * invisible instead of calmly scrolling up.
+ */
+const revealedBubbleKeys = new Set<string>();
+
+/** Entrance played only the FIRST time a bubble key appears. */
+function CompactReveal({
+  bubbleKey,
+  children,
+}: {
+  bubbleKey: string;
+  children: ReactNode;
+}) {
+  const isNew = !revealedBubbleKeys.has(bubbleKey);
+
+  useEffect(() => {
+    revealedBubbleKeys.add(bubbleKey);
+  }, [bubbleKey]);
+
   return (
     <m.div
-      initial={{ opacity: 0, y: 12, filter: "blur(8px)" }}
+      initial={isNew ? { opacity: 0, y: 12, filter: "blur(8px)" } : false}
       animate={{
         opacity: 1,
         y: 0,
@@ -365,7 +385,10 @@ export default function ChatRenderer({
               />
             );
             return compact ? (
-              <CompactReveal key={message.message_id || index}>
+              <CompactReveal
+                key={message.message_id || index}
+                bubbleKey={String(message.message_id || index)}
+              >
                 {botBubble}
               </CompactReveal>
             ) : (
@@ -381,7 +404,10 @@ export default function ChatRenderer({
             />
           );
           return compact ? (
-            <CompactReveal key={message.message_id || index}>
+            <CompactReveal
+              key={message.message_id || index}
+              bubbleKey={String(message.message_id || index)}
+            >
               {userBubble}
             </CompactReveal>
           ) : (

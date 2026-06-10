@@ -12,8 +12,13 @@ export type PopupAgentState = "idle" | "listening" | "thinking" | "speaking";
 
 export interface PopupVoiceSession {
   agentState: PopupAgentState;
-  /** Wake the session: play the acknowledgment sound and start listening. */
-  activate: () => void;
+  /**
+   * Wake the session and start listening.
+   *
+   * @param playAck - Play the acknowledgment sound ("mhm") — only voice
+   *   summons ("Hey GAIA") should, not the keyboard shortcut.
+   */
+  activate: (playAck: boolean) => void;
   /** Put the session back to sleep. */
   deactivate: () => void;
 }
@@ -45,8 +50,9 @@ export function usePopupVoice(): PopupVoiceSession {
     };
   }, []);
 
-  const activate = useCallback(() => {
+  const activate = useCallback((playAck: boolean) => {
     setActive(true);
+    if (!playAck) return;
     const audio = ackAudioRef.current;
     if (audio) {
       audio.currentTime = 0;

@@ -40,9 +40,9 @@ export default function AssistantPopup() {
   }, []);
 
   useEffect(() => {
-    const offActivate = onPopupActivate(() => {
+    const offActivate = onPopupActivate((data) => {
       setActivationCount((count) => count + 1);
-      activate();
+      activate(data?.trigger === "wake-word");
       // The popup window loads at app startup, often before the user has
       // signed in — refresh the session on every summon so a login that
       // happened since (main window, deep link) is picked up.

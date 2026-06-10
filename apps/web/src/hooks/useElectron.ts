@@ -23,7 +23,9 @@ interface ElectronAPI {
   notifyWakeWord: () => void;
   dismissPopup: () => void;
   resizePopup: (height: number) => void;
-  onPopupActivate: (callback: () => void) => () => void;
+  onPopupActivate: (
+    callback: (data: { trigger: "wake-word" | "shortcut" }) => void,
+  ) => () => void;
   onPopupDeactivate: (callback: () => void) => () => void;
 }
 
@@ -168,12 +170,17 @@ export function useElectron() {
    * Register a callback for assistant popup activation events
    * Returns a cleanup function to remove the listener
    */
-  const onPopupActivate = useCallback((callback: () => void): (() => void) => {
-    if (typeof window !== "undefined" && hasElectronAPI(window)) {
-      return window.api.onPopupActivate(callback);
-    }
-    return () => {}; // No-op cleanup if not in Electron
-  }, []);
+  const onPopupActivate = useCallback(
+    (
+      callback: (data: { trigger: "wake-word" | "shortcut" }) => void,
+    ): (() => void) => {
+      if (typeof window !== "undefined" && hasElectronAPI(window)) {
+        return window.api.onPopupActivate(callback);
+      }
+      return () => {}; // No-op cleanup if not in Electron
+    },
+    [],
+  );
 
   /**
    * Register a callback for assistant popup deactivation events

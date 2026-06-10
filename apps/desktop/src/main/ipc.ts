@@ -52,7 +52,7 @@ export function registerIpcHandlers(onWindowReady: () => void): void {
 
   ipcMain.on("wake-word-detected", () => {
     console.log("[Main] Wake word detected");
-    showAssistantPopup();
+    showAssistantPopup("wake-word");
   });
 
   ipcMain.on("popup-dismiss", () => {

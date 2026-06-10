@@ -255,6 +255,9 @@ export function resizeAssistantPopup(contentHeight: number): void {
   layoutFeed(true);
 }
 
+/** How the popup was summoned — the renderer scopes the ack sound to voice. */
+export type PopupTrigger = "wake-word" | "shortcut";
+
 /**
  * Toggle the popup: dismiss when visible, summon when hidden. Bound to
  * the global shortcut so one chord opens AND closes it.
@@ -263,7 +266,7 @@ export function toggleAssistantPopup(): void {
   if (popupShown && !dismissing) {
     dismissAssistantPopup();
   } else {
-    showAssistantPopup();
+    showAssistantPopup("shortcut");
   }
 }
 
@@ -274,7 +277,7 @@ export function toggleAssistantPopup(): void {
  * Already visible: just reclaim focus and full opacity — replaying the
  * entrance and acknowledgment on an open popup is jarring.
  */
-export function showAssistantPopup(): void {
+export function showAssistantPopup(trigger: PopupTrigger = "shortcut"): void {
   if (!composerWindow || composerWindow.isDestroyed()) return;
 
   dismissing = false;
@@ -298,7 +301,7 @@ export function showAssistantPopup(): void {
   app.focus({ steal: true });
   composerWindow.focus();
   fadeTo(composerWindow, 1);
-  composerWindow.webContents.send("popup-activate");
+  composerWindow.webContents.send("popup-activate", { trigger });
 
   layoutFeed(false);
   console.log("[Main] Assistant popup shown");

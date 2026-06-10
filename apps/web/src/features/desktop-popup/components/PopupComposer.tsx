@@ -2,7 +2,6 @@
 
 import { Input } from "@heroui/input";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
-import SendStopButton from "@/features/chat/components/composer/SendStopButton";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import { useIsMainResponseStreaming } from "@/stores/loadingStore";
 import type { PopupAgentState } from "../hooks/usePopupVoice";
@@ -70,19 +69,10 @@ export default function PopupComposer({
           // button while letting the glow breathe.
           <PopupOrb state={agentState} className="-m-3 size-16 shrink-0" />
         }
-        endContent={
-          <SendStopButton
-            hasContent={hasContent}
-            onSend={handleSend}
-            className="h-8 min-h-8 w-8 max-w-8 min-w-8"
-          />
-        }
         classNames={{
           // Fully transparent: the window's liquid glass IS the field's
           // background — no overlay tints, no borders, no focus ring.
-          // pr-2: the 32px send circle sits (52-32)/2 = 10px from the top
-          // and bottom of the pill — 2px frame + 8px here keeps the same
-          // 10px on the right, so the circle is optically concentric.
+          // No send button — Enter sends; the orb carries the state.
           inputWrapper:
             "bg-transparent shadow-none border-none outline-none ring-0 py-0 pl-0.5 pr-2 data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus-visible=true]:ring-0 group-data-[focus-visible=true]:ring-offset-0",
           input:

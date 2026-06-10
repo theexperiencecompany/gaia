@@ -53,9 +53,19 @@ export function applyLiquidGlass(
           // Best effort — private API.
         }
       };
-      pinAppearance();
-      win.on("focus", pinAppearance);
-      win.on("blur", pinAppearance);
+      // AppKit applies the subdued appearance asynchronously after window
+      // ordering, so re-assert shortly after each transition too. "show"
+      // matters most: windows shown with showInactive() never get
+      // focus/blur events yet still render the inactive material.
+      const pinNowAndSoon = () => {
+        pinAppearance();
+        setTimeout(pinAppearance, 80);
+        setTimeout(pinAppearance, 300);
+      };
+      pinNowAndSoon();
+      win.on("show", pinNowAndSoon);
+      win.on("focus", pinNowAndSoon);
+      win.on("blur", pinNowAndSoon);
       console.log("[Main] Liquid glass applied");
     } catch (err) {
       console.error("[Main] Failed to apply liquid glass:", err);
