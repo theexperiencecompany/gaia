@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useConversation } from "@/features/chat/hooks/useConversation";
 import PopupFeed from "@/features/desktop-popup/components/PopupFeed";
 import { usePopupChatConsumer } from "@/features/desktop-popup/sync";
 import { useElectron } from "@/hooks/useElectron";
@@ -34,19 +35,24 @@ export default function DesktopPopupFeedPage() {
   }, []);
 
   // Report content height so the window grows with the conversation
-  // (main clamps to the screen budget and hides it when empty).
+  // (main clamps to the screen budget and hides it when empty). An
+  // empty conversation reports 0 — padding alone must not summon an
+  // empty glass card.
+  const { convoMessages } = useConversation();
+  const isLoading = useLoadingStore((state) => state.isLoading);
+  const hasContent = (convoMessages?.length ?? 0) > 0 || isLoading;
   useEffect(() => {
     const content = document.querySelector<HTMLElement>(
       "[data-popup-feed-content]",
     );
     if (!content) return;
 
-    const report = () => resizePopup(content.scrollHeight);
+    const report = () => resizePopup(hasContent ? content.scrollHeight : 0);
     const observer = new ResizeObserver(report);
     observer.observe(content);
     report();
     return () => observer.disconnect();
-  }, [resizePopup]);
+  }, [resizePopup, hasContent]);
 
   useEffect(() => {
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {

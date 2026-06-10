@@ -87,9 +87,8 @@ export default function PopupFeed() {
         <div
           ref={contentRef}
           data-popup-feed-content
-          // 32px inset on top and sides, mirroring the actions-row height
-          // below the last bubble — equal breathing room all around.
-          className="flex flex-col gap-1 px-8 pt-8 pb-2"
+          // Equal 32px breathing room on all four sides.
+          className="flex flex-col gap-1 p-8"
         >
           <ChatRenderer compact />
         </div>
