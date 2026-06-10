@@ -433,9 +433,11 @@ export default function ChatRenderer({
               // The orb replaces the wave spinner in the popup; the
               // loading text and tool info render exactly as on web.
               compact ? (
+                // Larger orb; negative right margin tucks the text in
+                // close (the canvas is mostly transparent glow padding).
                 <GaiaOrbLazy
                   state="thinking"
-                  className="-m-2 size-12 shrink-0"
+                  className="-my-5 -ml-4 -mr-4 size-20 shrink-0"
                 />
               ) : undefined
             }
