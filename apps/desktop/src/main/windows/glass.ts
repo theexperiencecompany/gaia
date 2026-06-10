@@ -6,6 +6,11 @@
  * glass backdrop use these helpers and fall back to vibrancy materials
  * on older macOS versions.
  *
+ * Known limitation: macOS renders the glass material slightly dimmed
+ * for non-key windows and offers no public override. Private-property
+ * pokes don't control it and destabilize the view (corner radius
+ * corruption); tracked upstream at Meridius-Labs/electron-liquid-glass#64.
+ *
  * @module windows/glass
  */
 
@@ -40,34 +45,7 @@ export function applyLiquidGlass(
 ): void {
   win.webContents.once("did-finish-load", () => {
     try {
-      const viewId = liquidGlass.addView(win.getNativeWindowHandle(), options);
-      // Pin the glass to its active appearance — macOS subdues the
-      // material when the window isn't key, which makes the popup's two
-      // islands (only one can be focused) render visibly different.
-      // Re-assert on every focus change: AppKit re-applies the subdued
-      // state when key-window status flips.
-      const pinAppearance = () => {
-        try {
-          // The real selector is set_subduedState: (verified by runtime
-          // introspection of NSGlassEffectView). AppKit flips it back on
-          // its own schedule whenever key/main status changes, so a
-          // one-shot (or even delayed) re-assert loses the race — hold
-          // it with a keep-alive while the window is visible instead.
-          liquidGlass.unstable_setSubdued(viewId, 0);
-          liquidGlass.unstable_setScrim(viewId, 0);
-        } catch {
-          // Best effort — private API.
-        }
-      };
-      pinAppearance();
-      const keepAlive = setInterval(() => {
-        if (win.isDestroyed()) {
-          clearInterval(keepAlive);
-          return;
-        }
-        if (win.isVisible()) pinAppearance();
-      }, 250);
-      win.on("closed", () => clearInterval(keepAlive));
+      liquidGlass.addView(win.getNativeWindowHandle(), options);
       console.log("[Main] Liquid glass applied");
     } catch (err) {
       console.error("[Main] Failed to apply liquid glass:", err);

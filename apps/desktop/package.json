@@ -16,7 +16,8 @@
     "lint:fix": "biome check --write .",
     "pack": "pnpm build && electron-builder --dir",
     "start": "electron-vite preview",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "build:glass": "cd native/liquid-glass && pnpm dlx node-gyp rebuild"
   },
   "dependencies": {
     "electron-liquid-glass": "^1.1.1",

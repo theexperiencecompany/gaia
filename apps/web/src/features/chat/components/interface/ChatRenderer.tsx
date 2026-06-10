@@ -437,7 +437,7 @@ export default function ChatRenderer({
                 // close (the canvas is mostly transparent glow padding).
                 <GaiaOrbLazy
                   state="thinking"
-                  className="-my-5 -ml-4 -mr-4 size-20 shrink-0"
+                  className="-my-3 -ml-2.5 -mr-2.5 size-14 shrink-0"
                 />
               ) : undefined
             }

@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import GlassDimCompensator from "@/features/desktop-popup/components/GlassDimCompensator";
 import PopupRouteLock from "@/features/desktop-popup/components/PopupRouteLock";
 import ProvidersLayout from "@/layouts/ProvidersLayout";
 
@@ -17,7 +16,6 @@ export default function DesktopPopupLayout({
   return (
     <ProvidersLayout>
       <PopupRouteLock />
-      <GlassDimCompensator />
       {children}
     </ProvidersLayout>
   );
