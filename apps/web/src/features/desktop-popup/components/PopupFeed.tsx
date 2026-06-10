@@ -87,8 +87,10 @@ export default function PopupFeed() {
         <div
           ref={contentRef}
           data-popup-feed-content
-          // Equal 32px breathing room on all four sides.
-          className="flex flex-col gap-1 p-8"
+          // Equal 32px breathing room on all four sides. gap-3 keeps the
+          // turns readable now that action/follow-up rows (which used to
+          // provide the separation) are gone in compact mode.
+          className="flex flex-col gap-3 p-8"
         >
           <ChatRenderer compact />
         </div>

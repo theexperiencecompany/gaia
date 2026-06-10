@@ -155,6 +155,7 @@ function fadeTo(win: BrowserWindow, target: number, onDone?: () => void): void {
 function islandOptions(
   height: number,
   useLiquidGlass: boolean,
+  hasShadow: boolean,
 ): Electron.BrowserWindowConstructorOptions {
   return {
     width: POPUP_WIDTH,
@@ -168,7 +169,7 @@ function islandOptions(
     fullscreenable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    hasShadow: true,
+    hasShadow,
     transparent: useLiquidGlass,
     backgroundColor: "#00000000",
     vibrancy:
@@ -207,10 +208,11 @@ function handleBlur(): void {
 export function createAssistantPopup(serverReady: () => boolean): void {
   const useLiquidGlass = supportsLiquidGlass();
 
+  // The pill floats shadowless; the conversation card keeps its depth.
   composerWindow = new BrowserWindow(
-    islandOptions(COMPOSER_HEIGHT, useLiquidGlass),
+    islandOptions(COMPOSER_HEIGHT, useLiquidGlass, false),
   );
-  feedWindow = new BrowserWindow(islandOptions(200, useLiquidGlass));
+  feedWindow = new BrowserWindow(islandOptions(200, useLiquidGlass, true));
 
   for (const win of [composerWindow, feedWindow]) {
     pinToAllSpaces(win);
