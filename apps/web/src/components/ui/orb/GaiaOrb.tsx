@@ -126,18 +126,18 @@ void main() {
   float fres = pow(1.0 - clamp(z / R, 0.0, 1.0), 2.6);
 
   // Compose interior color.
-  vec3 col = mix(DEEP, BRAND, 0.30 + 0.70 * wisp);
-  col = mix(col, TURQ, wisp * wisp * 0.65);
-  col += WHITE * fil * (0.22 + 0.55 * u_intensity);
-  col += BRAND * fres * (0.55 + 0.45 * u_intensity);
-  col += TURQ * pow(fres, 3.0) * 0.6;
+  vec3 col = mix(DEEP, BRAND, 0.45 + 0.55 * wisp);
+  col = mix(col, TURQ, wisp * wisp * 0.60);
+  col += WHITE * fil * (0.28 + 0.60 * u_intensity);
+  col += BRAND * fres * (0.40 + 0.35 * u_intensity);
+  col += TURQ * pow(fres, 3.0) * 0.45;
 
   // Inner core glow, breathing slowly.
-  float core = exp(-rr * rr * 7.0);
-  col += mix(BRAND, WHITE, 0.35) * core * (0.18 + 0.50 * u_intensity) * (0.8 + 0.2 * sin(t * 1.1));
+  float core = exp(-rr * rr * 5.0);
+  col += mix(BRAND, WHITE, 0.40) * core * (0.30 + 0.55 * u_intensity) * (0.8 + 0.2 * sin(t * 1.1));
 
   // Energy scale.
-  col *= 0.55 + 0.65 * u_intensity;
+  col *= 0.70 + 0.60 * u_intensity;
 
   float alpha = sphere;
 
