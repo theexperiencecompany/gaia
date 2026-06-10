@@ -353,8 +353,9 @@ async def prepare_executor_execution(
     # Workflow runs: the executor owns send_notification, but it only sees the
     # task text comms writes. Inject the notification mode here, keyed off the
     # run's own configurable, so the no-double-notify guarantee never depends
-    # on comms forwarding the rule.
-    if configurable.get("workflow_id"):
+    # on comms forwarding the rule. Skip if the task already carries the section
+    # (format_workflow_execution_message embeds it) to avoid duplicating it.
+    if configurable.get("workflow_id") and "NOTIFICATIONS:" not in enhanced_task:
         notification_section = (
             WORKFLOW_AUTO_NOTIFY_SECTION
             if configurable.get("workflow_notify_on_completion", True)

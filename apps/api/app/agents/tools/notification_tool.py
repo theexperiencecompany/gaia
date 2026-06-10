@@ -296,8 +296,9 @@ async def get_notification_preferences(
 
         preferences = await fetch_channel_preferences(user_id)
 
-        # inapp is always available regardless of per-channel preferences
-        all_preferences = {CHANNEL_TYPE_INAPP: True, **preferences}
+        # inapp is always available regardless of per-channel preferences;
+        # force it last so it can never be overridden by a stored preference.
+        all_preferences = {**preferences, CHANNEL_TYPE_INAPP: True}
 
         return {
             "preferences": all_preferences,

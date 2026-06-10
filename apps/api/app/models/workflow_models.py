@@ -207,6 +207,7 @@ class Workflow(BaseScheduledTask):
 
     @field_serializer("last_executed_at")
     def serialize_last_executed_at(self, value: datetime | None) -> str | None:
+        """Serialize the last-executed timestamp to an ISO string (or None)."""
         return value.isoformat() if value is not None else None
 
     # Community features
@@ -375,6 +376,7 @@ class CreateWorkflowRequest(BaseModel):
     @field_validator("title", "prompt")
     @classmethod
     def validate_non_empty_strings(cls, v):
+        """Require non-blank title/prompt and strip surrounding whitespace."""
         if not v or not v.strip():
             raise ValueError("Field cannot be empty or contain only whitespace")
         return v.strip()
@@ -382,6 +384,7 @@ class CreateWorkflowRequest(BaseModel):
     @field_validator("description")
     @classmethod
     def validate_optional_description(cls, v):
+        """Normalize an optional description, coercing blank values to None/empty."""
         if v is not None and not v.strip():
             return ""
         return v.strip() if v else None
@@ -402,6 +405,7 @@ class UpdateWorkflowRequest(BaseModel):
     @field_validator("title", "prompt")
     @classmethod
     def validate_optional_non_empty_strings(cls, v):
+        """Strip provided title/prompt updates and reject blank-only values."""
         if v is not None:
             if not v.strip():
                 raise ValueError("Field cannot be empty or contain only whitespace")
@@ -411,6 +415,7 @@ class UpdateWorkflowRequest(BaseModel):
     @field_validator("description")
     @classmethod
     def validate_optional_update_description(cls, v):
+        """Normalize a description update, coercing blank values to None."""
         if v is None:
             return None
         stripped = v.strip()

@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class NotificationType(str, Enum):
+    """Severity/category of a notification, used for styling and filtering."""
+
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
@@ -14,6 +16,8 @@ class NotificationType(str, Enum):
 
 
 class NotificationStatus(str, Enum):
+    """Lifecycle state of a notification record."""
+
     PENDING = "pending"
     DELIVERED = "delivered"
     FAILED = "failed"
@@ -22,6 +26,8 @@ class NotificationStatus(str, Enum):
 
 
 class NotificationSourceEnum(str, Enum):
+    """Originating system or feature that produced the notification."""
+
     AI_EMAIL_DRAFT = "ai_email_draft"
     AI_CALENDAR_EVENT = "ai_calendar_event"
     AI_TODO_SUGGESTION = "ai_todo_suggestion"
@@ -36,24 +42,32 @@ class NotificationSourceEnum(str, Enum):
 
 
 class ActionType(str, Enum):
+    """Kind of interaction a notification action performs when invoked."""
+
     REDIRECT = "redirect"
     API_CALL = "api_call"
     MODAL = "modal"
 
 
 class ActionStyle(str, Enum):
+    """Visual emphasis for a notification action button."""
+
     PRIMARY = "primary"
     SECONDARY = "secondary"
     DANGER = "danger"
 
 
 class RedirectConfig(BaseModel):
+    """Configuration for a redirect action that navigates the user to a URL."""
+
     url: str
     open_in_new_tab: bool = True
     close_notification: bool = False
 
 
 class ApiCallConfig(BaseModel):
+    """Configuration for an action that issues an HTTP request when invoked."""
+
     endpoint: str
     method: Literal["GET", "POST", "PUT", "DELETE"] = "POST"
     payload: dict[str, Any] | None = None
@@ -64,11 +78,15 @@ class ApiCallConfig(BaseModel):
 
 
 class ModalConfig(BaseModel):
+    """Configuration for an action that opens a frontend modal component."""
+
     component: str
     props: dict[str, Any] = Field(default_factory=dict)
 
 
 class ActionConfig(BaseModel):
+    """Container holding exactly one of the supported action configurations."""
+
     redirect: RedirectConfig | None = None
     api_call: ApiCallConfig | None = None
     modal: ModalConfig | None = None
@@ -85,6 +103,8 @@ class ActionConfig(BaseModel):
 
 
 class NotificationAction(BaseModel):
+    """An interactive action (button) attached to a notification."""
+
     id: str = Field(default_factory=lambda: str(uuid4()))
     type: ActionType
     label: str
@@ -114,6 +134,8 @@ class NotificationAction(BaseModel):
 
 
 class NotificationContent(BaseModel):
+    """Displayable payload of a notification: title, body, actions and rich data."""
+
     title: str
     body: str
     actions: list[NotificationAction] | None = None
@@ -121,6 +143,8 @@ class NotificationContent(BaseModel):
 
 
 class ChannelConfig(BaseModel):
+    """Per-channel delivery settings for a notification request."""
+
     channel_type: str  # 'inapp', 'telegram', 'discord'
     enabled: bool = True
     priority: int = 1  # 1 highest
@@ -129,6 +153,8 @@ class ChannelConfig(BaseModel):
 
 
 class NotificationRequest(BaseModel):
+    """Inbound request to send a notification to a user across channels."""
+
     id: str = Field(default_factory=lambda: str(uuid4()))
     user_id: str
     source: NotificationSourceEnum
@@ -142,12 +168,15 @@ class NotificationRequest(BaseModel):
 
     @field_validator("priority", mode="before")
     def validate_priority(cls, v):
+        """Reject priorities outside the inclusive 1–5 range."""
         if not 1 <= v <= 5:
             raise ValueError("Priority must be between 1 and 5")
         return v
 
 
 class ChannelDeliveryStatus(BaseModel):
+    """Delivery outcome of a notification on a single channel."""
+
     channel_type: str
     status: NotificationStatus
     delivered_at: datetime | None = None
@@ -157,6 +186,8 @@ class ChannelDeliveryStatus(BaseModel):
 
 
 class NotificationRecord(BaseModel):
+    """Persisted notification with its original request and per-channel statuses."""
+
     id: str
     user_id: str
     status: NotificationStatus = NotificationStatus.PENDING
@@ -190,6 +221,8 @@ class NotificationRecord(BaseModel):
 
 
 class ActionResult(BaseModel):
+    """Outcome of executing a notification action."""
+
     success: bool
     message: str | None = None
     data: dict[str, Any] | None = None
@@ -200,6 +233,8 @@ class ActionResult(BaseModel):
 
 
 class BulkActions(str, Enum):
+    """Bulk operations that can be applied to multiple notifications at once."""
+
     MARK_READ = "mark_read"
     ARCHIVE = "archive"
 
