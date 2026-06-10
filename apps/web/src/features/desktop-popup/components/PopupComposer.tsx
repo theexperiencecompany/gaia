@@ -53,39 +53,43 @@ export default function PopupComposer({
   };
 
   return (
-    <Input
-      ref={inputRef}
-      value={text}
-      onValueChange={setText}
-      onKeyDown={handleKeyDown}
-      isDisabled={disabled}
-      placeholder="Ask GAIA…"
-      radius="full"
-      size="lg"
-      startContent={
-        // Canvas is larger than the visible sphere (glow padding) — the
-        // negative margins keep the optical size in line with the send
-        // button while letting the glow breathe.
-        <PopupOrb state={agentState} className="-m-2 size-13 shrink-0" />
-      }
-      endContent={
-        <Button
-          isIconOnly
-          size="sm"
-          radius="full"
-          color="primary"
-          isDisabled={!canSend}
-          onPress={handleSend}
-          aria-label="Send message"
-        >
-          <ArrowUp02Icon className="size-4" color="black" />
-        </Button>
-      }
-      classNames={{
-        inputWrapper:
-          "bg-white/10 backdrop-blur-xl py-1.5 pl-2 pr-2 data-[hover=true]:bg-white/15 group-data-[focus=true]:bg-white/15",
-        input: "px-2 text-sm text-zinc-100 placeholder:text-zinc-400",
-      }}
-    />
+    <div data-popup-composer>
+      <Input
+        ref={inputRef}
+        value={text}
+        onValueChange={setText}
+        onKeyDown={handleKeyDown}
+        isDisabled={disabled}
+        placeholder={
+          disabled ? "Sign in from the GAIA window to chat" : "Ask GAIA…"
+        }
+        radius="full"
+        size="lg"
+        startContent={
+          // Canvas is larger than the visible sphere (glow padding) — the
+          // negative margins keep the optical size in line with the send
+          // button while letting the glow breathe.
+          <PopupOrb state={agentState} className="-m-3 size-16 shrink-0" />
+        }
+        endContent={
+          <Button
+            isIconOnly
+            size="sm"
+            radius="full"
+            color="primary"
+            isDisabled={!canSend}
+            onPress={handleSend}
+            aria-label="Send message"
+          >
+            <ArrowUp02Icon className="size-4" color="black" />
+          </Button>
+        }
+        classNames={{
+          inputWrapper:
+            "bg-white/10 backdrop-blur-xl py-1.5 pl-2 pr-2 data-[hover=true]:bg-white/15 group-data-[focus=true]:bg-white/15",
+          input: "px-2 text-sm text-zinc-100 placeholder:text-zinc-400",
+        }}
+      />
+    </div>
   );
 }

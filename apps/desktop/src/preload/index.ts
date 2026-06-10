@@ -115,6 +115,15 @@ const api = {
   dismissPopup: (): void => ipcRenderer.send("popup-dismiss"),
 
   /**
+   * Resize the assistant popup window to fit its content (Siri-style:
+   * composer pill alone, expanding when the conversation appears).
+   *
+   * @param height - Desired window height in px (clamped by main).
+   */
+  resizePopup: (height: number): void =>
+    ipcRenderer.send("popup-resize", height),
+
+  /**
    * Subscribe to popup activation events.
    *
    * Fired when the assistant popup is shown (wake word or shortcut)

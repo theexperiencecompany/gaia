@@ -11,6 +11,7 @@
 import { app, ipcMain, shell } from "electron";
 import {
   dismissAssistantPopup,
+  resizeAssistantPopup,
   showAssistantPopup,
 } from "./windows/assistant-popup";
 import { getMainWindow } from "./windows/main";
@@ -56,5 +57,11 @@ export function registerIpcHandlers(onWindowReady: () => void): void {
 
   ipcMain.on("popup-dismiss", () => {
     dismissAssistantPopup();
+  });
+
+  ipcMain.on("popup-resize", (_event, height: number) => {
+    if (typeof height === "number" && Number.isFinite(height)) {
+      resizeAssistantPopup(height);
+    }
   });
 }

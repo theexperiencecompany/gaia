@@ -21,8 +21,11 @@ import { loadAppRoute } from "./load-url";
 /** Popup panel width, in px. */
 const POPUP_WIDTH = 420;
 
-/** Popup panel height, in px. */
+/** Maximum popup height (composer + conversation card), in px. */
 const POPUP_HEIGHT = 620;
+
+/** Minimum popup height (composer pill alone), in px. */
+const POPUP_MIN_HEIGHT = 64;
 
 /** Gap between the panel and the screen work-area edges, in px. */
 const POPUP_MARGIN = 16;
@@ -96,7 +99,7 @@ export function createAssistantPopup(serverReady: () => boolean): void {
 
   popupWindow = new BrowserWindow({
     width: POPUP_WIDTH,
-    height: POPUP_HEIGHT,
+    height: POPUP_MIN_HEIGHT,
     show: false,
     frame: false,
     resizable: false,
@@ -187,6 +190,26 @@ export function showAssistantPopup(): void {
   fadeTo(popupWindow, 1);
   popupWindow.webContents.send("popup-activate");
   console.log("[Main] Assistant popup shown");
+}
+
+/**
+ * Resize the popup to fit its content (Siri-style): just the composer
+ * pill when the conversation is empty, expanding when bubbles appear.
+ * Smoothly animated by macOS via `setBounds(…, true)`. The window is
+ * anchored at its top edge, so it grows downward.
+ *
+ * @param contentHeight - Desired window height reported by the renderer.
+ */
+export function resizeAssistantPopup(contentHeight: number): void {
+  if (!popupWindow || popupWindow.isDestroyed()) return;
+
+  const height = Math.round(
+    Math.min(Math.max(contentHeight, POPUP_MIN_HEIGHT), POPUP_HEIGHT),
+  );
+  const bounds = popupWindow.getBounds();
+  if (bounds.height === height) return;
+
+  popupWindow.setBounds({ ...bounds, height }, true);
 }
 
 /**

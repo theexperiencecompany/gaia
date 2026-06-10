@@ -22,6 +22,7 @@ interface ElectronAPI {
   onAuthRedirecting: (callback: () => void) => () => void;
   notifyWakeWord: () => void;
   dismissPopup: () => void;
+  resizePopup: (height: number) => void;
   onPopupActivate: (callback: () => void) => () => void;
   onPopupDeactivate: (callback: () => void) => () => void;
 }
@@ -155,6 +156,15 @@ export function useElectron() {
   }, []);
 
   /**
+   * Resize the assistant popup window to fit its content
+   */
+  const resizePopup = useCallback((height: number) => {
+    if (typeof window !== "undefined" && hasElectronAPI(window)) {
+      window.api.resizePopup(height);
+    }
+  }, []);
+
+  /**
    * Register a callback for assistant popup activation events
    * Returns a cleanup function to remove the listener
    */
@@ -190,6 +200,7 @@ export function useElectron() {
     onAuthRedirecting,
     notifyWakeWord,
     dismissPopup,
+    resizePopup,
     onPopupActivate,
     onPopupDeactivate,
   };

@@ -4,10 +4,16 @@ import { useQueryClient } from "@tanstack/react-query";
 import * as m from "motion/react-m";
 import { useEffect, useState } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
+import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useElectron } from "@/hooks/useElectron";
 import { useChatStoreSync } from "@/stores/chatStore";
 import { useLoadingStore } from "@/stores/loadingStore";
-import { POPUP_EASE, POPUP_TRANSITION_SECONDS } from "../constants";
+import {
+  POPUP_EASE,
+  POPUP_EXPANDED_HEIGHT,
+  POPUP_FRAME_PADDING_PX,
+  POPUP_TRANSITION_SECONDS,
+} from "../constants";
 import { usePopupVoice } from "../hooks/usePopupVoice";
 import PopupComposer from "./PopupComposer";
 import PopupFeed from "./PopupFeed";
@@ -93,14 +99,34 @@ export default function AssistantPopup() {
           disabled={!isAuthenticated}
         />
 
-        {isAuthenticated ? (
-          <PopupFeed />
-        ) : (
-          <p className="px-2 text-center text-xs text-zinc-400">
-            Sign in from the GAIA window to start chatting
-          </p>
-        )}
+        {isAuthenticated && <PopupFeed />}
       </m.div>
+      <PopupWindowSizer />
     </div>
   );
+}
+
+/**
+ * Reports the desired window height to the main process: the bare
+ * composer pill when the conversation is empty (no parent panel at
+ * all), the full panel once bubbles exist. macOS animates the resize.
+ */
+function PopupWindowSizer() {
+  const { resizePopup } = useElectron();
+  const { convoMessages } = useConversation();
+  const hasMessages = (convoMessages?.length ?? 0) > 0;
+
+  useEffect(() => {
+    if (hasMessages) {
+      resizePopup(POPUP_EXPANDED_HEIGHT);
+      return;
+    }
+    const composer = document.querySelector<HTMLElement>(
+      "[data-popup-composer]",
+    );
+    // Composer pill + the frame padding above and below it.
+    resizePopup((composer?.offsetHeight ?? 48) + POPUP_FRAME_PADDING_PX * 2);
+  }, [hasMessages, resizePopup]);
+
+  return null;
 }
