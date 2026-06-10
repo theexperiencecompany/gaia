@@ -191,7 +191,11 @@ async def mark_notifications_read(
 async def send_notification(
     config: RunnableConfig,
     message: Annotated[str, "Notification body text — keep it concise and actionable"],
-    title: Annotated[str | None, "Short notification title (defaults to 'GAIA')"] = None,
+    title: Annotated[
+        str,
+        "Short, specific title summarizing the update (e.g. 'Reminder', 'Task completed', "
+        "'Build failed'). Always write a meaningful title — never a generic app name.",
+    ],
     channels: Annotated[
         list[str] | None,
         "Channel names to target ('whatsapp', 'telegram', 'discord', 'slack', 'inapp'). "
@@ -212,7 +216,10 @@ async def send_notification(
         if not message.strip():
             return {"error": "Notification message cannot be empty", "success": False}
 
-        resolved_title = title or "GAIA"
+        if not title.strip():
+            return {"error": "Notification title cannot be empty", "success": False}
+
+        resolved_title = title.strip()
         resolved_type = notification_type or NotificationType.INFO
 
         # Build channel configs when specific channels are requested. Unknown

@@ -1,12 +1,10 @@
-import { Chip } from "@heroui/chip";
 import { CheckmarkCircle02Icon, NotificationIcon } from "@icons";
-import { NOTIFICATION_PLATFORM_LABELS } from "@/features/notification/constants";
+import Image from "next/image";
+import {
+  NOTIFICATION_CHANNEL_ICONS,
+  NOTIFICATION_CHANNEL_LABELS,
+} from "@/features/notification/constants";
 import type { SendNotificationData } from "@/types/features/notificationTypes";
-
-const CHANNEL_LABELS: Record<string, string> = {
-  ...NOTIFICATION_PLATFORM_LABELS,
-  inapp: "In-app",
-};
 
 interface SendNotificationSectionProps {
   send_notification_data: SendNotificationData;
@@ -16,41 +14,53 @@ export default function SendNotificationSection({
   send_notification_data,
 }: SendNotificationSectionProps) {
   const { title, message, delivered_channels } = send_notification_data;
+  const isDelivered = delivered_channels.length > 0;
 
   return (
-    <div className="mt-3 w-full max-w-md rounded-2xl bg-zinc-800 p-4 text-white">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <NotificationIcon className="h-5 w-5 text-zinc-400" />
-          <span className="text-sm font-medium">Notification sent</span>
-        </div>
-        <CheckmarkCircle02Icon className="h-5 w-5 text-emerald-400" />
+    <div className="mt-3 w-full max-w-sm">
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+        <CheckmarkCircle02Icon className="size-4" />
+        Notification sent
       </div>
 
-      <div className="rounded-2xl bg-zinc-900 p-3">
-        <p className="text-sm font-medium text-zinc-100">{title}</p>
-        <p className="mt-0.5 line-clamp-2 text-sm text-zinc-400">{message}</p>
-      </div>
+      <div className="flex items-center gap-3 rounded-[22px] bg-zinc-800 p-3.5 shadow-2xl shadow-black/40">
+        {isDelivered ? (
+          <div className="flex shrink-0 -space-x-2">
+            {delivered_channels.map((channel) => {
+              const icon = NOTIFICATION_CHANNEL_ICONS[channel];
+              const label = NOTIFICATION_CHANNEL_LABELS[channel] ?? channel;
+              if (!icon) return null;
+              return (
+                <Image
+                  key={channel}
+                  src={icon}
+                  alt={label}
+                  title={label}
+                  width={44}
+                  height={44}
+                  className="size-11 rounded-xl ring-2 ring-zinc-800"
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-zinc-700">
+            <NotificationIcon className="size-6 text-zinc-300" />
+          </div>
+        )}
 
-      {delivered_channels.length > 0 ? (
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <span className="text-xs text-zinc-500">Delivered to</span>
-          {delivered_channels.map((channel) => (
-            <Chip
-              key={channel}
-              size="sm"
-              variant="flat"
-              className="bg-zinc-700 text-zinc-300"
-            >
-              {CHANNEL_LABELS[channel] ?? channel}
-            </Chip>
-          ))}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-white">{title}</p>
+          <p className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-zinc-300">
+            {message}
+          </p>
+          {!isDelivered && (
+            <p className="mt-1 text-[11px] text-zinc-500">
+              Queued — waiting for a channel to confirm delivery
+            </p>
+          )}
         </div>
-      ) : (
-        <p className="mt-3 text-xs text-zinc-500">
-          Queued — waiting for a channel to confirm delivery
-        </p>
-      )}
+      </div>
     </div>
   );
 }

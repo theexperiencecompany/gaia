@@ -110,7 +110,8 @@ completed — especially when they are away from the app or the event is time-se
 
 Args:
     message: Required notification body text (keep it concise and actionable)
-    title: Optional short title — defaults to "GAIA" if omitted
+    title: Required short, specific title summarizing the update (e.g. "Reminder",
+        "Task completed", "Build failed") — never a generic app name
     channels: Optional list of channel names to target (omit for all enabled channels)
     notification_type: Optional type — "info", "success", "warning", or "error"
 
