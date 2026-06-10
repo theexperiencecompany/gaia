@@ -1,5 +1,5 @@
 /** Pre-defined acknowledgment sound played when the popup activates. */
-export const WAKE_ACK_AUDIO_SRC = "/audio/wake-ack.m4a";
+export const WAKE_ACK_AUDIO_SRC = "/audio/wake-ack.mp3";
 
 /** House easing — snappy deceleration (see DESIGN.md). */
 export const POPUP_EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];

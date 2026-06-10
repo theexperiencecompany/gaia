@@ -6,9 +6,8 @@ through the API virtualenv, which has the Infisical SDK installed:
 
     cd apps/api && uv run python ../web/scripts/generate-wake-ack.py
 
-Output: apps/web/public/audio/wake-ack.mp3 (remove the .m4a placeholder and
-update WAKE_ACK_AUDIO_SRC in src/features/desktop-popup/constants.ts when
-switching formats).
+Output: apps/web/public/audio/wake-ack.mp3 (served via WAKE_ACK_AUDIO_SRC in
+src/features/desktop-popup/constants.ts).
 """
 
 import json
