@@ -4,27 +4,19 @@ import { useQueryClient } from "@tanstack/react-query";
 import * as m from "motion/react-m";
 import { useEffect, useState } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
-import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useElectron } from "@/hooks/useElectron";
 import { useChatStoreSync } from "@/stores/chatStore";
 import { useLoadingStore } from "@/stores/loadingStore";
-import {
-  POPUP_EASE,
-  POPUP_EXPANDED_HEIGHT,
-  POPUP_FRAME_PADDING_PX,
-  POPUP_TRANSITION_SECONDS,
-} from "../constants";
+import { POPUP_EASE, POPUP_TRANSITION_SECONDS } from "../constants";
 import { usePopupVoice } from "../hooks/usePopupVoice";
+import { usePopupChatPublisher } from "../sync";
 import PopupComposer from "./PopupComposer";
-import PopupFeed from "./PopupFeed";
 
 /**
- * Siri-style assistant panel rendered inside the Electron popup window.
- *
- * Layout mirrors Siri: the composer (with the orb inside it) sits at the
- * top as its own glass pill, and the conversation renders below it in a
- * separate glass container. The window provides the liquid glass;
- * dismissal is a window-level fade (main process) — content stays
+ * Composer island of the assistant popup — a liquid-glass pill in its
+ * own window. Owns the entire chat session (sending, streaming, stores)
+ * and mirrors it to the conversation window over a BroadcastChannel.
+ * Dismissal is a window-level fade (main process); content stays
  * mounted so the close is one seamless fade.
  */
 export default function AssistantPopup() {
@@ -38,6 +30,7 @@ export default function AssistantPopup() {
   const isAuthenticated = Boolean(user?.email);
 
   useChatStoreSync();
+  usePopupChatPublisher();
 
   // Outside Electron (browser dev), show the panel immediately.
   useEffect(() => {
@@ -82,10 +75,9 @@ export default function AssistantPopup() {
   if (activationCount === 0) return null;
 
   return (
-    <div className="h-screen overflow-hidden text-zinc-100">
+    <div className="h-screen overflow-hidden p-2 text-zinc-100">
       <m.div
         key={activationCount}
-        className="flex h-full flex-col gap-2 p-2"
         initial={{ opacity: 0, scale: 0.97, y: -8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{
@@ -98,35 +90,7 @@ export default function AssistantPopup() {
           agentState={agentState}
           disabled={!isAuthenticated}
         />
-
-        {isAuthenticated && <PopupFeed />}
       </m.div>
-      <PopupWindowSizer />
     </div>
   );
-}
-
-/**
- * Reports the desired window height to the main process: the bare
- * composer pill when the conversation is empty (no parent panel at
- * all), the full panel once bubbles exist. macOS animates the resize.
- */
-function PopupWindowSizer() {
-  const { resizePopup } = useElectron();
-  const { convoMessages } = useConversation();
-  const hasMessages = (convoMessages?.length ?? 0) > 0;
-
-  useEffect(() => {
-    if (hasMessages) {
-      resizePopup(POPUP_EXPANDED_HEIGHT);
-      return;
-    }
-    const composer = document.querySelector<HTMLElement>(
-      "[data-popup-composer]",
-    );
-    // Composer pill + the frame padding above and below it.
-    resizePopup((composer?.offsetHeight ?? 48) + POPUP_FRAME_PADDING_PX * 2);
-  }, [hasMessages, resizePopup]);
-
-  return null;
 }

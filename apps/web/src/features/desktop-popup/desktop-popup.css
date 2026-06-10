@@ -1,0 +1,21 @@
+/*
+ * Compact-chat alignment for the assistant popup feed.
+ *
+ * The chat pipeline reserves a left "avatar lane" (pl-10.75 / ml-10.75 /
+ * pl-11.5 spacing utilities) across many components — bubbles, loading
+ * indicator, follow-up actions. The popup hides avatars, so the lane is
+ * neutralized here in ONE place instead of threading a prop through
+ * every component that pads for it.
+ */
+.compact-chat .ml-10\.75 {
+  margin-left: 0 !important;
+}
+
+.compact-chat .pl-10\.75,
+.compact-chat .pl-11\.5 {
+  padding-left: 0 !important;
+}
+
+.compact-chat .pr-13 {
+  padding-right: 0.25rem !important;
+}

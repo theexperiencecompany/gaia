@@ -86,10 +86,11 @@ export default function PopupComposer({
         }
         classNames={{
           // Fully transparent: the window's liquid glass IS the field's
-          // background — no overlay tint, no card look.
+          // background — no overlay tints, no borders, no focus ring.
           inputWrapper:
-            "bg-transparent shadow-none py-1 pl-1.5 pr-1.5 data-[hover=true]:bg-white/5 group-data-[focus=true]:bg-white/5",
-          input: "px-1.5 text-sm text-zinc-100 placeholder:text-zinc-400",
+            "bg-transparent shadow-none border-none outline-none ring-0 py-1 pl-1.5 pr-1.5 data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus-visible=true]:ring-0 group-data-[focus-visible=true]:ring-offset-0",
+          input:
+            "px-1.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-400",
         }}
       />
     </div>

@@ -1,14 +1,14 @@
 /**
- * Assistant Popup Window Module
+ * Assistant Popup Windows Module
  *
- * A Siri-style glassy panel pinned to the top-right of the screen,
- * summoned by the "Hey GAIA" wake word (or the global shortcut).
+ * The Siri-style assistant is TWO frameless windows, each with its own
+ * native liquid glass: the composer pill, and the conversation card
+ * that appears below it once there are messages. Chat state flows from
+ * the composer renderer to the feed renderer over a BroadcastChannel
+ * (see apps/web src/features/desktop-popup/sync.ts).
  *
- * The window is created hidden at startup so showing it is instant,
- * and it is only ever hidden (never destroyed) on dismissal. It uses
- * the frameless macOS vibrancy recipe — `vibrancy: "hud"` on a
- * non-transparent frameless window — so macOS rounds the corners and
- * blurs the desktop behind it edge-to-edge.
+ * Both are created hidden at startup so summoning is instant, and are
+ * only ever hidden (never destroyed) on dismissal.
  *
  * @module windows/assistant-popup
  */
@@ -18,21 +18,26 @@ import { app, BrowserWindow, screen } from "electron";
 import { applyLiquidGlass, supportsLiquidGlass } from "./glass";
 import { loadAppRoute } from "./load-url";
 
-/** Popup panel width, in px. */
+/** Width of both popup windows, in px. */
 const POPUP_WIDTH = 420;
 
-/** Maximum popup height (composer + conversation card), in px. */
-const POPUP_HEIGHT = 620;
+/** Composer pill window height, in px. */
+const COMPOSER_HEIGHT = 64;
 
-/** Minimum popup height (composer pill alone), in px. */
-const POPUP_MIN_HEIGHT = 64;
+/** Gap between the composer pill and the conversation card, in px. */
+const ISLAND_GAP = 8;
 
-/** Gap between the panel and the screen work-area edges, in px. */
+/** Fraction of the work area the popup stack may occupy vertically. */
+const MAX_SCREEN_FRACTION = 0.8;
+
+/** Gap between the pill and the screen work-area edges, in px. */
 const POPUP_MARGIN = 16;
 
-/** Corner radius of the liquid-glass panel — half the pill height so the
- * compact window reads as a perfect capsule. */
-const POPUP_CORNER_RADIUS = 32;
+/** Corner radius of the composer pill (half its height — a capsule). */
+const COMPOSER_CORNER_RADIUS = 32;
+
+/** Corner radius of the conversation card. */
+const FEED_CORNER_RADIUS = 24;
 
 /** Duration of the window opacity fade, in ms. */
 const FADE_DURATION_MS = 160;
@@ -40,67 +45,68 @@ const FADE_DURATION_MS = 160;
 /** Opacity animation tick interval, in ms (~60 fps). */
 const FADE_TICK_MS = 16;
 
-/** Reference to the popup window (if created). */
-let popupWindow: BrowserWindow | null = null;
+/** Feed content below this height is treated as "empty" and hidden. */
+const FEED_MIN_CONTENT_PX = 40;
+
+/** The composer pill window. */
+let composerWindow: BrowserWindow | null = null;
+
+/** The conversation card window. */
+let feedWindow: BrowserWindow | null = null;
+
+/** Whether the popup (as a unit) is currently shown. */
+let popupShown = false;
 
 /** Whether a dismissal is currently in flight. */
 let dismissing = false;
 
-/** Handle of the in-flight opacity fade, if any. */
-let fadeTimer: NodeJS.Timeout | null = null;
+/** Latest content height reported by the feed renderer. */
+let feedContentHeight = 0;
 
-/**
- * Get the current assistant popup window reference.
- *
- * @returns The popup `BrowserWindow`, or `null` if not yet created.
- */
-export function getAssistantPopup(): BrowserWindow | null {
-  return popupWindow;
-}
+/** In-flight opacity fades, keyed per window. */
+const fadeTimers = new Map<BrowserWindow, NodeJS.Timeout>();
 
-function cancelFade(): void {
-  if (fadeTimer) {
-    clearInterval(fadeTimer);
-    fadeTimer = null;
+function cancelFade(win: BrowserWindow): void {
+  const timer = fadeTimers.get(win);
+  if (timer) {
+    clearInterval(timer);
+    fadeTimers.delete(win);
   }
 }
 
-/** Animate the window opacity towards `target`, then run `onDone`. */
+/** Animate `win`'s opacity towards `target`, then run `onDone`. */
 function fadeTo(win: BrowserWindow, target: number, onDone?: () => void): void {
-  cancelFade();
+  cancelFade(win);
   const steps = Math.max(1, Math.round(FADE_DURATION_MS / FADE_TICK_MS));
   const start = win.getOpacity();
   const delta = (target - start) / steps;
   let step = 0;
 
-  fadeTimer = setInterval(() => {
+  const timer = setInterval(() => {
     if (win.isDestroyed()) {
-      cancelFade();
+      cancelFade(win);
       return;
     }
     step += 1;
     if (step >= steps) {
       win.setOpacity(target);
-      cancelFade();
+      cancelFade(win);
       onDone?.();
       return;
     }
     win.setOpacity(start + delta * step);
   }, FADE_TICK_MS);
+  fadeTimers.set(win, timer);
 }
 
-/**
- * Create the assistant popup window (hidden) and start loading the
- * `/desktop-popup` route in the background.
- *
- * @param serverReady - Returns `true` once the production server is up.
- */
-export function createAssistantPopup(serverReady: () => boolean): void {
-  const useLiquidGlass = supportsLiquidGlass();
-
-  popupWindow = new BrowserWindow({
+/** Shared window options for both popup islands. */
+function islandOptions(
+  height: number,
+  useLiquidGlass: boolean,
+): Electron.BrowserWindowConstructorOptions {
+  return {
     width: POPUP_WIDTH,
-    height: POPUP_MIN_HEIGHT,
+    height,
     show: false,
     frame: false,
     resizable: false,
@@ -111,8 +117,6 @@ export function createAssistantPopup(serverReady: () => boolean): void {
     skipTaskbar: true,
     alwaysOnTop: true,
     hasShadow: true,
-    // Liquid glass needs a fully transparent window with NO vibrancy —
-    // the native NSGlassEffectView is attached after the page loads.
     transparent: useLiquidGlass,
     backgroundColor: "#00000000",
     vibrancy:
@@ -125,109 +129,190 @@ export function createAssistantPopup(serverReady: () => boolean): void {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  };
+}
+
+function pinToAllSpaces(win: BrowserWindow): void {
+  win.setAlwaysOnTop(true, "screen-saver");
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+}
+
+/** Dismiss when focus has left BOTH islands (clicking away, like Siri). */
+function handleBlur(): void {
+  setTimeout(() => {
+    if (!popupShown || dismissing) return;
+    const composerFocused = composerWindow?.isFocused() ?? false;
+    const feedFocused = feedWindow?.isFocused() ?? false;
+    if (!composerFocused && !feedFocused) dismissAssistantPopup();
+  }, 80);
+}
+
+/**
+ * Create both popup windows (hidden) and start loading their routes.
+ *
+ * @param serverReady - Returns `true` once the production server is up.
+ */
+export function createAssistantPopup(serverReady: () => boolean): void {
+  const useLiquidGlass = supportsLiquidGlass();
+
+  composerWindow = new BrowserWindow(
+    islandOptions(COMPOSER_HEIGHT, useLiquidGlass),
+  );
+  feedWindow = new BrowserWindow(islandOptions(200, useLiquidGlass));
+
+  for (const win of [composerWindow, feedWindow]) {
+    pinToAllSpaces(win);
+    win.on("blur", handleBlur);
+  }
+  composerWindow.on("closed", () => {
+    composerWindow = null;
+  });
+  feedWindow.on("closed", () => {
+    feedWindow = null;
   });
 
   if (useLiquidGlass) {
-    applyLiquidGlass(popupWindow, {
-      cornerRadius: POPUP_CORNER_RADIUS,
+    applyLiquidGlass(composerWindow, {
+      cornerRadius: COMPOSER_CORNER_RADIUS,
+      tintColor: "#00000022",
+    });
+    applyLiquidGlass(feedWindow, {
+      cornerRadius: FEED_CORNER_RADIUS,
       tintColor: "#00000022",
     });
   }
 
-  // Float above fullscreen apps and follow the user across Spaces.
-  popupWindow.setAlwaysOnTop(true, "screen-saver");
-  popupWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  loadAppRoute(composerWindow, "/desktop-popup", serverReady).catch(
+    console.error,
+  );
+  loadAppRoute(feedWindow, "/desktop-popup/feed", serverReady).catch(
+    console.error,
+  );
+}
 
-  // Clicking anywhere outside dismisses the popup, like Siri.
-  popupWindow.on("blur", () => {
-    if (popupWindow?.isVisible()) dismissAssistantPopup();
-  });
+/** Work area of the display the cursor is currently on. */
+function activeWorkArea(): Electron.Rectangle {
+  return screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+}
 
-  popupWindow.on("closed", () => {
-    popupWindow = null;
-  });
-
-  loadAppRoute(popupWindow, "/desktop-popup", serverReady).catch(console.error);
+/** Top-right pill position within `workArea`. */
+function composerBounds(workArea: Electron.Rectangle): Electron.Rectangle {
+  return {
+    x: workArea.x + workArea.width - POPUP_WIDTH - POPUP_MARGIN,
+    y: workArea.y + POPUP_MARGIN,
+    width: POPUP_WIDTH,
+    height: COMPOSER_HEIGHT,
+  };
 }
 
 /**
- * Show the popup in the top-right of the display the cursor is on,
- * fading the window in and telling the renderer to play its entrance
- * animation (`popup-activate`).
+ * Lay out the feed card under the pill, sized to its content up to
+ * ~80% of the work area, and show/hide it accordingly.
  *
- * If the popup is already visible, the renderer is re-activated so the
- * orb returns to its listening state.
+ * @param animate - Animate the resize (macOS native).
  */
-export function showAssistantPopup(): void {
-  if (!popupWindow || popupWindow.isDestroyed()) return;
+function layoutFeed(animate: boolean): void {
+  if (!composerWindow || !feedWindow || feedWindow.isDestroyed()) return;
 
-  dismissing = false;
+  const workArea = activeWorkArea();
+  const pill = composerBounds(workArea);
+  const budget =
+    Math.round(workArea.height * MAX_SCREEN_FRACTION) -
+    COMPOSER_HEIGHT -
+    ISLAND_GAP;
+  const height = Math.min(feedContentHeight, budget);
+  const hasContent = feedContentHeight >= FEED_MIN_CONTENT_PX;
 
-  if (popupWindow.isVisible()) {
-    // Already open: just reclaim focus (and full opacity, in case a
-    // dismiss fade was mid-flight). No re-activation — replaying the
-    // entrance animation and acknowledgment sound on an open popup is
-    // jarring.
-    fadeTo(popupWindow, 1);
-    app.focus({ steal: true });
-    popupWindow.focus();
+  if (!popupShown || !hasContent) {
+    if (feedWindow.isVisible()) feedWindow.hide();
     return;
   }
 
-  const { workArea } = screen.getDisplayNearestPoint(
-    screen.getCursorScreenPoint(),
-  );
-  popupWindow.setPosition(
-    workArea.x + workArea.width - POPUP_WIDTH - POPUP_MARGIN,
-    workArea.y + POPUP_MARGIN,
+  feedWindow.setBounds(
+    {
+      x: pill.x,
+      y: pill.y + COMPOSER_HEIGHT + ISLAND_GAP,
+      width: POPUP_WIDTH,
+      height,
+    },
+    animate,
   );
 
-  popupWindow.setOpacity(0);
-  popupWindow.show();
+  if (!feedWindow.isVisible() && !dismissing) {
+    feedWindow.setOpacity(0);
+    feedWindow.showInactive();
+    fadeTo(feedWindow, 1);
+  }
+}
+
+/**
+ * Update the feed island from its renderer's reported content height.
+ *
+ * @param contentHeight - Scroll height of the conversation content.
+ */
+export function resizeAssistantPopup(contentHeight: number): void {
+  feedContentHeight = Math.max(0, Math.round(contentHeight));
+  layoutFeed(true);
+}
+
+/**
+ * Show the popup stack in the top-right of the active display, fading
+ * the pill in and telling its renderer to activate (orb, ack sound).
+ *
+ * Already visible: just reclaim focus and full opacity — replaying the
+ * entrance and acknowledgment on an open popup is jarring.
+ */
+export function showAssistantPopup(): void {
+  if (!composerWindow || composerWindow.isDestroyed()) return;
+
+  dismissing = false;
+
+  if (popupShown && composerWindow.isVisible()) {
+    fadeTo(composerWindow, 1);
+    if (feedWindow && feedWindow.isVisible()) fadeTo(feedWindow, 1);
+    app.focus({ steal: true });
+    composerWindow.focus();
+    return;
+  }
+
+  popupShown = true;
+  const workArea = activeWorkArea();
+  composerWindow.setBounds(composerBounds(workArea));
+
+  composerWindow.setOpacity(0);
+  composerWindow.show();
   // The user just summoned GAIA (voice or shortcut) from wherever they
   // are — take keyboard focus so they can type immediately.
   app.focus({ steal: true });
-  popupWindow.focus();
-  fadeTo(popupWindow, 1);
-  popupWindow.webContents.send("popup-activate");
+  composerWindow.focus();
+  fadeTo(composerWindow, 1);
+  composerWindow.webContents.send("popup-activate");
+
+  layoutFeed(false);
   console.log("[Main] Assistant popup shown");
 }
 
 /**
- * Resize the popup to fit its content (Siri-style): just the composer
- * pill when the conversation is empty, expanding when bubbles appear.
- * Smoothly animated by macOS via `setBounds(…, true)`. The window is
- * anchored at its top edge, so it grows downward.
- *
- * @param contentHeight - Desired window height reported by the renderer.
- */
-export function resizeAssistantPopup(contentHeight: number): void {
-  if (!popupWindow || popupWindow.isDestroyed()) return;
-
-  const height = Math.round(
-    Math.min(Math.max(contentHeight, POPUP_MIN_HEIGHT), POPUP_HEIGHT),
-  );
-  const bounds = popupWindow.getBounds();
-  if (bounds.height === height) return;
-
-  popupWindow.setBounds({ ...bounds, height }, true);
-}
-
-/**
- * Dismiss the popup: one seamless window-level fade, then hide. The
- * renderer keeps its content mounted (`popup-deactivate` only stops the
- * voice session) so the close never reads as content-vanishing-first.
+ * Dismiss the popup: one seamless fade across both islands, then hide.
+ * Renderers keep their content mounted (`popup-deactivate` only stops
+ * the voice session) so the close never reads as content-vanishing.
  */
 export function dismissAssistantPopup(): void {
-  if (!popupWindow || popupWindow.isDestroyed()) return;
-  if (dismissing || !popupWindow.isVisible()) return;
+  if (!composerWindow || composerWindow.isDestroyed()) return;
+  if (dismissing || !popupShown) return;
   dismissing = true;
+  popupShown = false;
 
-  popupWindow.webContents.send("popup-deactivate");
+  composerWindow.webContents.send("popup-deactivate");
 
-  fadeTo(popupWindow, 0, () => {
-    if (!popupWindow || popupWindow.isDestroyed() || !dismissing) return;
-    popupWindow.hide();
+  if (feedWindow && !feedWindow.isDestroyed() && feedWindow.isVisible()) {
+    fadeTo(feedWindow, 0, () => {
+      if (feedWindow && !feedWindow.isDestroyed()) feedWindow.hide();
+    });
+  }
+  fadeTo(composerWindow, 0, () => {
+    if (!composerWindow || composerWindow.isDestroyed() || !dismissing) return;
+    composerWindow.hide();
     dismissing = false;
     console.log("[Main] Assistant popup hidden");
   });
