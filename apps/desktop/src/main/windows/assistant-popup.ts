@@ -170,6 +170,11 @@ function islandOptions(
     skipTaskbar: true,
     alwaysOnTop: true,
     hasShadow,
+    // NSPanel, like Siri/Spotlight: nonactivating, keeps the ACTIVE
+    // glass material regardless of key-window status. Regular windows
+    // render the faded inactive material unless focused — the cause of
+    // the glass changing when clicking between the islands.
+    type: process.platform === "darwin" ? "panel" : undefined,
     transparent: useLiquidGlass,
     backgroundColor: "#00000000",
     vibrancy:
