@@ -175,6 +175,7 @@ Use GAIA directly inside the tools you're already in.
 | <img src="apps/web/public/images/icons/macos/slack.webp"  alt="Slack" width="50" height="50" /> | **Slack** | [Add GAIA to your workspace](https://heygaia.io/slack-bot) and use `/gaia` and other slash commands |
 |<img src="apps/web/public/images/icons/macos/telegram.webp" alt="Telegram" width="50" height="50" />|  **Telegram** | [Message @heygaia_bot](https://t.me/heygaia_bot) and send messages or use `/gaia` commands |
 |<img src="apps/web/public/images/icons/macos/whatsapp.webp" alt="WhatsApp" width="50" height="50" />|  **WhatsApp** | [Message GAIA](https://wa.me/12762088737) and send messages or use `/gaia` commands |
+|<img src="apps/web/public/images/icons/macos/imessage.svg" alt="iMessage" width="50" height="50" />|  **iMessage** | _Coming soon_ — text GAIA right from Messages on your iPhone or Mac |
 
 See the [Bot Integrations Guide](https://docs.heygaia.io/bots/overview) for setup and usage details.
 
