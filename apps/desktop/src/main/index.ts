@@ -31,7 +31,7 @@ import { startNextServer, stopNextServer } from "./server";
 import { fixSessionCookies } from "./session";
 import {
   createAssistantPopup,
-  showAssistantPopup,
+  toggleAssistantPopup,
 } from "./windows/assistant-popup";
 import {
   createMainWindow,
@@ -150,7 +150,7 @@ if (!gotTheLock) {
     createWakeListenerWindow(() => serverStarted).catch(console.error);
 
     if (
-      !globalShortcut.register(ASSISTANT_POPUP_SHORTCUT, showAssistantPopup)
+      !globalShortcut.register(ASSISTANT_POPUP_SHORTCUT, toggleAssistantPopup)
     ) {
       console.warn(
         "[Main] Failed to register shortcut:",

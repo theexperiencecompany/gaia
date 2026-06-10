@@ -40,7 +40,11 @@ export function applyLiquidGlass(
 ): void {
   win.webContents.once("did-finish-load", () => {
     try {
-      liquidGlass.addView(win.getNativeWindowHandle(), options);
+      const viewId = liquidGlass.addView(win.getNativeWindowHandle(), options);
+      // Pin the glass to its active appearance — macOS subdues the
+      // material when the window isn't key, which makes the popup's two
+      // islands (only one can be focused) render visibly different.
+      liquidGlass.unstable_setSubdued(viewId, 0);
       console.log("[Main] Liquid glass applied");
     } catch (err) {
       console.error("[Main] Failed to apply liquid glass:", err);

@@ -1,9 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { ArrowUp02Icon } from "@icons";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import SendStopButton from "@/features/chat/components/composer/SendStopButton";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import { useIsMainResponseStreaming } from "@/stores/loadingStore";
 import type { PopupAgentState } from "../hooks/usePopupVoice";
@@ -19,8 +18,8 @@ interface PopupComposerProps {
 }
 
 /**
- * The Siri-style top pill: its own glass surface with the glowing orb on
- * the left and the send button on the right, both inside the field.
+ * The Siri-style pill: the window's liquid glass is the field itself —
+ * glowing orb on the left, the shared send/stop button on the right.
  * Sends through the real chat-stream pipeline.
  */
 export default function PopupComposer({
@@ -32,14 +31,14 @@ export default function PopupComposer({
   const inputRef = useRef<HTMLInputElement>(null);
   const sendMessage = useSendMessage();
   const isStreaming = useIsMainResponseStreaming();
-  const canSend = text.trim().length > 0 && !isStreaming && !disabled;
+  const hasContent = text.trim().length > 0 && !disabled;
 
   useEffect(() => {
     if (active && !disabled) inputRef.current?.focus();
   }, [active, disabled]);
 
   const handleSend = () => {
-    if (!canSend) return;
+    if (!hasContent || isStreaming) return;
     const content = text;
     setText("");
     sendMessage(content);
@@ -72,23 +71,17 @@ export default function PopupComposer({
           <PopupOrb state={agentState} className="-m-3 size-16 shrink-0" />
         }
         endContent={
-          <Button
-            isIconOnly
-            size="sm"
-            radius="full"
-            color="primary"
-            isDisabled={!canSend}
-            onPress={handleSend}
-            aria-label="Send message"
-          >
-            <ArrowUp02Icon className="size-4" color="black" />
-          </Button>
+          <SendStopButton
+            hasContent={hasContent}
+            onSend={handleSend}
+            className="h-8 min-h-8 w-8 max-w-8 min-w-8"
+          />
         }
         classNames={{
           // Fully transparent: the window's liquid glass IS the field's
           // background — no overlay tints, no borders, no focus ring.
           inputWrapper:
-            "bg-transparent shadow-none border-none outline-none ring-0 py-1 pl-1.5 pr-1.5 data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus-visible=true]:ring-0 group-data-[focus-visible=true]:ring-offset-0",
+            "bg-transparent shadow-none border-none outline-none ring-0 py-0.5 pl-1 pr-1 data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus-visible=true]:ring-0 group-data-[focus-visible=true]:ring-offset-0",
           input:
             "px-1.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-400",
         }}

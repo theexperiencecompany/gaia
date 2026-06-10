@@ -66,14 +66,17 @@ export default function PopupFeed() {
 
   return (
     <div className="relative h-full">
+      {/* Horizontal padding lives on the CONTENT (not the scroller):
+          overflow clips at the scroller's padding edge, which was
+          slicing the iMessage bubble tails on both sides. */}
       <div
         ref={scrollRef}
-        className="compact-chat h-full overflow-y-auto px-3 no-scrollbar"
+        className="compact-chat h-full overflow-y-auto no-scrollbar"
       >
         <div
           ref={contentRef}
           data-popup-feed-content
-          className="flex flex-col gap-1 py-3"
+          className="flex flex-col gap-1 px-3 py-3"
         >
           <ChatRenderer compact />
         </div>

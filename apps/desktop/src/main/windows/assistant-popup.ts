@@ -22,7 +22,7 @@ import { loadAppRoute } from "./load-url";
 const POPUP_WIDTH = 420;
 
 /** Composer pill window height, in px. */
-const COMPOSER_HEIGHT = 64;
+const COMPOSER_HEIGHT = 56;
 
 /** Gap between the composer pill and the conversation card, in px. */
 const ISLAND_GAP = 8;
@@ -34,7 +34,7 @@ const MAX_SCREEN_FRACTION = 0.8;
 const POPUP_MARGIN = 16;
 
 /** Corner radius of the composer pill (half its height — a capsule). */
-const COMPOSER_CORNER_RADIUS = 32;
+const COMPOSER_CORNER_RADIUS = 28;
 
 /** Corner radius of the conversation card. */
 const FEED_CORNER_RADIUS = 24;
@@ -253,6 +253,18 @@ function layoutFeed(animate: boolean): void {
 export function resizeAssistantPopup(contentHeight: number): void {
   feedContentHeight = Math.max(0, Math.round(contentHeight));
   layoutFeed(true);
+}
+
+/**
+ * Toggle the popup: dismiss when visible, summon when hidden. Bound to
+ * the global shortcut so one chord opens AND closes it.
+ */
+export function toggleAssistantPopup(): void {
+  if (popupShown && !dismissing) {
+    dismissAssistantPopup();
+  } else {
+    showAssistantPopup();
+  }
 }
 
 /**

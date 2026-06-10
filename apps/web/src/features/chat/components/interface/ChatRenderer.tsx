@@ -1,8 +1,16 @@
 "use client";
 
 import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import CreatedByGAIABanner from "@/features/chat/components/banners/CreatedByGAIABanner";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
@@ -33,10 +41,23 @@ import type { MessageType } from "@/types/features/convoTypes";
 interface ChatRendererProps {
   convoMessages?: MessageType[];
   /**
-   * Compact mode for narrow surfaces (assistant popup): no avatars and
-   * full-width bubbles.
+   * Compact mode for narrow surfaces (assistant popup): no avatars,
+   * full-width bubbles, and a translate+blur entrance on each bubble.
    */
   compact?: boolean;
+}
+
+/** Mount-once entrance used for every bubble in compact mode. */
+function CompactReveal({ children }: { children: ReactNode }) {
+  return (
+    <m.div
+      initial={{ opacity: 0, y: 12, filter: "blur(8px)" }}
+      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+      transition={{ duration: 0.35, ease: [0.19, 1, 0.22, 1] }}
+    >
+      {children}
+    </m.div>
+  );
 }
 
 export default function ChatRenderer({
@@ -319,7 +340,7 @@ export default function ChatRenderer({
             message.type === "bot" &&
             !isBotMessageEmpty(messageProps as ChatBubbleBotProps)
           ) {
-            return (
+            const botBubble = (
               <ChatBubbleBot
                 key={message.message_id || index}
                 {...getMessageProps(message, "bot", messagePropsOptions)}
@@ -335,14 +356,28 @@ export default function ChatRenderer({
                 hideAvatar={compact}
               />
             );
+            return compact ? (
+              <CompactReveal key={message.message_id || index}>
+                {botBubble}
+              </CompactReveal>
+            ) : (
+              botBubble
+            );
           }
-          return (
+          const userBubble = (
             <ChatBubbleUser
               key={message.message_id || index}
               {...messageProps}
               hideAvatar={compact}
               fullWidth={compact}
             />
+          );
+          return compact ? (
+            <CompactReveal key={message.message_id || index}>
+              {userBubble}
+            </CompactReveal>
+          ) : (
+            userBubble
           );
         },
       )}

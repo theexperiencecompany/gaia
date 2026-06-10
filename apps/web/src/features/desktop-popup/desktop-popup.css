@@ -19,3 +19,8 @@
 .compact-chat .pr-13 {
   padding-right: 0.25rem !important;
 }
+
+/* 60vw (the web default) over-squeezes bubbles in the 420px card. */
+.compact-chat .imessage-bubble {
+  max-width: 85%;
+}
