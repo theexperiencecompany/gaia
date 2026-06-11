@@ -37,7 +37,6 @@ from app.services.storage.sessions.skills import (
     read_skills_marker,
     read_text_or_none,
     write_skills_marker,
-    write_user_root_docs,
 )
 
 
@@ -91,7 +90,6 @@ async def ensure_session_dirs(user_id: str, conv_id: str) -> Path:
         if not meta.exists():
             now = now_iso()
             write_session_meta(meta, {"created_at": now, "last_active": now, "msg_count": 0})
-        write_user_root_docs(base.parent.parent)
         return base
 
     async with fs_timer(FsOps.ENSURE_SESSION_DIRS):
@@ -103,9 +101,8 @@ async def materialize_user_integrations(user_id: str, connected_ids: set[str]) -
 
     Soft-fails if the JuiceFS mount is missing (dev mode).
     """
-    # Late-bound to break the same structural import cycle as in
-    # ``bootstrap_user_session`` (storage -> sessions -> lifecycle -> service,
-    # where the service transitively re-enters storage via the decorators pkg).
+    # Late-bound to break the storage -> sessions -> lifecycle -> service ->
+    # storage import cycle (the service transitively re-enters the storage pkg).
     from app.services.integration_instructions_service import (
         get_all_instructions,
         instructions_signature,
@@ -127,28 +124,20 @@ async def materialize_user_integrations(user_id: str, connected_ids: set[str]) -
 
 
 async def provision_user_workspace(user_id: str, connected_ids: set[str] | None = None) -> None:
-    """User-level workspace provisioning: system-file symlinks + user-root docs
-    (INDEX/GUIDE) + the SKILL.md / instructions catalog.
+    """User-level workspace provisioning: system-file symlinks (INDEX/GUIDE +
+    builtin skills) + the SKILL.md / instructions catalog.
 
-    This is the user-level half of the former per-turn ``bootstrap_user_session``,
-    now run on the events that actually change it — registration, integration
+    Run on the events that actually change it — registration, integration
     connect/disconnect, and startup — instead of every chat turn. Idempotent and
     hash-gated, so repeat calls are near-zero I/O. Soft-fails when JuiceFS is
     unmounted (native dev).
     """
-    # Late-bound to break the storage package import cycle (see the note in
-    # ``bootstrap_user_session``).
+    # Late-bound: ``app.services.storage`` re-exports this module, so importing
+    # ``system_workspace`` (which imports ``storage.juicefs``) at top level would
+    # re-enter the half-initialized storage package.
     from app.services.storage.system_workspace import link_system_files_into_workspace
 
     await link_system_files_into_workspace(user_id)
-
-    def _docs() -> None:
-        if not _is_mounted():
-            return
-        write_user_root_docs(user_root(user_id))
-
-    async with fs_timer(FsOps.MATERIALIZE_INTEGRATIONS):
-        await asyncio.to_thread(_docs)
     await materialize_user_integrations(user_id, connected_ids or set())
 
 
