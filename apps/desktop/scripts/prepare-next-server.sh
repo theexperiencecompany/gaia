@@ -37,19 +37,49 @@ rsync_safe() {
   fi
 }
 
-# Exclude worktree-path node_modules symlinks — they point at the full 4.7GB
-# primary worktree node_modules. The bundled 34MB copy lives at gaia/node_modules.
-# We'll recreate correct relative symlinks after the copy.
-rsync_safe -aL \
-  --exclude='gaia-feat-desktop-wake-word/node_modules' \
-  --exclude='gaia-*/node_modules' \
-  "$STANDALONE_DIR/" "$PREPARED_DIR/"
-
-# Re-link worktree node_modules to the actual bundled copy so require() resolves.
-WORKTREE_NM="$PREPARED_DIR/gaia-feat-desktop-wake-word/node_modules"
-if [ -d "$PREPARED_DIR/gaia-feat-desktop-wake-word" ] && [ ! -e "$WORKTREE_NM" ]; then
-  ln -sf "../gaia/node_modules" "$WORKTREE_NM"
+# Next.js standalone mirrors filesystem paths from the common ancestor of all
+# traced files. Built from the primary repo, server.js sits at apps/web/server.js;
+# built from a worktree (deps symlinked to the primary), output nests one level
+# deeper (<worktree-name>/apps/web/server.js) with node_modules as a symlink to
+# the primary repo and the real traced copy under <primary-name>/node_modules.
+# The main process expects next-server/apps/web/server.js, so normalize here.
+APP_ROOT=""
+if [ -f "$STANDALONE_DIR/apps/web/server.js" ]; then
+  APP_ROOT="$STANDALONE_DIR"
+else
+  for candidate in "$STANDALONE_DIR"/*/; do
+    if [ -f "${candidate}apps/web/server.js" ]; then
+      APP_ROOT="${candidate%/}"
+      break
+    fi
+  done
 fi
+
+if [ -z "$APP_ROOT" ]; then
+  echo "ERROR: Could not find apps/web/server.js in standalone output"
+  exit 1
+fi
+
+NM_SRC="$APP_ROOT/node_modules"
+if [ -L "$NM_SRC" ]; then
+  for candidate in "$STANDALONE_DIR"/*/node_modules; do
+    if [ -d "$candidate" ] && [ ! -L "$candidate" ]; then
+      NM_SRC="$candidate"
+      break
+    fi
+  done
+fi
+
+if [ ! -d "$NM_SRC" ] || [ -L "$NM_SRC" ]; then
+  echo "ERROR: Could not find traced node_modules in standalone output"
+  exit 1
+fi
+
+echo "App root: $APP_ROOT"
+echo "node_modules source: $NM_SRC"
+
+rsync_safe -aL --exclude='/node_modules' "$APP_ROOT/" "$PREPARED_DIR/"
+rsync_safe -aL "$NM_SRC/" "$PREPARED_DIR/node_modules/"
 
 # Also copy static files (mkdir first — standalone rsync may not create these)
 echo "Copying static files..."
