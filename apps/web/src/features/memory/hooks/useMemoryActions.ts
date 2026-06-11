@@ -17,8 +17,8 @@ export function useMemoryActions(onChanged: () => void) {
   const { confirm, confirmationProps } = useConfirmation();
 
   const forgetMemory = useCallback(
-    async (memory: MemoryEntry) => {
-      if (!memory.id) return;
+    async (memory: MemoryEntry): Promise<boolean> => {
+      if (!memory.id) return false;
 
       const confirmed = await confirm({
         title: "Forget memory",
@@ -27,7 +27,7 @@ export function useMemoryActions(onChanged: () => void) {
         cancelText: "Cancel",
         variant: "destructive",
       });
-      if (!confirmed) return;
+      if (!confirmed) return false;
 
       setDeletingId(memory.id);
       try {
@@ -38,11 +38,13 @@ export function useMemoryActions(onChanged: () => void) {
             memory_id: memory.id,
           });
           onChanged();
-        } else {
-          toast.error(response.message || "Failed to forget memory");
+          return true;
         }
+        toast.error(response.message || "Failed to forget memory");
+        return false;
       } catch {
         toast.error("Failed to forget memory");
+        return false;
       } finally {
         setDeletingId(null);
       }

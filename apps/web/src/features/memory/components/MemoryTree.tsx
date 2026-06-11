@@ -157,7 +157,16 @@ function TreeFolder({ node, depth, actions }: TreeFolderProps) {
                   memory={memory}
                   isDeleting={actions.deletingId === memory.id}
                   onEdit={actions.setEditingMemory}
-                  onForget={actions.forgetMemory}
+                  onForget={async (target) => {
+                    // Pop the row immediately on success — the folder's local
+                    // cache otherwise keeps showing the forgotten memory.
+                    if (await actions.forgetMemory(target)) {
+                      setMemories(
+                        (previous) =>
+                          previous?.filter((m) => m.id !== target.id) ?? null,
+                      );
+                    }
+                  }}
                 />
               ))}
             </div>

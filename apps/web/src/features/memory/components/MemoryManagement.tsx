@@ -119,16 +119,16 @@ export default function MemoryManagement({
           title={<TabTitle icon={Folder01Icon} label="Folders" />}
         />
         <Tab
+          key="documents"
+          title={<TabTitle icon={Note01Icon} label="Documents" />}
+        />
+        <Tab
           key="graph"
           title={<TabTitle icon={NeuralNetworkIcon} label="Graph" />}
         />
         <Tab
           key="journal"
           title={<TabTitle icon={BookOpen01Icon} label="Journal" />}
-        />
-        <Tab
-          key="documents"
-          title={<TabTitle icon={Note01Icon} label="Documents" />}
         />
         <Tab key="all" title={<TabTitle icon={ListViewIcon} label="All" />} />
       </Tabs>

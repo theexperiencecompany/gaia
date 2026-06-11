@@ -206,7 +206,27 @@ export function MemoryList({ onChanged }: MemoryListProps) {
               showCategory
               isDeleting={actions.deletingId === memory.id}
               onEdit={actions.setEditingMemory}
-              onForget={actions.forgetMemory}
+              onForget={async (target) => {
+                // Pop the row immediately on success; the refetch then settles
+                // counts and pagination.
+                if (await actions.forgetMemory(target)) {
+                  setData((previous) =>
+                    previous
+                      ? {
+                          ...previous,
+                          memories: previous.memories.filter(
+                            (m) => m.id !== target.id,
+                          ),
+                          total_count: Math.max(previous.total_count - 1, 0),
+                        }
+                      : previous,
+                  );
+                  setSearchResults(
+                    (previous) =>
+                      previous?.filter((m) => m.id !== target.id) ?? previous,
+                  );
+                }
+              }}
             />
           ))}
         </div>

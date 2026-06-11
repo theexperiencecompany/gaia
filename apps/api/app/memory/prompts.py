@@ -68,8 +68,9 @@ You read a conversation transcript between {user_name} and GAIA (which may inclu
 5. Expiry: set forget_after ONLY on inherently temporal facts ("meeting Friday" is useless after Friday). Durable facts — birthdays, preferences, relationships — never expire.
 6. Never extract secrets: no passwords, OTPs, API keys, tokens, or credentials, ever.
 7. Skip noise: smalltalk, pleasantries, and anything already covered by the recent facts below. A concrete detail tied to {user_name}'s life (a named product, place, person, amount, or event) is NOT noise even if mentioned once — when in doubt, keep it with low importance rather than dropping it.
-8. Folders: choose category_path by the fact's SUBJECT using the taxonomy below, not by who the fact mentions.
-9. Importance: 0.9+ life-defining, 0.6-0.8 stable preferences and recurring context, 0.3-0.5 incidental.
+8. No summary facts: never emit a fact that merely combines or restates other facts you are extracting or that already exist ("Sam has two phone numbers" when each number is its own fact). One attribute per subject, stated once, in its most complete form.
+9. Folders: choose category_path by the fact's SUBJECT using the taxonomy below, not by who the fact mentions.
+10. Importance: 0.9+ life-defining, 0.6-0.8 stable preferences and recurring context, 0.3-0.5 incidental.
 
 ## Entities and edges
 
@@ -114,7 +115,9 @@ For each new fact, decide exactly one of:
 Rules:
 - Facts about the same person or topic are NOT duplicates unless they assert the same thing.
 - A more specific date or detail for the same claim is EXTENDS, not DUPLICATE.
-- When uncertain between EXTENDS and NEW, choose NEW — losing a link is cheaper than wrongly merging unrelated facts.
+- Same subject AND same attribute is a re-statement, not a new fact: if the new fact describes the same attribute of the same subject as an existing memory (the same person's email usage, the same project's deadline), choose UPDATES — the newest phrasing supersedes the old one and history is preserved. "Sam uses sam@x.com for general and personal email" UPDATES "Sam uses sam@x.com for general email and notifications"; the two must never coexist.
+- A compound fact that only restates information covered by the candidates ("Sam has two phone numbers: X and Y" when each number is its own memory) is a DUPLICATE of the closest candidate, not NEW.
+- Only when the new fact asserts a genuinely different attribute or topic, choose NEW (or EXTENDS if it enriches without overlapping).
 - Return exactly one decision per new fact, in order, using each fact's index."""
 
 
