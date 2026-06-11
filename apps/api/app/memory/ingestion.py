@@ -53,6 +53,14 @@ class RetainResult:
 
 
 @dataclass
+class RetainedMemory:
+    """One explicitly stored fact plus how reconciliation resolved it."""
+
+    entry: MemoryEntry
+    outcome: ReconcileOutcome
+
+
+@dataclass
 class _ApplyResult:
     """Rows written by ``_apply_reconciled`` plus graph counts."""
 
@@ -160,7 +168,7 @@ async def retain_single(
     *,
     category_path: str | None = None,
     source_type: MemorySourceType,
-) -> MemoryEntry:
+) -> RetainedMemory:
     """Store one explicit fact (add_memory tool / POST endpoint).
 
     Skips transcript extraction. When no folder is given, one small
@@ -192,7 +200,10 @@ async def retain_single(
         row = existing
 
     entities = await pg_store.get_entities_for_memories([row.id])
-    return row_to_entry(row, entities.get(row.id, []))
+    return RetainedMemory(
+        entry=row_to_entry(row, entities.get(row.id, [])),
+        outcome=reconciled[0].outcome,
+    )
 
 
 async def summarize_episode(user_id: str, date: date_type) -> None:

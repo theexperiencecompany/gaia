@@ -31,9 +31,10 @@ class MemoryService:
             log.warning("No user_id provided for memory operation")
             return None
         try:
-            return await memory_engine.retain_single(
+            retained = await memory_engine.retain_single(
                 user_id, content, category_path=category_path, source_type=source_type
             )
+            return retained.entry
         except Exception as e:
             log.error(f"Error storing memory for user {user_id}: {e}")
             return None

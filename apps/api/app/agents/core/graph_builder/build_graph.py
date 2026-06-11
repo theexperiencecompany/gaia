@@ -167,8 +167,7 @@ async def build_comms_graph(
     tool_registry = {
         "call_executor": call_executor,
         "cancel_executor": cancel_executor,
-        "add_memory": memory_tools.add_memory,
-        "search_memory": memory_tools.search_memory,
+        **{memory_tool.name: memory_tool for memory_tool in memory_tools.tools},
     }
     store = await get_tools_store()
 
@@ -184,7 +183,11 @@ async def build_comms_graph(
         agent_name="comms_agent",
         tool_registry=tool_registry,
         disable_retrieve_tools=True,
-        initial_tool_ids=["call_executor", "cancel_executor", "add_memory", "search_memory"],
+        initial_tool_ids=[
+            "call_executor",
+            "cancel_executor",
+            *[memory_tool.name for memory_tool in memory_tools.tools],
+        ],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
         end_graph_hooks=[

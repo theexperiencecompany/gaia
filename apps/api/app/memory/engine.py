@@ -11,9 +11,9 @@ into one object so call sites read ``memory_engine.<operation>(...)``:
 """
 
 from app.memory import consolidation, context, ingestion, management, retrieval
-from app.memory.ingestion import RetainResult
+from app.memory.ingestion import RetainedMemory, RetainResult
 
-__all__ = ["MemoryEngine", "RetainResult", "memory_engine"]
+__all__ = ["MemoryEngine", "RetainResult", "RetainedMemory", "memory_engine"]
 
 
 class MemoryEngine:

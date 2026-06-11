@@ -28,6 +28,8 @@ async def read_manual(topic: ManualTopic) -> str:
     - ``user-todos`` — the user's own todo list and external task providers.
     - ``sessions-and-artifacts`` — working in a session; producing artifacts.
     - ``notifications`` — notification channels and delivery.
+    - ``memory`` — long-term memory about the user: the ``/workspace/memory/``
+      layout, journal, core documents, and the memory tools.
 
     Pass one of the topic names above; returns that topic's full doc. Passing an
     unknown topic returns the list of valid topics.

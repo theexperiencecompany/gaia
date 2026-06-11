@@ -356,7 +356,10 @@ every turn; read the others (and `journal/`, `facts/`) when you need depth —
 - `search_memory` — indexed semantic recall when walking files is too slow.
 - `update_memory` — correct an existing fact by id (chains a new version).
 - `forget_memory` — soft-delete a fact by id, with a reason.
-- `update_memory_document` — rewrite one of the core documents above.
+- `search_journal` — "when did we last talk about X" across journal days.
+- `get_journal` — read one day's journal page by date (YYYY-MM-DD).
+- `read_memory_document` / `update_memory_document` — read or rewrite one of
+  the core documents above (update is a full replace and bumps the version).
 
 Memory also updates itself in the background after conversations — you do not
 need to store what a normal exchange already taught the system. Reach for the
@@ -421,6 +424,8 @@ these.
 | "Connect / add / set up <service>" | `connect_integration([...])` | `integrations` |
 | "What can you connect to / what's connected?" | `list_integrations` | `integrations` |
 | "For <service>, always do X" (standing preference) | `update_integration_instructions(id, full_body)` | `integrations` |
+| "Remember / correct / forget <fact>" | memory tools (`add_memory`, ...) | `memory` |
+| "What did we do on <day> / when did we last ...?" | `get_journal` / `search_journal` | `memory` |
 | "Track this / follow up later / what are you tracking?" | tracked-todo tools | `tracked-todos` |
 | "Add to my todo list / what are my tasks?" | the user's todo provider | `user-todos` |
 | "Notify / remind me on WhatsApp/Telegram/email" | see the notifications doc | `notifications` |
@@ -440,6 +445,8 @@ When a request matches one of these, read the full doc with
 - `user-todos` — the user's own todo list and external task providers.
 - `sessions-and-artifacts` — working inside a session; producing artifacts.
 - `notifications` — notification channels and delivery.
+- `memory` — your long-term memory about the user: the `/workspace/memory/`
+  layout, journal, core documents, and the memory tools.
 
 ## Operating rules
 
@@ -503,6 +510,16 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             description="Notification channels and delivery (WhatsApp/Telegram/email/push).",
             body=NOTIFICATIONS_DOC,
         ),
+        ManualDoc(
+            name="memory",
+            title="Memory — what you know about this user",
+            description=(
+                "Long-term memory about the user: the /workspace/memory/ layout, "
+                "journal, core documents, and the memory tools (add/search/update/"
+                "forget, journal, documents)."
+            ),
+            body=MEMORY_DOC,
+        ),
     )
 }
 
@@ -516,6 +533,7 @@ ManualTopic = Literal[
     "user-todos",
     "sessions-and-artifacts",
     "notifications",
+    "memory",
 ]
 
 if set(get_args(ManualTopic)) != set(MANUAL_DOCS):

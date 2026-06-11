@@ -59,4 +59,8 @@ async def upsert_document(user_id: str, doc_type: MemoryDocType, content: str) -
             document.version += 1
             document.content = content
         await session.commit()
+        # ``updated_at`` is a SQL-side onupdate default: UPDATEs (unlike
+        # INSERTs, which populate it via RETURNING) leave the attribute
+        # expired, and the row outlives this session — reload it here.
+        await session.refresh(document)
     return document

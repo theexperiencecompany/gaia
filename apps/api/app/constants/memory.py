@@ -104,6 +104,15 @@ EXTRACTION_TRANSCRIPT_TAIL_CHARS = 10_000
 # Default importance assigned to a fact when the extractor omits it.
 DEFAULT_MEMORY_IMPORTANCE = 0.5
 
+# Agent-tool payloads streamed to the frontend (``memory_data`` events) cap
+# text so chat payloads stay small; the settings UI fetches full content.
+MEMORY_TOOL_CONTENT_MAX_CHARS = 400
+MEMORY_TOOL_DOCUMENT_MAX_CHARS = 4000
+
+# GET /memory/episodes: default lookback window and the hard range cap.
+MEMORY_EPISODES_DEFAULT_DAYS = 14
+MEMORY_EPISODES_MAX_RANGE_DAYS = 90
+
 
 class MemoryKind(StrEnum):
     """What a memory row represents."""
