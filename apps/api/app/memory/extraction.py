@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import TypeVar
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import get_free_llm_chain
@@ -39,6 +40,17 @@ from shared.py.wide_events import log
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
 
 _TRANSCRIPT_TRUNCATION_MARKER = "\n[... transcript truncated ...]\n"
+
+# These LLM calls run inside the LangGraph run that spawned them (the
+# add_memory tool, or a background ingestion task that inherited the graph's
+# callback context). Without this marker their structured-output tokens are
+# captured by the chat token stream and rendered as assistant text. ``silent``
+# is the same flag the chat stream consumers use to drop internal-LLM chunks.
+_SILENT_CONFIG: RunnableConfig = {
+    "silent": True,  # top-level flag, matching follow_up_actions_node
+    "metadata": {"silent": True},  # canonical location the messages-stream consumers read
+    "tags": ["memory_internal"],
+}  # type: ignore[typeddict-unknown-key]
 
 
 class SimilarMemory(BaseModel):
@@ -91,7 +103,7 @@ async def _invoke_structured(
         provider_name = type(llm).__name__
         try:
             structured_llm = llm.with_structured_output(output_model)
-            result = await structured_llm.ainvoke(messages)
+            result = await structured_llm.ainvoke(messages, config=_SILENT_CONFIG)
             if isinstance(result, output_model):
                 return result
             return output_model.model_validate(result)

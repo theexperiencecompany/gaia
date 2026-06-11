@@ -70,11 +70,12 @@ RECONCILE_CANDIDATES = 5
 # How many recent facts are shown to the extractor as "do NOT re-extract".
 RECENT_FACTS_LIMIT = 10
 
-# Worth-learning gate for conversational ingestion (memory_node). A turn is
-# learned if it has at least this many messages OR drove at least this many
-# tool calls — pure-text conversations are the richest memory source.
-MIN_MESSAGES_TO_LEARN = 4
-MIN_TOOL_CALLS_TO_LEARN = 2
+# Worth-learning gate for conversational ingestion (memory_node). There is NO
+# message-count or tool-call gating: a single disclosure ("my name is Aryan")
+# must be remembered. A turn is ingested whenever any user message carries at
+# least this many characters of real text — the extraction LLM then decides if
+# anything durable is present, so trivial turns ("hi", "thanks") cost nothing.
+MIN_USER_CONTENT_CHARS = 8
 
 # Max length of an agent/user-supplied forget reason (matches the DB column).
 FORGET_REASON_MAX_CHARS = 200

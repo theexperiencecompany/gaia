@@ -14,8 +14,7 @@ from langgraph.store.base import BaseStore
 
 from app.config.oauth_config import get_memory_extraction_prompt
 from app.constants.memory import (
-    MIN_MESSAGES_TO_LEARN,
-    MIN_TOOL_CALLS_TO_LEARN,
+    MIN_USER_CONTENT_CHARS,
     MemorySourceType,
 )
 from app.memory.engine import memory_engine
@@ -55,27 +54,22 @@ def _get_session_id(config: RunnableConfig) -> str | None:
 
 
 def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
-    """Check if a conversation has enough content to be worth extracting.
+    """Whether a turn carries any substantive user content worth extracting.
 
-    The gate is OR, not AND: a substantial pure-text conversation (no tool
-    calls) is the richest memory source — the user disclosing relationships,
-    preferences, and dates is exactly what must be remembered. A shorter
-    exchange still qualifies if it drove enough tool activity to be
-    meaningful. Only genuinely trivial turns are skipped.
+    No message-count or tool-call gating: a single-message disclosure ("my
+    name is Aryan", "my girlfriend's birthday is March 12") must be learned.
+    We ingest whenever any user message has real text and let the extraction
+    LLM decide if anything durable is present — it returns an empty batch for
+    smalltalk, so only truly empty turns ("hi", "ok") are skipped here.
 
     Returns:
         Tuple of (should_learn, reason)
     """
-    if len(messages) >= MIN_MESSAGES_TO_LEARN:
-        return True, "OK"
-
-    tool_calls = sum(
-        len(msg.tool_calls) for msg in messages if isinstance(msg, AIMessage) and msg.tool_calls
-    )
-    if tool_calls >= MIN_TOOL_CALLS_TO_LEARN:
-        return True, "OK"
-
-    return False, f"Trivial turn ({len(messages)} messages, {tool_calls} tool calls)"
+    for msg in messages:
+        if isinstance(msg, HumanMessage):
+            if len(_extract_text_content(msg.content).strip()) >= MIN_USER_CONTENT_CHARS:
+                return True, "OK"
+    return False, "No substantive user message"
 
 
 def _format_messages_for_user_memory(
