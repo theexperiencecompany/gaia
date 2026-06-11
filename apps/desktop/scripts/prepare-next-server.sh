@@ -27,28 +27,23 @@ echo "Copying standalone output with dereferenced symlinks..."
 echo "From: $STANDALONE_DIR/"
 echo "To: $PREPARED_DIR/"
 
-rsync -aL "$STANDALONE_DIR/" "$PREPARED_DIR/" 2>&1
-RSYNC_EXIT=$?
-if [ $RSYNC_EXIT -ne 0 ] && [ $RSYNC_EXIT -ne 23 ]; then
-  echo "ERROR: rsync failed with exit code $RSYNC_EXIT"
-  exit 1
-fi
+rsync_safe() {
+  local exit_code
+  rsync "$@" 2>&1 || exit_code=$?
+  exit_code=${exit_code:-0}
+  if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 23 ]; then
+    echo "ERROR: rsync failed with exit code $exit_code"
+    return "$exit_code"
+  fi
+}
+
+rsync_safe -aL "$STANDALONE_DIR/" "$PREPARED_DIR/"
 
 # Also copy static files
 echo "Copying static files..."
-rsync -aL "$WEB_DIR/.next/static/" "$PREPARED_DIR/apps/web/.next/static/" 2>&1
-RSYNC_EXIT=$?
-if [ $RSYNC_EXIT -ne 0 ] && [ $RSYNC_EXIT -ne 23 ]; then
-  echo "ERROR: Failed to copy static files with exit code $RSYNC_EXIT"
-  exit 1
-fi
+rsync_safe -aL "$WEB_DIR/.next/static/" "$PREPARED_DIR/apps/web/.next/static/"
 
-rsync -aL "$WEB_DIR/public/" "$PREPARED_DIR/apps/web/public/" 2>&1
-RSYNC_EXIT=$?
-if [ $RSYNC_EXIT -ne 0 ] && [ $RSYNC_EXIT -ne 23 ]; then
-  echo "ERROR: Failed to copy public files with exit code $RSYNC_EXIT"
-  exit 1
-fi
+rsync_safe -aL "$WEB_DIR/public/" "$PREPARED_DIR/apps/web/public/"
 
 echo "Done! Prepared Next.js server at: $PREPARED_DIR"
 exit 0
