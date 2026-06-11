@@ -161,7 +161,10 @@ _CONSOLIDATION_SHARED_RULES = """## Rules
 3. Never invent: every statement must come from the previous version or the inputs below. No speculation, no filler.
 4. Preserve still-true content from the previous version; fold in the new inputs; drop only what the inputs contradict or obsolete.
 5. Be concise — short bullets, concrete names and dates. Keep the whole document under {max_chars} characters.
-6. Resolve conflicts in favor of the newest input (the world changed)."""
+6. Resolve conflicts in favor of the newest input (the world changed).
+7. Stay in your lane: every fact has exactly ONE home document. Respect the
+   ownership rules above — repeating a fact that belongs to another document
+   is a containment failure, not thoroughness."""
 
 
 USER_DOC_CONSOLIDATION_PROMPT = (
@@ -176,6 +179,12 @@ USER_DOC_CONSOLIDATION_PROMPT = (
 ## Routines
 
 File identity basics (name, age, languages, health context) under Identity; job, employer, and what they're building under Work & projects; where they live, key relationships in one line, and recurring life context under Life & places; stable habits and schedules under Routines.
+
+This document is about the USER only. Other people appear at most as a single
+line naming them and their role ("Partner: Nadia") — their contact details,
+preferences, diets, and dates live in people.md, not here. Never include
+content GAIA produced (recommendation lists, answers); those are plain
+memories, not identity.
 
 """
     + _CONSOLIDATION_SHARED_RULES
@@ -194,6 +203,11 @@ MEMORY_DOC_CONSOLIDATION_PROMPT = (
 
 File stable likes/dislikes (food, tools, brands, formats) under Preferences; tone, verbosity, and channel preferences under Communication style; explicit standing instructions under Dos and don'ts.
 
+This document holds HOW to assist, nothing else. Never include identity data
+(email addresses, locations, birthdays — user.md), other people's details
+(people.md), or content GAIA produced (recommendation lists — those are plain
+memories). "Sam is vegetarian" is a preference; "Sam's email is X" is not.
+
 """
     + _CONSOLIDATION_SHARED_RULES
 )
@@ -209,7 +223,7 @@ AGENDA_DOC_CONSOLIDATION_PROMPT = (
 ## Commitments & deadlines
 ## GAIA owes the user
 
-This document holds OPEN loops only: DROP every item that the inputs mark as completed or resolved, and every dated item whose date is already past. Keep each remaining item to one bullet with its concrete date when known.
+This document holds OPEN loops only: DROP every item that the inputs mark as completed or resolved, and every dated item whose date is already past. An item is also completed when GAIA already delivered it (a request for recommendations is closed once the recommendations were given). Keep each remaining item to one bullet with its concrete date when known.
 
 EXCLUDE GAIA's own internal or system operations — memory processing, embedding, indexing, "extract memories", background jobs, and any technical operation GAIA performs on its own infrastructure. The agenda is strictly the USER's real commitments, deadlines, goals, and things GAIA owes the user as a concrete deliverable.
 
@@ -228,7 +242,11 @@ PEOPLE_DOC_CONSOLIDATION_PROMPT = (
 ## Work
 ## Others
 
-One bullet per person: name, role/relation to the user, key dates (birthdays, anniversaries), and a few words of context. Partners, family, and close friends go under Inner circle; colleagues and professional contacts under Work; everyone else under Others.
+One bullet per person: name, role/relation to the user, key dates (birthdays, anniversaries), and a few words of context. Partners, family, and close friends go under Inner circle; colleagues, co-founders, and professional contacts under Work; everyone else under Others.
+
+NEVER list the user themselves — this register is the people AROUND them.
+Each person appears exactly once, under the single most specific section
+(a co-founder belongs under Work, not Others).
 
 """
     + _CONSOLIDATION_SHARED_RULES

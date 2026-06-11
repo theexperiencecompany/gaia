@@ -54,13 +54,26 @@ def _first_value(entries: list[dict], key: str) -> str | None:
     return next((entry[key] for entry in entries if entry.get(key)), None)
 
 
+def _pick_photo(photos: list[dict]) -> str | None:
+    """Best real photo: prefer the Google account (PROFILE) photo, skip monograms.
+
+    ``default=true`` marks Google's generated letter avatars — returning None
+    instead lets the merge fall through to a source with an actual photo.
+    """
+    real = [photo for photo in photos if photo.get("url") and not photo.get("default")]
+    for photo in real:
+        if photo.get("metadata", {}).get("source", {}).get("type") == "PROFILE":
+            return photo["url"]
+    return real[0]["url"] if real else None
+
+
 def _person_to_profile(person: dict, email: str) -> dict | None:
     """Map a People API person to profile fields, if it matches the email."""
     emails = {entry.get("value", "").strip().lower() for entry in person.get("emailAddresses", [])}
     if email not in emails:
         return None
     name = _first_value(person.get("names", []), "displayName")
-    photo = _first_value(person.get("photos", []), "url")
+    photo = _pick_photo(person.get("photos", []))
     if not name and not photo:
         return None
     return {
