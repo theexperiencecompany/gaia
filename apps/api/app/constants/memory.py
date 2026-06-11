@@ -24,11 +24,30 @@ RRF_K = 60
 ANN_CANDIDATES = 30
 FTS_CANDIDATES = 30
 RERANK_CANDIDATES = 30
+DEFAULT_RECALL_LIMIT = 8
 
 # Recency boost applied after reranking:
 # score *= 1 + RECENCY_BOOST_WEIGHT * e^(-age_days / RECENCY_BOOST_DECAY_DAYS)
 RECENCY_BOOST_WEIGHT = 0.15
 RECENCY_BOOST_DECAY_DAYS = 30
+
+# Importance boost applied after reranking:
+# score *= IMPORTANCE_BOOST_BASE + IMPORTANCE_BOOST_WEIGHT * importance
+IMPORTANCE_BOOST_BASE = 0.8
+IMPORTANCE_BOOST_WEIGHT = 0.4
+
+# Optional 1-hop graph expansion after reranking: entities on the top
+# results pull in sibling memories at a low fixed score.
+GRAPH_EXPANSION_SOURCE_RESULTS = 3
+GRAPH_EXPANSION_MAX_SIBLINGS = 3
+GRAPH_EXPANSION_SCORE = 0.05
+
+# Episode (journal) search: verbatim entry matching looks back this many
+# days; query tokens shorter than the minimum are noise and dropped.
+EPISODE_SEARCH_DAYS = 14
+EPISODE_ENTRY_CANDIDATES = 20
+EPISODE_SEARCH_MIN_TOKEN_LENGTH = 3
+DEFAULT_EPISODE_RECALL_LIMIT = 5
 
 # Cache TTLs (seconds). Core context is invalidated on every ingestion, so
 # the 1h TTL is a backstop; recall is cached briefly per (user, query).
@@ -48,6 +67,9 @@ RECENT_FACTS_LIMIT = 10
 
 # Core documents keep this many previous versions in their history column.
 DOCUMENT_HISTORY_LIMIT = 10
+
+# Core-document preview length on the settings-UI overview screen.
+DOCUMENT_PREVIEW_CHARS = 280
 
 # Wall-clock format for timestamped episode journal entries.
 EPISODE_ENTRY_TIME_FORMAT = "%H:%M"

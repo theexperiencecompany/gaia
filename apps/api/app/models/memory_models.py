@@ -65,6 +65,9 @@ class MemoryEntry(BaseModel):
     forget_after: datetime | None = Field(
         default=None, description="When this memory expires from recall, if temporal"
     )
+    forget_reason: str | None = Field(
+        default=None, description="Why this memory was forgotten, when it was"
+    )
     source_type: MemorySourceType = Field(
         default=MemorySourceType.CONVERSATION, description="Where this memory was ingested from"
     )

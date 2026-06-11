@@ -2,7 +2,7 @@
 
 from datetime import date as date_type
 
-from sqlalchemy import cast, select
+from sqlalchemy import cast, or_, select
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.sql import func
 
@@ -10,6 +10,17 @@ from app.memory.pg_store._session import memory_session
 from app.models.memory_db_models import MemoryEpisode
 
 EpisodeEntry = dict[str, str]  # {time, text, source}
+
+_LIKE_ESCAPE_CHAR = "\\"
+
+
+def _escape_like(token: str) -> str:
+    """Escape LIKE metacharacters so query tokens match literally."""
+    return (
+        token.replace(_LIKE_ESCAPE_CHAR, _LIKE_ESCAPE_CHAR * 2)
+        .replace("%", f"{_LIKE_ESCAPE_CHAR}%")
+        .replace("_", f"{_LIKE_ESCAPE_CHAR}_")
+    )
 
 
 async def append_episode_entries(
@@ -75,6 +86,48 @@ async def set_episode_summary(user_id: str, date: date_type, summary: str) -> No
             return
         episode.summary = summary
         await session.commit()
+
+
+async def search_episode_entries(
+    user_id: str,
+    tokens: list[str],
+    *,
+    since: date_type,
+    limit: int,
+) -> list[tuple[date_type, EpisodeEntry]]:
+    """Journal entries since ``since`` matching ANY query token, newest day first.
+
+    Entries are JSONB lines inside one row per day, so FTS over them would
+    need a derived index; instead each row's entries are expanded with
+    ``jsonb_array_elements`` and matched with ILIKE. This is indexed-sane
+    because the (indexed) ``user_id`` + ``date >= since`` filter bounds the
+    expansion to at most one row per day in the window (~14 rows) before any
+    ILIKE runs — a JSONB GIN index would buy nothing here.
+    """
+    if not tokens:
+        return []
+    entry = func.jsonb_array_elements(MemoryEpisode.entries).table_valued(
+        "value", joins_implicitly=True
+    )
+    entry_text = entry.c.value.op("->>")("text")
+    statement = (
+        select(MemoryEpisode.date, entry.c.value)
+        .where(
+            MemoryEpisode.user_id == user_id,
+            MemoryEpisode.date >= since,
+            or_(
+                *[
+                    entry_text.ilike(f"%{_escape_like(token)}%", escape=_LIKE_ESCAPE_CHAR)
+                    for token in tokens
+                ]
+            ),
+        )
+        .order_by(MemoryEpisode.date.desc())
+        .limit(limit)
+    )
+    async with memory_session() as session:
+        result = await session.execute(statement)
+        return [(date, entry_value) for date, entry_value in result.all()]
 
 
 async def get_unsummarized_episode_dates(user_id: str, before_date: date_type) -> list[date_type]:

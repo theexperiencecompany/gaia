@@ -12,6 +12,7 @@ from app.memory.pg_store.episodes import (
     get_episode,
     get_episodes_range,
     get_unsummarized_episode_dates,
+    search_episode_entries,
     set_episode_summary,
 )
 from app.memory.pg_store.graph import (
@@ -30,6 +31,7 @@ from app.memory.pg_store.memories import (
     fts_search,
     get_folder_tree,
     get_memories_by_ids,
+    get_memories_for_entities,
     get_memory,
     get_recent_facts,
     insert_memories,
@@ -52,6 +54,7 @@ __all__ = [
     "get_folder_tree",
     "get_graph",
     "get_memories_by_ids",
+    "get_memories_for_entities",
     "get_memory",
     "get_overview_counts",
     "get_recent_facts",
@@ -61,6 +64,7 @@ __all__ = [
     "link_entities",
     "list_memories",
     "mark_forgotten",
+    "search_episode_entries",
     "set_episode_summary",
     "supersede_memory",
     "upsert_document",

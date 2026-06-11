@@ -12,7 +12,7 @@ from sqlalchemy import ColumnElement, Select, func, select, update
 
 from app.constants.memory import MemoryRelationType
 from app.memory.pg_store._session import memory_session, rowcount
-from app.models.memory_db_models import MemoryRecord
+from app.models.memory_db_models import MemoryEntityLink, MemoryRecord
 
 
 def _not_expired_clause() -> ColumnElement[bool]:
@@ -120,10 +120,16 @@ async def list_memories(
     user_id: str,
     page: int = 1,
     page_size: int = 20,
-    category_prefix: str | None = None,
+    category: str | None = None,
+    include_subfolders: bool = False,
     include_superseded: bool = False,
 ) -> tuple[list[MemoryRecord], int]:
-    """One page of a user's memories, newest first, with the total count."""
+    """One page of a user's memories, newest first, with the total count.
+
+    ``category`` matches the folder exactly (tree expansion shows only a
+    folder's own memories); ``include_subfolders=True`` widens it to a
+    prefix match over the whole subtree.
+    """
     filters: list[ColumnElement[bool]] = [
         MemoryRecord.user_id == user_id,
         MemoryRecord.is_forgotten.is_(False),
@@ -131,11 +137,11 @@ async def list_memories(
     ]
     if not include_superseded:
         filters.append(MemoryRecord.is_latest.is_(True))
-    if category_prefix:
-        filters.append(
-            (MemoryRecord.category_path == category_prefix)
-            | (MemoryRecord.category_path.like(f"{category_prefix}/%"))
-        )
+    if category:
+        category_filter = MemoryRecord.category_path == category
+        if include_subfolders:
+            category_filter = category_filter | MemoryRecord.category_path.like(f"{category}/%")
+        filters.append(category_filter)
 
     async with memory_session() as session:
         total = (
@@ -174,6 +180,34 @@ async def fts_search(user_id: str, query: str, limit: int) -> list[tuple[MemoryR
             .limit(limit)
         )
         return [(row[0], float(row[1])) for row in result.all()]
+
+
+async def get_memories_for_entities(
+    user_id: str,
+    entity_ids: list[uuid.UUID],
+    exclude_memory_ids: list[uuid.UUID],
+    limit: int,
+) -> list[MemoryRecord]:
+    """Live memories linked to any of the entities, most important first.
+
+    Powers 1-hop graph expansion in recall: the entities on the top results
+    pull in sibling memories that mention the same people/places/projects.
+    """
+    if not entity_ids:
+        return []
+    query = (
+        _active_memories_query(user_id)
+        .join(MemoryEntityLink, MemoryEntityLink.memory_id == MemoryRecord.id)
+        .where(MemoryEntityLink.entity_id.in_(entity_ids))
+        .distinct()
+        .order_by(MemoryRecord.importance.desc(), MemoryRecord.created_at.desc())
+        .limit(limit)
+    )
+    if exclude_memory_ids:
+        query = query.where(MemoryRecord.id.not_in(exclude_memory_ids))
+    async with memory_session() as session:
+        result = await session.execute(query)
+        return list(result.scalars().all())
 
 
 async def get_folder_tree(user_id: str) -> list[tuple[str, int]]:
