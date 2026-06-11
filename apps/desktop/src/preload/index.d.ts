@@ -33,6 +33,7 @@ declare global {
       requestDesktopPermission: (
         pane: DesktopPermissionPane,
       ) => Promise<DesktopPermissionStatus>;
+      relaunchDesktopApp: () => void;
       getDesktopSettings: () => Promise<DesktopSettingsSnapshot>;
       setPopupShortcut: (
         accelerator: string,

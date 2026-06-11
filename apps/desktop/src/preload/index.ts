@@ -203,6 +203,12 @@ const api = {
   ): Promise<DesktopPermissionStatus> =>
     ipcRenderer.invoke("desktop-tool:request-permission", pane),
 
+  /**
+   * Relaunch the app. Needed after granting Screen Recording — macOS only
+   * applies that permission to a freshly launched process.
+   */
+  relaunchDesktopApp: (): void => ipcRenderer.send("desktop-app:relaunch"),
+
   /** Current desktop settings plus the available app-icon options. */
   getDesktopSettings: (): Promise<DesktopSettingsSnapshot> =>
     ipcRenderer.invoke("desktop-settings:get"),

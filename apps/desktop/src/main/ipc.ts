@@ -101,6 +101,13 @@ export function registerIpcHandlers(onWindowReady: () => void): void {
     },
   );
 
+  // Screen Recording grants only apply after relaunch — TCC keeps the
+  // running process's old verdict, so the settings page offers a restart.
+  ipcMain.on("desktop-app:relaunch", () => {
+    app.relaunch();
+    app.exit(0);
+  });
+
   ipcMain.handle(
     "desktop-settings:get",
     (): DesktopSettingsSnapshot => ({

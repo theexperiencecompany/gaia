@@ -79,6 +79,7 @@ function statusChip(granted: boolean, known: boolean) {
 /** Live permission status rows with grant / open-settings actions. */
 export function DesktopPermissions() {
   const [status, setStatus] = useState<DesktopPermissionStatus | null>(null);
+  const [settingsOpened, setSettingsOpened] = useState(false);
 
   const refresh = useCallback(async () => {
     const api = getElectronAPI();
@@ -88,10 +89,17 @@ export function DesktopPermissions() {
 
   useEffect(() => {
     void refresh();
+    // Instant update when the user comes back from System Settings,
+    // with polling as a fallback while the page stays visible.
+    const onFocus = () => void refresh();
+    window.addEventListener("focus", onFocus);
     const interval = setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
     }, REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      clearInterval(interval);
+    };
   }, [refresh]);
 
   const handleRequest = async (row: PermissionRowConfig) => {
@@ -101,6 +109,7 @@ export function DesktopPermissions() {
       setStatus(await api.requestDesktopPermission(row.pane));
     } else {
       api.openPermissionSettings(row.pane);
+      setSettingsOpened(true);
     }
   };
 
@@ -110,11 +119,20 @@ export function DesktopPermissions() {
         const value = status?.[row.pane];
         const known = value !== undefined && value !== "unknown";
         const granted = value === "granted";
+        // macOS only applies a Screen Recording grant to a freshly launched
+        // process, so the running app keeps reporting "denied" — offer a
+        // restart once the user has been to System Settings.
+        const needsRestart =
+          row.pane === "screen" && settingsOpened && !granted;
         return (
           <SettingsRow
             key={row.pane}
             label={row.label}
-            description={row.description}
+            description={
+              needsRestart
+                ? "Enabled it in System Settings? Restart GAIA to apply — macOS only applies this permission on launch."
+                : row.description
+            }
           >
             <div className="flex items-center gap-2">
               {statusChip(granted, known)}
@@ -126,6 +144,17 @@ export function DesktopPermissions() {
                   onPress={() => void handleRequest(row)}
                 >
                   {row.promptable ? "Allow" : "Open Settings"}
+                </Button>
+              )}
+              {needsRestart && (
+                <Button
+                  size="sm"
+                  variant="flat"
+                  color="primary"
+                  className="rounded-xl"
+                  onPress={() => getElectronAPI()?.relaunchDesktopApp()}
+                >
+                  Restart GAIA
                 </Button>
               )}
             </div>
