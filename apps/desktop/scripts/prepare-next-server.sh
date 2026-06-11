@@ -89,5 +89,26 @@ rsync_safe -aL "$WEB_DIR/.next/static/" "$PREPARED_DIR/apps/web/.next/static/"
 mkdir -p "$PREPARED_DIR/apps/web/public"
 rsync_safe -aL "$WEB_DIR/public/" "$PREPARED_DIR/apps/web/public/"
 
+# Strip prerendered marketing/SEO pages the desktop app never serves
+# (~140MB per locale across 7 locales). Desktop windows only route to the
+# in-app pages (desktop-login, desktop-popup, c, settings, ...), which are
+# siblings of these sections and untouched.
+MARKETING_SECTIONS="automate learn compare marketplace alternative-to for use-cases features blog"
+SERVER_APP_DIR="$PREPARED_DIR/apps/web/.next/server/app"
+if [ -d "$SERVER_APP_DIR" ]; then
+  echo "Pruning prerendered marketing pages..."
+  for locale_dir in "$SERVER_APP_DIR"/*/; do
+    for section in $MARKETING_SECTIONS; do
+      rm -rf \
+        "${locale_dir}${section}" \
+        "${locale_dir}${section}.segments" \
+        "${locale_dir}${section}.html" \
+        "${locale_dir}${section}.rsc" \
+        "${locale_dir}${section}.meta" \
+        "${locale_dir}${section}.prefetch.rsc"
+    done
+  done
+fi
+
 echo "Done! Prepared Next.js server at: $PREPARED_DIR"
 exit 0
