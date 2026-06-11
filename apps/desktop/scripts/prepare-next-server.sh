@@ -89,6 +89,20 @@ rsync_safe -aL "$WEB_DIR/.next/static/" "$PREPARED_DIR/apps/web/.next/static/"
 mkdir -p "$PREPARED_DIR/apps/web/public"
 rsync_safe -aL "$WEB_DIR/public/" "$PREPARED_DIR/apps/web/public/"
 
+# Strip dead weight the desktop runtime never loads:
+# - browser sourcemaps (debugging only)
+# - onnxruntime wasm variants the wake-word engine never requests (it loads
+#   only the plain ort-wasm-simd-threaded pair; jsep=WebGPU, asyncify/jspi
+#   are alternative execution modes)
+# - programmatic-SEO content data (feeds the pruned marketing pages;
+#   loadFeatureTranslations returns {} gracefully when files are missing)
+echo "Pruning sourcemaps, unused wasm variants, and SEO data..."
+find "$PREPARED_DIR/apps/web/.next" -name '*.map' -delete
+rm -f "$PREPARED_DIR/apps/web/public/wake-word/ort/"*.asyncify.* \
+      "$PREPARED_DIR/apps/web/public/wake-word/ort/"*.jsep.* \
+      "$PREPARED_DIR/apps/web/public/wake-word/ort/"*.jspi.*
+rm -rf "$PREPARED_DIR/apps/web/public/data/i18n"
+
 # Strip prerendered marketing/SEO pages the desktop app never serves
 # (~140MB per locale across 7 locales). Desktop windows only route to the
 # in-app pages (desktop-login, desktop-popup, c, settings, ...), which are

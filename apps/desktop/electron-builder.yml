@@ -6,6 +6,11 @@ electronVersion: 33.2.1
 # mutate workspace node_modules during packaging and break artifact generation.
 npmRebuild: false
 
+# Strip Chromium locale packs (~45MB) — the UI is web-rendered and ships its
+# own i18n; only Electron-native menus would use these.
+electronLanguages:
+  - en
+
 directories:
   output: release/${version}
   buildResources: resources
