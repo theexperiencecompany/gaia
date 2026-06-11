@@ -42,7 +42,7 @@ async def _retain(user_id: str, fake_llm: FakeMemoryLLM, batch: ExtractedMemoryB
 async def test_exact_duplicate_is_skipped_without_llm(
     memory_user: str, fake_llm: FakeMemoryLLM
 ) -> None:
-    content = "Aryan's girlfriend Nadia's birthday is March 12."
+    content = "Arjun's girlfriend Nadia's birthday is March 12."
     first = await _retain(memory_user, fake_llm, make_batch([make_fact(content)]))
     assert first.new == 1
 
@@ -62,7 +62,7 @@ async def test_exact_duplicate_is_skipped_without_llm(
 async def test_paraphrase_does_not_survive_as_second_latest_fact(
     memory_user: str, fake_llm: FakeMemoryLLM
 ) -> None:
-    await _retain(memory_user, fake_llm, make_batch([make_fact("Aryan's partner is Nadia.")]))
+    await _retain(memory_user, fake_llm, make_batch([make_fact("Arjun's partner is Nadia.")]))
 
     # Paraphrase sits above the 0.92 duplicate threshold for bge-small; if it
     # ever dips into the ambiguous band a DUPLICATE verdict from the canned
@@ -71,27 +71,27 @@ async def test_paraphrase_does_not_survive_as_second_latest_fact(
         ReconcileBatchResult, reconcile_against_first_candidate(ReconcileOutcome.DUPLICATE)
     )
     result = await _retain(
-        memory_user, fake_llm, make_batch([make_fact("Nadia is Aryan's girlfriend.")])
+        memory_user, fake_llm, make_batch([make_fact("Nadia is Arjun's girlfriend.")])
     )
     assert result.duplicates == 1
 
     rows = await fetch_memory_rows(memory_user)
     latest = [row for row in rows if row.is_latest]
     assert len(latest) == 1, f"paraphrase survived as a second fact: {[r.content for r in rows]}"
-    assert latest[0].content == "Aryan's partner is Nadia."
+    assert latest[0].content == "Arjun's partner is Nadia."
 
 
 async def test_contradiction_creates_updates_chain(
     memory_user: str, fake_llm: FakeMemoryLLM
 ) -> None:
-    await _retain(memory_user, fake_llm, make_batch([make_fact("Aryan lives in Bengaluru.")]))
+    await _retain(memory_user, fake_llm, make_batch([make_fact("Arjun lives in Bengaluru.")]))
     old = (await fetch_memory_rows(memory_user))[0]
 
     fake_llm.respond(
         ReconcileBatchResult, reconcile_against_first_candidate(ReconcileOutcome.UPDATES)
     )
     result = await _retain(
-        memory_user, fake_llm, make_batch([make_fact("Aryan moved to San Francisco.")])
+        memory_user, fake_llm, make_batch([make_fact("Arjun moved to San Francisco.")])
     )
     assert result.updated == 1
     assert result.new == 0
@@ -118,7 +118,7 @@ async def test_contradiction_creates_updates_chain(
 async def test_refinement_extends_and_keeps_both_latest(
     memory_user: str, fake_llm: FakeMemoryLLM
 ) -> None:
-    await _retain(memory_user, fake_llm, make_batch([make_fact("Aryan likes coffee.")]))
+    await _retain(memory_user, fake_llm, make_batch([make_fact("Arjun likes coffee.")]))
     old = (await fetch_memory_rows(memory_user))[0]
 
     fake_llm.respond(
@@ -127,7 +127,7 @@ async def test_refinement_extends_and_keeps_both_latest(
     result = await _retain(
         memory_user,
         fake_llm,
-        make_batch([make_fact("Aryan specifically likes oat-milk lattes.")]),
+        make_batch([make_fact("Arjun specifically likes oat-milk lattes.")]),
     )
     assert result.extended == 1
 
@@ -149,7 +149,7 @@ async def test_same_topic_different_assertion_stays_new(
     await _retain(
         memory_user,
         fake_llm,
-        make_batch([make_fact("Aryan's girlfriend Nadia's birthday is March 12.")]),
+        make_batch([make_fact("Arjun's girlfriend Nadia's birthday is March 12.")]),
     )
 
     # Same subject (Nadia), different assertion — similarity is below the
@@ -170,7 +170,7 @@ async def test_same_topic_different_assertion_stays_new(
 async def test_hallucinated_target_id_downgrades_to_new(
     memory_user: str, fake_llm: FakeMemoryLLM
 ) -> None:
-    await _retain(memory_user, fake_llm, make_batch([make_fact("Aryan likes coffee.")]))
+    await _retain(memory_user, fake_llm, make_batch([make_fact("Arjun likes coffee.")]))
 
     bogus_id = str(uuid.uuid4())
     fake_llm.respond(
@@ -188,7 +188,7 @@ async def test_hallucinated_target_id_downgrades_to_new(
     result = await _retain(
         memory_user,
         fake_llm,
-        make_batch([make_fact("Aryan specifically likes oat-milk lattes.")]),
+        make_batch([make_fact("Arjun specifically likes oat-milk lattes.")]),
     )
     assert len(fake_llm.calls_for(ReconcileBatchResult)) == 1, "fact never reached the LLM band"
     assert result.new == 1, "hallucinated target id must downgrade to NEW"
@@ -203,14 +203,14 @@ async def test_hallucinated_target_id_downgrades_to_new(
 async def test_reconcile_llm_total_failure_stores_everything_as_new(
     memory_user: str, fake_llm: FakeMemoryLLM
 ) -> None:
-    await _retain(memory_user, fake_llm, make_batch([make_fact("Aryan likes coffee.")]))
+    await _retain(memory_user, fake_llm, make_batch([make_fact("Arjun likes coffee.")]))
 
     # Total reconcile failure (every provider down) → None → all-NEW fallback.
     fake_llm.respond(ReconcileBatchResult, None)
     result = await _retain(
         memory_user,
         fake_llm,
-        make_batch([make_fact("Aryan specifically likes oat-milk lattes.")]),
+        make_batch([make_fact("Arjun specifically likes oat-milk lattes.")]),
     )
     assert len(fake_llm.calls_for(ReconcileBatchResult)) == 1
     assert result.new == 1, "LLM failure must not lose the fact"
@@ -218,6 +218,6 @@ async def test_reconcile_llm_total_failure_stores_everything_as_new(
     rows = await fetch_memory_rows(memory_user)
     assert len(rows) == 2
     assert {row.content for row in rows} == {
-        "Aryan likes coffee.",
-        "Aryan specifically likes oat-milk lattes.",
+        "Arjun likes coffee.",
+        "Arjun specifically likes oat-milk lattes.",
     }

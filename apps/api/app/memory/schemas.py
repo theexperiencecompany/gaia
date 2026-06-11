@@ -54,7 +54,7 @@ class ExtractedFact(BaseModel):
             "The fact as a single atomic assertion: one claim only, fully "
             "self-contained, written in third person with all pronouns resolved "
             "to real names, and including concrete names and absolute dates. "
-            "Example: \"Aryan's girlfriend Nadia's birthday is March 12.\" "
+            "Example: \"Sam's girlfriend Nadia's birthday is March 12.\" "
             "Never write vague fragments like 'likes it' or 'her birthday is soon'."
         )
     )

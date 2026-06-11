@@ -18,7 +18,7 @@ pytestmark = pytest.mark.memory
 
 
 async def test_core_context_sections_structure_and_order(memory_user: str) -> None:
-    await memory_engine.update_document(memory_user, MemoryDocType.USER_MD, "Aryan builds GAIA.")
+    await memory_engine.update_document(memory_user, MemoryDocType.USER_MD, "Arjun builds GAIA.")
     await memory_engine.update_document(
         memory_user, MemoryDocType.MEMORY_MD, "Prefers concise answers."
     )
@@ -45,7 +45,7 @@ async def test_core_context_sections_structure_and_order(memory_user: str) -> No
         f"core context sections out of order:\n{context}"
     )
 
-    assert "Aryan builds GAIA." in context
+    assert "Arjun builds GAIA." in context
     assert "Prefers concise answers." in context
     assert "Ship the memory system." in context
     assert "- 08:30 Started the workday" in context
@@ -73,18 +73,18 @@ async def test_core_context_survives_redis_outage(
     memory_user: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     await memory_engine.update_document(
-        memory_user, MemoryDocType.USER_MD, "Aryan is in Bengaluru."
+        memory_user, MemoryDocType.USER_MD, "Arjun is in Bengaluru."
     )
     # Simulate Redis down: the cache layer degrades to no-ops, and the
     # context must still assemble straight from Postgres without raising.
     monkeypatch.setattr(redis_cache, "redis", None)
 
     context = await memory_engine.get_core_context(memory_user)
-    assert "Aryan is in Bengaluru." in context
+    assert "Arjun is in Bengaluru." in context
 
     # And mutations (which invalidate caches) must not raise either.
     await memory_engine.update_document(
-        memory_user, MemoryDocType.USER_MD, "Aryan is in San Francisco."
+        memory_user, MemoryDocType.USER_MD, "Arjun is in San Francisco."
     )
     fresh = await memory_engine.get_core_context(memory_user)
-    assert "Aryan is in San Francisco." in fresh
+    assert "Arjun is in San Francisco." in fresh

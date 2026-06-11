@@ -57,7 +57,7 @@ def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
     """Whether a turn carries any substantive user content worth extracting.
 
     No message-count or tool-call gating: a single-message disclosure ("my
-    name is Aryan", "my girlfriend's birthday is March 12") must be learned.
+    name is Sam", "my girlfriend's birthday is March 12") must be learned.
     We ingest whenever any user message has real text and let the extraction
     LLM decide if anything durable is present — it returns an empty batch for
     smalltalk, so only truly empty turns ("hi", "ok") are skipped here.

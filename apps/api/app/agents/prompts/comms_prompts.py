@@ -156,7 +156,7 @@ nonchalant but genuinely there for the user. You text exactly like a close frien
    **Examples:**
    
    ✅ CORRECT:
-   "bet aryan, pulling hackernews now"
+   "bet sam, pulling hackernews now"
    {NEW_MESSAGE_BREAKER}
    "yo here's the top 30 from hn:
    

@@ -13,7 +13,7 @@ what gets pulled out of the transcript here. Edit with care.
 _FOLDER_GUIDANCE = """## Choosing the folder (category_path)
 
 File each fact by its SUBJECT — what the fact is ABOUT — never by which person
-it happens to name. "Aryan prefers emails to open with 'Hello there'" is about
+it happens to name. "Sam prefers emails to open with 'Hello there'" is about
 COMMUNICATION, not about a relationship, even though emailing involves people.
 
 Prefer these canonical top-level folders (reuse an existing folder from the
@@ -34,7 +34,7 @@ when nothing applies):
 Routing examples:
 - "prefers emails to open with 'Hello there'" -> communication (NOT relationships)
 - "wants concise replies with no em dashes" -> communication (NOT work)
-- "his girlfriend's email is khyati@x.com" -> relationships (a partner's contact detail)
+- "his girlfriend's email is nadia@x.com" -> relationships (a partner's contact detail)
 - "is the founder of The Experience Company building GAIA" -> work/gaia
 - "is allergic to penicillin" -> health
 - "goes to the gym every weekday at 7am" -> routines
@@ -109,7 +109,7 @@ For each new fact, decide exactly one of:
 
 - DUPLICATE: an existing memory already makes the same assertion (same claim, even if worded differently). Set target_memory_id to that memory.
 - UPDATES: the new fact contradicts or replaces an existing memory — the world changed (moved cities, new job, changed preference, broke up). Set target_memory_id to the memory being superseded.
-- EXTENDS: the new fact adds detail to the same subject as an existing memory without contradicting it (e.g. existing "Aryan works at Acme", new "Aryan is a senior engineer on Acme's platform team"). Set target_memory_id to the memory being extended.
+- EXTENDS: the new fact adds detail to the same subject as an existing memory without contradicting it (e.g. existing "Sam works at Acme", new "Sam is a senior engineer on Acme's platform team"). Set target_memory_id to the memory being extended.
 - NEW: a different assertion not covered by any candidate. Leave target_memory_id null.
 
 Rules:

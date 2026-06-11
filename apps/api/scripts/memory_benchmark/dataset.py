@@ -1240,19 +1240,19 @@ SCENARIOS: list[dict] = [
         "turns": [
             {
                 "role": "user",
-                "content": "My GitHub username is aryanranderiya.",
+                "content": "My GitHub username is samcodes.",
                 "day_offset": 0,
             },
             {
                 "role": "assistant",
-                "content": "Got it: GitHub username aryanranderiya.",
+                "content": "Got it: GitHub username samcodes.",
                 "day_offset": 0,
             },
         ],
         "probes": [
             {
                 "query": "What is my GitHub username?",
-                "must_contain": ["aryanranderiya"],
+                "must_contain": ["samcodes"],
                 "must_not_contain": [],
                 "description": "GitHub username recall",
                 "is_negative": False,

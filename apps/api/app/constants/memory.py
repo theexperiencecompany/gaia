@@ -107,7 +107,7 @@ RECONCILE_CANDIDATES = 5
 RECENT_FACTS_LIMIT = 10
 
 # Worth-learning gate for conversational ingestion (memory_node). There is NO
-# message-count or tool-call gating: a single disclosure ("my name is Aryan")
+# message-count or tool-call gating: a single disclosure ("my name is Sam")
 # must be remembered. A turn is ingested whenever any user message carries at
 # least this many characters of real text — the extraction LLM then decides if
 # anything durable is present, so trivial turns ("hi", "thanks") cost nothing.

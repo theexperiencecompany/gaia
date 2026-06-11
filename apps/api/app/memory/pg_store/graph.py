@@ -19,7 +19,7 @@ def _alias_match(
 ) -> MemoryEntity | None:
     """Find an existing same-type entity that is the same thing under a fuller name.
 
-    Resolves "Khyati" against an existing "Khyati Randeriya" (and vice versa) by
+    Resolves "Sam" against an existing "Sam Carter" (and vice versa) by
     whole-word token containment: one name's words are a subset of the other's.
     This collapses first-name vs full-name duplicates into one graph node. Same
     entity_type is required so a person named "Sam" never merges into a place.
@@ -74,7 +74,7 @@ async def upsert_entities(user_id: str, names_types: list[tuple[str, str]]) -> d
             alias = _alias_match(name_lower, entity_type, existing)
             if alias is not None:
                 id_map[name_lower] = alias.id
-                # Upgrade to the fuller name (e.g. "Khyati" -> "Khyati Randeriya").
+                # Upgrade to the fuller name (e.g. "Sam" -> "Sam Carter").
                 if len(name) > len(alias.name):
                     alias.name = name
                     alias.name_lower = name_lower
@@ -84,7 +84,7 @@ async def upsert_entities(user_id: str, names_types: list[tuple[str, str]]) -> d
 
         if to_create:
             # Collapse aliases that appear together in THIS batch (e.g. both
-            # "Khyati" and "Khyati Randeriya" in one extraction): the fuller name
+            # "Sam" and "Sam Carter" in one extraction): the fuller name
             # wins, shorter ones map to it after insert.
             to_create.sort(key=lambda item: len(item[0]), reverse=True)
             survivors: list[tuple[str, str, str]] = []
@@ -166,7 +166,7 @@ def _dedupe_edges(edges: list[MemoryGraphEdge]) -> list[MemoryGraphEdge]:
     unordered pair is ONLY the dedup key: the winner keeps its original
     source/target, because a relationship label is directional ("lives in",
     "is from") and swapping endpoints to a canonical order would invert its
-    meaning ("Surat is from Aryan").
+    meaning ("Lisbon is from Sam").
     """
     best: dict[tuple[uuid.UUID, uuid.UUID], MemoryGraphEdge] = {}
     for edge in edges:

@@ -51,19 +51,19 @@ async def test_full_retain_persists_facts_graph_and_journal(
     batch = make_batch(
         facts=[
             make_fact(
-                "Aryan's girlfriend Nadia's birthday is March 12.",
+                "Arjun's girlfriend Nadia's birthday is March 12.",
                 category="relationships",
                 importance=0.9,
-                entities=[("Aryan", "person"), ("Nadia", "person")],
-                edges=[("Aryan", "is dating", "Nadia")],
+                entities=[("Arjun", "person"), ("Nadia", "person")],
+                edges=[("Arjun", "is dating", "Nadia")],
             ),
             make_fact(
-                "Aryan works at TechNova as a backend engineer.",
+                "Arjun works at TechNova as a backend engineer.",
                 category="work",
-                entities=[("Aryan", "person"), ("TechNova", "organization")],
-                edges=[("Aryan", "works at", "TechNova")],
+                entities=[("Arjun", "person"), ("TechNova", "organization")],
+                edges=[("Arjun", "works at", "TechNova")],
             ),
-            make_fact("Aryan is vegetarian.", category="food-preferences"),
+            make_fact("Arjun is vegetarian.", category="food-preferences"),
         ],
         entries=["Discussed Nadia's birthday plans", "GAIA noted the dietary preference"],
     )
@@ -81,19 +81,19 @@ async def test_full_retain_persists_facts_graph_and_journal(
     assert all(row.is_latest and row.version == 1 for row in rows)
     assert all(row.source_type == MemorySourceType.CONVERSATION.value for row in rows)
     by_content = {row.content: row for row in rows}
-    assert by_content["Aryan's girlfriend Nadia's birthday is March 12."].importance == 0.9
-    assert by_content["Aryan is vegetarian."].category_path == "food-preferences"
+    assert by_content["Arjun's girlfriend Nadia's birthday is March 12."].importance == 0.9
+    assert by_content["Arjun is vegetarian."].category_path == "food-preferences"
 
     # Chroma agrees row-for-row, with filterable metadata.
     vector_ids = set(await chroma_user_vector_ids(memory_user))
     assert vector_ids == {str(row.id) for row in rows}
-    metadata = await chroma_vector_metadata(str(by_content["Aryan is vegetarian."].id))
+    metadata = await chroma_vector_metadata(str(by_content["Arjun is vegetarian."].id))
     assert metadata is not None
     assert metadata["category_path"] == "food-preferences"
     assert metadata["is_latest"] is True and metadata["is_forgotten"] is False
 
     entities = await fetch_entities(memory_user)
-    assert {entity.name for entity in entities} == {"Aryan", "Nadia", "TechNova"}
+    assert {entity.name for entity in entities} == {"Arjun", "Nadia", "TechNova"}
     assert await count_entity_links(memory_user) == 4
 
     edges = await fetch_edges(memory_user)
@@ -117,7 +117,7 @@ async def test_entities_dedupe_case_insensitively_across_retains(
         make_batch(
             [
                 make_fact(
-                    "Aryan's girlfriend Nadia's birthday is March 12.",
+                    "Arjun's girlfriend Nadia's birthday is March 12.",
                     category="relationships",
                     entities=[("Nadia", "person")],
                 )
@@ -152,15 +152,15 @@ async def test_entities_dedupe_case_insensitively_across_retains(
 async def test_edges_are_idempotent_across_repeat_retains(
     memory_user: str, fake_llm: FakeMemoryLLM
 ) -> None:
-    edge = [("Aryan", "is dating", "Nadia")]
-    entities = [("Aryan", "person"), ("Nadia", "person")]
+    edge = [("Arjun", "is dating", "Nadia")]
+    entities = [("Arjun", "person"), ("Nadia", "person")]
     first = await _retain(
         memory_user,
         fake_llm,
         make_batch(
             [
                 make_fact(
-                    "Aryan is dating Nadia.",
+                    "Arjun is dating Nadia.",
                     category="relationships",
                     entities=entities,
                     edges=edge,
@@ -176,7 +176,7 @@ async def test_edges_are_idempotent_across_repeat_retains(
         make_batch(
             [
                 make_fact(
-                    "Aryan booked a table at Burma Burma for Friday evening.",
+                    "Arjun booked a table at Burma Burma for Friday evening.",
                     category="food-preferences",
                     entities=entities,
                     edges=edge,
@@ -213,13 +213,13 @@ async def test_retain_single_duplicate_collapses_to_existing_memory(
 ) -> None:
     first = await memory_engine.retain_single(
         memory_user,
-        "Aryan is vegetarian.",
+        "Arjun is vegetarian.",
         category_path="food-preferences",
         source_type=MemorySourceType.MANUAL,
     )
     second = await memory_engine.retain_single(
         memory_user,
-        "Aryan is vegetarian.",
+        "Arjun is vegetarian.",
         category_path="food-preferences",
         source_type=MemorySourceType.MANUAL,
     )

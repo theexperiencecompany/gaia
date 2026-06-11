@@ -38,14 +38,14 @@ async def test_consolidate_feeds_user_doc_prompt_with_the_right_facts(
     seeded = await seed_memories(
         memory_user,
         [
-            {"content": "Aryan is a software engineer at TechNova.", "category": "work"},
-            {"content": "Aryan lives in Indiranagar, Bengaluru.", "category": "home"},
-            {"content": "Aryan is building GAIA on weekends.", "category": "work/gaia"},
+            {"content": "Arjun is a software engineer at TechNova.", "category": "work"},
+            {"content": "Arjun lives in Indiranagar, Bengaluru.", "category": "home"},
+            {"content": "Arjun is building GAIA on weekends.", "category": "work/gaia"},
         ],
     )
     fake_llm.respond(
         ConsolidatedDocument,
-        ConsolidatedDocument(content="# About Aryan\n- Engineer at TechNova in Bengaluru."),
+        ConsolidatedDocument(content="# About Arjun\n- Engineer at TechNova in Bengaluru."),
     )
 
     rewritten = await memory_engine.consolidate(memory_user, [MemoryDocType.USER_MD])
@@ -60,7 +60,7 @@ async def test_consolidate_feeds_user_doc_prompt_with_the_right_facts(
 
     document = await memory_engine.get_document(memory_user, MemoryDocType.USER_MD)
     assert document is not None
-    assert document.content == "# About Aryan\n- Engineer at TechNova in Bengaluru."
+    assert document.content == "# About Arjun\n- Engineer at TechNova in Bengaluru."
     assert document.version == 1
 
 
@@ -77,7 +77,7 @@ async def test_consolidate_llm_failure_keeps_previous_version(
 ) -> None:
     await memory_engine.update_document(memory_user, MemoryDocType.USER_MD, "# Original")
     await seed_memories(
-        memory_user, [{"content": "Aryan adopted a cat named Miso.", "category": "pets"}]
+        memory_user, [{"content": "Arjun adopted a cat named Miso.", "category": "pets"}]
     )
 
     fake_llm.respond(ConsolidatedDocument, None)
@@ -131,7 +131,7 @@ async def test_debounced_consolidation_merges_doc_types_and_fires_once(
 
     fake_llm.respond(
         ExtractedMemoryBatch,
-        make_batch([make_fact("Aryan's partner is Nadia.", category="relationships")]),
+        make_batch([make_fact("Arjun's partner is Nadia.", category="relationships")]),
     )
     await memory_engine.retain(
         memory_user,
@@ -143,7 +143,7 @@ async def test_debounced_consolidation_merges_doc_types_and_fires_once(
 
     fake_llm.respond(
         ExtractedMemoryBatch,
-        make_batch([make_fact("Aryan is vegetarian.", category="food-preferences")]),
+        make_batch([make_fact("Arjun is vegetarian.", category="food-preferences")]),
     )
     await memory_engine.retain(
         memory_user,
@@ -174,15 +174,15 @@ async def test_core_context_cache_serves_stale_until_retain_invalidates(
     memory_user: str, fake_llm: FakeMemoryLLM
 ) -> None:
     await memory_engine.update_document(
-        memory_user, MemoryDocType.USER_MD, "Aryan is a software engineer in Bengaluru."
+        memory_user, MemoryDocType.USER_MD, "Arjun is a software engineer in Bengaluru."
     )
     first = await memory_engine.get_core_context(memory_user)
-    assert "Aryan is a software engineer in Bengaluru." in first
+    assert "Arjun is a software engineer in Bengaluru." in first
 
     # Write the document straight through the store, bypassing invalidation:
     # the cached context must keep serving the old assembly (real Redis hit).
     await pg_store.upsert_document(
-        memory_user, MemoryDocType.USER_MD, "Aryan moved to San Francisco."
+        memory_user, MemoryDocType.USER_MD, "Arjun moved to San Francisco."
     )
     stale = await memory_engine.get_core_context(memory_user)
     assert stale == first, "core context was not served from cache"
@@ -197,5 +197,5 @@ async def test_core_context_cache_serves_stale_until_retain_invalidates(
     )
 
     fresh = await memory_engine.get_core_context(memory_user)
-    assert "Aryan moved to San Francisco." in fresh, "retain did not invalidate the core context"
+    assert "Arjun moved to San Francisco." in fresh, "retain did not invalidate the core context"
     assert "Asked GAIA about moving logistics" in fresh, "fresh context missing today's journal"

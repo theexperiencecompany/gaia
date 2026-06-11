@@ -1,7 +1,7 @@
 """Adversarial recall tests — hybrid retrieval against a real seeded corpus.
 
 The corpus deliberately plants distractors with overlapping vocabulary
-("Nadia loves Italian food" / "Aryan ate Italian in SF" / "Marco is Aryan's
+("Nadia loves Italian food" / "Arjun ate Italian in SF" / "Marco is Arjun's
 Italian colleague") so the rerank stage has to actually discriminate, not
 just match keywords. Everything runs against real Postgres FTS, real Chroma
 ANN and the real fastembed cross-encoder; only ingestion-time LLM calls are
@@ -26,11 +26,11 @@ from tests.memory.store import (
 
 pytestmark = pytest.mark.memory
 
-_BIRTHDAY_FACT = "Aryan's girlfriend Nadia's birthday is March 12."
+_BIRTHDAY_FACT = "Arjun's girlfriend Nadia's birthday is March 12."
 _NADIA_ITALIAN = "Nadia loves Italian food."
-_SF_ITALIAN_DISTRACTOR = "Aryan ate Italian food in San Francisco last week."
-_MARCO_DISTRACTOR = "Marco is Aryan's Italian colleague on the platform team."
-_JIRA_FACT = "Aryan's Jira ticket PROJ-4821 tracks the auth service refactor."
+_SF_ITALIAN_DISTRACTOR = "Arjun ate Italian food in San Francisco last week."
+_MARCO_DISTRACTOR = "Marco is Arjun's Italian colleague on the platform team."
+_JIRA_FACT = "Arjun's Jira ticket PROJ-4821 tracks the auth service refactor."
 
 # 60+ memories across 10 folders. Several share vocabulary on purpose.
 _CORPUS: list[MemorySpec] = [
@@ -38,7 +38,7 @@ _CORPUS: list[MemorySpec] = [
     {"content": _BIRTHDAY_FACT, "category": "relationships", "importance": 0.9},
     {"content": _NADIA_ITALIAN, "category": "relationships"},
     {
-        "content": "Aryan and Nadia celebrated their second anniversary in October.",
+        "content": "Arjun and Nadia celebrated their second anniversary in October.",
         "category": "relationships",
     },
     {
@@ -46,117 +46,117 @@ _CORPUS: list[MemorySpec] = [
         "category": "relationships",
     },
     {"content": "Nadia is allergic to shellfish.", "category": "relationships", "importance": 0.8},
-    {"content": "Aryan's sister Priya lives in Toronto.", "category": "relationships"},
-    {"content": "Aryan's mother calls him every Sunday evening.", "category": "relationships"},
+    {"content": "Arjun's sister Priya lives in Toronto.", "category": "relationships"},
+    {"content": "Arjun's mother calls him every Sunday evening.", "category": "relationships"},
     # food-preferences (6)
-    {"content": "Aryan is vegetarian.", "category": "food-preferences", "importance": 0.9},
+    {"content": "Arjun is vegetarian.", "category": "food-preferences", "importance": 0.9},
     {"content": _SF_ITALIAN_DISTRACTOR, "category": "food-preferences"},
-    {"content": "Aryan likes oat-milk lattes.", "category": "food-preferences"},
-    {"content": "Aryan dislikes overly sweet desserts.", "category": "food-preferences"},
+    {"content": "Arjun likes oat-milk lattes.", "category": "food-preferences"},
+    {"content": "Arjun dislikes overly sweet desserts.", "category": "food-preferences"},
     {
-        "content": "Aryan's favorite restaurant in Bengaluru is Burma Burma.",
+        "content": "Arjun's favorite restaurant in Bengaluru is Burma Burma.",
         "category": "food-preferences",
     },
     {
-        "content": "Aryan drinks two coffees a day, one before standup.",
+        "content": "Arjun drinks two coffees a day, one before standup.",
         "category": "food-preferences",
     },
     # work (7)
     {"content": _MARCO_DISTRACTOR, "category": "work"},
     {"content": _JIRA_FACT, "category": "work"},
     {
-        "content": "Aryan works as a software engineer at TechNova.",
+        "content": "Arjun works as a software engineer at TechNova.",
         "category": "work",
         "importance": 0.9,
     },
-    {"content": "Aryan's manager is Deepika Rao.", "category": "work"},
-    {"content": "Aryan presents the quarterly platform review every January.", "category": "work"},
-    {"content": "Aryan mentors two junior engineers, Rohan and Sam.", "category": "work"},
-    {"content": "Aryan's standup is at 9:30 every weekday morning.", "category": "work"},
+    {"content": "Arjun's manager is Deepika Rao.", "category": "work"},
+    {"content": "Arjun presents the quarterly platform review every January.", "category": "work"},
+    {"content": "Arjun mentors two junior engineers, Rohan and Sam.", "category": "work"},
+    {"content": "Arjun's standup is at 9:30 every weekday morning.", "category": "work"},
     # work/gaia (4)
     {
-        "content": "Aryan is building GAIA, a personal AI assistant.",
+        "content": "Arjun is building GAIA, a personal AI assistant.",
         "category": "work/gaia",
         "importance": 0.9,
     },
     {"content": "GAIA's backend uses FastAPI and LangGraph.", "category": "work/gaia"},
     {
-        "content": "Aryan plans to launch GAIA's mobile app in the third quarter.",
+        "content": "Arjun plans to launch GAIA's mobile app in the third quarter.",
         "category": "work/gaia",
     },
     {"content": "GAIA stores canonical memory records in Postgres.", "category": "work/gaia"},
     # health (6)
     {
-        "content": "Aryan goes to the gym at 7am on Mondays, Wednesdays and Fridays.",
+        "content": "Arjun goes to the gym at 7am on Mondays, Wednesdays and Fridays.",
         "category": "health",
     },
-    {"content": "Aryan is mildly lactose intolerant but tolerates oat milk.", "category": "health"},
-    {"content": "Aryan's optometrist appointment is every six months.", "category": "health"},
-    {"content": "Aryan takes vitamin D supplements daily.", "category": "health"},
-    {"content": "Aryan sleeps around midnight and wakes at 7:30am.", "category": "health"},
+    {"content": "Arjun is mildly lactose intolerant but tolerates oat milk.", "category": "health"},
+    {"content": "Arjun's optometrist appointment is every six months.", "category": "health"},
+    {"content": "Arjun takes vitamin D supplements daily.", "category": "health"},
+    {"content": "Arjun sleeps around midnight and wakes at 7:30am.", "category": "health"},
     {
-        "content": "Aryan had knee surgery in 2021 and avoids running on concrete.",
+        "content": "Arjun had knee surgery in 2021 and avoids running on concrete.",
         "category": "health",
     },
     # travel (6)
-    {"content": "Aryan visited Lisbon in May and loved the tram rides.", "category": "travel"},
+    {"content": "Arjun visited Lisbon in May and loved the tram rides.", "category": "travel"},
     {
-        "content": "Aryan keeps a travel wishlist topped by Japan in cherry blossom season.",
+        "content": "Arjun keeps a travel wishlist topped by Japan in cherry blossom season.",
         "category": "travel",
     },
-    {"content": "Aryan prefers window seats on flights.", "category": "travel"},
-    {"content": "Aryan has a Global Entry membership expiring in 2027.", "category": "travel"},
+    {"content": "Arjun prefers window seats on flights.", "category": "travel"},
+    {"content": "Arjun has a Global Entry membership expiring in 2027.", "category": "travel"},
     {
-        "content": "Aryan's preferred airline is Air India for domestic flights.",
+        "content": "Arjun's preferred airline is Air India for domestic flights.",
         "category": "travel",
     },
-    {"content": "Aryan gets motion sick on long bus rides.", "category": "travel"},
+    {"content": "Arjun gets motion sick on long bus rides.", "category": "travel"},
     # hobbies (6)
-    {"content": "Aryan plays badminton on Saturday mornings.", "category": "hobbies"},
-    {"content": "Aryan is learning to play the guitar.", "category": "hobbies"},
-    {"content": "Aryan photographs street markets on weekend walks.", "category": "hobbies"},
-    {"content": "Aryan reads science fiction before bed.", "category": "hobbies"},
-    {"content": "Aryan maintains a sourdough starter named Doughvid.", "category": "hobbies"},
-    {"content": "Aryan collects mechanical keyboards.", "category": "hobbies"},
+    {"content": "Arjun plays badminton on Saturday mornings.", "category": "hobbies"},
+    {"content": "Arjun is learning to play the guitar.", "category": "hobbies"},
+    {"content": "Arjun photographs street markets on weekend walks.", "category": "hobbies"},
+    {"content": "Arjun reads science fiction before bed.", "category": "hobbies"},
+    {"content": "Arjun maintains a sourdough starter named Doughvid.", "category": "hobbies"},
+    {"content": "Arjun collects mechanical keyboards.", "category": "hobbies"},
     # finance (6)
-    {"content": "Aryan's rent is due on the 5th of every month.", "category": "finance"},
-    {"content": "Aryan invests monthly through a SIP on the 10th.", "category": "finance"},
-    {"content": "Aryan splits utility bills with his flatmate Karan.", "category": "finance"},
-    {"content": "Aryan's credit card statement closes on the 18th.", "category": "finance"},
-    {"content": "Aryan is saving for a Japan trip next spring.", "category": "finance"},
-    {"content": "Aryan uses Splitwise to track shared expenses.", "category": "finance"},
+    {"content": "Arjun's rent is due on the 5th of every month.", "category": "finance"},
+    {"content": "Arjun invests monthly through a SIP on the 10th.", "category": "finance"},
+    {"content": "Arjun splits utility bills with his flatmate Karan.", "category": "finance"},
+    {"content": "Arjun's credit card statement closes on the 18th.", "category": "finance"},
+    {"content": "Arjun is saving for a Japan trip next spring.", "category": "finance"},
+    {"content": "Arjun uses Splitwise to track shared expenses.", "category": "finance"},
     # home (6)
     {
-        "content": "Aryan lives in an apartment in Indiranagar, Bengaluru.",
+        "content": "Arjun lives in an apartment in Indiranagar, Bengaluru.",
         "category": "home",
         "importance": 0.9,
     },
-    {"content": "Aryan's flatmate Karan works night shifts.", "category": "home"},
+    {"content": "Arjun's flatmate Karan works night shifts.", "category": "home"},
     {
-        "content": "Aryan's apartment has a balcony garden with chillies and basil.",
+        "content": "Arjun's apartment has a balcony garden with chillies and basil.",
         "category": "home",
     },
-    {"content": "Aryan's landlord prefers rent via bank transfer.", "category": "home"},
-    {"content": "Aryan's wifi router is in the living room closet.", "category": "home"},
-    {"content": "Aryan's building has a power backup generator.", "category": "home"},
+    {"content": "Arjun's landlord prefers rent via bank transfer.", "category": "home"},
+    {"content": "Arjun's wifi router is in the living room closet.", "category": "home"},
+    {"content": "Arjun's building has a power backup generator.", "category": "home"},
     # education (5)
-    {"content": "Aryan graduated from BITS Pilani in computer science.", "category": "education"},
+    {"content": "Arjun graduated from BITS Pilani in computer science.", "category": "education"},
     {
-        "content": "Aryan is taking an online course on distributed systems.",
+        "content": "Arjun is taking an online course on distributed systems.",
         "category": "education",
     },
-    {"content": "Aryan attended a LangGraph workshop in March.", "category": "education"},
-    {"content": "Aryan wants to learn Japanese before the Japan trip.", "category": "education"},
-    {"content": "Aryan's favorite professor taught compilers.", "category": "education"},
+    {"content": "Arjun attended a LangGraph workshop in March.", "category": "education"},
+    {"content": "Arjun wants to learn Japanese before the Japan trip.", "category": "education"},
+    {"content": "Arjun's favorite professor taught compilers.", "category": "education"},
     # routines (5)
-    {"content": "Aryan reviews his weekly agenda on Sunday nights.", "category": "routines"},
-    {"content": "Aryan batch-cooks meals on Sunday afternoons.", "category": "routines"},
+    {"content": "Arjun reviews his weekly agenda on Sunday nights.", "category": "routines"},
+    {"content": "Arjun batch-cooks meals on Sunday afternoons.", "category": "routines"},
     {
-        "content": "Aryan does a no-meetings deep-work block on Thursday mornings.",
+        "content": "Arjun does a no-meetings deep-work block on Thursday mornings.",
         "category": "routines",
     },
-    {"content": "Aryan waters the balcony garden every other day.", "category": "routines"},
-    {"content": "Aryan journals for ten minutes after breakfast.", "category": "routines"},
+    {"content": "Arjun waters the balcony garden every other day.", "category": "routines"},
+    {"content": "Arjun journals for ten minutes after breakfast.", "category": "routines"},
 ]
 
 
@@ -219,12 +219,12 @@ async def test_expired_forget_after_never_returned_even_with_live_vector(
         memory_user,
         [
             {
-                "content": "Aryan has a dentist appointment on June 5 at 3pm.",
+                "content": "Arjun has a dentist appointment on June 5 at 3pm.",
                 "category": "health",
                 "forget_after": now - timedelta(days=1),
             },
             {
-                "content": "Aryan's dentist is Dr. Mehta at Smile Care clinic.",
+                "content": "Arjun's dentist is Dr. Mehta at Smile Care clinic.",
                 "category": "health",
             },
         ],
@@ -243,17 +243,17 @@ async def test_expired_forget_after_never_returned_even_with_live_vector(
 async def test_superseded_chain_returns_only_newest_version(memory_user: str) -> None:
     (old,) = await seed_memories(
         memory_user,
-        [{"content": "Aryan lives in Bengaluru.", "category": "home"}],
+        [{"content": "Arjun lives in Bengaluru.", "category": "home"}],
     )
     updated = await memory_engine.update_memory(
-        memory_user, str(old.id), "Aryan lives in San Francisco."
+        memory_user, str(old.id), "Arjun lives in San Francisco."
     )
     assert updated is not None
 
-    result = await memory_engine.recall(memory_user, "which city does Aryan live in")
+    result = await memory_engine.recall(memory_user, "which city does Arjun live in")
     contents = _contents(result)
-    assert "Aryan lives in San Francisco." in contents
-    assert "Aryan lives in Bengaluru." not in contents, "superseded version leaked into recall"
+    assert "Arjun lives in San Francisco." in contents
+    assert "Arjun lives in Bengaluru." not in contents, "superseded version leaked into recall"
 
     old_metadata = await chroma_vector_metadata(str(old.id))
     assert old_metadata is not None and old_metadata["is_latest"] is False
@@ -363,7 +363,7 @@ async def test_warm_recall_latency_under_bound(corpus_user: str) -> None:
     # Models are warmed by the session fixture; this measures the full
     # uncached pipeline (embed + ANN + FTS + RRF + rerank + hydrate).
     started = time.perf_counter()
-    result = await memory_engine.recall(corpus_user, "what are Aryan's morning routines")
+    result = await memory_engine.recall(corpus_user, "what are Arjun's morning routines")
     elapsed_ms = (time.perf_counter() - started) * 1000
     assert result.memories, "latency probe query returned nothing"
     print(f"\nwarm uncached recall latency: {elapsed_ms:.0f}ms")
@@ -388,7 +388,7 @@ async def test_graph_expansion_drops_incidental_sibling(
         memory_user,
         [
             {
-                "content": "Aryan's girlfriend Nadia has a birthday on March 12.",
+                "content": "Arjun's girlfriend Nadia has a birthday on March 12.",
                 "category": "relationships",
                 "entities": [("Nadia", "person")],
                 "importance": 0.9,
@@ -407,7 +407,7 @@ async def test_graph_expansion_drops_incidental_sibling(
         include_graph_expansion=True,
     )
     contents = _contents(result)
-    assert "Aryan's girlfriend Nadia has a birthday on March 12." in contents
+    assert "Arjun's girlfriend Nadia has a birthday on March 12." in contents
     assert "Nadia recently changed jobs at a fintech startup." not in contents, (
         f"expansion injected an off-topic sibling; got: {contents}"
     )
@@ -428,7 +428,7 @@ async def test_graph_expansion_siblings_respect_kinds_filter(
         memory_user,
         [
             {
-                "content": "Aryan's colleague Marco works on the platform team.",
+                "content": "Arjun's colleague Marco works on the platform team.",
                 "category": "work",
                 "entities": [("Marco", "person")],
                 "importance": 0.9,
@@ -469,7 +469,7 @@ async def test_graph_expansion_expired_sibling_never_appears(
         memory_user,
         [
             {
-                "content": "Aryan's friend Priya lives in Toronto.",
+                "content": "Arjun's friend Priya lives in Toronto.",
                 "category": "relationships",
                 "entities": [("Priya", "person")],
                 "importance": 0.9,

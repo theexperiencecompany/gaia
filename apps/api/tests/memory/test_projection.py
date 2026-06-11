@@ -46,16 +46,16 @@ def _mode(path: Path) -> int:
 
 
 async def _seed_standard_projection(user_id: str) -> list[MemoryRecord]:
-    await pg_store.upsert_document(user_id, MemoryDocType.USER_MD, "# Aryan\nEngineer.")
+    await pg_store.upsert_document(user_id, MemoryDocType.USER_MD, "# Arjun\nEngineer.")
     records = await seed_memories(
         user_id,
         [
             {
-                "content": "Aryan's partner is Nadia.",
+                "content": "Arjun's partner is Nadia.",
                 "category": "relationships/partner",
                 "importance": 0.9,
             },
-            {"content": "Aryan is vegetarian.", "category": "food-preferences"},
+            {"content": "Arjun is vegetarian.", "category": "food-preferences"},
         ],
     )
     await pg_store.append_episode_entries(
@@ -77,7 +77,7 @@ async def test_materialize_writes_docs_journal_and_fact_pages(
     today = datetime.now(UTC).date().isoformat()
 
     user_md = memory_dir / "user.md"
-    assert user_md.read_text(encoding="utf-8") == "# Aryan\nEngineer.\n"
+    assert user_md.read_text(encoding="utf-8") == "# Arjun\nEngineer.\n"
     assert _mode(user_md) == 0o444, "projected bodies must be read-only"
 
     guide = memory_dir / "GUIDE.md"
@@ -94,7 +94,7 @@ async def test_materialize_writes_docs_journal_and_fact_pages(
     partner_text = partner_page.read_text(encoding="utf-8")
     assert "# relationships/partner" in partner_text
     partner_record = next(r for r in records if r.category_path == "relationships/partner")
-    assert f"- Aryan's partner is Nadia.  <!-- id:{partner_record.id} importance:0.9 -->" in (
+    assert f"- Arjun's partner is Nadia.  <!-- id:{partner_record.id} importance:0.9 -->" in (
         partner_text
     )
     assert (memory_dir / "facts" / "food-preferences.md").is_file()

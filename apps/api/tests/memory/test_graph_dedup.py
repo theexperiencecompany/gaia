@@ -87,7 +87,7 @@ def test_dedupe_edges_same_pair_different_wording_order_independent() -> None:
 
 
 def test_dedupe_edges_bidirectional_collapses_to_one() -> None:
-    """Aryan -is dating-> Khyati  AND  Khyati -is girlfriend of-> Aryan → one edge."""
+    """Alice -is dating-> Bob  AND  Bob -is girlfriend of-> Alice → one edge."""
     a, b = uuid.uuid4(), uuid.uuid4()
     fwd = _make_edge(a, "is dating", b)
     rev = _make_edge(b, "is girlfriend of", a)
@@ -101,7 +101,7 @@ def test_dedupe_edges_preserves_original_direction() -> None:
     """Dedup must never flip an edge: relationship labels are directional.
 
     Swapping endpoints to a canonical order would invert the meaning
-    ("Aryan is from Surat" -> "Surat is from Aryan").
+    ("Alice is from Lisbon" -> "Lisbon is from Alice").
     """
     a = uuid.UUID("00000000-0000-0000-0000-000000000001")
     b = uuid.UUID("ffffffff-ffff-ffff-ffff-ffffffffffff")
