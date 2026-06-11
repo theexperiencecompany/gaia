@@ -141,10 +141,6 @@ async def _run_chat_stream(
     try:
         _set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
 
-        # Create the conversation row first (cheap: one insert, plus session dirs
-        # for a new conversation). Nothing slow precedes it now — per-user
-        # workspace materialization is event-driven (registration / integration
-        # changes / startup), no longer a per-turn step.
         await _publish_init_chunk(
             body,
             user,

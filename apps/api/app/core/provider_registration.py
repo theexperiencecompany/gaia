@@ -70,9 +70,8 @@ from app.services.mcp.mcp_client_pool import init_mcp_client_pool
 from app.services.sandbox.pool import init_sandbox_pool
 from app.services.startup_validation import validate_startup_requirements
 from app.services.storage.bootstrap import init_juicefs_mount
-from app.services.storage.system_workspace import ensure_system_subtree
 from app.services.tools.tools_warmup import warmup_tools_cache
-from app.services.workspace_sync import sync_stale_user_workspaces
+from app.services.workspace_sync import init_system_subtree, resync_stale_user_workspaces
 from shared.py.wide_events import log
 
 
@@ -163,25 +162,6 @@ def _spawn_background_services(
     _spawn_background_task(name, _run_all)
 
 
-async def _init_system_subtree() -> None:
-    """Materialize the global shared ``_system`` subtree once the mount is live.
-
-    Replaces the old per-chat-turn ``ensure_system_subtree`` call — the subtree
-    is global and only changes when the skill library ships, so startup is the
-    right place. Idempotent + hash-gated; no-ops without a mount (dev).
-    """
-    await providers.aget("juicefs_mount")
-    await ensure_system_subtree()
-
-
-async def _resync_stale_user_workspaces() -> None:
-    """Re-provision active users whose skill catalog is stale vs. the current
-    library (e.g. after a deploy shipped new builtin skills). Runtime half of
-    the skill-library sync; the developer script covers backfill/ad-hoc."""
-    await providers.aget("juicefs_mount")
-    await sync_stale_user_workspaces(active_only=True)
-
-
 async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     """
     Unified startup function for both FastAPI and ARQ worker contexts.
@@ -246,7 +226,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         (lambda: providers.aget("juicefs_mount"), "juicefs_mount"),
         # Global shared system subtree (INDEX/GUIDE/builtin skills) — once, here,
         # not per chat turn. Awaits the mount internally.
-        (_init_system_subtree, "system_subtree"),
+        (init_system_subtree, "system_subtree"),
     ]
 
     # Outbound bot-message queues must exist before any executor reply or
@@ -258,7 +238,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         eager_services.append((init_websocket_consumer, "websocket_consumer"))
         # Re-sync active users whose skill catalog is stale (deploy shipped new
         # skills). Detached so it never blocks boot; runs only in the web app.
-        _spawn_background_task("workspace_stale_resync", _resync_stale_user_workspaces)
+        _spawn_background_task("workspace_stale_resync", resync_stale_user_workspaces)
 
     startup_services: list[tuple[Callable[[], Awaitable[object]], str]] = list(eager_services)
     startup_services.append(

@@ -424,8 +424,7 @@ async def disconnect_integration(user_id: str, integration_id: str) -> Integrati
 
     await _invalidate_caches(user_id, integration_id, resolved.managed_by)
 
-    # Reflect the reduced connected set in the user's workspace VFS now
-    # (fire-and-forget), instead of on the next chat turn.
+    # Reflect the reduced connected set in the user's workspace VFS.
     schedule_user_integrations_sync(user_id)
 
     log.set(

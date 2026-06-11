@@ -22,6 +22,7 @@ from datetime import UTC, datetime, timedelta
 
 from app.agents.workspace.skill_loader import library_hash
 from app.config.settings import settings
+from app.core.lazy_loader import providers
 from app.db.mongodb.collections import conversations_collection, users_collection
 from app.services._vfs_scheduler import make_scheduler
 from app.services.integrations.user_integrations import get_connected_integration_ids
@@ -29,6 +30,7 @@ from app.services.storage import provision_user_workspace
 from app.services.storage.juicefs import _is_mounted
 from app.services.storage.sessions._paths import user_root
 from app.services.storage.sessions.skills import read_skills_marker
+from app.services.storage.system_workspace import ensure_system_subtree
 from shared.py.wide_events import log
 
 
@@ -99,3 +101,19 @@ async def sync_stale_user_workspaces(
         active_only=active_only,
     )
     return {"scanned": scanned, "synced": synced, "skipped": skipped}
+
+
+async def init_system_subtree() -> None:
+    """Startup: materialize the global shared ``_system`` subtree once the mount
+    is live. The subtree is global and only changes when the skill library ships,
+    so startup is the right place. Idempotent + hash-gated; no-ops without a mount."""
+    await providers.aget("juicefs_mount")
+    await ensure_system_subtree()
+
+
+async def resync_stale_user_workspaces() -> None:
+    """Startup: re-provision active users whose skill catalog is stale vs. the
+    current library (e.g. a deploy shipped new builtin skills). The developer
+    script covers backfill / ad-hoc runs."""
+    await providers.aget("juicefs_mount")
+    await sync_stale_user_workspaces(active_only=True)

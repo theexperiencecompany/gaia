@@ -57,8 +57,7 @@ async def update_user_integration_status(
     if result.modified_count > 0 or result.upserted_id or result.matched_count > 0:
         log.info(f"Updated user {user_id} integration {integration_id} status to {status}")
         if status == "connected":
-            # Reflect the newly-connected integration in the user's workspace VFS
-            # now (fire-and-forget), instead of on the next chat turn.
+            # Reflect the new connected set in the user's workspace VFS.
             schedule_user_integrations_sync(user_id)
         return True
 
