@@ -90,3 +90,23 @@ def document_to_model(row: MemoryDocumentRecord) -> MemoryDocument:
         version=row.version,
         updated_at=row.updated_at,
     )
+
+
+def entry_to_note(entry: MemoryEntry) -> str:
+    """Render a memory as a context note with its dates.
+
+    The bracketed dates let the agent (or any answerer) do temporal
+    reasoning — "when / how long ago / which came first" — directly from
+    injected context. Used by prompt injection, tools, and benchmarks so
+    every consumer formats memories identically.
+    """
+    parts = [entry.content]
+    if entry.occurred_start:
+        occurred = entry.occurred_start.date().isoformat()
+        if entry.occurred_end and entry.occurred_end.date() != entry.occurred_start.date():
+            occurred += f"..{entry.occurred_end.date().isoformat()}"
+        parts.append(f"[occurred {occurred}]")
+    mentioned = entry.mentioned_at or entry.created_at
+    if mentioned:
+        parts.append(f"[mentioned {mentioned.date().isoformat()}]")
+    return " ".join(parts)

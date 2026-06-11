@@ -33,6 +33,7 @@ from app.db.chroma.chromadb import init_chroma  # noqa: E402
 from app.db.postgresql import init_postgresql_engine  # noqa: E402
 from app.memory.engine import memory_engine  # noqa: E402
 from app.memory.extraction import _invoke_structured  # noqa: E402
+from app.memory.mappers import entry_to_note  # noqa: E402
 
 _DATE_FORMAT = "%Y/%m/%d %H:%M"
 
@@ -48,22 +49,6 @@ class _Verdict(BaseModel):
 def _parse_date(raw: str) -> datetime:
     cleaned = " ".join(part for part in raw.split() if not part.startswith("("))
     return datetime.strptime(cleaned, _DATE_FORMAT).replace(tzinfo=UTC)
-
-
-def _note_with_dates(memory: object) -> str:
-    """Render a memory with its dates so temporal questions are answerable."""
-    parts = [str(getattr(memory, "content", ""))]
-    occurred_start = getattr(memory, "occurred_start", None)
-    occurred_end = getattr(memory, "occurred_end", None)
-    if occurred_start:
-        occurred = occurred_start.date().isoformat()
-        if occurred_end and occurred_end.date() != occurred_start.date():
-            occurred += f"..{occurred_end.date().isoformat()}"
-        parts.append(f"[occurred {occurred}]")
-    mentioned = getattr(memory, "mentioned_at", None) or getattr(memory, "created_at", None)
-    if mentioned:
-        parts.append(f"[mentioned {mentioned.date().isoformat()}]")
-    return " ".join(parts)
 
 
 async def _answer(question: str, question_date: str, memories: list[str]) -> str:
@@ -137,7 +122,7 @@ async def _run_question(
 
         recall = await memory_engine.recall(user_id, item["question"], limit=10)
         episode_hits = await memory_engine.recall_episodes(user_id, item["question"])
-        notes = [_note_with_dates(m) for m in recall.memories] + [
+        notes = [entry_to_note(m) for m in recall.memories] + [
             f"(journal {hit.date.isoformat()}) {hit.text}" for hit in episode_hits[:5]
         ]
         model_answer = await _answer(item["question"], item["question_date"], notes)

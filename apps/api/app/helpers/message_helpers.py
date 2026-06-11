@@ -29,6 +29,7 @@ from app.db.mongodb.collections import (
 )
 from app.db.redis import get_cache, set_cache
 from app.memory.engine import memory_engine
+from app.memory.mappers import entry_to_note
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -119,8 +120,10 @@ async def _get_user_memories_section(query: str, user_id: str) -> str:
         results = await memory_engine.recall(user_id, query, limit=5)
         if results.memories:
             log.info(f"Added {len(results.memories)} memories to context")
-            return "\n\nBased on our previous conversations:\n" + "\n".join(
-                f"- {mem.content}" for mem in results.memories
+            return (
+                "\n\nBased on our previous conversations (bracketed dates say when "
+                "something happened / was last mentioned):\n"
+                + "\n".join(f"- {entry_to_note(mem)}" for mem in results.memories)
             )
     except Exception as e:
         log.warning(f"Error retrieving memories: {e}")
