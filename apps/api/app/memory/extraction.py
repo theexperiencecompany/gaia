@@ -163,6 +163,7 @@ async def extract_memories(
     user_name: str,
     folder_tree: str,
     recent_facts: list[str],
+    journaled_today: list[str] | None = None,
     extraction_hints: str | None = None,
     current_date: datetime,
 ) -> ExtractedMemoryBatch:
@@ -178,11 +179,15 @@ async def extract_memories(
     recent_facts_section = (
         "\n".join(f"- {fact}" for fact in recent_facts) if recent_facts else "(none yet)"
     )
+    journal_section = (
+        "\n".join(f"- {line}" for line in journaled_today) if journaled_today else "(empty)"
+    )
     system_prompt = EXTRACTION_SYSTEM_PROMPT.format(
         current_date=f"{current_date:%A, %d %B %Y}",
         user_name=user_name,
         folder_tree=folder_tree or "(no folders yet)",
         recent_facts=recent_facts_section,
+        journal_today=journal_section,
         extraction_hints=hints_section,
     )
 

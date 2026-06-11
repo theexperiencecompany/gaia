@@ -11,6 +11,17 @@ from app.models.memory_db_models import MemoryEpisode
 
 EpisodeEntry = dict[str, str]  # {time, text, source}
 
+_APOSTROPHES = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"'})
+
+
+def _entry_key(text: str) -> str:
+    """Normalize a journal line for duplicate detection.
+
+    LLM output varies invisibly between calls (curly vs straight quotes,
+    casing, spacing), so exact-match dedup misses repeats of the same line.
+    """
+    return " ".join(text.translate(_APOSTROPHES).casefold().split()).strip(" .!")
+
 
 async def append_episode_entries(
     user_id: str, date: date_type, entries: list[EpisodeEntry]
@@ -18,9 +29,18 @@ async def append_episode_entries(
     """Append timestamped journal lines to a day, creating the row if needed.
 
     Atomic upsert: concurrent ingestions concatenate instead of clobbering.
+    Lines whose text already exists in the day are dropped first — every turn
+    of a conversation re-ingests the full transcript, so without this the
+    journal repeats earlier lines ("Introduced myself" x4) on every message.
     """
     if not entries:
         return
+    existing = await get_episode(user_id, date)
+    if existing is not None:
+        seen = {_entry_key(entry.get("text", "")) for entry in existing.entries}
+        entries = [entry for entry in entries if _entry_key(entry.get("text", "")) not in seen]
+        if not entries:
+            return
     statement = pg_insert(MemoryEpisode).values(user_id=user_id, date=date, entries=entries)
     statement = statement.on_conflict_do_update(
         constraint="uq_memory_episodes_user_date",

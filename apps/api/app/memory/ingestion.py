@@ -100,6 +100,10 @@ async def retain(
 
     folder_tree = await pg_store.get_folder_tree(user_id)
     recent_facts = await pg_store.get_recent_facts(user_id, limit=RECENT_FACTS_LIMIT)
+    today_episode = await pg_store.get_episode(user_id, now.date())
+    journaled_today = (
+        [entry.get("text", "") for entry in today_episode.entries] if today_episode else []
+    )
     timings["context_ms"] = _elapsed_ms(started)
 
     stage = time.perf_counter()
@@ -109,6 +113,7 @@ async def retain(
         user_name=user_name or _DEFAULT_USER_NAME,
         folder_tree=_format_folder_tree(folder_tree),
         recent_facts=recent_facts,
+        journaled_today=journaled_today,
         extraction_hints=extraction_hints,
         current_date=now,
     )

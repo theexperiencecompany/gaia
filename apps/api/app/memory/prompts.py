@@ -94,6 +94,10 @@ List open loops this conversation opened or closed: new commitments, deadlines, 
 ## Recently stored facts (do NOT re-extract these)
 
 {recent_facts}
+
+## Today's journal so far (do NOT repeat these events, even reworded)
+
+{journal_today}
 {extraction_hints}"""
 )
 
