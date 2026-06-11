@@ -140,13 +140,13 @@ async def test_insert_edges_skips_same_pair_different_wording(
     user_id = make_memory_user()
     alice_id, bob_id = await _seed_two_entities(user_id)
 
-    mem1 = uuid.uuid4()
-    inserted1 = await insert_edges(user_id, [(alice_id, "knows", bob_id)], mem1)
+    # memory_id is None here: the edge dedup is independent of provenance, and a
+    # fake memory_id would violate the memories FK.
+    inserted1 = await insert_edges(user_id, [(alice_id, "knows", bob_id)], None)
     assert inserted1 == 1
 
-    mem2 = uuid.uuid4()
     # Different wording, same pair — should be silently dropped.
-    inserted2 = await insert_edges(user_id, [(alice_id, "is friends with", bob_id)], mem2)
+    inserted2 = await insert_edges(user_id, [(alice_id, "is friends with", bob_id)], None)
     assert inserted2 == 0
 
 
@@ -158,12 +158,10 @@ async def test_insert_edges_skips_reverse_direction(
     user_id = make_memory_user()
     alice_id, bob_id = await _seed_two_entities(user_id)
 
-    mem1 = uuid.uuid4()
-    await insert_edges(user_id, [(alice_id, "is dating", bob_id)], mem1)
+    await insert_edges(user_id, [(alice_id, "is dating", bob_id)], None)
 
-    mem2 = uuid.uuid4()
     # Opposite direction — same unordered pair, must be dropped.
-    inserted = await insert_edges(user_id, [(bob_id, "is boyfriend of", alice_id)], mem2)
+    inserted = await insert_edges(user_id, [(bob_id, "is boyfriend of", alice_id)], None)
     assert inserted == 0
 
 

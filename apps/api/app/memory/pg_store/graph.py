@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import func, or_, select, tuple_
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.memory.pg_store._session import memory_session, rowcount
@@ -218,20 +218,17 @@ async def insert_edges(
             deduped_edges.append((source_id, relationship, target_id))
 
     async with memory_session() as session:
-        # Build a set of all unordered pairs that already have a live edge for
-        # this user. One query covers all candidate pairs efficiently.
-        candidate_pairs = [_canonical_pair(s, t) for s, _, t in deduped_edges]
+        # Fetch every live edge among the candidate entities, then build the set
+        # of unordered pairs already present. Filtering both endpoints to the
+        # candidate entity ids (plain single-column IN, robust under asyncpg)
+        # is enough: any edge connecting a candidate pair has both endpoints in
+        # this set, and _canonical_pair makes the comparison direction-agnostic.
+        candidate_entity_ids = {s for s, _, _ in deduped_edges} | {t for _, _, t in deduped_edges}
         existing_result = await session.execute(
             select(MemoryGraphEdge.source_entity_id, MemoryGraphEdge.target_entity_id).where(
                 MemoryGraphEdge.user_id == user_id,
-                or_(
-                    tuple_(MemoryGraphEdge.source_entity_id, MemoryGraphEdge.target_entity_id).in_(
-                        candidate_pairs
-                    ),
-                    tuple_(MemoryGraphEdge.target_entity_id, MemoryGraphEdge.source_entity_id).in_(
-                        candidate_pairs
-                    ),
-                ),
+                MemoryGraphEdge.source_entity_id.in_(candidate_entity_ids),
+                MemoryGraphEdge.target_entity_id.in_(candidate_entity_ids),
             )
         )
         existing_pairs: set[tuple[uuid.UUID, uuid.UUID]] = set()
