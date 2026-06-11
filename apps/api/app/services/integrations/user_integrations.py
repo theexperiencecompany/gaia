@@ -48,11 +48,12 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
 
 
 @Cacheable(key_pattern="tools:user:{user_id}:integrations", ttl=ONE_DAY_TTL)
-async def get_user_connected_integrations(user_id: str) -> list[dict[str, Any]]:
-    """Get all user integrations (both 'created' and 'connected' status).
+async def get_user_integration_records(user_id: str) -> list[dict[str, Any]]:
+    """Return the raw records for all of a user's integrations.
 
-    Note: Despite the name, this now returns ALL integrations to allow
-    status display in bots and other interfaces.
+    Includes both ``created`` (added, not yet authenticated) and ``connected``
+    states — callers that only want usable integrations filter on
+    ``status == "connected"`` (see ``get_connected_integration_ids``).
     """
     results = []
     cursor = user_integrations_collection.find({"user_id": user_id})
@@ -70,7 +71,7 @@ async def get_connected_integration_ids(user_id: str) -> set[str]:
     workspace materializers (chat path, registration, integration sync, bulk
     sync) so they can never disagree on what "connected" means.
     """
-    docs = await get_user_connected_integrations(user_id)
+    docs = await get_user_integration_records(user_id)
     return {
         str(d["integration_id"])
         for d in docs
@@ -177,7 +178,7 @@ async def get_user_integration_capabilities(user_id: str) -> dict[str, Any]:
             tool_names_set.add(tool.name)
 
     # Get user's connected integrations
-    connected_integrations = await get_user_connected_integrations(user_id)
+    connected_integrations = await get_user_integration_records(user_id)
 
     integration_names = []
     capabilities = {}
