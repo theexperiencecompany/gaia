@@ -147,8 +147,10 @@ EPISODE_ENTRY_TIME_FORMAT = "%H:%M"
 # one-line rollover summary. The full journal stays available via search.
 RECENT_ACTIVITY_ENTRY_CAP = 6
 
-# Category folders form a real directory tree; keep it shallow ("work/gaia").
-CATEGORY_PATH_MAX_DEPTH = 2
+# Category folders form a real directory tree; deep enough to segregate
+# ("preferences/restaurants"), shallow enough to browse. Paths deeper than
+# this are truncated at ingestion.
+CATEGORY_PATH_MAX_DEPTH = 3
 
 # Maximum transcript size fed to the extraction LLM (characters). When a
 # transcript exceeds the cap we keep the head (opening context) and the tail

@@ -67,11 +67,11 @@ class ExtractedFact(BaseModel):
     )
     category_path: str = Field(
         description=(
-            "Folder this fact files under, lowercase-kebab-case, at most two "
-            "segments separated by '/', e.g. 'relationships', 'food-preferences', "
-            "'work/gaia'. You MUST reuse an existing folder from the provided "
-            "folder tree whenever one fits; only create a new folder when nothing "
-            "existing is appropriate."
+            "Folder this fact files under, lowercase-kebab-case, at most three "
+            "segments separated by '/', e.g. 'relationships', 'work/gaia', "
+            "'preferences/restaurants'. You MUST reuse an existing folder from "
+            "the provided folder tree whenever one fits; only create a new "
+            "folder when nothing existing is appropriate."
         )
     )
     entities: list[ExtractedEntity] = Field(
@@ -147,7 +147,7 @@ class FactCategorization(BaseModel):
 
     category_path: str = Field(
         description=(
-            "Folder this fact files under, lowercase-kebab-case, at most two "
+            "Folder this fact files under, lowercase-kebab-case, at most three "
             "segments separated by '/'. Reuse an existing folder from the "
             "provided tree whenever one fits."
         )

@@ -13,6 +13,7 @@ import time
 import uuid
 
 from app.constants.memory import (
+    CATEGORY_PATH_MAX_DEPTH,
     DEFAULT_MEMORY_IMPORTANCE,
     EPISODE_ENTRY_TIME_FORMAT,
     RECENT_FACTS_LIMIT,
@@ -528,6 +529,14 @@ def _format_folder_tree(folders: list[tuple[str, int]]) -> str:
     return "\n".join(f"- {path} ({count})" for path, count in folders)
 
 
+def _clamp_category_path(path: str | None) -> str:
+    """Normalize an LLM-chosen folder path to the maximum tree depth."""
+    if not path:
+        return _FALLBACK_CATEGORY_PATH
+    segments = [segment for segment in path.split("/") if segment]
+    return "/".join(segments[:CATEGORY_PATH_MAX_DEPTH]) or _FALLBACK_CATEGORY_PATH
+
+
 def _build_record(
     fact: ExtractedFact,
     *,
@@ -545,7 +554,7 @@ def _build_record(
         "user_id": user_id,
         "kind": fact.kind.value,
         "content": fact.content,
-        "category_path": fact.category_path or _FALLBACK_CATEGORY_PATH,
+        "category_path": _clamp_category_path(fact.category_path),
         "occurred_start": fact.occurred_start,
         "occurred_end": fact.occurred_end,
         "forget_after": fact.forget_after,

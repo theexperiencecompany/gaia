@@ -16,9 +16,12 @@ File each fact by its SUBJECT — what the fact is ABOUT — never by which pers
 it happens to name. "Sam prefers emails to open with 'Hello there'" is about
 COMMUNICATION, not about a relationship, even though emailing involves people.
 
-Prefer these canonical top-level folders (reuse an existing folder from the
-tree when one fits; only invent a new lowercase-kebab folder, max two segments,
-when nothing applies):
+Prefer these canonical top-level folders, and segregate within them using
+subfolders (up to three segments, e.g. work/gaia, relationships/family,
+preferences/restaurants). A top-level folder collecting ten unrelated facts is
+a filing failure — when three or more facts share a tighter theme, they belong
+in a subfolder. Reuse an existing folder from the tree when one fits; only
+invent a new lowercase-kebab folder when nothing applies:
 
 - relationships — people in the user's life: partner, family, friends, colleagues; their names, roles, key dates, and contact details
 - communication — how the user wants to write, speak, or be addressed: tone, email openings/sign-offs, "no em dashes", "keep replies short", formatting
@@ -38,7 +41,8 @@ Routing examples:
 - "is the founder of The Experience Company building GAIA" -> work/gaia
 - "is allergic to penicillin" -> health
 - "goes to the gym every weekday at 7am" -> routines
-- "recently moved to Bangalore from Mumbai" -> life"""
+- "recently moved to Bangalore from Mumbai" -> life
+- "favorite date-night restaurants in town" -> preferences/restaurants (NOT life)"""
 
 EXTRACTION_SYSTEM_PROMPT = (
     """You are the memory engine of GAIA, {user_name}'s personal AI assistant. Today is {current_date}.
@@ -55,7 +59,7 @@ You read a conversation transcript between {user_name} and GAIA (which may inclu
 - Routines and habits: recurring schedules, rituals, working patterns.
 - Experiences: meaningful events that happened — trips, milestones, decisions.
 - Specifics the user mentions using, owning, buying, or doing: product and service names, brands, models, stores, amounts, locations visited. If {user_name} says they made a playlist on a streaming service, the SERVICE NAME is a fact worth keeping — "which X did I use/buy/visit" must be answerable weeks later.
-- Key information GAIA provided that {user_name} engaged with: a recommended restaurant/book/product by name, an answer they thanked GAIA for, a plan GAIA produced. Phrase it as what was recommended/told ("GAIA recommended the restaurant Roscioli to {user_name}") — "what was that place you suggested?" must be answerable later. When GAIA enumerated a list, keep the COMPLETE list (all five bottles, every step), and keep distinguishing attributes of content GAIA created (the character's color, the title of the chapter, the name of the artist) — the user will ask about a single item or detail weeks later.
+- Key information GAIA provided that {user_name} ENGAGED with — chose, thanked GAIA for, said they would use, or asked follow-ups about. Phrase it as what was recommended/told ("GAIA recommended the restaurant Roscioli to {user_name}") — "what was that place you suggested?" must be answerable later. When GAIA enumerated a list the user engaged with, store the COMPLETE list as ONE fact (all five bottles in a single fact, never one fact per item), and keep distinguishing attributes of content GAIA created (the character's color, the title of the chapter) — the user will ask about a single item weeks later. Options GAIA merely listed that {user_name} ignored or scrolled past are noise.
 - Quantities and amounts attached to events: prices paid, discounts received, counts of things done ("{user_name} spent $800 on the leather jacket", "{user_name} wrote 5 short stories in March") — later questions aggregate across these ("what did I spend in total?").
 - Interaction preferences {user_name} expresses about HOW they want suggestions or help ("I prefer recommendations that build on my existing recipe", "stick to Sony products when suggesting accessories"). A request is itself a preference: if {user_name} asks for Netflix stand-up specials, store that they like stand-up specials on Netflix.
 
@@ -68,9 +72,10 @@ You read a conversation transcript between {user_name} and GAIA (which may inclu
 5. Expiry: set forget_after ONLY on inherently temporal facts ("meeting Friday" is useless after Friday). Durable facts — birthdays, preferences, relationships — never expire.
 6. Never extract secrets: no passwords, OTPs, API keys, tokens, or credentials, ever.
 7. Skip noise: smalltalk, pleasantries, and anything already covered by the recent facts below. A concrete detail tied to {user_name}'s life (a named product, place, person, amount, or event) is NOT noise even if mentioned once — when in doubt, keep it with low importance rather than dropping it.
-8. No summary facts: never emit a fact that merely combines or restates other facts you are extracting or that already exist ("Sam has two phone numbers" when each number is its own fact). One attribute per subject, stated once, in its most complete form.
-9. Folders: choose category_path by the fact's SUBJECT using the taxonomy below, not by who the fact mentions.
-10. Importance: 0.9+ life-defining, 0.6-0.8 stable preferences and recurring context, 0.3-0.5 incidental.
+8. Future-useful only — never store the current task as a fact: "{user_name} is looking for restaurant recommendations right now" or "is asking about X" describes the conversation, not the user, and is worthless next week. Extract the durable thing the request reveals instead ("{user_name} plans date nights in Ahmedabad" -> a preference), or nothing. The journal, not the fact store, records what happened today.
+9. No summary facts: never emit a fact that merely combines or restates other facts you are extracting or that already exist ("Sam has two phone numbers" when each number is its own fact). One attribute per subject, stated once, in its most complete form.
+10. Folders: choose category_path by the fact's SUBJECT using the taxonomy below, not by who the fact mentions.
+11. Importance: 0.9+ life-defining, 0.6-0.8 stable preferences and recurring context, 0.3-0.5 incidental.
 
 ## Entities and edges
 
@@ -125,7 +130,7 @@ CATEGORIZE_SYSTEM_PROMPT = (
     """You file a single memory into a personal memory store. Today is {current_date}.
 
 Given the fact below, assign:
-- category_path: a lowercase-kebab folder chosen by the rules below (at most two segments separated by '/').
+- category_path: a lowercase-kebab folder chosen by the rules below (at most three segments separated by '/').
 - kind: 'fact' for stable knowledge (preferences, relationships, identity, context); 'experience' for something that happened.
 - importance: 0.9+ life-defining, 0.6-0.8 stable preferences and recurring context, 0.3-0.5 incidental.
 - entities and edges: named entities the fact mentions and entity-to-entity relationships it asserts.
