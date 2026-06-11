@@ -6,6 +6,7 @@ conversation flow that spawned them, so total failure returns an empty
 batch / all-NEW decisions instead of raising.
 """
 
+import asyncio
 from datetime import datetime
 from typing import TypeVar
 
@@ -40,6 +41,31 @@ from shared.py.wide_events import log
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
 
 _TRANSCRIPT_TRUNCATION_MARKER = "\n[... transcript truncated ...]\n"
+
+# Background ingestion retries transient LLM errors (rate limits, overload)
+# instead of dropping the memory. Latency does not matter off the request path.
+_MAX_STRUCTURED_RETRIES = 4
+_RETRY_BASE_DELAY_SECONDS = 2.0
+_TRANSIENT_ERROR_MARKERS = (
+    "429",
+    "rate limit",
+    "ratelimit",
+    "resource_exhausted",
+    "resourceexhausted",
+    "quota",
+    "503",
+    "overloaded",
+    "unavailable",
+    "timeout",
+    "timed out",
+)
+
+
+def _is_transient_error(error: Exception) -> bool:
+    """Whether an LLM error is a rate-limit/overload worth retrying."""
+    text = str(error).lower()
+    return any(marker in text for marker in _TRANSIENT_ERROR_MARKERS)
+
 
 # These LLM calls run inside the LangGraph run that spawned them (the
 # add_memory tool, or a background ingestion task that inherited the graph's
@@ -101,19 +127,32 @@ async def _invoke_structured(
 
     for index, llm in enumerate(llm_chain):
         provider_name = type(llm).__name__
-        try:
-            structured_llm = llm.with_structured_output(output_model)
-            result = await structured_llm.ainvoke(messages, config=_SILENT_CONFIG)
-            if isinstance(result, output_model):
-                return result
-            return output_model.model_validate(result)
-        except Exception as e:
-            if index < len(llm_chain) - 1:
-                log.warning(
-                    f"[memory] {operation}: {provider_name} failed, trying next provider: {e}"
-                )
-            else:
-                log.error(f"[memory] {operation}: all LLM providers failed. Last error: {e}")
+        structured_llm = llm.with_structured_output(output_model)
+        for attempt in range(_MAX_STRUCTURED_RETRIES):
+            try:
+                result = await structured_llm.ainvoke(messages, config=_SILENT_CONFIG)
+                if isinstance(result, output_model):
+                    return result
+                return output_model.model_validate(result)
+            except Exception as e:
+                # Rate limits / transient errors must NOT silently drop a memory:
+                # ingestion is a background task, so retry the same provider with
+                # backoff before falling through to the next one.
+                if _is_transient_error(e) and attempt < _MAX_STRUCTURED_RETRIES - 1:
+                    delay = _RETRY_BASE_DELAY_SECONDS * (2**attempt)
+                    log.warning(
+                        f"[memory] {operation}: {provider_name} transient error, "
+                        f"retrying in {delay:.0f}s ({attempt + 1}/{_MAX_STRUCTURED_RETRIES}): {e}"
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                if index < len(llm_chain) - 1:
+                    log.warning(
+                        f"[memory] {operation}: {provider_name} failed, trying next provider: {e}"
+                    )
+                else:
+                    log.error(f"[memory] {operation}: all LLM providers failed. Last error: {e}")
+                break
     return None
 
 
