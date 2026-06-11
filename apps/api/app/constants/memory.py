@@ -38,8 +38,12 @@ MEMORY_SEARCH_CACHE_TTL = 60
 # Category folders form a real directory tree; keep it shallow ("work/gaia").
 CATEGORY_PATH_MAX_DEPTH = 2
 
-# Maximum transcript size fed to the extraction LLM (characters).
+# Maximum transcript size fed to the extraction LLM (characters). When a
+# transcript exceeds the cap we keep the head (opening context) and the tail
+# (most recent exchanges) and drop the middle.
 EXTRACTION_TRANSCRIPT_MAX_CHARS = 12_000
+EXTRACTION_TRANSCRIPT_HEAD_CHARS = 2_000
+EXTRACTION_TRANSCRIPT_TAIL_CHARS = 10_000
 
 # Default importance assigned to a fact when the extractor omits it.
 DEFAULT_MEMORY_IMPORTANCE = 0.5
@@ -58,6 +62,26 @@ class MemoryRelationType(StrEnum):
     UPDATES = "updates"
     EXTENDS = "extends"
     DERIVES = "derives"
+
+
+class MemoryEntityType(StrEnum):
+    """What kind of thing a named entity is."""
+
+    PERSON = "person"
+    PLACE = "place"
+    ORGANIZATION = "organization"
+    PROJECT = "project"
+    TOPIC = "topic"
+    OTHER = "other"
+
+
+class ReconcileOutcome(StrEnum):
+    """LLM verdict on how a newly extracted fact relates to an existing memory."""
+
+    NEW = "NEW"
+    UPDATES = "UPDATES"
+    EXTENDS = "EXTENDS"
+    DUPLICATE = "DUPLICATE"
 
 
 class MemoryDocType(StrEnum):

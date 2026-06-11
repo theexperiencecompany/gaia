@@ -81,7 +81,6 @@ async def create_memory(
     memory_entry = await memory_service.store_memory(
         message=request.content,
         user_id=user_id,
-        metadata=request.metadata,
         async_mode=False,
     )
 
