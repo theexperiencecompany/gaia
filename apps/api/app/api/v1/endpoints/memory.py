@@ -79,9 +79,9 @@ async def create_memory(
     )
 
     memory_entry = await memory_service.store_memory(
-        message=request.content,
-        user_id=user_id,
-        async_mode=False,
+        request.content,
+        user_id,
+        category_path=request.category_path,
     )
 
     log.set(memory={"operation": "create", "success": memory_entry is not None})
@@ -153,8 +153,7 @@ async def clear_all_memories(
     )
 
     try:
-        # Use the new delete_all_memories method from v2 API
-        success = await memory_service.delete_all_memories(user_id=user_id)
+        success = await memory_service.delete_all_memories(user_id)
 
         log.set(memory={"operation": "delete_all", "success": success})
 

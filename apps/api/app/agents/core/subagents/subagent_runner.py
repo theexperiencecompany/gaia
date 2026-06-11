@@ -309,7 +309,7 @@ async def prepare_executor_execution(
         thread_id=executor_thread_id,
         base_configurable=configurable,
         agent_name="executor_agent",
-        subagent_id="executor_agent",  # Use agent_name as agent_id in mem0
+        subagent_id="executor_agent",  # Use agent_name as the memory namespace id
         vfs_session_id=vfs_session_id,
     )
     new_configurable = config.get("configurable", {})

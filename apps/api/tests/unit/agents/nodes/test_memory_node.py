@@ -228,9 +228,9 @@ class TestMemoryNode:
 
     @pytest.mark.asyncio
     async def test_background_task_exception_is_swallowed(self):
-        """store_memory_batch exceptions must be caught inside _store_user_memory_background."""
-        with patch("app.agents.core.nodes.memory_node.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(side_effect=RuntimeError("mem0 is down"))
+        """retain exceptions must be caught inside _store_user_memory_background."""
+        with patch("app.agents.core.nodes.memory_node.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(side_effect=RuntimeError("memory engine is down"))
 
             # Must not raise — the except block must absorb RuntimeError
             await _store_user_memory_background(
@@ -250,7 +250,8 @@ class TestMemoryNode:
                 session_id="s1",
                 extraction_prompt=None,
                 subagent_id=None,
+                user_name=None,
             )
 
         # If we reach here, the exception was swallowed correctly
-        mock_svc.store_memory_batch.assert_awaited_once()
+        mock_engine.retain.assert_awaited_once()

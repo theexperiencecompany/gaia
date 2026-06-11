@@ -3,15 +3,9 @@
 This is the contract the frontend mirrors: memory entries with supersession
 lineage, the folder tree, the entity graph, the episodic journal, core
 documents, and the settings-UI overview.
-
-NOTE — stage 6 cleanup: the fields marked "mem0 compat" below exist only so
-the live mem0 code paths (``app/services/memory_service.py``) keep working
-until mem0 is removed. Delete them (and ``MemoryRelation`` /
-``MemorySearchResult.relations``) when the engine replaces mem0.
 """
 
 from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -84,26 +78,6 @@ class MemoryEntry(BaseModel):
     entities: list[MemoryEntityRef] = Field(
         default_factory=list, description="Entities this memory mentions"
     )
-    # --- mem0 compat (remove in stage 6) -----------------------------------
-    user_id: str | None = Field(default=None, description="mem0 compat: owning user")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="mem0 compat: metadata")
-    categories: list[str] | None = Field(
-        default_factory=list, description="mem0 compat: category labels"
-    )
-    expiration_date: datetime | None = Field(default=None, description="mem0 compat: expiry")
-    immutable: bool | None = Field(default=False, description="mem0 compat: immutability flag")
-    organization: str | None = Field(default=None, description="mem0 compat: organization")
-    owner: str | None = Field(default=None, description="mem0 compat: owner")
-
-
-class MemoryRelation(BaseModel):
-    """mem0 compat (remove in stage 6): entity relationship from mem0 graph search."""
-
-    source: str = Field(description="Source entity of the relationship")
-    source_type: str = Field(description="Type of the source entity (user, person, location, etc.)")
-    relationship: str = Field(description="Type of relationship")
-    target: str = Field(description="Target entity of the relationship")
-    target_type: str = Field(description="Type of the target entity")
 
 
 class MemorySearchResult(BaseModel):
@@ -113,10 +87,6 @@ class MemorySearchResult(BaseModel):
         default_factory=list, description="List of matching memories"
     )
     total_count: int = Field(default=0, description="Total number of matching memories")
-    # --- mem0 compat (remove in stage 6) -----------------------------------
-    relations: list[MemoryRelation] = Field(
-        default_factory=list, description="mem0 compat: entity relationships"
-    )
 
 
 class MemoryListResponse(BaseModel):

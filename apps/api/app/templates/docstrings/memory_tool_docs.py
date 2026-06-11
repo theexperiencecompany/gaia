@@ -1,19 +1,18 @@
 """Docstrings for memory-related tools."""
 
 ADD_MEMORY = """
-Store a new memory with associated metadata.
+Store a new memory.
 
 This tool stores important information for later retrieval. Use it to remember
 user preferences, key facts, or conversation history that may be relevant in future
-interactions.
+interactions. The memory engine files the fact into the right folder automatically.
 
 Args:
     content: The memory content to store
-    metadata: Optional metadata to associate with the memory
     config: Runtime configuration containing user context
 
 Returns:
-    Confirmation message with the memory ID
+    Confirmation message with the memory ID and the folder it was filed under
 """
 
 SEARCH_MEMORY = """

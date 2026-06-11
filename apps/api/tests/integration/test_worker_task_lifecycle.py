@@ -133,10 +133,10 @@ class TestReminderTaskExecution:
 
 @pytest.mark.integration
 class TestMemoryTaskProcessing:
-    """Verify store_memories_batch builds correct messages and calls memory_service."""
+    """Verify store_memories_batch builds correct messages and calls the memory engine."""
 
     async def test_store_memories_batch_success(self):
-        """Batch of emails should be formatted and stored via memory_service."""
+        """Batch of emails should be formatted and stored via the memory engine."""
 
         emails = [
             {
@@ -155,8 +155,8 @@ class TestMemoryTaskProcessing:
             },
         ]
 
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_mem:
-            mock_mem.store_memory_batch = AsyncMock(return_value=True)
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_mem:
+            mock_mem.retain = AsyncMock(return_value=MagicMock(facts_extracted=2))
 
             result = await store_memories_batch(
                 ARQ_CTX,
@@ -166,11 +166,11 @@ class TestMemoryTaskProcessing:
                 user_email="test@example.com",
             )
 
-            mock_mem.store_memory_batch.assert_awaited_once()
-            call_kwargs = mock_mem.store_memory_batch.call_args[1]
+            mock_mem.retain.assert_awaited_once()
+            call = mock_mem.retain.call_args
 
             # Verify messages were built correctly
-            messages = call_kwargs["messages"]
+            messages = call.args[1]
             assert len(messages) == 2
             assert messages[0]["role"] == "user"
             assert "Order Update" in messages[0]["content"]
@@ -179,21 +179,21 @@ class TestMemoryTaskProcessing:
             assert "Calendar Invite" in messages[1]["content"]
 
             # Verify user_id passed
-            assert call_kwargs["user_id"] == FAKE_USER_ID
+            assert call.args[0] == FAKE_USER_ID
 
-            # Verify custom_instructions contain user context
-            assert "Test User" in call_kwargs["custom_instructions"]
-            assert "test@example.com" in call_kwargs["custom_instructions"]
+            # Verify extraction hints contain user context
+            assert "Test User" in call.kwargs["extraction_hints"]
+            assert "test@example.com" in call.kwargs["extraction_hints"]
 
-            assert "Stored 2 emails" in result
+            assert "Extracted 2 memories" in result
 
     async def test_store_memories_batch_empty_input(self):
-        """Empty batch should short-circuit without calling memory_service."""
+        """Empty batch should short-circuit without calling the memory engine."""
 
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_mem:
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_mem:
             result = await store_memories_batch(ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=[])
 
-            mock_mem.store_memory_batch.assert_not_called()
+            mock_mem.retain.assert_not_called()
             assert "No emails to process" in result
 
     async def test_store_memories_batch_skips_blank_content(self):
@@ -204,14 +204,14 @@ class TestMemoryTaskProcessing:
             {"content": "", "metadata": {"subject": "Blank", "sender": "c@d.com"}},
         ]
 
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_mem:
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_mem:
             result = await store_memories_batch(ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=emails)
 
-            mock_mem.store_memory_batch.assert_not_called()
+            mock_mem.retain.assert_not_called()
             assert "No valid emails" in result
 
-    async def test_store_memories_batch_mem0_filters_all(self):
-        """When Mem0 returns False (filtered all), report accordingly without error."""
+    async def test_store_memories_batch_extractor_filters_all(self):
+        """When the extractor finds no facts, report accordingly without error."""
 
         emails = [
             {
@@ -220,15 +220,15 @@ class TestMemoryTaskProcessing:
             },
         ]
 
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_mem:
-            mock_mem.store_memory_batch = AsyncMock(return_value=False)
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_mem:
+            mock_mem.retain = AsyncMock(return_value=MagicMock(facts_extracted=0))
 
             result = await store_memories_batch(ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=emails)
 
-            assert "filtered all" in result.lower() or "non-memorable" in result.lower()
+            assert "filtered" in result.lower() or "non-memorable" in result.lower()
 
-    async def test_store_memories_batch_service_error(self):
-        """When memory_service raises, the task should catch and return error message."""
+    async def test_store_memories_batch_engine_error(self):
+        """When the memory engine raises, the task should catch and return error message."""
 
         emails = [
             {
@@ -237,14 +237,14 @@ class TestMemoryTaskProcessing:
             },
         ]
 
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_mem:
-            mock_mem.store_memory_batch = AsyncMock(side_effect=ConnectionError("Mem0 unreachable"))
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_mem:
+            mock_mem.retain = AsyncMock(side_effect=ConnectionError("engine unreachable"))
 
             result = await store_memories_batch(ARQ_CTX, user_id=FAKE_USER_ID, emails_batch=emails)
 
             # The task catches exceptions and returns an error string
             assert "Error" in result
-            assert "Mem0 unreachable" in result
+            assert "engine unreachable" in result
 
 
 # ---------------------------------------------------------------------------

@@ -4,7 +4,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.constants.email import NO_SUBJECT, UNKNOWN_SENDER
+from app.constants.memory import MemorySourceType
+from app.memory.engine import RetainResult
 from app.workers.tasks.memory_tasks import store_memories_batch
+
+
+def _retain_result(facts_extracted: int = 1) -> RetainResult:
+    return RetainResult(facts_extracted=facts_extracted, new=facts_extracted)
 
 
 @pytest.mark.unit
@@ -56,8 +63,8 @@ class TestStoreMemoriesBatch:
         assert "user_abc" in result
 
     async def test_single_email_stored_successfully(self, ctx, single_email):
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(return_value=True)
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(return_value=_retain_result(2))
 
             result = await store_memories_batch(
                 ctx,
@@ -67,11 +74,11 @@ class TestStoreMemoriesBatch:
                 user_email="alice@example.com",
             )
 
-        assert "Stored 1 emails in mem0 successfully" in result
-        mock_svc.store_memory_batch.assert_called_once()
-        # Verify the actual memory content stored, not just the return string.
-        call_kwargs = mock_svc.store_memory_batch.call_args.kwargs
-        stored_messages = call_kwargs["messages"]
+        assert "Extracted 2 memories from 1 emails" in result
+        mock_engine.retain.assert_called_once()
+        # Verify the actual transcript handed to the engine, not just the return string.
+        call = mock_engine.retain.call_args
+        stored_messages = call.args[1]
         assert len(stored_messages) == 1
         assert stored_messages[0]["role"] == "user"
         assert "Conference Acceptance" in stored_messages[0]["content"]
@@ -79,8 +86,8 @@ class TestStoreMemoriesBatch:
         assert "Python conference" in stored_messages[0]["content"]
 
     async def test_batch_stored_successfully(self, ctx, multi_email_batch):
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(return_value=True)
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(return_value=_retain_result(3))
 
             result = await store_memories_batch(
                 ctx,
@@ -90,21 +97,20 @@ class TestStoreMemoriesBatch:
                 user_email="alice@example.com",
             )
 
-        assert "Stored 3 emails in mem0 successfully" in result
-        # Verify all 3 memory objects were actually constructed and passed.
-        call_kwargs = mock_svc.store_memory_batch.call_args.kwargs
-        stored_messages = call_kwargs["messages"]
+        assert "Extracted 3 memories from 3 emails" in result
+        call = mock_engine.retain.call_args
+        stored_messages = call.args[1]
         assert len(stored_messages) == 3, (
-            f"Expected 3 memory objects in DB call, got {len(stored_messages)}"
+            f"Expected 3 email messages in engine call, got {len(stored_messages)}"
         )
         contents = [m["content"] for m in stored_messages]
         assert any("GitHub Pro" in c for c in contents), "GitHub renewal email missing"
         assert any("Acme Corp" in c for c in contents), "Offer letter email missing"
         assert any("San Francisco" in c for c in contents), "Flight email missing"
 
-    async def test_mem0_filters_all_returns_non_memorable_message(self, ctx, single_email):
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(return_value=False)
+    async def test_extractor_filters_all_returns_non_memorable_message(self, ctx, single_email):
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(return_value=_retain_result(0))
 
             result = await store_memories_batch(ctx, "user_abc", single_email)
 
@@ -131,27 +137,20 @@ class TestStoreMemoriesBatch:
                 "metadata": {"subject": "Sync", "sender": "boss@work.com"},
             }
         ]
-        captured_messages = []
-
-        async def capture_call(**kwargs):
-            captured_messages.extend(kwargs.get("messages", []))
-            return True
-
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(side_effect=capture_call)
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(return_value=_retain_result())
             await store_memories_batch(ctx, "user_abc", emails)
 
-        assert len(captured_messages) == 1
-        content = captured_messages[0]["content"]
+        content = mock_engine.retain.call_args.args[1][0]["content"]
         assert "From: boss@work.com" in content
         assert "Subject: Sync" in content
         assert "Meeting at 3pm" in content
 
-    async def test_user_context_included_in_custom_instructions_with_name_and_email(
+    async def test_user_context_included_in_extraction_hints_with_name_and_email(
         self, ctx, single_email
     ):
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(return_value=True)
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(return_value=_retain_result())
 
             await store_memories_batch(
                 ctx,
@@ -161,52 +160,42 @@ class TestStoreMemoriesBatch:
                 user_email="bob@example.com",
             )
 
-        call_kwargs = mock_svc.store_memory_batch.call_args.kwargs
-        instructions = call_kwargs["custom_instructions"]
-        assert "Bob Jones" in instructions
-        assert "bob@example.com" in instructions
+        call_kwargs = mock_engine.retain.call_args.kwargs
+        hints = call_kwargs["extraction_hints"]
+        assert "Bob Jones" in hints
+        assert "bob@example.com" in hints
+        assert call_kwargs["user_name"] == "Bob Jones"
 
     async def test_user_context_empty_when_no_name(self, ctx, single_email):
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(return_value=True)
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(return_value=_retain_result())
 
             await store_memories_batch(ctx, "user_abc", single_email)
 
-        call_kwargs = mock_svc.store_memory_batch.call_args.kwargs
-        instructions = call_kwargs["custom_instructions"]
+        hints = mock_engine.retain.call_args.kwargs["extraction_hints"]
         # No user context line when user_name is None
-        assert "The user's name is" not in instructions
+        assert "The user's name is" not in hints
 
-    async def test_metadata_passed_to_service_contains_source(self, ctx, single_email):
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(return_value=True)
-
-            await store_memories_batch(ctx, "user_abc", single_email, user_name="Alice")
-
-        call_kwargs = mock_svc.store_memory_batch.call_args.kwargs
-        assert call_kwargs["metadata"]["source"] == "gmail_background_batch"
-        assert call_kwargs["metadata"]["batch_size"] == 1
-        assert call_kwargs["user_id"] == "user_abc"
-
-    async def test_async_mode_is_false(self, ctx, single_email):
-        """store_memory_batch must be called with async_mode=False."""
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(return_value=True)
+    async def test_source_type_is_email(self, ctx, single_email):
+        """retain must be called with the EMAIL source type."""
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(return_value=_retain_result())
 
             await store_memories_batch(ctx, "user_abc", single_email)
 
-        call_kwargs = mock_svc.store_memory_batch.call_args.kwargs
-        assert call_kwargs["async_mode"] is False
+        call = mock_engine.retain.call_args
+        assert call.args[0] == "user_abc"
+        assert call.kwargs["source_type"] is MemorySourceType.EMAIL
 
-    async def test_exception_in_service_returns_error_string(self, ctx, single_email):
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(side_effect=RuntimeError("Mem0 is unavailable"))
+    async def test_exception_in_engine_returns_error_string(self, ctx, single_email):
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(side_effect=RuntimeError("engine is unavailable"))
 
             result = await store_memories_batch(ctx, "user_abc", single_email)
 
         assert "Error in batch memory processing" in result
         assert "user_abc" in result
-        assert "Mem0 is unavailable" in result
+        assert "engine is unavailable" in result
 
     async def test_mixed_valid_and_empty_content_only_valid_sent(self, ctx):
         emails = [
@@ -217,26 +206,24 @@ class TestStoreMemoriesBatch:
             {"content": "", "metadata": {"subject": "S2", "sender": "c@d.com"}},
             {"content": "   ", "metadata": {"subject": "S3", "sender": "e@f.com"}},
         ]
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(return_value=True)
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(return_value=_retain_result())
 
             result = await store_memories_batch(ctx, "user_abc", emails)
 
         # Only 1 valid email should be processed
-        assert "Stored 1 emails in mem0 successfully" in result
-        call_kwargs = mock_svc.store_memory_batch.call_args.kwargs
-        assert len(call_kwargs["messages"]) == 1
+        assert "from 1 emails" in result
+        assert len(mock_engine.retain.call_args.args[1]) == 1
 
     async def test_missing_metadata_uses_defaults(self, ctx):
         emails = [{"content": "An email with no metadata dict at all"}]
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(return_value=True)
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(return_value=_retain_result())
             await store_memories_batch(ctx, "user_abc", emails)
 
-        call_kwargs = mock_svc.store_memory_batch.call_args.kwargs
-        content = call_kwargs["messages"][0]["content"]
-        assert "[No Subject]" in content
-        assert "[Unknown Sender]" in content
+        content = mock_engine.retain.call_args.args[1][0]["content"]
+        assert NO_SUBJECT in content
+        assert UNKNOWN_SENDER in content
 
     async def test_ctx_parameter_unused_does_not_affect_result(self, single_email):
         """The ARQ ctx dict is not used — passing unusual values must not crash."""
@@ -246,15 +233,14 @@ class TestStoreMemoriesBatch:
             {"job_id": "abc123", "score": 99},
         ]
         for ctx in ctx_variants:
-            with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
-                mock_svc.store_memory_batch = AsyncMock(return_value=True)
+            with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_engine:
+                mock_engine.retain = AsyncMock(return_value=_retain_result())
                 result = await store_memories_batch(ctx, "user_abc", single_email)
-            assert "Stored 1 emails" in result
+            assert "Extracted 1 memories" in result
 
     async def test_store_memories_batch_saves_all(self, ctx):
-        """A batch of 5 emails must produce exactly 5 memory objects written to
-        the DB (via store_memory_batch).  If any are silently dropped, the
-        assertion on stored_messages length will catch it."""
+        """A batch of 5 emails must produce exactly 5 messages handed to the
+        engine. If any are silently dropped, the length assertion catches it."""
         emails = [
             {
                 "content": f"Email body number {i}",
@@ -266,28 +252,27 @@ class TestStoreMemoriesBatch:
             for i in range(1, 6)
         ]
 
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(return_value=True)
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(return_value=_retain_result(5))
             result = await store_memories_batch(ctx, "user_batch", emails)
 
-        assert "Stored 5 emails in mem0 successfully" in result
+        assert "Extracted 5 memories from 5 emails" in result
 
-        call_kwargs = mock_svc.store_memory_batch.call_args.kwargs
-        stored_messages = call_kwargs["messages"]
+        call = mock_engine.retain.call_args
+        stored_messages = call.args[1]
         assert len(stored_messages) == 5, (
-            f"All 5 emails must be saved; only {len(stored_messages)} were stored"
+            f"All 5 emails must be sent; only {len(stored_messages)} were"
         )
         for i in range(1, 6):
             matching = [m for m in stored_messages if f"Email body number {i}" in m["content"]]
-            assert matching, f"Email {i} content was not saved to the DB"
-        assert call_kwargs["user_id"] == "user_batch"
+            assert matching, f"Email {i} content was not handed to the engine"
+        assert call.args[0] == "user_batch"
 
     async def test_store_memories_batch_empty(self, ctx):
-        """An empty batch must return early with no DB writes at all."""
-        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
-            mock_svc.store_memory_batch = AsyncMock(return_value=True)
+        """An empty batch must return early with no engine calls at all."""
+        with patch("app.workers.tasks.memory_tasks.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(return_value=_retain_result())
             result = await store_memories_batch(ctx, "user_empty", [])
 
         assert "No emails to process" in result
-        # No DB write should have happened.
-        mock_svc.store_memory_batch.assert_not_called()
+        mock_engine.retain.assert_not_called()
