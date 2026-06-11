@@ -19,7 +19,9 @@ module.exports = async function adhocSign(context) {
   const appPath = path.join(context.appOutDir, appName);
 
   console.log(`  • ad-hoc signing (real signing disabled)  file=${appPath}`);
-  execFileSync("codesign", ["--force", "--deep", "--sign", "-", appPath], {
+  // Absolute path to the SIP-protected system binary — never resolve via
+  // $PATH, which a caller could repoint at a malicious `codesign`.
+  execFileSync("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", appPath], {
     stdio: "inherit",
   });
 };

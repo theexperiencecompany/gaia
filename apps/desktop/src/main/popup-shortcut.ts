@@ -78,7 +78,10 @@ export function updatePopupShortcut(
   if (!isValidAccelerator(accelerator)) {
     return {
       ok: false,
-      shortcut: current ?? getDesktopSettings().popupShortcut,
+      // Report only the shortcut actually registered with the OS — never a
+      // persisted value that may not be active — so the settings UI can't
+      // desync from real OS state.
+      shortcut: current ?? "",
       error: "Shortcut must combine at least one modifier with a key",
     };
   }
@@ -93,12 +96,15 @@ export function updatePopupShortcut(
   }
 
   // Roll back — the previous shortcut kept working before this call.
+  registeredShortcut = null;
   if (current && globalShortcut.register(current, toggleAssistantPopup)) {
     registeredShortcut = current;
   }
   return {
     ok: false,
-    shortcut: current ?? getDesktopSettings().popupShortcut,
+    // Reflect what is genuinely registered after rollback: the previous
+    // shortcut if it was reclaimed, otherwise nothing.
+    shortcut: registeredShortcut ?? "",
     error: "That shortcut is unavailable (it may be used by another app)",
   };
 }

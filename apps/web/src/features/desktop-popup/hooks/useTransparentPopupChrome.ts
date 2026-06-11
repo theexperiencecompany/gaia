@@ -13,7 +13,8 @@ import { useLoginModalStore } from "@/stores/loginModalStore";
  */
 export function useTransparentPopupChrome(): void {
   useEffect(() => {
-    useLoginModalStore.getState().suppressModal();
+    const loginModal = useLoginModalStore.getState();
+    loginModal.suppressModal();
 
     const html = document.documentElement;
     const body = document.body;
@@ -22,6 +23,9 @@ export function useTransparentPopupChrome(): void {
     html.style.background = "transparent";
     body.style.background = "transparent";
     return () => {
+      // Lift suppression so the modal works again in any non-popup window
+      // that reuses this renderer process.
+      loginModal.unsuppressModal();
       html.style.background = previousHtmlBackground;
       body.style.background = previousBodyBackground;
     };

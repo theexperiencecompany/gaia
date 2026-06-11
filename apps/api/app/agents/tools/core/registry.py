@@ -12,8 +12,8 @@ from shared.py.wide_events import log
 
 # Desktop-executed tools (screenshot, clipboard, ...) — discovery and binding
 # are gated to desktop-app conversations in retrieval.py.
-DESKTOP_TOOL_CATEGORY = "desktop"
-DESKTOP_TOOL_SPACE = "desktop"
+DESKTOP_TOOL_CATEGORY: str = "desktop"
+DESKTOP_TOOL_SPACE: str = "desktop"
 
 
 class DynamicToolDict(Mapping[str, BaseTool]):

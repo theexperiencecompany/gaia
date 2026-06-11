@@ -372,6 +372,15 @@ export function showAssistantPopup(trigger: PopupTrigger = "shortcut"): void {
   }
 
   popupShown = true;
+
+  // A dismiss fade may still be animating the feed from a rapid re-open.
+  // Cancel it and hide the feed so the layout below re-reveals it cleanly,
+  // instead of the stale fade-out's hide callback firing after we've shown.
+  if (feedWindow && !feedWindow.isDestroyed()) {
+    cancelFade(feedWindow);
+    if (feedWindow.isVisible()) feedWindow.hide();
+  }
+
   const workArea = activeWorkArea();
   composerWindow.setBounds(composerBounds(workArea));
 

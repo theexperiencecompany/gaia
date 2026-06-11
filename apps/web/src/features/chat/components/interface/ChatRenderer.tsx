@@ -58,8 +58,21 @@ const GaiaOrbLazy = nextDynamic(() => import("@/components/ui/orb/GaiaOrb"), {
  * list remounts (conversation-id swap, optimistic→real id transitions)
  * don't replay the animation — replaying makes existing bubbles flash
  * invisible instead of calmly scrolling up.
+ *
+ * Bounded with FIFO eviction so a long-lived session can't accumulate keys
+ * indefinitely; the cap is far above any realistic single conversation, so
+ * a visible bubble never gets evicted and re-animates.
  */
 const revealedBubbleKeys = new Set<string>();
+const MAX_REVEALED_BUBBLE_KEYS = 2000;
+
+function markBubbleRevealed(bubbleKey: string): void {
+  revealedBubbleKeys.add(bubbleKey);
+  if (revealedBubbleKeys.size > MAX_REVEALED_BUBBLE_KEYS) {
+    const oldest = revealedBubbleKeys.values().next().value;
+    if (oldest !== undefined) revealedBubbleKeys.delete(oldest);
+  }
+}
 
 /** Entrance played only the FIRST time a bubble key appears. */
 function CompactReveal({
@@ -72,7 +85,7 @@ function CompactReveal({
   const isNew = !revealedBubbleKeys.has(bubbleKey);
 
   useEffect(() => {
-    revealedBubbleKeys.add(bubbleKey);
+    markBubbleRevealed(bubbleKey);
   }, [bubbleKey]);
 
   return (

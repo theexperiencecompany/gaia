@@ -35,8 +35,9 @@ export async function openApp(appName: string): Promise<void> {
   if (process.platform !== "darwin") {
     throw new Error("Opening apps is only supported on macOS for now");
   }
-  // execFile (no shell) — the app name is passed as a literal argument.
-  await execFileAsync("open", ["-a", trimmed], {
+  // execFile (no shell), absolute path to the SIP-protected system binary —
+  // the app name is passed as a literal argument, never via $PATH or a shell.
+  await execFileAsync("/usr/bin/open", ["-a", trimmed], {
     timeout: OPEN_APP_TIMEOUT_MS,
   });
 }
@@ -57,7 +58,7 @@ export async function listWindows(): Promise<{
   // Requires the Automation (System Events) permission; macOS prompts on
   // first use. A denial surfaces here as a non-zero osascript exit.
   const { stdout } = await execFileAsync(
-    "osascript",
+    "/usr/bin/osascript",
     ["-e", LIST_WINDOWS_SCRIPT],
     { timeout: LIST_WINDOWS_TIMEOUT_MS },
   );

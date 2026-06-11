@@ -9,6 +9,7 @@ import type {
 import { useCallback, useEffect, useState } from "react";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { getElectronAPI } from "@/lib/electron/api";
+import { toast } from "@/lib/toast";
 
 /** Poll interval while the page is visible — grants happen in System Settings. */
 const REFRESH_INTERVAL_MS = 2000;
@@ -84,7 +85,11 @@ export function DesktopPermissions() {
   const refresh = useCallback(async () => {
     const api = getElectronAPI();
     if (!api) return;
-    setStatus(await api.getDesktopPermissions());
+    try {
+      setStatus(await api.getDesktopPermissions());
+    } catch {
+      // Transient IPC failure during polling — keep the last known status.
+    }
   }, []);
 
   useEffect(() => {
@@ -105,11 +110,15 @@ export function DesktopPermissions() {
   const handleRequest = async (row: PermissionRowConfig) => {
     const api = getElectronAPI();
     if (!api) return;
-    if (row.promptable) {
-      setStatus(await api.requestDesktopPermission(row.pane));
-    } else {
-      api.openPermissionSettings(row.pane);
-      setSettingsOpened(true);
+    try {
+      if (row.promptable) {
+        setStatus(await api.requestDesktopPermission(row.pane));
+      } else {
+        api.openPermissionSettings(row.pane);
+        setSettingsOpened(true);
+      }
+    } catch {
+      toast.error("Could not update that permission. Please try again.");
     }
   };
 

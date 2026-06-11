@@ -121,7 +121,9 @@ function applyFinderIcon(iconPath: string | null): void {
   if (!bundlePath.endsWith(".app")) return;
   const args = ["-l", "JavaScript", "-e", FINDER_ICON_JXA, bundlePath];
   if (iconPath) args.push(iconPath);
-  execFile("osascript", args, (error) => {
+  // Absolute path to the SIP-protected system binary — never resolve via
+  // $PATH, which could be repointed at a malicious `osascript`.
+  execFile("/usr/bin/osascript", args, (error) => {
     if (error) console.error("[AppIcon] Finder icon update failed:", error);
   });
 }

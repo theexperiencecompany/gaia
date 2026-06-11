@@ -24,6 +24,7 @@ export function AppIconPicker({
             key={icon.id}
             type="button"
             aria-label={`${icon.label} app icon`}
+            aria-pressed={isSelected}
             onClick={() => onSelect(icon.id)}
             className={cn(
               // 22% radius ≈ the macOS app-icon squircle, so flat square

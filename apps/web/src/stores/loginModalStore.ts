@@ -13,6 +13,7 @@ interface LoginModalStore {
   openModal: () => void;
   closeModal: () => void;
   suppressModal: () => void;
+  unsuppressModal: () => void;
 }
 
 export const useLoginModalStore = create<LoginModalStore>()(
@@ -28,6 +29,8 @@ export const useLoginModalStore = create<LoginModalStore>()(
       closeModal: () => set({ open: false }, false, "closeModal"),
       suppressModal: () =>
         set({ suppressed: true, open: false }, false, "suppressModal"),
+      unsuppressModal: () =>
+        set({ suppressed: false }, false, "unsuppressModal"),
     }),
     { name: "loginModal-store" },
   ),

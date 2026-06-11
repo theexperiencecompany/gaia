@@ -22,7 +22,10 @@ export default function DesktopSettings() {
   useEffect(() => {
     const api = getElectronAPI();
     if (!api) return;
-    api.getDesktopSettings().then(setSnapshot).catch(console.error);
+    api
+      .getDesktopSettings()
+      .then(setSnapshot)
+      .catch(() => toast.error("Could not load desktop settings"));
   }, []);
 
   const handleRecordShortcut = useCallback(
