@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api } from "@/lib/api/client";
+import { apiauth } from "@/lib/api/client";
 
 interface UrlMetadata {
   title: string | null;
@@ -56,7 +56,9 @@ const processBatch = async () => {
 
   try {
     // Single API call for all URLs
-    const response = await api.post("/fetch-url-metadata", { urls });
+    // Authenticated client: email previews resolve against the user's own
+    // Google contacts, so the endpoint requires the session.
+    const response = await apiauth.post("/fetch-url-metadata", { urls });
 
     // Resolve individual promises with their data
     urls.forEach((url) => {
