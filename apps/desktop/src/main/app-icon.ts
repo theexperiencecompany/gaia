@@ -29,10 +29,9 @@ interface AppIconEntry {
 
 const APP_ICON_REGISTRY: AppIconEntry[] = [
   { id: DEFAULT_APP_ICON, label: "GAIA", file: "icons/512x512.png" },
-  { id: "neon", label: "Neon", file: "app-icons/neon.png" },
-  { id: "chrome", label: "Chrome", file: "app-icons/chrome.png" },
-  { id: "glass", label: "Glass", file: "app-icons/glass.png" },
-  { id: "blueprint", label: "Blueprint", file: "app-icons/blueprint.png" },
+  { id: "glow", label: "Glow", file: "app-icons/glow.png" },
+  { id: "metal", label: "Metal", file: "app-icons/metal.png" },
+  { id: "g3", label: "G3", file: "app-icons/g3.png" },
   { id: "retro", label: "Retro", file: "app-icons/retro.png" },
 ];
 

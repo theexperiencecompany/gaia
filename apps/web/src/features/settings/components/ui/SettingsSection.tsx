@@ -16,9 +16,7 @@ export function SettingsSection({
   return (
     <div>
       {title && (
-        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
-          {title}
-        </p>
+        <p className="mb-2 text-sm font-medium text-zinc-300">{title}</p>
       )}
       {description && (
         <p className="mb-3 text-sm text-zinc-500">{description}</p>

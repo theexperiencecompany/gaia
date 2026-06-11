@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { KbdKey } from "@heroui/kbd";
+import { Kbd } from "@heroui/kbd";
+import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 interface ShortcutRecorderProps {
@@ -13,29 +15,61 @@ interface ShortcutRecorderProps {
 const IS_MAC =
   typeof navigator !== "undefined" && navigator.platform.includes("Mac");
 
-/** Display symbol for each accelerator token. */
-const TOKEN_SYMBOLS: Record<string, string> = {
-  CommandOrControl: IS_MAC ? "⌘" : "Ctrl",
-  Command: "⌘",
-  Cmd: "⌘",
-  Control: IS_MAC ? "⌃" : "Ctrl",
-  Ctrl: IS_MAC ? "⌃" : "Ctrl",
-  Alt: IS_MAC ? "⌥" : "Alt",
-  Option: "⌥",
-  Shift: IS_MAC ? "⇧" : "Shift",
-  Super: IS_MAC ? "⌘" : "Win",
-  Meta: IS_MAC ? "⌘" : "Win",
-  Space: "␣",
-  Up: "↑",
-  Down: "↓",
-  Left: "←",
-  Right: "→",
-  Return: "↩",
-  Enter: "↩",
-  Backspace: "⌫",
-  Delete: "⌦",
-  Escape: "⎋",
+/** Accelerator modifier token → HeroUI Kbd key. */
+const MODIFIER_KBD_KEYS: Record<string, KbdKey> = {
+  CommandOrControl: IS_MAC ? "command" : "ctrl",
+  Command: "command",
+  Cmd: "command",
+  Control: "ctrl",
+  Ctrl: "ctrl",
+  Alt: "option",
+  Option: "option",
+  Shift: "shift",
+  Super: "command",
+  Meta: "command",
 };
+
+/** Named (non-modifier) accelerator keys that Kbd renders as symbols. */
+const NAMED_KBD_KEYS: Record<string, KbdKey> = {
+  Space: "space",
+  Tab: "tab",
+  Return: "enter",
+  Enter: "enter",
+  Backspace: "delete",
+  Delete: "delete",
+  Escape: "escape",
+  Up: "up",
+  Down: "down",
+  Left: "left",
+  Right: "right",
+  Home: "home",
+  End: "end",
+  PageUp: "pageup",
+  PageDown: "pagedown",
+};
+
+/** Split an accelerator into Kbd modifier keys + the literal key label. */
+function acceleratorToKbd(accelerator: string): {
+  keys: KbdKey[];
+  label: string;
+} {
+  const keys: KbdKey[] = [];
+  let label = "";
+  for (const token of accelerator.split("+")) {
+    const modifier = MODIFIER_KBD_KEYS[token];
+    if (modifier) {
+      if (!keys.includes(modifier)) keys.push(modifier);
+      continue;
+    }
+    const named = NAMED_KBD_KEYS[token];
+    if (named) {
+      keys.push(named);
+      continue;
+    }
+    label = token;
+  }
+  return { keys, label };
+}
 
 /** Map a KeyboardEvent to the Electron accelerator key token, or null. */
 function eventKeyToken(event: KeyboardEvent): string | null {
@@ -73,18 +107,12 @@ function eventModifiers(event: KeyboardEvent): string[] {
   return modifiers;
 }
 
-function ShortcutKeycaps({ accelerator }: { accelerator: string }) {
+function ShortcutKbd({ accelerator }: { accelerator: string }) {
+  const { keys, label } = acceleratorToKbd(accelerator);
   return (
-    <span className="flex items-center gap-1">
-      {accelerator.split("+").map((token) => (
-        <kbd
-          key={token}
-          className="flex h-6 min-w-6 items-center justify-center rounded-md bg-zinc-700/80 px-1.5 text-xs font-medium text-zinc-200"
-        >
-          {TOKEN_SYMBOLS[token] ?? token}
-        </kbd>
-      ))}
-    </span>
+    <Kbd keys={keys} classNames={{ base: "bg-zinc-700/80 shadow-none" }}>
+      {label}
+    </Kbd>
   );
 }
 
@@ -95,7 +123,6 @@ function ShortcutKeycaps({ accelerator }: { accelerator: string }) {
 export function ShortcutRecorder({ value, onRecord }: ShortcutRecorderProps) {
   const [recording, setRecording] = useState(false);
   const [heldPreview, setHeldPreview] = useState<string | null>(null);
-  const containerRef = useRef<HTMLButtonElement>(null);
 
   const stopRecording = useCallback(() => {
     setRecording(false);
@@ -144,7 +171,6 @@ export function ShortcutRecorder({ value, onRecord }: ShortcutRecorderProps) {
 
   return (
     <button
-      ref={containerRef}
       type="button"
       onClick={() => (recording ? stopRecording() : setRecording(true))}
       onBlur={stopRecording}
@@ -157,14 +183,14 @@ export function ShortcutRecorder({ value, onRecord }: ShortcutRecorderProps) {
     >
       {recording ? (
         heldPreview ? (
-          <ShortcutKeycaps accelerator={heldPreview} />
+          <ShortcutKbd accelerator={heldPreview} />
         ) : (
           <span className="text-xs text-primary">
             Type shortcut, Esc to cancel
           </span>
         )
       ) : (
-        <ShortcutKeycaps accelerator={value} />
+        <ShortcutKbd accelerator={value} />
       )}
     </button>
   );

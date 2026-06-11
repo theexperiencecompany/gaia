@@ -16,43 +16,29 @@ export function AppIconPicker({
   onSelect,
 }: AppIconPickerProps) {
   return (
-    <div className="grid grid-cols-3 gap-3 p-4 sm:grid-cols-4">
+    <div className="grid grid-cols-4 gap-3 p-4 sm:grid-cols-5">
       {icons.map((icon) => {
         const isSelected = icon.id === selectedId;
         return (
           <button
             key={icon.id}
             type="button"
+            aria-label={`${icon.label} app icon`}
             onClick={() => onSelect(icon.id)}
             className={cn(
-              "group flex flex-col items-center gap-2 rounded-2xl p-3 transition-colors",
-              isSelected ? "bg-primary/10" : "hover:bg-white/5",
+              "aspect-square overflow-hidden rounded-2xl p-1 transition-all",
+              isSelected
+                ? "ring-2 ring-primary"
+                : "ring-2 ring-transparent hover:scale-105",
             )}
           >
-            <div
-              className={cn(
-                "rounded-2xl p-0.5 transition-all",
-                isSelected
-                  ? "ring-2 ring-primary"
-                  : "ring-2 ring-transparent group-hover:scale-105",
-              )}
-            >
-              {/* Data-URL previews from the main process — not optimizable. */}
-              {/* biome-ignore lint/performance/noImgElement: data-URL preview */}
-              <img
-                src={icon.preview}
-                alt={`${icon.label} app icon`}
-                className="size-16 rounded-xl object-contain"
-              />
-            </div>
-            <span
-              className={cn(
-                "text-xs",
-                isSelected ? "font-medium text-primary" : "text-zinc-400",
-              )}
-            >
-              {icon.label}
-            </span>
+            {/* Data-URL previews from the main process — not optimizable. */}
+            {/* biome-ignore lint/performance/noImgElement: data-URL preview */}
+            <img
+              src={icon.preview}
+              alt={`${icon.label} app icon`}
+              className="aspect-square h-full w-full rounded-xl object-cover"
+            />
           </button>
         );
       })}
