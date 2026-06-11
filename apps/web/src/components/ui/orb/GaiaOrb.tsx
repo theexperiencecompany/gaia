@@ -210,9 +210,6 @@ function createOrbRenderer(
     antialias: false,
     depth: false,
     stencil: false,
-    // Keeps the buffer readable (toDataURL/drawImage) for visual tests;
-    // negligible cost at orb sizes.
-    preserveDrawingBuffer: true,
   });
   if (!gl) {
     console.error("[GaiaOrb] WebGL2 unavailable");

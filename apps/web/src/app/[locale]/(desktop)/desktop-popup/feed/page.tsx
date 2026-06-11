@@ -3,10 +3,10 @@
 import { useEffect } from "react";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import PopupFeed from "@/features/desktop-popup/components/PopupFeed";
+import { useTransparentPopupChrome } from "@/features/desktop-popup/hooks/useTransparentPopupChrome";
 import { usePopupChatConsumer } from "@/features/desktop-popup/sync";
 import { useElectron } from "@/hooks/useElectron";
 import { useLoadingStore } from "@/stores/loadingStore";
-import { useLoginModalStore } from "@/stores/loginModalStore";
 
 /**
  * Conversation island of the assistant popup — its own liquid-glass
@@ -18,21 +18,7 @@ export default function DesktopPopupFeedPage() {
   const { dismissPopup, resizePopup } = useElectron();
 
   usePopupChatConsumer();
-
-  useEffect(() => {
-    useLoginModalStore.getState().suppressModal();
-
-    const html = document.documentElement;
-    const body = document.body;
-    const previousHtmlBackground = html.style.background;
-    const previousBodyBackground = body.style.background;
-    html.style.background = "transparent";
-    body.style.background = "transparent";
-    return () => {
-      html.style.background = previousHtmlBackground;
-      body.style.background = previousBodyBackground;
-    };
-  }, []);
+  useTransparentPopupChrome();
 
   // Report content height so the window grows with the conversation
   // (main clamps to the screen budget and hides it when empty). An

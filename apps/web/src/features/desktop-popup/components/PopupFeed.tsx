@@ -8,11 +8,6 @@ import "../desktop-popup.css";
 /** Distance from the bottom (px) within which auto-scroll stays engaged. */
 const STICK_THRESHOLD_PX = 80;
 
-/**
- * BlurStack layers mirrored for a TOP edge: strongest blur at the very
- * top, dissolving downward — scrolled-away bubbles melt into the glass
- * instead of being cut by an opacity fade.
- */
 /** Default BlurStack stops already read bottom-heavy — reuse for the
  * bottom edge while more content waits below. */
 const BOTTOM_BLUR_LAYERS: BlurLayer[] = [
@@ -25,6 +20,11 @@ const BOTTOM_BLUR_LAYERS: BlurLayer[] = [
   { blur: 32, maskStops: [75, 87.5, 100, 100], zIndex: 7 },
 ];
 
+/**
+ * BlurStack layers mirrored for a TOP edge: strongest blur at the very
+ * top, dissolving downward — scrolled-away bubbles melt into the glass
+ * instead of being cut by an opacity fade.
+ */
 const TOP_BLUR_LAYERS: BlurLayer[] = [
   { blur: 64, maskStops: [0, 0, 0, 12.5], zIndex: 8 },
   { blur: 32, maskStops: [0, 0, 12.5, 25], zIndex: 7 },

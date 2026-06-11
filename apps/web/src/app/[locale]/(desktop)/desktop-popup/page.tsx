@@ -1,30 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
 import { AssistantPopup } from "@/features/desktop-popup";
-import { useLoginModalStore } from "@/stores/loginModalStore";
+import { useTransparentPopupChrome } from "@/features/desktop-popup/hooks/useTransparentPopupChrome";
 
 /**
  * Assistant popup window content. The Electron window provides the
- * glassy vibrancy backdrop, so this page must keep the document
- * background fully transparent. The login modal is suppressed — the
- * popup has its own compact sign-in affordance.
+ * glassy vibrancy backdrop, so this page keeps the document background
+ * transparent and suppresses the login modal (see the shared hook).
  */
 export default function DesktopPopupPage() {
-  useEffect(() => {
-    useLoginModalStore.getState().suppressModal();
-
-    const html = document.documentElement;
-    const body = document.body;
-    const previousHtmlBackground = html.style.background;
-    const previousBodyBackground = body.style.background;
-    html.style.background = "transparent";
-    body.style.background = "transparent";
-    return () => {
-      html.style.background = previousHtmlBackground;
-      body.style.background = previousBodyBackground;
-    };
-  }, []);
+  useTransparentPopupChrome();
 
   return <AssistantPopup />;
 }

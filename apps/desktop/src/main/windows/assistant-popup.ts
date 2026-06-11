@@ -215,8 +215,7 @@ export function createAssistantPopup(serverReady: () => boolean): void {
   // Liquid glass is the default: only its native view honors the custom
   // capsule cornerRadius (vibrancy windows are stuck with the standard
   // macOS radius). Known tradeoff: the material can still dim for
-  // non-key windows (upstream: Meridius-Labs/electron-liquid-glass#64);
-  // the keep-alive in glass.ts holds the best available counter-knobs.
+  // non-key windows (upstream: Meridius-Labs/electron-liquid-glass#64).
   const useLiquidGlass = supportsLiquidGlass();
 
   // Shadows give both islands their edge definition on glass.
