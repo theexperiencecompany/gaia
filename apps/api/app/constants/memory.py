@@ -4,8 +4,12 @@ from enum import StrEnum
 
 # Local ONNX models (fastembed). Memory must work offline and fast —
 # do NOT swap these for cloud models.
-EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
-EMBEDDING_DIM = 384
+# mxbai-embed-large (1024-dim, ~0.7GB, ~14ms/query CPU) ranks the gold fact
+# top-3 on 6/6 hard implicit probes vs 3/6 for bge-small — it is what closes
+# the "vet appointment -> dog fact" class of semantic hops. Changing the model
+# requires re-embedding stored vectors: scripts/reembed_memories.py.
+EMBEDDING_MODEL_NAME = "mixedbread-ai/mxbai-embed-large-v1"
+EMBEDDING_DIM = 1024
 # jina-reranker-v1-turbo-en (~150MB) measurably beats ms-marco-MiniLM on
 # implicit conversational queries ("what do I do for a living" -> the job
 # fact): top-3 gold rank 4/6 vs 2/6 on our probe set at the same ~30ms.
@@ -23,8 +27,11 @@ CHROMA_MEMORY_EPISODES_COLLECTION = "gaia_memory_episodes"
 # drops a fact: "deadline March 10" vs "deadline March 17" embed near-
 # identically but the second is an UPDATE, not a duplicate — only the LLM
 # (or exact-text match) may decide.
+# Calibrated to mxbai-embed-large doc-doc cosines: paraphrase duplicates
+# ~0.96, contradictions/value-changes 0.75-0.89, same-person-different-topic
+# ~0.61, unrelated ~0.38.
 DUPLICATE_SIMILARITY_THRESHOLD = 0.92
-RECONCILE_SIMILARITY_THRESHOLD = 0.75
+RECONCILE_SIMILARITY_THRESHOLD = 0.70
 
 # Hybrid recall pipeline: candidate counts per retriever and the RRF
 # fusion constant (k=60 is the canonical value from the RRF paper).
@@ -44,7 +51,9 @@ RERANK_BLEND_WEIGHT = 0.6
 # unproven) are capped so an unanswerable query returns at most a couple of
 # semi-related items instead of a page of noise. Local-model score
 # distributions overlap, so a hard empty-on-irrelevant gate would cost recall.
-CONFIDENT_COSINE = 0.60
+# Calibrated to mxbai-embed-large's cosine scale (hard-but-real matches sit
+# at ~0.50-0.55; unrelated content mostly below 0.51).
+CONFIDENT_COSINE = 0.515
 CONFIDENT_RERANK_LOGIT = -2.5
 MAX_WEAK_RESULTS = 4
 
