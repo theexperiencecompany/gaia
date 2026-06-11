@@ -109,22 +109,33 @@ export function MemoryRow({
         </div>
 
         {expanded && (
-          <div className="mt-2 space-y-1.5 pl-3">
+          <div className="mt-3 pl-1">
             {loadingHistory ? (
               <Spinner size="sm" />
             ) : history && history.length > 0 ? (
-              history.map((older) => (
-                <div key={older.id} className="text-xs text-zinc-500">
-                  <span className="text-zinc-400">v{older.version}</span>{" "}
-                  {older.content}
-                  {older.relation_type && (
-                    <span className="text-zinc-600">
-                      {" "}
-                      ({older.relation_type})
-                    </span>
-                  )}
-                </div>
-              ))
+              <div className="relative ml-1.5">
+                <div className="absolute left-0 top-0 h-full w-px bg-zinc-700" />
+                {history.map((older, i) => (
+                  <div key={older.id} className="relative mb-3 pl-4 last:mb-0">
+                    <span
+                      className={`absolute left-[-3px] top-1.5 size-[7px] rounded-full border border-zinc-600 ${i === 0 ? "bg-zinc-500" : "bg-zinc-800"}`}
+                    />
+                    <div className="flex items-baseline gap-2">
+                      <span className="shrink-0 text-xs font-medium text-zinc-500">
+                        v{older.version}
+                      </span>
+                      {older.relation_type && (
+                        <span className="shrink-0 rounded bg-zinc-800 px-1 py-0.5 text-[10px] text-zinc-600">
+                          {older.relation_type}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
+                      {older.content}
+                    </p>
+                  </div>
+                ))}
+              </div>
             ) : (
               <p className="text-xs text-zinc-600">No earlier versions.</p>
             )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Divider } from "@heroui/divider";
 import { Textarea } from "@heroui/input";
 import { Skeleton } from "@heroui/skeleton";
 import { Tab, Tabs } from "@heroui/tabs";
@@ -74,7 +75,7 @@ export function CoreDocuments() {
   if (loading) {
     return (
       <div className="space-y-3">
-        <Skeleton className="h-9 w-2/3 rounded-full" />
+        <Skeleton className="h-9 w-2/3 rounded-xl" />
         <Skeleton className="h-64 w-full rounded-2xl" />
       </div>
     );
@@ -82,9 +83,9 @@ export function CoreDocuments() {
 
   return (
     <div className="space-y-3">
+      {/* Inner doc tabs — same variant/size as the main memory tabs */}
       <Tabs
-        size="sm"
-        radius="full"
+        variant="light"
         selectedKey={selectedDocType}
         onSelectionChange={(key) => {
           setSelectedDocType(key as MemoryDocType);
@@ -96,14 +97,18 @@ export function CoreDocuments() {
         ))}
       </Tabs>
 
-      <div className="rounded-2xl bg-zinc-900/60 px-5 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-xs text-zinc-500">
-              {meta?.description}
-            </p>
-            {document && (
-              <p className="mt-0.5 flex items-center gap-1.5 text-xs text-zinc-500">
+      <div className="rounded-2xl bg-zinc-800 px-5 py-4">
+        {/* Description row */}
+        {meta?.description && (
+          <p className="text-sm text-zinc-400">{meta.description}</p>
+        )}
+
+        {/* Meta row — version + updated timestamp, separated by divider */}
+        {document && (
+          <>
+            <Divider className="my-3 bg-zinc-700/50" />
+            <div className="flex items-center justify-between gap-3">
+              <p className="flex items-center gap-1.5 text-xs text-zinc-500">
                 <span>v{document.version}</span>
                 <span className="size-0.5 rounded-full bg-zinc-600" />
                 <span>
@@ -113,22 +118,25 @@ export function CoreDocuments() {
                   })}
                 </span>
               </p>
-            )}
-          </div>
-          {document && draft === null && (
-            <Button
-              size="sm"
-              variant="flat"
-              className="shrink-0 rounded-xl"
-              startContent={<PencilEdit02Icon className="size-4" />}
-              onPress={() => setDraft(document.content)}
-            >
-              Edit
-            </Button>
-          )}
-        </div>
+              {draft === null && (
+                <Button
+                  size="sm"
+                  variant="flat"
+                  className="shrink-0 rounded-xl"
+                  startContent={<PencilEdit02Icon className="size-4" />}
+                  onPress={() => setDraft(document.content)}
+                >
+                  Edit
+                </Button>
+              )}
+            </div>
+          </>
+        )}
 
-        <div className="mt-3">
+        {/* No document yet — show edit button in description area */}
+        {!document && draft === null && <div className="mt-3" />}
+
+        <div className={document || draft !== null ? "mt-4" : "mt-2"}>
           {draft !== null ? (
             <div className="space-y-3">
               <Textarea
@@ -206,7 +214,7 @@ function DocumentMarkdown({ content }: { content: string }) {
             <strong className="font-semibold text-zinc-100">{children}</strong>
           ),
           code: ({ children }) => (
-            <code className="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs">
+            <code className="rounded bg-zinc-900 px-1 py-0.5 font-mono text-xs">
               {children}
             </code>
           ),

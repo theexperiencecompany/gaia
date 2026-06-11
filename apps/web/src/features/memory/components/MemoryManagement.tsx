@@ -1,14 +1,19 @@
 "use client";
 
+import { Divider } from "@heroui/divider";
 import { Skeleton } from "@heroui/skeleton";
 import { Tab, Tabs } from "@heroui/tabs";
 import {
+  AiBrain01Icon,
   BookOpen01Icon,
+  Calendar01Icon,
+  Database01Icon,
   Folder01Icon,
   ListViewIcon,
   NeuralNetworkIcon,
   Note01Icon,
 } from "@icons";
+import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import type { MemoryOverviewResponse } from "@/features/memory/api/types";
@@ -26,6 +31,7 @@ export interface MemoryManagementProps {
 interface OverviewStat {
   label: string;
   value: number;
+  icon: ComponentType<{ className?: string }>;
 }
 
 export default function MemoryManagement({
@@ -52,23 +58,50 @@ export default function MemoryManagement({
   }, [autoFetch, fetchOverview]);
 
   const stats: OverviewStat[] = [
-    { label: "Memories", value: overview?.total_memories ?? 0 },
-    { label: "Entities", value: overview?.total_entities ?? 0 },
-    { label: "Folders", value: overview?.folder_count ?? 0 },
-    { label: "Journal days", value: overview?.episode_count ?? 0 },
+    {
+      label: "Memories",
+      value: overview?.total_memories ?? 0,
+      icon: AiBrain01Icon,
+    },
+    {
+      label: "Entities",
+      value: overview?.total_entities ?? 0,
+      icon: Database01Icon,
+    },
+    {
+      label: "Folders",
+      value: overview?.folder_count ?? 0,
+      icon: Folder01Icon,
+    },
+    {
+      label: "Journal days",
+      value: overview?.episode_count ?? 0,
+      icon: Calendar01Icon,
+    },
   ];
 
   return (
     <div className={`flex h-full flex-col gap-4 ${className}`}>
-      <div className="flex items-center gap-8 rounded-2xl bg-zinc-900/60 px-5 py-4">
-        {stats.map((stat) => (
-          <div key={stat.label}>
-            {overviewLoading ? (
-              <Skeleton className="mb-1 h-6 w-10 rounded-lg" />
-            ) : (
-              <p className="text-lg font-medium text-white">{stat.value}</p>
+      <div className="flex items-center rounded-2xl bg-zinc-800 px-5 py-4">
+        {stats.map((stat, index) => (
+          <div key={stat.label} className="flex items-center">
+            {index > 0 && (
+              <Divider
+                orientation="vertical"
+                className="mx-6 h-8 bg-zinc-700/50"
+              />
             )}
-            <p className="text-xs text-zinc-500">{stat.label}</p>
+            <div className="flex items-center gap-3">
+              <stat.icon className="size-5 shrink-0 text-zinc-500" />
+              <div>
+                {overviewLoading ? (
+                  <Skeleton className="mb-1 h-6 w-10 rounded-lg" />
+                ) : (
+                  <p className="text-lg font-medium text-white">{stat.value}</p>
+                )}
+                <p className="text-xs text-zinc-500">{stat.label}</p>
+              </div>
+            </div>
           </div>
         ))}
       </div>
@@ -109,7 +142,7 @@ export default function MemoryManagement({
 }
 
 interface TabTitleProps {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   label: string;
 }
 

@@ -2,7 +2,13 @@
 
 import { Button } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
-import { ArrowLeft01Icon, ArrowRight01Icon, BookOpen01Icon } from "@icons";
+import {
+  ArrowDown01Icon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  ArrowUp01Icon,
+  BookOpen01Icon,
+} from "@icons";
 import { addDays, format, isToday, parseISO, subDays } from "date-fns";
 import { useEffect, useState } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
@@ -94,9 +100,13 @@ export function MemoryTimeline() {
           description="GAIA writes a short journal line for each conversation. Days fill in as you talk."
         />
       ) : (
-        <div className="space-y-3">
-          {episodes.map((episode) => (
-            <EpisodeCard key={episode.date} episode={episode} />
+        <div className="space-y-2">
+          {episodes.map((episode, index) => (
+            <EpisodeCard
+              key={episode.date}
+              episode={episode}
+              defaultOpen={index === 0}
+            />
           ))}
         </div>
       )}
@@ -104,35 +114,59 @@ export function MemoryTimeline() {
   );
 }
 
-function EpisodeCard({ episode }: { episode: MemoryEpisode }) {
+function EpisodeCard({
+  episode,
+  defaultOpen,
+}: {
+  episode: MemoryEpisode;
+  defaultOpen: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   const date = parseISO(episode.date);
+  const hasContent = episode.summary || episode.entries.length > 0;
 
   return (
-    <div className="rounded-2xl bg-zinc-900/60 px-5 py-4">
-      <div className="flex items-baseline justify-between">
-        <p className="text-sm font-medium text-white">
-          {format(date, "EEEE, MMM d")}
-        </p>
-        {isToday(date) && <span className="text-xs text-primary">Today</span>}
-      </div>
-
-      {episode.summary && (
-        <p className="mt-2 text-sm text-zinc-400">{episode.summary}</p>
-      )}
-
-      {episode.entries.length > 0 && (
-        <div className="mt-3 space-y-1.5">
-          {episode.entries.map((entry) => (
-            <div
-              key={`${entry.time}-${entry.text}`}
-              className="flex items-baseline gap-3"
-            >
-              <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-                {entry.time}
-              </span>
-              <p className="text-sm text-zinc-300">{entry.text}</p>
-            </div>
+    <div className="overflow-hidden rounded-2xl bg-zinc-800">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-white/5"
+      >
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium text-white">
+            {format(date, "EEEE, MMM d")}
+          </p>
+          {isToday(date) && <span className="text-xs text-primary">Today</span>}
+        </div>
+        {hasContent &&
+          (open ? (
+            <ArrowUp01Icon className="size-4 shrink-0 text-zinc-500" />
+          ) : (
+            <ArrowDown01Icon className="size-4 shrink-0 text-zinc-500" />
           ))}
+      </button>
+
+      {open && hasContent && (
+        <div className="px-5 pb-4">
+          {episode.summary && (
+            <p className="text-sm text-zinc-400">{episode.summary}</p>
+          )}
+
+          {episode.entries.length > 0 && (
+            <div className="mt-2 space-y-1.5">
+              {episode.entries.map((entry) => (
+                <div
+                  key={`${entry.time}-${entry.text}`}
+                  className="flex items-baseline gap-3"
+                >
+                  <span className="shrink-0 text-xs tabular-nums text-zinc-500">
+                    {entry.time}
+                  </span>
+                  <p className="text-sm text-zinc-300">{entry.text}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
