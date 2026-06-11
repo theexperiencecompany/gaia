@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import type { MemoryOverviewResponse } from "@/features/memory/api/types";
 import { CoreDocuments } from "@/features/memory/components/CoreDocuments";
+import { MemoryDocsBanner } from "@/features/memory/components/MemoryDocsBanner";
 import { MemoryGraphView } from "@/features/memory/components/MemoryGraphView";
 import { MemoryList } from "@/features/memory/components/MemoryList";
 import { MemoryTimeline } from "@/features/memory/components/MemoryTimeline";
@@ -82,6 +83,8 @@ export default function MemoryManagement({
 
   return (
     <div className={`flex h-full flex-col gap-4 ${className}`}>
+      <MemoryDocsBanner />
+
       <div className="flex items-center rounded-2xl bg-zinc-800 px-5 py-4">
         {stats.map((stat, index) => (
           <div key={stat.label} className="flex items-center">
