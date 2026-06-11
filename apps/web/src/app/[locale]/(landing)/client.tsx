@@ -44,6 +44,10 @@ const TiredBoringAssistants = dynamic(
   () => import("@/features/landing/components/sections/TiredBoringAssistants"),
   { loading: SectionLoader },
 );
+const MemoryShowcaseSection = dynamic(
+  () => import("@/features/landing/components/sections/MemoryShowcaseSection"),
+  { loading: SectionLoader },
+);
 const WorkflowSection = dynamic(
   () => import("@/features/landing/components/sections/WorkflowSection"),
   { loading: SectionLoader },
@@ -169,6 +173,9 @@ export default function LandingPageClient({
         <div>
           {/* Capabilities — what GAIA does */}
           <TiredBoringAssistants />
+
+          {/* Memory — an assistant that actually knows you */}
+          <MemoryShowcaseSection />
 
           {/* Reach — where you can use it */}
           <BotsShowcaseSection />
