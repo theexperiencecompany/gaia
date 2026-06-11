@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Input, Textarea } from "@heroui/input";
+import { Textarea } from "@heroui/input";
 import {
   Modal,
   ModalBody,
@@ -11,66 +11,55 @@ import {
 } from "@heroui/modal";
 import { useEffect, useState, useTransition } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
+import type { MemoryEntry } from "@/features/memory/api/types";
 import { MAX_MEMORY_LENGTH } from "@/features/memory/constants";
 import { toast } from "@/lib/toast";
 
-interface AddMemoryModalProps {
-  isOpen: boolean;
+interface EditMemoryModalProps {
+  memory: MemoryEntry | null;
   onClose: () => void;
-  onMemoryAdded: () => void;
+  onSaved: () => void;
 }
 
-export function AddMemoryModal({
-  isOpen,
+export function EditMemoryModal({
+  memory,
   onClose,
-  onMemoryAdded,
-}: AddMemoryModalProps) {
+  onSaved,
+}: EditMemoryModalProps) {
   const [content, setContent] = useState("");
-  const [categoryPath, setCategoryPath] = useState("");
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    if (!isOpen) {
-      setContent("");
-      setCategoryPath("");
-    }
-  }, [isOpen]);
+    if (memory) setContent(memory.content);
+  }, [memory]);
 
   const handleSave = () => {
-    if (!content.trim()) return;
+    if (!memory?.id || !content.trim()) return;
+    const memoryId = memory.id;
 
     startTransition(async () => {
       try {
-        const response = await memoryApi.createMemory({
-          content: content.trim(),
-          category_path: categoryPath.trim() || undefined,
-        });
-        if (response.success) {
-          toast.success("Memory added");
-          onMemoryAdded();
-          onClose();
-        } else {
-          toast.error(response.message || "Failed to add memory");
-        }
+        await memoryApi.updateMemory(memoryId, content.trim());
+        toast.success("Memory updated");
+        onSaved();
+        onClose();
       } catch {
-        toast.error("Failed to add memory");
+        toast.error("Failed to update memory");
       }
     });
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg">
+    <Modal isOpen={memory !== null} onClose={onClose} size="lg">
       <ModalContent>
         <ModalHeader className="flex-col gap-1">
-          <span>Add memory</span>
+          <span>Edit memory</span>
           <span className="text-xs font-normal text-zinc-500">
-            Tell GAIA something specific about yourself, your preferences, or
-            details worth remembering
+            Saving keeps the previous version in this memory's history
           </span>
         </ModalHeader>
         <ModalBody>
           <Textarea
-            placeholder="e.g. I'm vegetarian and allergic to peanuts"
             value={content}
             onValueChange={setContent}
             minRows={3}
@@ -83,15 +72,6 @@ export function AddMemoryModal({
             }
             autoFocus
           />
-          <Input
-            label="Folder"
-            labelPlacement="outside"
-            placeholder="e.g. food-preferences"
-            description="Optional — GAIA files it automatically when left blank"
-            value={categoryPath}
-            onValueChange={setCategoryPath}
-            size="sm"
-          />
         </ModalBody>
         <ModalFooter>
           <Button variant="light" onPress={onClose}>
@@ -103,7 +83,7 @@ export function AddMemoryModal({
             isLoading={isPending}
             isDisabled={!content.trim() || content.length > MAX_MEMORY_LENGTH}
           >
-            Save memory
+            Save
           </Button>
         </ModalFooter>
       </ModalContent>

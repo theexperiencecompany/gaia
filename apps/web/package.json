@@ -92,6 +92,7 @@
     "@react-three/fiber": "^9.3.0",
     "@react-types/shared": "^3.31.0",
     "@sentry/nextjs": "^10.5.0",
+    "@supermemory/memory-graph": "^0.2.2",
     "@swc-node/register": "^1.11.1",
     "@swc/core": "^1.15.13",
     "@tailwindcss/postcss": "^4.1.12",
