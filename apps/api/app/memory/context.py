@@ -13,6 +13,7 @@ from datetime import UTC, date as date_type, datetime, timedelta
 from app.constants.memory import (
     CORE_CONTEXT_CACHE_KEY,
     CORE_CONTEXT_CACHE_TTL,
+    RECENT_ACTIVITY_ENTRY_CAP,
     MemoryDocType,
 )
 from app.db.redis import delete_cache, get_cache, set_cache
@@ -77,15 +78,25 @@ async def invalidate_user_memory_caches(user_id: str) -> None:
 
 
 def _format_recent_activity(episodes: list[MemoryEpisode], today: date_type) -> str:
-    """Compact journal rendering: one day heading + timestamped lines each."""
+    """Compact journal rendering, bounded so it never dumps a whole day.
+
+    A past day collapses to its one-line rollover summary. Today (not yet
+    summarized) shows only its most recent ``RECENT_ACTIVITY_ENTRY_CAP``
+    entries — enough for continuity without the prompt growing all day. The
+    full journal stays available via ``search_journal``.
+    """
     blocks: list[str] = []
     for episode in episodes:
+        label = "Today" if episode.date == today else "Yesterday"
+        if episode.date != today and episode.summary:
+            blocks.append(f"### {label} ({episode.date.isoformat()})\n{episode.summary.strip()}")
+            continue
         if not episode.entries:
             continue
-        label = "Today" if episode.date == today else "Yesterday"
-        lines = [
-            f"- {entry.get('time', '')} {entry.get('text', '')}".rstrip()
-            for entry in episode.entries
-        ]
+        recent = episode.entries[-RECENT_ACTIVITY_ENTRY_CAP:]
+        lines = [f"- {entry.get('time', '')} {entry.get('text', '')}".rstrip() for entry in recent]
+        more = len(episode.entries) - len(recent)
+        if more > 0:
+            lines.insert(0, f"- (+{more} earlier entries today)")
         blocks.append(f"### {label} ({episode.date.isoformat()})\n" + "\n".join(lines))
     return "\n".join(blocks)

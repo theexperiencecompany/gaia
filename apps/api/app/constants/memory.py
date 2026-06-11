@@ -106,6 +106,11 @@ DOCUMENT_PREVIEW_CHARS = 280
 # Wall-clock format for timestamped episode journal entries.
 EPISODE_ENTRY_TIME_FORMAT = "%H:%M"
 
+# Always-injected "recent activity": today is shown as its most recent few raw
+# entries (continuity), never the whole day. Past days collapse to their
+# one-line rollover summary. The full journal stays available via search.
+RECENT_ACTIVITY_ENTRY_CAP = 6
+
 # Category folders form a real directory tree; keep it shallow ("work/gaia").
 CATEGORY_PATH_MAX_DEPTH = 2
 
