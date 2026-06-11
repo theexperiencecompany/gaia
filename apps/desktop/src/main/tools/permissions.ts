@@ -18,16 +18,45 @@ const PRIVACY_PANE_URLS: Record<DesktopPermissionPane, string> = {
     "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
   screen:
     "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+  accessibility:
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
 };
 
 export function getPermissionStatus(): DesktopPermissionStatus {
   if (process.platform !== "darwin") {
-    return { microphone: "unknown", screen: "unknown" };
+    return {
+      microphone: "unknown",
+      screen: "unknown",
+      accessibility: "unknown",
+    };
   }
   return {
     microphone: systemPreferences.getMediaAccessStatus("microphone"),
     screen: systemPreferences.getMediaAccessStatus("screen"),
+    accessibility: systemPreferences.isTrustedAccessibilityClient(false)
+      ? "granted"
+      : "denied",
   };
+}
+
+/**
+ * Trigger the OS permission flow for a pane. Microphone shows a real
+ * prompt; accessibility shows the system "grant in Settings" dialog;
+ * Screen Recording has no prompt at all — deep-link straight to Settings.
+ */
+export async function requestPermission(
+  pane: DesktopPermissionPane,
+): Promise<DesktopPermissionStatus> {
+  if (process.platform === "darwin") {
+    if (pane === "microphone") {
+      await systemPreferences.askForMediaAccess("microphone");
+    } else if (pane === "accessibility") {
+      systemPreferences.isTrustedAccessibilityClient(true);
+    } else {
+      openPermissionSettings(pane);
+    }
+  }
+  return getPermissionStatus();
 }
 
 export function openPermissionSettings(pane: DesktopPermissionPane): void {

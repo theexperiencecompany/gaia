@@ -17,6 +17,8 @@ import { electronAPI } from "@electron-toolkit/preload";
 import type {
   DesktopPermissionPane,
   DesktopPermissionStatus,
+  DesktopSettingsSnapshot,
+  DesktopShortcutUpdateResult,
   DesktopToolRequest,
   DesktopToolResult,
 } from "@gaia/shared/desktop-tools";
@@ -191,6 +193,32 @@ const api = {
    */
   openPermissionSettings: (pane: DesktopPermissionPane): void =>
     ipcRenderer.send("desktop-tool:open-permission-settings", pane),
+
+  /**
+   * Trigger the OS permission flow for a pane (real prompt where one
+   * exists, Settings deep link otherwise) and return the updated status.
+   */
+  requestDesktopPermission: (
+    pane: DesktopPermissionPane,
+  ): Promise<DesktopPermissionStatus> =>
+    ipcRenderer.invoke("desktop-tool:request-permission", pane),
+
+  /** Current desktop settings plus the available app-icon options. */
+  getDesktopSettings: (): Promise<DesktopSettingsSnapshot> =>
+    ipcRenderer.invoke("desktop-settings:get"),
+
+  /**
+   * Re-bind the popup global shortcut. Returns the shortcut actually
+   * registered after the call (the old one on failure).
+   */
+  setPopupShortcut: (
+    accelerator: string,
+  ): Promise<DesktopShortcutUpdateResult> =>
+    ipcRenderer.invoke("desktop-settings:set-shortcut", accelerator),
+
+  /** Switch the dock icon (Arc-style) and persist the choice. */
+  setAppIcon: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke("desktop-settings:set-icon", id),
 };
 
 /*

@@ -7,6 +7,8 @@
 import type {
   DesktopPermissionPane,
   DesktopPermissionStatus,
+  DesktopSettingsSnapshot,
+  DesktopShortcutUpdateResult,
   DesktopToolRequest,
   DesktopToolResult,
 } from "@shared/desktop-tools";
@@ -37,6 +39,14 @@ export interface ElectronAPI {
   ) => Promise<DesktopToolResult>;
   getDesktopPermissions: () => Promise<DesktopPermissionStatus>;
   openPermissionSettings: (pane: DesktopPermissionPane) => void;
+  requestDesktopPermission: (
+    pane: DesktopPermissionPane,
+  ) => Promise<DesktopPermissionStatus>;
+  getDesktopSettings: () => Promise<DesktopSettingsSnapshot>;
+  setPopupShortcut: (
+    accelerator: string,
+  ) => Promise<DesktopShortcutUpdateResult>;
+  setAppIcon: (id: string) => Promise<boolean>;
 }
 
 /** Type guard: `window.api` exists and is the Electron preload API. */

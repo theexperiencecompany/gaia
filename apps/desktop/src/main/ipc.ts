@@ -10,13 +10,18 @@
 
 import type {
   DesktopPermissionPane,
+  DesktopSettingsSnapshot,
   DesktopToolRequest,
 } from "@gaia/shared/desktop-tools";
 import { app, ipcMain, shell } from "electron";
+import { listAppIcons, setAppIcon } from "./app-icon";
+import { updatePopupShortcut } from "./popup-shortcut";
+import { getDesktopSettings } from "./settings";
 import { dispatchDesktopTool } from "./tools";
 import {
   getPermissionStatus,
   openPermissionSettings,
+  requestPermission,
 } from "./tools/permissions";
 import {
   dismissAssistantPopup,
@@ -84,10 +89,32 @@ export function registerIpcHandlers(onWindowReady: () => void): void {
 
   ipcMain.handle("desktop-tool:permissions", () => getPermissionStatus());
 
+  ipcMain.handle(
+    "desktop-tool:request-permission",
+    (_event, pane: DesktopPermissionPane) => requestPermission(pane),
+  );
+
   ipcMain.on(
     "desktop-tool:open-permission-settings",
     (_event, pane: DesktopPermissionPane) => {
       openPermissionSettings(pane);
     },
+  );
+
+  ipcMain.handle(
+    "desktop-settings:get",
+    (): DesktopSettingsSnapshot => ({
+      settings: getDesktopSettings(),
+      icons: listAppIcons(),
+    }),
+  );
+
+  ipcMain.handle(
+    "desktop-settings:set-shortcut",
+    (_event, accelerator: string) => updatePopupShortcut(String(accelerator)),
+  );
+
+  ipcMain.handle("desktop-settings:set-icon", (_event, id: string) =>
+    setAppIcon(String(id)),
   );
 }

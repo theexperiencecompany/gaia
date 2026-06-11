@@ -40,6 +40,11 @@ extraResources:
   # Window icon accessible at runtime via process.resourcesPath
   - from: resources/icons/256x256.png
     to: icons/256x256.png
+  # Default dock icon + the switchable Arc-style icon set (settings page)
+  - from: resources/icons/512x512.png
+    to: icons/512x512.png
+  - from: resources/app-icons
+    to: app-icons
 
 mac:
   category: public.app-category.productivity

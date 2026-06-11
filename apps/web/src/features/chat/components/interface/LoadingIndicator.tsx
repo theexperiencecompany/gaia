@@ -11,6 +11,7 @@ interface LoadingIndicatorProps {
   loadingText: string;
   loadingTextKey: number;
   toolInfo?: {
+    toolName?: string;
     toolCategory?: string;
     integrationName?: string;
     iconUrl?: string;
@@ -56,12 +57,28 @@ export function LoadingIndicator({
       exit={{ opacity: 0, y: -8 }}
       transition={transition}
     >
-      {(toolInfo?.toolCategory &&
-        getToolCategoryIcon(
-          toolInfo.toolCategory,
-          { size: 20, width: 20, height: 20, iconOnly: true, pulsating: true },
-          toolInfo.iconUrl,
-        )) ||
+      {/* Per-tool icon first (e.g. take_screenshot), then the category
+          icon, then the host spinner (orb in the popup), then the wave. */}
+      {(toolInfo?.toolName &&
+        getToolCategoryIcon(toolInfo.toolName, {
+          size: 20,
+          width: 20,
+          height: 20,
+          iconOnly: true,
+          pulsating: true,
+        })) ||
+        (toolInfo?.toolCategory &&
+          getToolCategoryIcon(
+            toolInfo.toolCategory,
+            {
+              size: 20,
+              width: 20,
+              height: 20,
+              iconOnly: true,
+              pulsating: true,
+            },
+            toolInfo.iconUrl,
+          )) ||
         spinner || <WaveSpinnerSquare />}
       <AnimatePresence mode="wait">
         <m.span

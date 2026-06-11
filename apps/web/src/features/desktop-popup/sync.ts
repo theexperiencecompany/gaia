@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import type { IMessage } from "@/lib/db/chatDb";
 import { type OptimisticMessage, useChatStore } from "@/stores/chatStore";
-import { useLoadingStore } from "@/stores/loadingStore";
+import { type ToolInfo, useLoadingStore } from "@/stores/loadingStore";
 
 /**
  * Cross-window chat state sync for the desktop assistant popup.
@@ -25,6 +25,8 @@ interface PopupChatState {
   optimisticMessage: OptimisticMessage | null;
   isLoading: boolean;
   isMainResponseStreaming: boolean;
+  loadingText: string;
+  toolInfo: ToolInfo | null;
 }
 
 /** Consumer → publisher request for the current snapshot. */
@@ -48,6 +50,8 @@ function snapshot(): PopupChatState {
     optimisticMessage: chat.optimisticMessage,
     isLoading: loading.isLoading,
     isMainResponseStreaming: loading.isMainResponseStreaming,
+    loadingText: loading.loadingText,
+    toolInfo: loading.toolInfo ?? null,
   };
 }
 
@@ -110,6 +114,19 @@ export function usePopupChatConsumer(): void {
       chat.setOptimisticMessage(data.optimisticMessage);
       loading.setIsLoading(data.isLoading);
       loading.setMainResponseStreaming(data.isMainResponseStreaming);
+      // Mirror the loading text + tool icon context so the feed shows the
+      // same tool-specific indicator as the web app. Only on change —
+      // setLoadingText bumps the animation key on every call.
+      if (
+        data.loadingText !== loading.loadingText ||
+        JSON.stringify(data.toolInfo) !==
+          JSON.stringify(loading.toolInfo ?? null)
+      ) {
+        loading.setLoadingText({
+          text: data.loadingText,
+          toolInfo: data.toolInfo ?? undefined,
+        });
+      }
     };
 
     channel.postMessage({ type: "hello" } satisfies PopupChatHello);

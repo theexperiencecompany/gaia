@@ -65,6 +65,36 @@ export type DesktopMediaAccessStatus =
 export interface DesktopPermissionStatus {
   microphone: DesktopMediaAccessStatus;
   screen: DesktopMediaAccessStatus;
+  /** Accessibility (synthetic input / AX queries) has no "not determined". */
+  accessibility: "granted" | "denied" | "unknown";
 }
 
-export type DesktopPermissionPane = "microphone" | "screen";
+export type DesktopPermissionPane = "microphone" | "screen" | "accessibility";
+
+/** Per-machine desktop preferences (never synced to the backend). */
+export interface DesktopSettings {
+  /** Electron accelerator that toggles the assistant popup. */
+  popupShortcut: string;
+  /** Selected app-icon id from the desktop icon registry. */
+  appIcon: string;
+}
+
+export interface DesktopAppIconOption {
+  id: string;
+  label: string;
+  /** Data-URL preview image for the picker grid. */
+  preview: string;
+}
+
+/** Everything the desktop settings UI needs in one round trip. */
+export interface DesktopSettingsSnapshot {
+  settings: DesktopSettings;
+  icons: DesktopAppIconOption[];
+}
+
+export interface DesktopShortcutUpdateResult {
+  ok: boolean;
+  /** The shortcut that is actually registered after the call. */
+  shortcut: string;
+  error: string | null;
+}

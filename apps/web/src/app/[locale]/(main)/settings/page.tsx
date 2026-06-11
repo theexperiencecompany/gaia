@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { ConfirmAction } from "@/components/shared/ConfirmActionDialog";
 import { ConfirmActionDialog } from "@/components/shared/ConfirmActionDialog";
 import AccountSettings from "@/features/settings/components/AccountSettings";
+import DesktopSettings from "@/features/settings/components/DesktopSettings";
 import LinkedAccountsSettings from "@/features/settings/components/LinkedAccountsSettings";
 import MemorySettings from "@/features/settings/components/MemorySettings";
 import NotificationSettings from "@/features/settings/components/NotificationSettings";
@@ -45,6 +46,8 @@ export default function SettingsPage() {
         return <MemorySettings />;
       case "notifications":
         return <NotificationSettings />;
+      case "desktop":
+        return <DesktopSettings />;
       default:
         return <ProfileCardSettings />;
     }
