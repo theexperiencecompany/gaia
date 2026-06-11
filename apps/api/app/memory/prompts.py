@@ -73,7 +73,7 @@ For each fact, list the named entities it mentions and any entity-to-entity rela
 
 ## Episode entries
 
-Write 3-8 terse past-tense journal lines for today's diary: what {user_name} did or discussed AND what GAIA did for them. These form a daily journal, so keep them short and concrete.
+Write 3-8 terse past-tense journal lines for today's diary. Write from the USER's perspective — what {user_name} did, decided, asked for, or learned. Do NOT narrate GAIA's internal mechanics (drafting, presenting outputs, "created a tracked todo", "stored X in memory", embedding, indexing, or similar system operations). One line may note a meaningful outcome GAIA produced for the user (e.g. "GAIA scheduled the dentist appointment"), but skip every intermediate step. Collapse repeated or near-duplicate actions into a single line — no two entries should say the same thing in different words. Keep entries terse and factual.
 
 ## Agenda updates
 
@@ -129,7 +129,7 @@ Given the fact below, assign:
 )
 
 
-EPISODE_SUMMARY_SYSTEM_PROMPT = """You write the daily journal of GAIA, a personal AI assistant. Given the timestamped entries from one day of a user's journal, write a 2-4 sentence past-tense summary of the day: what the user did and discussed, and what GAIA did for them. Be concrete — keep names, decisions, and outcomes; drop filler. Write only the summary text."""
+EPISODE_SUMMARY_SYSTEM_PROMPT = """You write the daily journal of GAIA, a personal AI assistant. Given the timestamped entries from one day of a user's journal, write a 2-4 sentence past-tense summary of the day focused on what the USER did, decided, or accomplished — and any meaningful outcomes GAIA produced for them. Skip GAIA's internal mechanics (drafting, presenting, storing, indexing). Be concrete — keep names, decisions, and outcomes; drop filler and duplicate details. Write only the summary text."""
 
 
 # --- Core-document consolidation -------------------------------------------
@@ -194,6 +194,8 @@ AGENDA_DOC_CONSOLIDATION_PROMPT = (
 ## GAIA owes the user
 
 This document holds OPEN loops only: DROP every item that the inputs mark as completed or resolved, and every dated item whose date is already past. Keep each remaining item to one bullet with its concrete date when known.
+
+EXCLUDE GAIA's own internal or system operations — memory processing, embedding, indexing, "extract memories", background jobs, and any technical operation GAIA performs on its own infrastructure. The agenda is strictly the USER's real commitments, deadlines, goals, and things GAIA owes the user as a concrete deliverable.
 
 """
     + _CONSOLIDATION_SHARED_RULES

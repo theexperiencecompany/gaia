@@ -29,6 +29,21 @@ _DOC_SECTIONS: list[tuple[MemoryDocType, str]] = [
 _RECENT_ACTIVITY_HEADING = "## Recent activity"
 
 
+def _strip_leading_h1(content: str) -> str:
+    """Drop a leading '# Title' line from a document so the section heading added
+    by get_core_context is the only H1/H2 marker at the top of each block.
+
+    Example: "# About the user\n## Identity\n- ..." becomes "## Identity\n- ...".
+    Lines that do not start with a single '#' followed by a space are left alone.
+    """
+    first_newline = content.find("\n")
+    first_line = content[:first_newline] if first_newline != -1 else content
+    rest = content[first_newline + 1 :] if first_newline != -1 else ""
+    if first_line.startswith("# ") and not first_line.startswith("## "):
+        return rest.lstrip("\n")
+    return content
+
+
 async def get_core_context(user_id: str) -> str:
     """Assembled always-injected memory context, cached in Redis.
 
@@ -51,7 +66,7 @@ async def get_core_context(user_id: str) -> str:
     for doc_type, heading in _DOC_SECTIONS:
         document = documents_by_type.get(doc_type.value)
         if document is not None and document.content.strip():
-            sections.append(f"{heading}\n{document.content.strip()}")
+            sections.append(f"{heading}\n{_strip_leading_h1(document.content.strip())}")
 
     recent_activity = _format_recent_activity(episodes, today)
     if recent_activity:
