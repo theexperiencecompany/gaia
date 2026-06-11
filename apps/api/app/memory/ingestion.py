@@ -2,8 +2,9 @@
 
 ``retain`` is the single ingestion pipeline, designed to run fire-and-forget
 after a turn ends — it never raises into callers for LLM failures
-(extraction degrades to an empty batch upstream). Consolidation and
-workspace projection hook in via ``_schedule_post_ingest`` in stage 5.
+(extraction degrades to an empty batch upstream). Every ingestion schedules
+the hash-gated ``/workspace/memory`` projection sync and a debounced
+core-document consolidation for the docs its changes touch.
 """
 
 from dataclasses import dataclass
@@ -21,6 +22,7 @@ from app.constants.memory import (
 )
 from app.memory import chroma_store, pg_store
 from app.memory.chroma_store import EpisodeVectorItem, MemoryVectorItem
+from app.memory.consolidation import infer_doc_types, schedule_consolidation
 from app.memory.context import invalidate_user_memory_caches
 from app.memory.embeddings import embed_batch, embed_query
 from app.memory.extraction import categorize_fact, extract_memories, summarize_episode_entries
@@ -29,6 +31,7 @@ from app.memory.reconciliation import ReconciledFact, reconcile
 from app.memory.schemas import ExtractedFact
 from app.models.memory_db_models import MemoryRecord
 from app.models.memory_models import MemoryEntry
+from app.services.memory_fs import schedule_memory_vfs_sync
 from shared.py.wide_events import log
 
 _DEFAULT_USER_NAME = "the user"
@@ -123,9 +126,12 @@ async def retain(
     await _summarize_rolled_over_days(user_id, today=now.date())
     timings["episodes_ms"] = _elapsed_ms(stage)
 
-    # NOTE: batch.agenda_updates feed core-doc consolidation (stage 5).
     await invalidate_user_memory_caches(user_id)
-    _schedule_post_ingest(user_id)
+    await _schedule_post_ingest(
+        user_id,
+        inserted_facts=[fact for _, fact in applied.inserted],
+        agenda_updates=batch.agenda_updates,
+    )
 
     timings["total_ms"] = _elapsed_ms(started)
     log.info(
@@ -169,7 +175,11 @@ async def retain_single(
     reconciled = await reconcile(user_id, [fact], embeddings)
     applied = await _apply_reconciled(user_id, reconciled, source_type=source_type, source_id=None)
     await invalidate_user_memory_caches(user_id)
-    _schedule_post_ingest(user_id)
+    await _schedule_post_ingest(
+        user_id,
+        inserted_facts=[inserted_fact for _, inserted_fact in applied.inserted],
+        agenda_updates=[],
+    )
 
     if applied.inserted:
         row = applied.inserted[0][0]
@@ -188,8 +198,9 @@ async def retain_single(
 async def summarize_episode(user_id: str, date: date_type) -> None:
     """Summarize one journal day and embed the summary (day rollover).
 
-    Lives here for now; moves to consolidation.py in stage 5 if the
-    consolidation pass wants to own day rollups.
+    Lives here (not consolidation.py) because rollover is part of the
+    ingestion flow: it fires lazily on the first retain of a new day,
+    while consolidation is a separate debounced pass over the core docs.
     """
     episode = await pg_store.get_episode(user_id, date)
     if episode is None or episode.summary or not episode.entries:
@@ -399,9 +410,22 @@ async def _summarize_rolled_over_days(user_id: str, today: date_type) -> None:
         await summarize_episode(user_id, date)
 
 
-def _schedule_post_ingest(user_id: str) -> None:
-    """Extension point for stage 5: debounced core-doc consolidation and
-    /workspace/memory projection sync hook in here after every ingestion."""
+async def _schedule_post_ingest(
+    user_id: str,
+    *,
+    inserted_facts: list[ExtractedFact],
+    agenda_updates: list[str],
+) -> None:
+    """Fire-and-forget follow-ups after every ingestion.
+
+    The projection sync always runs (journal entries change even when no
+    fact landed; the hash gate makes true no-ops ~free). Consolidation is
+    debounced and only scheduled for the docs this ingestion touched.
+    """
+    schedule_memory_vfs_sync(user_id)
+    doc_types = infer_doc_types(inserted_facts, agenda_updates)
+    if doc_types:
+        await schedule_consolidation(user_id, doc_types, agenda_updates=agenda_updates)
 
 
 def _elapsed_ms(since: float) -> int:

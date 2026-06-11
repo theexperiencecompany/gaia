@@ -16,6 +16,7 @@ from app.memory.pg_store.episodes import (
     set_episode_summary,
 )
 from app.memory.pg_store.graph import (
+    get_entities_by_type,
     get_entities_for_memories,
     get_graph,
     insert_edges,
@@ -29,6 +30,8 @@ from app.memory.pg_store.maintenance import (
 )
 from app.memory.pg_store.memories import (
     fts_search,
+    get_all_live_memories,
+    get_facts_for_consolidation,
     get_folder_tree,
     get_memories_by_ids,
     get_memories_for_entities,
@@ -46,9 +49,12 @@ __all__ = [
     "append_episode_entries",
     "delete_all_memories",
     "fts_search",
+    "get_all_live_memories",
     "get_document",
     "get_documents",
+    "get_entities_by_type",
     "get_entities_for_memories",
+    "get_facts_for_consolidation",
     "get_episode",
     "get_episodes_range",
     "get_folder_tree",

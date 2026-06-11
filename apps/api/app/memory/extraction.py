@@ -26,6 +26,7 @@ from app.memory.prompts import (
     RECONCILE_SYSTEM_PROMPT,
 )
 from app.memory.schemas import (
+    ConsolidatedDocument,
     EpisodeSummary,
     ExtractedFact,
     ExtractedMemoryBatch,
@@ -194,6 +195,20 @@ async def summarize_episode_entries(entries: list[str]) -> str | None:
         operation="episode_summary",
     )
     return result.summary if result else None
+
+
+async def rewrite_core_document(system_prompt: str, inputs: str) -> str | None:
+    """Rewrite one core memory document from its inputs (consolidation pass).
+
+    Returns None on total LLM failure — the document simply keeps its
+    previous version until the next consolidation.
+    """
+    result = await _invoke_structured(
+        ConsolidatedDocument,
+        [SystemMessage(content=system_prompt), HumanMessage(content=inputs)],
+        operation="consolidate",
+    )
+    return result.content if result else None
 
 
 def _format_reconcile_input(pairs: list[tuple[ExtractedFact, list[SimilarMemory]]]) -> str:

@@ -68,6 +68,23 @@ RECENT_FACTS_LIMIT = 10
 # Core documents keep this many previous versions in their history column.
 DOCUMENT_HISTORY_LIMIT = 10
 
+# Consolidation (core-doc rewriting) is debounced per user: every ingestion
+# merges its affected doc types into a Redis pending set, and a single
+# in-process waiter rewrites the docs once the debounce window elapses.
+CONSOLIDATION_DEBOUNCE_SECONDS = 120
+CONSOLIDATION_PENDING_KEY = "user:{user_id}:memory:consolidate:pending"
+CONSOLIDATION_PENDING_TTL = 3600
+# How many of the freshest facts feed each core-document rewrite.
+CONSOLIDATION_FACTS_LIMIT = 50
+# insights.md looks back this many days of episode summaries.
+CONSOLIDATION_EPISODE_DAYS = 30
+# Soft cap each consolidation prompt enforces on a core document.
+DOCUMENT_TARGET_MAX_CHARS = 2500
+
+# /workspace/memory projection: journal pages older than this are dropped
+# from the on-disk view (Postgres keeps the full history).
+PROJECTION_JOURNAL_DAYS = 30
+
 # Core-document preview length on the settings-UI overview screen.
 DOCUMENT_PREVIEW_CHARS = 280
 
@@ -131,6 +148,16 @@ class MemoryDocType(StrEnum):
     AGENDA_MD = "agenda_md"
     PEOPLE_MD = "people_md"
     INSIGHTS_MD = "insights_md"
+
+
+# On-disk filenames for the core documents in the /workspace/memory projection.
+MEMORY_DOC_FILENAMES: dict[MemoryDocType, str] = {
+    MemoryDocType.USER_MD: "user.md",
+    MemoryDocType.MEMORY_MD: "memory.md",
+    MemoryDocType.AGENDA_MD: "agenda.md",
+    MemoryDocType.PEOPLE_MD: "people.md",
+    MemoryDocType.INSIGHTS_MD: "insights.md",
+}
 
 
 class MemorySourceType(StrEnum):

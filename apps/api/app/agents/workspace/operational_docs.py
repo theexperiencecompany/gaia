@@ -324,6 +324,47 @@ This doc will be updated when an agent-driven channel/link tool ships.
 """
 
 
+MEMORY_DOC: Final[str] = """# Memory — what you know about this user
+
+`memory/` is your long-term memory about the user, projected as real files so
+you can `ls`, `grep`, and `read` it like any directory. Postgres is the source
+of truth; every file here is a **read-only projection** — direct edits will
+fail or won't stick. Mutate memory through the tools, never the files.
+
+## Layout
+
+    memory/
+        user.md          who they are: identity, work, life, routines
+        memory.md        how to assist them: preferences, tone, dos/don'ts
+        agenda.md        open loops: active projects, commitments, deadlines
+        people.md        relationship register: names, roles, key dates
+        insights.md      observed patterns and routines (proactivity fuel)
+        journal/         one page per day (last 30 days): what the user did
+                         and what you did for them, plus a day summary
+        facts/           atomic facts filed by topic folder, one file per
+                         leaf (e.g. facts/relationships.md, facts/work/gaia.md).
+                         Each bullet carries its memory id in an HTML comment —
+                         use that id with the update/forget tools.
+
+`user.md`, `memory.md`, and `agenda.md` are already injected into your context
+every turn; read the others (and `journal/`, `facts/`) when you need depth —
+"what happened on May 21" is `journal/2026-05-21.md`.
+
+## Mutating memory (tools, not file edits)
+
+- `add_memory` — store a new fact the user told you to remember.
+- `search_memory` — indexed semantic recall when walking files is too slow.
+- `update_memory` — correct an existing fact by id (chains a new version).
+- `forget_memory` — soft-delete a fact by id, with a reason.
+- `update_memory_document` — rewrite one of the core documents above.
+
+Memory also updates itself in the background after conversations — you do not
+need to store what a normal exchange already taught the system. Reach for the
+tools when the user explicitly asks you to remember, correct, or forget
+something.
+"""
+
+
 # ---------------------------------------------------------------------------
 # The always-on operating core (static, user-independent, cache-friendly).
 # ---------------------------------------------------------------------------
@@ -506,6 +547,7 @@ def manual_index_text() -> str:
 __all__ = [
     "GAIA_CORE",
     "INTEGRATIONS_DOC",
+    "MEMORY_DOC",
     "NOTIFICATIONS_DOC",
     "SESSIONS_ARTIFACTS_DOC",
     "TRACKED_TODOS_DOC",

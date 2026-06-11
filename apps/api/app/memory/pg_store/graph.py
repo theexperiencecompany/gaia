@@ -115,6 +115,20 @@ async def get_graph(
         return entities, list(edge_result.scalars().all())
 
 
+async def get_entities_by_type(user_id: str, entity_type: str) -> list[MemoryEntity]:
+    """A user's entities of one type (e.g. every person), alphabetical."""
+    async with memory_session() as session:
+        result = await session.execute(
+            select(MemoryEntity)
+            .where(
+                MemoryEntity.user_id == user_id,
+                MemoryEntity.entity_type == entity_type,
+            )
+            .order_by(MemoryEntity.name)
+        )
+        return list(result.scalars().all())
+
+
 async def get_entities_for_memories(
     memory_ids: list[uuid.UUID],
 ) -> dict[uuid.UUID, list[MemoryEntity]]:

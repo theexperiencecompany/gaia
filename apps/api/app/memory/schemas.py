@@ -178,6 +178,18 @@ class EpisodeSummary(BaseModel):
     )
 
 
+class ConsolidatedDocument(BaseModel):
+    """Rewritten body of one core memory document (consolidation pass)."""
+
+    content: str = Field(
+        description=(
+            "The full rewritten markdown body of the document, following the "
+            "section skeleton and rules in the system prompt. No code fences, "
+            "no commentary — the document body only."
+        )
+    )
+
+
 class ReconcileDecision(BaseModel):
     """How one newly extracted fact relates to the existing memory store."""
 

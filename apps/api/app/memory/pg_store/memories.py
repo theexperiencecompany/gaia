@@ -8,7 +8,7 @@ filter); everything semantic happens upstream in the engine.
 from datetime import UTC, datetime
 import uuid
 
-from sqlalchemy import ColumnElement, Select, func, select, update
+from sqlalchemy import ColumnElement, Select, func, or_, select, update
 
 from app.constants.memory import MemoryRelationType
 from app.memory.pg_store._session import memory_session, rowcount
@@ -220,6 +220,46 @@ async def get_folder_tree(user_id: str) -> list[tuple[str, int]]:
             .order_by(MemoryRecord.category_path)
         )
         return [(path, count) for path, count in result.all()]
+
+
+async def get_facts_for_consolidation(
+    user_id: str,
+    *,
+    category_prefixes: list[str] | None = None,
+    kind: str | None = None,
+    limit: int,
+) -> list[MemoryRecord]:
+    """Live memories feeding one core-document rewrite, newest first.
+
+    ``category_prefixes`` match a folder exactly or as a subtree prefix
+    ('work' covers both 'work' and 'work/gaia'); ``kind`` narrows to
+    fact/experience. Both filters optional and AND-combined.
+    """
+    query = _active_memories_query(user_id)
+    if kind is not None:
+        query = query.where(MemoryRecord.kind == kind)
+    if category_prefixes is not None:
+        if not category_prefixes:
+            return []
+        prefix_clauses = [
+            (MemoryRecord.category_path == prefix) | MemoryRecord.category_path.like(f"{prefix}/%")
+            for prefix in category_prefixes
+        ]
+        query = query.where(or_(*prefix_clauses))
+    async with memory_session() as session:
+        result = await session.execute(query.order_by(MemoryRecord.created_at.desc()).limit(limit))
+        return list(result.scalars().all())
+
+
+async def get_all_live_memories(user_id: str) -> list[MemoryRecord]:
+    """Every live memory, ordered by folder then newest first (projection feed)."""
+    async with memory_session() as session:
+        result = await session.execute(
+            _active_memories_query(user_id).order_by(
+                MemoryRecord.category_path, MemoryRecord.created_at.desc()
+            )
+        )
+        return list(result.scalars().all())
 
 
 async def get_recent_facts(user_id: str, limit: int = 10) -> list[str]:

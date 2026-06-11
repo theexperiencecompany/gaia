@@ -3,13 +3,14 @@
 All heavy lifting lives in the focused modules; the facade only binds them
 into one object so call sites read ``memory_engine.<operation>(...)``:
 
-- ``ingestion``  — write path: retain / retain_single / summarize_episode
-- ``retrieval``  — read path: recall / recall_episodes (hybrid, zero-LLM)
-- ``context``    — hot path: get_core_context (Redis-cached, every turn)
-- ``management`` — tree / graph / journal / documents / CRUD / wipe
+- ``ingestion``     — write path: retain / retain_single / summarize_episode
+- ``consolidation`` — background: debounced core-document rewrites
+- ``retrieval``     — read path: recall / recall_episodes (hybrid, zero-LLM)
+- ``context``       — hot path: get_core_context (Redis-cached, every turn)
+- ``management``    — tree / graph / journal / documents / CRUD / wipe
 """
 
-from app.memory import context, ingestion, management, retrieval
+from app.memory import consolidation, context, ingestion, management, retrieval
 from app.memory.ingestion import RetainResult
 
 __all__ = ["MemoryEngine", "RetainResult", "memory_engine"]
@@ -22,6 +23,7 @@ class MemoryEngine:
     retain = staticmethod(ingestion.retain)
     retain_single = staticmethod(ingestion.retain_single)
     summarize_episode = staticmethod(ingestion.summarize_episode)
+    consolidate = staticmethod(consolidation.consolidate)
 
     # --- read path (plan F1/F3) ----------------------------------------------
     recall = staticmethod(retrieval.recall)

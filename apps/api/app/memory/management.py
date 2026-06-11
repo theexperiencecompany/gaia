@@ -34,6 +34,7 @@ from app.models.memory_models import (
     MemoryTreeNode,
     MemoryTreeResponse,
 )
+from app.services.memory_fs import schedule_memory_vfs_sync
 
 
 async def get_tree(user_id: str) -> MemoryTreeResponse:
@@ -112,6 +113,7 @@ async def update_document(user_id: str, doc_type: MemoryDocType, content: str) -
     """Rewrite a core document (versioned) and refresh the hot context."""
     row = await pg_store.upsert_document(user_id, doc_type, content)
     await invalidate_core_context(user_id)
+    schedule_memory_vfs_sync(user_id)
     return document_to_model(row)
 
 
@@ -182,6 +184,7 @@ async def update_memory(user_id: str, memory_id: str, content: str) -> MemoryEnt
         ]
     )
     await invalidate_user_memory_caches(user_id)
+    schedule_memory_vfs_sync(user_id)
     return row_to_entry(row, entities)
 
 
@@ -192,6 +195,7 @@ async def forget_memory(user_id: str, memory_id: str, reason: str) -> bool:
         return False
     await chroma_store.set_memory_flags(memory_id, is_forgotten=True)
     await invalidate_user_memory_caches(user_id)
+    schedule_memory_vfs_sync(user_id)
     return True
 
 
@@ -200,6 +204,7 @@ async def delete_all(user_id: str) -> int:
     deleted = await pg_store.delete_all_memories(user_id)
     await chroma_store.delete_user(user_id)
     await invalidate_user_memory_caches(user_id)
+    schedule_memory_vfs_sync(user_id)
     return deleted
 
 

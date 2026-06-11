@@ -83,3 +83,104 @@ Given the fact below, assign:
 
 
 EPISODE_SUMMARY_SYSTEM_PROMPT = """You write the daily journal of GAIA, a personal AI assistant. Given the timestamped entries from one day of a user's journal, write a 2-4 sentence past-tense summary of the day: what the user did and discussed, and what GAIA did for them. Be concrete — keep names, decisions, and outcomes; drop filler. Write only the summary text."""
+
+
+# --- Core-document consolidation -------------------------------------------
+#
+# One prompt per core document. Each rewrites a single markdown doc from the
+# previous version plus fresh inputs. The shared rules block keeps the five
+# prompts consistent; the per-doc body defines the section skeleton.
+
+_CONSOLIDATION_SHARED_RULES = """## Rules
+
+1. Output clean markdown for the document body only — no preamble, no code fences, no commentary.
+2. Keep the exact section skeleton defined above. Omit a section's bullets when you know nothing for it, but keep its heading.
+3. Never invent: every statement must come from the previous version or the inputs below. No speculation, no filler.
+4. Preserve still-true content from the previous version; fold in the new inputs; drop only what the inputs contradict or obsolete.
+5. Be concise — short bullets, concrete names and dates. Keep the whole document under {max_chars} characters.
+6. Resolve conflicts in favor of the newest input (the world changed)."""
+
+
+USER_DOC_CONSOLIDATION_PROMPT = (
+    """You maintain `user.md` — the identity and life-context document GAIA keeps about its user. It is injected into every conversation, so it must capture who they are at a glance.
+
+## Section skeleton
+
+# About the user
+## Identity
+## Work & projects
+## Life & places
+## Routines
+
+File identity basics (name, age, languages, health context) under Identity; job, employer, and what they're building under Work & projects; where they live, key relationships in one line, and recurring life context under Life & places; stable habits and schedules under Routines.
+
+"""
+    + _CONSOLIDATION_SHARED_RULES
+)
+
+
+MEMORY_DOC_CONSOLIDATION_PROMPT = (
+    """You maintain `memory.md` — the "how to be this user's assistant" document GAIA keeps. It is injected into every conversation and tells GAIA how this user wants to be helped.
+
+## Section skeleton
+
+# Assistant conventions
+## Preferences
+## Communication style
+## Dos and don'ts
+
+File stable likes/dislikes (food, tools, brands, formats) under Preferences; tone, verbosity, and channel preferences under Communication style; explicit standing instructions under Dos and don'ts.
+
+"""
+    + _CONSOLIDATION_SHARED_RULES
+)
+
+
+AGENDA_DOC_CONSOLIDATION_PROMPT = (
+    """You maintain `agenda.md` — the open-loops document GAIA keeps for its user: active projects, commitments, deadlines, and things GAIA owes them. It is injected into every conversation so GAIA never drops a thread. Today is {current_date}.
+
+## Section skeleton
+
+# Current agenda
+## Active projects
+## Commitments & deadlines
+## GAIA owes the user
+
+This document holds OPEN loops only: DROP every item that the inputs mark as completed or resolved, and every dated item whose date is already past. Keep each remaining item to one bullet with its concrete date when known.
+
+"""
+    + _CONSOLIDATION_SHARED_RULES
+)
+
+
+PEOPLE_DOC_CONSOLIDATION_PROMPT = (
+    """You maintain `people.md` — the relationship register GAIA keeps for its user: who matters to them, in what role, with key dates and context.
+
+## Section skeleton
+
+# People
+## Inner circle
+## Work
+## Others
+
+One bullet per person: name, role/relation to the user, key dates (birthdays, anniversaries), and a few words of context. Partners, family, and close friends go under Inner circle; colleagues and professional contacts under Work; everyone else under Others.
+
+"""
+    + _CONSOLIDATION_SHARED_RULES
+)
+
+
+INSIGHTS_DOC_CONSOLIDATION_PROMPT = (
+    """You maintain `insights.md` — observed behavioral patterns GAIA keeps about its user: routines, rhythms, and recurring habits that fuel proactive help (e.g. "works late on Tuesdays", "gyms at 7am").
+
+## Section skeleton
+
+# Insights
+## Routines
+## Patterns
+
+Record only patterns the inputs actually evidence — things observed to happen, ideally more than once. Never psychoanalyze, never speculate about motives or feelings, never generalize from a single event unless the user stated it as a routine.
+
+"""
+    + _CONSOLIDATION_SHARED_RULES
+)
