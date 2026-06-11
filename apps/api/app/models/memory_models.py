@@ -10,7 +10,10 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.constants.memory import (
+    CATEGORY_PATH_MAX_CHARS,
     DEFAULT_MEMORY_IMPORTANCE,
+    MEMORY_CONTENT_MAX_CHARS,
+    MEMORY_DOCUMENT_CONTENT_MAX_CHARS,
     MemoryDocType,
     MemoryEntityType,
     MemoryKind,
@@ -212,22 +215,35 @@ class MemoryOverviewResponse(BaseModel):
 class CreateMemoryRequest(BaseModel):
     """Request model for creating a memory."""
 
-    content: str = Field(description="The memory content to store")
+    content: str = Field(
+        min_length=1,
+        max_length=MEMORY_CONTENT_MAX_CHARS,
+        description="The memory content to store",
+    )
     category_path: str | None = Field(
-        default=None, description="Folder to file under; auto-categorized when omitted"
+        default=None,
+        max_length=CATEGORY_PATH_MAX_CHARS,
+        description="Folder to file under; auto-categorized when omitted",
     )
 
 
 class UpdateMemoryRequest(BaseModel):
     """Request model for editing a memory (chains a new version)."""
 
-    content: str = Field(description="The corrected memory content")
+    content: str = Field(
+        min_length=1,
+        max_length=MEMORY_CONTENT_MAX_CHARS,
+        description="The corrected memory content",
+    )
 
 
 class UpdateDocumentRequest(BaseModel):
     """Request model for editing a core memory document."""
 
-    content: str = Field(description="The full new markdown content")
+    content: str = Field(
+        max_length=MEMORY_DOCUMENT_CONTENT_MAX_CHARS,
+        description="The full new markdown content",
+    )
 
 
 class CreateMemoryResponse(BaseModel):

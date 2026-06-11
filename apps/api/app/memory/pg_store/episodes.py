@@ -6,21 +6,10 @@ from sqlalchemy import cast, or_, select
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.sql import func
 
-from app.memory.pg_store._session import memory_session
+from app.memory.pg_store._session import LIKE_ESCAPE_CHAR, escape_like, memory_session
 from app.models.memory_db_models import MemoryEpisode
 
 EpisodeEntry = dict[str, str]  # {time, text, source}
-
-_LIKE_ESCAPE_CHAR = "\\"
-
-
-def _escape_like(token: str) -> str:
-    """Escape LIKE metacharacters so query tokens match literally."""
-    return (
-        token.replace(_LIKE_ESCAPE_CHAR, _LIKE_ESCAPE_CHAR * 2)
-        .replace("%", f"{_LIKE_ESCAPE_CHAR}%")
-        .replace("_", f"{_LIKE_ESCAPE_CHAR}_")
-    )
 
 
 async def append_episode_entries(
@@ -117,7 +106,7 @@ async def search_episode_entries(
             MemoryEpisode.date >= since,
             or_(
                 *[
-                    entry_text.ilike(f"%{_escape_like(token)}%", escape=_LIKE_ESCAPE_CHAR)
+                    entry_text.ilike(f"%{escape_like(token)}%", escape=LIKE_ESCAPE_CHAR)
                     for token in tokens
                 ]
             ),

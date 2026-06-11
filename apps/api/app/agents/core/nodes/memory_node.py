@@ -13,7 +13,11 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
 from app.config.oauth_config import get_memory_extraction_prompt
-from app.constants.memory import MemorySourceType
+from app.constants.memory import (
+    MIN_MESSAGES_TO_LEARN,
+    MIN_TOOL_CALLS_TO_LEARN,
+    MemorySourceType,
+)
 from app.memory.engine import memory_engine
 from app.override.langgraph_bigtool.utils import State
 from shared.py.wide_events import log
@@ -51,25 +55,27 @@ def _get_session_id(config: RunnableConfig) -> str | None:
 
 
 def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
-    """Check if conversation has enough content for memory extraction.
+    """Check if a conversation has enough content to be worth extracting.
 
-    We skip trivial conversations to avoid noise in memory storage.
+    The gate is OR, not AND: a substantial pure-text conversation (no tool
+    calls) is the richest memory source — the user disclosing relationships,
+    preferences, and dates is exactly what must be remembered. A shorter
+    exchange still qualifies if it drove enough tool activity to be
+    meaningful. Only genuinely trivial turns are skipped.
 
     Returns:
         Tuple of (should_learn, reason)
     """
-    if len(messages) < 4:
-        return False, "Too few messages"
+    if len(messages) >= MIN_MESSAGES_TO_LEARN:
+        return True, "OK"
 
-    # Count tool calls - simple interactions don't need memory
     tool_calls = sum(
         len(msg.tool_calls) for msg in messages if isinstance(msg, AIMessage) and msg.tool_calls
     )
+    if tool_calls >= MIN_TOOL_CALLS_TO_LEARN:
+        return True, "OK"
 
-    if tool_calls < 2:
-        return False, f"Only {tool_calls} tool calls - too simple"
-
-    return True, "OK"
+    return False, f"Trivial turn ({len(messages)} messages, {tool_calls} tool calls)"
 
 
 def _format_messages_for_user_memory(

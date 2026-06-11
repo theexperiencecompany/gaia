@@ -26,7 +26,7 @@ from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
-from app.constants.memory import DEFAULT_MEMORY_IMPORTANCE
+from app.constants.memory import DEFAULT_MEMORY_IMPORTANCE, FORGET_REASON_MAX_CHARS
 from app.db.postgresql import Base
 
 # Weighted FTS document: content carries weight A, the category folder path
@@ -67,7 +67,9 @@ class MemoryRecord(Base):
     )  # MemoryRelationType
     is_forgotten: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     forget_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    forget_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    forget_reason: Mapped[str | None] = mapped_column(
+        String(FORGET_REASON_MAX_CHARS), nullable=True
+    )
     source_type: Mapped[str] = mapped_column(String(20), nullable=False)  # MemorySourceType
     source_id: Mapped[str | None] = mapped_column(String, nullable=True)
     importance: Mapped[float] = mapped_column(

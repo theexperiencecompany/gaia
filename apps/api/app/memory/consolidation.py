@@ -23,7 +23,7 @@ from app.constants.memory import (
     MemoryEntityType,
     MemoryKind,
 )
-from app.db.redis import get_and_delete_cache, get_cache, set_cache
+from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
 from app.memory import pg_store
 from app.memory.extraction import rewrite_core_document
 from app.memory.management import update_document
@@ -125,8 +125,25 @@ async def schedule_consolidation(
     await set_cache(key, merged, ttl=CONSOLIDATION_PENDING_TTL)
 
     if user_id not in _waiters:
-        task = asyncio.create_task(_debounce_waiter(user_id))
-        _waiters[user_id] = task
+        try:
+            _waiters[user_id] = asyncio.create_task(_debounce_waiter(user_id))
+        except RuntimeError as e:
+            # No running loop (e.g. shutdown in progress): the pending set
+            # survives in Redis and the next ingestion reschedules.
+            log.warning("memory_consolidation_waiter_unscheduled", user_id=user_id, error=str(e))
+
+
+async def cancel_consolidation(user_id: str) -> None:
+    """Cancel a pending consolidation and drop its Redis state.
+
+    Called when a user's memories are wiped: without this, a sleeping waiter
+    would wake to an empty store and overwrite the (already cleared) core
+    documents with skeletons.
+    """
+    waiter = _waiters.pop(user_id, None)
+    if waiter is not None:
+        waiter.cancel()
+    await delete_cache(CONSOLIDATION_PENDING_KEY.format(user_id=user_id))
 
 
 async def _debounce_waiter(user_id: str) -> None:

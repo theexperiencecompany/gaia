@@ -201,6 +201,10 @@ async def forget_memory(user_id: str, memory_id: str, reason: str) -> bool:
 
 async def delete_all(user_id: str) -> int:
     """Hard-wipe a user's entire memory. Returns deleted memory count."""
+    # Local import avoids a consolidation <-> management import cycle.
+    from app.memory.consolidation import cancel_consolidation
+
+    await cancel_consolidation(user_id)
     deleted = await pg_store.delete_all_memories(user_id)
     await chroma_store.delete_user(user_id)
     await invalidate_user_memory_caches(user_id)

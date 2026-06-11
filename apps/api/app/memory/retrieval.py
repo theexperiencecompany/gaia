@@ -72,9 +72,12 @@ def _recall_cache_key(_func_name: str, *args: Any, **kwargs: Any) -> str:
     ``MEMORY_SEARCH_CACHE_PATTERN`` — every ingestion invalidates that
     pattern. All non-user parameters are digested so calls that differ in
     any knob (limit, folder, kinds, expansion) never collide.
+
+    ``user_id``/``query`` are read positionally or by keyword so callers may
+    use either calling convention without breaking key generation.
     """
-    user_id = args[0]
-    query = args[1]
+    user_id = args[0] if args else kwargs["user_id"]
+    query = args[1] if len(args) > 1 else kwargs["query"]
     limit = kwargs.get("limit", DEFAULT_RECALL_LIMIT)
     category_prefix = kwargs.get("category_prefix")
     kinds = kwargs.get("kinds")

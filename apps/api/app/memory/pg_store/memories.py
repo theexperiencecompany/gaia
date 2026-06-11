@@ -10,8 +10,13 @@ import uuid
 
 from sqlalchemy import ColumnElement, Select, func, or_, select, update
 
-from app.constants.memory import MemoryRelationType
-from app.memory.pg_store._session import memory_session, rowcount
+from app.constants.memory import FORGET_REASON_MAX_CHARS, MemoryRelationType
+from app.memory.pg_store._session import (
+    LIKE_ESCAPE_CHAR,
+    escape_like,
+    memory_session,
+    rowcount,
+)
 from app.models.memory_db_models import MemoryEntityLink, MemoryRecord
 
 
@@ -110,7 +115,7 @@ async def mark_forgotten(memory_id: str, user_id: str, reason: str) -> bool:
                 MemoryRecord.id == uuid.UUID(memory_id),
                 MemoryRecord.user_id == user_id,
             )
-            .values(is_forgotten=True, forget_reason=reason)
+            .values(is_forgotten=True, forget_reason=reason[:FORGET_REASON_MAX_CHARS])
         )
         await session.commit()
         return rowcount(result) > 0
@@ -140,7 +145,9 @@ async def list_memories(
     if category:
         category_filter = MemoryRecord.category_path == category
         if include_subfolders:
-            category_filter = category_filter | MemoryRecord.category_path.like(f"{category}/%")
+            category_filter = category_filter | MemoryRecord.category_path.like(
+                f"{escape_like(category)}/%", escape=LIKE_ESCAPE_CHAR
+            )
         filters.append(category_filter)
 
     async with memory_session() as session:
@@ -215,7 +222,9 @@ async def get_memories_for_entities(
     if category_prefix:
         query = query.where(
             (MemoryRecord.category_path == category_prefix)
-            | MemoryRecord.category_path.like(f"{category_prefix}/%")
+            | MemoryRecord.category_path.like(
+                f"{escape_like(category_prefix)}/%", escape=LIKE_ESCAPE_CHAR
+            )
         )
     async with memory_session() as session:
         result = await session.execute(query)
@@ -254,7 +263,8 @@ async def get_facts_for_consolidation(
         if not category_prefixes:
             return []
         prefix_clauses = [
-            (MemoryRecord.category_path == prefix) | MemoryRecord.category_path.like(f"{prefix}/%")
+            (MemoryRecord.category_path == prefix)
+            | MemoryRecord.category_path.like(f"{escape_like(prefix)}/%", escape=LIKE_ESCAPE_CHAR)
             for prefix in category_prefixes
         ]
         query = query.where(or_(*prefix_clauses))

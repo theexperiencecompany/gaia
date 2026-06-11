@@ -7,12 +7,13 @@ parameterized /{memory_id} routes so they never shadow each other.
 
 from datetime import UTC, date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.memory import (
     MEMORY_EPISODES_DEFAULT_DAYS,
     MEMORY_EPISODES_MAX_RANGE_DAYS,
+    UUID_PATH_PATTERN,
     MemoryDocType,
     MemorySourceType,
 )
@@ -230,8 +231,8 @@ async def create_memory(
 @router.patch("/{memory_id}", response_model=MemoryEntry)
 @tiered_rate_limit("memory")
 async def update_memory(
-    memory_id: str,
     request: UpdateMemoryRequest,
+    memory_id: str = Path(pattern=UUID_PATH_PATTERN),
     user: dict = Depends(get_current_user),
 ) -> MemoryEntry:
     """Correct a memory: chains a new version, returns the new chain head."""
@@ -252,7 +253,7 @@ async def update_memory(
 @router.delete("/{memory_id}", response_model=DeleteMemoryResponse)
 @tiered_rate_limit("memory")
 async def delete_memory(
-    memory_id: str,
+    memory_id: str = Path(pattern=UUID_PATH_PATTERN),
     user: dict = Depends(get_current_user),
 ) -> DeleteMemoryResponse:
     """Soft-delete one memory (hidden from recall, kept for lineage history)."""

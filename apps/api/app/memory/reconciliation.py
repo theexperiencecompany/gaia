@@ -1,12 +1,18 @@
 """Dedupe/supersession decisions for newly extracted facts.
 
-Per fact: nearest existing memories from Chroma decide the cheap cases
-(near-identical → DUPLICATE without an LLM; nothing close → NEW). Only the
-ambiguous middle band goes to one batched reconcile LLM call.
+Per fact: the nearest existing memories from Chroma split the work. A fact
+with no neighbor above the reconcile threshold is NEW (no LLM). A fact whose
+nearest neighbor is byte-identical text is a DUPLICATE (no LLM). Everything
+else — including near-identical facts that differ only in a value (a changed
+date, place, or number) — goes to one batched reconcile LLM call, which is
+the only thing allowed to decide UPDATES vs EXTENDS vs DUPLICATE. Similarity
+alone never auto-drops a fact, so an update is never silently lost.
 """
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import re
 
 from app.constants.memory import (
     DUPLICATE_SIMILARITY_THRESHOLD,
@@ -17,6 +23,13 @@ from app.constants.memory import (
 from app.memory import chroma_store, pg_store
 from app.memory.extraction import SimilarMemory, reconcile_facts
 from app.memory.schemas import ExtractedFact
+
+_WHITESPACE = re.compile(r"\s+")
+
+
+def _normalize(content: str) -> str:
+    """Casefold, collapse whitespace, and strip outer punctuation for matching."""
+    return _WHITESPACE.sub(" ", content.strip().casefold()).strip(" .!?,;:")
 
 
 @dataclass
@@ -35,25 +48,25 @@ async def reconcile(
     embeddings: list[list[float]],
 ) -> list[ReconciledFact]:
     """Decide NEW/UPDATES/EXTENDS/DUPLICATE for each fact, in input order."""
+    if not facts:
+        return []
+
+    # One concurrent Chroma scatter rather than N serial roundtrips.
+    similar_lists = await asyncio.gather(
+        *(
+            chroma_store.query_similar(user_id, embedding, n=RECONCILE_CANDIDATES, only_latest=True)
+            for embedding in embeddings
+        )
+    )
+
     results: list[ReconciledFact | None] = [None] * len(facts)
     ambiguous: list[tuple[int, list[tuple[str, float]]]] = []
-
-    for index, (fact, embedding) in enumerate(zip(facts, embeddings)):
-        similar = await chroma_store.query_similar(
-            user_id, embedding, n=RECONCILE_CANDIDATES, only_latest=True
-        )
-        if similar and similar[0][1] >= DUPLICATE_SIMILARITY_THRESHOLD:
-            results[index] = ReconciledFact(
-                fact=fact,
-                embedding=embedding,
-                outcome=ReconcileOutcome.DUPLICATE,
-                target_memory_id=similar[0][0],
-            )
-        elif similar and similar[0][1] >= RECONCILE_SIMILARITY_THRESHOLD:
+    for index, similar in enumerate(similar_lists):
+        if similar and similar[0][1] >= RECONCILE_SIMILARITY_THRESHOLD:
             ambiguous.append((index, similar))
         else:
             results[index] = ReconciledFact(
-                fact=fact, embedding=embedding, outcome=ReconcileOutcome.NEW
+                fact=facts[index], embedding=embeddings[index], outcome=ReconcileOutcome.NEW
             )
 
     if ambiguous:
@@ -70,7 +83,7 @@ async def _reconcile_ambiguous(
     embeddings: list[list[float]],
     ambiguous: list[tuple[int, list[tuple[str, float]]]],
 ) -> dict[int, ReconciledFact]:
-    """One batched LLM call over all facts that have close-but-not-identical matches."""
+    """Resolve the close-match band: exact-text duplicates cheaply, the rest via one LLM call."""
     candidate_ids = list(
         {
             memory_id
@@ -84,14 +97,26 @@ async def _reconcile_ambiguous(
     }
     now = datetime.now(UTC)
 
+    decided: dict[int, ReconciledFact] = {}
     pairs: list[tuple[ExtractedFact, list[SimilarMemory]]] = []
+    llm_fact_indexes: list[int] = []
     allowed_ids_per_pair: list[set[str]] = []
+
     for index, similar in ambiguous:
         candidates: list[SimilarMemory] = []
+        exact_target: str | None = None
+        normalized_fact = _normalize(facts[index].content)
         for memory_id, similarity in similar:
             row = candidate_rows.get(memory_id)
             if row is None or similarity < RECONCILE_SIMILARITY_THRESHOLD:
                 continue
+            # Byte-identical text at high similarity collapses without the LLM.
+            if (
+                exact_target is None
+                and similarity >= DUPLICATE_SIMILARITY_THRESHOLD
+                and _normalize(row.content) == normalized_fact
+            ):
+                exact_target = memory_id
             candidates.append(
                 SimilarMemory(
                     id=memory_id,
@@ -99,14 +124,26 @@ async def _reconcile_ambiguous(
                     age_days=max((now - row.created_at).days, 0),
                 )
             )
+
+        if exact_target is not None:
+            decided[index] = ReconciledFact(
+                fact=facts[index],
+                embedding=embeddings[index],
+                outcome=ReconcileOutcome.DUPLICATE,
+                target_memory_id=exact_target,
+            )
+            continue
+
         pairs.append((facts[index], candidates))
+        llm_fact_indexes.append(index)
         allowed_ids_per_pair.append({candidate.id for candidate in candidates})
 
-    batch = await reconcile_facts(pairs)
+    if not pairs:
+        return decided
 
-    decided: dict[int, ReconciledFact] = {}
+    batch = await reconcile_facts(pairs)
     for pair_index, decision in enumerate(batch.decisions):
-        fact_index = ambiguous[pair_index][0]
+        fact_index = llm_fact_indexes[pair_index]
         outcome = decision.decision
         target = decision.target_memory_id
         # An LLM target outside the candidate set is hallucinated — fall back to NEW.

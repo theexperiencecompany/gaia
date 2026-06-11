@@ -30,3 +30,20 @@ def rowcount(result: Result[Any]) -> int:
     for INSERT/UPDATE/DELETE; the cast recovers ``rowcount`` for mypy.
     """
     return cast(CursorResult[Any], result).rowcount
+
+
+LIKE_ESCAPE_CHAR = "\\"
+
+
+def escape_like(value: str) -> str:
+    """Escape LIKE/ILIKE metacharacters so a value matches literally.
+
+    Without this, a user-supplied folder like ``work%`` would match every
+    category starting with ``work`` — breaking folder isolation. Always pair
+    with ``escape=LIKE_ESCAPE_CHAR`` on the ``like()``/``ilike()`` call.
+    """
+    return (
+        value.replace(LIKE_ESCAPE_CHAR, LIKE_ESCAPE_CHAR * 2)
+        .replace("%", f"{LIKE_ESCAPE_CHAR}%")
+        .replace("_", f"{LIKE_ESCAPE_CHAR}_")
+    )

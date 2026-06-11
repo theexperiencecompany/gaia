@@ -81,11 +81,18 @@ async def retain(
     source_id: str | None = None,
     extraction_hints: str | None = None,
     user_name: str | None = None,
+    now: datetime | None = None,
 ) -> RetainResult:
-    """Ingest a conversation transcript into long-term memory."""
+    """Ingest a conversation transcript into long-term memory.
+
+    ``now`` overrides the ingestion timestamp used for relative-date
+    resolution, ``mentioned_at`` (recency), and the journal day — letting
+    callers replay historical sessions (backfills, benchmarks) at their real
+    time. Defaults to the current UTC time.
+    """
     timings: dict[str, int] = {}
     started = time.perf_counter()
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
 
     folder_tree = await pg_store.get_folder_tree(user_id)
     recent_facts = await pg_store.get_recent_facts(user_id, limit=RECENT_FACTS_LIMIT)
@@ -117,7 +124,7 @@ async def retain(
 
     stage = time.perf_counter()
     applied = await _apply_reconciled(
-        user_id, reconciled, source_type=source_type, source_id=source_id
+        user_id, reconciled, source_type=source_type, source_id=source_id, mentioned_at=now
     )
     result.new = applied.new
     result.updated = applied.updated
@@ -275,6 +282,7 @@ async def _apply_reconciled(
     *,
     source_type: MemorySourceType,
     source_id: str | None,
+    mentioned_at: datetime | None = None,
 ) -> _ApplyResult:
     """Write reconciled facts to Postgres + Chroma and wire up the graph."""
     inserted: list[tuple[MemoryRecord, ExtractedFact]] = []
@@ -297,7 +305,11 @@ async def _apply_reconciled(
     records: list[MemoryRecord] = []
     for item in new_and_extends:
         record = _build_record(
-            item.fact, user_id=user_id, source_type=source_type, source_id=source_id
+            item.fact,
+            user_id=user_id,
+            source_type=source_type,
+            source_id=source_id,
+            mentioned_at=mentioned_at,
         )
         target = extend_targets.get(item.target_memory_id or "")
         if item.outcome is ReconcileOutcome.EXTENDS and target is not None:
@@ -319,7 +331,11 @@ async def _apply_reconciled(
             duplicates += 1
         elif item.outcome is ReconcileOutcome.UPDATES and item.target_memory_id:
             record = _build_record(
-                item.fact, user_id=user_id, source_type=source_type, source_id=source_id
+                item.fact,
+                user_id=user_id,
+                source_type=source_type,
+                source_id=source_id,
+                mentioned_at=mentioned_at,
             )
             row = await pg_store.supersede_memory(
                 item.target_memory_id, user_id, record, MemoryRelationType.UPDATES
@@ -455,17 +471,25 @@ def _build_record(
     user_id: str,
     source_type: MemorySourceType,
     source_id: str | None,
+    mentioned_at: datetime | None = None,
 ) -> MemoryRecord:
-    """Map an extracted fact onto an unsaved ORM row (no lineage fields)."""
-    return MemoryRecord(
-        user_id=user_id,
-        kind=fact.kind.value,
-        content=fact.content,
-        category_path=fact.category_path or _FALLBACK_CATEGORY_PATH,
-        occurred_start=fact.occurred_start,
-        occurred_end=fact.occurred_end,
-        forget_after=fact.forget_after,
-        importance=fact.importance,
-        source_type=source_type.value,
-        source_id=source_id,
-    )
+    """Map an extracted fact onto an unsaved ORM row (no lineage fields).
+
+    ``mentioned_at`` is set explicitly only when the caller replays a
+    historical session; otherwise the column default (now) applies.
+    """
+    values: dict[str, object] = {
+        "user_id": user_id,
+        "kind": fact.kind.value,
+        "content": fact.content,
+        "category_path": fact.category_path or _FALLBACK_CATEGORY_PATH,
+        "occurred_start": fact.occurred_start,
+        "occurred_end": fact.occurred_end,
+        "forget_after": fact.forget_after,
+        "importance": fact.importance,
+        "source_type": source_type.value,
+        "source_id": source_id,
+    }
+    if mentioned_at is not None:
+        values["mentioned_at"] = mentioned_at
+    return MemoryRecord(**values)

@@ -13,8 +13,13 @@ CHROMA_MEMORIES_COLLECTION = "gaia_memories"
 CHROMA_MEMORY_EPISODES_COLLECTION = "gaia_memory_episodes"
 
 # Ingestion reconciliation (cosine similarity against existing latest facts):
-# >= DUPLICATE means the fact already exists verbatim — skip it;
-# >= RECONCILE means it may update/extend an existing fact — ask the LLM.
+# >= RECONCILE means a fact is close enough to an existing one that it might
+# update/extend/duplicate it — those go to the LLM. Within that band, a fact
+# whose normalized text is byte-identical to a candidate at >= DUPLICATE
+# similarity is collapsed without an LLM call. Similarity alone never auto-
+# drops a fact: "deadline March 10" vs "deadline March 17" embed near-
+# identically but the second is an UPDATE, not a duplicate — only the LLM
+# (or exact-text match) may decide.
 DUPLICATE_SIMILARITY_THRESHOLD = 0.92
 RECONCILE_SIMILARITY_THRESHOLD = 0.75
 
@@ -65,6 +70,15 @@ RECONCILE_CANDIDATES = 5
 # How many recent facts are shown to the extractor as "do NOT re-extract".
 RECENT_FACTS_LIMIT = 10
 
+# Worth-learning gate for conversational ingestion (memory_node). A turn is
+# learned if it has at least this many messages OR drove at least this many
+# tool calls — pure-text conversations are the richest memory source.
+MIN_MESSAGES_TO_LEARN = 4
+MIN_TOOL_CALLS_TO_LEARN = 2
+
+# Max length of an agent/user-supplied forget reason (matches the DB column).
+FORGET_REASON_MAX_CHARS = 200
+
 # Core documents keep this many previous versions in their history column.
 DOCUMENT_HISTORY_LIMIT = 10
 
@@ -112,6 +126,15 @@ MEMORY_TOOL_DOCUMENT_MAX_CHARS = 4000
 # GET /memory/episodes: default lookback window and the hard range cap.
 MEMORY_EPISODES_DEFAULT_DAYS = 14
 MEMORY_EPISODES_MAX_RANGE_DAYS = 90
+
+# Request-body length caps. A memory is one atomic fact, so it stays short;
+# a core document is a living markdown page, so it gets far more room.
+MEMORY_CONTENT_MAX_CHARS = 10_000
+MEMORY_DOCUMENT_CONTENT_MAX_CHARS = 50_000
+CATEGORY_PATH_MAX_CHARS = 120
+
+# Canonical UUID-string pattern for memory-id path parameters.
+UUID_PATH_PATTERN = r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 
 
 class MemoryKind(StrEnum):

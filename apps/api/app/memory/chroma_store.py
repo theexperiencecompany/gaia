@@ -117,6 +117,18 @@ async def _get_collection(name: str) -> AsyncCollection:
         return collection
 
 
+async def _clamp_n_results(collection: AsyncCollection, n: int) -> int:
+    """Clamp a requested result count to what the collection actually holds.
+
+    ChromaDB raises when ``n_results`` exceeds the number of stored vectors —
+    the common case for a brand-new user whose collection has fewer than the
+    requested candidate count. Clamping (and returning 0 for an empty
+    collection) keeps recall and reconciliation working from the first turn.
+    """
+    count = await collection.count()
+    return min(n, count)
+
+
 async def ensure_collections() -> None:
     """Create both memory collections if they don't exist yet."""
     await _get_collection(CHROMA_MEMORIES_COLLECTION)
@@ -149,6 +161,10 @@ async def query_similar(
     restricts to the head of each supersession chain.
     """
     collection = await _get_collection(CHROMA_MEMORIES_COLLECTION)
+    n_results = await _clamp_n_results(collection, n)
+    if n_results == 0:
+        return []
+
     conditions: list[dict[str, Any]] = [
         {"user_id": user_id},
         {"is_forgotten": False},
@@ -159,7 +175,7 @@ async def query_similar(
     query_embeddings: list[Sequence[float] | Sequence[int]] = [embedding]
     result = await collection.query(
         query_embeddings=query_embeddings,
-        n_results=n,
+        n_results=n_results,
         where={"$and": conditions},
         include=["distances"],
     )
@@ -226,10 +242,14 @@ async def query_episodes(
 ) -> list[tuple[str, float]]:
     """Return up to ``n`` (episode_id, cosine_similarity) for a user, best first."""
     collection = await _get_collection(CHROMA_MEMORY_EPISODES_COLLECTION)
+    n_results = await _clamp_n_results(collection, n)
+    if n_results == 0:
+        return []
+
     query_embeddings: list[Sequence[float] | Sequence[int]] = [embedding]
     result = await collection.query(
         query_embeddings=query_embeddings,
-        n_results=n,
+        n_results=n_results,
         where={"user_id": user_id},
         include=["distances"],
     )
