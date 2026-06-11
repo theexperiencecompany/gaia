@@ -133,11 +133,12 @@ MEMORY_TOOL_DOCUMENT_MAX_CHARS = 4000
 MEMORY_EPISODES_DEFAULT_DAYS = 14
 MEMORY_EPISODES_MAX_RANGE_DAYS = 90
 
-# Settings-UI search relevance cutoff: drop the long tail of weak matches by
-# keeping only results scoring at least this fraction of the top hit. Hybrid
-# recall returns a sharp relevance cliff (strong matches ~1.0+, noise <0.1),
-# so a relative floor cleanly separates the two without a brittle absolute one.
-SEARCH_RELEVANCE_DROPOFF_RATIO = 0.4
+# Relevance cutoff applied to every recall: drop the long tail of weak matches
+# by keeping only results scoring at least this fraction of the top hit. Hybrid
+# recall returns a sharp relevance cliff (strong matches ~1.0+, noise <0.1), so
+# a relative floor cleanly separates the two without a brittle absolute one.
+# This keeps both prompt-injected context and the search UI free of noise.
+RELEVANCE_DROPOFF_RATIO = 0.4
 
 # Request-body length caps. A memory is one atomic fact, so it stays short;
 # a core document is a living markdown page, so it gets far more room.

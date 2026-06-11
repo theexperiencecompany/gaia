@@ -296,11 +296,15 @@ async def test_cross_user_isolation_is_absolute(make_memory_user: Callable[[], s
     assert all("Whiskers" not in content for content in _contents(result_a))
 
 
-async def test_graph_expansion_adds_entity_sibling_across_categories(
+async def test_graph_expansion_surfaces_relevant_sibling_not_incidental(
     memory_user: str,
 ) -> None:
-    # The work fact is excluded by the category filter; the only path back
-    # into the results is the 1-hop entity expansion through "Nadia".
+    # Both non-relationship facts are excluded by the category filter, so the
+    # only path back is the 1-hop entity expansion through "Nadia". Expansion
+    # then reranks them against the query: the gift-relevant sibling survives,
+    # the incidental work fact (shares only the entity) is dropped as noise.
+    relevant_sibling = "Nadia's ideal birthday gift is a vintage film camera."
+    incidental_sibling = "Nadia works at Stripe in the payments division."
     await seed_memories(
         memory_user,
         [
@@ -310,7 +314,12 @@ async def test_graph_expansion_adds_entity_sibling_across_categories(
                 "entities": [("Nadia", "person")],
             },
             {
-                "content": "Nadia works at Stripe in the payments division.",
+                "content": relevant_sibling,
+                "category": "preferences",
+                "entities": [("Nadia", "person")],
+            },
+            {
+                "content": incidental_sibling,
                 "category": "work",
                 "entities": [("Nadia", "person")],
             },
@@ -318,7 +327,7 @@ async def test_graph_expansion_adds_entity_sibling_across_categories(
     )
     without = await memory_engine.recall(
         memory_user,
-        "girlfriend birthday gift",
+        "what gift should I get my girlfriend for her birthday",
         category_prefix="relationships",
         include_graph_expansion=False,
     )
@@ -326,14 +335,17 @@ async def test_graph_expansion_adds_entity_sibling_across_categories(
 
     with_expansion = await memory_engine.recall(
         memory_user,
-        "girlfriend birthday gift",
+        "what gift should I get my girlfriend for her birthday",
         category_prefix="relationships",
         include_graph_expansion=True,
     )
     contents = _contents(with_expansion)
     assert _BIRTHDAY_FACT in contents
-    assert "Nadia works at Stripe in the payments division." in contents, (
-        f"graph expansion did not pull the entity sibling; got: {contents}"
+    assert relevant_sibling in contents, (
+        f"expansion did not surface the gift-relevant sibling; got: {contents}"
+    )
+    assert incidental_sibling not in contents, (
+        f"expansion injected an incidental, off-topic sibling; got: {contents}"
     )
 
 
@@ -359,13 +371,14 @@ async def test_warm_recall_latency_under_bound(corpus_user: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_graph_expansion_contributes_when_base_results_fill_limit(
+async def test_graph_expansion_drops_incidental_sibling(
     memory_user: str,
 ) -> None:
-    """Expansion must add siblings even when the base results already fill limit=1.
+    """An entity sibling unrelated to the query must not be injected.
 
-    Before the fix the candidate list was sliced to ``limit`` before expansion,
-    so the sibling was always dropped when base results filled the quota.
+    Expansion reranks siblings in the same pool as the base results, so a fact
+    pulled in only because it shares an entity ("Nadia changed jobs") stays out
+    of a birthday-gift recall — the relevance cutoff drops it.
     """
     await seed_memories(
         memory_user,
@@ -377,24 +390,22 @@ async def test_graph_expansion_contributes_when_base_results_fill_limit(
                 "importance": 0.9,
             },
             {
-                "content": "Nadia recently changed jobs at a startup.",
+                "content": "Nadia recently changed jobs at a fintech startup.",
                 "category": "work",
                 "entities": [("Nadia", "person")],
                 "importance": 0.5,
             },
         ],
     )
-    # limit=1 fills base results with the top hit; expansion must still append.
     result = await memory_engine.recall(
         memory_user,
         "birthday gift for my girlfriend",
-        limit=1,
         include_graph_expansion=True,
     )
     contents = _contents(result)
-    # The sibling must appear despite limit=1 in the base slice.
-    assert "Nadia recently changed jobs at a startup." in contents, (
-        f"sibling was dropped even though limit=1; got: {contents}"
+    assert "Aryan's girlfriend Nadia has a birthday on March 12." in contents
+    assert "Nadia recently changed jobs at a fintech startup." not in contents, (
+        f"expansion injected an off-topic sibling; got: {contents}"
     )
 
 

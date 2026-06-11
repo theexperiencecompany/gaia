@@ -30,7 +30,6 @@ from app.constants.memory import (
     EPISODE_SEARCH_MIN_TOKEN_LENGTH,
     FTS_CANDIDATES,
     GRAPH_EXPANSION_MAX_SIBLINGS,
-    GRAPH_EXPANSION_SCORE,
     GRAPH_EXPANSION_SOURCE_RESULTS,
     IMPORTANCE_BOOST_BASE,
     IMPORTANCE_BOOST_WEIGHT,
@@ -38,6 +37,7 @@ from app.constants.memory import (
     MEMORY_SEARCH_CACHE_TTL,
     RECENCY_BOOST_DECAY_DAYS,
     RECENCY_BOOST_WEIGHT,
+    RELEVANCE_DROPOFF_RATIO,
     RERANK_CANDIDATES,
     RRF_K,
     MemoryKind,
@@ -127,20 +127,18 @@ async def recall(
     candidates = await _hydrate_candidates(
         user_id, fused_ids, fts_hits, category_prefix=category_prefix, kinds=kinds
     )
+    if include_graph_expansion and candidates:
+        candidates = await _with_graph_siblings(user_id, candidates, kinds=kinds)
     timings["hydrate_ms"] = _elapsed_ms(stage)
 
     stage = time.perf_counter()
+    # Rerank the combined base+sibling pool together so siblings compete on real
+    # query relevance, not a fixed score; the dropoff then cuts the weak tail.
     scored = await _rerank_and_boost(query, candidates[:RERANK_CANDIDATES])
     timings["rerank_ms"] = _elapsed_ms(stage)
 
-    entries = await _finalize_entries(
-        user_id,
-        scored,
-        limit,
-        include_graph_expansion,
-        category_prefix=category_prefix,
-        kinds=kinds,
-    )
+    entries = await _build_entries(scored[:limit])
+    entries = _drop_below_relevance(entries)
 
     timings["total_ms"] = _elapsed_ms(started)
     log.info(
@@ -296,75 +294,46 @@ def _importance_boost(row: MemoryRecord) -> float:
     return IMPORTANCE_BOOST_BASE + IMPORTANCE_BOOST_WEIGHT * row.importance
 
 
-async def _finalize_entries(
+async def _with_graph_siblings(
     user_id: str,
-    scored: list[tuple[MemoryRecord, float]],
-    limit: int,
-    include_graph_expansion: bool,
+    candidates: list[MemoryRecord],
     *,
-    category_prefix: str | None,
-    kinds: list[MemoryKind] | None,
-) -> list[MemoryEntry]:
-    """Slice base results to limit, optionally append graph-expansion siblings.
-
-    The base pool is sliced to ``limit`` first.  Expansion then uses that
-    slice as its source, finding entity-linked siblings not already in the
-    base.  Siblings are appended additively at their fixed low score and do
-    not compete with base results for slots — this ensures expansion always
-    contributes even when the base already fills ``limit``.
-
-    Siblings pass the standard read-time guards (is_latest, not forgotten,
-    forget_after) and the ``kinds`` filter, but not ``category_prefix``:
-    crossing category boundaries is the point of graph expansion.
-
-    Normalization can produce 0.0 for the weakest base result; the additive
-    model makes score comparison with siblings moot — siblings always follow.
-    """
-    base = scored[:limit]
-    if include_graph_expansion and base:
-        siblings = await _graph_expansion(
-            user_id, base, category_prefix=category_prefix, kinds=kinds
-        )
-        results: list[tuple[MemoryRecord, float]] = list(base) + [
-            (row, GRAPH_EXPANSION_SCORE) for row in siblings
-        ]
-    else:
-        results = list(base)
-
-    entities_by_memory = await pg_store.get_entities_for_memories([row.id for row, _ in results])
-    return [
-        row_to_entry(row, entities_by_memory.get(row.id, []), relevance_score=round(score, 4))
-        for row, score in results
-    ]
-
-
-async def _graph_expansion(
-    user_id: str,
-    results: list[tuple[MemoryRecord, float]],
-    *,
-    category_prefix: str | None,
     kinds: list[MemoryKind] | None,
 ) -> list[MemoryRecord]:
-    """1-hop expansion: entities on the top base results pull in sibling memories.
+    """Add 1-hop entity siblings to the candidate pool (before reranking).
 
-    Receives the already-sliced base list.  The top
-    ``GRAPH_EXPANSION_SOURCE_RESULTS`` entries supply source entities; all
-    base entries are excluded from siblings so we never duplicate.  Siblings
-    pass ``kinds`` but not ``category_prefix`` — crossing categories is the
-    feature.  ``forget_after`` is enforced by ``_active_memories_query``.
+    The top ``GRAPH_EXPANSION_SOURCE_RESULTS`` candidates supply source
+    entities; their other memories join the pool so the reranker scores them on
+    real query relevance. A genuinely related sibling (another fact about the
+    same person) ranks high and survives; an incidental one (the user's
+    hometown, pulled in only because they co-occur on a fact) ranks low and is
+    dropped. Siblings pass the ``kinds`` filter; crossing category boundaries is
+    the point, so ``category_prefix`` is not applied here.
     """
-    source_ids = [row.id for row, _ in results[:GRAPH_EXPANSION_SOURCE_RESULTS]]
+    source_ids = [row.id for row in candidates[:GRAPH_EXPANSION_SOURCE_RESULTS]]
     entities_by_memory = await pg_store.get_entities_for_memories(source_ids)
     entity_ids = list(
         {entity.id for entities in entities_by_memory.values() for entity in entities}
     )
-    return await pg_store.get_memories_for_entities(
+    if not entity_ids:
+        return candidates
+    siblings = await pg_store.get_memories_for_entities(
         user_id,
         entity_ids,
-        exclude_memory_ids=[row.id for row, _ in results],
+        exclude_memory_ids=[row.id for row in candidates],
         limit=GRAPH_EXPANSION_MAX_SIBLINGS,
         kinds=[kind.value for kind in kinds] if kinds else None,
     )
+    return candidates + siblings
+
+
+async def _build_entries(scored: list[tuple[MemoryRecord, float]]) -> list[MemoryEntry]:
+    """Map reranked (record, score) pairs to API entries with their entities."""
+    entities_by_memory = await pg_store.get_entities_for_memories([row.id for row, _ in scored])
+    return [
+        row_to_entry(row, entities_by_memory.get(row.id, []), relevance_score=round(score, 4))
+        for row, score in scored
+    ]
 
 
 async def _episode_summary_search(user_id: str, query: str, limit: int) -> list[EpisodeHit]:
@@ -399,6 +368,24 @@ def _tokenize(query: str) -> list[str]:
         for token in _TOKEN_PATTERN.findall(query.lower())
         if len(token) >= EPISODE_SEARCH_MIN_TOKEN_LENGTH
     ]
+
+
+def _drop_below_relevance(entries: list[MemoryEntry]) -> list[MemoryEntry]:
+    """Trim the weak-match tail (and low-score graph siblings) below the cliff.
+
+    Hybrid recall produces a sharp relevance cliff — a few strong matches, then
+    a long tail of faintly-related facts. Injecting that tail into every prompt
+    is noise: a query about a gift for the user's partner does not need their
+    GitHub bio or hometown. Keep only results scoring at least
+    ``RELEVANCE_DROPOFF_RATIO`` of the best hit (always keeps the top result).
+    """
+    if not entries:
+        return entries
+    top = entries[0].relevance_score or 0.0
+    if top <= 0:
+        return entries
+    floor = top * RELEVANCE_DROPOFF_RATIO
+    return [entry for entry in entries if (entry.relevance_score or 0.0) >= floor]
 
 
 def _in_category(category_path: str, prefix: str) -> bool:
