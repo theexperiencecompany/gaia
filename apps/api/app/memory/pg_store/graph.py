@@ -6,7 +6,12 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.memory.pg_store._session import memory_session, rowcount
-from app.models.memory_db_models import MemoryEntity, MemoryEntityLink, MemoryGraphEdge
+from app.models.memory_db_models import (
+    MemoryEntity,
+    MemoryEntityLink,
+    MemoryGraphEdge,
+    MemoryRecord,
+)
 
 
 def _alias_match(
@@ -177,17 +182,28 @@ async def insert_edges(
 async def get_graph(
     user_id: str,
 ) -> tuple[list[tuple[MemoryEntity, int]], list[MemoryGraphEdge]]:
-    """The user's full graph: (entity, linked-memory count) pairs and all edges."""
+    """The user's graph: (entity, live-memory count) pairs and current edges.
+
+    Counts and edges are restricted to facts that are still current
+    (``is_latest`` and not forgotten). Without this, an edge from a superseded
+    fact ("lives in Kolkata" after a move to Ahmedabad) would linger forever,
+    so the graph showed contradictory relationships. Entities left with no live
+    memories and no live edge are dropped client-side by the graph adapter.
+    """
+    live = (MemoryRecord.is_latest.is_(True)) & (MemoryRecord.is_forgotten.is_(False))
     async with memory_session() as session:
         entity_result = await session.execute(
-            select(MemoryEntity, func.count(MemoryEntityLink.memory_id))
+            select(MemoryEntity, func.count(MemoryEntityLink.memory_id).filter(live))
             .outerjoin(MemoryEntityLink, MemoryEntityLink.entity_id == MemoryEntity.id)
+            .outerjoin(MemoryRecord, MemoryRecord.id == MemoryEntityLink.memory_id)
             .where(MemoryEntity.user_id == user_id)
             .group_by(MemoryEntity.id)
             .order_by(MemoryEntity.name)
         )
         edge_result = await session.execute(
-            select(MemoryGraphEdge).where(MemoryGraphEdge.user_id == user_id)
+            select(MemoryGraphEdge)
+            .join(MemoryRecord, MemoryRecord.id == MemoryGraphEdge.memory_id)
+            .where(MemoryGraphEdge.user_id == user_id, live)
         )
         entities = [(entity, count) for entity, count in entity_result.all()]
         return entities, list(edge_result.scalars().all())
