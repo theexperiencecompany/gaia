@@ -100,7 +100,7 @@ export function CoreDocuments() {
       <div className="rounded-2xl bg-zinc-800 px-5 py-4">
         {/* Description row */}
         {meta?.description && (
-          <p className="text-sm text-zinc-400">{meta.description}</p>
+          <p className="text-sm text-zinc-300">{meta.description}</p>
         )}
 
         {/* Meta row — version + updated timestamp, separated by divider */}

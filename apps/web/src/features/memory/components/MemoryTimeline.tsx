@@ -1,13 +1,13 @@
 "use client";
 
+import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
 import {
-  ArrowDown01Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
-  ArrowUp01Icon,
   BookOpen01Icon,
+  Calendar01Icon,
 } from "@icons";
 import { addDays, format, isToday, parseISO, subDays } from "date-fns";
 import { useEffect, useState } from "react";
@@ -53,6 +53,8 @@ export function MemoryTimeline() {
       cancelled = true;
     };
   }, [rangeEnd]);
+
+  const defaultExpandedKeys = episodes.length > 0 ? [episodes[0].date] : [];
 
   return (
     <div className="space-y-3">
@@ -100,74 +102,63 @@ export function MemoryTimeline() {
           description="GAIA writes a short journal line for each conversation. Days fill in as you talk."
         />
       ) : (
-        <div className="space-y-2">
-          {episodes.map((episode, index) => (
-            <EpisodeCard
-              key={episode.date}
-              episode={episode}
-              defaultOpen={index === 0}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+        <Accordion
+          defaultExpandedKeys={defaultExpandedKeys}
+          selectionMode="multiple"
+          className="gap-2 px-0"
+          itemClasses={{
+            base: "rounded-2xl bg-zinc-800 overflow-hidden",
+            heading: "px-5 py-0",
+            trigger: "py-3.5 hover:bg-white/5 transition-colors",
+            title: "text-sm font-medium text-white",
+            content: "px-5 pb-4 pt-0",
+            indicator: "text-zinc-500",
+          }}
+        >
+          {episodes.map((episode) => {
+            const date = parseISO(episode.date);
+            const hasContent = episode.summary || episode.entries.length > 0;
 
-function EpisodeCard({
-  episode,
-  defaultOpen,
-}: {
-  episode: MemoryEpisode;
-  defaultOpen: boolean;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  const date = parseISO(episode.date);
-  const hasContent = episode.summary || episode.entries.length > 0;
+            return (
+              <AccordionItem
+                key={episode.date}
+                aria-label={format(date, "EEEE, MMM d")}
+                isDisabled={!hasContent}
+                title={
+                  <div className="flex items-center gap-2">
+                    <Calendar01Icon className="size-4 shrink-0 text-zinc-500" />
+                    <span className="text-sm font-medium text-white">
+                      {format(date, "EEEE, MMM d")}
+                    </span>
+                    {isToday(date) && (
+                      <span className="text-xs text-primary">Today</span>
+                    )}
+                  </div>
+                }
+              >
+                {episode.summary && (
+                  <p className="text-sm text-zinc-400">{episode.summary}</p>
+                )}
 
-  return (
-    <div className="overflow-hidden rounded-2xl bg-zinc-800">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-white/5"
-      >
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-medium text-white">
-            {format(date, "EEEE, MMM d")}
-          </p>
-          {isToday(date) && <span className="text-xs text-primary">Today</span>}
-        </div>
-        {hasContent &&
-          (open ? (
-            <ArrowUp01Icon className="size-4 shrink-0 text-zinc-500" />
-          ) : (
-            <ArrowDown01Icon className="size-4 shrink-0 text-zinc-500" />
-          ))}
-      </button>
-
-      {open && hasContent && (
-        <div className="px-5 pb-4">
-          {episode.summary && (
-            <p className="text-sm text-zinc-400">{episode.summary}</p>
-          )}
-
-          {episode.entries.length > 0 && (
-            <div className="mt-2 space-y-1.5">
-              {episode.entries.map((entry) => (
-                <div
-                  key={`${entry.time}-${entry.text}`}
-                  className="flex items-baseline gap-3"
-                >
-                  <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-                    {entry.time}
-                  </span>
-                  <p className="text-sm text-zinc-300">{entry.text}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                {episode.entries.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    {episode.entries.map((entry) => (
+                      <div
+                        key={`${entry.time}-${entry.text}`}
+                        className="flex items-baseline gap-3"
+                      >
+                        <span className="shrink-0 text-xs tabular-nums text-zinc-500">
+                          {entry.time}
+                        </span>
+                        <p className="text-sm text-zinc-300">{entry.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </AccordionItem>
+            );
+          })}
+        </Accordion>
       )}
     </div>
   );
