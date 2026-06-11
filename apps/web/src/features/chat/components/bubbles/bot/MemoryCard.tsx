@@ -15,6 +15,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
 import type { MemoryData } from "@/config/registries/toolRegistry";
+import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import type { MemoryEntry } from "@/features/memory/api/types";
 import { CORE_DOCUMENTS } from "@/features/memory/constants";
 
@@ -271,19 +272,23 @@ function DocumentSection({
             {displayName}
           </span>
         </div>
-        <Chip
-          size="sm"
-          variant="flat"
-          color={updated ? "primary" : "default"}
-          classNames={{ content: "text-xs font-medium" }}
-        >
-          {updated ? "Updated" : "Read"}
-        </Chip>
+        {updated && (
+          <Chip
+            size="sm"
+            variant="flat"
+            color="primary"
+            classNames={{ content: "text-xs font-medium" }}
+          >
+            Updated
+          </Chip>
+        )}
       </div>
       <div className="rounded-2xl bg-zinc-900 p-3">
-        <p className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-zinc-300">
-          {expanded ? doc.content : preview}
-        </p>
+        <MarkdownRenderer
+          content={expanded ? doc.content : preview}
+          className="text-sm"
+          hideCodeToolbar
+        />
         {hasMore && (
           <Button
             size="sm"
@@ -302,7 +307,15 @@ function DocumentSection({
 
 // ─── main component ──────────────────────────────────────────────────────────
 
-export default function MemoryCard({ items }: MemoryCardProps) {
+export default function MemoryCard({ items: rawItems }: MemoryCardProps) {
+  // The agent may call the same memory tool repeatedly in one turn (e.g.
+  // re-reading a document); identical payloads collapse to one section.
+  const items = rawItems.filter(
+    (item, index, all) =>
+      all.findIndex(
+        (other) => JSON.stringify(other) === JSON.stringify(item),
+      ) === index,
+  );
   if (items.length === 0) return null;
 
   return (

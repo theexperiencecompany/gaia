@@ -85,7 +85,8 @@ export function CoreDocuments() {
     <div className="space-y-3">
       {/* Inner doc tabs — same variant/size as the main memory tabs */}
       <Tabs
-        variant="light"
+        variant="solid"
+        radius="full"
         selectedKey={selectedDocType}
         onSelectionChange={(key) => {
           setSelectedDocType(key as MemoryDocType);

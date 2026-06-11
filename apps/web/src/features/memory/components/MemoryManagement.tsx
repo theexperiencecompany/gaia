@@ -110,7 +110,9 @@ export default function MemoryManagement({
       </div>
 
       <Tabs
-        variant="light"
+        variant="solid"
+        color="primary"
+        radius="full"
         selectedKey={selectedTab}
         onSelectionChange={(key) => setSelectedTab(key as string)}
       >
