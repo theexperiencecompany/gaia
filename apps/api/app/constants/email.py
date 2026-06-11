@@ -20,6 +20,7 @@ EMAIL_PROFILE_CACHE_TTL_SECONDS = 24 * 60 * 60
 EMAIL_PROFILE_CACHE_KEY_TEMPLATE = "email_profile:{user_id}:{email}"
 PEOPLE_SEARCH_ENDPOINT = "https://people.googleapis.com/v1/people:searchContacts"
 OTHER_CONTACTS_SEARCH_ENDPOINT = "https://people.googleapis.com/v1/otherContacts:search"
+PEOPLE_GET_ENDPOINT_TEMPLATE = "https://people.googleapis.com/v1/{resource_name}"
 PEOPLE_SEARCH_READ_MASK = "names,emailAddresses,photos,biographies,organizations"
 OTHER_CONTACTS_READ_MASK = "names,emailAddresses,photos"
 # Google requires a warmup request before otherContacts/searchContacts return

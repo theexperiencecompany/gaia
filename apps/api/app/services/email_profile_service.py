@@ -33,6 +33,7 @@ from app.constants.email import (
     GRAVATAR_TIMEOUT_SECONDS,
     OTHER_CONTACTS_READ_MASK,
     OTHER_CONTACTS_SEARCH_ENDPOINT,
+    PEOPLE_GET_ENDPOINT_TEMPLATE,
     PEOPLE_SEARCH_ENDPOINT,
     PEOPLE_SEARCH_READ_MASK,
     PEOPLE_SEARCH_WARMUP_DELAY_SECONDS,
@@ -120,10 +121,40 @@ async def _search_google_people(
         data = await _people_search(user_id, endpoint, email, read_mask) or {}
 
     for result in data.get("results", []):
-        profile = _person_to_profile(result.get("person", {}), email)
+        person = result.get("person", {})
+        profile = _person_to_profile(person, email)
         if profile is not None:
+            profile["favicon"] = await _fetch_profile_photo(user_id, person) or profile.get(
+                "favicon"
+            )
             return profile
     return None
+
+
+async def _fetch_profile_photo(user_id: str, person: dict) -> str | None:
+    """Fetch a saved contact's full photo list and pick the real one.
+
+    searchContacts only returns the contact-card photo, which for contacts
+    without an explicit picture is a generated gradient/monogram that is NOT
+    flagged ``default``. people.get on the same resource also returns
+    PROFILE-source photos — the person's actual Google account picture —
+    which _pick_photo prefers.
+    """
+    resource_name = person.get("resourceName") or ""
+    if not resource_name.startswith("people/"):
+        return None
+    try:
+        full = await proxy_request(
+            user_id=user_id,
+            toolkit=_GMAIL_TOOLKIT,
+            method="GET",
+            endpoint=PEOPLE_GET_ENDPOINT_TEMPLATE.format(resource_name=resource_name),
+            query={"personFields": "photos"},
+        )
+    except Exception as exc:
+        log.debug(f"email_profile people.get failed ({resource_name}): {exc}")
+        return None
+    return _pick_photo((full or {}).get("photos", []))
 
 
 async def _fetch_gravatar_profile(email: str) -> dict | None:
