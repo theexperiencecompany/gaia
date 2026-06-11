@@ -77,10 +77,13 @@ async def _answer(question: str, question_date: str, memories: list[str]) -> str
                     "memory notes below (extracted from past conversations; bracketed "
                     "dates say when something happened / was mentioned). Be concise. Use "
                     "the dates for any 'when / how long ago / which came first' "
-                    "arithmetic. If the question asks for suggestions or recommendations, "
-                    "state the remembered preference(s) that should guide them. If the "
-                    "notes do not contain the answer, reply exactly "
-                    '"I don\'t know".\n\nMEMORY NOTES:\n' + context
+                    "arithmetic, and sum or compare quantities across notes for any "
+                    "'total / most / higher' question. If the question asks for "
+                    "suggestions or recommendations, do NOT abstain: answer by stating "
+                    "the remembered preferences, interests, or plans that should guide "
+                    "the suggestion (e.g. 'you enjoy stand-up comedy specials on "
+                    "Netflix, so...'). Only if the notes contain nothing relevant at "
+                    'all, reply exactly "I don\'t know".\n\nMEMORY NOTES:\n' + context
                 )
             ),
             HumanMessage(content=question),
@@ -111,7 +114,9 @@ async def _judge(question: str, gold: str, model_answer: str) -> bool:
     return bool(result and result.correct)
 
 
-async def _run_question(item: dict, index: int, total: int) -> tuple[str, bool, str]:
+async def _run_question(
+    item: dict, index: int, total: int, diagnose: bool = False
+) -> tuple[str, bool, str]:
     user_id = f"lme-{item['question_id']}"
     qtype = item["question_type"]
     try:
@@ -142,9 +147,33 @@ async def _run_question(item: dict, index: int, total: int) -> tuple[str, bool, 
             f"q={item['question'][:48]!r} -> {model_answer[:60]!r} (gold {str(item['answer'])[:40]!r})",
             flush=True,
         )
+        if diagnose and not correct:
+            await _print_diagnosis(user_id, item, notes, model_answer)
         return qtype, correct, model_answer
     finally:
         await memory_engine.delete_all(user_id)
+
+
+async def _print_diagnosis(item_user: str, item: dict, notes: list[str], answer: str) -> None:
+    """Classify where the chain broke: extraction, retrieval, or answering."""
+    stored = await memory_engine.list_memories(item_user, page=1, page_size=200)
+    gold = str(item["answer"]).lower()
+    gold_tokens = [t for t in gold.replace(",", " ").split() if len(t) > 3][:4]
+    in_store = [
+        m.content for m in stored.memories if any(t in m.content.lower() for t in gold_tokens)
+    ]
+    in_notes = [n for n in notes if any(t in n.lower() for t in gold_tokens)]
+    if not in_store:
+        verdict = "EXTRACTION-MISS (gold info never stored)"
+    elif not in_notes:
+        verdict = "RETRIEVAL-MISS (stored but not recalled)"
+    else:
+        verdict = "ANSWER/JUDGE-MISS (info was in the notes)"
+    print(f"    DIAG {verdict}", flush=True)
+    print(f"    gold: {gold[:100]}", flush=True)
+    print(f"    stored matching: {[s[:70] for s in in_store[:3]]}", flush=True)
+    print(f"    notes matching: {[n[:70] for n in in_notes[:2]]}", flush=True)
+    print(f"    total stored: {stored.total_count} | notes: {len(notes)}", flush=True)
 
 
 async def main() -> None:
@@ -152,6 +181,10 @@ async def main() -> None:
     parser.add_argument("--dataset", required=True, help="Path to longmemeval_*.json")
     parser.add_argument("--num", type=int, default=50, help="Stratified sample size")
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--types", help="Comma-separated question types to include")
+    parser.add_argument(
+        "--diagnose", action="store_true", help="Classify each miss (extraction/retrieval/answer)"
+    )
     args = parser.parse_args()
 
     init_postgresql_engine()
@@ -167,6 +200,11 @@ async def main() -> None:
 
     rng = random.Random(args.seed)
     per_type = max(1, args.num // len(by_type))
+    if args.types:
+        wanted = {t.strip() for t in args.types.split(",")}
+        by_type = defaultdict(list, {k: v for k, v in by_type.items() if k in wanted})
+        per_type = max(1, args.num // max(len(by_type), 1))
+
     sample: list[dict] = []
     for items in by_type.values():
         rng.shuffle(items)
@@ -176,7 +214,7 @@ async def main() -> None:
 
     scores: dict[str, list[bool]] = defaultdict(list)
     for index, item in enumerate(sample):
-        qtype, correct, _ = await _run_question(item, index, len(sample))
+        qtype, correct, _ = await _run_question(item, index, len(sample), diagnose=args.diagnose)
         scores[qtype].append(correct)
 
     print("\n=== LONGMEMEVAL (oracle subset) RESULTS ===")

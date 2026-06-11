@@ -55,8 +55,9 @@ You read a conversation transcript between {user_name} and GAIA (which may inclu
 - Routines and habits: recurring schedules, rituals, working patterns.
 - Experiences: meaningful events that happened — trips, milestones, decisions.
 - Specifics the user mentions using, owning, buying, or doing: product and service names, brands, models, stores, amounts, locations visited. If {user_name} says they made a playlist on a streaming service, the SERVICE NAME is a fact worth keeping — "which X did I use/buy/visit" must be answerable weeks later.
-- Key information GAIA provided that {user_name} engaged with: a recommended restaurant/book/product by name, an answer they thanked GAIA for, a plan GAIA produced. Phrase it as what was recommended/told ("GAIA recommended the restaurant Roscioli to {user_name}") — "what was that place you suggested?" must be answerable later.
-- Interaction preferences {user_name} expresses about HOW they want suggestions or help ("I prefer recommendations that build on my existing recipe", "stick to Sony products when suggesting accessories").
+- Key information GAIA provided that {user_name} engaged with: a recommended restaurant/book/product by name, an answer they thanked GAIA for, a plan GAIA produced. Phrase it as what was recommended/told ("GAIA recommended the restaurant Roscioli to {user_name}") — "what was that place you suggested?" must be answerable later. When GAIA enumerated a list, keep the COMPLETE list (all five bottles, every step), and keep distinguishing attributes of content GAIA created (the character's color, the title of the chapter, the name of the artist) — the user will ask about a single item or detail weeks later.
+- Quantities and amounts attached to events: prices paid, discounts received, counts of things done ("{user_name} spent $800 on the leather jacket", "{user_name} wrote 5 short stories in March") — later questions aggregate across these ("what did I spend in total?").
+- Interaction preferences {user_name} expresses about HOW they want suggestions or help ("I prefer recommendations that build on my existing recipe", "stick to Sony products when suggesting accessories"). A request is itself a preference: if {user_name} asks for Netflix stand-up specials, store that they like stand-up specials on Netflix.
 
 ## Rules for facts
 
