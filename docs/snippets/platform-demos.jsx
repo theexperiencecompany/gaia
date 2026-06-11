@@ -397,6 +397,27 @@ const ReactionsBar = ({ items, spanStyle }) => {
 };
 
 /* =========================================================================
+ * Shared: IOSChatHeader — iOS-style nav bar used by WhatsApp and Telegram
+ * (back chevron on the left, custom center + right slots, hairline divider)
+ * ========================================================================= */
+
+const IOSChatHeader = ({ accent, chromeBg, backLabel, center, right }) => (
+  <div className="flex shrink-0 flex-col" style={{ background: chromeBg }}>
+    <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto 1fr", padding: "6px 12px 8px", gap: 8 }}>
+      <div className="flex items-center" style={{ color: accent }}>
+        <svg width="12" height="20" viewBox="0 0 12 20" aria-hidden fill="none">
+          <path d="M10 2 2 10l8 8" stroke={accent} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        {backLabel && <span style={{ fontSize: 17, marginLeft: 8, letterSpacing: "-0.01em" }}>{backLabel}</span>}
+      </div>
+      <div className="flex flex-col items-center" style={{ minWidth: 0 }}>{center}</div>
+      <div className="flex items-center justify-end" style={{ color: accent }}>{right}</div>
+    </div>
+    <div style={{ height: 0.5, background: "rgba(60,60,67,0.18)" }} />
+  </div>
+);
+
+/* =========================================================================
  * WhatsApp
  * ========================================================================= */
 
@@ -430,30 +451,26 @@ const WhatsAppDemo = ({ messages, title, headerAvatar, showComposer, showHeader,
   return (
     <div className={cn("flex h-full flex-col", className)} style={{ background: bg, fontFamily: SF_STACK, color: textColor }}>
       {showHeader && (
-        <div className="flex shrink-0 flex-col" style={{ background: chromeBg }}>
-          <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto 1fr", padding: "6px 12px 8px", gap: 8 }}>
-            <div className="flex items-center" style={{ color: accent }}>
-              <svg width="12" height="20" viewBox="0 0 12 20" aria-hidden fill="none">
-                <path d="M10 2 2 10l8 8" stroke={accent} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <div className="flex flex-col items-center" style={{ minWidth: 0 }}>
+        <IOSChatHeader
+          accent={accent}
+          chromeBg={chromeBg}
+          center={
+            <>
               <div className="overflow-hidden rounded-full" style={{ width: 32, height: 32 }}>
                 <img src={headerAvatar} alt="" style={{ width: 32, height: 32, objectFit: "cover" }} />
               </div>
               <span style={{ fontSize: 10, marginTop: 2, color: textColor, letterSpacing: "-0.01em", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {title ?? "GAIA"}
               </span>
-            </div>
-            <div className="flex items-center justify-end" style={{ color: accent }}>
-              <svg width="22" height="14" viewBox="0 0 22 14" aria-hidden fill="none">
-                <rect x="0.5" y="0.5" width="15" height="13" rx="3" stroke={accent} />
-                <path d="M16 4l5 -3v12l-5 -3z" fill={accent} stroke={accent} strokeWidth="0.5" strokeLinejoin="round" />
-              </svg>
-            </div>
-          </div>
-          <div style={{ height: 0.5, background: "rgba(60,60,67,0.18)" }} />
-        </div>
+            </>
+          }
+          right={
+            <svg width="22" height="14" viewBox="0 0 22 14" aria-hidden fill="none">
+              <rect x="0.5" y="0.5" width="15" height="13" rx="3" stroke={accent} />
+              <path d="M16 4l5 -3v12l-5 -3z" fill={accent} stroke={accent} strokeWidth="0.5" strokeLinejoin="round" />
+            </svg>
+          }
+        />
       )}
 
       <div
@@ -519,28 +536,24 @@ const TelegramDemo = ({ messages, title, subtitle, headerAvatar, showComposer, s
   return (
     <div className={cn("flex h-full flex-col", className)} style={{ fontFamily: SF_STACK, color: textColor, background: chromeBg }}>
       {showHeader && (
-        <div className="flex shrink-0 flex-col" style={{ background: chromeBg }}>
-          <div className="grid items-center" style={{ gridTemplateColumns: "1fr auto 1fr", padding: "6px 12px 8px", gap: 8 }}>
-            <div className="flex items-center" style={{ color: accent }}>
-              <svg width="12" height="20" viewBox="0 0 12 20" aria-hidden fill="none">
-                <path d="M10 2 2 10l8 8" stroke={accent} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <span style={{ fontSize: 17, marginLeft: 8, letterSpacing: "-0.01em" }}>Back</span>
-            </div>
-            <div className="flex flex-col items-center" style={{ minWidth: 0 }}>
+        <IOSChatHeader
+          accent={accent}
+          chromeBg={chromeBg}
+          backLabel="Back"
+          center={
+            <>
               <span style={{ fontSize: 17, fontWeight: 600, letterSpacing: "-0.01em", color: textColor, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {title ?? "GAIA"}
               </span>
               <span style={{ fontSize: 12, color: metaColor, marginTop: 1 }}>{subtitle ?? "last seen recently"}</span>
+            </>
+          }
+          right={
+            <div className="overflow-hidden rounded-full" style={{ width: 32, height: 32 }}>
+              <img src={headerAvatar} alt="" style={{ width: 32, height: 32, objectFit: "cover" }} />
             </div>
-            <div className="flex items-center justify-end" style={{ color: accent }}>
-              <div className="overflow-hidden rounded-full" style={{ width: 32, height: 32 }}>
-                <img src={headerAvatar} alt="" style={{ width: 32, height: 32, objectFit: "cover" }} />
-              </div>
-            </div>
-          </div>
-          <div style={{ height: 0.5, background: "rgba(60,60,67,0.18)" }} />
-        </div>
+          }
+        />
       )}
 
       <div
