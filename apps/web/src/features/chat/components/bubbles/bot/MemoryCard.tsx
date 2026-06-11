@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Divider } from "@heroui/divider";
 import {
@@ -285,13 +286,15 @@ function DocumentSection({
           {!expanded && hasMore && <span className="text-zinc-600">{"…"}</span>}
         </p>
         {hasMore && (
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="mt-2 text-xs text-zinc-500 transition-colors hover:text-zinc-300"
+          <Button
+            size="sm"
+            variant="light"
+            radius="full"
+            onPress={() => setExpanded((v) => !v)}
+            className="mt-2 h-auto min-w-0 px-2 py-1 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300"
           >
             {expanded ? "Show less" : "Show more"}
-          </button>
+          </Button>
         )}
       </div>
     </div>

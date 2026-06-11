@@ -13,7 +13,10 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { memoryApi } from "@/features/memory/api/memoryApi";
-import type { MemoryListResponse } from "@/features/memory/api/types";
+import type {
+  MemoryEntry,
+  MemoryListResponse,
+} from "@/features/memory/api/types";
 import { AddMemoryModal } from "@/features/memory/components/AddMemoryModal";
 import { EditMemoryModal } from "@/features/memory/components/EditMemoryModal";
 import { MemoryRow } from "@/features/memory/components/MemoryRow";
@@ -32,6 +35,9 @@ export function MemoryList({ onChanged }: MemoryListProps) {
   const [data, setData] = useState<MemoryListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<MemoryEntry[] | null>(
+    null,
+  );
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const { confirm, confirmationProps } = useConfirmation();
@@ -55,10 +61,38 @@ export function MemoryList({ onChanged }: MemoryListProps) {
     fetchPage(page);
   }, [fetchPage, page]);
 
+  // Debounced server-side search across all memories, not just the loaded page.
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setSearchResults(null);
+      return;
+    }
+    let active = true;
+    const handle = setTimeout(async () => {
+      try {
+        const result = await memoryApi.searchMemories(trimmed);
+        if (active) setSearchResults(result.memories);
+      } catch {
+        if (active) setSearchResults([]);
+      }
+    }, 250);
+    return () => {
+      active = false;
+      clearTimeout(handle);
+    };
+  }, [query]);
+
   const handleChanged = useCallback(() => {
     fetchPage(page);
+    if (query.trim()) {
+      memoryApi
+        .searchMemories(query.trim())
+        .then((result) => setSearchResults(result.memories))
+        .catch(() => setSearchResults([]));
+    }
     onChanged();
-  }, [fetchPage, page, onChanged]);
+  }, [fetchPage, page, onChanged, query]);
 
   const actions = useMemoryActions(handleChanged);
 
@@ -101,12 +135,8 @@ export function MemoryList({ onChanged }: MemoryListProps) {
     }
   }, [confirm, data?.total_count, handleChanged]);
 
-  const memories = data?.memories ?? [];
-  const filtered = query.trim()
-    ? memories.filter((memory) =>
-        memory.content.toLowerCase().includes(query.trim().toLowerCase()),
-      )
-    : memories;
+  const isSearching = query.trim().length > 0;
+  const filtered = isSearching ? (searchResults ?? []) : (data?.memories ?? []);
   const totalCount = data?.total_count ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / MEMORY_PAGE_SIZE));
 
@@ -116,7 +146,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
         <Input
           size="sm"
           variant="flat"
-          placeholder="Filter memories"
+          placeholder="Search memories"
           value={query}
           onValueChange={setQuery}
           startContent={<Search01Icon className="size-4 text-zinc-500" />}
@@ -147,7 +177,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
         </Button>
       </div>
 
-      {loading ? (
+      {(isSearching && searchResults === null) || (!isSearching && loading) ? (
         <div className="space-y-2">
           <Skeleton className="h-14 w-full rounded-2xl" />
           <Skeleton className="h-14 w-full rounded-2xl" />
@@ -157,9 +187,9 @@ export function MemoryList({ onChanged }: MemoryListProps) {
         <div className="flex h-48 flex-col items-center justify-center gap-1 text-zinc-500">
           <AiBrain01Icon className="mb-2 size-8 opacity-40" />
           <p className="text-sm">
-            {query.trim() ? "No memories match your filter" : "No memories yet"}
+            {isSearching ? "No memories match your search" : "No memories yet"}
           </p>
-          {!query.trim() && (
+          {!isSearching && (
             <p className="text-xs">
               Start a conversation and GAIA will remember the important details
             </p>
@@ -180,7 +210,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
         </div>
       )}
 
-      {totalPages > 1 && (
+      {!isSearching && totalPages > 1 && (
         <div className="flex items-center justify-end gap-2">
           <span className="text-xs text-zinc-500">
             Page {page} of {totalPages}

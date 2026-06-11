@@ -10,6 +10,7 @@ import type {
   MemoryGraphResponse,
   MemoryListResponse,
   MemoryOverviewResponse,
+  MemorySearchResult,
   MemoryTreeResponse,
 } from "@/features/memory/api/types";
 import { apiService } from "@/lib/api/service";
@@ -32,6 +33,16 @@ export const memoryApi = {
     });
     if (category) params.set("category", category);
     return apiService.get<MemoryListResponse>(`/memory?${params}`, {
+      silent: true,
+    });
+  },
+
+  searchMemories: async (
+    query: string,
+    limit = 20,
+  ): Promise<MemorySearchResult> => {
+    const params = new URLSearchParams({ q: query, limit: String(limit) });
+    return apiService.get<MemorySearchResult>(`/memory/search?${params}`, {
       silent: true,
     });
   },

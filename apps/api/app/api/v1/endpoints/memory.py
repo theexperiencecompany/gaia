@@ -30,6 +30,7 @@ from app.models.memory_models import (
     MemoryGraphResponse,
     MemoryListResponse,
     MemoryOverviewResponse,
+    MemorySearchResult,
     MemoryTreeResponse,
     UpdateDocumentRequest,
     UpdateMemoryRequest,
@@ -74,6 +75,26 @@ async def list_memories(
     )
 
     log.set(memory={"operation": "list", "result_count": len(result.memories)})
+    return result
+
+
+@router.get("/search", response_model=MemorySearchResult)
+async def search_memories(
+    q: str = Query(min_length=1, max_length=500, description="Search query"),
+    limit: int = Query(default=20, ge=1, le=50, description="Max results"),
+    user: dict = Depends(get_current_user),
+) -> MemorySearchResult:
+    """Hybrid semantic + keyword search across all of a user's memories.
+
+    Powers the settings "All" tab search box so a query finds matching
+    memories anywhere, not just on the currently loaded page.
+    """
+    user_id = _require_user_id(user)
+    log.set(user={"id": user_id}, memory={"operation": "search", "query": q})
+
+    result = await memory_engine.recall(user_id, q, limit=limit, include_graph_expansion=False)
+
+    log.set(memory={"operation": "search", "result_count": len(result.memories)})
     return result
 
 

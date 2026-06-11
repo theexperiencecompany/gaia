@@ -67,6 +67,11 @@ export interface MemoryListResponse {
   total_count: number;
 }
 
+export interface MemorySearchResult {
+  memories: MemoryEntry[];
+  total_count: number;
+}
+
 export interface MemoryTreeNode {
   name: string;
   path: string;
