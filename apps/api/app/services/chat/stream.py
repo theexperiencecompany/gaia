@@ -139,7 +139,6 @@ async def _run_chat_stream(
     register_executor_capture(stream_id)
 
     try:
-        description_task = _start_description_task(is_new_conversation, body, conversation_id, user)
         _set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
 
         if user_id:
@@ -158,6 +157,15 @@ async def _run_chat_stream(
             state,
             start_event,
             is_new_conversation,
+        )
+
+        # Start description generation only after the conversation row exists
+        # (created in ``_publish_init_chunk``). Starting it earlier races the
+        # row insert: the title LLM can finish before workspace prep, and the
+        # ``$set`` description update would silently match zero documents,
+        # leaving the title stuck at "New Chat" after a refresh.
+        description_task = _start_description_task(
+            is_new_conversation, body, conversation_id, user
         )
         usage_callback = UsageMetadataCallbackHandler()
         description_task = await _consume_agent_stream(
