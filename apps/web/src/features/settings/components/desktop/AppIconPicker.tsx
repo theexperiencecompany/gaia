@@ -26,7 +26,9 @@ export function AppIconPicker({
             aria-label={`${icon.label} app icon`}
             onClick={() => onSelect(icon.id)}
             className={cn(
-              "aspect-square overflow-hidden rounded-2xl p-1 transition-all",
+              // 22% radius ≈ the macOS app-icon squircle, so flat square
+              // sources match the default (pre-rounded) GAIA icon.
+              "aspect-square overflow-hidden rounded-[24%] p-1 transition-all",
               isSelected
                 ? "ring-2 ring-primary"
                 : "ring-2 ring-transparent hover:scale-105",
@@ -37,7 +39,7 @@ export function AppIconPicker({
             <img
               src={icon.preview}
               alt={`${icon.label} app icon`}
-              className="aspect-square h-full w-full rounded-xl object-cover"
+              className="aspect-square h-full w-full rounded-[22%] object-cover"
             />
           </button>
         );
