@@ -69,10 +69,10 @@
             "pages": [
               "guides/web-app",
               "guides/desktop-app",
+              "guides/whatsapp-bot",
+              "guides/telegram-bot",
               "guides/slack-bot",
               "guides/discord-bot",
-              "guides/telegram-bot",
-              "guides/whatsapp-bot",
               "bots/commands"
             ]
           },
@@ -138,10 +138,10 @@
             "group": "Bot Development",
             "pages": [
               "bots/overview",
-              "bots/slack",
-              "bots/discord",
+              "bots/whatsapp",
               "bots/telegram",
-              "bots/whatsapp"
+              "bots/slack",
+              "bots/discord"
             ]
           },
           {
