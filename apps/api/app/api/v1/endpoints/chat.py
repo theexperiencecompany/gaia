@@ -21,6 +21,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.decorators import tiered_rate_limit
+from app.models.chat_models import ConversationSource
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.stream import run_chat_stream_background
 from shared.py.wide_events import ChatContext, log
@@ -30,8 +31,21 @@ _background_tasks: set[asyncio.Task] = set()
 
 _USER_ID_REQUIRED = "user_id is required"
 _SSE_MEDIA_TYPE = "text/event-stream"
+_CLIENT_TYPE_HEADER = "X-Client-Type"
 
 router = APIRouter()
+
+
+def _resolve_source(request: Request) -> str:
+    """Map the client-type header to a conversation source.
+
+    Only the desktop app is trusted to claim a non-web source — it unlocks
+    desktop-executed tools, which are useless (harmless) anywhere else.
+    """
+    client_type = request.headers.get(_CLIENT_TYPE_HEADER, "").strip().lower()
+    if client_type == ConversationSource.DESKTOP.value:
+        return ConversationSource.DESKTOP.value
+    return ConversationSource.WEB.value
 
 
 def _build_chat_context(
@@ -117,7 +131,7 @@ async def chat_stream_endpoint(
             user=user,
             user_time=tz_info[1],
             conversation_id=conversation_id,
-            source="web",
+            source=_resolve_source(request),
             start_event=start_event,
         )
     )

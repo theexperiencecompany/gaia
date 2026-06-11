@@ -1,49 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-
-/**
- * Auth callback data from deep link
- */
-interface AuthCallbackData {
-  token: string;
-}
-
-/**
- * Type definition for the Electron API exposed via preload
- */
-interface ElectronAPI {
-  getPlatform: () => Promise<NodeJS.Platform>;
-  getVersion: () => Promise<string>;
-  isElectron: boolean;
-  signalReady: () => void;
-  openExternal: (url: string) => void;
-  onAuthCallback: (callback: (data: AuthCallbackData) => void) => () => void;
-  onAuthRedirecting: (callback: () => void) => () => void;
-  notifyWakeWord: () => void;
-  dismissPopup: () => void;
-  resizePopup: (height: number) => void;
-  onPopupActivate: (
-    callback: (data: { trigger: "wake-word" | "shortcut" }) => void,
-  ) => () => void;
-  onPopupDeactivate: (callback: () => void) => () => void;
-}
-
-/**
- * Type guard to check if window.api exists and is the Electron API
- */
-function hasElectronAPI(
-  window: Window,
-): window is Window & { api: ElectronAPI } {
-  return (
-    typeof window !== "undefined" &&
-    "api" in window &&
-    typeof window.api === "object" &&
-    window.api !== null &&
-    "isElectron" in window.api &&
-    window.api.isElectron === true
-  );
-}
+import { type AuthCallbackData, hasElectronAPI } from "@/lib/electron/api";
 
 /**
  * Hook to check if the app is running inside Electron

@@ -34,6 +34,19 @@ _COMMS_AGENT_PROMPT_BASE: Final[str] = _strip_openui_section(COMMS_AGENT_PROMPT)
 _OPENUI_ADDENDUM: Final[str] = "\n\n" + OPENUI_INSTRUCTIONS
 
 
+# Desktop-app capability addendum. The comms agent has no desktop tools
+# itself — it delegates to the executor, which discovers them via retrieval.
+_DESKTOP_ADDENDUM: Final[str] = """
+
+—Desktop Context—
+The user is chatting from the GAIA desktop app on their computer. Through the
+executor, GAIA can act on that computer: look at the screen (take_screenshot),
+read or write the clipboard, open applications, open URLs in the browser, and
+list open windows. When the user references "this", "my screen", or something
+they are currently looking at, delegate to the executor and have it take a
+screenshot for visual context."""
+
+
 # Output-format addendum for each text-only channel. These strings are the
 # platform-specific formatting rules the LLM must stick to. We inline them
 # here so the addendum is byte-identical across every WhatsApp user, etc.
@@ -84,7 +97,7 @@ _SLACK_ADDENDUM: Final[str] = _text_only_addendum(
 COMMS_PROMPT_BY_SOURCE: Final[dict[str, str]] = {
     "web": _COMMS_AGENT_PROMPT_BASE + _OPENUI_ADDENDUM,
     "mobile": _COMMS_AGENT_PROMPT_BASE + _OPENUI_ADDENDUM,
-    "desktop": _COMMS_AGENT_PROMPT_BASE + _OPENUI_ADDENDUM,
+    "desktop": _COMMS_AGENT_PROMPT_BASE + _OPENUI_ADDENDUM + _DESKTOP_ADDENDUM,
     "whatsapp": _COMMS_AGENT_PROMPT_BASE + _WHATSAPP_ADDENDUM,
     "telegram": _COMMS_AGENT_PROMPT_BASE + _TELEGRAM_ADDENDUM,
     "discord": _COMMS_AGENT_PROMPT_BASE + _DISCORD_ADDENDUM,

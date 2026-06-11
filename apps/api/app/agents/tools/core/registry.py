@@ -10,6 +10,11 @@ from app.services.composio.composio_service import get_composio_service
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from shared.py.wide_events import log
 
+# Desktop-executed tools (screenshot, clipboard, ...) — discovery and binding
+# are gated to desktop-app conversations in retrieval.py.
+DESKTOP_TOOL_CATEGORY = "desktop"
+DESKTOP_TOOL_SPACE = "desktop"
+
 
 class DynamicToolDict(Mapping[str, BaseTool]):
     """
@@ -211,6 +216,7 @@ class ToolRegistry:
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
         from app.agents.tools import (
             context_tool,
+            desktop_tools,
             file_tools,
             finish_task_tool,
             flowchart_tool,
@@ -301,6 +307,13 @@ class ToolRegistry:
         self._add_category("creative", tools=[image_tool.generate_image])
         self._add_category("weather", tools=[weather_tool.get_weather])
         self._add_category("context", tools=[context_tool.gather_context])
+        # Desktop-executed tools live in their own space so discovery can be
+        # gated to conversations that originate from the desktop app.
+        self._add_category(
+            DESKTOP_TOOL_CATEGORY,
+            tools=[*desktop_tools.tools],
+            space=DESKTOP_TOOL_SPACE,
+        )
 
     async def register_provider_tools(
         self,

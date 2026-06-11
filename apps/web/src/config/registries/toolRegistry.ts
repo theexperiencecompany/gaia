@@ -9,6 +9,7 @@ import type {
   CalendarListFetchData,
   CalendarOptions,
 } from "@/types/features/calendarTypes";
+import type { ScreenshotData } from "@/types/features/desktopToolTypes";
 import type {
   ContactData,
   EmailComposeData,
@@ -156,6 +157,7 @@ export const TOOL_REGISTRY = {
   todo_progress: null as unknown as TodoProgressData,
   rate_limit_data: null as unknown as RateLimitData,
   artifact_data: null as unknown as ArtifactData[],
+  screenshot_data: null as unknown as ScreenshotData,
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;

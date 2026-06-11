@@ -12,6 +12,7 @@
     "./bots": "./src/bots/index.ts",
     "./chat": "./src/chat/index.ts",
     "./cli": "./src/cli/index.ts",
+    "./desktop-tools": "./src/desktop-tools/index.ts",
     "./icons": "./src/icons/index.ts",
     "./tool-utils": "./src/tool-utils/index.ts",
     "./utils": "./src/utils/index.ts",

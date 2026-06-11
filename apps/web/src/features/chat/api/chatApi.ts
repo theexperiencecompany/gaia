@@ -3,7 +3,9 @@ import {
   fetchEventSource,
 } from "@microsoft/fetch-event-source";
 
+import type { DesktopToolResult } from "@shared/desktop-tools";
 import { apiService } from "@/lib/api/service";
+import { desktopClientHeaders } from "@/lib/electron/api";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
@@ -33,6 +35,7 @@ export enum SystemPurpose {
 export enum ConversationSource {
   WEB = "web",
   MOBILE = "mobile",
+  DESKTOP = "desktop",
   TELEGRAM = "telegram",
   DISCORD = "discord",
   SLACK = "slack",
@@ -291,6 +294,7 @@ export const chatApi = {
           "Content-Type": "application/json",
           Accept: "text/event-stream",
           "x-timezone": Intl.DateTimeFormat().resolvedOptions().timeZone,
+          ...desktopClientHeaders(),
         },
         credentials: "include",
         signal: controller.signal,
@@ -376,6 +380,7 @@ export const chatApi = {
         openWhenHidden: true,
         headers: {
           Accept: "text/event-stream",
+          ...desktopClientHeaders(),
         },
         credentials: "include",
         signal,
@@ -398,5 +403,15 @@ export const chatApi = {
         },
       },
     );
+  },
+
+  /**
+   * Deliver the result of a desktop-executed tool action back to the
+   * backend, where the awaiting agent tool picks it up via Redis.
+   */
+  postDesktopToolResult: async (result: DesktopToolResult): Promise<void> => {
+    await apiService.post("/desktop/tool-result", result, {
+      silent: true,
+    });
   },
 };

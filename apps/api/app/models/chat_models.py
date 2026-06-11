@@ -87,6 +87,7 @@ class SystemPurpose(str, Enum):
 class ConversationSource(str, Enum):
     WEB = "web"
     MOBILE = "mobile"
+    DESKTOP = "desktop"
     TELEGRAM = "telegram"
     DISCORD = "discord"
     SLACK = "slack"
@@ -141,7 +142,7 @@ class SourceCategory(str, Enum):
 # delivery routing and the web conversation-list filter. Members are enums so all
 # comparisons happen on ConversationSource, never raw strings.
 _UI_SOURCES: frozenset[ConversationSource] = frozenset(
-    {ConversationSource.WEB, ConversationSource.MOBILE}
+    {ConversationSource.WEB, ConversationSource.MOBILE, ConversationSource.DESKTOP}
 )
 BOT_CONVERSATION_SOURCES: frozenset[ConversationSource] = frozenset(
     {

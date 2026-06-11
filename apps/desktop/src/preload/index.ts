@@ -14,6 +14,12 @@
  */
 
 import { electronAPI } from "@electron-toolkit/preload";
+import type {
+  DesktopPermissionPane,
+  DesktopPermissionStatus,
+  DesktopToolRequest,
+  DesktopToolResult,
+} from "@gaia/shared/desktop-tools";
 import { contextBridge, ipcRenderer } from "electron";
 
 /** Data payload sent by the main process on a successful OAuth callback. */
@@ -159,6 +165,32 @@ const api = {
     ipcRenderer.on("popup-deactivate", handler);
     return () => ipcRenderer.removeListener("popup-deactivate", handler);
   },
+
+  /**
+   * Execute a backend-requested desktop tool action (screenshot, clipboard,
+   * open app/URL, list windows) in the main process and return its result.
+   *
+   * @param request - The `desktop_tool_request` frame from the chat stream.
+   */
+  executeDesktopTool: (
+    request: DesktopToolRequest,
+  ): Promise<DesktopToolResult> =>
+    ipcRenderer.invoke("desktop-tool:execute", request),
+
+  /**
+   * Report the current microphone / screen-recording permission status.
+   */
+  getDesktopPermissions: (): Promise<DesktopPermissionStatus> =>
+    ipcRenderer.invoke("desktop-tool:permissions"),
+
+  /**
+   * Open the macOS System Settings privacy pane for a permission, since
+   * Screen Recording cannot be prompted for programmatically.
+   *
+   * @param pane - Which privacy pane to open.
+   */
+  openPermissionSettings: (pane: DesktopPermissionPane): void =>
+    ipcRenderer.send("desktop-tool:open-permission-settings", pane),
 };
 
 /*

@@ -8,7 +8,16 @@
  * @module ipc
  */
 
+import type {
+  DesktopPermissionPane,
+  DesktopToolRequest,
+} from "@gaia/shared/desktop-tools";
 import { app, ipcMain, shell } from "electron";
+import { dispatchDesktopTool } from "./tools";
+import {
+  getPermissionStatus,
+  openPermissionSettings,
+} from "./tools/permissions";
 import {
   dismissAssistantPopup,
   resizeAssistantPopup,
@@ -26,6 +35,9 @@ import { getMainWindow } from "./windows/main";
  * - `open-external`       — opens a URL in the default system browser
  * - `wake-word-detected`  — listener heard "Hey GAIA"; show the popup
  * - `popup-dismiss`       — popup renderer requested dismissal
+ * - `desktop-tool:execute` — run a backend-requested action (screenshot, ...)
+ * - `desktop-tool:permissions` — report mic/screen permission status
+ * - `desktop-tool:open-permission-settings` — deep-link a privacy pane
  *
  * @param onWindowReady - Callback invoked when the renderer sends `window-ready`.
  */
@@ -64,4 +76,18 @@ export function registerIpcHandlers(onWindowReady: () => void): void {
       resizeAssistantPopup(height);
     }
   });
+
+  ipcMain.handle(
+    "desktop-tool:execute",
+    (_event, request: DesktopToolRequest) => dispatchDesktopTool(request),
+  );
+
+  ipcMain.handle("desktop-tool:permissions", () => getPermissionStatus());
+
+  ipcMain.on(
+    "desktop-tool:open-permission-settings",
+    (_event, pane: DesktopPermissionPane) => {
+      openPermissionSettings(pane);
+    },
+  );
 }

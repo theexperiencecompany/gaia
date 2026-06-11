@@ -5,6 +5,7 @@ import {
 import { useCallback, useEffect } from "react";
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
+import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
 import type { IMessage } from "@/lib/db/chatDb";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStore } from "@/stores/chatStore";
@@ -69,6 +70,13 @@ export function useExecutorStream() {
           const parsedEvents = parseChatStreamEvent(sseEvent.data);
 
           for (const parsed of parsedEvents) {
+            if (parsed.type === "desktop_tool_request") {
+              // Queued executor runs ride this stream too — relay desktop
+              // actions exactly like the live chat stream does.
+              void relayDesktopToolRequest(parsed.request);
+              continue;
+            }
+
             if (parsed.type === "tool_data") {
               const state = useChatStore.getState();
               const msgs = state.messagesByConversation[conversation_id] ?? [];

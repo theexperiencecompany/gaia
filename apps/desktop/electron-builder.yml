@@ -66,6 +66,7 @@ mac:
         CFBundleURLSchemes:
           - gaia
     NSMicrophoneUsageDescription: 'GAIA listens for the "Hey GAIA" wake word so you can talk to your assistant hands-free.'
+    NSAppleEventsUsageDescription: "GAIA opens apps and lists your windows when you ask it to use your computer."
 
 dmg:
   # Bands-gradient brand wallpaper; background@2x.png alongside it is

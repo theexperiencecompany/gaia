@@ -74,6 +74,12 @@ STATE_KEY_PREFIX = "oauth_state"
 CONNECT_LINK_USED_PREFIX = "connect_link_used"
 PLATFORM_LINK_TOKEN_PREFIX = "platform_link_token"  # nosec B105
 PLATFORM_LINK_TOKEN_TTL = TEN_MINUTES_TTL
+# Desktop tool bridge — request ownership keys + per-request result channels.
+# A request key expiring means the desktop never answered; the result endpoint
+# rejects late POSTs whose key is gone.
+DESKTOP_REQUEST_PREFIX = "desktop:request:"
+DESKTOP_RESULT_CHANNEL_PREFIX = "desktop:result:"
+DESKTOP_REQUEST_TTL = 2 * 60
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 EXECUTOR_QUEUE_PREFIX = "executor:queue:"
