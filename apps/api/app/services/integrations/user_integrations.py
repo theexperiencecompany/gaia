@@ -63,6 +63,21 @@ async def get_user_connected_integrations(user_id: str) -> list[dict[str, Any]]:
     return results
 
 
+async def get_connected_integration_ids(user_id: str) -> set[str]:
+    """Return the integration ids the user has actually *connected*.
+
+    Single source of the ``status == "connected"`` filter shared by the
+    workspace materializers (chat path, registration, integration sync, bulk
+    sync) so they can never disagree on what "connected" means.
+    """
+    docs = await get_user_connected_integrations(user_id)
+    return {
+        str(d["integration_id"])
+        for d in docs
+        if d.get("status") == "connected" and d.get("integration_id")
+    }
+
+
 @CacheInvalidator(key_patterns=["tools:user:{user_id}:*", "tool_namespaces:{user_id}"])
 async def add_user_integration(
     user_id: str,
