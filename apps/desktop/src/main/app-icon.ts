@@ -8,8 +8,9 @@
  * @module app-icon
  */
 
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { DesktopAppIconOption } from "@gaia/shared/desktop-tools";
 import { app, nativeImage } from "electron";
 import {
@@ -67,25 +68,60 @@ export function listAppIcons(): DesktopAppIconOption[] {
   return options;
 }
 
-/** Apply an icon to the dock and persist the choice. */
+/** Apply an icon to the dock + Finder and persist the choice. */
 export function setAppIcon(id: string): boolean {
   const path = iconFilePath(id);
   if (!path) return false;
   applyDockIcon(path);
+  applyFinderIcon(id === DEFAULT_APP_ICON ? null : path);
   updateDesktopSettings({ appIcon: id });
   return true;
 }
 
-/** Re-apply the persisted icon at startup (dock resets between runs). */
+/**
+ * Re-apply the persisted icon at startup — the dock resets between runs
+ * and reinstalls replace the bundle, wiping the Finder icon xattr.
+ */
 export function applyPersistedAppIcon(): void {
   const { appIcon } = getDesktopSettings();
   if (appIcon === DEFAULT_APP_ICON) return;
   const path = iconFilePath(appIcon);
-  if (path) applyDockIcon(path);
+  if (path) {
+    applyDockIcon(path);
+    applyFinderIcon(path);
+  }
 }
 
 function applyDockIcon(path: string): void {
   if (process.platform !== "darwin" || !app.dock) return;
   const image = nativeImage.createFromPath(path);
   if (!image.isEmpty()) app.dock.setIcon(image);
+}
+
+/**
+ * NSWorkspace.setIcon via JXA: stores the icon as a Finder xattr on the
+ * bundle so the .app in /Applications shows it too. The xattr lives
+ * outside the signed contents, so the code signature stays valid —
+ * never swap Contents/Resources/icon.icns instead, that breaks the seal.
+ * Passing `null` removes the custom icon, restoring the bundled one.
+ */
+const FINDER_ICON_JXA = `
+ObjC.import("AppKit");
+function run(argv) {
+  const appPath = argv[0];
+  const img = argv.length > 1
+    ? $.NSImage.alloc.initWithContentsOfFile(argv[1])
+    : $();
+  return $.NSWorkspace.sharedWorkspace.setIconForFileOptions(img, appPath, 0);
+}`;
+
+function applyFinderIcon(iconPath: string | null): void {
+  if (process.platform !== "darwin" || !app.isPackaged) return;
+  const bundlePath = resolve(app.getPath("exe"), "../../..");
+  if (!bundlePath.endsWith(".app")) return;
+  const args = ["-l", "JavaScript", "-e", FINDER_ICON_JXA, bundlePath];
+  if (iconPath) args.push(iconPath);
+  execFile("osascript", args, (error) => {
+    if (error) console.error("[AppIcon] Finder icon update failed:", error);
+  });
 }
