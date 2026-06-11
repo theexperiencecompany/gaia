@@ -94,11 +94,12 @@ export function AddMemoryModal({
           />
         </ModalBody>
         <ModalFooter>
-          <Button variant="light" onPress={onClose}>
+          <Button variant="light" className="rounded-xl" onPress={onClose}>
             Cancel
           </Button>
           <Button
             color="primary"
+            className="rounded-xl"
             onPress={handleSave}
             isLoading={isPending}
             isDisabled={!content.trim() || content.length > MAX_MEMORY_LENGTH}

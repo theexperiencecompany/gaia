@@ -14,6 +14,7 @@ import type {
   MemoryDocType,
   MemoryDocument,
 } from "@/features/memory/api/types";
+import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
 import { CORE_DOCUMENTS } from "@/features/memory/constants";
 import { toast } from "@/lib/toast";
 
@@ -137,6 +138,7 @@ export function CoreDocuments() {
                 <Button
                   size="sm"
                   variant="light"
+                  className="rounded-xl"
                   onPress={() => setDraft(null)}
                 >
                   Cancel
@@ -144,6 +146,7 @@ export function CoreDocuments() {
                 <Button
                   size="sm"
                   color="primary"
+                  className="rounded-xl"
                   onPress={handleSave}
                   isLoading={isSaving}
                 >
@@ -154,13 +157,11 @@ export function CoreDocuments() {
           ) : document ? (
             <DocumentMarkdown content={document.content} />
           ) : (
-            <div className="flex h-40 flex-col items-center justify-center gap-1 text-zinc-500">
-              <FileEmpty02Icon className="mb-2 size-8 opacity-40" />
-              <p className="text-sm">GAIA hasn't written this document yet</p>
-              <p className="text-xs">
-                It fills in automatically as GAIA learns about you
-              </p>
-            </div>
+            <MemoryEmptyState
+              icon={FileEmpty02Icon}
+              title="GAIA hasn't written this document yet"
+              description="It fills in automatically as GAIA learns about you"
+            />
           )}
         </div>
       </div>

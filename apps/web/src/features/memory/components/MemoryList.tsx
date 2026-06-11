@@ -19,6 +19,7 @@ import type {
 } from "@/features/memory/api/types";
 import { AddMemoryModal } from "@/features/memory/components/AddMemoryModal";
 import { EditMemoryModal } from "@/features/memory/components/EditMemoryModal";
+import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
 import { MemoryRow } from "@/features/memory/components/MemoryRow";
 import { MEMORY_PAGE_SIZE } from "@/features/memory/constants";
 import { useMemoryActions } from "@/features/memory/hooks/useMemoryActions";
@@ -146,6 +147,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
         <Input
           size="sm"
           variant="flat"
+          radius="lg"
           placeholder="Search memories"
           value={query}
           onValueChange={setQuery}
@@ -184,17 +186,17 @@ export function MemoryList({ onChanged }: MemoryListProps) {
           <Skeleton className="h-14 w-full rounded-2xl" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex h-48 flex-col items-center justify-center gap-1 text-zinc-500">
-          <AiBrain01Icon className="mb-2 size-8 opacity-40" />
-          <p className="text-sm">
-            {isSearching ? "No memories match your search" : "No memories yet"}
-          </p>
-          {!isSearching && (
-            <p className="text-xs">
-              Start a conversation and GAIA will remember the important details
-            </p>
-          )}
-        </div>
+        <MemoryEmptyState
+          icon={AiBrain01Icon}
+          title={
+            isSearching ? "No memories match your search" : "No memories yet"
+          }
+          description={
+            isSearching
+              ? undefined
+              : "Start a conversation and GAIA will remember the important details"
+          }
+        />
       ) : (
         <div className="overflow-hidden rounded-2xl bg-zinc-900/60 py-1">
           {filtered.map((memory) => (
@@ -219,6 +221,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
             isIconOnly
             size="sm"
             variant="flat"
+            className="rounded-xl"
             aria-label="Previous page"
             isDisabled={page <= 1}
             onPress={() => setPage(page - 1)}
@@ -229,6 +232,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
             isIconOnly
             size="sm"
             variant="flat"
+            className="rounded-xl"
             aria-label="Next page"
             isDisabled={page >= totalPages}
             onPress={() => setPage(page + 1)}

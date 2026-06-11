@@ -7,6 +7,7 @@ import { addDays, format, isToday, parseISO, subDays } from "date-fns";
 import { useEffect, useState } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import type { MemoryEpisode } from "@/features/memory/api/types";
+import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
 import { JOURNAL_RANGE_DAYS } from "@/features/memory/constants";
 
 const ISO_DATE_FORMAT = "yyyy-MM-dd";
@@ -58,6 +59,7 @@ export function MemoryTimeline() {
             isIconOnly
             size="sm"
             variant="flat"
+            className="rounded-xl"
             aria-label="Previous two weeks"
             onPress={() => setRangeEnd(subDays(rangeEnd, JOURNAL_RANGE_DAYS))}
           >
@@ -67,6 +69,7 @@ export function MemoryTimeline() {
             isIconOnly
             size="sm"
             variant="flat"
+            className="rounded-xl"
             aria-label="Next two weeks"
             isDisabled={atToday}
             onPress={() => {
@@ -85,14 +88,11 @@ export function MemoryTimeline() {
           <Skeleton className="h-28 w-full rounded-2xl" />
         </div>
       ) : episodes.length === 0 ? (
-        <div className="flex h-48 flex-col items-center justify-center gap-1 text-zinc-500">
-          <BookOpen01Icon className="mb-2 size-8 opacity-40" />
-          <p className="text-sm">No journal entries in this range</p>
-          <p className="text-xs">
-            GAIA writes a short journal line for each conversation — days fill
-            in as you talk
-          </p>
-        </div>
+        <MemoryEmptyState
+          icon={BookOpen01Icon}
+          title="No journal entries in this range"
+          description="GAIA writes a short journal line for each conversation — days fill in as you talk"
+        />
       ) : (
         <div className="space-y-3">
           {episodes.map((episode) => (
