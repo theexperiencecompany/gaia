@@ -47,6 +47,7 @@ from app.models.chat_models import ConversationSource, MessageModel, UpdateMessa
 from app.models.message_models import ReplyToMessageData
 from app.services.conversation_service import update_messages
 from app.services.platform_message_service import deliver_message_to_platform, is_bot_platform
+from app.utils.agent_utils import format_sse_data
 from app.utils.stream_utils import (
     absorb_collector_event,
     apply_outputs_to_tool_data,
@@ -56,6 +57,17 @@ from shared.py.wide_events import log
 
 # Prevent GC of background tasks spawned from the queue
 _queued_executor_tasks: set[asyncio.Task] = set()
+
+VOICE_TTS_KEY = "voice_tts"
+EXECUTOR_RESULT_MARKER = "[EXECUTOR_RESULT]"
+EXECUTOR_ERROR_MARKER = "[EXECUTOR_ERROR]"
+
+
+def _strip_executor_markers(text: str) -> str:
+    """Remove any internal executor markers the comms model echoed into its reply."""
+    for marker in (EXECUTOR_RESULT_MARKER, EXECUTOR_ERROR_MARKER):
+        text = text.replace(f"{marker}\n", "").replace(marker, "")
+    return text.strip()
 
 
 async def _invoke_comms_graph(
@@ -73,7 +85,7 @@ async def _invoke_comms_graph(
 
     Returns the comms-generated text, or an empty string on failure.
     """
-    prefix = "[EXECUTOR_ERROR]" if msg_type == "error" else "[EXECUTOR_RESULT]"
+    prefix = EXECUTOR_ERROR_MARKER if msg_type == "error" else EXECUTOR_RESULT_MARKER
     try:
         comms_graph = await GraphManager.get_graph("comms_agent")
         if not comms_graph:
@@ -94,7 +106,7 @@ async def _invoke_comms_graph(
             ],
         }
         notification_text, _ = await execute_graph_silent(comms_graph, initial_state, config)
-        return notification_text
+        return _strip_executor_markers(notification_text)
     except Exception as e:
         log.error("_invoke_comms_graph: failed", error=str(e))
         return ""
@@ -186,7 +198,7 @@ async def _deliver_bg_notification(
     user_message_id: str | None = None,
     tool_data: list[dict[str, Any]] | None = None,
     is_queued: bool = False,
-) -> None:
+) -> str | None:
     """Run comms once with the executor result, then save + deliver the message.
 
     Comms is invoked silently — no SSE stream. Its generated text becomes the
@@ -253,7 +265,7 @@ async def _deliver_bg_notification(
         )
     except Exception as e:
         log.error("_deliver_bg_notification: failed to save message", error=str(e))
-        return
+        return None
 
     # Deliver over exactly one transport, decided by the conversation's source.
     # Bot conversations go to their platform's API; web/mobile/system go to the
@@ -304,6 +316,7 @@ async def _deliver_bg_notification(
         transport=transport,
         delivered=delivered,
     )
+    return notification_text
 
 
 def _user_from_configurable(configurable: dict[str, Any]) -> dict:
@@ -337,15 +350,18 @@ async def _dispatch_executor_result(
     user_message_id: str | None,
     stream_id: str,
     is_queued: bool,
-) -> None:
+) -> str | None:
     """Hand the executor's terminal text to comms and surface the message to the user.
 
     Live tasks have tool_data attached to the comms ack message by chat_service.
     Queued tasks have no live SSE consumer, so we attach tool_data here instead.
+
+    Returns the comms-narrated text that was shown to the user, so a voice-mode
+    stream can also speak it.
     """
     queued_tool_data = _collect_queued_tool_events(stream_id) if is_queued else None
     try:
-        await _deliver_bg_notification(
+        return await _deliver_bg_notification(
             result_text=result_text,
             msg_type=result_type,
             conversation_id=conversation_id,
@@ -357,6 +373,7 @@ async def _dispatch_executor_result(
         )
     except Exception as e:
         log.error("Background notification delivery failed", error=str(e))
+        return None
 
 
 async def _finalize_executor_run(
@@ -373,11 +390,9 @@ async def _finalize_executor_run(
     was_cancelled = bool(stream_id) and await StreamManager.is_cancelled(stream_id)
     is_queued = stream_id.startswith("queued_")
 
-    # Signal SSE consumer that tool events are done so it can drain the collector
-    # into the comms ack and publish [DONE]. Comms re-narration runs in parallel.
+    # A registered done-event means a live (voice-mode) stream is holding [DONE]
+    # open until the executor's narrated answer is ready, so it can speak it.
     done_event = get_executor_done_event(stream_id)
-    if done_event is not None:
-        done_event.set()
 
     if was_cancelled:
         log.info(
@@ -386,7 +401,7 @@ async def _finalize_executor_run(
             stream_id=stream_id,
         )
     elif result_text:
-        await _dispatch_executor_result(
+        notification_text = await _dispatch_executor_result(
             result_text=result_text,
             result_type=result_type,
             conversation_id=conversation_id,
@@ -396,6 +411,19 @@ async def _finalize_executor_run(
             stream_id=stream_id,
             is_queued=is_queued,
         )
+        # Voice mode: push the narrated answer through the SSE channel so the
+        # voice agent speaks it. The frontend still renders it from the WebSocket
+        # push delivered above, so this is TTS-only (never forwarded to the UI).
+        if done_event is not None and notification_text:
+            await StreamManager.publish_chunk(
+                stream_id,
+                format_sse_data({VOICE_TTS_KEY: notification_text}),
+            )
+
+    # Signal the waiting voice-mode stream that the executor (and its narration)
+    # is done, so it can publish [DONE] and end the turn.
+    if done_event is not None:
+        done_event.set()
 
     if is_queued:
         _cleanup_queued_stream_state(stream_id)

@@ -30,40 +30,6 @@ def sanitize_for_tts(piece: str) -> str:
     return WHITESPACE_RE.sub(" ", piece).strip()
 
 
-def split_response_for_ui_and_tts(piece: str) -> tuple[str, str]:
-    """Split a backend `response` fragment into (ui_only, tts_text).
-
-    `ui_only` is the concatenation, in source order, of every substring that
-    the TTS sanitiser would strip from the spoken stream: OpenUI fences,
-    directive prefixes, HTML-style tags, and sentinel tokens. These are the
-    fragments the frontend needs immediately so OpenUI cards and structured
-    markup render in the bot bubble without waiting on TTS alignment.
-
-    Overlapping matches are deduplicated by keeping the earliest start and
-    the longest reach (so an `:::openui ... :::` fence subsumes the inner
-    `:::openui` directive-prefix match).
-
-    `tts_text` is the spoken slice — what `sanitize_for_tts` produces.
-    """
-    if not piece:
-        return "", ""
-    spans: list[tuple[int, int]] = []
-    for pattern in (OPENUI_FENCE_RE, DIRECTIVE_PREFIX_RE, TAG_RE, SENTINEL_RE):
-        for m in pattern.finditer(piece):
-            spans.append((m.start(), m.end()))
-    spans.sort()
-    merged: list[tuple[int, int]] = []
-    for start, end in spans:
-        if merged and start < merged[-1][1]:
-            prev_start, prev_end = merged[-1]
-            merged[-1] = (prev_start, max(prev_end, end))
-        else:
-            merged.append((start, end))
-    ui_only = "".join(piece[s:e] for s, e in merged)
-    tts_text = sanitize_for_tts(piece)
-    return ui_only, tts_text
-
-
 def has_open_tag_at_tail(s: str) -> bool:
     """True when the string ends inside an open tag (last `<` is later than last `>`)."""
     last_open = s.rfind("<")
@@ -144,7 +110,6 @@ def ms_since(t0: float) -> float:
 
 __all__ = [
     "sanitize_for_tts",
-    "split_response_for_ui_and_tts",
     "has_open_tag_at_tail",
     "has_open_openui_fence_at_tail",
     "extract_meta_data",

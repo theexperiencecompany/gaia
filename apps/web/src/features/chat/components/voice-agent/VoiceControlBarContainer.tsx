@@ -9,7 +9,7 @@ import {
 } from "@livekit/components-react";
 import type { TextStreamReader } from "livekit-client";
 import { Room } from "livekit-client";
-import { useParams, usePathname } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AgentControlBar } from "@/features/chat/components/voice-agent/agent-control-bar";
@@ -26,7 +26,6 @@ import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { db, type IConversation } from "@/lib/db/chatDb";
 import { toast } from "@/lib/toast";
 import { useChatStore } from "@/stores/chatStore";
-import { useLoadingStore } from "@/stores/loadingStore";
 import {
   useDiscoveredConversationId,
   useVoiceModeActions,
@@ -107,11 +106,9 @@ function useRoomConversationStreams({
  */
 function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
   const { id: convoIdParam } = useParams<{ id: string }>();
-  const pathname = usePathname();
   const { state: agentState, audioTrack: agentAudioTrack } =
     useVoiceAssistant();
   const room = useRoomContext();
-  const setLoading = useLoadingStore((s) => s.setLoading);
 
   const storeDiscoveredId = useDiscoveredConversationId();
   const { setDiscoveredConversationId } = useVoiceModeActions();
@@ -122,44 +119,46 @@ function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
   const discoveredConversationId = storeDiscoveredId ?? convoIdParam ?? null;
   const conversationId = discoveredConversationId;
 
-  useVoiceMessages(conversationId);
+  // useVoiceMessages owns the thinking-indicator lifecycle: it's the only place
+  // that knows when a turn's first token arrives and when a new user turn
+  // starts. Driving it off agentState alone surfaced the indicator AFTER the
+  // reply, because the backend re-enters "thinking" while it generates
+  // follow-up actions (stream open, no TTS).
+  const { sendUserTurn } = useVoiceMessages(conversationId, agentState);
 
   useRoomConversationStreams({
     onConversationId: setDiscoveredConversationId,
     onConversationDescription: setConversationDescription,
   });
 
-  // Update the URL to /c/:id once a new conversation id is discovered, WITHOUT
-  // triggering a Next.js navigation. `router.replace` would remount the
-  // ChatPage (because /c and /c/:id are distinct App Router segments), which
-  // tears down the LiveKit Room mid-session and loses the first user
-  // transcription + bot response + TTS. `window.history.replaceState` updates
-  // the URL in place; the discoveredConversationId from voiceModeStore is the
-  // source of truth for the active conversation during voice mode.
+  // Mount /c/:id once the backend conversation id is known, WITHOUT triggering
+  // a Next.js navigation. `router.replace` would remount ChatPage (/c and
+  // /c/:id are distinct App Router segments), tearing down the LiveKit Room
+  // mid-session. `window.history.replaceState` updates the URL in place.
+  //
+  // Read the live `window.location.pathname` (NOT usePathname/useParams): Next
+  // patches history so usePathname updates after replaceState while useParams
+  // does not, which made the old effect re-fire and append a second segment
+  // (/c/id1/c/id2). We compare the real last URL segment and strip a trailing
+  // `/c` OR `/c/<id>` to recover the locale prefix, so the id is mounted once.
+  const lastAppliedConvoIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!discoveredConversationId) return;
-    if (discoveredConversationId === convoIdParam) return;
-    if (convoIdParam) return;
-    if (typeof window === "undefined" || !pathname) return;
-    // Preserve the [locale] prefix already present in `pathname` (e.g. /es/c).
-    const localePrefix = pathname.replace(/\/c$/, "");
+    if (!discoveredConversationId || typeof window === "undefined") return;
+    if (lastAppliedConvoIdRef.current === discoveredConversationId) return;
+
+    const path = window.location.pathname;
+    const segments = path.split("/").filter(Boolean);
+    const lastSegment = segments[segments.length - 1];
+    if (lastSegment === discoveredConversationId) {
+      lastAppliedConvoIdRef.current = discoveredConversationId;
+      return;
+    }
+
+    const localePrefix = path.replace(/\/c(\/[^/]+)?$/, "");
     const newUrl = `${localePrefix}/c/${discoveredConversationId}`;
     window.history.replaceState(window.history.state, "", newUrl);
-  }, [discoveredConversationId, convoIdParam, pathname]);
-
-  // Chat loadingStore fires ONLY for `thinking`. `connecting` is covered by
-  // the dedicated <VoiceConnectionStatus/> chip in VoiceControlBarSlot; if
-  // we pumped the chat store there too, the text-mode loading copy
-  // ("Borrowing someone else's notes") would surface while the room is
-  // still negotiating.
-  const lastIsLoadingRef = useRef(false);
-  useEffect(() => {
-    const isThinking = agentState === "thinking";
-    if (isThinking === lastIsLoadingRef.current) return;
-    lastIsLoadingRef.current = isThinking;
-    setLoading(isThinking);
-  }, [agentState, setLoading]);
-  useEffect(() => () => setLoading(false), [setLoading]);
+    lastAppliedConvoIdRef.current = discoveredConversationId;
+  }, [discoveredConversationId]);
 
   const remoteTrack = useMemo(
     () => agentAudioTrack?.publication?.track?.mediaStreamTrack ?? null,
@@ -265,8 +264,9 @@ function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
       agentState,
       conversationId,
       isConnecting,
+      sendUserTurn,
     }),
-    [voice.spectrum, agentState, conversationId, isConnecting],
+    [voice.spectrum, agentState, conversationId, isConnecting, sendUserTurn],
   );
 
   return (

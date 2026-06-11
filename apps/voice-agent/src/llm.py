@@ -22,6 +22,7 @@ from src.constants import (
     TTS_HARD_FLUSH_CHARS,
     TTS_MIN_EMIT_CHARS,
     TTS_MIN_SENTENCE_CHARS,
+    VOICE_TTS_KEY,
 )
 from src.utils import (
     build_messages_from_ctx,
@@ -128,6 +129,17 @@ class CustomLLM(LLM):
                 error=str(e),
             )
 
+    async def _forward_response_text_to_frontend(self, text: str) -> None:
+        """Forward spoken response text to the frontend in flush-sized chunks.
+
+        Sent at the same TTS-flush cadence as the audio (not per backend token)
+        so the chat bubble fills in sync with the speech. The text is the raw
+        buffered slice — OpenUI fences and markdown are preserved for rendering;
+        only the TTS copy is sanitised.
+        """
+        if text:
+            await self._forward_stream_event_to_frontend(json.dumps({RESPONSE_KEY: text}))
+
     # The base class declares chat() -> LLMStream, but the LiveKit pipeline calls it as
     # `async with llm.chat(...) as stream: async for chunk in stream:`, which is exactly
     # what @asynccontextmanager + yield gen() provides
@@ -173,6 +185,9 @@ class CustomLLM(LLM):
             payload: dict[str, Any] = {
                 "message": user_message,
                 "messages": messages,
+                # Hold the stream open for a delegated executor's narrated answer
+                # so we can speak it (it arrives as a `voice_tts` frame below).
+                "voice_mode": True,
             }
             if self.conversation_id:
                 payload["conversation_id"] = self.conversation_id
@@ -224,16 +239,18 @@ class CustomLLM(LLM):
                                 total_tokens=total_tokens,
                                 elapsed_ms=ms_since(turn_start),
                             )
-                            # Forward [DONE] so the frontend knows the stream ended
-                            await self._forward_stream_event_to_frontend(data)
                             if text_buffer:
-                                final = sanitize_for_tts("".join(text_buffer))
+                                tail = "".join(text_buffer)
                                 text_buffer.clear()
+                                await self._forward_response_text_to_frontend(tail)
+                                final = sanitize_for_tts(tail)
                                 if final:
                                     yield ChatChunk(
                                         id="custom",
                                         delta=ChoiceDelta(content=final),
                                     )
+                            # Forward [DONE] so the frontend knows the stream ended
+                            await self._forward_stream_event_to_frontend(data)
                             break
 
                         try:
@@ -252,27 +269,30 @@ class CustomLLM(LLM):
 
                         event_keys = set(event_payload.keys())
                         is_plumbing = bool(event_keys & PLUMBING_EVENT_KEYS)
-                        is_response_only = event_keys == {RESPONSE_KEY}
 
-                        # Forward all events to the frontend as-is. Response-only
-                        # events carry the full unsanitized text so the chat bubble
-                        # fills immediately; TTS separately gets a sanitized copy.
-                        await self._forward_stream_event_to_frontend(data)
+                        # Plumbing/UI events (tool_data, follow_up_actions,
+                        # conversation_*, init chunk, main_response_complete) reach
+                        # the frontend immediately so cards render without waiting
+                        # on speech. Response text is forwarded at TTS-flush cadence
+                        # below so the bubble fills in sync with the spoken audio.
+                        if is_plumbing:
+                            await self._forward_stream_event_to_frontend(data)
 
                         logger.debug(
-                            f"[{now_ts()}] ~ BACKEND EVENT | keys={list(event_keys)} plumbing={is_plumbing} response_only={is_response_only}",
+                            f"[{now_ts()}] ~ BACKEND EVENT | keys={list(event_keys)} plumbing={is_plumbing}",
                             phase="backend_event",
                             event_keys=list(event_keys),
                             event_data=data[:300],
                             is_plumbing=is_plumbing,
-                            is_response_only=is_response_only,
                             elapsed_ms=ms_since(turn_start),
                         )
 
                         if event_payload.get(MAIN_RESPONSE_COMPLETE_KEY) is True:
                             if tts_enabled and text_buffer:
-                                final = sanitize_for_tts("".join(text_buffer))
+                                tail = "".join(text_buffer)
                                 text_buffer.clear()
+                                await self._forward_response_text_to_frontend(tail)
+                                final = sanitize_for_tts(tail)
                                 if final:
                                     yield ChatChunk(
                                         id="custom",
@@ -296,6 +316,25 @@ class CustomLLM(LLM):
                             await self.set_conversation_description(conv_desc)
                             continue
 
+                        # Delegated executor's narrated answer, delivered after the
+                        # main response (so after main_response_complete disabled
+                        # TTS). Speak it regardless of tts_enabled; do NOT forward to
+                        # the frontend — it renders this from its WebSocket push.
+                        voice_tts = event_payload.get(VOICE_TTS_KEY)
+                        if isinstance(voice_tts, str) and voice_tts:
+                            spoken = sanitize_for_tts(voice_tts)
+                            if spoken:
+                                logger.debug(
+                                    f"[{now_ts()}] 🔊 TTS EXECUTOR ANSWER ({len(spoken)} chars)",
+                                    phase="tts_executor_answer",
+                                    char_count=len(spoken),
+                                )
+                                yield ChatChunk(
+                                    id="custom",
+                                    delta=ChoiceDelta(content=spoken),
+                                )
+                            continue
+
                         # Plumbing events never contribute to TTS — drop here even
                         # if they happen to carry a stray response field.
                         if is_plumbing:
@@ -315,8 +354,13 @@ class CustomLLM(LLM):
                         text_buffer.append(piece)
 
                         total_tokens += 1
+                        # Escape braces in the preview: loguru re-parses the
+                        # message as a brace-format template (kwargs are present),
+                        # so a JSON-ish token like {"label": ...} (e.g. an OpenUI
+                        # fragment) would raise KeyError and kill the turn.
+                        preview = piece[:60].replace("{", "{{").replace("}", "}}")
                         logger.debug(
-                            f"[{now_ts()}] ≈ TOKEN #{total_tokens} | raw='{piece[:60]}'",
+                            f"[{now_ts()}] ≈ TOKEN #{total_tokens} | raw='{preview}'",
                             phase="token",
                             token_index=total_tokens,
                             token=piece,
@@ -347,6 +391,9 @@ class CustomLLM(LLM):
                             should_flush = False
 
                         if should_flush:
+                            # Send the full display chunk to the frontend (markdown
+                            # + OpenUI preserved); TTS gets a sanitised copy.
+                            await self._forward_response_text_to_frontend(joined)
                             out = sanitize_for_tts(joined)
                             text_buffer.clear()
                             deferred_flushes = 0
@@ -363,6 +410,8 @@ class CustomLLM(LLM):
 
                     if tts_enabled and text_buffer:
                         raw_tail = "".join(text_buffer)
+                        text_buffer.clear()
+                        await self._forward_response_text_to_frontend(raw_tail)
                         tail = sanitize_for_tts(raw_tail)
                         if len(tail) >= TTS_FINAL_MIN_CHARS:
                             logger.debug(

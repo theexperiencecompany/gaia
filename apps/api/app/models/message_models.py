@@ -61,6 +61,11 @@ class MessageRequestWithHistory(BaseModel):
     selectedCalendarEvent: SelectedCalendarEventData | None = None
     replyToMessage: ReplyToMessageData | None = None
     is_onboarding_demo: bool = False
+    # Voice sessions set this so the stream holds open until a delegated
+    # executor delivers its narrated answer (pushed as a `voice_tts` SSE frame
+    # for the voice agent to speak). Text clients leave it False — the executor
+    # result reaches them out-of-band over the WebSocket as today.
+    voice_mode: bool = False
 
 
 class MessageRequest(BaseModel):

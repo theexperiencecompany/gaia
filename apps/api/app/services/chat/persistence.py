@@ -102,11 +102,17 @@ async def save_conversation_async(
     metadata: dict[str, Any],
     user_message_id: str,
     bot_message_id: str,
+    bot_timestamp: datetime | None = None,
 ) -> None:
     """Persist the finished turn to Mongo and bill token usage.
 
     Bakes absolute artifact URLs into the saved bot message so the chat renders
     correctly even when the user's browser holds a stale frontend chunk.
+
+    ``bot_timestamp`` lets the caller stamp the turn at comms-completion time
+    rather than now() — needed in voice mode, where finalize is deferred until a
+    delegated executor finishes, so the user/comms messages must still sort ahead
+    of the executor's answer (saved mid-wait).
     """
     user_id = user.get("user_id")
 
@@ -116,7 +122,7 @@ async def save_conversation_async(
         except Exception as e:  # noqa: BLE001 — billing failure must not block save
             log.error(f"Failed to process token usage: {e}")
 
-    bot_timestamp = datetime.now(UTC)
+    bot_timestamp = bot_timestamp or datetime.now(UTC)
     user_timestamp = bot_timestamp - timedelta(milliseconds=100)
 
     user_content = (

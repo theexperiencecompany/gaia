@@ -153,7 +153,7 @@ export function AgentControlBar({
               disabled={isDisconnecting}
               className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10 shadow-md transition-colors hover:bg-red-500/15 active:bg-red-500/20"
             >
-              <PhoneOffIcon className="!h-6 !w-6 text-red-400" />
+              <PhoneOffIcon className="h-6! w-6! text-red-400" /> 
             </Button>
           </div>
         )}

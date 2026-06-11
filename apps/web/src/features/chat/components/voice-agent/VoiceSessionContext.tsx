@@ -15,6 +15,12 @@ export interface VoiceSessionValue {
   conversationId: string | null;
   /** True while the room is still negotiating (connecting / not yet connected). */
   isConnecting: boolean;
+  /**
+   * Send a typed/clicked message (e.g. a follow-up suggestion) as a new voice
+   * turn: renders the user bubble, closes the active bot turn, and publishes the
+   * text to the agent over LiveKit.
+   */
+  sendUserTurn: (text: string) => Promise<void>;
 }
 
 const VoiceSessionContext = createContext<VoiceSessionValue | null>(null);

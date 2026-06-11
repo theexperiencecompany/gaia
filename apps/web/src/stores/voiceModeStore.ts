@@ -19,18 +19,19 @@ export const useVoiceModeStore = create<VoiceModeState>()(
       discoveredConversationId: null,
 
       enterVoiceMode: (existingConversationId?: string) => {
-        const newUUID =
+        // voiceSessionId is a per-session UI key (forces a fresh gradient
+        // canvas) — NOT the conversation id. The conversation id is owned by
+        // the backend: for a new chat it arrives over the LiveKit
+        // `conversation-id` topic; for an existing chat it's the URL param.
+        const newSessionId =
           typeof crypto !== "undefined" && "randomUUID" in crypto
             ? crypto.randomUUID()
             : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
         set(
           {
             voiceModeActive: true,
-            voiceSessionId: newUUID,
-            // Seed with an existing conversation ID so the first turn is captured
-            // under the correct ID. For new conversations, generate a provisional
-            // UUID so the token API can pass it to the agent before any speech.
-            discoveredConversationId: existingConversationId ?? newUUID,
+            voiceSessionId: newSessionId,
+            discoveredConversationId: existingConversationId ?? null,
           },
           false,
           "enterVoiceMode",

@@ -27,7 +27,7 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 from shared.py.logging import configure_file_logging, get_contextual_logger
 from shared.py.secrets import inject_infisical_secrets
 from src.config import bootstrap_settings
-from src.constants import VOICE_SYSTEM_PROMPT
+from src.constants import MIN_ENDPOINTING_DELAY_S, VOICE_SYSTEM_PROMPT
 from src.llm import CustomLLM
 from src.utils import extract_meta_data, ms_since, now_ts
 
@@ -94,6 +94,7 @@ async def entrypoint(ctx: JobContext) -> None:
         ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
+        min_endpointing_delay=MIN_ENDPOINTING_DELAY_S,
         preemptive_generation=True,
         use_tts_aligned_transcript=True,
     )
@@ -178,9 +179,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     ctx.add_shutdown_callback(log_usage)
 
-    async def _apply_participant_credentials(
-        md: str | None, origin: str, who: str
-    ) -> None:
+    async def _apply_participant_credentials(md: str | None, origin: str, who: str) -> None:
         token, conv_id = extract_meta_data(md)
         if token:
             custom_llm.set_agent_token(token)
@@ -231,13 +230,9 @@ async def entrypoint(ctx: JobContext) -> None:
         )
 
     @ctx.room.on("participant_metadata_changed")
-    def _on_participant_metadata_changed(
-        p: rtc.Participant, old_md: str, new_md: str
-    ) -> None:
+    def _on_participant_metadata_changed(p: rtc.Participant, old_md: str, new_md: str) -> None:
         _make_background_task(
-            _apply_participant_credentials(
-                new_md, "participant_metadata_changed", p.identity
-            )
+            _apply_participant_credentials(new_md, "participant_metadata_changed", p.identity)
         )
 
     # Connect before processing existing participants to avoid missing events
@@ -269,6 +264,7 @@ async def entrypoint(ctx: JobContext) -> None:
             noise_cancellation=noise_cancellation.BVC(),
         ),
     )
+
 
 def start_worker() -> None:
     """Start the voice agent worker."""

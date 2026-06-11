@@ -8,6 +8,11 @@ FRONTEND_STREAM_TOPIC = "backend-stream-event"
 RESPONSE_KEY = "response"
 RESPONSE_UI_KEY = "response_ui"
 MAIN_RESPONSE_COMPLETE_KEY = "main_response_complete"
+# Backend sends this (voice-mode streams only) carrying a delegated executor's
+# narrated answer for the agent to SPEAK. The frontend renders the same answer
+# from its WebSocket push, so this is never forwarded to the UI — TTS only.
+# Must match VOICE_TTS_KEY in apps/api/app/agents/core/background/executor_runner.py.
+VOICE_TTS_KEY = "voice_tts"
 
 # TTS flush thresholds (chars)
 TTS_MIN_SENTENCE_CHARS = 40
@@ -18,9 +23,17 @@ TTS_FINAL_MIN_CHARS = 1
 # Cap on how many times a flush is deferred while a tag straddles chunk boundaries
 OPEN_TAG_DEFER_CAP = 4
 
+# Minimum silence (s) after the user stops speaking before their turn is declared
+# complete. Raised above LiveKit's 0.5s default so a brief mid-thought pause does
+# not cut the user off; the MultilingualModel still extends up to its max delay
+# when it predicts the user will continue.
+MIN_ENDPOINTING_DELAY_S = 0.8
+
 TAG_RE = re.compile(r"</?[A-Za-z][A-Za-z0-9_-]*(?:\s+[^>]*)?/?>")
-# Word boundaries prevent mangling substrings like "RENEW", "KNEW", "NEWEST"
-SENTINEL_RE = re.compile(r"\b(_BREAK|_MESSAGE|NEW)\b")
+# Message-break sentinel only. TAG_RE (run earlier) strips the bracketed
+# <NEW_MESSAGE_BREAK> form; this catches any unbracketed residue. Matching the
+# FULL token name (never the bare word "new") so ordinary prose is left intact.
+SENTINEL_RE = re.compile(r"NEW_MESSAGE_BREAK")
 MARKDOWN_RE = re.compile(r"[*_#`]")
 WHITESPACE_RE = re.compile(r"\s+")
 # Fenced OpenUI blocks: ":::openui ... :::" or unterminated tail at end of stream
@@ -45,11 +58,13 @@ __all__ = [
     "RESPONSE_KEY",
     "RESPONSE_UI_KEY",
     "MAIN_RESPONSE_COMPLETE_KEY",
+    "VOICE_TTS_KEY",
     "TTS_MIN_SENTENCE_CHARS",
     "TTS_HARD_FLUSH_CHARS",
     "TTS_MIN_EMIT_CHARS",
     "TTS_FINAL_MIN_CHARS",
     "OPEN_TAG_DEFER_CAP",
+    "MIN_ENDPOINTING_DELAY_S",
     "TAG_RE",
     "SENTINEL_RE",
     "MARKDOWN_RE",

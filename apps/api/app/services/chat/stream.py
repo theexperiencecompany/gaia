@@ -12,7 +12,7 @@ on completion, even if the client disconnects mid-stream.
 
 import asyncio
 import contextlib
-from datetime import datetime
+from datetime import UTC, datetime
 import json
 from typing import Any
 from uuid import uuid4
@@ -20,6 +20,12 @@ from uuid import uuid4
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 from app.agents.core.agent import call_agent
+from app.agents.core.background.inbox import (
+    deregister_executor_done_event,
+    register_executor_done_event,
+    was_executor_spawned,
+)
+from app.constants.cache import VOICE_EXECUTOR_RESULT_TIMEOUT_S
 from app.core.stream_manager import stream_manager
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.chunks import process_data_chunk
@@ -89,6 +95,7 @@ class _StreamState:
         "todo_progress_accumulated",
         "tool_data",
         "tool_outputs",
+        "turn_completed_at",
         "usage_metadata",
         "user_message_id",
     )
@@ -103,6 +110,10 @@ class _StreamState:
         self.is_cancelled: bool = False
         self.user_message_id: str = str(uuid4())
         self.bot_message_id: str = str(uuid4())
+        # When comms finished — stamped before any voice-mode executor wait so
+        # the saved user/comms messages keep timestamps EARLIER than a delegated
+        # executor's answer (saved mid-wait). The frontend sorts by createdAt.
+        self.turn_completed_at: datetime | None = None
 
 
 async def _run_chat_stream(
@@ -153,7 +164,11 @@ async def _run_chat_stream(
         )
         state.usage_metadata = usage_callback.usage_metadata or {}
         _log_usage_summary(state)
+        # Stamp turn completion BEFORE any executor wait so the user/comms
+        # messages sort ahead of a delegated executor's mid-wait answer.
+        state.turn_completed_at = datetime.now(UTC)
         await _finalize_description(description_task, stream_id)
+        await _await_voice_executor_result(body, stream_id)
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
         await stream_manager.complete_stream(stream_id)
 
@@ -273,6 +288,31 @@ async def _publish_init_chunk(
 
     await _wait_for_http_subscriber(start_event, stream_id)
     await stream_manager.publish_chunk(stream_id, init_data)
+
+
+async def _await_voice_executor_result(
+    body: MessageRequestWithHistory,
+    stream_id: str,
+) -> None:
+    """Voice mode only: hold the stream open until a delegated executor delivers
+    its narrated answer.
+
+    ``call_executor`` is fire-and-forget, so the executor's substantive answer
+    normally lands after the comms turn's ``[DONE]`` and reaches the client only
+    over the WebSocket — which the voice agent has no access to. When this turn
+    delegated to an executor, wait for it to finish (it publishes a ``voice_tts``
+    SSE frame for the agent to speak, then sets the done-event) before sending
+    ``[DONE]``. No-op for text turns or turns that didn't delegate.
+    """
+    if not body.voice_mode or not was_executor_spawned(stream_id):
+        return
+    done_event = register_executor_done_event(stream_id)
+    try:
+        await asyncio.wait_for(done_event.wait(), timeout=VOICE_EXECUTOR_RESULT_TIMEOUT_S)
+    except TimeoutError:
+        log.warning(f"Voice executor result wait timed out for stream {stream_id}")
+    finally:
+        deregister_executor_done_event(stream_id)
 
 
 async def _consume_agent_stream(
@@ -439,6 +479,7 @@ async def _finalize_stream(
         metadata=state.usage_metadata,
         user_message_id=state.user_message_id,
         bot_message_id=state.bot_message_id,
+        bot_timestamp=state.turn_completed_at,
     )
 
     await stream_manager.cleanup(stream_id)

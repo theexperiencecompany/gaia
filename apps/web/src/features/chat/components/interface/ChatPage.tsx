@@ -191,11 +191,19 @@ const ChatPage = React.memo(function MainChat() {
       voice_mode_enabled: false,
       conversation_id: convoIdParam,
     });
-    exitVoiceMode();
-    // Pull server canonical messages so the chat shows them without the
-    // in-memory voice turns; prevents duplicate-after-refresh.
+    // Capture the active id BEFORE exiting (exitVoiceMode clears the store id).
     const activeId = useChatStore.getState().activeConversationId;
+    exitVoiceMode();
     if (activeId) {
+      // During voice the URL was updated in-place via history.replaceState, so
+      // the App Router segment is still /c (convoIdParam undefined for a new
+      // chat). A real navigation resolves the conversation route so the
+      // just-finished voice chat renders without a manual reload.
+      if (!convoIdParam) {
+        router.replace(`/c/${activeId}`);
+      }
+      // Pull server canonical messages so the chat shows them without the
+      // in-memory voice turns; prevents duplicate-after-refresh.
       syncSingleConversation(activeId).catch((err) =>
         console.error("[ChatPage] post-voice sync failed", err),
       );
