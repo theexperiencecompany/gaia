@@ -44,7 +44,9 @@ from app.constants.memory import (
     RERANK_BLEND_WEIGHT,
     RERANK_CANDIDATES,
     RRF_K,
+    TRANSCRIPT_RECALL_LIMIT,
     MemoryKind,
+    MemoryRelationType,
 )
 from app.db.redis import delete_cache
 from app.decorators.caching import Cacheable
@@ -405,12 +407,51 @@ async def _with_graph_siblings(
 
 
 async def _build_entries(scored: list[tuple[MemoryRecord, float]]) -> list[MemoryEntry]:
-    """Map reranked (record, score) pairs to API entries with their entities."""
+    """Map reranked (record, score) pairs to API entries with their entities.
+
+    Entries that superseded an older version also carry that version's content
+    (``previous_content``) so "what was it before / where did I initially..."
+    questions are answerable straight from recalled context.
+    """
     entities_by_memory = await pg_store.get_entities_for_memories([row.id for row, _ in scored])
-    return [
-        row_to_entry(row, entities_by_memory.get(row.id, []), relevance_score=round(score, 4))
-        for row, score in scored
+    parent_ids = [
+        str(row.parent_id)
+        for row, _ in scored
+        if row.parent_id is not None and row.relation_type == MemoryRelationType.UPDATES.value
     ]
+    parents: dict[str, MemoryRecord] = {}
+    if parent_ids:
+        user_id = scored[0][0].user_id
+        parents = {
+            str(parent.id): parent
+            for parent in await pg_store.get_memories_by_ids(user_id, parent_ids)
+        }
+    entries = []
+    for row, score in scored:
+        entry = row_to_entry(
+            row, entities_by_memory.get(row.id, []), relevance_score=round(score, 4)
+        )
+        parent = parents.get(str(row.parent_id)) if row.parent_id else None
+        if parent is not None:
+            entry.previous_content = parent.content
+        entries.append(entry)
+    return entries
+
+
+async def recall_transcripts(
+    user_id: str,
+    query: str,
+    limit: int = TRANSCRIPT_RECALL_LIMIT,
+) -> list[tuple[str, str, float]]:
+    """Search raw conversation chunks: (date, chunk_text, similarity), best first.
+
+    The verbatim tier behind ``recall``: when the user references an exact
+    detail from a past conversation ("that list you gave me", "the move you
+    suggested"), the compressed fact store may not hold it but the transcript
+    chunk does.
+    """
+    embedding = await embed_query(query)
+    return await chroma_store.query_conversation_chunks(user_id, embedding, limit)
 
 
 async def _episode_summary_search(user_id: str, query: str, limit: int) -> list[EpisodeHit]:

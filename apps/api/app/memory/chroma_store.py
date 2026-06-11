@@ -14,6 +14,7 @@ from chromadb.api.models.AsyncCollection import AsyncCollection
 from chromadb.api.types import EmbeddingFunction, Metadata
 
 from app.constants.memory import (
+    CHROMA_CONVERSATION_CHUNKS_COLLECTION,
     CHROMA_MEMORIES_COLLECTION,
     CHROMA_MEMORY_EPISODES_COLLECTION,
     EMBEDDING_DIM,
@@ -91,6 +92,22 @@ class EpisodeVectorItem(TypedDict):
     metadata: EpisodeVectorMetadata
 
 
+class ConversationChunkMetadata(TypedDict):
+    """Metadata stored alongside each raw conversation chunk vector."""
+
+    user_id: str
+    date: str  # ISO date (YYYY-MM-DD)
+
+
+class ConversationChunkItem(TypedDict):
+    """One verbatim conversation chunk ready for vector upsert."""
+
+    id: str
+    embedding: list[float]
+    document: str
+    metadata: ConversationChunkMetadata
+
+
 def _as_metadata(metadata: Mapping[str, object]) -> Metadata:
     """Convert a metadata TypedDict to Chroma's Metadata mapping.
 
@@ -144,9 +161,10 @@ async def _clamp_n_results(collection: AsyncCollection, n: int) -> int:
 
 
 async def ensure_collections() -> None:
-    """Create both memory collections if they don't exist yet."""
+    """Create the memory collections if they don't exist yet."""
     await _get_collection(CHROMA_MEMORIES_COLLECTION)
     await _get_collection(CHROMA_MEMORY_EPISODES_COLLECTION)
+    await _get_collection(CHROMA_CONVERSATION_CHUNKS_COLLECTION)
 
 
 async def upsert_memories(items: list[MemoryVectorItem]) -> None:
@@ -231,10 +249,54 @@ async def delete_ids(ids: list[str]) -> None:
 
 
 async def delete_user(user_id: str) -> None:
-    """Hard-delete all of a user's vectors from both collections (full wipe)."""
-    for name in (CHROMA_MEMORIES_COLLECTION, CHROMA_MEMORY_EPISODES_COLLECTION):
+    """Hard-delete all of a user's vectors from every collection (full wipe)."""
+    for name in (
+        CHROMA_MEMORIES_COLLECTION,
+        CHROMA_MEMORY_EPISODES_COLLECTION,
+        CHROMA_CONVERSATION_CHUNKS_COLLECTION,
+    ):
         collection = await _get_collection(name)
         await collection.delete(where={"user_id": user_id})
+
+
+async def upsert_conversation_chunks(items: list[ConversationChunkItem]) -> None:
+    """Upsert raw conversation chunk vectors (verbatim retention tier)."""
+    if not items:
+        return
+    collection = await _get_collection(CHROMA_CONVERSATION_CHUNKS_COLLECTION)
+    embeddings: list[Sequence[float] | Sequence[int]] = [item["embedding"] for item in items]
+    await collection.upsert(
+        ids=[item["id"] for item in items],
+        embeddings=embeddings,
+        documents=[item["document"] for item in items],
+        metadatas=[_as_metadata(item["metadata"]) for item in items],
+    )
+
+
+async def query_conversation_chunks(
+    user_id: str,
+    embedding: list[float],
+    n: int,
+) -> list[tuple[str, str, float]]:
+    """Return up to ``n`` (date, chunk_text, similarity) for a user, best first."""
+    collection = await _get_collection(CHROMA_CONVERSATION_CHUNKS_COLLECTION)
+    n_results = await _clamp_n_results(collection, n)
+    if n_results == 0:
+        return []
+    query_embeddings: list[Sequence[float] | Sequence[int]] = [embedding]
+    result = await collection.query(
+        query_embeddings=query_embeddings,
+        n_results=n_results,
+        where={"user_id": user_id},
+        include=["documents", "metadatas", "distances"],
+    )
+    documents = (result.get("documents") or [[]])[0]
+    metadatas = (result.get("metadatas") or [[]])[0]
+    distances = (result.get("distances") or [[]])[0]
+    return [
+        (str(metadata.get("date", "")), document, 1.0 - distance)
+        for document, metadata, distance in zip(documents, metadatas, distances)
+    ]
 
 
 async def upsert_episode(item: EpisodeVectorItem) -> None:

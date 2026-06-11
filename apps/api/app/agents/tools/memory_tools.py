@@ -326,6 +326,31 @@ async def search_journal(
 
 
 @tool
+async def search_conversations(
+    config: RunnableConfig,
+    query: Annotated[str, "What to look for verbatim in past conversations"],
+) -> str:
+    """Search raw past-conversation transcripts for verbatim details.
+
+    Use when the user references something specific from an earlier chat that
+    memory search does not surface — "that list you gave me", "the exact move
+    you suggested", "what did we say about X" — and quote the matching passage.
+    """
+    user_id = get_user_id_from_config(config)
+    if not user_id:
+        return _ERR_NO_USER_ID
+
+    hits = await memory_engine.recall_transcripts(user_id, query)
+    if not hits:
+        return f"No past-conversation passages matching '{query}'."
+    blocks = [
+        f"[{date}] (match {score:.2f})\n{_cap(text, MEMORY_TOOL_DOCUMENT_MAX_CHARS)}"
+        for date, text, score in hits
+    ]
+    return "Matching conversation passages:\n\n" + "\n\n".join(blocks)
+
+
+@tool
 @with_doc(GET_JOURNAL)
 async def get_journal(
     config: RunnableConfig,
@@ -434,6 +459,7 @@ tools = [
     update_memory,
     forget_memory,
     search_journal,
+    search_conversations,
     get_journal,
     read_memory_document,
     update_memory_document,

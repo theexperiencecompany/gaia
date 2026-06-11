@@ -78,6 +78,10 @@ class MemoryEntry(BaseModel):
     relevance_score: float | None = Field(
         default=None, description="Relevance score when returned from search"
     )
+    previous_content: str | None = Field(
+        default=None,
+        description="Content of the directly superseded version, when this memory updated one",
+    )
     entities: list[MemoryEntityRef] = Field(
         default_factory=list, description="Entities this memory mentions"
     )

@@ -109,4 +109,6 @@ def entry_to_note(entry: MemoryEntry) -> str:
     mentioned = entry.mentioned_at or entry.created_at
     if mentioned:
         parts.append(f"[mentioned {mentioned.date().isoformat()}]")
+    if entry.previous_content:
+        parts.append(f"[previously: {entry.previous_content}]")
     return " ".join(parts)

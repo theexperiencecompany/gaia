@@ -28,6 +28,7 @@ class MemoryEngine:
     # --- read path (plan F1/F3) ----------------------------------------------
     recall = staticmethod(retrieval.recall)
     recall_episodes = staticmethod(retrieval.recall_episodes)
+    recall_transcripts = staticmethod(retrieval.recall_transcripts)
     get_core_context = staticmethod(context.get_core_context)
     invalidate_core_context = staticmethod(context.invalidate_core_context)
 

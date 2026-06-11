@@ -10,18 +10,22 @@ core-document consolidation for the docs its changes touch.
 from dataclasses import dataclass
 from datetime import UTC, date as date_type, datetime
 import time
+import uuid
 
 from app.constants.memory import (
     DEFAULT_MEMORY_IMPORTANCE,
     EPISODE_ENTRY_TIME_FORMAT,
     RECENT_FACTS_LIMIT,
+    TRANSCRIPT_CHUNK_MAX_CHARS,
+    TRANSCRIPT_CHUNK_TURNS,
+    TRANSCRIPT_CHUNKS_PER_SESSION_CAP,
     MemoryKind,
     MemoryRelationType,
     MemorySourceType,
     ReconcileOutcome,
 )
 from app.memory import chroma_store, pg_store
-from app.memory.chroma_store import EpisodeVectorItem, MemoryVectorItem
+from app.memory.chroma_store import ConversationChunkItem, EpisodeVectorItem, MemoryVectorItem
 from app.memory.consolidation import infer_doc_types, schedule_consolidation
 from app.memory.context import invalidate_user_memory_caches
 from app.memory.embeddings import embed_batch, embed_query
@@ -140,6 +144,10 @@ async def retain(
     )
     await _summarize_rolled_over_days(user_id, today=now.date())
     timings["episodes_ms"] = _elapsed_ms(stage)
+
+    stage = time.perf_counter()
+    await _store_conversation_chunks(user_id, messages, source_id=source_id, now=now)
+    timings["chunks_ms"] = _elapsed_ms(stage)
 
     await invalidate_user_memory_caches(user_id)
     await _schedule_post_ingest(
@@ -413,6 +421,54 @@ async def _apply_graph(
         ]
         edges_added += await pg_store.insert_edges(user_id, edges, record.id)
     return entities_linked, edges_added
+
+
+async def _store_conversation_chunks(
+    user_id: str,
+    messages: list[dict[str, str]],
+    *,
+    source_id: str | None,
+    now: datetime,
+) -> None:
+    """Embed the raw transcript in chunks (verbatim retention tier).
+
+    Extracted facts compress a conversation, which loses verbatim
+    micro-details ("the exact move GAIA suggested", "the 27th item in that
+    list"). Chunking the transcript keeps those details searchable via
+    ``recall_transcripts`` without polluting the fact store.
+    """
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+    for message in messages:
+        content = message.get("content", "")
+        if not content:
+            continue
+        line = f"{message.get('role', 'user')}: {content}"
+        current.append(line)
+        current_len += len(line)
+        if len(current) >= TRANSCRIPT_CHUNK_TURNS or current_len >= TRANSCRIPT_CHUNK_MAX_CHARS:
+            chunks.append("\n".join(current))
+            current, current_len = [], 0
+    if current:
+        chunks.append("\n".join(current))
+    chunks = [chunk[:TRANSCRIPT_CHUNK_MAX_CHARS] for chunk in chunks]
+    chunks = chunks[:TRANSCRIPT_CHUNKS_PER_SESSION_CAP]
+    if not chunks:
+        return
+
+    embeddings = await embed_batch(chunks)
+    session_key = source_id or uuid.uuid4().hex[:12]
+    items: list[ConversationChunkItem] = [
+        {
+            "id": f"{user_id}:{session_key}:{index}",
+            "embedding": embedding,
+            "document": chunk,
+            "metadata": {"user_id": user_id, "date": now.date().isoformat()},
+        }
+        for index, (chunk, embedding) in enumerate(zip(chunks, embeddings))
+    ]
+    await chroma_store.upsert_conversation_chunks(items)
 
 
 async def _append_episode_entries(

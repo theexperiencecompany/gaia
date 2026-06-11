@@ -15,9 +15,19 @@ EMBEDDING_DIM = 1024
 # fact): top-3 gold rank 4/6 vs 2/6 on our probe set at the same ~30ms.
 RERANKER_MODEL_NAME = "jinaai/jina-reranker-v1-turbo-en"
 
-# ChromaDB collections holding memory and episode vectors.
+# ChromaDB collections holding memory, episode, and conversation vectors.
 CHROMA_MEMORIES_COLLECTION = "gaia_memories"
 CHROMA_MEMORY_EPISODES_COLLECTION = "gaia_memory_episodes"
+CHROMA_CONVERSATION_CHUNKS_COLLECTION = "gaia_conversation_chunks"
+
+# Raw-conversation retention: extracted facts compress a conversation, which
+# loses verbatim micro-details ("the 27th item in that list you gave me").
+# Each ingested transcript is also chunked and embedded so those details stay
+# searchable verbatim — the tier full-context systems win with.
+TRANSCRIPT_CHUNK_TURNS = 4
+TRANSCRIPT_CHUNK_MAX_CHARS = 1_600
+TRANSCRIPT_CHUNKS_PER_SESSION_CAP = 40
+TRANSCRIPT_RECALL_LIMIT = 3
 
 # Ingestion reconciliation (cosine similarity against existing latest facts):
 # >= RECONCILE means a fact is close enough to an existing one that it might
