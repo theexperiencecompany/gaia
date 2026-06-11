@@ -13,6 +13,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.memory import (
     MEMORY_EPISODES_DEFAULT_DAYS,
     MEMORY_EPISODES_MAX_RANGE_DAYS,
+    SEARCH_RELEVANCE_DROPOFF_RATIO,
     UUID_PATH_PATTERN,
     MemoryDocType,
     MemorySourceType,
@@ -48,6 +49,22 @@ def _require_user_id(user: dict) -> str:
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     return user_id
+
+
+def _drop_irrelevant(memories: list[MemoryEntry]) -> list[MemoryEntry]:
+    """Trim the weak-match tail below the relevance cliff (relative to the top hit).
+
+    Recall returns memories sorted by relevance descending; we keep those scoring
+    at least ``SEARCH_RELEVANCE_DROPOFF_RATIO`` of the best result so the search
+    box shows the relevant cluster instead of every faintly-matching memory.
+    """
+    if not memories:
+        return memories
+    top = memories[0].relevance_score or 0.0
+    if top <= 0:
+        return memories
+    floor = top * SEARCH_RELEVANCE_DROPOFF_RATIO
+    return [m for m in memories if (m.relevance_score or 0.0) >= floor]
 
 
 @router.get("", response_model=MemoryListResponse)
@@ -93,6 +110,8 @@ async def search_memories(
     log.set(user={"id": user_id}, memory={"operation": "search", "query": q})
 
     result = await memory_engine.recall(user_id, q, limit=limit, include_graph_expansion=False)
+    result.memories = _drop_irrelevant(result.memories)
+    result.total_count = len(result.memories)
 
     log.set(memory={"operation": "search", "result_count": len(result.memories)})
     return result
