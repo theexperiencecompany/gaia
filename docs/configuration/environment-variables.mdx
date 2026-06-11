@@ -4,7 +4,11 @@ description: "Complete guide to configuring environment variables for GAIA"
 icon: "key"
 ---
 
-## Overview
+## Why you need this
+
+GAIA is several apps (API, web, bots) talking to several services (PostgreSQL, MongoDB, Redis, LLM providers, OAuth integrations). Environment variables are how each app finds those services and authenticates with them. If you're self-hosting or developing locally, this page is the reference for what goes in each `.env` file and what happens when something is missing.
+
+You rarely need all of them: a minimal local setup needs only the database URLs and auth keys shown in Manual Setup below. Everything else enables a specific feature — skip a key and that feature is disabled, but the app still runs.
 
 GAIA uses Pydantic settings to load environment variables with validation. Settings are defined in `apps/api/app/config/settings.py` with two modes:
 

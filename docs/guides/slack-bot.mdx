@@ -1,13 +1,30 @@
 ---
 title: "Using GAIA in Slack"
 description: "Bring GAIA into your Slack workspace for quick actions and team collaboration"
+icon: "/images/icons/slack.webp"
 ---
 
-## Why Use GAIA in Slack?
+import { BotChatDemo } from "/snippets/bot-chat-demo.jsx";
 
 Switching between apps kills focus. With GAIA in Slack, you can manage todos, run workflows, check your calendar, and get answers — all without leaving the conversation you're already in.
 
 Your team gets the same benefit. Add GAIA to a shared channel and everyone can ask questions, trigger automations, and stay on top of work together.
+
+<BotChatDemo
+  platform="slack"
+  messages={[
+    { from: "user", text: "/gaia What should I focus on today?" },
+    {
+      from: "gaia",
+      text: "Your top 3: finish the pricing page review (due today), reply to the contract email from Dana, and prep for tomorrow's board sync. Your afternoon is meeting-free.",
+    },
+    { from: "user", text: "Turn the contract email into a todo for this afternoon" },
+    {
+      from: "gaia",
+      text: "Created \"Reply to Dana — contract\" due today at 3pm.",
+    },
+  ]}
+/>
 
 ## Connect Your GAIA Account
 
