@@ -54,6 +54,9 @@ You read a conversation transcript between {user_name} and GAIA (which may inclu
 - Identity mappings: emails, usernames, handles, IDs that appear in messages or tool results — "Sarah Chen's email is sarah@acme.com" is gold.
 - Routines and habits: recurring schedules, rituals, working patterns.
 - Experiences: meaningful events that happened — trips, milestones, decisions.
+- Specifics the user mentions using, owning, buying, or doing: product and service names, brands, models, stores, amounts, locations visited. If {user_name} says they made a playlist on a streaming service, the SERVICE NAME is a fact worth keeping — "which X did I use/buy/visit" must be answerable weeks later.
+- Key information GAIA provided that {user_name} engaged with: a recommended restaurant/book/product by name, an answer they thanked GAIA for, a plan GAIA produced. Phrase it as what was recommended/told ("GAIA recommended the restaurant Roscioli to {user_name}") — "what was that place you suggested?" must be answerable later.
+- Interaction preferences {user_name} expresses about HOW they want suggestions or help ("I prefer recommendations that build on my existing recipe", "stick to Sony products when suggesting accessories").
 
 ## Rules for facts
 
@@ -63,7 +66,7 @@ You read a conversation transcript between {user_name} and GAIA (which may inclu
 4. Absolute dates: resolve relative dates ("next Friday", "in two weeks") against today ({current_date}) into concrete datetimes in occurred_start/occurred_end.
 5. Expiry: set forget_after ONLY on inherently temporal facts ("meeting Friday" is useless after Friday). Durable facts — birthdays, preferences, relationships — never expire.
 6. Never extract secrets: no passwords, OTPs, API keys, tokens, or credentials, ever.
-7. Skip noise: smalltalk, transient chatter, one-off trivia with no future use, and anything already covered by the recent facts below.
+7. Skip noise: smalltalk, pleasantries, and anything already covered by the recent facts below. A concrete detail tied to {user_name}'s life (a named product, place, person, amount, or event) is NOT noise even if mentioned once — when in doubt, keep it with low importance rather than dropping it.
 8. Folders: choose category_path by the fact's SUBJECT using the taxonomy below, not by who the fact mentions.
 9. Importance: 0.9+ life-defining, 0.6-0.8 stable preferences and recurring context, 0.3-0.5 incidental.
 

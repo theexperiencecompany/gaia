@@ -50,6 +50,22 @@ def _parse_date(raw: str) -> datetime:
     return datetime.strptime(cleaned, _DATE_FORMAT).replace(tzinfo=UTC)
 
 
+def _note_with_dates(memory: object) -> str:
+    """Render a memory with its dates so temporal questions are answerable."""
+    parts = [str(getattr(memory, "content", ""))]
+    occurred_start = getattr(memory, "occurred_start", None)
+    occurred_end = getattr(memory, "occurred_end", None)
+    if occurred_start:
+        occurred = occurred_start.date().isoformat()
+        if occurred_end and occurred_end.date() != occurred_start.date():
+            occurred += f"..{occurred_end.date().isoformat()}"
+        parts.append(f"[occurred {occurred}]")
+    mentioned = getattr(memory, "mentioned_at", None) or getattr(memory, "created_at", None)
+    if mentioned:
+        parts.append(f"[mentioned {mentioned.date().isoformat()}]")
+    return " ".join(parts)
+
+
 async def _answer(question: str, question_date: str, memories: list[str]) -> str:
     context = "\n".join(f"- {m}" for m in memories) or "(no memories found)"
     result = await _invoke_structured(
@@ -58,8 +74,12 @@ async def _answer(question: str, question_date: str, memories: list[str]) -> str
             SystemMessage(
                 content=(
                     f"Today is {question_date}. Answer the user's question using ONLY the "
-                    "memory notes below (they were extracted from past conversations). "
-                    "Be concise. If the notes do not contain the answer, reply exactly "
+                    "memory notes below (extracted from past conversations; bracketed "
+                    "dates say when something happened / was mentioned). Be concise. Use "
+                    "the dates for any 'when / how long ago / which came first' "
+                    "arithmetic. If the question asks for suggestions or recommendations, "
+                    "state the remembered preference(s) that should guide them. If the "
+                    "notes do not contain the answer, reply exactly "
                     '"I don\'t know".\n\nMEMORY NOTES:\n' + context
                 )
             ),
@@ -112,7 +132,7 @@ async def _run_question(item: dict, index: int, total: int) -> tuple[str, bool, 
 
         recall = await memory_engine.recall(user_id, item["question"], limit=10)
         episode_hits = await memory_engine.recall_episodes(user_id, item["question"])
-        notes = [m.content for m in recall.memories] + [
+        notes = [_note_with_dates(m) for m in recall.memories] + [
             f"(journal {hit.date.isoformat()}) {hit.text}" for hit in episode_hits[:5]
         ]
         model_answer = await _answer(item["question"], item["question_date"], notes)
