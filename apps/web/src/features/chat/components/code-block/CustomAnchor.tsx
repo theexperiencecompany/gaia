@@ -17,6 +17,60 @@ const isEmailHref = (href: string) =>
 const displayHref = (href: string) =>
   href.replace(/^(https?:\/\/|mailto:)/, "");
 
+function EmailPreview({
+  email,
+  name,
+  avatar,
+  onAvatarError,
+}: {
+  email: string;
+  name: string | null;
+  avatar: string | null;
+  onAvatarError: (url: string) => void;
+}) {
+  return (
+    <div className="flex w-full items-center gap-3">
+      {avatar ? (
+        <Image
+          width={44}
+          height={44}
+          alt={name ?? email}
+          className="h-11 w-11 shrink-0 rounded-full object-cover"
+          src={avatar}
+          onError={() => onAvatarError(avatar)}
+        />
+      ) : (
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-700 text-lg font-medium text-zinc-300">
+          {email[0]?.toUpperCase()}
+        </div>
+      )}
+      <div className="min-w-0">
+        {name && (
+          <div className="truncate text-sm font-medium text-white">{name}</div>
+        )}
+        <a
+          className="block truncate text-xs text-zinc-400 hover:underline"
+          href={`mailto:${email}`}
+        >
+          {email}
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function EmailPreviewSkeleton() {
+  return (
+    <div className="flex w-full items-center gap-3">
+      <Skeleton className="h-11 w-11 shrink-0 rounded-full" />
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <Skeleton className="h-4 w-28 rounded" />
+        <Skeleton className="h-3 w-40 rounded" />
+      </div>
+    </div>
+  );
+}
+
 const CustomAnchor = memo(
   ({
     href,
@@ -90,7 +144,22 @@ const CustomAnchor = memo(
         showArrow
         className="relative max-w-[280px] min-w-[280px] border-2 border-zinc-800 bg-secondary-bg p-3 text-white shadow-lg"
         content={
-          isLoading ? (
+          isEmailHref(href) ? (
+            isLoading ? (
+              <EmailPreviewSkeleton />
+            ) : (
+              <EmailPreview
+                email={displayHref(href)}
+                name={metadata?.title ?? null}
+                avatar={
+                  metadata?.favicon && !failedUrls.has(metadata.favicon)
+                    ? metadata.favicon
+                    : null
+                }
+                onAvatarError={handleImageError}
+              />
+            )
+          ) : isLoading ? (
             <div className="flex w-full flex-col gap-2">
               {/* Website Image Skeleton */}
               <Skeleton className="relative aspect-video w-full rounded-lg" />
