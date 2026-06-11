@@ -131,6 +131,10 @@ const config: KnipConfig = {
     "apps/mobile/src/scripts/**",
     "docs/scripts/**",
 
+    // Mintlify React snippets: consumed via `import` in .mdx files, which knip
+    // cannot trace. These are legitimately used — knip has no MDX resolver.
+    "docs/snippets/**",
+
     // Tailwind v4 entry: knip misreads the `@source` content globs as JS
     // imports. Tailwind scans these paths; they are not module imports.
     "apps/web/src/app/styles/globals.css",

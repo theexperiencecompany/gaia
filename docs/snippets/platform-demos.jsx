@@ -319,6 +319,84 @@ const EmojiIcon = ({ size = 22 }) => (
 );
 
 /* =========================================================================
+ * Shared: CurvedMessageThread — used by WhatsApp and Telegram
+ * ========================================================================= */
+
+const CurvedMessageThread = ({ grouped, myBubble, theirBubble, textColor, metaColor, myMeta, TicksComponent }) => (
+  <>
+    {grouped.map((group, gi) => {
+      const isMe = group.from === "me";
+      return (
+        <div key={gi} className={cn("flex flex-col", isMe ? "items-end" : "items-start")} style={{ gap: 2 }}>
+          {group.items.map((m, i) => {
+            const isLast = i === group.items.length - 1;
+            const showMeta = !m.typing && (m.time || (isMe && m.status));
+            const resolvedMetaColor = isMe && myMeta ? myMeta : metaColor;
+            return (
+              <CurvedBubble
+                key={m.id ?? `${gi}-${i}`}
+                className="chat-bubble-pop"
+                from={group.from}
+                tail={isLast}
+                background={isMe ? myBubble : theirBubble}
+                tailColor={isMe ? myBubble : theirBubble}
+                color={textColor}
+                meta={showMeta ? (
+                  <span style={{ color: resolvedMetaColor, display: "inline-flex", alignItems: "center", gap: 3 }}>
+                    {m.time ?? ""}
+                    {isMe && m.status && TicksComponent && <TicksComponent status={m.status} color={resolvedMetaColor} />}
+                  </span>
+                ) : undefined}
+              >
+                {m.typing ? <TypingDots color={isMe && myMeta ? myMeta : metaColor} /> : m.text}
+              </CurvedBubble>
+            );
+          })}
+        </div>
+      );
+    })}
+  </>
+);
+
+/* =========================================================================
+ * Shared: ChatComposer — used by WhatsApp and Telegram
+ * ========================================================================= */
+
+const ChatComposer = ({ chromeBg, iconColor, borderColor, LeftIcon, leftLabel, buttonSize }) => (
+  <div className="flex shrink-0 items-center gap-2 px-2 pt-2 pb-1.5" style={{ background: chromeBg }}>
+    <button type="button" aria-label={leftLabel} className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]" style={{ width: buttonSize, height: buttonSize, color: iconColor }}>
+      <LeftIcon />
+    </button>
+    <div className="flex flex-1 items-center justify-between gap-2" style={{ background: "#FFFFFF", border: `0.5px solid ${borderColor}`, borderRadius: 16, padding: "0 6px 0 17px", height: 32, color: "#8E8E93" }}>
+      <span style={{ fontSize: 15, color: "#8E8E93", letterSpacing: "-0.01em" }}>Message</span>
+      <button type="button" aria-label="Emoji" className="flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]" style={{ color: "#8E8E93", width: 22, height: 22 }}>
+        <EmojiIcon size={18} />
+      </button>
+    </div>
+    <button type="button" aria-label="Voice message" className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]" style={{ width: buttonSize, height: buttonSize, color: iconColor }}>
+      <MicIcon />
+    </button>
+  </div>
+);
+
+/* =========================================================================
+ * Shared: ReactionsBar — used by Slack and Discord
+ * ========================================================================= */
+
+const ReactionsBar = ({ items, spanStyle }) => {
+  const reactions = items.flatMap((m) =>
+    (m.reactions ?? []).map((r, ri) => (
+      <span key={`${ri}-${r.emoji}`} className="inline-flex items-center gap-1" style={spanStyle(r)}>
+        <span style={{ fontSize: 13 }}>{r.emoji}</span>
+        {r.count}
+      </span>
+    )),
+  );
+  if (!reactions.length) return null;
+  return <div className="mt-1 flex flex-wrap gap-1">{reactions}</div>;
+};
+
+/* =========================================================================
  * WhatsApp
  * ========================================================================= */
 
@@ -382,53 +460,26 @@ const WhatsAppDemo = ({ messages, title, headerAvatar, showComposer, showHeader,
         className="flex flex-1 flex-col overflow-y-auto px-3 pb-3"
         style={{ scrollbarWidth: "none", gap: 8, backgroundColor: bg, backgroundImage: 'url("/images/demos/whatsapp-doodle.png")', backgroundRepeat: "repeat", backgroundSize: "404px auto", paddingTop: 8 }}
       >
-        {grouped.map((group, gi) => {
-          const isMe = group.from === "me";
-          return (
-            <div key={gi} className={cn("flex flex-col", isMe ? "items-end" : "items-start")} style={{ gap: 2 }}>
-              {group.items.map((m, i) => {
-                const isLast = i === group.items.length - 1;
-                const showMeta = !m.typing && (m.time || (isMe && m.status));
-                return (
-                  <CurvedBubble
-                    key={m.id ?? `${gi}-${i}`}
-                    className="chat-bubble-pop"
-                    from={group.from}
-                    tail={isLast}
-                    background={isMe ? myBubble : theirBubble}
-                    tailColor={isMe ? myBubble : theirBubble}
-                    color={textColor}
-                    meta={showMeta ? (
-                      <span style={{ color: metaColor, display: "inline-flex", alignItems: "center", gap: 3 }}>
-                        {m.time ?? ""}
-                        {isMe && m.status && <WhatsAppTicks status={m.status} />}
-                      </span>
-                    ) : undefined}
-                  >
-                    {m.typing ? <TypingDots color={metaColor} /> : m.text}
-                  </CurvedBubble>
-                );
-              })}
-            </div>
-          );
-        })}
+        <CurvedMessageThread
+          grouped={grouped}
+          myBubble={myBubble}
+          theirBubble={theirBubble}
+          textColor={textColor}
+          metaColor={metaColor}
+          myMeta={null}
+          TicksComponent={WhatsAppTicks}
+        />
       </div>
 
       {showComposer && (
-        <div className="flex shrink-0 items-center gap-2 px-2 pt-2 pb-1.5" style={{ background: chromeBg }}>
-          <button type="button" aria-label="Camera" className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]" style={{ width: 32, height: 32, color: "#3C3C43" }}>
-            <CameraIcon />
-          </button>
-          <div className="flex flex-1 items-center justify-between gap-2" style={{ background: "#FFFFFF", border: "0.5px solid #8E8E93", borderRadius: 16, padding: "0 6px 0 17px", height: 32, color: "#8E8E93" }}>
-            <span style={{ fontSize: 15, color: "#8E8E93", letterSpacing: "-0.01em" }}>Message</span>
-            <button type="button" aria-label="Emoji" className="flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]" style={{ color: "#8E8E93", width: 22, height: 22 }}>
-              <EmojiIcon size={18} />
-            </button>
-          </div>
-          <button type="button" aria-label="Voice message" className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]" style={{ width: 32, height: 32, color: "#3C3C43" }}>
-            <MicIcon />
-          </button>
-        </div>
+        <ChatComposer
+          chromeBg={chromeBg}
+          iconColor="#3C3C43"
+          borderColor="#8E8E93"
+          LeftIcon={CameraIcon}
+          leftLabel="Camera"
+          buttonSize={32}
+        />
       )}
     </div>
   );
@@ -496,53 +547,26 @@ const TelegramDemo = ({ messages, title, subtitle, headerAvatar, showComposer, s
         className="flex flex-1 flex-col overflow-y-auto px-3 pb-3"
         style={{ scrollbarWidth: "none", gap: 8, backgroundColor: blueOverlay, backgroundImage: 'linear-gradient(rgba(43,120,205,0.5), rgba(43,120,205,0.5)), url("/images/demos/telegram-doodle.png")', backgroundSize: "auto, 480px auto", backgroundRepeat: "repeat", paddingTop: 8 }}
       >
-        {grouped.map((group, gi) => {
-          const isMe = group.from === "me";
-          return (
-            <div key={gi} className={cn("flex flex-col", isMe ? "items-end" : "items-start")} style={{ gap: 2 }}>
-              {group.items.map((m, i) => {
-                const isLast = i === group.items.length - 1;
-                const showMeta = !m.typing && (m.time || (isMe && m.status));
-                return (
-                  <CurvedBubble
-                    key={m.id ?? `${gi}-${i}`}
-                    className="chat-bubble-pop"
-                    from={group.from}
-                    tail={isLast}
-                    background={isMe ? myBubble : theirBubble}
-                    tailColor={isMe ? myBubble : theirBubble}
-                    color={textColor}
-                    meta={showMeta ? (
-                      <span style={{ color: isMe ? myMeta : metaColor, display: "inline-flex", alignItems: "center", gap: 3 }}>
-                        {m.time ?? ""}
-                        {isMe && m.status && <TelegramTicks status={m.status} color={myMeta} />}
-                      </span>
-                    ) : undefined}
-                  >
-                    {m.typing ? <TypingDots color={isMe ? myMeta : metaColor} /> : m.text}
-                  </CurvedBubble>
-                );
-              })}
-            </div>
-          );
-        })}
+        <CurvedMessageThread
+          grouped={grouped}
+          myBubble={myBubble}
+          theirBubble={theirBubble}
+          textColor={textColor}
+          metaColor={metaColor}
+          myMeta={myMeta}
+          TicksComponent={TelegramTicks}
+        />
       </div>
 
       {showComposer && (
-        <div className="flex shrink-0 items-center gap-2 px-2 pt-2 pb-1.5" style={{ background: chromeBg }}>
-          <button type="button" aria-label="Attach" className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]" style={{ width: 30, height: 30, color: accent }}>
-            <AttachmentIcon />
-          </button>
-          <div className="flex flex-1 items-center justify-between gap-2" style={{ background: "#FFFFFF", border: "0.5px solid #D1D1D6", borderRadius: 16, padding: "0 8px 0 19px", height: 32, color: metaColor }}>
-            <span style={{ fontSize: 15, color: "#858E99", letterSpacing: "-0.01em" }}>Message</span>
-            <button type="button" aria-label="Emoji" className="flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]" style={{ color: metaColor, width: 22, height: 22 }}>
-              <EmojiIcon size={18} />
-            </button>
-          </div>
-          <button type="button" aria-label="Voice" className="flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]" style={{ width: 30, height: 30, color: accent }}>
-            <MicIcon />
-          </button>
-        </div>
+        <ChatComposer
+          chromeBg={chromeBg}
+          iconColor={accent}
+          borderColor="#D1D1D6"
+          LeftIcon={AttachmentIcon}
+          leftLabel="Attach"
+          buttonSize={30}
+        />
       )}
     </div>
   );
@@ -632,16 +656,10 @@ const SlackDemo = ({ messages, title, subtitle, showHeader, theme, className }) 
                 ))}
               </div>
               {g.items.some((m) => m.reactions?.length) && (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {g.items.flatMap((m) =>
-                    (m.reactions ?? []).map((r, ri) => (
-                      <span key={`${ri}-${r.emoji}`} className="inline-flex items-center gap-1" style={{ padding: "1px 7px", borderRadius: 12, border: `1px solid ${isDark ? "#3a3d42" : "#DDDDDD"}`, background: isDark ? "#26282C" : "#F1F4F7", fontSize: 12, fontWeight: 700, color: isDark ? "#9DB0CA" : "#1264A3" }}>
-                        <span style={{ fontSize: 13 }}>{r.emoji}</span>
-                        {r.count}
-                      </span>
-                    )),
-                  )}
-                </div>
+                <ReactionsBar
+                  items={g.items}
+                  spanStyle={(r) => ({ padding: "1px 7px", borderRadius: 12, border: `1px solid ${isDark ? "#3a3d42" : "#DDDDDD"}`, background: isDark ? "#26282C" : "#F1F4F7", fontSize: 12, fontWeight: 700, color: isDark ? "#9DB0CA" : "#1264A3" })}
+                />
               )}
             </div>
           </div>
@@ -726,16 +744,10 @@ const DiscordDemo = ({ messages, title, showComposer, showHeader, className }) =
                 ))}
               </div>
               {g.items.some((m) => m.reactions?.length) && (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {g.items.flatMap((m) =>
-                    (m.reactions ?? []).map((r, ri) => (
-                      <span key={`${ri}-${r.emoji}`} className="inline-flex items-center gap-1" style={{ padding: "2px 7px", borderRadius: 8, border: "1px solid rgba(88,101,242,0.3)", background: "rgba(88,101,242,0.15)", fontSize: 13, fontWeight: 600, color: "#A8B6FF" }}>
-                        <span>{r.emoji}</span>
-                        {r.count}
-                      </span>
-                    )),
-                  )}
-                </div>
+                <ReactionsBar
+                  items={g.items}
+                  spanStyle={(r) => ({ padding: "2px 7px", borderRadius: 8, border: "1px solid rgba(88,101,242,0.3)", background: "rgba(88,101,242,0.15)", fontSize: 13, fontWeight: 600, color: "#A8B6FF" })}
+                />
               )}
             </div>
           </div>
