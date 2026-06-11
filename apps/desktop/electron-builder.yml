@@ -15,6 +15,10 @@ directories:
   output: release/${version}
   buildResources: resources
 
+# Ad-hoc signs macOS builds when real signing is disabled — an unsigned
+# bundle seal gets the app killed by RunningBoard on macOS 26 (see script).
+afterSign: scripts/adhoc-sign.cjs
+
 files:
   - out/**/*
   - "!out/renderer/**/*"
