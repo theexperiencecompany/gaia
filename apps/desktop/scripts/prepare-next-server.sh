@@ -39,10 +39,12 @@ rsync_safe() {
 
 rsync_safe -aL "$STANDALONE_DIR/" "$PREPARED_DIR/"
 
-# Also copy static files
+# Also copy static files (mkdir first — standalone rsync may not create these)
 echo "Copying static files..."
+mkdir -p "$PREPARED_DIR/apps/web/.next/static"
 rsync_safe -aL "$WEB_DIR/.next/static/" "$PREPARED_DIR/apps/web/.next/static/"
 
+mkdir -p "$PREPARED_DIR/apps/web/public"
 rsync_safe -aL "$WEB_DIR/public/" "$PREPARED_DIR/apps/web/public/"
 
 echo "Done! Prepared Next.js server at: $PREPARED_DIR"
