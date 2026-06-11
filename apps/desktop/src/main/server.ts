@@ -11,13 +11,17 @@
  * @module server
  */
 
-import { type ChildProcess, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import { app, BrowserWindow } from "electron";
+import {
+  app,
+  BrowserWindow,
+  type UtilityProcess,
+  utilityProcess,
+} from "electron";
 
 /** Handle to the running Next.js child process. */
-let serverProcess: ChildProcess | null = null;
+let serverProcess: UtilityProcess | null = null;
 
 /**
  * Actual port the server is listening on, confirmed from stdout.
@@ -118,18 +122,20 @@ export async function startNextServer(): Promise<void> {
     console.log(`Starting Next.js server on port ${chosenPort}...`);
     console.log(`Server path: ${serverPath}`);
 
-    // Run server.js with Electron's bundled Node runtime — a Finder-launched
-    // app has a bare PATH (/usr/bin:/bin:...) with no `node` on it.
-    serverProcess = spawn(process.execPath, [serverPath], {
+    // utilityProcess runs server.js on Electron's bundled Node inside a
+    // proper helper process: no reliance on PATH `node` (absent in
+    // Finder-launched apps) and no bouncing "exec" Dock icon, which spawning
+    // process.execPath with ELECTRON_RUN_AS_NODE causes on macOS.
+    serverProcess = utilityProcess.fork(serverPath, [], {
+      serviceName: "GAIA Next.js server",
       env: {
         ...process.env,
-        ELECTRON_RUN_AS_NODE: "1",
         PORT: String(chosenPort),
         HOSTNAME: "localhost",
         NODE_ENV: "production",
       },
       cwd: resourcesPath,
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio: "pipe",
     });
 
     let resolved = false;
@@ -171,15 +177,7 @@ export async function startNextServer(): Promise<void> {
       console.error("[Next.js Error]", data.toString());
     });
 
-    serverProcess.on("error", (error) => {
-      console.error("Failed to start Next.js server:", error);
-      if (!resolved) {
-        resolved = true;
-        reject(error);
-      }
-    });
-
-    serverProcess.on("close", (code) => {
+    serverProcess.on("exit", (code) => {
       if (!resolved) {
         // Exited before printing "Ready" — genuine startup failure.
         console.error(`Next.js server exited during startup with code ${code}`);
@@ -250,8 +248,8 @@ export async function startNextServer(): Promise<void> {
 /**
  * Stop the Next.js server and wait for the process to exit.
  *
- * Sends SIGTERM first. If the process has not exited within
- * 3 seconds it is force-killed with SIGKILL on all platforms.
+ * `UtilityProcess.kill()` sends SIGTERM. If the process has not exited
+ * within 3 seconds it is force-killed with SIGKILL via its pid.
  */
 export async function stopNextServer(): Promise<void> {
   if (!serverProcess) return;
@@ -260,12 +258,12 @@ export async function stopNextServer(): Promise<void> {
   console.log("Stopping Next.js server...");
 
   return new Promise((resolve) => {
-    const proc = serverProcess as ChildProcess;
+    const proc = serverProcess as UtilityProcess;
     serverProcess = null;
 
     const killTimeout = setTimeout(() => {
       try {
-        proc.kill("SIGKILL");
+        if (proc.pid) process.kill(proc.pid, "SIGKILL");
       } catch {
         // Process already exited
       }
@@ -276,6 +274,6 @@ export async function stopNextServer(): Promise<void> {
       resolve();
     });
 
-    proc.kill("SIGTERM");
+    proc.kill();
   });
 }
