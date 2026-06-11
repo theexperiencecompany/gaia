@@ -38,6 +38,13 @@
         "cwd": "{projectRoot}"
       }
     },
+    "download-files": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run python -m src download-files",
+        "cwd": "{projectRoot}"
+      }
+    },
     "lint": {
       "executor": "nx:run-commands",
       "options": {

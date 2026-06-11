@@ -27,7 +27,11 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 from shared.py.logging import configure_file_logging, get_contextual_logger
 from shared.py.secrets import inject_infisical_secrets
 from src.config import bootstrap_settings
-from src.constants import MIN_ENDPOINTING_DELAY_S, VOICE_SYSTEM_PROMPT
+from src.constants import (
+    BACKEND_REQUEST_TIMEOUT_S,
+    MIN_ENDPOINTING_DELAY_S,
+    VOICE_SYSTEM_PROMPT,
+)
 from src.llm import CustomLLM
 from src.utils import extract_meta_data, ms_since, now_ts
 
@@ -82,6 +86,7 @@ async def entrypoint(ctx: JobContext) -> None:
     custom_llm = CustomLLM(
         base_url=settings.GAIA_BACKEND_URL,
         room=ctx.room,
+        request_timeout_s=BACKEND_REQUEST_TIMEOUT_S,
     )
 
     session: AgentSession = AgentSession(
@@ -262,14 +267,35 @@ async def entrypoint(ctx: JobContext) -> None:
         room=ctx.room,
         room_input_options=RoomInputOptions(
             noise_cancellation=noise_cancellation.BVC(),
+            delete_room_on_close=True,
         ),
     )
 
 
-def start_worker() -> None:
-    """Start the voice agent worker."""
-    inject_infisical_secrets()
+def _run_worker_cli() -> None:
+    """Hand control to LiveKit's CLI, which owns the start/dev/download-files commands."""
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
 
 
-__all__ = ["prewarm", "entrypoint", "start_worker"]
+def start_worker() -> None:
+    """Start the voice agent worker.
+
+    Injects Infisical secrets once in the host process before LiveKit's
+    forkserver is initialised so every JobProcess inherits them.
+    """
+    inject_infisical_secrets()
+    _run_worker_cli()
+
+
+def download_files() -> None:
+    """Pre-download plugin model files (turn detector, etc.) into the local cache.
+
+    Required before the worker can run turn detection: the MultilingualModel loads
+    with ``local_files_only=True`` at inference time and never fetches at runtime.
+    No secrets needed — this only fetches public model files — so Infisical is not
+    injected, which lets it run at Docker-build time.
+    """
+    _run_worker_cli()
+
+
+__all__ = ["prewarm", "entrypoint", "start_worker", "download_files"]

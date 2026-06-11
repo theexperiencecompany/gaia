@@ -54,9 +54,4 @@ def bootstrap_settings() -> VoiceAgentSettings:
     return settings
 
 
-def load_settings() -> VoiceAgentSettings:
-    """Return cached settings. Requires bootstrap_settings() to have been called first."""
-    return get_settings()
-
-
-__all__ = ["VoiceAgentSettings", "bootstrap_settings", "get_settings", "load_settings"]
+__all__ = ["VoiceAgentSettings", "bootstrap_settings", "get_settings"]

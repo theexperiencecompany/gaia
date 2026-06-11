@@ -66,8 +66,8 @@ COPY pyproject.toml uv.lock ./
 COPY libs ./libs
 COPY apps/voice-agent/pyproject.toml ./apps/voice-agent/
 
-# setuptools needs write access to libs/ to create gaia_shared.egg-info
-RUN chown -R appuser:appuser /app/libs
+RUN mkdir -p /app/apps/voice-agent/logs \
+    && chown -R appuser:appuser /app/libs /app/apps/voice-agent
 
 USER appuser
 

@@ -141,7 +141,7 @@ echo "All dependencies installed"
 
 [tasks.setup]
 description = "Complete project setup for all apps (API, Web, Desktop, Mobile, Voice)"
-depends = ["setup:env", "setup:deps"]
+depends = ["setup:env", "setup:deps", "setup:voice-agent"]
 run = '''
 echo "Starting Docker services..."
 nx run docker:docker:up

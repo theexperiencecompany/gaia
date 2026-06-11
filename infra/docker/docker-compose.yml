@@ -416,13 +416,13 @@ services:
       HF_HUB_ENABLE_HF_TRANSFER: "1"
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
+      GAIA_BACKEND_URL: http://localhost:8000
     env_file:
       - ../../apps/api/.env
     volumes:
       - voice_agent_models:/home/appuser/.cache/huggingface
     restart: on-failure
-    networks:
-      - gaia_network
+    network_mode: host
 
   loki:
     image: grafana/loki:3.3.2

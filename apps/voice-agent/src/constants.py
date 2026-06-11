@@ -29,6 +29,13 @@ OPEN_TAG_DEFER_CAP = 4
 # when it predicts the user will continue.
 MIN_ENDPOINTING_DELAY_S = 0.8
 
+# aiohttp sock_read timeout (s) for the backend chat-stream request. MUST exceed
+# the backend's VOICE_EXECUTOR_RESULT_TIMEOUT_S (90s): on a delegated turn the
+# backend parks the SSE stream with no bytes on the wire while it waits for the
+# executor, so a shorter read timeout would abort the turn and lose the spoken
+# answer before it is sent.
+BACKEND_REQUEST_TIMEOUT_S = 120.0
+
 TAG_RE = re.compile(r"</?[A-Za-z][A-Za-z0-9_-]*(?:\s+[^>]*)?/?>")
 # Message-break sentinel only. TAG_RE (run earlier) strips the bracketed
 # <NEW_MESSAGE_BREAK> form; this catches any unbracketed residue. Matching the
@@ -65,6 +72,7 @@ __all__ = [
     "TTS_FINAL_MIN_CHARS",
     "OPEN_TAG_DEFER_CAP",
     "MIN_ENDPOINTING_DELAY_S",
+    "BACKEND_REQUEST_TIMEOUT_S",
     "TAG_RE",
     "SENTINEL_RE",
     "MARKDOWN_RE",
