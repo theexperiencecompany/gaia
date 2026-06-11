@@ -39,7 +39,7 @@ A tool lives in exactly one path. If a tool has a `TOOL_RENDERERS` entry, the ba
 3. Build the card component in this directory (`MyThingSection.tsx`). It receives the typed `data` and an `index`; it returns the JSX. Props are the deserialized `tool_data.data` for that tool — type it from `toolRegistry`, never re-declare the shape.
 4. Add an entry to `TOOL_RENDERERS` in `TextBubble.tsx`: `my_tool_name: (data, index) => <MyThingSection key={...} ... />`. The `key` must be unique; prefer `tool_call_id` when present, else `index`.
 
-Styling: follow the dark-card contract in `DESIGN.md` (outer `rounded-2xl bg-zinc-800 p-4`, inner `rounded-2xl bg-zinc-900 p-3`, no borders). `RateLimitCard.tsx` is a good full-featured reference.
+Styling: the dark-card pattern in `DESIGN.md` (outer `rounded-2xl bg-zinc-800 p-4`, inner `rounded-2xl bg-zinc-900 p-3`, no borders) is the **default**, not a hard rule. A card with a deliberately distinct presentation may diverge — e.g. `SendNotificationSection.tsx` mimics an OS notification banner. `RateLimitCard.tsx` is a good reference for the default look.
 
 ## Gotchas
 

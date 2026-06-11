@@ -208,6 +208,11 @@ const ListItem = React.memo(
               ref={ref as React.Ref<HTMLAnchorElement>}
               className={sharedClassName}
               href={href}
+              // Mega-menu renders 24+ links in the DOM; default prefetch fires
+              // an RSC request for each on load, flooding the cold worker and
+              // contending with the critical-path download. Prefetch on hover
+              // intent instead (Next still prefetches on hover when null).
+              prefetch={false}
               {...props}
             >
               {content}

@@ -9,9 +9,17 @@
     "email": "support@heygaia.io"
   },
   "type": "module",
+  "browserslist": [
+    "last 2 Chrome versions",
+    "last 2 Firefox versions",
+    "last 2 Safari versions",
+    "last 2 Edge versions",
+    "not dead"
+  ],
   "scripts": {
     "extract-icons": "tsx scripts/extract-icon-paths.ts",
-    "prebuild": "npm run extract-icons",
+    "extract-blog": "node scripts/extract-blog-data.mjs",
+    "prebuild": "npm run extract-icons && npm run extract-blog",
     "dev": "nx next:dev --turbopack",
     "dev:webpack": "nx next:dev",
     "build": "nx next:build",
@@ -24,8 +32,10 @@
     "lint": "npm run check",
     "lint:fix": "npm run fix",
     "format": "biome format --write .",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "promote-static": "node scripts/promote-static-landing.mjs",
+    "cf:build": "IMAGE_LOADER=cloudflare opennextjs-cloudflare build && npm run promote-static",
+    "deploy": "npm run cf:build && opennextjs-cloudflare deploy",
+    "preview": "npm run cf:build && opennextjs-cloudflare preview",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {

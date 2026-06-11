@@ -839,6 +839,7 @@ export type ToolName =
   | "people_search_data"
   | "support_ticket_data"
   | "notification_data"
+  | "send_notification_data"
   | "google_docs_data"
   | "code_data"
   | "todo_data"
@@ -878,6 +879,7 @@ export interface ToolDataMap {
   people_search_data: PeopleSearchData[];
   support_ticket_data: GenericToolData[];
   notification_data: GenericToolData;
+  send_notification_data: GenericToolData;
   google_docs_data: GoogleDocsData;
   code_data: CodeData;
   todo_data: TodoToolData;
@@ -924,6 +926,7 @@ export function isKnownTool(name: string): name is ToolName {
     "people_search_data",
     "support_ticket_data",
     "notification_data",
+    "send_notification_data",
     "google_docs_data",
     "code_data",
     "todo_data",

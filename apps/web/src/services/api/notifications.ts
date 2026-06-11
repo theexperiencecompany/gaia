@@ -1,3 +1,4 @@
+import type { NotificationPlatform } from "@/features/notification/constants";
 import { apiauth } from "@/lib/api/client";
 import {
   type BulkActionRequest,
@@ -210,18 +211,14 @@ export class NotificationsAPI {
   }
 
   /**
-   * Get notification channel preferences (telegram, discord)
+   * Get notification channel preferences (telegram, discord, whatsapp, slack)
    */
-  static async getChannelPreferences(): Promise<{
-    telegram: boolean;
-    discord: boolean;
-    whatsapp: boolean;
-  }> {
-    const response = await apiauth.get<{
-      telegram: boolean;
-      discord: boolean;
-      whatsapp: boolean;
-    }>(`${NotificationsAPI.BASE_URL}/preferences/channels`);
+  static async getChannelPreferences(): Promise<
+    Record<NotificationPlatform, boolean>
+  > {
+    const response = await apiauth.get<Record<NotificationPlatform, boolean>>(
+      `${NotificationsAPI.BASE_URL}/preferences/channels`,
+    );
     return response.data;
   }
 
@@ -229,7 +226,7 @@ export class NotificationsAPI {
    * Update a notification channel preference
    */
   static async updateChannelPreference(
-    platform: "telegram" | "discord" | "whatsapp",
+    platform: NotificationPlatform,
     enabled: boolean,
   ): Promise<void> {
     await apiauth.put(`${NotificationsAPI.BASE_URL}/preferences/channels`, {

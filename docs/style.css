@@ -75,16 +75,6 @@ img {
   border: none;
 }
 
-.dark #page-context-menu button {
-  border: none;
-  background: #ffffff10;
-}
-
-#page-context-menu-button {
-  padding-top: 7px;
-  padding-bottom: 6px;
-}
-
 /* Reduce right TOC sidebar width */
 #table-of-contents-layout {
   width: 18rem !important;
@@ -94,8 +84,52 @@ img {
   width: 15.5rem !important;
 }
 
-.dark #page-context-menu > button:not(#page-context-menu-button) {
-  border: none;
-  border-left: 1px solid #ffffff20;
-  outline: none;
+/* Enlarge custom image icons (macOS-style app icons) in the sidebar */
+#sidebar img[src^='/images/icons/'] {
+  width: 1.25rem;
+  height: 1.25rem;
+  min-width: 1.25rem;
+  aspect-ratio: 1;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 0 !important;
+  cursor: default !important;
+}
+
+/* Tighter, smaller typography (Poke-style density) */
+#page-title {
+  font-size: 1.625rem;
+}
+
+#content-area header .prose {
+  font-size: 1rem;
+}
+
+#content-area .prose p,
+#content-area .prose li,
+#content-area .prose td,
+#content-area .prose th,
+#content-area .prose blockquote {
+  font-size: 0.875rem;
+  line-height: 1.7;
+}
+
+#content-area .prose h1 {
+  font-size: 1.75rem;
+}
+
+#content-area .prose h2 {
+  font-size: 1.25rem;
+}
+
+#content-area .prose h3 {
+  font-size: 1.05rem;
+}
+
+#content-area .prose h4 {
+  font-size: 0.95rem;
+}
+
+#content-area .prose code {
+  font-size: 0.8125rem;
 }

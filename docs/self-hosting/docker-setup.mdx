@@ -206,8 +206,8 @@ Because the mount needs Linux FUSE, run the backend in a container on every plat
 | Host OS | Native (`uvicorn` on the host) | Containerized (Docker) |
 | --- | --- | --- |
 | Linux | Works if `juicefs` is installed and `/dev/fuse` is accessible | Works |
-| macOS | Not supported (no Linux FUSE) | Works — Docker Desktop's Linux VM provides `/dev/fuse` |
-| Windows | Not supported (no Linux FUSE) | Works — Docker Desktop / WSL2 provides `/dev/fuse` |
+| macOS | Not supported (no Linux FUSE) | Works, Docker Desktop's Linux VM provides `/dev/fuse` |
+| Windows | Not supported (no Linux FUSE) | Works, Docker Desktop / WSL2 provides `/dev/fuse` |
 
 The self-host Compose stack already runs the backend in a container, so all three platforms are covered. The native path is a development-only convenience on Linux.
 
@@ -224,7 +224,7 @@ FUSE lets a userspace program act as a filesystem instead of the kernel:
 3. When the backend reads or writes a path under `/mnt/jfs`, the kernel routes the call to the JuiceFS process.
 4. JuiceFS looks up metadata in its database, fetches or stores the file's chunks in object storage, and serves the result back through `/dev/fuse`.
 
-The backend never sees any of this — it just reads and writes files under `/mnt/jfs`.
+The backend never sees any of this, it just reads and writes files under `/mnt/jfs`.
 
 ### Container settings that make it work
 
@@ -407,9 +407,9 @@ docker network inspect gaia-dev_gaia_network
 <AccordionGroup>
   <Accordion icon="triangle-exclamation" title="Logs show JuiceFSUnavailable">
     The backend can't reach the workspace mount. Check, in order:
-    - **Object store and metadata are configured** — `R2_*` and `JUICEFS_META_URL_TEMPLATE` must be set in `apps/api/.env`. Without them JuiceFS never mounts.
-    - **FUSE settings are present** — confirm `cap_add: SYS_ADMIN`, `devices: /dev/fuse`, and `security_opt: apparmor:unconfined` are on `gaia-backend` and `arq_worker`.
-    - **The mount came up** — run `docker compose exec gaia-backend mountpoint /mnt/jfs`. A non-zero result means the mount failed; check `docker compose logs gaia-backend` for the JuiceFS error.
+    - **Object store and metadata are configured**: `R2_*` and `JUICEFS_META_URL_TEMPLATE` must be set in `apps/api/.env`. Without them JuiceFS never mounts.
+    - **FUSE settings are present**, confirm `cap_add: SYS_ADMIN`, `devices: /dev/fuse`, and `security_opt: apparmor:unconfined` are on `gaia-backend` and `arq_worker`.
+    - **The mount came up**, run `docker compose exec gaia-backend mountpoint /mnt/jfs`. A non-zero result means the mount failed; check `docker compose logs gaia-backend` for the JuiceFS error.
   </Accordion>
   <Accordion icon="microchip" title="fusermount3: cannot open /dev/fuse">
     The FUSE device isn't reaching the container. Confirm the `devices: /dev/fuse:/dev/fuse` mapping is present. On a Linux host, verify the device exists with `ls -l /dev/fuse` and load the module if missing: `sudo modprobe fuse`. On macOS and Windows, make sure Docker Desktop is running (it provides the device from its Linux VM).

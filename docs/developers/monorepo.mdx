@@ -6,7 +6,7 @@ icon: "folder-tree"
 
 GAIA is a full-stack monorepo managed with [Nx](https://nx.dev). All apps, services, and shared libraries live in a single repository for unified tooling, shared code, and coordinated releases.
 
-## Top-Level Layout
+## Top-level layout
 
 <Tree>
   <Tree.Folder name="apps" defaultOpen>
@@ -30,17 +30,25 @@ GAIA is a full-stack monorepo managed with [Nx](https://nx.dev). All apps, servi
     </Tree.Folder>
     <Tree.Folder name="bots">
       <Tree.Folder name="discord">
-        <Tree.File name="main.py" />
+        <Tree.File name="src/" />
+        <Tree.File name="package.json" />
       </Tree.Folder>
       <Tree.Folder name="slack">
-        <Tree.File name="main.py" />
+        <Tree.File name="src/" />
+        <Tree.File name="package.json" />
       </Tree.Folder>
       <Tree.Folder name="telegram">
-        <Tree.File name="main.py" />
+        <Tree.File name="src/" />
+        <Tree.File name="package.json" />
+      </Tree.Folder>
+      <Tree.Folder name="whatsapp">
+        <Tree.File name="src/" />
+        <Tree.File name="package.json" />
       </Tree.Folder>
     </Tree.Folder>
     <Tree.Folder name="voice-agent">
-      <Tree.File name="main.py" />
+      <Tree.File name="src/" />
+      <Tree.File name="pyproject.toml" />
     </Tree.Folder>
   </Tree.Folder>
   <Tree.Folder name="libs">
@@ -79,12 +87,15 @@ GAIA is a full-stack monorepo managed with [Nx](https://nx.dev). All apps, servi
 | `apps/web` | Next.js 16, React 19, TypeScript | Primary web application |
 | `apps/desktop` | Electron, Next.js | Desktop app wrapping the web build |
 | `apps/mobile` | React Native, Expo | iOS and Android app |
-| `apps/bots/discord` | discord.py | Discord bot integration |
-| `apps/bots/slack` | Slack Bolt | Slack bot integration |
-| `apps/bots/telegram` | python-telegram-bot | Telegram bot integration |
+| `apps/bots/discord` | TypeScript, discord.js | Discord bot integration |
+| `apps/bots/slack` | TypeScript, Slack Bolt | Slack bot integration |
+| `apps/bots/telegram` | TypeScript, grammY | Telegram bot integration |
+| `apps/bots/whatsapp` | TypeScript, WhatsApp Cloud API | WhatsApp bot integration |
 | `apps/voice-agent` | Python | Voice processing worker |
 
-## Backend Structure (`apps/api`)
+All four bots are thin TypeScript adapters, the platform-agnostic logic (commands, streaming, API client, config) lives in `libs/shared/ts/src/bots/` and is shared via `@gaia/shared`.
+
+## Backend structure (`apps/api`)
 
 <Tree>
   <Tree.Folder name="apps/api" defaultOpen>
@@ -148,7 +159,7 @@ GAIA is a full-stack monorepo managed with [Nx](https://nx.dev). All apps, servi
   </Tree.Folder>
 </Tree>
 
-## Frontend Structure (`apps/web`)
+## Frontend structure (`apps/web`)
 
 <Tree>
   <Tree.Folder name="apps/web/src" defaultOpen>
@@ -187,21 +198,21 @@ GAIA is a full-stack monorepo managed with [Nx](https://nx.dev). All apps, servi
   </Tree.Folder>
 </Tree>
 
-## Shared Libraries (`libs/`)
+## Shared libraries (`libs/`)
 
 The `libs/shared` directory contains code shared across multiple apps:
 
-- **`libs/shared/py`** — Python package (`gaia-shared`) with common utilities, logging, config, and Pydantic models. Automatically available to all Python apps via workspace dependencies.
-- **`libs/shared/ts`** — TypeScript utilities shared between the web and desktop apps.
+- **`libs/shared/py`**: Python package (`gaia-shared`) with common utilities, logging, config, and Pydantic models. Automatically available to all Python apps via workspace dependencies.
+- **`libs/shared/ts`**: TypeScript package (`@gaia/shared`) used by the web and desktop apps and all four bots, including the shared bot logic in `src/bots/`.
 
 ## Infrastructure (`infra/`)
 
 Docker Compose files live in `infra/docker/`:
 
-- `docker-compose.yml` — Local development (PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ)
-- `docker-compose.prod.yml` — Production deployment
+- `docker-compose.yml`, Local development (PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ)
+- `docker-compose.prod.yml`, Production deployment
 
-## Build System
+## Build system
 
 GAIA uses [Nx](https://nx.dev) for orchestrating builds, linting, formatting, and type-checking across all projects. Each app declares its own targets in `project.json` and Nx handles caching and parallelization.
 

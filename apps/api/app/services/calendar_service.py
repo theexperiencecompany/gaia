@@ -4,6 +4,7 @@ from typing import Any, Union
 from fastapi import HTTPException
 
 from app.constants.calendar import DEFAULT_CALENDAR_COLOR
+from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.db.mongodb.collections import get_sync_collection
 from app.models.calendar_models import (
     EventCreateRequest,
@@ -44,6 +45,19 @@ def _proxy(
             query=query,
         )
     except AppError as exc:
+        # Integration not connected → emit the structured "integration" detail
+        # the web client already understands (same shape as require_integration),
+        # so it shows an actionable reconnect toast instead of the login modal.
+        if exc.meta.get("error_code") == INTEGRATION_NOT_CONNECTED:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={
+                    "type": "integration",
+                    "error_code": INTEGRATION_NOT_CONNECTED,
+                    "toolkit": exc.meta.get("toolkit"),
+                    "message": "Reconnect Google Calendar to load your events.",
+                },
+            ) from exc
         provider_response = exc.meta.get("provider_response")
         detail: Any = exc.message
         if isinstance(provider_response, dict):

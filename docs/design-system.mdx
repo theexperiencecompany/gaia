@@ -1,13 +1,13 @@
 ---
 title: "Design System"
-description: "Visual language, tokens, and component rules for GAIA — sourced from DESIGN.md"
+description: "Visual language, tokens, and component rules for GAIA, sourced from DESIGN.md"
 icon: "palette"
 ---
 
 {/*
   Visual rendering of DESIGN.md at the repository root.
   All tokens and rules here are sourced directly from that file.
-  Update DESIGN.md first — this page reflects it.
+  Update DESIGN.md first, this page reflects it.
 */}
 
 <Note>
@@ -21,7 +21,7 @@ GAIA's UI is **dark-first**, **flat**, and **single-accent**. Every decision flo
 - **Dark-first.** Primary experience is dark mode (`#111111` background). Light mode is supported via CSS variables but is secondary.
 - **Flat depth.** Depth comes from layered backgrounds (`zinc-800` → `zinc-900`) only. Never borders, rings, or outlines.
 - **Single accent.** One primary action color: `#00bbff`. Everything else is zinc-scale neutrals.
-- **Borderless cards.** Data cards use background-only separation — no `border-`, `ring-`, or `outline-` in the card tree.
+- **Borderless cards.** Data cards use background-only separation, no `border-`, `ring-`, or `outline-` in the card tree.
 - **Subtle motion.** Animations serve entrance, exit, and state changes only. Never decorative. Keep durations ≤ 300ms.
 
 ---
@@ -43,7 +43,7 @@ GAIA's UI is **dark-first**, **flat**, and **single-accent**. Every decision flo
   </Color.Row>
 </Color>
 
-**Layout rule:** Use `--color-primary` for CTAs, user chat bubbles, selection highlights, and links. Use `--color-primary-bg` / `--color-secondary-bg` for the main app canvas and sidebar. Never use these on dark card surfaces — use zinc directly there.
+**Layout rule:** Use `--color-primary` for CTAs, user chat bubbles, selection highlights, and links. Use `--color-primary-bg` / `--color-secondary-bg` for the main app canvas and sidebar. Never use these on dark card surfaces, use zinc directly there.
 
 ### Semantic Variables (Shadcn / Radix)
 
@@ -60,21 +60,21 @@ Use on layout surfaces and standard components. Switch automatically between lig
 | `--ring` | `hsl(215 20.2% 65.1%)` | `hsl(216 34% 17%)` |
 | `--destructive` | `hsl(0 100% 50%)` | `hsl(0 63% 31%)` |
 
-### Zinc Scale — Dark Card Surfaces
+### Zinc Scale, Dark Card Surfaces
 
-Use zinc directly on dark card surfaces — not the CSS variables above.
+Use zinc directly on dark card surfaces, not the CSS variables above.
 
 <Color variant="table">
   <Color.Row title="Surfaces">
-    <Color.Item name="bg-zinc-800 — outer card" value="#27272a" />
-    <Color.Item name="bg-zinc-900 — inner item" value="#18181b" />
-    <Color.Item name="bg-zinc-700 — hover / accent" value="#3f3f46" />
+    <Color.Item name="bg-zinc-800, outer card" value="#27272a" />
+    <Color.Item name="bg-zinc-900, inner item" value="#18181b" />
+    <Color.Item name="bg-zinc-700, hover / accent" value="#3f3f46" />
   </Color.Row>
   <Color.Row title="Text">
-    <Color.Item name="text-zinc-100 — section headers" value="#f4f4f5" />
-    <Color.Item name="text-zinc-200 — item titles" value="#e4e4e7" />
-    <Color.Item name="text-zinc-400 — body / secondary" value="#a1a1aa" />
-    <Color.Item name="text-zinc-500 — meta / timestamps" value="#71717a" />
+    <Color.Item name="text-zinc-100, section headers" value="#f4f4f5" />
+    <Color.Item name="text-zinc-200, item titles" value="#e4e4e7" />
+    <Color.Item name="text-zinc-400, body / secondary" value="#a1a1aa" />
+    <Color.Item name="text-zinc-500, meta / timestamps" value="#71717a" />
   </Color.Row>
 </Color>
 
@@ -84,16 +84,16 @@ Always use `/10` opacity background paired with matching foreground text. Never 
 
 <Color variant="table">
   <Color.Row title="Status">
-    <Color.Item name="emerald-400 — success" value="#34d399" />
-    <Color.Item name="amber-400 — warning" value="#fbbf24" />
-    <Color.Item name="red-400 — error" value="#f87171" />
-    <Color.Item name="blue-400 — info" value="#60a5fa" />
-    <Color.Item name="zinc-400 — pending" value="#a1a1aa" />
+    <Color.Item name="emerald-400, success" value="#34d399" />
+    <Color.Item name="amber-400, warning" value="#fbbf24" />
+    <Color.Item name="red-400, error" value="#f87171" />
+    <Color.Item name="blue-400, info" value="#60a5fa" />
+    <Color.Item name="zinc-400, pending" value="#a1a1aa" />
   </Color.Row>
   <Color.Row title="Priority">
-    <Color.Item name="red-500 — high" value="#ef4444" />
-    <Color.Item name="yellow-500 — medium" value="#eab308" />
-    <Color.Item name="blue-500 — low" value="#3b82f6" />
+    <Color.Item name="red-500, high" value="#ef4444" />
+    <Color.Item name="yellow-500, medium" value="#eab308" />
+    <Color.Item name="blue-500, low" value="#3b82f6" />
   </Color.Row>
 </Color>
 
@@ -105,17 +105,17 @@ bg-blue-400/10   text-blue-400      // info
 bg-zinc-700/50   text-zinc-400      // pending
 ```
 
-<Warning>Never use solid color backgrounds for status badges — always `/10` opacity background paired with matching text color.</Warning>
+<Warning>Never use solid color backgrounds for status badges, always `/10` opacity background paired with matching text color.</Warning>
 
 ---
 
 ## Typography
 
-Three font families. Never set `font-family` inline — use the Tailwind token class.
+Three font families. Never set `font-family` inline, use the Tailwind token class.
 
 | Token | Family | Weights | Use |
 |-------|--------|---------|-----|
-| `font-sans` | Inter | All | All UI — body, labels, buttons, inputs |
+| `font-sans` | Inter | All | All UI, body, labels, buttons, inputs |
 | `font-serif` | PP Editorial New | 200, 400 | Editorial headings, landing hero text |
 | `font-mono` | Anonymous Pro | 400, 700 | Code blocks, `<code>`, technical content |
 
@@ -123,9 +123,9 @@ Three font families. Never set `font-family` inline — use the Tailwind token c
 
 <div style={{ borderRadius: '12px', overflow: 'hidden', margin: '24px 0' }}>
   <div style={{ background: '#18181b', padding: '32px 36px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-    <div style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '20px', fontFamily: 'monospace' }}>Inter — font-sans</div>
+    <div style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '20px', fontFamily: 'monospace' }}>Inter, font-sans</div>
     <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '30px', fontWeight: 700, color: '#f4f4f5', lineHeight: 1.15, marginBottom: '10px' }}>The quick brown fox jumps</div>
-    <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 400, color: '#a1a1aa', lineHeight: 1.65, marginBottom: '16px' }}>GAIA proactively manages your email, calendar, tasks, and workflows — so you don't have to.</div>
+    <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 400, color: '#a1a1aa', lineHeight: 1.65, marginBottom: '16px' }}>GAIA proactively manages your email, calendar, tasks, and workflows, so you don't have to.</div>
     <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
       <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 300, fontSize: '13px', color: '#52525b' }}>Light 300</span>
       <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 400, fontSize: '13px', color: '#71717a' }}>Regular 400</span>
@@ -136,7 +136,7 @@ Three font families. Never set `font-family` inline — use the Tailwind token c
   </div>
 
   <div style={{ background: '#18181b', padding: '32px 36px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-    <div style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '20px', fontFamily: 'monospace' }}>PP Editorial New — font-serif</div>
+    <div style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '20px', fontFamily: 'monospace' }}>PP Editorial New, font-serif</div>
     <div style={{ fontFamily: "'PP Editorial New', serif", fontSize: '38px', fontWeight: 200, color: '#f4f4f5', lineHeight: 1.08, marginBottom: '6px' }}>The future of personal AI</div>
     <div style={{ fontFamily: "'PP Editorial New', serif", fontSize: '38px', fontWeight: 200, color: '#a1a1aa', lineHeight: 1.08, fontStyle: 'italic', marginBottom: '20px' }}>is already here.</div>
     <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
@@ -148,7 +148,7 @@ Three font families. Never set `font-family` inline — use the Tailwind token c
   </div>
 
   <div style={{ background: '#18181b', padding: '32px 36px' }}>
-    <div style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '20px', fontFamily: 'monospace' }}>Anonymous Pro — font-mono</div>
+    <div style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '20px', fontFamily: 'monospace' }}>Anonymous Pro, font-mono</div>
     <div style={{ fontFamily: "'Anonymous Pro', monospace", fontSize: '15px', color: '#a1a1aa', lineHeight: 1.75 }}>
       <span style={{ color: '#60a5fa' }}>const</span>
       <span style={{ color: '#f4f4f5' }}> gaia </span>
@@ -166,7 +166,7 @@ Three font families. Never set `font-family` inline — use the Tailwind token c
 
 ### Heading scale
 
-Defined globally via `@layer base` — use semantic HTML tags, styles apply automatically.
+Defined globally via `@layer base`, use semantic HTML tags, styles apply automatically.
 
 | Tag | Classes | Size |
 |-----|---------|------|
@@ -180,12 +180,12 @@ Defined globally via `@layer base` — use semantic HTML tags, styles apply auto
 ### Text patterns
 
 ```tsx
-// Uppercase section labels — settings, card headers, form groups
+// Uppercase section labels, settings, card headers, form groups
 <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
   Section Title
 </p>
 
-// Truncation — always truncate in constrained containers
+// Truncation, always truncate in constrained containers
 <span className="truncate">...</span>
 <p className="line-clamp-2">...</p>
 <p className="line-clamp-1 max-w-[200px]">...</p>
@@ -213,15 +213,15 @@ Inline code gets `border-radius: 10px` and `padding: 4px` globally. Use `font-mo
 
 | Context | Class | Size |
 |---------|-------|------|
-| Dark cards — outer | `rounded-2xl` | 16px |
-| Dark cards — inner items | `rounded-2xl` or `rounded-xl` | 12px |
+| Dark cards, outer | `rounded-2xl` | 16px |
+| Dark cards, inner items | `rounded-2xl` or `rounded-xl` | 12px |
 | Images | `rounded-3xl` | 24px |
 | Buttons, inputs | `rounded-md` | 6px |
-| Badges, pills | `rounded-full` | — |
+| Badges, pills | `rounded-full` |, |
 | Context menus | `rounded-xl` | 12px |
 
 <Warning>
-  Never use `rounded-lg` on card containers — that's the Shadcn base radius, visually too small. Cards always use `rounded-2xl`.
+  Never use `rounded-lg` on card containers, that's the Shadcn base radius, visually too small. Cards always use `rounded-2xl`.
 </Warning>
 
 ---
@@ -234,7 +234,7 @@ Depth primarily from background layering and blur, not shadow.
 |---------|-------|
 | Buttons, inputs | `shadow-xs` |
 | Dialogs, sheets | `shadow-lg` |
-| Dark cards (solid) | No shadow — flat design |
+| Dark cards (solid) | No shadow, flat design |
 | Dark cards (glass) | `bg-zinc-800/40 backdrop-blur-xl` |
 | Hover on dark surfaces | `hover:bg-white/5` |
 
@@ -419,7 +419,7 @@ Default: `transition-all duration-200`. Use this everywhere unless a specific pr
 
 ### Framer Motion
 
-Import from `motion/react` — not `framer-motion`. `AnimatePresence` is required for exit animations. Keep durations ≤ 300ms for micro-interactions, ≤ 500ms for entrances.
+Import from `motion/react`, not `framer-motion`. `AnimatePresence` is required for exit animations. Keep durations ≤ 300ms for micro-interactions, ≤ 500ms for entrances.
 
 ```typescript
 import { AnimatePresence, m } from "motion/react";
@@ -437,7 +437,7 @@ import { AnimatePresence, m } from "motion/react";
 
 ## Toast / Notifications
 
-**Sileo** — already mounted globally. Call the toast function directly. Never add `<Toaster>` or import from `sonner` / `react-hot-toast`.
+**Sileo**, already mounted globally. Call the toast function directly. Never add `<Toaster>` or import from `sonner` / `react-hot-toast`.
 
 Toast style: dark fill (`#262626`), white title, white/75 description, top-right position. Action button colors apply automatically by type: error → red, warning → amber, success → green, info → blue.
 
@@ -466,7 +466,7 @@ toast.info("New message received");
     | `Dialog` | Zoom + fade · use for confirmations, forms requiring focus |
     | `Sheet` | Fade-in slide panel · use for side panels, settings drawers |
     | `Popover` | Anchored overlay · use for inline pickers, contextual options |
-    | `Tooltip` | Hover label only — no interactive content |
+    | `Tooltip` | Hover label only, no interactive content |
     | `DropdownMenu` / `ContextMenu` | Action lists |
     | `Accordion` | Animated expand/collapse |
     | `Avatar` | `rounded-full`, image + fallback |
@@ -510,11 +510,11 @@ toast.info("New message received");
 ## Styling Tools
 
 ```typescript
-// cn() — always use for conditional class merging, never string concatenation
+// cn(), always use for conditional class merging, never string concatenation
 import { cn } from "@/lib/utils";
 <div className={cn("base-class", condition && "conditional-class", className)} />
 
-// cva — for components with multiple visual variants
+// cva, for components with multiple visual variants
 import { cva } from "class-variance-authority";
 const cardVariants = cva("rounded-2xl p-4", {
   variants: {
@@ -550,7 +550,7 @@ const cardVariants = cva("rounded-2xl p-4", {
 
 ### Input states
 
-Error state is driven by `aria-invalid={!!error}` — styling applies automatically via the Input component.
+Error state is driven by `aria-invalid={!!error}`, styling applies automatically via the Input component.
 
 | State | Visual |
 |-------|--------|
@@ -577,7 +577,7 @@ Skeleton inherits: `bg-accent animate-pulse rounded-md`. Match the skeleton shap
 
 ### Empty states
 
-No shared component — build inline:
+No shared component, build inline:
 
 ```tsx
 <div className="flex flex-col items-center gap-2 py-8 text-center">
@@ -608,7 +608,7 @@ No shared component — build inline:
 Class-based: `.dark` on `<html>`. Tailwind `dark:` modifier works everywhere.
 
 - **Layout surfaces** → `bg-background text-foreground` (auto-switches via CSS vars)
-- **Dark cards** → `bg-zinc-800 / bg-zinc-900` (always dark — no `dark:` needed)
+- **Dark cards** → `bg-zinc-800 / bg-zinc-900` (always dark, no `dark:` needed)
 - **Explicit overrides** → only when CSS variables don't cover it
 - Brand cyan (`#00bbff`) is the same in both modes
 
@@ -655,11 +655,11 @@ Global scrollbar is already styled (8px, pill-shaped, zinc-700 thumb). Use `.no-
     - `border-`, `ring-`, or `outline-` anywhere in a card tree
     - `rounded-lg` on card containers
     - Solid backgrounds for status badges
-    - Unicode symbols in JSX (`→`, `•`, `✓`) — use icons
-    - Add `<Toaster>` — already mounted globally
+    - Unicode symbols in JSX (`→`, `•`, `✓`), use icons
+    - Add `<Toaster>`, already mounted globally
     - Import from `sonner` or `react-hot-toast`
-    - CSS variables on dark card surfaces — use zinc directly
-    - Set `font-family` inline — use Tailwind token classes
-    - Import from `framer-motion` — use `motion/react`
+    - CSS variables on dark card surfaces, use zinc directly
+    - Set `font-family` inline, use Tailwind token classes
+    - Import from `framer-motion`, use `motion/react`
   </Column>
 </Columns>

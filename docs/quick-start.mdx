@@ -1,43 +1,53 @@
 ---
 title: "Quick Start"
-description: "Get started with GAIA in minutes using our hosted service"
+description: "Sign up, connect your apps, and send your first message. Five minutes, start to finish."
 icon: "rocket-launch"
 ---
 
-<Frame>
-  <img src="/images/hero.webp" alt="GAIA hero banner" />
-</Frame>
+import { Chat } from "/snippets/chat-bubbles.jsx";
 
-## Welcome to GAIA
-
-The fastest way to experience GAIA is through our hosted service. No installation, no setup - just sign up and start using your personal AI assistant.
-
-## Getting Started
+GAIA works the moment you sign up, and gets dramatically more useful once it can see your email and calendar. Here's the fastest path.
 
 <Steps>
-  <Step title="Visit heygaia.io">
-    Navigate to [heygaia.io](https://heygaia.io) in your web browser.
+  <Step title="Create your account">
+    Go to [heygaia.io](https://heygaia.io) and sign up with your email or Google account.
   </Step>
-  <Step title="Create Your Account">
-    Sign up with your email address or use one of our social login options.
+
+  <Step title="Connect Gmail and Calendar">
+    This is the step that makes GAIA yours. Open **Settings → Integrations** and connect Gmail and Google Calendar. Now GAIA can read your inbox, manage your schedule, and act on your behalf instead of answering in the abstract.
+
+    You can connect more later: GitHub, Notion, Linear, and 60+ other apps. See [Connecting Integrations](/guides/connecting-integrations).
   </Step>
-  <Step title="Start Chatting">
-    Once logged in, you can immediately start interacting with your AI
-    assistant.
+
+  <Step title="Send your first message">
+    Ask for something real:
+
+    <Chat
+      messages={[
+        { from: "user", text: "What's on my calendar today?" },
+        { from: "gaia", text: "Three meetings: design review at 11, 1:1 with Sam at 2, sprint planning at 4." },
+        { from: "user", text: "Remind me to follow up with Sam on Friday" },
+        { from: "gaia", text: "Done, I'll remind you on Friday." },
+      ]}
+    />
+
+    If the answer isn't quite right, just keep talking, "only the ones from this week", "make it shorter". GAIA remembers the thread.
+  </Step>
+
+  <Step title="Put GAIA in your pocket">
+    You don't have to live in the web app. Message GAIA on [WhatsApp](https://wa.me/12762088737), add it to [Slack](/guides/slack-bot), [Discord](/guides/discord-bot), or [Telegram](/guides/telegram-bot), or install the [desktop app](/guides/desktop-app).
   </Step>
 </Steps>
 
-## Next Steps
+## Where to go next
 
-Once you're comfortable with the basics:
+<CardGroup cols={2}>
+  <Card title="Chatting Effectively" icon="comments" href="/guides/chatting-effectively">
+    Phrase requests so GAIA nails them on the first try.
+  </Card>
+  <Card title="Build Your First Workflow" icon="wand-magic-sparkles" href="/guides/building-workflows">
+    Automate the things you ask for every day.
+  </Card>
+</CardGroup>
 
-- **Explore Features**: Dive deeper into GAIA's abilities
-- **[Join our Discord Community](https://discord.gg/heygaia)**: Connect with early adopters, share feedback, and get sneak peeks at upcoming features.
-- **[Join our WhatsApp Community](https://whatsapp.heygaia.io)**: Get quick updates, tips, and support right on your phone.
-
-## Need Help?
-
-If you run into any issues or have questions:
-
-- Check out our [documentation](/introduction)
-- Contact our [support team](https://heygaia.io/support)
+Stuck or curious? Join the [Discord community](https://discord.heygaia.io) or contact [support](https://heygaia.io/support).

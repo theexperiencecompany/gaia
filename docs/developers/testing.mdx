@@ -8,10 +8,10 @@ icon: "flask"
 
 GAIA has two test suites:
 
-- **API** (`apps/api/tests/`) — pytest + pytest-asyncio, ~918 tests, runs in ~15 seconds
-- **Bots** (`apps/bots/__tests__/`) — vitest, covers Discord and Slack adapters
+- **API** (`apps/api/tests/`), pytest + pytest-asyncio, ~918 tests, runs in ~15 seconds
+- **Bots** (`apps/bots/__tests__/`), vitest, covers Discord and Slack adapters
 
-All tests run without external services — databases, Redis, and LLM APIs are mocked at their boundaries.
+All tests run without external services, databases, Redis, and LLM APIs are mocked at their boundaries.
 
 ---
 
@@ -63,32 +63,32 @@ mise test:affected
 
 <CodeGroup>
 
-```bash API — standard (unit + integration)
+```bash API, standard (unit + integration)
 cd apps/api
 uv run pytest
 ```
 
-```bash API — with coverage report
+```bash API, with coverage report
 cd apps/api
 uv run pytest --cov=app --cov-report=term-missing
 ```
 
-```bash API — unit tests only
+```bash API, unit tests only
 cd apps/api
 uv run pytest -m unit
 ```
 
-```bash API — integration tests only
+```bash API, integration tests only
 cd apps/api
 uv run pytest -m integration
 ```
 
-```bash API — e2e tests (requires live services)
+```bash API, e2e tests (requires live services)
 cd apps/api
 uv run pytest -m e2e
 ```
 
-```bash API — composio tests (requires credentials)
+```bash API, composio tests (requires credentials)
 cd apps/api
 uv run pytest -m composio
 ```
@@ -124,7 +124,7 @@ apps/api/tests/
 │   ├── test_todos.py
 │   └── test_user.py
 │
-├── unit/                         # Pure unit tests — real logic, mocked I/O
+├── unit/                         # Pure unit tests, real logic, mocked I/O
 │   ├── agents/                   # Agent routing, state, graph manager
 │   ├── middleware/               # Rate limiter, executor
 │   ├── models/                   # Schema validation
@@ -134,7 +134,7 @@ apps/api/tests/
 │   ├── utils/                    # Command parsing, markdown frontmatter
 │   └── workers/                  # ARQ background tasks
 │
-├── integration/                  # Integration tests — compiled graphs, real app
+├── integration/                  # Integration tests, compiled graphs, real app
 │   ├── api/                      # Full FastAPI lifecycle with mocked services
 │   │   ├── test_chat_endpoints.py
 │   │   ├── test_conversation_endpoints.py
@@ -319,11 +319,11 @@ The test app is created once per session with a no-op lifespan (`_noop_lifespan`
 If the answer is "no", the test is worthless. Always import from `app.` directly.
 
 ```python
-# WRONG — tests nothing about GAIA
+# WRONG, tests nothing about GAIA
 from langgraph.graph import StateGraph
 graph = StateGraph(SimpleState)  # your own graph, not GAIA's
 
-# RIGHT — tests GAIA's graph factory
+# RIGHT, tests GAIA's graph factory
 from app.override.langgraph_bigtool.create_agent import create_agent
 builder = create_agent(llm=mock_llm, tool_registry=registry, ...)
 ```
@@ -333,12 +333,12 @@ builder = create_agent(llm=mock_llm, tool_registry=registry, ...)
 Mock external I/O (databases, HTTP, Redis), never the logic under test.
 
 ```python
-# WRONG — mocks the function being tested
+# WRONG, mocks the function being tested
 with patch("app.services.chat_service.run_chat_stream_background") as mock:
     mock.return_value = "result"
     result = run_chat_stream_background(...)  # calls the mock, tests nothing
 
-# RIGHT — mocks the LLM dependency, tests real service logic
+# RIGHT, mocks the LLM dependency, tests real service logic
 with patch("app.services.chat_service.agent.ainvoke") as mock_agent:
     mock_agent.return_value = {"messages": [AIMessage(content="hello")]}
     result = await run_chat_stream_background(body, user, stream_id)
@@ -348,10 +348,10 @@ with patch("app.services.chat_service.agent.ainvoke") as mock_agent:
 ### Assert on behavior, not mock calls
 
 ```python
-# WRONG — only proves your mock setup works
+# WRONG, only proves your mock setup works
 mock_service.create.assert_called_once_with(data)
 
-# RIGHT — proves the endpoint returns what it should
+# RIGHT, proves the endpoint returns what it should
 resp = await client.post("/api/v1/conversations", json=data)
 assert resp.status_code == 200
 assert resp.json()["id"] == data["conversation_id"]

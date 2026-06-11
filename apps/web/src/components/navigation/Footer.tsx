@@ -168,6 +168,9 @@ export default function Footer() {
                     <Link
                       key={link.href}
                       href={link.href}
+                      // Footer renders ~37 internal links always in the DOM;
+                      // skip eager RSC prefetch (Next still prefetches on hover).
+                      prefetch={false}
                       className="group relative flex w-full cursor-pointer justify-start py-1 text-sm sm:justify-end"
                     >
                       <span className="text-zinc-400 transition-colors group-hover:text-primary">

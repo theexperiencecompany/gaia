@@ -5,15 +5,50 @@
   // Set this to today's date
   "compatibility_date": "2026-02-24",
   "compatibility_flags": [
-    "nodejs_compat"
+    "nodejs_compat",
+    "global_fetch_strictly_public"
   ],
   "minify": true,
   "workers_dev": false,
   "preview_urls": false,
+  // Co-locate the worker near R2 (the incremental cache it waits on) instead of
+  // near the user, to cut the R2-read wall-time. Cloudflare auto-disables it if
+  // it wouldn't help; static assets are still served from the nearest PoP.
+  "placement": {
+    "mode": "smart"
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "gaia"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "gaia-next-inc-cache"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "NEXT_CACHE_DO_QUEUE",
+        "class_name": "DOQueueHandler"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "DOQueueHandler"
+      ]
+    }
+  ],
   "observability": {
     "logs": {
       "enabled": true,

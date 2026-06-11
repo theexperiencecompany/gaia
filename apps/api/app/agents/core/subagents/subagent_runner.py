@@ -20,6 +20,10 @@ from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.core.subagents.subagent_helpers import (
     create_agent_context_message,
 )
+from app.agents.prompts.workflow_prompts import (
+    WORKFLOW_AUTO_NOTIFY_SECTION,
+    WORKFLOW_SILENT_NOTIFY_SECTION,
+)
 from app.constants.general import FINISH_TASK_NAME
 from app.core.stream_manager import stream_manager
 from app.helpers.agent_helpers import build_agent_config
@@ -345,6 +349,19 @@ async def prepare_executor_execution(
                 "selected_tool": selected_tool,
             }
         )
+
+    # Workflow runs: the executor owns send_notification, but it only sees the
+    # task text comms writes. Inject the notification mode here, keyed off the
+    # run's own configurable, so the no-double-notify guarantee never depends
+    # on comms forwarding the rule. Skip if the task already carries the section
+    # (format_workflow_execution_message embeds it) to avoid duplicating it.
+    if configurable.get("workflow_id") and "NOTIFICATIONS:" not in enhanced_task:
+        notification_section = (
+            WORKFLOW_AUTO_NOTIFY_SECTION
+            if configurable.get("workflow_notify_on_completion", True)
+            else WORKFLOW_SILENT_NOTIFY_SECTION
+        )
+        enhanced_task = f"{enhanced_task}\n{notification_section}"
 
     # Build messages using shared helper.
     # Pass original task as retrieval_query so memory/context semantic search

@@ -19,13 +19,3 @@ export interface BlogPost {
 
 /** BlogPost without content — safe to pass across RSC→client boundaries */
 export type BlogPostMeta = Omit<BlogPost, "content">;
-
-export interface BlogPostFrontmatter {
-  title: string;
-  date: string;
-  authors: Author[];
-  category: string;
-  image: string;
-  slug: string;
-  featured?: boolean;
-}
