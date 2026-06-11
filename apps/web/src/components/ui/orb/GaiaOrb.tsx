@@ -241,7 +241,9 @@ function createOrbRenderer(
     pulse: gl.getUniformLocation(program, "u_pulse"),
     seed: gl.getUniformLocation(program, "u_seed"),
   };
-  gl.uniform1f(uniforms.seed, Math.random() * 100);
+  // Offset the noise field so concurrent orbs don't share a plasma phase.
+  // A mount-time timestamp is all this needs — not a PRNG.
+  gl.uniform1f(uniforms.seed, (performance.now() % 1000) / 10);
 
   const resize = () => {
     const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
