@@ -105,7 +105,7 @@ export function MemoryTimeline() {
         <Accordion
           defaultExpandedKeys={defaultExpandedKeys}
           selectionMode="multiple"
-          variant="light"
+          variant="splitted"
           itemClasses={{
             title: "text-sm font-medium text-white",
             content: "pb-4 pt-0",

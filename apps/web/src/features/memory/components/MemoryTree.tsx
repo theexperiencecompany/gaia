@@ -66,7 +66,7 @@ export function MemoryTree({ onChanged }: MemoryTreeProps) {
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-zinc-900/60 py-1">
+    <div className="py-1">
       {tree.map((node) => (
         <TreeFolder key={node.path} node={node} depth={0} actions={actions} />
       ))}

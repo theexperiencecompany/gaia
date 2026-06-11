@@ -198,7 +198,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
           }
         />
       ) : (
-        <div className="overflow-hidden rounded-2xl bg-zinc-900/60 py-1">
+        <div className="py-1">
           {filtered.map((memory) => (
             <MemoryRow
               key={memory.id}
