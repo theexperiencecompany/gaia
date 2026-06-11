@@ -161,10 +161,12 @@ def _dedupe_edges(edges: list[MemoryGraphEdge]) -> list[MemoryGraphEdge]:
     """Collapse edges that connect the same unordered entity pair to one.
 
     When multiple edges exist between the same two entities (different
-    relationship wording, or opposite direction), exactly one is returned.
-    The winning edge has the longest relationship label (most informative),
-    with source/target set to the canonically-ordered direction so the
-    direction is stable regardless of which edge was written first.
+    relationship wording, or opposite direction), exactly one is returned —
+    the one with the longest relationship label (most informative). The
+    unordered pair is ONLY the dedup key: the winner keeps its original
+    source/target, because a relationship label is directional ("lives in",
+    "is from") and swapping endpoints to a canonical order would invert its
+    meaning ("Surat is from Aryan").
     """
     best: dict[tuple[uuid.UUID, uuid.UUID], MemoryGraphEdge] = {}
     for edge in edges:
@@ -172,24 +174,7 @@ def _dedupe_edges(edges: list[MemoryGraphEdge]) -> list[MemoryGraphEdge]:
         existing = best.get(key)
         if existing is None or len(edge.relationship) > len(existing.relationship):
             best[key] = edge
-    # Normalise direction so (source, target) always matches the canonical key.
-    result: list[MemoryGraphEdge] = []
-    for key, edge in best.items():
-        canonical_src, canonical_tgt = key
-        if edge.source_entity_id != canonical_src:
-            # Flip: swap source/target in-place (do NOT mutate the ORM row).
-            flipped = MemoryGraphEdge()
-            flipped.id = edge.id
-            flipped.user_id = edge.user_id
-            flipped.source_entity_id = canonical_src
-            flipped.target_entity_id = canonical_tgt
-            flipped.relationship = edge.relationship
-            flipped.memory_id = edge.memory_id
-            flipped.created_at = edge.created_at
-            result.append(flipped)
-        else:
-            result.append(edge)
-    return result
+    return list(best.values())
 
 
 async def insert_edges(

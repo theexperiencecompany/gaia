@@ -97,18 +97,20 @@ def test_dedupe_edges_bidirectional_collapses_to_one() -> None:
     assert result[0].relationship == "is girlfriend of"
 
 
-def test_dedupe_edges_canonical_direction_is_stable() -> None:
-    """After dedup the source/target reflects the alphabetically-first UUID."""
-    # Construct ids so we know which UUID sorts first.
+def test_dedupe_edges_preserves_original_direction() -> None:
+    """Dedup must never flip an edge: relationship labels are directional.
+
+    Swapping endpoints to a canonical order would invert the meaning
+    ("Aryan is from Surat" -> "Surat is from Aryan").
+    """
     a = uuid.UUID("00000000-0000-0000-0000-000000000001")
     b = uuid.UUID("ffffffff-ffff-ffff-ffff-ffffffffffff")
-    # Edge stored in reverse direction.
-    rev = _make_edge(b, "knows", a)
-    result = _dedupe_edges([rev])
+    # Stored with the larger UUID as source — must come back unchanged.
+    edge = _make_edge(b, "is from", a)
+    result = _dedupe_edges([edge])
     assert len(result) == 1
-    # Canonical: smaller UUID is source.
-    assert result[0].source_entity_id == a
-    assert result[0].target_entity_id == b
+    assert result[0].source_entity_id == b
+    assert result[0].target_entity_id == a
 
 
 def test_dedupe_edges_distinct_pairs_all_kept() -> None:
