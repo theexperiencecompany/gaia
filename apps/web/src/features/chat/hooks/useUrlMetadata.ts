@@ -27,6 +27,11 @@ const isValidHttpUrl = (str: string): boolean => {
   }
 };
 
+// Emails (bare or mailto:) get person previews from the same endpoint —
+// the backend resolves them via Google Contacts / Gravatar.
+const isPreviewable = (str: string): boolean =>
+  isValidHttpUrl(str) || isEmail(str) || str.startsWith("mailto:");
+
 // Global batch manager for automatic request batching
 const pendingBatch = new Set<string>();
 const batchResolvers = new Map<
@@ -96,8 +101,7 @@ const batchUrlRequest = (url: string): Promise<UrlMetadata> => {
  * - Conditional fetching based on URL validity
  */
 export const useUrlMetadata = (url: string | undefined | null) => {
-  const isValidUrl =
-    url && isValidHttpUrl(url) && !isEmail(url) && !url.startsWith("mailto:");
+  const isValidUrl = url && isPreviewable(url);
 
   const result = useQuery<UrlMetadata, UrlMetadataError>({
     queryKey: ["url-metadata", url],
@@ -145,10 +149,7 @@ export const usePrefetchUrlMetadata = () => {
   const queryClient = useQueryClient();
 
   return (url: string) => {
-    const isValidUrl =
-      url && isValidHttpUrl(url) && !isEmail(url) && !url.startsWith("mailto:");
-
-    if (!isValidUrl) return;
+    if (!url || !isPreviewable(url)) return;
 
     queryClient.prefetchQuery({
       queryKey: ["url-metadata", url],

@@ -11,6 +11,12 @@ import {
 // Global set to track failed image URLs across all instances
 const globalFailedUrls = new Set<string>();
 
+const isEmailHref = (href: string) =>
+  href.startsWith("mailto:") || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(href);
+
+const displayHref = (href: string) =>
+  href.replace(/^(https?:\/\/|mailto:)/, "");
+
 const CustomAnchor = memo(
   ({
     href,
@@ -189,7 +195,7 @@ const CustomAnchor = memo(
                 rel="noopener noreferrer"
                 target="_blank"
               >
-                {href.replace("https://", "").replace("http://", "")}
+                {displayHref(href)}
               </a>
             </div>
           ) : (
@@ -217,7 +223,7 @@ const CustomAnchor = memo(
                 width={14}
                 height={14}
                 alt="Favicon"
-                className="h-3.5 w-3.5 shrink-0 rounded-sm"
+                className={`h-3.5 w-3.5 shrink-0 ${isEmailHref(href) ? "rounded-full" : "rounded-sm"}`}
                 src={metadata.favicon}
                 onError={() => handleImageError(metadata.favicon!)}
               />

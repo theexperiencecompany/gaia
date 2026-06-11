@@ -1,4 +1,4 @@
-"""Email utilities: send transactional emails (Jinja2 templates + Resend)."""
+"""Email utilities: address parsing + transactional emails (Jinja2 + Resend)."""
 
 from datetime import UTC, datetime
 import os
@@ -8,6 +8,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 import resend
 
 from app.config.settings import settings
+from app.constants.email import MAILTO_PREFIX
 from app.db.mongodb.collections import users_collection
 from app.models.support_models import SupportEmailNotification, SupportRequestType
 from shared.py.wide_events import log
@@ -28,6 +29,28 @@ CONTACT_EMAIL = "aryan@heygaia.io"
 DISCORD_URL = "https://discord.heygaia.io"
 WHATSAPP_URL = "https://whatsapp.heygaia.io"
 TWITTER_URL = "https://twitter.com/trygaia"
+
+
+def normalize_email(value: str) -> str | None:
+    """Return the bare lowercase email from a ``mailto:`` URL or raw address.
+
+    ``mailto:`` URLs may carry ``?subject=...`` query parts, which are
+    stripped. Returns None when the value is not a plausible address.
+    """
+    candidate = value.strip()
+    if candidate.lower().startswith(MAILTO_PREFIX):
+        candidate = candidate[len(MAILTO_PREFIX) :].split("?", 1)[0]
+    candidate = candidate.strip().lower()
+    if "@" not in candidate or "." not in candidate.split("@")[-1]:
+        return None
+    return candidate
+
+
+def is_email_target(value: str) -> bool:
+    """True when the string is a bare email address or a ``mailto:`` URL."""
+    return normalize_email(value) is not None and not value.lower().startswith(
+        ("http://", "https://")
+    )
 
 
 async def send_support_team_notification(
