@@ -105,13 +105,10 @@ export function MemoryTimeline() {
         <Accordion
           defaultExpandedKeys={defaultExpandedKeys}
           selectionMode="multiple"
-          className="gap-2 px-0"
+          variant="light"
           itemClasses={{
-            base: "rounded-2xl bg-zinc-800 overflow-hidden",
-            heading: "px-5 py-0",
-            trigger: "py-3.5 hover:bg-white/5 transition-colors",
             title: "text-sm font-medium text-white",
-            content: "px-5 pb-4 pt-0",
+            content: "pb-4 pt-0",
             indicator: "text-zinc-500",
           }}
         >
