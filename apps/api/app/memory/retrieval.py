@@ -23,6 +23,8 @@ from typing import Any
 
 from app.constants.memory import (
     ANN_CANDIDATES,
+    CONFIDENT_COSINE,
+    CONFIDENT_RERANK_LOGIT,
     DEFAULT_EPISODE_RECALL_LIMIT,
     DEFAULT_RECALL_LIMIT,
     EPISODE_ENTRY_CANDIDATES,
@@ -33,11 +35,13 @@ from app.constants.memory import (
     GRAPH_EXPANSION_SOURCE_RESULTS,
     IMPORTANCE_BOOST_BASE,
     IMPORTANCE_BOOST_WEIGHT,
+    MAX_WEAK_RESULTS,
     MEMORY_SEARCH_CACHE_PATTERN,
     MEMORY_SEARCH_CACHE_TTL,
     RECENCY_BOOST_DECAY_DAYS,
     RECENCY_BOOST_WEIGHT,
     RELEVANCE_DROPOFF_RATIO,
+    RERANK_BLEND_WEIGHT,
     RERANK_CANDIDATES,
     RRF_K,
     MemoryKind,
@@ -134,10 +138,18 @@ async def recall(
     stage = time.perf_counter()
     # Rerank the combined base+sibling pool together so siblings compete on real
     # query relevance, not a fixed score; the dropoff then cuts the weak tail.
-    scored = await _rerank_and_boost(query, candidates[:RERANK_CANDIDATES])
+    ann_similarity = {memory_id: similarity for memory_id, similarity in ann_hits}
+    fts_ids = {str(row.id) for row, _ in fts_hits}
+    scored = await _rerank_and_boost(
+        query,
+        candidates[:RERANK_CANDIDATES],
+        ann_similarity=ann_similarity,
+        fts_ids=fts_ids,
+    )
     timings["rerank_ms"] = _elapsed_ms(stage)
 
-    entries = await _build_entries(scored[:limit])
+    kept = _cap_weak_results(scored)[:limit]
+    entries = await _build_entries(kept)
     entries = _drop_below_relevance(entries)
 
     timings["total_ms"] = _elapsed_ms(started)
@@ -253,25 +265,90 @@ async def _hydrate_candidates(
     return candidates
 
 
-async def _rerank_and_boost(
-    query: str, candidates: list[MemoryRecord]
-) -> list[tuple[MemoryRecord, float]]:
-    """Cross-encoder rerank, then blend recency and importance boosts.
+@dataclass
+class _ScoredCandidate:
+    """A candidate with its blended score and absolute-confidence verdict."""
 
-    final = normalized_rerank * (1 + 0.15 * e^(-age_days/30)) * (0.8 + 0.4 * importance)
+    row: MemoryRecord
+    score: float
+    confident: bool
+
+
+async def _rerank_and_boost(
+    query: str,
+    candidates: list[MemoryRecord],
+    *,
+    ann_similarity: dict[str, float],
+    fts_ids: set[str],
+) -> list[_ScoredCandidate]:
+    """Blend cross-encoder relevance with retrieval rank, then apply boosts.
+
+    The two signals are complementary and either alone fails on real queries:
+    the cross-encoder misjudges some implicit pairs ("book a vet appointment"
+    vs the dog fact) that dense retrieval ranks highly, and retrieval misses
+    paraphrases the cross-encoder nails.
+
+        base  = RERANK_BLEND_WEIGHT * rerank_norm
+              + (1 - RERANK_BLEND_WEIGHT) * retrieval_norm
+        final = base * recency_boost * importance_boost
+
+    The retrieval signal is the candidate's normalized dense cosine (its real
+    closeness), not its rank position — rank exaggerates hair-thin gaps when
+    cosines cluster. FTS-only candidates (no cosine) fall back to their fused
+    rank position. Each candidate also gets an absolute-confidence verdict
+    (strong cosine, strong raw logit, or a keyword anchor) used to cap weak
+    results downstream.
     """
     if not candidates:
         return []
     raw_scores = await rerank(query, [row.content for row in candidates])
-    normalized = _min_max_normalize(raw_scores)
+    rerank_norm = _min_max_normalize(raw_scores)
+    total = len(candidates)
+    rank_fallback = [1.0 - (index / total) for index in range(total)]
+    cosines = [ann_similarity.get(str(row.id)) for row in candidates]
+    known = [value for value in cosines if value is not None]
+    low, high = (min(known), max(known)) if known else (0.0, 0.0)
+    span = (high - low) or 1.0
+    retrieval_norm = [
+        ((cosine - low) / span) if cosine is not None else rank_fallback[index]
+        for index, cosine in enumerate(cosines)
+    ]
     now = datetime.now(UTC)
 
     scored = [
-        (row, score * _recency_boost(row, now) * _importance_boost(row))
-        for row, score in zip(candidates, normalized)
+        _ScoredCandidate(
+            row=row,
+            score=(RERANK_BLEND_WEIGHT * rr + (1.0 - RERANK_BLEND_WEIGHT) * rn)
+            * _recency_boost(row, now)
+            * _importance_boost(row),
+            confident=(
+                ann_similarity.get(str(row.id), 0.0) >= CONFIDENT_COSINE
+                or raw >= CONFIDENT_RERANK_LOGIT
+                or str(row.id) in fts_ids
+            ),
+        )
+        for row, rr, rn, raw in zip(candidates, rerank_norm, retrieval_norm, raw_scores)
     ]
-    scored.sort(key=lambda pair: pair[1], reverse=True)
+    scored.sort(key=lambda item: item.score, reverse=True)
     return scored
+
+
+def _cap_weak_results(scored: list[_ScoredCandidate]) -> list[tuple[MemoryRecord, float]]:
+    """Keep all confident results but at most MAX_WEAK_RESULTS unproven ones.
+
+    An unanswerable query produces only weak candidates, so it returns a couple
+    of semi-related items at most instead of a full page of noise; a real
+    query keeps its confident cluster untouched.
+    """
+    kept: list[tuple[MemoryRecord, float]] = []
+    weak_kept = 0
+    for item in scored:
+        if not item.confident:
+            if weak_kept >= MAX_WEAK_RESULTS:
+                continue
+            weak_kept += 1
+        kept.append((item.row, item.score))
+    return kept
 
 
 def _min_max_normalize(scores: list[float]) -> list[float]:

@@ -6,7 +6,10 @@ from enum import StrEnum
 # do NOT swap these for cloud models.
 EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 EMBEDDING_DIM = 384
-RERANKER_MODEL_NAME = "Xenova/ms-marco-MiniLM-L-6-v2"
+# jina-reranker-v1-turbo-en (~150MB) measurably beats ms-marco-MiniLM on
+# implicit conversational queries ("what do I do for a living" -> the job
+# fact): top-3 gold rank 4/6 vs 2/6 on our probe set at the same ~30ms.
+RERANKER_MODEL_NAME = "jinaai/jina-reranker-v1-turbo-en"
 
 # ChromaDB collections holding memory and episode vectors.
 CHROMA_MEMORIES_COLLECTION = "gaia_memories"
@@ -30,6 +33,20 @@ ANN_CANDIDATES = 30
 FTS_CANDIDATES = 30
 RERANK_CANDIDATES = 30
 DEFAULT_RECALL_LIMIT = 8
+
+# Final ranking blends cross-encoder relevance with fused retrieval rank —
+# the two fail on different query shapes, and the blend rescues both.
+RERANK_BLEND_WEIGHT = 0.6
+
+# Confidence tiering: a result is CONFIDENT when any absolute signal vouches
+# for it — strong dense similarity, a strong cross-encoder logit, or a keyword
+# (FTS) anchor. Confident results pass freely; weak ones (plausible but
+# unproven) are capped so an unanswerable query returns at most a couple of
+# semi-related items instead of a page of noise. Local-model score
+# distributions overlap, so a hard empty-on-irrelevant gate would cost recall.
+CONFIDENT_COSINE = 0.60
+CONFIDENT_RERANK_LOGIT = -2.5
+MAX_WEAK_RESULTS = 4
 
 # Recency boost applied after reranking:
 # score *= 1 + RECENCY_BOOST_WEIGHT * e^(-age_days / RECENCY_BOOST_DECAY_DAYS)

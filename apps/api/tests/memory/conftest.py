@@ -92,9 +92,11 @@ async def chroma(
         return client
 
     monkeypatch.setattr(ChromaClient, "get_client", _get_client)
-    chroma_store._collections.clear()
+    chroma_store._loop_collections.clear()
+    chroma_store._loop_locks.clear()
     yield client
-    chroma_store._collections.clear()
+    chroma_store._loop_collections.clear()
+    chroma_store._loop_locks.clear()
 
 
 @pytest.fixture

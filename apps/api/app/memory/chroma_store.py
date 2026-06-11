@@ -39,8 +39,21 @@ class _NoOpEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
 
 _NOOP_EF = _NoOpEmbeddingFunction()
 
-_collections: dict[str, AsyncCollection] = {}
-_collections_lock = asyncio.Lock()
+# Collections are cached per event loop: an asyncio.Lock (and Chroma's async
+# client) binds to the loop that first uses it, so sharing one cache/lock
+# across loops raises "bound to a different event loop" in any context that
+# runs multiple loops (test workers, scripts, background runners).
+_loop_collections: dict[int, dict[str, AsyncCollection]] = {}
+_loop_locks: dict[int, asyncio.Lock] = {}
+
+
+def _loop_state() -> tuple[dict[str, AsyncCollection], asyncio.Lock]:
+    """The collection cache + creation lock for the running event loop."""
+    loop_id = id(asyncio.get_running_loop())
+    if loop_id not in _loop_locks:
+        _loop_locks[loop_id] = asyncio.Lock()
+        _loop_collections[loop_id] = {}
+    return _loop_collections[loop_id], _loop_locks[loop_id]
 
 
 class MemoryVectorMetadata(TypedDict):
@@ -89,6 +102,7 @@ def _as_metadata(metadata: Mapping[str, object]) -> Metadata:
 
 async def _get_collection(name: str) -> AsyncCollection:
     """Get (and cache) a memory collection, creating it if missing."""
+    _collections, _collections_lock = _loop_state()
     if name in _collections:
         return _collections[name]
 

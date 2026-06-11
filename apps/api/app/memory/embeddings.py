@@ -60,9 +60,22 @@ def _get_reranker_model() -> TextCrossEncoder:
 
 
 def _embed_sync(texts: list[str]) -> list[list[float]]:
-    """Embed texts synchronously (CPU-bound; call from a thread)."""
+    """Embed passage texts synchronously (CPU-bound; call from a thread)."""
     model = _get_embedding_model()
     return [vector.tolist() for vector in model.embed(texts)]
+
+
+def _embed_query_sync(text: str) -> list[float]:
+    """Embed a query with the model's query instruction (CPU-bound).
+
+    BGE models are asymmetric: queries must be prefixed with the model's
+    retrieval instruction ("Represent this sentence for searching relevant
+    passages: ...") to match against plain passage embeddings.
+    ``query_embed`` applies it; plain ``embed`` does not — using the latter
+    for queries measurably degrades ANN recall on paraphrased questions.
+    """
+    model = _get_embedding_model()
+    return next(iter(model.query_embed([text]))).tolist()
 
 
 def _rerank_sync(query: str, documents: list[str]) -> list[float]:
@@ -72,9 +85,8 @@ def _rerank_sync(query: str, documents: list[str]) -> list[float]:
 
 
 async def embed_query(text: str) -> list[float]:
-    """Embed a single query string."""
-    vectors = await asyncio.to_thread(_embed_sync, [text])
-    return vectors[0]
+    """Embed a single query string (with the model's query instruction)."""
+    return await asyncio.to_thread(_embed_query_sync, text)
 
 
 async def embed_batch(texts: list[str]) -> list[list[float]]:
