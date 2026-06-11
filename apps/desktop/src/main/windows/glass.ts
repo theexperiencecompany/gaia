@@ -14,19 +14,49 @@
  * @module windows/glass
  */
 
+import { createRequire } from "node:module";
 import { release } from "node:os";
 import type { BrowserWindow } from "electron";
-import liquidGlass from "electron-liquid-glass";
 
 /** First Darwin major version with native liquid glass (macOS 26). */
 const LIQUID_GLASS_MIN_DARWIN_MAJOR = 25;
 
-/** Whether the current OS supports native liquid glass. */
+/** Minimal surface of `electron-liquid-glass` that we use. */
+interface LiquidGlassModule {
+  addView: (
+    handle: Buffer,
+    options: { cornerRadius?: number; tintColor?: string },
+  ) => number;
+}
+
+// `electron-liquid-glass` is an optional native enhancement — the app must
+// boot (with the vibrancy fallback) when it isn't installed, so it is
+// loaded lazily instead of via a static import. `undefined` = not yet
+// attempted, `null` = unavailable.
+let liquidGlassModule: LiquidGlassModule | null | undefined;
+
+function loadLiquidGlass(): LiquidGlassModule | null {
+  if (liquidGlassModule !== undefined) return liquidGlassModule;
+  try {
+    const require = createRequire(import.meta.url);
+    const loaded = require("electron-liquid-glass");
+    liquidGlassModule = (loaded.default ?? loaded) as LiquidGlassModule;
+  } catch {
+    console.warn(
+      "[Main] electron-liquid-glass unavailable — using vibrancy fallback",
+    );
+    liquidGlassModule = null;
+  }
+  return liquidGlassModule;
+}
+
+/** Whether the current OS (and installed native module) support liquid glass. */
 export function supportsLiquidGlass(): boolean {
   return (
     process.platform === "darwin" &&
     Number.parseInt(release().split(".")[0] ?? "0", 10) >=
-      LIQUID_GLASS_MIN_DARWIN_MAJOR
+      LIQUID_GLASS_MIN_DARWIN_MAJOR &&
+    loadLiquidGlass() !== null
   );
 }
 
@@ -43,6 +73,9 @@ export function applyLiquidGlass(
   win: BrowserWindow,
   options: { cornerRadius?: number; tintColor?: string } = {},
 ): void {
+  const liquidGlass = loadLiquidGlass();
+  if (!liquidGlass) return;
+
   win.webContents.once("did-finish-load", () => {
     try {
       liquidGlass.addView(win.getNativeWindowHandle(), options);

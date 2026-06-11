@@ -31,6 +31,7 @@ import { startNextServer, stopNextServer } from "./server";
 import { fixSessionCookies } from "./session";
 import {
   createAssistantPopup,
+  destroyAssistantPopup,
   toggleAssistantPopup,
 } from "./windows/assistant-popup";
 import {
@@ -195,6 +196,7 @@ if (!gotTheLock) {
   });
 
   app.on("before-quit", () => {
+    destroyAssistantPopup();
     destroyWakeListenerWindow();
     stopNextServer().catch(console.error);
   });

@@ -228,6 +228,13 @@ export function createAssistantPopup(serverReady: () => boolean): void {
   // shortcut toggle, or a renderer-initiated dismissal.
   for (const win of [composerWindow, feedWindow]) {
     pinToAllSpaces(win);
+    // Cmd/Ctrl+W (menu "Close Window") targets the focused window — for a
+    // popup island that must mean "dismiss", never "destroy": a destroyed
+    // window would kill the popup until app restart.
+    win.on("close", (event) => {
+      event.preventDefault();
+      dismissAssistantPopup();
+    });
   }
   composerWindow.on("closed", () => {
     composerWindow = null;
@@ -399,4 +406,14 @@ export function dismissAssistantPopup(): void {
     dismissing = false;
     console.log("[Main] Assistant popup hidden");
   });
+}
+
+/**
+ * Destroy both popup windows on app quit. `destroy()` skips the `close`
+ * event, bypassing the dismiss-instead-of-close guard that would otherwise
+ * block quitting.
+ */
+export function destroyAssistantPopup(): void {
+  if (composerWindow && !composerWindow.isDestroyed()) composerWindow.destroy();
+  if (feedWindow && !feedWindow.isDestroyed()) feedWindow.destroy();
 }
