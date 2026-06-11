@@ -142,6 +142,42 @@ class ExtractedMemoryBatch(BaseModel):
     )
 
 
+class FactCategorization(BaseModel):
+    """Filing decision for a single manually added fact (add_memory path)."""
+
+    category_path: str = Field(
+        description=(
+            "Folder this fact files under, lowercase-kebab-case, at most two "
+            "segments separated by '/'. Reuse an existing folder from the "
+            "provided tree whenever one fits."
+        )
+    )
+    kind: MemoryKind = Field(
+        description="'fact' for stable knowledge; 'experience' for something that happened."
+    )
+    importance: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Long-term importance: 0.9+ life-defining, 0.6-0.8 stable, 0.3-0.5 incidental.",
+    )
+    entities: list[ExtractedEntity] = Field(
+        default_factory=list,
+        description="Named entities this fact mentions. Empty if none.",
+    )
+    edges: list[ExtractedEdge] = Field(
+        default_factory=list,
+        description="Entity-to-entity relationships this fact asserts, using names from 'entities'.",
+    )
+
+
+class EpisodeSummary(BaseModel):
+    """Day-rollover summary of one journal page."""
+
+    summary: str = Field(
+        description="2-4 sentence past-tense summary of the day's journal entries."
+    )
+
+
 class ReconcileDecision(BaseModel):
     """How one newly extracted fact relates to the existing memory store."""
 

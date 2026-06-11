@@ -35,6 +35,23 @@ RECENCY_BOOST_DECAY_DAYS = 30
 CORE_CONTEXT_CACHE_TTL = 3600
 MEMORY_SEARCH_CACHE_TTL = 60
 
+# Redis key templates. Every ingestion invalidates both: search results are
+# stale the moment a fact lands, and the core context embeds recent facts.
+MEMORY_SEARCH_CACHE_PATTERN = "user:{user_id}:memories:*"
+CORE_CONTEXT_CACHE_KEY = "user:{user_id}:memory:core"
+
+# Reconciliation looks at this many nearest existing memories per new fact.
+RECONCILE_CANDIDATES = 5
+
+# How many recent facts are shown to the extractor as "do NOT re-extract".
+RECENT_FACTS_LIMIT = 10
+
+# Core documents keep this many previous versions in their history column.
+DOCUMENT_HISTORY_LIMIT = 10
+
+# Wall-clock format for timestamped episode journal entries.
+EPISODE_ENTRY_TIME_FORMAT = "%H:%M"
+
 # Category folders form a real directory tree; keep it shallow ("work/gaia").
 CATEGORY_PATH_MAX_DEPTH = 2
 

@@ -19,10 +19,17 @@ from app.constants.memory import (
     EXTRACTION_TRANSCRIPT_TAIL_CHARS,
     ReconcileOutcome,
 )
-from app.memory.prompts import EXTRACTION_SYSTEM_PROMPT, RECONCILE_SYSTEM_PROMPT
+from app.memory.prompts import (
+    CATEGORIZE_SYSTEM_PROMPT,
+    EPISODE_SUMMARY_SYSTEM_PROMPT,
+    EXTRACTION_SYSTEM_PROMPT,
+    RECONCILE_SYSTEM_PROMPT,
+)
 from app.memory.schemas import (
+    EpisodeSummary,
     ExtractedFact,
     ExtractedMemoryBatch,
+    FactCategorization,
     ReconcileBatchResult,
     ReconcileDecision,
 )
@@ -146,6 +153,47 @@ async def extract_memories(
         }
     )
     return result
+
+
+async def categorize_fact(
+    content: str,
+    *,
+    folder_tree: str,
+    current_date: datetime,
+) -> FactCategorization | None:
+    """File a single manually added fact: folder, kind, importance, entities.
+
+    Used by the add_memory path, which skips transcript extraction. Returns
+    None on total LLM failure — callers fall back to defaults.
+    """
+    system_prompt = CATEGORIZE_SYSTEM_PROMPT.format(
+        current_date=f"{current_date:%A, %d %B %Y}",
+        folder_tree=folder_tree or "(no folders yet)",
+    )
+    return await _invoke_structured(
+        FactCategorization,
+        [SystemMessage(content=system_prompt), HumanMessage(content=content)],
+        operation="categorize",
+    )
+
+
+async def summarize_episode_entries(entries: list[str]) -> str | None:
+    """Summarize one day's journal entries (day-rollover, one LLM call).
+
+    Returns None on total LLM failure — the day simply stays unsummarized
+    and is retried on the next rollover check.
+    """
+    if not entries:
+        return None
+    result = await _invoke_structured(
+        EpisodeSummary,
+        [
+            SystemMessage(content=EPISODE_SUMMARY_SYSTEM_PROMPT),
+            HumanMessage(content="\n".join(entries)),
+        ],
+        operation="episode_summary",
+    )
+    return result.summary if result else None
 
 
 def _format_reconcile_input(pairs: list[tuple[ExtractedFact, list[SimilarMemory]]]) -> str:

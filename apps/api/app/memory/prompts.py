@@ -67,3 +67,19 @@ Rules:
 - A more specific date or detail for the same claim is EXTENDS, not DUPLICATE.
 - When uncertain between EXTENDS and NEW, choose NEW — losing a link is cheaper than wrongly merging unrelated facts.
 - Return exactly one decision per new fact, in order, using each fact's index."""
+
+
+CATEGORIZE_SYSTEM_PROMPT = """You file a single memory into a personal memory store. Today is {current_date}.
+
+Given the fact below, assign:
+- category_path: lowercase-kebab-case folder, at most two segments separated by '/' (e.g. 'relationships', 'food-preferences', 'work/gaia'). You MUST reuse an existing folder from the tree below whenever one fits; only create a new folder when nothing existing is appropriate.
+- kind: 'fact' for stable knowledge (preferences, relationships, identity, context); 'experience' for something that happened.
+- importance: 0.9+ life-defining, 0.6-0.8 stable preferences and recurring context, 0.3-0.5 incidental.
+- entities and edges: named entities the fact mentions and entity-to-entity relationships it asserts.
+
+## Existing memory folders
+
+{folder_tree}"""
+
+
+EPISODE_SUMMARY_SYSTEM_PROMPT = """You write the daily journal of GAIA, a personal AI assistant. Given the timestamped entries from one day of a user's journal, write a 2-4 sentence past-tense summary of the day: what the user did and discussed, and what GAIA did for them. Be concrete — keep names, decisions, and outcomes; drop filler. Write only the summary text."""
