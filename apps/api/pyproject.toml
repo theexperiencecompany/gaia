@@ -33,6 +33,7 @@ dependencies = [
   "alt-profanity-check>=1.6.1",
   "e2b>=2.10.2",
   "playwright>=1.58.0",
+  "psutil>=7.0.0",
 ]
 
 [tool.taskipy.tasks]

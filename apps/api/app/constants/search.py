@@ -39,3 +39,20 @@ PROFILE_CRAWL4AI_SINGLE_TIMEOUT_SECONDS = 35.0
 PROFILE_CRAWL4AI_BATCH_TIMEOUT_SECONDS = 120.0
 PROFILE_CRAWL4AI_SEMAPHORE_COUNT = 20
 PROFILE_CRAWL_CONTENT_MAX_CHARS = 50_000
+
+# Browser lifecycle hardening.
+#
+# crawl4ai's ``close()`` stops the Playwright driver subprocess, but a task
+# cancellation (stream cancel, tool timeout, client disconnect) landing while
+# ``__aexit__`` awaits ``close()`` aborts the cleanup midway and orphans the
+# driver (~50-130 MB each; observed accumulating for days in prod). Teardown is
+# therefore shielded from cancellation (``crawl4ai_utils.managed_crawler``) and
+# a periodic reaper kills any driver child that outlives the longest legitimate
+# crawl (``app/utils/browser_reaper.py``).
+CRAWL4AI_CLOSE_TIMEOUT_SECONDS = 15.0
+BROWSER_REAPER_INTERVAL_SECONDS = 300.0
+# Must exceed the worst-case legitimate browser lifetime: a deep-research batch
+# (120s) that times out and falls back to sequential single-URL recovery can
+# legally hold one browser for several minutes. 30 minutes is far above any
+# real crawl and far below the multi-day leak ages seen in prod.
+BROWSER_REAPER_MAX_AGE_SECONDS = 1800.0
