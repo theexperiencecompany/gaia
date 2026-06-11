@@ -203,7 +203,13 @@ function islandOptions(
 
 function pinToAllSpaces(win: BrowserWindow): void {
   win.setAlwaysOnTop(true, "screen-saver");
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // skipTransformProcessType is load-bearing: without it macOS converts the
+  // whole app to a UIElement (accessory) process — no Dock icon, no Cmd-Tab,
+  // and any custom app.dock.setIcon() is reset.
+  win.setVisibleOnAllWorkspaces(true, {
+    visibleOnFullScreen: true,
+    skipTransformProcessType: true,
+  });
 }
 
 /**
