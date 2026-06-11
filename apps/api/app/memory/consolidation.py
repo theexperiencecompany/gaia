@@ -12,6 +12,8 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 import time
 
+from bson import ObjectId
+
 from app.constants.memory import (
     CONSOLIDATION_DEBOUNCE_SECONDS,
     CONSOLIDATION_EPISODE_DAYS,
@@ -23,6 +25,7 @@ from app.constants.memory import (
     MemoryEntityType,
     MemoryKind,
 )
+from app.db.mongodb.collections import users_collection
 from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
 from app.memory import pg_store
 from app.memory.extraction import rewrite_core_document
@@ -185,6 +188,7 @@ async def consolidate(
     outcomes: dict[str, str] = {}
     rewritten: list[MemoryDocType] = []
 
+    user_name = await _get_user_name(user_id)
     for doc_type in targets:
         previous = await pg_store.get_document(user_id, doc_type)
         previous_content = previous.content if previous else ""
@@ -194,7 +198,7 @@ async def consolidate(
             continue
 
         content = await rewrite_core_document(
-            _system_prompt(doc_type),
+            _system_prompt(doc_type, user_name),
             _format_inputs(previous_content, inputs),
         )
         if content is None or not content.strip():
@@ -217,12 +221,22 @@ async def consolidate(
     return rewritten
 
 
-def _system_prompt(doc_type: MemoryDocType) -> str:
+def _system_prompt(doc_type: MemoryDocType, user_name: str) -> str:
     """The consolidation system prompt for one doc, with shared fields filled."""
     return _DOC_PROMPTS[doc_type].format(
         max_chars=DOCUMENT_TARGET_MAX_CHARS,
         current_date=f"{datetime.now(UTC):%A, %d %B %Y}",
+        user_name=user_name,
     )
+
+
+async def _get_user_name(user_id: str) -> str:
+    """The user's display name, so prompts can tell the user apart from others."""
+    try:
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+    except Exception:
+        user = None
+    return (user or {}).get("name") or "the user"
 
 
 def _prefixes_for(doc_type: MemoryDocType) -> list[str]:

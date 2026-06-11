@@ -244,9 +244,9 @@ PEOPLE_DOC_CONSOLIDATION_PROMPT = (
 
 One bullet per person: name, role/relation to the user, key dates (birthdays, anniversaries), and a few words of context. Partners, family, and close friends go under Inner circle; colleagues, co-founders, and professional contacts under Work; everyone else under Others.
 
-NEVER list the user themselves — this register is the people AROUND them.
-Each person appears exactly once, under the single most specific section
-(a co-founder belongs under Work, not Others).
+NEVER list the user themselves ({user_name}) — this register is the people
+AROUND them. Each person appears exactly once, under the single most specific
+section (a co-founder belongs under Work, not Others).
 
 """
     + _CONSOLIDATION_SHARED_RULES
