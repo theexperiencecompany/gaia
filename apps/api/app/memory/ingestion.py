@@ -313,10 +313,12 @@ async def _apply_reconciled(
         )
         target = extend_targets.get(item.target_memory_id or "")
         if item.outcome is ReconcileOutcome.EXTENDS and target is not None:
-            # EXTENDS links lineage but does NOT supersede — both rows stay latest.
-            record.version = target.version + 1
+            # EXTENDS records a relatedness link to an existing fact, but the new
+            # fact is distinct and coexists with its parent — it is NOT a revision.
+            # So it keeps version 1 and its own chain (no version bump, no root
+            # chaining); only UPDATES advances a supersession chain. This is why
+            # a v2 always means "this fact was revised" and has real history.
             record.parent_id = target.id
-            record.root_id = target.root_id or target.id
             record.relation_type = MemoryRelationType.EXTENDS.value
             extended += 1
         else:

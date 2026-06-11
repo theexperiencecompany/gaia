@@ -135,9 +135,11 @@ async def test_refinement_extends_and_keeps_both_latest(
     assert len(rows) == 2
     assert all(row.is_latest for row in rows), "EXTENDS must not supersede the original"
     extension = next(row for row in rows if row.id != old.id)
-    assert extension.version == old.version + 1
+    # EXTENDS is a relatedness link, not a revision: the new fact keeps version 1
+    # and its own chain (root_id stays None). Only UPDATES advances the version.
+    assert extension.version == 1
     assert extension.parent_id == old.id
-    assert extension.root_id == old.id
+    assert extension.root_id is None
     assert extension.relation_type == MemoryRelationType.EXTENDS.value
 
 
