@@ -5,7 +5,43 @@ Extraction quality is the heart of the memory system: everything downstream
 what gets pulled out of the transcript here. Edit with care.
 """
 
-EXTRACTION_SYSTEM_PROMPT = """You are the memory engine of GAIA, {user_name}'s personal AI assistant. Today is {current_date}.
+# Shared folder taxonomy + routing rules used by both the extraction and the
+# categorize prompts. Choosing the folder by the fact's SUBJECT (not by who it
+# mentions) is the single most common categorization mistake — these rules and
+# examples exist to prevent it. Contains no '{' / '}' so it is safe to embed in
+# a str.format() template.
+_FOLDER_GUIDANCE = """## Choosing the folder (category_path)
+
+File each fact by its SUBJECT — what the fact is ABOUT — never by which person
+it happens to name. "Aryan prefers emails to open with 'Hello there'" is about
+COMMUNICATION, not about a relationship, even though emailing involves people.
+
+Prefer these canonical top-level folders (reuse an existing folder from the
+tree when one fits; only invent a new lowercase-kebab folder, max two segments,
+when nothing applies):
+
+- relationships — people in the user's life: partner, family, friends, colleagues; their names, roles, key dates, and contact details
+- communication — how the user wants to write, speak, or be addressed: tone, email openings/sign-offs, "no em dashes", "keep replies short", formatting
+- preferences — likes/dislikes and choices about tools, brands, apps, formats, defaults (anything not food or communication)
+- food-preferences — diet, cuisines, restrictions, food allergies, tastes
+- work — employer, role, company, the products/projects they build, teammates (use a per-project subfolder, e.g. work/gaia)
+- health — medical conditions, allergies, medications, fitness goals
+- routines — recurring schedules and habits (gym at 7am, weekly reviews)
+- life — where the user lives, moves, and life context that is not work
+- finance — money, accounts, budgets, subscriptions
+- agenda — commitments, deadlines, goals, and things owed
+
+Routing examples:
+- "prefers emails to open with 'Hello there'" -> communication (NOT relationships)
+- "wants concise replies with no em dashes" -> communication (NOT work)
+- "his girlfriend's email is khyati@x.com" -> relationships (a partner's contact detail)
+- "is the founder of The Experience Company building GAIA" -> work/gaia
+- "is allergic to penicillin" -> health
+- "goes to the gym every weekday at 7am" -> routines
+- "recently moved to Bangalore from Mumbai" -> life"""
+
+EXTRACTION_SYSTEM_PROMPT = (
+    """You are the memory engine of GAIA, {user_name}'s personal AI assistant. Today is {current_date}.
 
 You read a conversation transcript between {user_name} and GAIA (which may include tool calls and their results) and extract everything a thoughtful personal assistant would remember. GAIA relies on what you extract to know {user_name} better every day — a missed birthday or a forgotten preference is a real failure.
 
@@ -28,7 +64,7 @@ You read a conversation transcript between {user_name} and GAIA (which may inclu
 5. Expiry: set forget_after ONLY on inherently temporal facts ("meeting Friday" is useless after Friday). Durable facts — birthdays, preferences, relationships — never expire.
 6. Never extract secrets: no passwords, OTPs, API keys, tokens, or credentials, ever.
 7. Skip noise: smalltalk, transient chatter, one-off trivia with no future use, and anything already covered by the recent facts below.
-8. Folders: strongly prefer filing into an existing folder from the tree below; create a new lowercase-kebab folder (max two segments, e.g. work/gaia) only when nothing fits.
+8. Folders: choose category_path by the fact's SUBJECT using the taxonomy below, not by who the fact mentions.
 9. Importance: 0.9+ life-defining, 0.6-0.8 stable preferences and recurring context, 0.3-0.5 incidental.
 
 ## Entities and edges
@@ -43,6 +79,10 @@ Write 3-8 terse past-tense journal lines for today's diary: what {user_name} did
 
 List open loops this conversation opened or closed: new commitments, deadlines, things GAIA owes {user_name}, or previously open items now resolved. Leave empty if nothing changed.
 
+"""
+    + _FOLDER_GUIDANCE
+    + """
+
 ## Existing memory folders
 
 {folder_tree}
@@ -51,6 +91,7 @@ List open loops this conversation opened or closed: new commitments, deadlines, 
 
 {recent_facts}
 {extraction_hints}"""
+)
 
 
 RECONCILE_SYSTEM_PROMPT = """You maintain the consistency of a personal memory store. You are given newly extracted facts; each comes with up to 5 similar existing memories (id, content, and age in days).
@@ -69,17 +110,23 @@ Rules:
 - Return exactly one decision per new fact, in order, using each fact's index."""
 
 
-CATEGORIZE_SYSTEM_PROMPT = """You file a single memory into a personal memory store. Today is {current_date}.
+CATEGORIZE_SYSTEM_PROMPT = (
+    """You file a single memory into a personal memory store. Today is {current_date}.
 
 Given the fact below, assign:
-- category_path: lowercase-kebab-case folder, at most two segments separated by '/' (e.g. 'relationships', 'food-preferences', 'work/gaia'). You MUST reuse an existing folder from the tree below whenever one fits; only create a new folder when nothing existing is appropriate.
+- category_path: a lowercase-kebab folder chosen by the rules below (at most two segments separated by '/').
 - kind: 'fact' for stable knowledge (preferences, relationships, identity, context); 'experience' for something that happened.
 - importance: 0.9+ life-defining, 0.6-0.8 stable preferences and recurring context, 0.3-0.5 incidental.
 - entities and edges: named entities the fact mentions and entity-to-entity relationships it asserts.
 
+"""
+    + _FOLDER_GUIDANCE
+    + """
+
 ## Existing memory folders
 
 {folder_tree}"""
+)
 
 
 EPISODE_SUMMARY_SYSTEM_PROMPT = """You write the daily journal of GAIA, a personal AI assistant. Given the timestamped entries from one day of a user's journal, write a 2-4 sentence past-tense summary of the day: what the user did and discussed, and what GAIA did for them. Be concrete — keep names, decisions, and outcomes; drop filler. Write only the summary text."""
