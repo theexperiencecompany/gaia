@@ -114,6 +114,9 @@
       "allowedVersions": {
         "react-remove-scroll>@types/react": "^19.0.0"
       }
+    },
+    "patchedDependencies": {
+      "dmg-builder": "patches/dmg-builder.patch"
     }
   }
 }

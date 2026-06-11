@@ -118,9 +118,12 @@ export async function startNextServer(): Promise<void> {
     console.log(`Starting Next.js server on port ${chosenPort}...`);
     console.log(`Server path: ${serverPath}`);
 
-    serverProcess = spawn("node", [serverPath], {
+    // Run server.js with Electron's bundled Node runtime — a Finder-launched
+    // app has a bare PATH (/usr/bin:/bin:...) with no `node` on it.
+    serverProcess = spawn(process.execPath, [serverPath], {
       env: {
         ...process.env,
+        ELECTRON_RUN_AS_NODE: "1",
         PORT: String(chosenPort),
         HOSTNAME: "localhost",
         NODE_ENV: "production",

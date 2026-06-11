@@ -1,0 +1,15 @@
+diff --git a/vendor/dmgbuild/core.py b/vendor/dmgbuild/core.py
+index 1adc35289fc604f3dd5545d3d86fbacb6baeaf69..f1e1c3c72cb4d70825009125142243c26f8852fd 100644
+--- a/vendor/dmgbuild/core.py
++++ b/vendor/dmgbuild/core.py
+@@ -255,7 +255,9 @@ def build_dmg():
+       icvp['backgroundColorBlue'] = float(c.b)
+     elif background_file:
+       alias = Alias.for_file(background_file)
+-      background_bmk = Bookmark.for_file(background_file)
++      # pBBk bookmark corrupts the .DS_Store plist; Tahoe Finder then drops
++      # the background. The backgroundImageAlias above is sufficient.
++      # background_bmk = Bookmark.for_file(background_file)
+ 
+       icvp['backgroundType'] = 2
+       icvp['backgroundImageAlias'] = biplist.Data(alias.to_bytes())
