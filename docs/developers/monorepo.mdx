@@ -93,7 +93,7 @@ GAIA is a full-stack monorepo managed with [Nx](https://nx.dev). All apps, servi
 | `apps/bots/whatsapp` | TypeScript, WhatsApp Cloud API | WhatsApp bot integration |
 | `apps/voice-agent` | Python | Voice processing worker |
 
-All four bots are thin TypeScript adapters — the platform-agnostic logic (commands, streaming, API client, config) lives in `libs/shared/ts/src/bots/` and is shared via `@gaia/shared`.
+All four bots are thin TypeScript adapters, the platform-agnostic logic (commands, streaming, API client, config) lives in `libs/shared/ts/src/bots/` and is shared via `@gaia/shared`.
 
 ## Backend structure (`apps/api`)
 
@@ -202,15 +202,15 @@ All four bots are thin TypeScript adapters — the platform-agnostic logic (comm
 
 The `libs/shared` directory contains code shared across multiple apps:
 
-- **`libs/shared/py`** — Python package (`gaia-shared`) with common utilities, logging, config, and Pydantic models. Automatically available to all Python apps via workspace dependencies.
-- **`libs/shared/ts`** — TypeScript package (`@gaia/shared`) used by the web and desktop apps and all four bots, including the shared bot logic in `src/bots/`.
+- **`libs/shared/py`**: Python package (`gaia-shared`) with common utilities, logging, config, and Pydantic models. Automatically available to all Python apps via workspace dependencies.
+- **`libs/shared/ts`**: TypeScript package (`@gaia/shared`) used by the web and desktop apps and all four bots, including the shared bot logic in `src/bots/`.
 
 ## Infrastructure (`infra/`)
 
 Docker Compose files live in `infra/docker/`:
 
-- `docker-compose.yml` — Local development (PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ)
-- `docker-compose.prod.yml` — Production deployment
+- `docker-compose.yml`, Local development (PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ)
+- `docker-compose.prod.yml`, Production deployment
 
 ## Build system
 

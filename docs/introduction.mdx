@@ -1,32 +1,35 @@
 ---
 title: Introduction
-description: "GAIA is your personal AI assistant — it manages your email, calendar, and tasks, and gets things done before you ask."
+description: "GAIA is your personal AI assistant. It manages your email, calendar, and tasks, and gets things done before you ask."
 icon: "book-open"
 ---
+
+import { Chat } from "/snippets/chat-bubbles.jsx";
 
 <Frame>
   <img src="/images/og-image.webp" alt="GAIA dashboard interface" />
 </Frame>
 
-GAIA is a personal AI assistant that works across your tools — your inbox, calendar, tasks, and 60+ connected apps. You talk to it like a person, and it handles the rest. No dashboards to babysit, no new system to learn.
+GAIA is a personal AI assistant that works across your tools, your inbox, calendar, tasks, and 60+ connected apps. You talk to it like a person, and it handles the rest. No dashboards to babysit, no new system to learn.
 
-It's also proactive: GAIA watches what's happening in the background and acts before you ask — drafting replies to important emails, blocking focus time before your calendar fills up, and turning commitments into tasks.
+It's also proactive: GAIA watches what's happening in the background and acts before you ask, drafting replies to important emails, blocking focus time before your calendar fills up, and turning commitments into tasks.
 
 ## What you can do
 
 Just tell GAIA what you need:
 
-> Summarize my unread emails and draft replies to anything urgent
+<Chat
+  messages={[
+    { from: "user", text: "Move my 3pm with Sam to tomorrow morning and let him know" },
+    { from: "gaia", text: "Moved to 9:30 AM tomorrow, and I've emailed Sam the new time." },
+    { from: "user", text: "Remind me to follow up on the invoice if no one replies by Friday" },
+    { from: "gaia", text: "Will do. I'm watching the thread." },
+    { from: "user", text: "Every morning at 8, send me my schedule and top 3 priorities" },
+    { from: "gaia", text: "Done, I set that up as a workflow. It runs every morning on its own." },
+  ]}
+/>
 
-> What should I focus on today?
-
-> Move my 3pm with Sam to tomorrow morning and let him know
-
-> Remind me to follow up on the invoice if no one replies by Friday
-
-> Every morning at 8, send me my schedule and top 3 priorities
-
-That last one becomes a [workflow](/workflows) — an automation that runs on its own, built by describing it in plain language.
+That last one becomes a [workflow](/workflows), an automation that runs on its own, built by describing it in plain language.
 
 ## Start here
 

@@ -4,7 +4,7 @@ description: "Connect any MCP server and its tools become available in chat"
 icon: "puzzle-piece"
 ---
 
-GAIA natively supports the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) — an open standard that lets AI assistants talk to external tools. Connect any compatible server and GAIA indexes its tools, then picks the right one automatically when you ask for something. You never have to think about which integration to use.
+GAIA natively supports the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), an open standard that lets AI assistants talk to external tools. Connect any compatible server and GAIA indexes its tools, then picks the right one automatically when you ask for something. You never have to think about which integration to use.
 
 <Frame>
   <img className="rounded-lg" src="/images/guides/integrations/integrations-page.png" alt="Integrations page showing custom MCP integrations in the sidebar" />
@@ -36,7 +36,7 @@ Go to the **Integrations** page and click **New Integration** in the Custom sect
   </Step>
 </Steps>
 
-Once connected, GAIA imports every tool the server exposes and confirms the count — for example: "Connected to Notion MCP with 12 tools!" Those tools work in chat immediately.
+Once connected, GAIA imports every tool the server exposes and confirms the count, for example: "Connected to Notion MCP with 12 tools!" Those tools work in chat immediately.
 
 <Note>
   If a connection fails, the integration is still saved. Retry from the
@@ -45,7 +45,7 @@ Once connected, GAIA imports every tool the server exposes and confirms the coun
 
 ## Authentication, handled for you
 
-You don't need to know which auth type a server uses — provide the URL and GAIA figures it out.
+You don't need to know which auth type a server uses, provide the URL and GAIA figures it out.
 
 <CardGroup cols={3}>
   <Card title="No Auth" icon="lock-open">
@@ -56,7 +56,7 @@ You don't need to know which auth type a server uses — provide the URL and GAI
     sends it with every request.
   </Card>
   <Card title="OAuth 2.1" icon="shield-check">
-    GAIA handles the full flow — PKCE, token refresh, and dynamic client
+    GAIA handles the full flow, PKCE, token refresh, and dynamic client
     registration. Just leave the API Key field empty.
   </Card>
 </CardGroup>

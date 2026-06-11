@@ -67,12 +67,19 @@
           {
             "group": "Use GAIA Anywhere",
             "pages": [
+              "guides/web-app",
               "guides/desktop-app",
               "guides/slack-bot",
               "guides/discord-bot",
               "guides/telegram-bot",
               "guides/whatsapp-bot",
               "bots/commands"
+            ]
+          },
+          {
+            "group": "Self-Hosting",
+            "pages": [
+              "self-hosting/overview"
             ]
           },
           {
@@ -95,6 +102,12 @@
         "tab": "Developers",
         "groups": [
           {
+            "group": "Getting Started",
+            "pages": [
+              "developers/introduction"
+            ]
+          },
+          {
             "group": "Self-Hosting",
             "pages": [
               "self-hosting/overview",
@@ -114,7 +127,6 @@
           {
             "group": "Contributing",
             "pages": [
-              "developers/introduction",
               "developers/development-setup",
               "developers/monorepo",
               "developers/commands",

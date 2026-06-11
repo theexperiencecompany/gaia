@@ -19,7 +19,7 @@ Run GAIA on your own machine with the GAIA CLI. It scaffolds your environment, s
 - Node.js 20+ and one package manager (npm, pnpm, or bun)
 - Docker Engine 20.10+ and Compose v2+
 - 2+ CPU cores, 4GB+ RAM, 10GB+ disk (8GB+ RAM recommended)
-- An API key for at least one supported LLM provider (OpenAI or Google Gemini) — see [Environment variables](/configuration/environment-variables)
+- An API key for at least one supported LLM provider (OpenAI or Google Gemini), see [Environment variables](/configuration/environment-variables)
 
 ## Quick start
 
@@ -58,11 +58,11 @@ Run GAIA on your own machine with the GAIA CLI. It scaffolds your environment, s
 You only need this if you plan to run the backend outside the default Docker setup.
 
 <Note>
-Run the backend in a container on every platform. Its workspace storage (file uploads, artifacts, skills) uses JuiceFS, which mounts through Linux FUSE — a native backend on macOS or Windows can't provide it. Docker Desktop covers this on all platforms. See [Docker setup](/self-hosting/docker-setup#persistent-workspace-storage-juicefs-and-fuse) for the FUSE requirements and configuration.
+Run the backend in a container on every platform. Its workspace storage (file uploads, artifacts, skills) uses JuiceFS, which mounts through Linux FUSE, a native backend on macOS or Windows can't provide it. Docker Desktop covers this on all platforms. See [Docker setup](/self-hosting/docker-setup#persistent-workspace-storage-juicefs-and-fuse) for the FUSE requirements and configuration.
 </Note>
 
 ## Next steps
 
-- [CLI setup](/self-hosting/cli-setup) — full CLI installation and service management
-- [Docker setup](/self-hosting/docker-setup) — advanced Docker operations and storage configuration
-- [Environment variables](/configuration/environment-variables) — configure LLM providers, integrations, and optional features
+- [CLI setup](/self-hosting/cli-setup), full CLI installation and service management
+- [Docker setup](/self-hosting/docker-setup), advanced Docker operations and storage configuration
+- [Environment variables](/configuration/environment-variables), configure LLM providers, integrations, and optional features

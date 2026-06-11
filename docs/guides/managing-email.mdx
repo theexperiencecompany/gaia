@@ -4,21 +4,24 @@ description: "Read, draft, and organize your inbox by chatting with GAIA"
 icon: "envelope"
 ---
 
-Handle your whole inbox from chat — read, search, reply, label, and let GAIA triage new mail in the background. You never have to open Gmail unless you want to.
+import { Chat } from "/snippets/chat-bubbles.jsx";
+
+Handle your whole inbox from chat, read, search, reply, label, and let GAIA triage new mail in the background. You never have to open Gmail unless you want to.
 
 ## Reading your inbox
 
 Ask for what you want to see. The more specific you are, the better the result.
 
-> show me my latest 5 emails
-
-> do I have any unread emails from this week?
-
-> find emails from sarah@acme.com about the Q3 proposal
-
-> show me the full thread with David about the partnership deal
-
-> actually, only the ones with attachments
+<Chat
+  messages={[
+    { from: "user", text: "show me my latest 5 emails" },
+    { from: "gaia", text: "Here are your latest 5, two are unread." },
+    { from: "user", text: "do I have any unread emails from this week?" },
+    { from: "user", text: "find emails from sarah@acme.com about the Q3 proposal" },
+    { from: "user", text: "show me the full thread with David about the partnership deal" },
+    { from: "user", text: "actually, only the ones with attachments" },
+  ]}
+/>
 
 GAIA uses Gmail search syntax under the hood, so you can filter by sender, date range, label, read status, attachments, and more.
 
@@ -31,23 +34,27 @@ GAIA uses Gmail search syntax under the hood, so you can filter by sender, date 
 
 GAIA is draft-first: when you ask it to write an email, it saves a Gmail draft for you to review. Nothing sends unless you explicitly say so.
 
-> draft a reply to the last email from Mark
-
-> write an email to team@company.com summarizing today's standup notes
-
-> reply to Sarah's email saying I'll have the report by Friday
-
-> make it shorter and more casual
-
-> ok, send it
+<Chat
+  messages={[
+    { from: "user", text: "reply to Sarah's email saying I'll have the report by Friday" },
+    { from: "gaia", text: "I've saved a draft in Gmail. Want me to send it?" },
+    { from: "user", text: "make it shorter and more casual" },
+    { from: "gaia", text: "Done, the draft is updated." },
+    { from: "user", text: "ok, send it" },
+    { from: "gaia", text: "Sent." },
+  ]}
+/>
 
 You can manage drafts the same way:
 
-> show me my drafts
-
-> update my draft to Sarah — change the meeting time to 3 PM
-
-> delete the draft I just created
+<Chat
+  messages={[
+    { from: "user", text: "show me my drafts" },
+    { from: "user", text: "update my draft to Sarah, change the meeting time to 3 PM" },
+    { from: "gaia", text: "Updated, the draft to Sarah now says 3 PM." },
+    { from: "user", text: "delete the draft I just created" },
+  ]}
+/>
 
 <Warning>
   GAIA only sends an email if you explicitly ask it to. Otherwise it saves a
@@ -58,19 +65,25 @@ You can manage drafts the same way:
 
 Keep your inbox clean without opening Gmail.
 
-> create a label called 'Client Projects'
-
-> add the 'Urgent' label to the last 3 emails from my manager
-
-> trash the marketing email from this morning
-
-> restore the email I just trashed
+<Chat
+  messages={[
+    { from: "user", text: "create a label called 'Client Projects'" },
+    { from: "user", text: "add the 'Urgent' label to the last 3 emails from my manager" },
+    { from: "user", text: "trash the marketing email from this morning" },
+    { from: "user", text: "restore the email I just trashed" },
+    { from: "gaia", text: "Restored, it's back in your inbox." },
+  ]}
+/>
 
 GAIA can also look up contacts from your Google account:
 
-> find the email address for Jessica Chen
-
-> look up contacts at acme.com
+<Chat
+  messages={[
+    { from: "user", text: "find the email address for Jessica Chen" },
+    { from: "gaia", text: "Found her in your Google contacts, here's her email address." },
+    { from: "user", text: "look up contacts at acme.com" },
+  ]}
+/>
 
 ## Background workflows
 
@@ -78,7 +91,7 @@ When you connect Gmail, GAIA sets up two background workflows. Turn them on or c
 
 **Inbox triage** checks your inbox every 15 minutes. It classifies each new email (spam, transactional, newsletter, informational, important, action-required), skips the noise, pulls action items and deadlines from important mail, creates todos for follow-ups, and sends you a brief summary.
 
-**Auto-draft replies** checks every 30 minutes. GAIA spots emails that need a response — direct questions, requests, meeting invites, introductions — and saves draft replies in Gmail. Newsletters, automated notifications, and threads you've already replied to are skipped. Drafts are never sent automatically.
+**Auto-draft replies** checks every 30 minutes. GAIA spots emails that need a response, direct questions, requests, meeting invites, introductions, and saves draft replies in Gmail. Newsletters, automated notifications, and threads you've already replied to are skipped. Drafts are never sent automatically.
 
 <Tip>
   You can adjust the polling interval or turn these workflows off entirely
@@ -111,12 +124,12 @@ You only need to do this once.
     requested permissions. You'll be redirected back automatically.
   </Step>
   <Step title="Ask for what you need">
-    That's it — go back to chat and ask about your email.
+    That's it, go back to chat and ask about your email.
   </Step>
 </Steps>
 
 <Frame>
-  <img className="rounded-lg" src="/images/guides/integrations/integrations-page.png" alt="Integrations page — find Gmail under the Communication category to connect your account" />
+  <img className="rounded-lg" src="/images/guides/integrations/integrations-page.png" alt="Integrations page, find Gmail under the Communication category to connect your account" />
 </Frame>
 
 <Tip>

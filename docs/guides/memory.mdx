@@ -1,11 +1,13 @@
 ---
 title: "Teaching GAIA to Remember You"
 sidebarTitle: "Memory"
-description: "GAIA learns your contacts, preferences, and patterns — so you never repeat yourself"
+description: "GAIA learns your contacts, preferences, and patterns, so you never repeat yourself"
 icon: "brain"
 ---
 
-GAIA remembers who you are, what you care about, and how you work — across every conversation. Mention your manager once, and GAIA knows them forever. The more you use it, the less you have to explain.
+import { Chat } from "/snippets/chat-bubbles.jsx";
+
+GAIA remembers who you are, what you care about, and how you work, across every conversation. Mention your manager once, and GAIA knows them forever. The more you use it, the less you have to explain.
 
 <Frame>
   <img className="rounded-lg" src="/images/guides/memory/memory-graph.png" alt="Memory graph view showing entities and relationships" />
@@ -13,15 +15,18 @@ GAIA remembers who you are, what you care about, and how you work — across eve
 
 ## What to say
 
-Just talk. Memory works in the background — no "remember this" required.
+Just talk. Memory works in the background, no "remember this" required.
 
-> message sarah that I'm running late
-
-> schedule a meeting with james
-
-> send the report to my manager
-
-> actually, make all my meetings 25 minutes by default
+<Chat
+  messages={[
+    { from: "user", text: "message sarah that I'm running late" },
+    { from: "gaia", text: "Sent, I messaged Sarah on Slack that you're running late." },
+    { from: "user", text: "schedule a meeting with james" },
+    { from: "user", text: "send the report to my manager" },
+    { from: "user", text: "actually, make all my meetings 25 minutes by default" },
+    { from: "gaia", text: "Noted, 25-minute meetings are now your default." },
+  ]}
+/>
 
 If GAIA has seen Sarah's Slack handle, James's email, or your manager's name before, it fills in the rest. You don't look anything up.
 
@@ -29,13 +34,13 @@ If GAIA has seen Sarah's Slack handle, James's email, or your manager's name bef
 
 At the end of each conversation, GAIA reviews what happened and keeps anything worth remembering:
 
-- **Identity mappings** — names linked to emails, Slack IDs, GitHub handles, calendar IDs
-- **Preferences** — formats, timezones, communication style, defaults
-- **Contacts and relationships** — who you message, who reports to you, key collaborators
-- **Tools and workflows** — which integrations you use and your recurring patterns
-- **Context** — projects, repositories, channels you work in
+- **Identity mappings**, names linked to emails, Slack IDs, GitHub handles, calendar IDs
+- **Preferences**, formats, timezones, communication style, defaults
+- **Contacts and relationships**, who you message, who reports to you, key collaborators
+- **Tools and workflows**, which integrations you use and your recurring patterns
+- **Context**, projects, repositories, channels you work in
 
-When you start a new conversation, GAIA searches these memories and pulls in whatever is relevant to your request — automatically. Memory also drives GAIA's proactive behavior: the more it knows about your routines, the better it anticipates what you need.
+When you start a new conversation, GAIA searches these memories and pulls in whatever is relevant to your request, automatically. Memory also drives GAIA's proactive behavior: the more it knows about your routines, the better it anticipates what you need.
 
 <Tip>
   The more you use GAIA with your connected integrations, the richer your
@@ -52,7 +57,7 @@ You can add memories yourself instead of waiting for GAIA to pick them up.
     Go to **Settings** and select **Memories** from the sidebar.
   </Step>
   <Step title="Add a memory">
-    Click **Add Memory** and type what you want GAIA to know. Be specific —
+    Click **Add Memory** and type what you want GAIA to know. Be specific,
     "My manager is Alex Chen, alex.chen@company.com" or "I prefer meeting
     agendas as bullet points."
   </Step>
@@ -71,8 +76,8 @@ You can add memories yourself instead of waiting for GAIA to pick them up.
 
 The Memories page in Settings shows everything GAIA has learned, two ways:
 
-- **Graph view** — a visual network of people, tools, and projects and how they connect. The default view. You can export it as a PNG or SVG.
-- **List view** — every stored memory with its content, date, and category (identity mappings, preferences, context patterns).
+- **Graph view**, a visual network of people, tools, and projects and how they connect. The default view. You can export it as a PNG or SVG.
+- **List view**, every stored memory with its content, date, and category (identity mappings, preferences, context patterns).
 
 <Frame>
   <img className="rounded-lg" src="/images/guides/memory/memory-list.png" alt="Memory list view showing stored memories with categories and dates" />
@@ -80,8 +85,8 @@ The Memories page in Settings shows everything GAIA has learned, two ways:
 
 To remove something:
 
-- **Delete one memory** — in List view, click the delete button next to it.
-- **Clear all memories** — click **Clear All** to erase everything.
+- **Delete one memory**, in List view, click the delete button next to it.
+- **Clear all memories**, click **Clear All** to erase everything.
 
 <Warning>
   Clearing all memories cannot be undone. GAIA resets its knowledge of your
@@ -90,11 +95,11 @@ To remove something:
 
 ## How it works under the hood
 
-You can skip this — memory works without you knowing any of it.
+You can skip this, memory works without you knowing any of it.
 
-GAIA's memory runs on vector-based semantic search. Each memory is embedded as a vector — a numerical representation of its meaning — so recall doesn't depend on exact keywords. Asking about "my team lead" surfaces a memory stored as "Alex Chen is my manager," because the concepts are related.
+GAIA's memory runs on vector-based semantic search. Each memory is embedded as a vector, a numerical representation of its meaning, so recall doesn't depend on exact keywords. Asking about "my team lead" surfaces a memory stored as "Alex Chen is my manager," because the concepts are related.
 
-Memories also carry graph relationships — structured connections between people, tools, and projects — so GAIA understands how things connect, not just isolated facts.
+Memories also carry graph relationships, structured connections between people, tools, and projects, so GAIA understands how things connect, not just isolated facts.
 
 **Privacy:**
 

@@ -1,27 +1,19 @@
 ---
 title: "Using GAIA on Telegram"
-description: "Talk to GAIA in a private Telegram chat — no setup, no command prefix"
+description: "Talk to GAIA in a private Telegram chat, no setup, no command prefix"
 icon: "/images/icons/telegram.webp"
 ---
 
-import { BotChatDemo } from "/snippets/bot-chat-demo.jsx";
+import { Chat } from "/snippets/chat-bubbles.jsx";
 
-Telegram is the fastest way to reach GAIA. There's no server to join and no permissions to configure — open a chat, send `/start`, and you're talking to your assistant.
+Telegram is the fastest way to reach GAIA. There's no server to join and no permissions to configure. Open a chat, send `/start`, and you're talking to your assistant.
 
-<BotChatDemo
-  platform="telegram"
-  messages={[
-    { from: "user", text: "What's on my schedule today?" },
-    {
-      from: "gaia",
-      text: "You have 3 meetings: design review at 11, 1:1 with Sam at 2, and sprint planning at 4. Your morning is free — want me to block it for focus time?",
-    },
-    { from: "user", text: "Yes, and move my 1:1 to tomorrow" },
-    {
-      from: "gaia",
-      text: "Done. Focus time blocked 9–11, and your 1:1 with Sam is now tomorrow at 2.",
-    },
-  ]}
+<iframe
+  src="https://heygaia.io/embed/demos/telegram"
+  title="GAIA on Telegram demo"
+  className="w-full rounded-2xl"
+  style={{ height: 320, border: "none" }}
+  loading="lazy"
 />
 
 ## Getting started
@@ -32,7 +24,7 @@ Telegram is the fastest way to reach GAIA. There's no server to join and no perm
   </Step>
 
   <Step title="Link your GAIA account">
-    Run `/auth`. You'll get a link — click it, sign in, and your account is connected.
+    Run `/auth`. You'll get a link, click it, sign in, and your account is connected.
 
     ```
     /auth
@@ -44,25 +36,33 @@ Telegram is the fastest way to reach GAIA. There's no server to join and no perm
   <Step title="Just type">
     In a private Telegram chat, every message you send goes straight to GAIA. No command prefix needed.
 
-    > What's on my todo list?
-
-    > Move my 3pm to tomorrow morning
+    <Chat
+      messages={[
+        { from: "user", text: "What's on my todo list?" },
+        { from: "user", text: "Move my 3pm to tomorrow morning" },
+        { from: "gaia", text: "Moved. Your 3pm is now tomorrow at 9:30 AM." },
+      ]}
+    />
   </Step>
 </Steps>
 
 <Tip>
-  Telegram DMs are fully private — only you and GAIA see the conversation.
+  Telegram DMs are fully private, only you and GAIA see the conversation.
 </Tip>
 
 ## What you can do
 
 Ask GAIA anything, in plain language:
 
-> Summarize my unread emails from today
+<Chat
+  messages={[
+    { from: "user", text: "Summarize my unread emails from today" },
+    { from: "user", text: "Remind me to follow up with Sam on Friday" },
+    { from: "gaia", text: "Reminder set for Friday: follow up with Sam." },
+  ]}
+/>
 
-> Remind me to follow up with Sam on Friday
-
-Or use commands for quick actions — the bot registers its full command list with Telegram, so you get native autocomplete when you type `/`:
+Or use commands for quick actions, the bot registers its full command list with Telegram, so you get native autocomplete when you type `/`:
 
 | Command                  | What it does               |
 | ------------------------ | -------------------------- |
@@ -77,7 +77,7 @@ For the complete reference including subcommand options, see the [Bot Commands R
 
 ## Good to know
 
-- Responses use plain text and Markdown — rich embeds are limited compared to Discord and Slack, so GAIA falls back to simpler formatting when needed.
+- Responses use plain text and Markdown, rich embeds are limited compared to Discord and Slack, so GAIA falls back to simpler formatting when needed.
 - **Start fresh when switching topics.** Run `/new` to clear conversation context before asking about something unrelated.
 - **Connect your integrations first.** Link Gmail, Google Calendar, GitHub, and other tools from the [GAIA web app](/guides/connecting-integrations) so GAIA can act on your behalf.
 
@@ -88,7 +88,7 @@ For the complete reference including subcommand options, see the [Bot Commands R
 | Bot does not respond               | Check that the bot is online with `/status`.                                      |
 | Authentication link expired        | Run `/auth` again to get a fresh link.                                            |
 | Commands missing from autocomplete | Send `/start` to refresh.                                                         |
-| Markdown looks broken              | Some advanced formatting isn't supported — GAIA falls back to plain text.         |
+| Markdown looks broken              | Some advanced formatting isn't supported, GAIA falls back to plain text.         |
 
 <Note>
   Want to run your own instance of the Telegram bot? See [Telegram Bot Development](/bots/telegram).

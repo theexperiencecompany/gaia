@@ -4,24 +4,16 @@ description: "Chat with GAIA, manage todos, and run workflows without leaving Di
 icon: "/images/icons/discord.webp"
 ---
 
-import { BotChatDemo } from "/snippets/bot-chat-demo.jsx";
+import { Chat } from "/snippets/chat-bubbles.jsx";
 
-You're already in Discord all day. Instead of switching to another app, talk to GAIA right there — ask questions, manage your todos, trigger workflows, all without leaving the chat.
+You're already in Discord all day. Instead of switching to another app, talk to GAIA right there, ask questions, manage your todos, trigger workflows, all without leaving the chat.
 
-<BotChatDemo
-  platform="discord"
-  messages={[
-    { from: "user", text: "/gaia Summarize my pending todos and flag anything overdue" },
-    {
-      from: "gaia",
-      text: "You have 6 open todos. Two are overdue: the Q2 investor update (due yesterday) and the design handoff (due Monday). Want me to reschedule them or bump their priority?",
-    },
-    { from: "user", text: "Bump the investor update to p1 and push the handoff to Friday" },
-    {
-      from: "gaia",
-      text: "Done — investor update is now priority 1, design handoff moved to Friday.",
-    },
-  ]}
+<iframe
+  src="https://heygaia.io/embed/demos/discord"
+  title="GAIA on Discord demo"
+  className="w-full rounded-2xl"
+  style={{ height: 320, border: "none" }}
+  loading="lazy"
 />
 
 ## Getting started
@@ -32,7 +24,7 @@ You're already in Discord all day. Instead of switching to another app, talk to 
   </Step>
 
   <Step title="Link your GAIA account">
-    Run `/auth`. You'll get a link — click it, sign in, and your account is connected.
+    Run `/auth`. You'll get a link, click it, sign in, and your account is connected.
 
     ```
     /auth
@@ -48,7 +40,7 @@ You're already in Discord all day. Instead of switching to another app, talk to 
     /gaia What's on my schedule today?
     ```
 
-    Or just type freely in a DM — no command prefix needed.
+    Or just type freely in a DM, no command prefix needed.
   </Step>
 </Steps>
 
@@ -61,9 +53,13 @@ You're already in Discord all day. Instead of switching to another app, talk to 
 
 Ask GAIA anything. Responses stream in real time with a typing indicator so you know it's working.
 
-> /gaia Summarize my pending todos and flag anything overdue
-
-> /gaia What time is the team standup tomorrow?
+<Chat
+  messages={[
+    { from: "user", text: "/gaia Summarize my pending todos and flag anything overdue" },
+    { from: "gaia", text: "You have 6 open todos, two are overdue. Want me to reschedule them?" },
+    { from: "user", text: "/gaia What time is the team standup tomorrow?" },
+  ]}
+/>
 
 Manage todos and workflows without touching the web app:
 
@@ -82,25 +78,30 @@ For the complete reference including subcommand options, see the [Bot Commands R
 
 ### @Mention in any channel
 
-Mention the bot in a server channel and GAIA replies right there — no slash command needed.
+Mention the bot in a server channel and GAIA replies right there, no slash command needed.
 
-> @GAIA What time is the team standup tomorrow?
+<Chat
+  messages={[
+    { from: "user", text: "@GAIA What time is the team standup tomorrow?" },
+    { from: "gaia", text: "Standup is at 9:30 AM in #engineering." },
+  ]}
+/>
 
 ### Context menu actions
 
 Right-click (or long-press on mobile) any message to get two quick actions:
 
-- **Summarize with GAIA** — Get a 2-3 sentence summary of the selected message.
-- **Add as Todo** — Turn any message into a todo item instantly.
+- **Summarize with GAIA**: Get a 2-3 sentence summary of the selected message.
+- **Add as Todo**: Turn any message into a todo item instantly.
 
 <Tip>
-  These work on any message in the server — not just your own. Use them to pull
+  These work on any message in the server, not just your own. Use them to pull
   action items out of team discussions without breaking the conversation.
 </Tip>
 
 ### Rich embeds and private replies
 
-Responses use native Discord embeds with structured fields and action buttons, and slash command replies are visible only to you by default — other server members won't see what you asked.
+Responses use native Discord embeds with structured fields and action buttons, and slash command replies are visible only to you by default, other server members won't see what you asked.
 
 ### Workflow creation
 
@@ -113,7 +114,7 @@ Create new workflows directly from Discord:
 ## Tips
 
 - **Connect your integrations first.** Link Gmail, Google Calendar, GitHub, and other tools from the [GAIA web app](/guides/connecting-integrations) so GAIA can act on your behalf.
-- **Use DMs for personal tasks** and channels for team context — mention GAIA in a project channel so everyone sees the answer.
+- **Use DMs for personal tasks** and channels for team context, mention GAIA in a project channel so everyone sees the answer.
 - **Start fresh when switching topics.** Run `/new` to clear conversation context before asking about something unrelated.
 
 ## Troubleshooting

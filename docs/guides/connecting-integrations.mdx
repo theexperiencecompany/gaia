@@ -4,7 +4,9 @@ description: "Link your apps so GAIA can read context and take action for you"
 icon: "plug"
 ---
 
-The more apps you connect, the less you have to explain. A connected integration gives GAIA two things: context (your emails, events, tasks, messages) and the ability to act — draft replies, create issues, schedule meetings, update tasks — without you switching tabs.
+import { Chat } from "/snippets/chat-bubbles.jsx";
+
+The more apps you connect, the less you have to explain. A connected integration gives GAIA two things: context (your emails, events, tasks, messages) and the ability to act, draft replies, create issues, schedule meetings, update tasks, without you switching tabs.
 
 ## Connect an integration
 
@@ -19,7 +21,7 @@ The more apps you connect, the less you have to explain. A connected integration
   </Step>
 
 <Step title="Find the app and click Connect">
-  Browse by category or search for the app. Click **Connect** — most
+  Browse by category or search for the app. Click **Connect**, most
   integrations open the app's authorization page in your browser.
 </Step>
 
@@ -34,59 +36,38 @@ The more apps you connect, the less you have to explain. A connected integration
 </Steps>
 
 <Tip>
-  You can also connect from the chat sidebar — expand the **Integrations**
+  You can also connect from the chat sidebar, expand the **Integrations**
   section to add apps without leaving the conversation.
 </Tip>
 
 ## Use it right away
 
-Connected integrations work in chat immediately — no extra setup. After connecting Gmail, for example:
+Connected integrations work in chat immediately, no extra setup. After connecting Gmail, for example:
 
-> Draft a reply to the last email from Sarah
-
-> Send a summary of today's meetings to the team
-
-> Find all unread emails from this week about the Q3 report
+<Chat
+  messages={[
+    { from: "user", text: "Draft a reply to the last email from Sarah" },
+    { from: "user", text: "Send a summary of today's meetings to the team" },
+    { from: "user", text: "Find all unread emails from this week about the Q3 report" },
+    { from: "gaia", text: "Found 4 unread emails about the Q3 report from this week." },
+  ]}
+/>
 
 GAIA picks the right tool based on what you ask.
 
 ## Available integrations
 
-GAIA supports 60+ integrations across four categories:
-
-<CardGroup cols={2}>
-  <Card title="Communication" icon="envelope">
-    Gmail, Slack, Microsoft Teams, Google Meet — read and send messages, summarize threads, schedule meetings.
-  </Card>
-
-<Card title="Productivity & Tasks" icon="calendar">
-  Google Calendar, Google Tasks, Notion, Todoist, Asana, Trello, ClickUp, Google
-  Docs, Google Sheets — manage your schedule, tasks, and documents.
-</Card>
-
-<Card title="Developer Tools" icon="code">
-  GitHub, Linear — create issues, review pull requests, track project progress.
-</Card>
-
-  <Card title="Social & Business" icon="briefcase">
-    Twitter, LinkedIn, Reddit, Instagram, HubSpot, Airtable — post content, manage contacts, update records.
-  </Card>
-</CardGroup>
-
-<Note>
-  The full list is always under **Settings > Integrations**. New integrations
-  are added regularly.
-</Note>
+GAIA supports 60+ integrations across communication, productivity, developer, and business tools. See the [Integrations overview](/integrations) for the categories, or browse the full list under **Settings > Integrations** in the app.
 
 ## Disconnect or reconnect
 
 To disconnect, open the integration's detail view and click **Disconnect**. GAIA loses access immediately and keeps no data from the connection.
 
-Some integrations use tokens that expire. If a connection stops working or shows an error, disconnect and click **Connect** again — that fixes most problems caused by expired or revoked tokens.
+Some integrations use tokens that expire. If a connection stops working or shows an error, disconnect and click **Connect** again, that fixes most problems caused by expired or revoked tokens.
 
 ## Community marketplace
 
-You can ignore this unless a tool you need isn't in the built-in list. Someone may have already built it on the community marketplace — and you can build your own with the MCP protocol and publish it for others.
+You can ignore this unless a tool you need isn't in the built-in list. Someone may have already built it on the community marketplace, and you can build your own with the MCP protocol and publish it for others.
 
 <Frame>
   <img className="rounded-lg" src="/images/guides/integrations/create-custom-integration-modal.png" alt="Custom integration modal for adding MCP integrations" />
@@ -110,4 +91,4 @@ You can ignore this unless a tool you need isn't in the built-in list. Someone m
   </Card>
 </CardGroup>
 
-<Tip>Search the marketplace before building — the work may already be done.</Tip>
+<Tip>Search the marketplace before building, the work may already be done.</Tip>

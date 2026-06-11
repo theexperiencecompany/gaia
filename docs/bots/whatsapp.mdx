@@ -6,7 +6,7 @@ icon: "/images/icons/whatsapp.webp"
 
 # WhatsApp Bot Development
 
-Run your own instance of the GAIA WhatsApp bot. The bot receives messages through [Kapso](https://kapso.ai), a proxy for the Meta WhatsApp Cloud API, via a signed webhook — so you need a publicly reachable URL.
+Run your own instance of the GAIA WhatsApp bot. The bot receives messages through [Kapso](https://kapso.ai), a proxy for the Meta WhatsApp Cloud API, via a signed webhook, so you need a publicly reachable URL.
 
 <Note>
   Looking to use GAIA on WhatsApp as a user? See [Using GAIA on WhatsApp](/guides/whatsapp-bot).
@@ -24,7 +24,7 @@ Run your own instance of the GAIA WhatsApp bot. The bot receives messages throug
 1. Create a Kapso project and connect your WhatsApp Business phone number
 2. Copy your **API key** and **Phone Number ID**
 3. Configure a webhook pointing to your bot's `/webhook` endpoint (the bot listens on port `3203` by default; override with `BOT_SERVER_PORT`)
-4. Copy the **webhook secret** — Kapso signs every request with HMAC-SHA256, and the bot rejects requests with invalid signatures
+4. Copy the **webhook secret**: Kapso signs every request with HMAC-SHA256, and the bot rejects requests with invalid signatures
 
 ## Step 2: Configure environment variables
 
@@ -56,8 +56,8 @@ nx build bot-whatsapp && nx start bot-whatsapp
 
 A few WhatsApp-specific constraints, handled automatically by the adapter:
 
-- **No streaming or edits** — responses are sent as complete messages once generation finishes
-- **Commands are matched by text prefix** (e.g. `/gaia ...`) — there is no native slash-command registration like Discord or Telegram
+- **No streaming or edits**, responses are sent as complete messages once generation finishes
+- **Commands are matched by text prefix** (e.g. `/gaia ...`), there is no native slash-command registration like Discord or Telegram
 - **Media**: voice notes are transcribed (up to 25 MB), images and documents are uploaded (up to 10 MB), videos and stickers get a polite "not supported" reply
 - **Message cap**: 4,096 characters; longer responses are split
 

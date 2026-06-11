@@ -1,8 +1,10 @@
 ---
 title: "Quick Start"
-description: "Sign up, connect your apps, and send your first message — five minutes, start to finish"
+description: "Sign up, connect your apps, and send your first message. Five minutes, start to finish."
 icon: "rocket-launch"
 ---
+
+import { Chat } from "/snippets/chat-bubbles.jsx";
 
 GAIA works the moment you sign up, and gets dramatically more useful once it can see your email and calendar. Here's the fastest path.
 
@@ -12,7 +14,7 @@ GAIA works the moment you sign up, and gets dramatically more useful once it can
   </Step>
 
   <Step title="Connect Gmail and Calendar">
-    This is the step that makes GAIA yours. Open **Settings → Integrations** and connect Gmail and Google Calendar — now GAIA can read your inbox, manage your schedule, and act on your behalf instead of answering in the abstract.
+    This is the step that makes GAIA yours. Open **Settings → Integrations** and connect Gmail and Google Calendar. Now GAIA can read your inbox, manage your schedule, and act on your behalf instead of answering in the abstract.
 
     You can connect more later: GitHub, Notion, Linear, and 60+ other apps. See [Connecting Integrations](/guides/connecting-integrations).
   </Step>
@@ -20,13 +22,16 @@ GAIA works the moment you sign up, and gets dramatically more useful once it can
   <Step title="Send your first message">
     Ask for something real:
 
-    > What's on my calendar today?
+    <Chat
+      messages={[
+        { from: "user", text: "What's on my calendar today?" },
+        { from: "user", text: "Summarize my unread emails and flag anything urgent" },
+        { from: "user", text: "Remind me to follow up with Sam on Friday" },
+        { from: "gaia", text: "Done, I'll remind you to follow up with Sam on Friday." },
+      ]}
+    />
 
-    > Summarize my unread emails and flag anything urgent
-
-    > Remind me to follow up with Sam on Friday
-
-    If the answer isn't quite right, just keep talking — "only the ones from this week", "make it shorter". GAIA remembers the thread.
+    If the answer isn't quite right, just keep talking, "only the ones from this week", "make it shorter". GAIA remembers the thread.
   </Step>
 
   <Step title="Put GAIA in your pocket">

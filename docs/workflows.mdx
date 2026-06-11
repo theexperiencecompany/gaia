@@ -1,20 +1,25 @@
 ---
 title: "Workflows"
-description: "Automate repetitive tasks across your apps — no code required"
+description: "Automate repetitive tasks across your apps, no code required"
 icon: "bolt"
 ---
+
+import { Chat } from "/snippets/chat-bubbles.jsx";
 
 <Frame>
   <img src="/images/screenshots/workflows.webp" alt="GAIA workflows dashboard" />
 </Frame>
 
-Workflows let you stop repeating yourself. Describe what you want once, in plain language, and GAIA runs it from then on — on a schedule, when something happens in a connected app, or whenever you click **Run**.
+Workflows let you stop repeating yourself. Describe what you want once, in plain language, and GAIA runs it from then on, on a schedule, when something happens in a connected app, or whenever you click **Run**.
 
-> When a GitHub issue is labeled "urgent", create a task in Todoist and send me a Slack message
-
-> Every Friday at 4pm, summarize my completed Asana tasks into a Google Doc
-
-> 30 minutes before any meeting with more than 2 attendees, surface my recent email threads with those people
+<Chat
+  messages={[
+    { from: "user", text: "When a GitHub issue is labeled \"urgent\", create a task in Todoist and send me a Slack message" },
+    { from: "user", text: "Every Friday at 4pm, summarize my completed Asana tasks into a Google Doc" },
+    { from: "user", text: "30 minutes before any meeting with more than 2 attendees, surface my recent email threads with those people" },
+    { from: "gaia", text: "Done, these workflows are set up and will run on their own from now on." },
+  ]}
+/>
 
 Each workflow is a **trigger** (Schedule, app Trigger, or Manual) plus one or more **actions**. You can chain as many actions as you need, across any of your connected apps.
 
@@ -35,6 +40,6 @@ Each workflow is a **trigger** (Schedule, app Trigger, or Manual) plus one or mo
 </CardGroup>
 
 <Note>
-  Apps must be connected before they can trigger workflows — see [Connecting
+  Apps must be connected before they can trigger workflows, see [Connecting
   Integrations](/guides/connecting-integrations).
 </Note>

@@ -1,24 +1,28 @@
 ---
 title: "Setting Up Reminders"
-description: "Set one-time or recurring reminders in plain language — no forms, no date pickers"
+description: "Set one-time or recurring reminders in plain language, no forms, no date pickers"
 icon: "bell"
 ---
 
-Tell GAIA what to remember and when, in plain language. It schedules the reminder, confirms the time, and notifies you when the moment comes — in-app, and as a push notification on mobile.
+import { Chat } from "/snippets/chat-bubbles.jsx";
+
+Tell GAIA what to remember and when, in plain language. It schedules the reminder, confirms the time, and notifies you when the moment comes, in-app, and as a push notification on mobile.
 
 Reminders work everywhere you talk to GAIA: web, mobile, desktop, and your connected bots (Discord, Slack, Telegram).
 
 ## What to say
 
-> remind me to call the dentist in 30 minutes
-
-> remind me to submit the quarterly report tomorrow at 9 AM
-
-> every Monday at 9 AM, remind me to review my weekly goals
-
-> remind me to take my medication every day at 8 PM
-
-> actually make that 9 PM instead
+<Chat
+  messages={[
+    { from: "user", text: "remind me to call the dentist in 30 minutes" },
+    { from: "gaia", text: "Set, I'll remind you to call the dentist in 30 minutes." },
+    { from: "user", text: "remind me to submit the quarterly report tomorrow at 9 AM" },
+    { from: "user", text: "every Monday at 9 AM, remind me to review my weekly goals" },
+    { from: "user", text: "remind me to take my medication every day at 8 PM" },
+    { from: "user", text: "actually make that 9 PM instead" },
+    { from: "gaia", text: "Updated, your medication reminder now fires every day at 9 PM." },
+  ]}
+/>
 
 GAIA replies with a confirmation showing the reminder text and scheduled time. You're done.
 
@@ -51,9 +55,13 @@ These repeat on a schedule until you cancel them or set a limit. Use them for ha
 
 To set a limit, say when to stop:
 
-> remind me to water the plants every 3 days, 10 times total
-
-> every Tuesday at noon, remind me to submit timesheets until June 30
+<Chat
+  messages={[
+    { from: "user", text: "remind me to water the plants every 3 days, 10 times total" },
+    { from: "user", text: "every Tuesday at noon, remind me to submit timesheets until June 30" },
+    { from: "gaia", text: "Scheduled, every Tuesday at noon, ending June 30." },
+  ]}
+/>
 
 <Note>
   Recurring reminders automatically expire after 6 months unless you set an
@@ -62,19 +70,20 @@ To set a limit, say when to stop:
 
 ## Managing your reminders
 
-Everything happens in chat — list, update, pause, resume, and cancel.
+Everything happens in chat, list, update, pause, resume, and cancel.
 
-> show me my upcoming reminders
+<Chat
+  messages={[
+    { from: "user", text: "show me my upcoming reminders" },
+    { from: "user", text: "change my daily medication reminder to 9 PM instead of 8 PM" },
+    { from: "user", text: "pause my weekday wrap-up reminder" },
+    { from: "gaia", text: "Paused, it'll stay put without firing until you resume it." },
+    { from: "user", text: "resume my weekday wrap-up reminder" },
+    { from: "user", text: "cancel my Monday goals reminder" },
+  ]}
+/>
 
-> change my daily medication reminder to 9 PM instead of 8 PM
-
-> pause my weekday wrap-up reminder
-
-> resume my weekday wrap-up reminder
-
-> cancel my Monday goals reminder
-
-Pausing keeps the reminder around without firing it — handy for vacations.
+Pausing keeps the reminder around without firing it, handy for vacations.
 
 <Warning>
   Cancelled reminders cannot be restored. If you might want it back later,
@@ -83,9 +92,14 @@ Pausing keeps the reminder around without firing it — handy for vacations.
 
 ## Timezones
 
-GAIA uses your local timezone by default — "at 3 PM" means 3 PM your time. To use a different timezone, say so:
+GAIA uses your local timezone by default, "at 3 PM" means 3 PM your time. To use a different timezone, say so:
 
-> remind me to join the call at 2 PM EST tomorrow
+<Chat
+  messages={[
+    { from: "user", text: "remind me to join the call at 2 PM EST tomorrow" },
+    { from: "gaia", text: "Set, I'll remind you tomorrow at 2 PM EST." },
+  ]}
+/>
 
 ## Reminders vs. workflows
 
@@ -98,7 +112,7 @@ Reminders and [workflows](/guides/building-workflows) do different things:
 | **Trigger**    | Time-based (one-time or recurring)      | Time-based, event-based, or manual         |
 | **Complexity** | Single message                          | Multiple steps with logic and integrations |
 
-Use a reminder when you need a nudge. Use a workflow when you want GAIA to act on your behalf — like sending a summary email or pulling data from a connected service.
+Use a reminder when you need a nudge. Use a workflow when you want GAIA to act on your behalf, like sending a summary email or pulling data from a connected service.
 
 <Tip>
   They work well together: set a reminder to review something, and a workflow

@@ -84,35 +84,16 @@ img {
   width: 15.5rem !important;
 }
 
-/* Example-message blockquotes styled as chat bubbles */
-#content-area .prose blockquote {
-  background: #ffffff0a;
-  border: none;
-  border-radius: 1rem;
-  border-bottom-left-radius: 0.25rem;
-  padding: 0.625rem 1rem;
-  margin: 0.75rem 0;
-  font-style: normal;
-}
-
-#content-area .prose blockquote p {
-  margin: 0;
-}
-
-#content-area .prose blockquote p::before,
-#content-area .prose blockquote p::after {
-  content: none;
-}
-
-:root:not(.dark) #content-area .prose blockquote {
-  background: #00000008;
-}
-
 /* Enlarge custom image icons (macOS-style app icons) in the sidebar */
 #sidebar img[src^='/images/icons/'] {
   width: 1.25rem;
   height: 1.25rem;
-  margin: -0.125rem;
+  min-width: 1.25rem;
+  aspect-ratio: 1;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 0 !important;
+  cursor: default !important;
 }
 
 /* Tighter, smaller typography (Poke-style density) */

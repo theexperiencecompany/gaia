@@ -4,36 +4,45 @@ description: "Write a prompt once, pick when it runs, and GAIA handles it from t
 icon: "wand-magic-sparkles"
 ---
 
-Workflows let you stop repeating yourself. Describe a task once in plain language, pick when it runs, and GAIA takes care of it — every day, on an event, or whenever you click run.
+import { Chat } from "/snippets/chat-bubbles.jsx";
+
+Workflows let you stop repeating yourself. Describe a task once in plain language, pick when it runs, and GAIA takes care of it, every day, on an event, or whenever you click run.
 
 ## What to say
 
-A workflow is just a prompt that runs on a trigger. Write it the way you'd write any message — be specific about what to look at, what to do, and where the output goes:
+A workflow is just a prompt that runs on a trigger. Write it the way you'd write any message, be specific about what to look at, what to do, and where the output goes:
 
-> Pull yesterday's key metrics from PostHog — active users, signups, and retention — and send a formatted summary to the #metrics Slack channel.
-
-> Check my unread emails, extract any action items, and create a todo for each one.
-
-> Look at all merged PRs and commits from the past week across our repos. Summarize them into standup notes grouped by project.
+<Chat
+  messages={[
+    { from: "user", text: "Pull yesterday's key metrics from PostHog, active users, signups, and retention, and send a formatted summary to the #metrics Slack channel." },
+    { from: "user", text: "Check my unread emails, extract any action items, and create a todo for each one." },
+    { from: "user", text: "Look at all merged PRs and commits from the past week across our repos. Summarize them into standup notes grouped by project." },
+  ]}
+/>
 
 And if you find yourself asking GAIA for the same thing over and over in chat:
 
-> turn this into a workflow
+<Chat
+  messages={[
+    { from: "user", text: "turn this into a workflow" },
+    { from: "gaia", text: "Here's a draft workflow with the title, trigger, and instructions filled in, click the card to review and create it." },
+  ]}
+/>
 
 GAIA drafts one with a title, description, trigger, and instructions already filled in. Click the draft card, check it looks right, and create it.
 
 ## Pick a trigger
 
-Every workflow needs a trigger — the condition that tells GAIA when to run.
+Every workflow needs a trigger, the condition that tells GAIA when to run.
 
 <CardGroup cols={3}>
   <Card title="Schedule" icon="clock">
     Run on a recurring schedule. Every day at 9am, every Monday morning, the 1st
-    of each month — you set the cadence.
+    of each month, you set the cadence.
   </Card>
   <Card title="Trigger" icon="bolt">
     Run when something happens in a connected app. A new calendar event, an
-    incoming email, a GitHub pull request, a Slack message — GAIA watches and
+    incoming email, a GitHub pull request, a Slack message, GAIA watches and
     reacts.
   </Card>
   <Card title="Manual" icon="hand-pointer">
@@ -59,7 +68,7 @@ App triggers are available for Google Calendar, Gmail, Google Docs, Google Sheet
   <Step title="Name it and pick a trigger">
     Give it a title that makes it obvious what it does, then pick one of the three tabs: **Schedule**, **Trigger**, or **Manual**.
 
-    **Schedule** defaults to daily at 9:00 AM in your local timezone — choose daily, weekly, or monthly and GAIA handles the cron expression for you.
+    **Schedule** defaults to daily at 9:00 AM in your local timezone, choose daily, weekly, or monthly and GAIA handles the cron expression for you.
 
     <Frame>
   <img className="rounded-lg" src="/images/guides/workflows/create-workflow-schedule.png" alt="Create workflow modal with Schedule tab selected" />
@@ -75,10 +84,10 @@ App triggers are available for Google Calendar, Gmail, Google Docs, Google Sheet
   <img className="rounded-lg" src="/images/guides/workflows/create-workflow-trigger-suggestions.png" alt="Trigger dropdown showing available integration triggers" />
 </Frame>
 
-    **Manual** needs nothing — it runs only when you click **Run**.
+    **Manual** needs nothing, it runs only when you click **Run**.
 
     <Tip>
-      Use specific titles like "Daily PostHog Metrics Report" — not generic
+      Use specific titles like "Daily PostHog Metrics Report", not generic
       names like "My Workflow."
     </Tip>
 
@@ -100,7 +109,7 @@ App triggers are available for Google Calendar, Gmail, Google Docs, Google Sheet
 
 ## Pause and resume
 
-Each workflow has an activation toggle in the footer of its modal. Deactivating pauses the workflow without deleting anything — turn it back on whenever you want.
+Each workflow has an activation toggle in the footer of its modal. Deactivating pauses the workflow without deleting anything, turn it back on whenever you want.
 
 <Note>
   New workflows are active by default. Deactivate one to pause it without
@@ -109,6 +118,6 @@ Each workflow has an activation toggle in the footer of its modal. Deactivating 
 
 ## Don't want to build from scratch?
 
-The Workflows page has an **Explore & Discover** section with community-built templates organized by category — Engineering, Founders, Marketing, and more. Any template can be added with one click.
+The Workflows page has an **Explore & Discover** section with community-built templates organized by category, Engineering, Founders, Marketing, and more. Any template can be added with one click.
 
 Below that, **Community Workflows** shows workflows published by other GAIA users. Grab one as a starting point and adjust it to fit what you need. See [Publishing to the Marketplace](/guides/marketplace) to share your own.
