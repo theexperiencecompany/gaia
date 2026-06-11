@@ -1,12 +1,16 @@
 """Resolve an email address to a person preview (name, photo, bio).
 
-Powers link previews for email anchors in chat markdown. Resolution order:
+Powers link previews for email anchors in chat markdown. Sources, merged
+field-wise in priority order (the same surface Gmail itself draws from):
 
-1. Google Contacts (People API ``people:searchContacts`` through the user's
-   Composio Gmail connection) — best source for people the user actually
-   emails: real saved names and contact photos.
-2. Gravatar public profile — covers addresses with a Gravatar account
-   (name, avatar, bio) when the person is not in the user's contacts.
+1. Saved Google contacts (People API ``people:searchContacts`` via the
+   user's Composio Gmail connection) — saved names and contact photos.
+2. Other contacts (``otherContacts:search``) — anyone the user has ever
+   emailed, with their actual Google profile photo even when unsaved.
+3. Gravatar public profile — name, avatar, and bio for addresses with a
+   Gravatar account.
+4. Domain favicon — for company addresses with no personal photo, the
+   organization's logo beats an empty circle.
 
 Results are cached per (user, email) in Redis: contact lookups are
 user-specific, so they must never share the global URL-metadata cache.
@@ -18,15 +22,20 @@ import hashlib
 import httpx
 
 from app.constants.email import (
+    DOMAIN_FAVICON_URL_TEMPLATE,
     EMAIL_PROFILE_CACHE_KEY_TEMPLATE,
     EMAIL_PROFILE_CACHE_TTL_SECONDS,
+    FREEMAIL_DOMAINS,
     GOOGLE_CONTACTS_SOURCE_NAME,
     GRAVATAR_CONNECT_TIMEOUT_SECONDS,
     GRAVATAR_PROFILE_URL_TEMPLATE,
     GRAVATAR_SOURCE_NAME,
     GRAVATAR_TIMEOUT_SECONDS,
+    OTHER_CONTACTS_READ_MASK,
+    OTHER_CONTACTS_SEARCH_ENDPOINT,
     PEOPLE_SEARCH_ENDPOINT,
     PEOPLE_SEARCH_READ_MASK,
+    PEOPLE_SEARCH_WARMUP_DELAY_SECONDS,
 )
 from app.db.redis import get_cache, set_cache
 from app.models.search_models import URLResponse
@@ -45,41 +54,62 @@ def _first_value(entries: list[dict], key: str) -> str | None:
     return next((entry[key] for entry in entries if entry.get(key)), None)
 
 
-async def _search_google_contacts(user_id: str, email: str) -> dict | None:
-    """Look the email up in the user's Google contacts via the Composio proxy.
+def _person_to_profile(person: dict, email: str) -> dict | None:
+    """Map a People API person to profile fields, if it matches the email."""
+    emails = {entry.get("value", "").strip().lower() for entry in person.get("emailAddresses", [])}
+    if email not in emails:
+        return None
+    name = _first_value(person.get("names", []), "displayName")
+    photo = _first_value(person.get("photos", []), "url")
+    if not name and not photo:
+        return None
+    return {
+        "title": name,
+        "description": _first_value(person.get("biographies", []), "value"),
+        "favicon": photo,
+        "website_name": GOOGLE_CONTACTS_SOURCE_NAME,
+    }
 
-    Any failure (Gmail not connected, missing People scope, provider error)
-    degrades silently to the next source — previews must never surface errors.
+
+async def _people_search(user_id: str, endpoint: str, query: str, read_mask: str) -> dict | None:
+    """One People API search call via the Composio Gmail proxy, or None.
+
+    Any failure (Gmail not connected, missing scope, provider error) degrades
+    silently to the next source — previews must never surface errors.
     """
     try:
-        data = await proxy_request(
+        return await proxy_request(
             user_id=user_id,
             toolkit=_GMAIL_TOOLKIT,
             method="GET",
-            endpoint=PEOPLE_SEARCH_ENDPOINT,
-            query={"query": email, "readMask": PEOPLE_SEARCH_READ_MASK},
+            endpoint=endpoint,
+            query={"query": query, "readMask": read_mask},
         )
     except Exception as exc:
-        log.debug(f"email_profile google contacts lookup failed: {exc}")
+        log.debug(f"email_profile people search failed ({endpoint}): {exc}")
         return None
 
-    for result in (data or {}).get("results", []):
-        person = result.get("person", {})
-        emails = {
-            entry.get("value", "").strip().lower() for entry in person.get("emailAddresses", [])
-        }
-        if email not in emails:
-            continue
-        name = _first_value(person.get("names", []), "displayName")
-        photo = _first_value(person.get("photos", []), "url")
-        if not name and not photo:
-            continue
-        return {
-            "title": name,
-            "description": _first_value(person.get("biographies", []), "value"),
-            "favicon": photo,
-            "website_name": GOOGLE_CONTACTS_SOURCE_NAME,
-        }
+
+async def _search_google_people(
+    user_id: str, endpoint: str, email: str, read_mask: str
+) -> dict | None:
+    """Search one People API surface for the email, with Google's warmup retry.
+
+    Both contact-search endpoints return empty after a period of inactivity
+    until a warmup (empty-query) request is sent; retry once after warming up.
+    """
+    data = await _people_search(user_id, endpoint, email, read_mask)
+    if data is None:
+        return None
+    if not data.get("results"):
+        await _people_search(user_id, endpoint, "", read_mask)
+        await asyncio.sleep(PEOPLE_SEARCH_WARMUP_DELAY_SECONDS)
+        data = await _people_search(user_id, endpoint, email, read_mask) or {}
+
+    for result in data.get("results", []):
+        profile = _person_to_profile(result.get("person", {}), email)
+        if profile is not None:
+            return profile
     return None
 
 
@@ -111,6 +141,26 @@ async def _fetch_gravatar_profile(email: str) -> dict | None:
     }
 
 
+def _domain_favicon_profile(email: str) -> dict | None:
+    """Company-domain favicon as a last-resort avatar (never for freemail)."""
+    domain = email.split("@", 1)[1]
+    if domain in FREEMAIL_DOMAINS:
+        return None
+    return {"favicon": DOMAIN_FAVICON_URL_TEMPLATE.format(domain=domain)}
+
+
+def _merge_profiles(profiles: list[dict | None]) -> dict:
+    """First non-empty value per field across sources, in priority order."""
+    merged: dict = {}
+    for profile in profiles:
+        if not profile:
+            continue
+        for key, value in profile.items():
+            if value and not merged.get(key):
+                merged[key] = value
+    return merged
+
+
 async def fetch_email_profile(user_id: str, raw_value: str) -> URLResponse:
     """Resolve an email (or ``mailto:`` URL) to preview metadata for the user.
 
@@ -126,9 +176,14 @@ async def fetch_email_profile(user_id: str, raw_value: str) -> URLResponse:
     if cached:
         return URLResponse(**{**cached, "url": raw_value})
 
-    profile = (
-        await _search_google_contacts(user_id, email) or await _fetch_gravatar_profile(email) or {}
+    contacts, other_contacts, gravatar = await asyncio.gather(
+        _search_google_people(user_id, PEOPLE_SEARCH_ENDPOINT, email, PEOPLE_SEARCH_READ_MASK),
+        _search_google_people(
+            user_id, OTHER_CONTACTS_SEARCH_ENDPOINT, email, OTHER_CONTACTS_READ_MASK
+        ),
+        _fetch_gravatar_profile(email),
     )
+    profile = _merge_profiles([contacts, other_contacts, gravatar, _domain_favicon_profile(email)])
     metadata = {
         "title": profile.get("title"),
         "description": profile.get("description"),
