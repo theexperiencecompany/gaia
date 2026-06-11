@@ -31,6 +31,7 @@ from app.memory.pg_store.maintenance import (
 from app.memory.pg_store.memories import (
     fts_search,
     get_all_live_memories,
+    get_chain,
     get_facts_for_consolidation,
     get_folder_tree,
     get_memories_by_ids,
@@ -56,6 +57,7 @@ __all__ = [
     "get_entities_for_memories",
     "get_facts_for_consolidation",
     "get_episode",
+    "get_chain",
     "get_episodes_range",
     "get_folder_tree",
     "get_graph",

@@ -57,6 +57,29 @@ async def get_memory(memory_id: str, user_id: str) -> MemoryRecord | None:
         return result.scalar_one_or_none()
 
 
+async def get_chain(memory_id: str, user_id: str) -> list[MemoryRecord]:
+    """Return every version in a memory's supersession chain, newest first.
+
+    Resolves the chain root (a chain head has ``root_id IS NULL``; later
+    versions point at it) then fetches all rows sharing that root, including
+    superseded ones. Empty when the memory does not exist for this user.
+    """
+    head = await get_memory(memory_id, user_id)
+    if head is None:
+        return []
+    root = head.root_id or head.id
+    async with memory_session() as session:
+        result = await session.execute(
+            select(MemoryRecord)
+            .where(
+                MemoryRecord.user_id == user_id,
+                (MemoryRecord.id == root) | (MemoryRecord.root_id == root),
+            )
+            .order_by(MemoryRecord.version.desc())
+        )
+        return list(result.scalars().all())
+
+
 async def get_memories_by_ids(user_id: str, memory_ids: list[str]) -> list[MemoryRecord]:
     """Fetch multiple memories by id, scoped to their owner."""
     if not memory_ids:

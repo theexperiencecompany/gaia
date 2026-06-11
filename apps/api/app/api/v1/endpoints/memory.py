@@ -249,6 +249,24 @@ async def create_memory(
     )
 
 
+@router.get("/{memory_id}/history", response_model=MemorySearchResult)
+async def get_memory_history(
+    memory_id: str = Path(pattern=UUID_PATH_PATTERN),
+    user: dict = Depends(get_current_user),
+) -> MemorySearchResult:
+    """The memory's full supersession chain, newest version first.
+
+    Lets the UI expand a v2+ row to show the older versions it replaced.
+    """
+    user_id = _require_user_id(user)
+    log.set(user={"id": user_id}, memory={"operation": "history", "memory_id": memory_id})
+
+    result = await memory_engine.get_history(user_id, memory_id)
+
+    log.set(memory={"operation": "history", "versions": len(result.memories)})
+    return result
+
+
 @router.patch("/{memory_id}", response_model=MemoryEntry)
 @tiered_rate_limit("memory")
 async def update_memory(

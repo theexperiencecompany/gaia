@@ -39,6 +39,7 @@ class MemoryEngine:
     get_document = staticmethod(management.get_document)
     update_document = staticmethod(management.update_document)
     list_memories = staticmethod(management.list_memories)
+    get_history = staticmethod(management.get_history)
     update_memory = staticmethod(management.update_memory)
     forget_memory = staticmethod(management.forget_memory)
     delete_all = staticmethod(management.delete_all)

@@ -31,6 +31,7 @@ from app.models.memory_models import (
     MemoryGraphResponse,
     MemoryListResponse,
     MemoryOverviewResponse,
+    MemorySearchResult,
     MemoryTreeNode,
     MemoryTreeResponse,
 )
@@ -136,6 +137,17 @@ async def list_memories(
     )
     memories = await _rows_to_entries(rows)
     return MemoryListResponse(memories=memories, page=page, page_size=page_size, total_count=total)
+
+
+async def get_history(user_id: str, memory_id: str) -> MemorySearchResult:
+    """Full supersession chain for a memory, newest version first.
+
+    Includes superseded versions so the UI can expand a v2+ row to show what
+    it replaced and why (relation_type).
+    """
+    rows = await pg_store.get_chain(memory_id, user_id)
+    memories = await _rows_to_entries(rows)
+    return MemorySearchResult(memories=memories, total_count=len(memories))
 
 
 async def update_memory(user_id: str, memory_id: str, content: str) -> MemoryEntry | None:
