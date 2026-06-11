@@ -14,14 +14,18 @@ Ask for what you want to see. The more specific you are, the better the result.
 
 <Chat
   messages={[
-    { from: "user", text: "show me my latest 5 emails" },
-    { from: "gaia", text: "Here are your latest 5, two are unread." },
-    { from: "user", text: "do I have any unread emails from this week?" },
     { from: "user", text: "find emails from sarah@acme.com about the Q3 proposal" },
-    { from: "user", text: "show me the full thread with David about the partnership deal" },
+    { from: "gaia", text: "Found 6 emails from Sarah about the Q3 proposal." },
     { from: "user", text: "actually, only the ones with attachments" },
+    { from: "gaia", text: "Two have attachments. The latest is from Tuesday." },
   ]}
 />
+
+More things you can ask:
+
+- "show me my latest 5 emails"
+- "do I have any unread emails from this week?"
+- "show me the full thread with David about the partnership deal"
 
 GAIA uses Gmail search syntax under the hood, so you can filter by sender, date range, label, read status, attachments, and more.
 
@@ -67,13 +71,14 @@ Keep your inbox clean without opening Gmail.
 
 <Chat
   messages={[
-    { from: "user", text: "create a label called 'Client Projects'" },
-    { from: "user", text: "add the 'Urgent' label to the last 3 emails from my manager" },
     { from: "user", text: "trash the marketing email from this morning" },
+    { from: "gaia", text: "Done, it's in the trash." },
     { from: "user", text: "restore the email I just trashed" },
     { from: "gaia", text: "Restored, it's back in your inbox." },
   ]}
 />
+
+Labels work the same way: "create a label called 'Client Projects'", "add the 'Urgent' label to the last 3 emails from my manager".
 
 GAIA can also look up contacts from your Google account:
 

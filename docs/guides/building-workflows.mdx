@@ -15,10 +15,14 @@ A workflow is just a prompt that runs on a trigger. Write it the way you'd write
 <Chat
   messages={[
     { from: "user", text: "Pull yesterday's key metrics from PostHog, active users, signups, and retention, and send a formatted summary to the #metrics Slack channel." },
-    { from: "user", text: "Check my unread emails, extract any action items, and create a todo for each one." },
-    { from: "user", text: "Look at all merged PRs and commits from the past week across our repos. Summarize them into standup notes grouped by project." },
+    { from: "gaia", text: "Created. It'll run every morning and post to #metrics." },
   ]}
 />
+
+A few more prompts that make great workflows:
+
+- "Check my unread emails, extract any action items, and create a todo for each one."
+- "Look at all merged PRs and commits from the past week across our repos. Summarize them into standup notes grouped by project."
 
 And if you find yourself asking GAIA for the same thing over and over in chat:
 

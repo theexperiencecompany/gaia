@@ -15,11 +15,14 @@ Workflows let you stop repeating yourself. Describe what you want once, in plain
 <Chat
   messages={[
     { from: "user", text: "When a GitHub issue is labeled \"urgent\", create a task in Todoist and send me a Slack message" },
-    { from: "user", text: "Every Friday at 4pm, summarize my completed Asana tasks into a Google Doc" },
-    { from: "user", text: "30 minutes before any meeting with more than 2 attendees, surface my recent email threads with those people" },
-    { from: "gaia", text: "Done, these workflows are set up and will run on their own from now on." },
+    { from: "gaia", text: "Done, that workflow is set up and will run on its own from now on." },
   ]}
 />
+
+Anything you can describe works the same way:
+
+- "Every Friday at 4pm, summarize my completed Asana tasks into a Google Doc"
+- "30 minutes before any meeting with more than 2 attendees, surface my recent email threads with those people"
 
 Each workflow is a **trigger** (Schedule, app Trigger, or Manual) plus one or more **actions**. You can chain as many actions as you need, across any of your connected apps.
 

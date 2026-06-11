@@ -14,15 +14,18 @@ Reminders work everywhere you talk to GAIA: web, mobile, desktop, and your conne
 
 <Chat
   messages={[
-    { from: "user", text: "remind me to call the dentist in 30 minutes" },
-    { from: "gaia", text: "Set, I'll remind you to call the dentist in 30 minutes." },
-    { from: "user", text: "remind me to submit the quarterly report tomorrow at 9 AM" },
-    { from: "user", text: "every Monday at 9 AM, remind me to review my weekly goals" },
     { from: "user", text: "remind me to take my medication every day at 8 PM" },
+    { from: "gaia", text: "Set, I'll remind you every day at 8 PM." },
     { from: "user", text: "actually make that 9 PM instead" },
     { from: "gaia", text: "Updated, your medication reminder now fires every day at 9 PM." },
   ]}
 />
+
+One-off or recurring, phrased however feels natural:
+
+- "remind me to call the dentist in 30 minutes"
+- "remind me to submit the quarterly report tomorrow at 9 AM"
+- "every Monday at 9 AM, remind me to review my weekly goals"
 
 GAIA replies with a confirmation showing the reminder text and scheduled time. You're done.
 
@@ -74,14 +77,14 @@ Everything happens in chat, list, update, pause, resume, and cancel.
 
 <Chat
   messages={[
-    { from: "user", text: "show me my upcoming reminders" },
-    { from: "user", text: "change my daily medication reminder to 9 PM instead of 8 PM" },
     { from: "user", text: "pause my weekday wrap-up reminder" },
-    { from: "gaia", text: "Paused, it'll stay put without firing until you resume it." },
-    { from: "user", text: "resume my weekday wrap-up reminder" },
-    { from: "user", text: "cancel my Monday goals reminder" },
+    { from: "gaia", text: "Paused, it won't fire until you resume it." },
+    { from: "user", text: "resume it" },
+    { from: "gaia", text: "Resumed, the next one fires tomorrow." },
   ]}
 />
+
+Also works: "show me my upcoming reminders", "change my daily medication reminder to 9 PM", "cancel my Monday goals reminder".
 
 Pausing keeps the reminder around without firing it, handy for vacations.
 
