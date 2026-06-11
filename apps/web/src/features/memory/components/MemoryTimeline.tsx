@@ -52,7 +52,7 @@ export function MemoryTimeline() {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-sm text-zinc-400">
-          {format(rangeStart, "MMM d")} – {format(rangeEnd, "MMM d, yyyy")}
+          {format(rangeStart, "MMM d")} to {format(rangeEnd, "MMM d, yyyy")}
         </p>
         <div className="flex gap-1">
           <Button
@@ -91,7 +91,7 @@ export function MemoryTimeline() {
         <MemoryEmptyState
           icon={BookOpen01Icon}
           title="No journal entries in this range"
-          description="GAIA writes a short journal line for each conversation — days fill in as you talk"
+          description="GAIA writes a short journal line for each conversation. Days fill in as you talk."
         />
       ) : (
         <div className="space-y-3">

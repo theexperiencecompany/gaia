@@ -103,11 +103,15 @@ export function CoreDocuments() {
               {meta?.description}
             </p>
             {document && (
-              <p className="mt-0.5 text-xs text-zinc-500">
-                v{document.version} · updated{" "}
-                {formatDistanceToNow(new Date(document.updated_at), {
-                  addSuffix: true,
-                })}
+              <p className="mt-0.5 flex items-center gap-1.5 text-xs text-zinc-500">
+                <span>v{document.version}</span>
+                <span className="size-0.5 rounded-full bg-zinc-600" />
+                <span>
+                  updated{" "}
+                  {formatDistanceToNow(new Date(document.updated_at), {
+                    addSuffix: true,
+                  })}
+                </span>
               </p>
             )}
           </div>

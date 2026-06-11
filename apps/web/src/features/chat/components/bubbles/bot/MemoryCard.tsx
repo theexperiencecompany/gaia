@@ -35,7 +35,7 @@ function outcomeLabel(outcome: "new" | "updated" | "extended" | "duplicate") {
 }
 
 function folderLabel(path: string): string {
-  // Show only the last segment for compactness, e.g. "people/family" → "family"
+  // Show only the last segment for compactness, e.g. "people/family" -> "family"
   const parts = path.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? path;
 }
@@ -283,7 +283,6 @@ function DocumentSection({
       <div className="rounded-2xl bg-zinc-900 p-3">
         <p className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-zinc-300">
           {expanded ? doc.content : preview}
-          {!expanded && hasMore && <span className="text-zinc-600">{"…"}</span>}
         </p>
         {hasMore && (
           <Button

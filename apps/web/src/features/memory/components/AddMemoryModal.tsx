@@ -87,7 +87,7 @@ export function AddMemoryModal({
             label="Folder"
             labelPlacement="outside"
             placeholder="e.g. food-preferences"
-            description="Optional — GAIA files it automatically when left blank"
+            description="Optional. GAIA files it automatically when left blank."
             value={categoryPath}
             onValueChange={setCategoryPath}
             size="sm"
