@@ -128,10 +128,16 @@ async def recall(
 
     stage = time.perf_counter()
     scored = await _rerank_and_boost(query, candidates[:RERANK_CANDIDATES])
-    top = scored[:limit]
     timings["rerank_ms"] = _elapsed_ms(stage)
 
-    entries = await _finalize_entries(user_id, top, limit, include_graph_expansion)
+    entries = await _finalize_entries(
+        user_id,
+        scored,
+        limit,
+        include_graph_expansion,
+        category_prefix=category_prefix,
+        kinds=kinds,
+    )
 
     timings["total_ms"] = _elapsed_ms(started)
     log.info(
@@ -289,17 +295,38 @@ def _importance_boost(row: MemoryRecord) -> float:
 
 async def _finalize_entries(
     user_id: str,
-    top: list[tuple[MemoryRecord, float]],
+    scored: list[tuple[MemoryRecord, float]],
     limit: int,
     include_graph_expansion: bool,
+    *,
+    category_prefix: str | None,
+    kinds: list[MemoryKind] | None,
 ) -> list[MemoryEntry]:
-    """Optionally expand one graph hop, hydrate entities, map to API entries."""
-    results = list(top)
-    if include_graph_expansion and results:
-        results.extend(
-            (row, GRAPH_EXPANSION_SCORE) for row in await _graph_expansion(user_id, results)
+    """Slice base results to limit, optionally append graph-expansion siblings.
+
+    The base pool is sliced to ``limit`` first.  Expansion then uses that
+    slice as its source, finding entity-linked siblings not already in the
+    base.  Siblings are appended additively at their fixed low score and do
+    not compete with base results for slots — this ensures expansion always
+    contributes even when the base already fills ``limit``.
+
+    Siblings pass the standard read-time guards (is_latest, not forgotten,
+    forget_after) and the ``kinds`` filter, but not ``category_prefix``:
+    crossing category boundaries is the point of graph expansion.
+
+    Normalization can produce 0.0 for the weakest base result; the additive
+    model makes score comparison with siblings moot — siblings always follow.
+    """
+    base = scored[:limit]
+    if include_graph_expansion and base:
+        siblings = await _graph_expansion(
+            user_id, base, category_prefix=category_prefix, kinds=kinds
         )
-        results = results[:limit]
+        results: list[tuple[MemoryRecord, float]] = list(base) + [
+            (row, GRAPH_EXPANSION_SCORE) for row in siblings
+        ]
+    else:
+        results = list(base)
 
     entities_by_memory = await pg_store.get_entities_for_memories([row.id for row, _ in results])
     return [
@@ -309,9 +336,20 @@ async def _finalize_entries(
 
 
 async def _graph_expansion(
-    user_id: str, results: list[tuple[MemoryRecord, float]]
+    user_id: str,
+    results: list[tuple[MemoryRecord, float]],
+    *,
+    category_prefix: str | None,
+    kinds: list[MemoryKind] | None,
 ) -> list[MemoryRecord]:
-    """1-hop expansion: entities on the top results pull in sibling memories."""
+    """1-hop expansion: entities on the top base results pull in sibling memories.
+
+    Receives the already-sliced base list.  The top
+    ``GRAPH_EXPANSION_SOURCE_RESULTS`` entries supply source entities; all
+    base entries are excluded from siblings so we never duplicate.  Siblings
+    pass ``kinds`` but not ``category_prefix`` — crossing categories is the
+    feature.  ``forget_after`` is enforced by ``_active_memories_query``.
+    """
     source_ids = [row.id for row, _ in results[:GRAPH_EXPANSION_SOURCE_RESULTS]]
     entities_by_memory = await pg_store.get_entities_for_memories(source_ids)
     entity_ids = list(
@@ -322,6 +360,7 @@ async def _graph_expansion(
         entity_ids,
         exclude_memory_ids=[row.id for row, _ in results],
         limit=GRAPH_EXPANSION_MAX_SIBLINGS,
+        kinds=[kind.value for kind in kinds] if kinds else None,
     )
 
 

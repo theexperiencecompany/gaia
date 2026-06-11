@@ -187,11 +187,16 @@ async def get_memories_for_entities(
     entity_ids: list[uuid.UUID],
     exclude_memory_ids: list[uuid.UUID],
     limit: int,
+    *,
+    kinds: list[str] | None = None,
+    category_prefix: str | None = None,
 ) -> list[MemoryRecord]:
     """Live memories linked to any of the entities, most important first.
 
     Powers 1-hop graph expansion in recall: the entities on the top results
     pull in sibling memories that mention the same people/places/projects.
+    ``kinds`` and ``category_prefix`` mirror the filters applied to the base
+    results so siblings never bypass the caller's search scope.
     """
     if not entity_ids:
         return []
@@ -205,6 +210,13 @@ async def get_memories_for_entities(
     )
     if exclude_memory_ids:
         query = query.where(MemoryRecord.id.not_in(exclude_memory_ids))
+    if kinds:
+        query = query.where(MemoryRecord.kind.in_(kinds))
+    if category_prefix:
+        query = query.where(
+            (MemoryRecord.category_path == category_prefix)
+            | MemoryRecord.category_path.like(f"{category_prefix}/%")
+        )
     async with memory_session() as session:
         result = await session.execute(query)
         return list(result.scalars().all())

@@ -352,3 +352,128 @@ async def test_warm_recall_latency_under_bound(corpus_user: str) -> None:
     assert result.memories, "latency probe query returned nothing"
     print(f"\nwarm uncached recall latency: {elapsed_ms:.0f}ms")
     assert elapsed_ms < 500, f"warm recall took {elapsed_ms:.0f}ms (budget 500ms)"
+
+
+# ---------------------------------------------------------------------------
+# Graph expansion correctness
+# ---------------------------------------------------------------------------
+
+
+async def test_graph_expansion_contributes_when_base_results_fill_limit(
+    memory_user: str,
+) -> None:
+    """Expansion must add siblings even when the base results already fill limit=1.
+
+    Before the fix the candidate list was sliced to ``limit`` before expansion,
+    so the sibling was always dropped when base results filled the quota.
+    """
+    await seed_memories(
+        memory_user,
+        [
+            {
+                "content": "Aryan's girlfriend Nadia has a birthday on March 12.",
+                "category": "relationships",
+                "entities": [("Nadia", "person")],
+                "importance": 0.9,
+            },
+            {
+                "content": "Nadia recently changed jobs at a startup.",
+                "category": "work",
+                "entities": [("Nadia", "person")],
+                "importance": 0.5,
+            },
+        ],
+    )
+    # limit=1 fills base results with the top hit; expansion must still append.
+    result = await memory_engine.recall(
+        memory_user,
+        "birthday gift for my girlfriend",
+        limit=1,
+        include_graph_expansion=True,
+    )
+    contents = _contents(result)
+    # The sibling must appear despite limit=1 in the base slice.
+    assert "Nadia recently changed jobs at a startup." in contents, (
+        f"sibling was dropped even though limit=1; got: {contents}"
+    )
+
+
+async def test_graph_expansion_siblings_respect_kinds_filter(
+    memory_user: str,
+) -> None:
+    """Expansion siblings must obey the kinds filter.
+
+    Graph expansion intentionally crosses category boundaries (that is the
+    feature), but it must still honour the ``kinds`` filter so callers that
+    request only facts do not receive experience siblings.
+    """
+    from app.constants.memory import MemoryKind
+
+    await seed_memories(
+        memory_user,
+        [
+            {
+                "content": "Aryan's colleague Marco works on the platform team.",
+                "category": "work",
+                "entities": [("Marco", "person")],
+                "importance": 0.9,
+            },
+            # Same entity, wrong kind — must be blocked by kinds=[FACT].
+            {
+                "content": "Marco visited Goa last November.",
+                "category": "work",
+                "kind": MemoryKind.EXPERIENCE,
+                "entities": [("Marco", "person")],
+                "importance": 0.6,
+            },
+        ],
+    )
+
+    result = await memory_engine.recall(
+        memory_user,
+        "colleague Marco platform team",
+        kinds=[MemoryKind.FACT],
+        include_graph_expansion=True,
+        limit=10,
+    )
+    for memory in result.memories:
+        assert memory.kind == MemoryKind.FACT, f"expansion leaked a non-FACT kind: {memory.kind!r}"
+    assert "Marco visited Goa last November." not in _contents(result), (
+        "experience sibling leaked through kinds=[FACT] filter"
+    )
+
+
+async def test_graph_expansion_expired_sibling_never_appears(
+    memory_user: str,
+) -> None:
+    """A sibling whose forget_after is in the past must be excluded even via expansion."""
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(UTC)
+    await seed_memories(
+        memory_user,
+        [
+            {
+                "content": "Aryan's friend Priya lives in Toronto.",
+                "category": "relationships",
+                "entities": [("Priya", "person")],
+                "importance": 0.9,
+            },
+            {
+                "content": "Priya's temporary phone number is +1-416-555-0123.",
+                "category": "relationships",
+                "entities": [("Priya", "person")],
+                "importance": 0.6,
+                "forget_after": now - timedelta(days=1),  # already expired
+            },
+        ],
+    )
+    result = await memory_engine.recall(
+        memory_user,
+        "friend Priya Toronto",
+        include_graph_expansion=True,
+        limit=10,
+    )
+    assert "Priya's temporary phone number is +1-416-555-0123." not in _contents(result), (
+        "expired sibling appeared in recall via graph expansion"
+    )
