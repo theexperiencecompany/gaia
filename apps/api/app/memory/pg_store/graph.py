@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.memory.pg_store._session import memory_session, rowcount
@@ -147,6 +147,51 @@ async def link_entities(memory_id: uuid.UUID, entity_ids: list[uuid.UUID]) -> No
         await session.commit()
 
 
+def _canonical_pair(source_id: uuid.UUID, target_id: uuid.UUID) -> tuple[uuid.UUID, uuid.UUID]:
+    """Return the entity pair in a stable, direction-independent order.
+
+    The alphabetically-first UUID string becomes the first element so that
+    (A→B) and (B→A) are treated as the same unordered pair.
+    """
+    a, b = str(source_id), str(target_id)
+    return (source_id, target_id) if a <= b else (target_id, source_id)
+
+
+def _dedupe_edges(edges: list[MemoryGraphEdge]) -> list[MemoryGraphEdge]:
+    """Collapse edges that connect the same unordered entity pair to one.
+
+    When multiple edges exist between the same two entities (different
+    relationship wording, or opposite direction), exactly one is returned.
+    The winning edge has the longest relationship label (most informative),
+    with source/target set to the canonically-ordered direction so the
+    direction is stable regardless of which edge was written first.
+    """
+    best: dict[tuple[uuid.UUID, uuid.UUID], MemoryGraphEdge] = {}
+    for edge in edges:
+        key = _canonical_pair(edge.source_entity_id, edge.target_entity_id)
+        existing = best.get(key)
+        if existing is None or len(edge.relationship) > len(existing.relationship):
+            best[key] = edge
+    # Normalise direction so (source, target) always matches the canonical key.
+    result: list[MemoryGraphEdge] = []
+    for key, edge in best.items():
+        canonical_src, canonical_tgt = key
+        if edge.source_entity_id != canonical_src:
+            # Flip: swap source/target in-place (do NOT mutate the ORM row).
+            flipped = MemoryGraphEdge()
+            flipped.id = edge.id
+            flipped.user_id = edge.user_id
+            flipped.source_entity_id = canonical_src
+            flipped.target_entity_id = canonical_tgt
+            flipped.relationship = edge.relationship
+            flipped.memory_id = edge.memory_id
+            flipped.created_at = edge.created_at
+            result.append(flipped)
+        else:
+            result.append(edge)
+    return result
+
+
 async def insert_edges(
     user_id: str,
     edges: list[tuple[uuid.UUID, str, uuid.UUID]],
@@ -154,11 +199,51 @@ async def insert_edges(
 ) -> int:
     """Insert (source, relationship, target) edges, skipping known triples.
 
+    Before inserting, any edge whose unordered entity pair already has a live
+    edge in the DB (regardless of direction or relationship wording) is dropped
+    to prevent duplicate/reworded edges from accumulating in the graph.
+
     Returns how many edges were actually inserted.
     """
     if not edges:
         return 0
+
+    # Deduplicate within the batch itself before touching the DB.
+    seen_pairs: set[tuple[uuid.UUID, uuid.UUID]] = set()
+    deduped_edges: list[tuple[uuid.UUID, str, uuid.UUID]] = []
+    for source_id, relationship, target_id in edges:
+        pair = _canonical_pair(source_id, target_id)
+        if pair not in seen_pairs:
+            seen_pairs.add(pair)
+            deduped_edges.append((source_id, relationship, target_id))
+
     async with memory_session() as session:
+        # Build a set of all unordered pairs that already have a live edge for
+        # this user. One query covers all candidate pairs efficiently.
+        candidate_pairs = [_canonical_pair(s, t) for s, _, t in deduped_edges]
+        existing_result = await session.execute(
+            select(MemoryGraphEdge.source_entity_id, MemoryGraphEdge.target_entity_id).where(
+                MemoryGraphEdge.user_id == user_id,
+                or_(
+                    tuple_(MemoryGraphEdge.source_entity_id, MemoryGraphEdge.target_entity_id).in_(
+                        candidate_pairs
+                    ),
+                    tuple_(MemoryGraphEdge.target_entity_id, MemoryGraphEdge.source_entity_id).in_(
+                        candidate_pairs
+                    ),
+                ),
+            )
+        )
+        existing_pairs: set[tuple[uuid.UUID, uuid.UUID]] = set()
+        for src, tgt in existing_result.all():
+            existing_pairs.add(_canonical_pair(src, tgt))
+
+        new_edges = [
+            (s, r, t) for s, r, t in deduped_edges if _canonical_pair(s, t) not in existing_pairs
+        ]
+        if not new_edges:
+            return 0
+
         result = await session.execute(
             pg_insert(MemoryGraphEdge)
             .values(
@@ -170,7 +255,7 @@ async def insert_edges(
                         "target_entity_id": target_id,
                         "memory_id": memory_id,
                     }
-                    for source_id, relationship, target_id in edges
+                    for source_id, relationship, target_id in new_edges
                 ]
             )
             .on_conflict_do_nothing(constraint="uq_memory_graph_edges_triple")
@@ -206,7 +291,8 @@ async def get_graph(
             .where(MemoryGraphEdge.user_id == user_id, live)
         )
         entities = [(entity, count) for entity, count in entity_result.all()]
-        return entities, list(edge_result.scalars().all())
+        raw_edges = list(edge_result.scalars().all())
+        return entities, _dedupe_edges(raw_edges)
 
 
 async def get_entities_by_type(user_id: str, entity_type: str) -> list[MemoryEntity]:
