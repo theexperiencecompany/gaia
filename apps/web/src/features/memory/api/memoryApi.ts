@@ -47,6 +47,12 @@ export const memoryApi = {
     });
   },
 
+  getHistory: async (id: string): Promise<MemorySearchResult> => {
+    return apiService.get<MemorySearchResult>(`/memory/${id}/history`, {
+      silent: true,
+    });
+  },
+
   getOverview: async (): Promise<MemoryOverviewResponse> => {
     return apiService.get<MemoryOverviewResponse>("/memory/overview", {
       silent: true,

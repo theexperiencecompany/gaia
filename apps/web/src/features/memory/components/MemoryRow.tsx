@@ -2,9 +2,12 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
 import { Delete02Icon, PencilEdit02Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
+import { useState } from "react";
+import { memoryApi } from "@/features/memory/api/memoryApi";
 import type { MemoryEntry } from "@/features/memory/api/types";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +33,28 @@ export function MemoryRow({
   onForget,
 }: MemoryRowProps) {
   const timestamp = memory.created_at ?? memory.mentioned_at;
+  const [expanded, setExpanded] = useState(false);
+  const [history, setHistory] = useState<MemoryEntry[] | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const toggleHistory = async () => {
+    if (expanded) {
+      setExpanded(false);
+      return;
+    }
+    setExpanded(true);
+    if (history || !memory.id) return;
+    setLoadingHistory(true);
+    try {
+      const result = await memoryApi.getHistory(memory.id);
+      // Older versions only — the current row already shows the latest.
+      setHistory(result.memories.filter((m) => !m.is_latest));
+    } catch {
+      setHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   return (
     <div className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-white/5">
@@ -66,8 +91,45 @@ export function MemoryRow({
               {memory.category_path}
             </Chip>
           )}
-          {memory.version > 1 && <span>v{memory.version}</span>}
+          {memory.version > 1 && (
+            <Chip
+              as="button"
+              size="sm"
+              variant="flat"
+              onClick={toggleHistory}
+              classNames={{
+                base: "h-5 cursor-pointer bg-zinc-800 data-[hover=true]:bg-zinc-700",
+                content: "px-1.5 text-xs text-zinc-400",
+              }}
+            >
+              v{memory.version}
+              {expanded ? " · hide history" : " · history"}
+            </Chip>
+          )}
         </div>
+
+        {expanded && (
+          <div className="mt-2 space-y-1.5 pl-3">
+            {loadingHistory ? (
+              <Spinner size="sm" />
+            ) : history && history.length > 0 ? (
+              history.map((older) => (
+                <div key={older.id} className="text-xs text-zinc-500">
+                  <span className="text-zinc-400">v{older.version}</span>{" "}
+                  {older.content}
+                  {older.relation_type && (
+                    <span className="text-zinc-600">
+                      {" "}
+                      ({older.relation_type})
+                    </span>
+                  )}
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-zinc-600">No earlier versions.</p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
