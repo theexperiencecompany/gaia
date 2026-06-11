@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowUpRight } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
+import { authApi } from "@/features/auth/api/authApi";
 import HeroImage from "@/features/landing/components/hero/HeroImage";
 import {
   getTimeOfDay,
@@ -39,6 +40,27 @@ export default function DesktopLoginPage() {
     }, 1000);
 
     return () => clearTimeout(timeout);
+  }, [isElectron, router]);
+
+  // Already signed in? The wos_session cookie persists across launches,
+  // so skip the login screen entirely when the session is still valid.
+  useEffect(() => {
+    if (!isElectron) return;
+    let cancelled = false;
+    authApi
+      .fetchUserInfo()
+      .then(() => {
+        if (!cancelled) {
+          setStatus("redirecting");
+          router.replace("/c");
+        }
+      })
+      .catch(() => {
+        // No valid session — stay on the login screen.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [isElectron, router]);
 
   // Listen for the main process signalling it's about to navigate to /c
