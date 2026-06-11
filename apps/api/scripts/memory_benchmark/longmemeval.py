@@ -120,12 +120,12 @@ async def _run_question(
                 now=_parse_date(date_raw),
             )
 
-        recall = await memory_engine.recall(user_id, item["question"], limit=10)
-        episode_hits = await memory_engine.recall_episodes(user_id, item["question"])
-        transcript_hits = await memory_engine.recall_transcripts(user_id, item["question"])
+        recall = await memory_engine.recall(user_id, item["question"], limit=12)
+        episode_hits = await memory_engine.recall_episodes(user_id, item["question"], limit=12)
+        transcript_hits = await memory_engine.recall_transcripts(user_id, item["question"], limit=5)
         notes = (
             [entry_to_note(m) for m in recall.memories]
-            + [f"(journal {hit.date.isoformat()}) {hit.text}" for hit in episode_hits[:5]]
+            + [f"(journal {hit.date.isoformat()}) {hit.text}" for hit in episode_hits[:12]]
             + [f"(conversation on {date})\n{text}" for date, text, _ in transcript_hits]
         )
         model_answer = await _answer(item["question"], item["question_date"], notes)
