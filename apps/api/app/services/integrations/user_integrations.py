@@ -177,17 +177,16 @@ async def get_user_integration_capabilities(user_id: str) -> dict[str, Any]:
         for tool in category.tools:
             tool_names_set.add(tool.name)
 
-    # Get user's connected integrations
-    connected_integrations = await get_user_integration_records(user_id)
+    # Only the user's *connected* (authenticated) integrations. These tool names
+    # feed user-clickable follow-up suggestions, so a merely-added but
+    # not-yet-connected integration must not surface — its suggested action would
+    # fail at execution time.
+    connected_ids = await get_connected_integration_ids(user_id)
 
     integration_names = []
     capabilities = {}
 
-    for user_int_doc in connected_integrations:
-        integration_id = user_int_doc.get("integration_id")
-        if not integration_id:
-            continue
-
+    for integration_id in connected_ids:
         # Get integration details with tools
         integration = await get_integration_details(integration_id)
         if not integration:

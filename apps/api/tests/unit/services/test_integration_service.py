@@ -1068,7 +1068,7 @@ class TestGetUserIntegrationCapabilities:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_user_integration_records",
+        "app.services.integrations.user_integrations.get_connected_integration_ids",
         new_callable=AsyncMock,
     )
     @patch(
@@ -1087,9 +1087,7 @@ class TestGetUserIntegrationCapabilities:
         registry.get_core_categories.return_value = [core_category]
         mock_registry.return_value = registry
 
-        mock_connected.return_value = [
-            {"integration_id": "github", "status": "connected"},
-        ]
+        mock_connected.return_value = {"github"}
 
         int_tool = IntegrationTool(name="create_issue", description="Create an issue")
         mock_details.return_value = IntegrationResponse(
@@ -1116,7 +1114,7 @@ class TestGetUserIntegrationCapabilities:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_user_integration_records",
+        "app.services.integrations.user_integrations.get_connected_integration_ids",
         new_callable=AsyncMock,
     )
     @patch(
@@ -1130,9 +1128,7 @@ class TestGetUserIntegrationCapabilities:
         registry.get_core_categories.return_value = []
         mock_registry.return_value = registry
 
-        mock_connected.return_value = [
-            {"integration_id": "deleted"},
-        ]
+        mock_connected.return_value = {"deleted"}
         mock_details.return_value = None
 
         result = await get_user_integration_capabilities.__wrapped__(USER_ID)
@@ -1145,33 +1141,7 @@ class TestGetUserIntegrationCapabilities:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_user_integration_records",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.services.integrations.user_integrations.get_tool_registry",
-        new_callable=AsyncMock,
-    )
-    async def test_skips_entries_without_integration_id(
-        self, mock_registry, mock_connected, mock_details
-    ):
-        registry = MagicMock()
-        registry.get_core_categories.return_value = []
-        mock_registry.return_value = registry
-
-        mock_connected.return_value = [
-            {"status": "connected"},  # Missing integration_id
-        ]
-
-        result = await get_user_integration_capabilities.__wrapped__(USER_ID)
-        assert result["integration_names"] == []
-
-    @patch(
-        "app.services.integrations.user_integrations.get_integration_details",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.services.integrations.user_integrations.get_user_integration_records",
+        "app.services.integrations.user_integrations.get_connected_integration_ids",
         new_callable=AsyncMock,
     )
     @patch(
@@ -1182,7 +1152,7 @@ class TestGetUserIntegrationCapabilities:
         registry = MagicMock()
         registry.get_core_categories.return_value = []
         mock_registry.return_value = registry
-        mock_connected.return_value = []
+        mock_connected.return_value = set()
 
         result = await get_user_integration_capabilities.__wrapped__(USER_ID)
 
