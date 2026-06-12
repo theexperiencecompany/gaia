@@ -9,20 +9,44 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.agents.core.background import result_delivery as rd
-from app.agents.core.background.session import ExecutorRun, RunKind
+from app.agents.core.background import result_delivery as rd, session as sess
+from app.agents.core.background.session import (
+    ExecutorRun,
+    RunKind,
+    create_session,
+)
 from app.models.chat_models import ConversationSource
 
 
-def _run() -> ExecutorRun:
-    """A live (non-queued, non-workflow) run context for delivery tests."""
+@pytest.fixture(autouse=True)
+def _clean_registry():
+    sess._sessions.clear()
+    yield
+    sess._sessions.clear()
+
+
+def _run(
+    kind: RunKind = RunKind.LIVE,
+    *,
+    stream_id: str = "",
+    task_id: str | None = None,
+) -> ExecutorRun:
+    """A run context for delivery tests (defaults: live, non-workflow)."""
     return ExecutorRun(
-        stream_id="",
+        stream_id=stream_id,
         conversation_id="conv-1",
         user={"user_id": "user-1"},
-        kind=RunKind.LIVE,
-        task_id=None,
+        kind=kind,
+        task_id=task_id,
         user_message_id=None,
+    )
+
+
+def _session_with_cards(stream_id: str) -> None:
+    """Register a session holding one drainable executor tool card."""
+    session = create_session(stream_id, RunKind.QUEUED)
+    session.tool_events.append(
+        {"tool_data": {"tool_name": "tool_calls_data", "data": {"tool_call_id": "tc-1"}}}
     )
 
 
@@ -131,3 +155,139 @@ class TestGetConversationSource:
         with patch.object(rd, "conversations_collection") as col:
             col.find_one = AsyncMock(side_effect=RuntimeError("mongo down"))
             assert await rd._get_conversation_source("conv-1", "user-1") is None
+
+
+@pytest.mark.unit
+class TestPersistCancelledRun:
+    """Cancelled self-owning runs: cards-only persist, no narration, no re-push.
+
+    These pin the "stop the stream → cards survive" fix. The cards were already
+    streamed live, so the persisted copy must reconcile with the frontend
+    placeholder by message_id == task_id and must NOT go out over the
+    WebSocket again.
+    """
+
+    async def test_persists_cards_only_message_keyed_by_task_id(self) -> None:
+        _session_with_cards("queued_s1")
+        run = _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9")
+
+        with (
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "narrate_executor_result", new_callable=AsyncMock) as narrate,
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+        ):
+            await rd.persist_cancelled_run(run)
+
+        save.assert_awaited_once()
+        saved = save.await_args.args[0].messages[0]
+        assert saved.message_id == "task-9"  # reconciles with the placeholder by id
+        assert saved.response == ""  # cards-only: comms never narrated this turn
+        assert saved.tool_data and saved.tool_data[0]["tool_name"] == "tool_calls_data"
+        narrate.assert_not_awaited()  # the run was stopped — no re-voicing
+        ws.assert_not_awaited()  # no re-broadcast of already-streamed data
+
+    async def test_no_cards_writes_nothing(self) -> None:
+        create_session("queued_s1", RunKind.QUEUED)  # session exists, zero events
+        run = _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9")
+
+        with patch.object(rd, "update_messages", new_callable=AsyncMock) as save:
+            await rd.persist_cancelled_run(run)
+
+        save.assert_not_awaited()
+
+    async def test_save_failure_is_swallowed(self) -> None:
+        _session_with_cards("queued_s1")
+        run = _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9")
+
+        with patch.object(
+            rd, "update_messages", new_callable=AsyncMock, side_effect=RuntimeError("mongo down")
+        ):
+            await rd.persist_cancelled_run(run)  # must not raise
+
+
+@pytest.mark.unit
+class TestDeliverResultToolDataOwnership:
+    """deliver_result attaches drained cards only for self-owning runs, and
+    keys queued messages on task_id so sync dedups against the placeholder."""
+
+    async def _deliver_with_session(self, run: ExecutorRun):
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
+            ),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(
+                rd, "_lookup_user_message_content", new_callable=AsyncMock, return_value=""
+            ),
+        ):
+            await rd.deliver_result(run, "raw result", "final")
+        return save, ws
+
+    async def test_queued_run_attaches_cards_and_uses_task_id(self) -> None:
+        _session_with_cards("queued_s1")
+        run = _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9")
+
+        save, ws = await self._deliver_with_session(run)
+
+        saved = save.await_args.args[0].messages[0]
+        assert saved.message_id == "task-9"
+        assert saved.tool_data and saved.tool_data[0]["tool_name"] == "tool_calls_data"
+        ws_message = ws.await_args.args[1]["message"]
+        assert ws_message["tool_data"] == saved.tool_data
+        assert ws_message["task_id"] == "task-9"
+
+    async def test_live_run_never_self_attaches_cards(self) -> None:
+        """The comms stream owns a live run's cards — attaching here too would
+        render every card twice on the happy path."""
+        _session_with_cards("live_s1")
+        run = _run(RunKind.LIVE, stream_id="live_s1", task_id="task-9")
+
+        save, ws = await self._deliver_with_session(run)
+
+        saved = save.await_args.args[0].messages[0]
+        assert not saved.tool_data
+        assert saved.message_id != "task-9"  # no placeholder to reconcile with
+        assert "tool_data" not in ws.await_args.args[1]["message"]
+
+    async def test_save_failure_prevents_any_transport_push(self) -> None:
+        """MongoDB is the source of truth — a message that failed to persist
+        must never be pushed (it would vanish on the next sync)."""
+        run = _run()
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
+            ),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(
+                rd,
+                "update_messages",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("mongo down"),
+            ),
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock) as source,
+            patch.object(rd, "deliver_message_to_platform", new_callable=AsyncMock) as platform,
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+        ):
+            await rd.deliver_result(run, "raw", "final")
+
+        source.assert_not_awaited()
+        platform.assert_not_awaited()
+        ws.assert_not_awaited()
+
+    async def test_error_results_get_no_follow_up_suggestions(self) -> None:
+        run = _run()
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="it broke"
+            ),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock) as follow_ups,
+            patch.object(rd, "update_messages", new_callable=AsyncMock),
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock),
+        ):
+            await rd.deliver_result(run, "traceback...", "error")
+
+        follow_ups.assert_not_awaited()

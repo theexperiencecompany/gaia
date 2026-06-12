@@ -511,11 +511,8 @@ async def _finalize_stream(
     state: _StreamState,
     artifact_task: asyncio.Task[None] | None,
 ) -> None:
-    """Always-run cleanup: tear down executor capture, cancel artifact
-    forwarder, persist (if not already saved), cleanup Redis, emit final wide
-    event."""
-    teardown_executor_capture(stream_id)
-
+    """Always-run cleanup: cancel artifact forwarder, persist (if not already
+    saved), tear down executor capture, cleanup Redis, emit final wide event."""
     if artifact_task is not None:
         artifact_task.cancel()
         with contextlib.suppress(BaseException):
@@ -536,6 +533,10 @@ async def _finalize_stream(
             await _attach_executor_tool_data(stream_id, user, conversation_id, state)
         except Exception as save_err:  # noqa: BLE001 — best-effort fallback save
             log.error(f"Fallback save failed for stream {stream_id}: {save_err}")
+
+    # Teardown must come AFTER the fallback save: the backstop attach drains the
+    # session's tool events — tearing down first would leave it nothing to drain.
+    teardown_executor_capture(stream_id)
 
     await stream_manager.cleanup(stream_id)
 
