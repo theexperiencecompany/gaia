@@ -21,13 +21,13 @@ import {
   type UseAgentControlBarProps,
   useAgentControlBar,
 } from "@/features/chat/components/voice-agent/hooks/use-agent-control-bar";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 export interface AgentControlBarProps
   extends React.HTMLAttributes<HTMLDivElement>,
     UseAgentControlBarProps {
   onDisconnect?: () => void;
-  _onDeviceError?: (error: { source: Track.Source; error: Error }) => void;
 }
 
 /**
@@ -38,7 +38,6 @@ export function AgentControlBar({
   saveUserChoices = true,
   className,
   onDisconnect,
-  _onDeviceError,
   ...props
 }: AgentControlBarProps) {
   const [isDisconnecting, setIsDisconnecting] = React.useState(false);
@@ -52,10 +51,28 @@ export function AgentControlBar({
     useAgentControlBar({
       controls,
       saveUserChoices,
+      // Chrome only prompts for the mic ONCE per site; after a denial it
+      // rejects silently, so surface a clear path back to the prompt.
+      onDeviceError: ({ error }) => {
+        if (error.name === "NotAllowedError") {
+          toast.error(
+            "Microphone access is blocked. Click the mic icon in the address bar to allow it, then unmute again.",
+          );
+        } else {
+          toast.error(`Microphone error: ${error.message}`);
+        }
+      },
     });
 
   const micEnabled = microphoneToggle.enabled;
   const MicStateIcon = micEnabled ? Mic02Icon : MicOff02Icon;
+
+  const handleMicPress = React.useCallback(() => {
+    // Every mic-toggle click is a user gesture — reuse it to (re)unlock
+    // audio playback too, so sound and mic both recover from one tap.
+    room?.startAudio().catch(() => {});
+    microphoneToggle.toggle();
+  }, [room, microphoneToggle.toggle]);
 
   const refreshDevices = React.useCallback(async () => {
     try {
@@ -116,7 +133,7 @@ export function AgentControlBar({
             isIconOnly
             aria-label={micEnabled ? "Mute microphone" : "Unmute microphone"}
             isLoading={microphoneToggle.pending}
-            onPress={() => microphoneToggle.toggle()}
+            onPress={handleMicPress}
             className="h-12 w-14 bg-zinc-800 text-white transition-colors hover:bg-zinc-700 active:bg-zinc-700"
           >
             <MicStateIcon className="h-6 w-6" />
