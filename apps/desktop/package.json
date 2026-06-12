@@ -19,7 +19,6 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@gaia/shared": "workspace:*",
     "electron-liquid-glass": "^1.1.1",
     "electron-updater": "^6.3.9",
     "v8-compile-cache": "^2.4.0",
