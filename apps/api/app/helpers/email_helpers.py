@@ -156,6 +156,7 @@ Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
             source_type=MemorySourceType.EMAIL,
             extraction_hints=f"{user_context}\n\n{EMAIL_MEMORY_EXTRACTION_PROMPT}",
             user_name=user_name,
+            user_email=user_email,
         )
         store_elapsed = time.monotonic() - t0_store
 

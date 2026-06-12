@@ -24,7 +24,9 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from langchain_core.callbacks import BaseCallbackHandler  # noqa: E402
 from langchain_core.messages import HumanMessage, SystemMessage  # noqa: E402
+from langchain_core.outputs import LLMResult  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 from app.agents.llm.client import register_llm_providers  # noqa: E402
@@ -36,6 +38,52 @@ from app.memory.extraction import _invoke_structured  # noqa: E402
 from app.memory.mappers import entry_to_note  # noqa: E402
 
 _DATE_FORMAT = "%Y/%m/%d %H:%M"
+
+# Conservative flash-lite pricing (deliberately HIGH so the cap trips early and
+# never overshoots the user's budget): $/1M tokens.
+_USD_PER_1M_INPUT = 0.15
+_USD_PER_1M_OUTPUT = 0.60
+
+
+class CostMeter(BaseCallbackHandler):
+    """Accumulates token spend across every memory LLM call and trips a budget.
+
+    Attached to the memory module's silent config so it captures all four call
+    types (extraction, reconcile, answer, judge). When projected cost crosses
+    ``max_usd`` it flips ``exceeded`` — the run loop checks this between
+    questions and stops, so the run can never blow past the budget.
+    """
+
+    def __init__(self, max_usd: float) -> None:
+        self.max_usd = max_usd
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self.exceeded = False
+
+    @property
+    def cost_usd(self) -> float:
+        return (
+            self.input_tokens / 1_000_000 * _USD_PER_1M_INPUT
+            + self.output_tokens / 1_000_000 * _USD_PER_1M_OUTPUT
+        )
+
+    def on_llm_end(self, response: LLMResult, **kwargs: object) -> None:
+        usage = (response.llm_output or {}).get("usage_metadata") or (
+            response.llm_output or {}
+        ).get("token_usage")
+        for generations in response.generations:
+            for gen in generations:
+                message = getattr(gen, "message", None)
+                meta = getattr(message, "usage_metadata", None)
+                if meta:
+                    self.input_tokens += meta.get("input_tokens", 0)
+                    self.output_tokens += meta.get("output_tokens", 0)
+                    usage = None  # counted from message; skip llm_output fallback
+        if usage:
+            self.input_tokens += usage.get("input_tokens", usage.get("prompt_tokens", 0))
+            self.output_tokens += usage.get("output_tokens", usage.get("completion_tokens", 0))
+        if self.cost_usd >= self.max_usd:
+            self.exceeded = True
 
 
 class _Answer(BaseModel):
@@ -173,11 +221,28 @@ async def main() -> None:
     parser.add_argument(
         "--diagnose", action="store_true", help="Classify each miss (extraction/retrieval/answer)"
     )
+    parser.add_argument(
+        "--max-usd",
+        type=float,
+        default=2.0,
+        help="Hard cost ceiling — abort before exceeding this (conservative pricing).",
+    )
     args = parser.parse_args()
 
     init_postgresql_engine()
     init_chroma()
     register_llm_providers()
+
+    # Hard budget guard: attach a cost meter to the memory module's silent
+    # config so every extraction/reconcile/answer/judge call counts. The run
+    # loop stops the moment projected spend reaches --max-usd.
+    import app.memory.extraction as extraction_mod
+
+    meter = CostMeter(args.max_usd)
+    extraction_mod._SILENT_CONFIG = {
+        **extraction_mod._SILENT_CONFIG,
+        "callbacks": [meter],
+    }
 
     data = json.loads(Path(args.dataset).read_text())
     by_type: dict[str, list[dict]] = defaultdict(list)
@@ -201,11 +266,23 @@ async def main() -> None:
     print(f"Running {len(sample)} questions across {len(by_type)} types...\n", flush=True)
 
     scores: dict[str, list[bool]] = defaultdict(list)
+    stopped_early = False
     for index, item in enumerate(sample):
+        if meter.exceeded:
+            stopped_early = True
+            print(
+                f"\n!! Budget ceiling ${args.max_usd:.2f} reached after {index} questions "
+                f"(spent ~${meter.cost_usd:.2f}); stopping early.\n",
+                flush=True,
+            )
+            break
         qtype, correct, _ = await _run_question(item, index, len(sample), diagnose=args.diagnose)
         scores[qtype].append(correct)
 
-    print("\n=== LONGMEMEVAL (oracle subset) RESULTS ===")
+    if stopped_early:
+        print("=== LONGMEMEVAL (PARTIAL — budget-limited) RESULTS ===")
+    else:
+        print("\n=== LONGMEMEVAL (oracle subset) RESULTS ===")
     total_correct = total = 0
     for qtype in sorted(scores):
         results = scores[qtype]
@@ -215,6 +292,11 @@ async def main() -> None:
             f"  {qtype:28} {sum(results)}/{len(results)} = {100 * sum(results) / len(results):.0f}%"
         )
     print(f"  {'OVERALL':28} {total_correct}/{total} = {100 * total_correct / total:.1f}%")
+    print(
+        f"\n  Spend: ~${meter.cost_usd:.2f} "
+        f"({meter.input_tokens:,} in / {meter.output_tokens:,} out tokens, "
+        f"cap ${args.max_usd:.2f})"
+    )
 
 
 if __name__ == "__main__":

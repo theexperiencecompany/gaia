@@ -9,6 +9,7 @@ core-document consolidation for the docs its changes touch.
 
 from dataclasses import dataclass
 from datetime import UTC, date as date_type, datetime
+import re
 import time
 import uuid
 
@@ -41,6 +42,7 @@ from shared.py.wide_events import log
 
 _DEFAULT_USER_NAME = "the user"
 _FALLBACK_CATEGORY_PATH = "general"
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 
 @dataclass
@@ -86,6 +88,7 @@ async def retain(
     source_id: str | None = None,
     extraction_hints: str | None = None,
     user_name: str | None = None,
+    user_email: str | None = None,
     now: datetime | None = None,
 ) -> RetainResult:
     """Ingest a conversation transcript into long-term memory.
@@ -94,6 +97,11 @@ async def retain(
     resolution, ``mentioned_at`` (recency), and the journal day — letting
     callers replay historical sessions (backfills, benchmarks) at their real
     time. Defaults to the current UTC time.
+
+    ``user_email`` enables the email-source guard: when ingesting from a
+    mailbox, any extracted fact that names an email address other than the
+    user's own is dropped, so inbound senders (customers, leads, support
+    requesters) never get stored as the user's contacts.
     """
     timings: dict[str, int] = {}
     started = time.perf_counter()
@@ -119,6 +127,16 @@ async def retain(
         current_date=now,
     )
     timings["extract_ms"] = _elapsed_ms(stage)
+
+    if source_type is MemorySourceType.EMAIL:
+        # Email ingestion contributes durable facts about the USER only. A
+        # mailbox (especially a founder's or support address) is not the user's
+        # diary or to-do list — "respond to customer X", "resolve ticket Y" are
+        # an inbound queue, not the user's agenda or journal. Drop both, and
+        # drop any fact that names a sender's email rather than the user's own.
+        batch.facts = _drop_foreign_email_facts(batch.facts, user_email, user_name)
+        batch.episode_entries = []
+        batch.agenda_updates = []
 
     result = RetainResult(facts_extracted=len(batch.facts))
     if not batch.facts and not batch.episode_entries:
@@ -527,6 +545,45 @@ def _elapsed_ms(since: float) -> int:
 def _format_folder_tree(folders: list[tuple[str, int]]) -> str:
     """Render (category_path, count) rows for the extraction prompt."""
     return "\n".join(f"- {path} ({count})" for path, count in folders)
+
+
+# Subject of a fact that is a third party: a Title-Case full name (2+ words)
+# at the start, followed by a personal predicate. "Aryan is ..." (one word) and
+# "Tools: ..." don't match; "Timothy Brouwers is ...", "Tom Munson's ..." do.
+_PERSON_SUBJECT_RE = re.compile(
+    r"^([A-Z][a-z]+(?: [A-Z][a-z]+)+)(?:'s\b| (?:is|was|has|have|works|worked|"
+    r"requested|reported|purchased|provided|sent|asked|wants|needs|reached|"
+    r"is a|is an|subscribed|cancelled|signed)\b)"
+)
+
+
+def _drop_foreign_email_facts(
+    facts: list[ExtractedFact], user_email: str | None, user_name: str | None = None
+) -> list[ExtractedFact]:
+    """Strip mailbox pollution from email-sourced facts.
+
+    A mailbox (especially a founder's or support address) is full of strangers.
+    Two things get dropped so only durable facts about the USER survive:
+
+    1. Facts naming an email address other than the user's own — a sender's
+       contact detail ("Jordan Lee's email is jordan@acme.com") is not a
+       contact the user keeps. The user's own email is already known from their
+       account, so a fact mentioning only that address is fine.
+    2. Facts whose subject is a third-party person ("Casey Morgan is a
+       subscriber who requested to cancel") — an inbound correspondent is not
+       someone in the user's life. Real contacts come from actual conversations.
+    """
+    own = {user_email.strip().lower()} if user_email else set()
+    own_first = (user_name or "").strip().split(" ")[0].lower()
+    kept: list[ExtractedFact] = []
+    for fact in facts:
+        if {match.lower() for match in _EMAIL_RE.findall(fact.content)} - own:
+            continue
+        subject = _PERSON_SUBJECT_RE.match(fact.content)
+        if subject and own_first and own_first not in subject.group(1).lower():
+            continue
+        kept.append(fact)
+    return kept
 
 
 def _clamp_category_path(path: str | None) -> str:
