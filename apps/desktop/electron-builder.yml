@@ -1,6 +1,11 @@
 appId: io.heygaia.desktop
 productName: GAIA
 copyright: Copyright © 2024 The Experience Company
+# Must match the electron devDependency in package.json. In a pnpm hoisted
+# monorepo electron-builder's auto-detection is unreliable (it has resolved a
+# stale 33.2.1 from cached metadata even with 39.8.10 installed), so pin the
+# packaged runtime explicitly. Bump both together on every Electron upgrade.
+electronVersion: 39.8.10
 # In pnpm hoisted monorepos, electron-builder's dependency reinstall step can
 # mutate workspace node_modules during packaging and break artifact generation.
 npmRebuild: false
