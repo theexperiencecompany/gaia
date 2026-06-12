@@ -43,20 +43,22 @@ def has_open_openui_fence_at_tail(s: str) -> bool:
     return OPEN_OPENUI_FENCE_TAIL_RE.search(s) is not None
 
 
-def extract_meta_data(md: str | None) -> tuple[str | None, str | None]:
-    """Extract agentToken and conversationId from participant metadata JSON."""
+def extract_meta_data(md: str | None) -> tuple[str | None, str | None, str | None]:
+    """Extract agentToken, conversationId, and voiceId from participant metadata JSON."""
     if not md:
-        return None, None
+        return None, None, None
     try:
         obj = json.loads(md)
         token = obj.get("agentToken")
         conv_id = obj.get("conversationId")
+        voice_id = obj.get("voiceId")
         token = token if isinstance(token, str) and token else None
         conv_id = conv_id if isinstance(conv_id, str) and conv_id else None
-        return token, conv_id
+        voice_id = voice_id if isinstance(voice_id, str) and voice_id else None
+        return token, conv_id, voice_id
     except (json.JSONDecodeError, AttributeError, TypeError) as e:
         logger.debug("Unparseable participant metadata", error=str(e), metadata=md[:200])
-        return None, None
+        return None, None, None
 
 
 def _extract_text_from_content(content: list) -> str:  # type: ignore[type-arg]

@@ -1,5 +1,6 @@
 import {
   AiBrain01Icon,
+  AudioWave01Icon,
   ChartLineData02Icon,
   CreditCardIcon,
   DiscordIcon,
@@ -64,6 +65,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Preferences",
     icon: MessageMultiple02Icon,
     href: "/settings?section=preferences",
+  },
+  {
+    key: "voice",
+    label: "Voice",
+    icon: AudioWave01Icon,
+    href: "/settings?section=voice",
   },
   {
     key: "memory",

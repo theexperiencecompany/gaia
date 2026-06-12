@@ -101,14 +101,16 @@ async def entrypoint(ctx: JobContext) -> None:
     )
     custom_llm.user_id = user_id
 
+    tts = elevenlabs.TTS(
+        api_key=settings.ELEVENLABS_API_KEY,
+        voice_id=settings.ELEVENLABS_VOICE_ID,
+        model=settings.ELEVENLABS_TTS_MODEL,
+    )
+
     session: AgentSession = AgentSession(
         llm=custom_llm,
         stt=deepgram.STT(model="nova-3", language="multi"),
-        tts=elevenlabs.TTS(
-            api_key=settings.ELEVENLABS_API_KEY,
-            voice_id=settings.ELEVENLABS_VOICE_ID,
-            model=settings.ELEVENLABS_TTS_MODEL,
-        ),
+        tts=tts,
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
         min_endpointing_delay=MIN_ENDPOINTING_DELAY_S,
@@ -196,8 +198,12 @@ async def entrypoint(ctx: JobContext) -> None:
 
     ctx.add_shutdown_callback(log_usage)
 
+    # Tracks the currently-applied TTS voice so repeated metadata events
+    # (join + metadata_changed) don't re-apply the same voice.
+    applied_voice: dict[str, str] = {}
+
     async def _apply_participant_credentials(md: str | None, origin: str, who: str) -> None:
-        token, conv_id = extract_meta_data(md)
+        token, conv_id, voice_id = extract_meta_data(md)
         if token:
             custom_llm.set_agent_token(token)
             slog.debug(
@@ -205,6 +211,18 @@ async def entrypoint(ctx: JobContext) -> None:
                 phase="token_set",
                 participant=who,
                 origin=origin,
+            )
+        if voice_id and voice_id != applied_voice.get("id"):
+            # User-selected ElevenLabs voice (set in Settings → Voice), carried
+            # in the participant metadata minted by /token. Applies to all
+            # synthesis from the next utterance on.
+            applied_voice["id"] = voice_id
+            tts.update_options(voice_id=voice_id)
+            slog.info(
+                f"[{now_ts()}] 🗣 VOICE SET | voice_id={voice_id} participant={who}",
+                phase="voice_set",
+                voice_id=voice_id,
+                participant=who,
             )
         if conv_id:
             await custom_llm.set_conversation_id(conv_id)

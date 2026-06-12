@@ -38,7 +38,7 @@ from app.api.v1.endpoints import (
     triggers,
     usage,
     user,
-    voice_token,
+    voice,
     webhook_composio,
     websocket,
     workflows,
@@ -47,7 +47,7 @@ from app.api.v1.endpoints.integrations import router as integrations_router
 
 router = APIRouter()
 
-router.include_router(voice_token.router, tags=["Voice"])
+router.include_router(voice.router, tags=["Voice"])
 router.include_router(chat.router, tags=["Chat"])
 router.include_router(conversations.router, tags=["Conversations"])
 router.include_router(sessions.router)

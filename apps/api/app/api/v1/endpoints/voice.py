@@ -1,3 +1,5 @@
+"""Voice mode endpoints — LiveKit session tokens and voice selection."""
+
 import json
 import uuid
 
@@ -11,6 +13,12 @@ from app.api.v1.dependencies.oauth_dependencies import (
 from app.api.v1.middleware.agent_auth import create_agent_token
 from app.api.v1.middleware.tiered_rate_limiter import tiered_rate_limit
 from app.config.settings import settings
+from app.schemas.voice_schemas import (
+    UpdateVoiceRequest,
+    VoiceListResponse,
+    VoiceSelectionResponse,
+)
+from app.services.voice_service import get_user_voice, list_voices, set_user_voice
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -45,6 +53,11 @@ async def get_token(
     }
     if conversationId:
         metadata["conversationId"] = conversationId
+    # The agent reads the user's chosen voice from participant metadata —
+    # no extra backend round trip from the worker.
+    selected_voice = await get_user_voice(user_id)
+    if selected_voice:
+        metadata["voiceId"] = selected_voice
     try:
         at = (
             api.AccessToken(settings.LIVEKIT_API_KEY, settings.LIVEKIT_API_SECRET)
@@ -74,3 +87,23 @@ async def get_token(
         "participantName": display_name,
         "conversation_id": conversationId,
     }
+
+
+@router.get("/voice/voices", response_model=VoiceListResponse)
+async def get_voices(user: dict = Depends(get_current_user)) -> VoiceListResponse:
+    """List the curated voice catalog with the user's current selection."""
+    log.set(user={"id": user["user_id"]}, operation="list_voices")
+    result = await list_voices(user["user_id"])
+    log.set(voice_count=len(result.voices), selected_voice_id=result.selected_voice_id)
+    return result
+
+
+@router.put("/voice/voices/selected", response_model=VoiceSelectionResponse)
+async def select_voice(
+    payload: UpdateVoiceRequest,
+    user: dict = Depends(get_current_user),
+) -> VoiceSelectionResponse:
+    """Set the user's voice for future voice-mode sessions."""
+    log.set(user={"id": user["user_id"]}, operation="select_voice", voice_id=payload.voice_id)
+    selected = await set_user_voice(user["user_id"], payload.voice_id)
+    return VoiceSelectionResponse(selected_voice_id=selected)
