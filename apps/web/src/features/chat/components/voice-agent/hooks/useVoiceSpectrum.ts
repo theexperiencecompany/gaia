@@ -33,7 +33,6 @@ export interface VoiceSpectrumState {
   scalar: number;
   /** True once microphone permission is granted and audio is flowing. */
   isActive: boolean;
-  isMuted: boolean;
   devices: MediaDeviceInfo[];
   deviceId: string | null;
   error: string | null;
@@ -50,7 +49,23 @@ interface UseVoiceSpectrumOptions {
    * hook re-attaches its analyser whenever this track identity changes.
    */
   remoteTrack?: MediaStreamTrack | null;
+  /**
+   * External mute flag — wire this to the REAL mic state (e.g. LiveKit's
+   * `isMicrophoneEnabled`), not a hook-local toggle. While muted the hook's
+   * own analysis stream is disabled, mic bins are zeroed so the wave glides
+   * flat, and after a short settle window the sampling loop pauses entirely.
+   * Agent-track frames are exempt so the agent's audible speech keeps
+   * animating.
+   */
+  muted?: boolean;
 }
+
+/**
+ * How long after mute the sampling raf keeps running so the temporal lerp can
+ * glide the wave down to flat before the loop pauses (freezing mid-wave looks
+ * broken; pausing immediately would do exactly that).
+ */
+const MUTE_SETTLE_PAUSE_MS = 600;
 
 const TEMPORAL_SMOOTHING = 0.18;
 const SPATIAL_KERNEL = [0.25, 0.5, 0.25] as const;
@@ -215,9 +230,9 @@ const gateBin = (v: number): number => {
 export function useVoiceSpectrum({
   source,
   remoteTrack = null,
+  muted = false,
 }: UseVoiceSpectrumOptions) {
   const [isActive, setIsActive] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -269,9 +284,16 @@ export function useVoiceSpectrum({
     sourceRef.current = source;
   }, [source]);
 
+  // Sync the external mute into the sampling loop and the hook's own analysis
+  // stream — `track.enabled = false` stops the capture itself, so a muted mic
+  // never feeds the analyser (privacy + no ambient-noise wave motion).
   useEffect(() => {
-    mutedRef.current = isMuted;
-  }, [isMuted]);
+    mutedRef.current = muted;
+    const tracks = streamRef.current?.getAudioTracks() ?? [];
+    for (const t of tracks) {
+      t.enabled = !muted;
+    }
+  }, [muted]);
 
   // Build / rebuild the analyser pipeline over the remote agent track whenever
   // its identity changes. Tear down cleanly on unmount or when the track goes
@@ -401,17 +423,6 @@ export function useVoiceSpectrum({
     }
   }, [source]);
 
-  const toggleMute = useCallback(() => {
-    setIsMuted((m) => {
-      const next = !m;
-      const tracks = streamRef.current?.getAudioTracks() ?? [];
-      for (const t of tracks) {
-        t.enabled = !next;
-      }
-      return next;
-    });
-  }, []);
-
   // Pause flag — toggled by the mute/visibility effect below. When true the
   // raf loop stops scheduling itself, which eliminates GPU work and prevents
   // the gradient from appearing to "react" to ambient audio during mute.
@@ -439,10 +450,8 @@ export function useVoiceSpectrum({
         return false;
       }
       if (mutedRef.current) {
-        // Muted: zero the spectrum so the wave settles flat. The raf loop
-        // itself is cancelled by the pause effect below when mute + mic
-        // source coincide, so this branch is only hit briefly between
-        // mutedRef flipping and the pause effect cancelling the raf.
+        // Muted: zero the spectrum so the wave glides down to flat during the
+        // settle window; the pause effect below then cancels the raf loop.
         for (let i = 0; i < SPECTRUM_BINS; i++) out[i] = 0;
         return false;
       }
@@ -585,8 +594,10 @@ export function useVoiceSpectrum({
     };
   }, []);
 
-  // Pause raf when (mic-source && muted) or document.hidden.
-  // Resume on unmute / visibility return.
+  // Pause the raf on mute (after a settle window so the wave glides flat
+  // first) or while the tab is hidden; resume on unmute / visibility return.
+  // Agent-track frames are exempt from the mute pause — the agent's audible
+  // speech should keep animating even while the user's mic is off.
   useEffect(() => {
     const resume = () => {
       if (rafRef.current !== null || !tickRef.current) return;
@@ -601,27 +612,37 @@ export function useVoiceSpectrum({
       }
     };
 
-    const shouldPause =
-      (source === "mic" && isMuted) ||
-      (typeof document !== "undefined" && document.hidden);
-    if (shouldPause) pause();
-    else resume();
-
-    const onVisibility = () => {
-      const nowShouldPause = (source === "mic" && isMuted) || document.hidden;
-      if (nowShouldPause) pause();
-      else resume();
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    const apply = () => {
+      if (settleTimer !== null) {
+        clearTimeout(settleTimer);
+        settleTimer = null;
+      }
+      if (typeof document !== "undefined" && document.hidden) {
+        pause();
+        return;
+      }
+      if (muted && source !== "agent-track") {
+        // Keep ticking briefly: mutedRef zeroes the bins and the temporal
+        // lerp glides the wave down to flat, THEN the loop stops.
+        settleTimer = setTimeout(pause, MUTE_SETTLE_PAUSE_MS);
+        resume();
+        return;
+      }
+      resume();
     };
+    apply();
 
     if (typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", onVisibility);
+      document.addEventListener("visibilitychange", apply);
     }
     return () => {
+      if (settleTimer !== null) clearTimeout(settleTimer);
       if (typeof document !== "undefined") {
-        document.removeEventListener("visibilitychange", onVisibility);
+        document.removeEventListener("visibilitychange", apply);
       }
     };
-  }, [source, isMuted]);
+  }, [source, muted]);
 
   useEffect(() => () => stop(), [stop]);
 
@@ -629,10 +650,9 @@ export function useVoiceSpectrum({
     spectrum: spectrumRef.current,
     scalar,
     isActive,
-    isMuted,
     devices,
     deviceId,
     error,
   };
-  return { ...state, start, stop, toggleMute, selectDevice, decayLoading };
+  return { ...state, start, stop, selectDevice, decayLoading };
 }

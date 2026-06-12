@@ -8,6 +8,12 @@ export type VoiceMode = "user" | "gaia";
 interface VoiceGradientProps {
   mode: VoiceMode;
   spectrum: Float32Array;
+  /**
+   * Freeze the draw loop (e.g. mic muted, wave already settled flat). The
+   * last frame stays on the canvas; the raf stops so the GPU goes idle.
+   * The shader clock is rebased on resume so cloud drift doesn't jump.
+   */
+  paused?: boolean;
 }
 
 /* ─── Vertex shader: full-screen quad with UVs in [0..1] ────────────────── */
@@ -484,7 +490,11 @@ function buildProgram(
   }
 }
 
-export function VoiceGradient({ mode, spectrum }: VoiceGradientProps) {
+export function VoiceGradient({
+  mode,
+  spectrum,
+  paused = false,
+}: VoiceGradientProps) {
   const modeRef = useRef<VoiceMode>(mode);
   const fadeRef = useRef(mode === "gaia" ? 1 : 0);
   // Spectrum is mutated in place by useVoiceSpectrum, so its identity is
@@ -493,9 +503,19 @@ export function VoiceGradient({ mode, spectrum }: VoiceGradientProps) {
   const spectrumRef = useRef(spectrum);
   spectrumRef.current = spectrum;
 
+  // The draw loop polls pausedRef each frame and parks itself when true;
+  // resumeRef (installed by initGL) restarts it on unpause.
+  const pausedRef = useRef(paused);
+  const resumeRef = useRef<(() => void) | null>(null);
+
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
+
+  useEffect(() => {
+    pausedRef.current = paused;
+    if (!paused) resumeRef.current?.();
+  }, [paused]);
 
   // Use a ref callback (not useEffect) to manage the WebGL lifecycle. Ref
   // callbacks fire on REAL DOM attach/detach — they completely bypass React
@@ -517,7 +537,14 @@ export function VoiceGradient({ mode, spectrum }: VoiceGradientProps) {
       const timerId = setTimeout(() => {
         if (!cancelled && canvas.isConnected) {
           cleanupRef.current =
-            initGL(canvas, spectrumRef, modeRef, fadeRef) ?? null;
+            initGL(
+              canvas,
+              spectrumRef,
+              modeRef,
+              fadeRef,
+              pausedRef,
+              resumeRef,
+            ) ?? null;
         }
       }, 0);
       cleanupRef.current = () => {
@@ -543,6 +570,8 @@ function initGL(
   spectrumRef: React.RefObject<Float32Array>,
   modeRef: React.RefObject<VoiceMode>,
   fadeRef: React.RefObject<number>,
+  pausedRef: React.RefObject<boolean>,
+  resumeRef: React.MutableRefObject<(() => void) | null>,
 ): (() => void) | null {
   const gl = canvas.getContext("webgl2", {
     premultipliedAlpha: false,
@@ -662,10 +691,18 @@ function initGL(
   const ro = new ResizeObserver(resize);
   ro.observe(canvas);
 
-  const start = performance.now();
+  let start = performance.now();
   let raf = 0;
+  let rafActive = false;
+  let pausedAt = 0;
 
   const draw = (now: number) => {
+    if (pausedRef.current) {
+      // Park the loop on the already-rendered frame. resumeRef restarts it.
+      rafActive = false;
+      pausedAt = now;
+      return;
+    }
     const t = now - start;
     const target = modeRef.current === "gaia" ? 1 : 0;
     fadeRef.current += (target - fadeRef.current) * 0.06;
@@ -711,9 +748,21 @@ function initGL(
     raf = requestAnimationFrame(draw);
   };
   raf = requestAnimationFrame(draw);
+  rafActive = true;
+
+  resumeRef.current = () => {
+    if (rafActive) return;
+    // Rebase the shader clock so uTime-driven drift (clouds, caustics)
+    // continues from where it froze instead of jumping forward.
+    start += performance.now() - pausedAt;
+    rafActive = true;
+    raf = requestAnimationFrame(draw);
+  };
 
   return () => {
     cancelAnimationFrame(raf);
+    rafActive = false;
+    resumeRef.current = null;
     ro.disconnect();
     if (vbo) gl.deleteBuffer(vbo);
     if (fbo) gl.deleteFramebuffer(fbo);

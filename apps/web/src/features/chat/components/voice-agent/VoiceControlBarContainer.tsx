@@ -4,6 +4,7 @@ import {
   RoomAudioRenderer,
   RoomContext,
   StartAudio,
+  useLocalParticipant,
   useRoomContext,
   useVoiceAssistant,
 } from "@livekit/components-react";
@@ -32,6 +33,13 @@ import {
 } from "@/stores/voiceModeStore";
 
 const SESSION_READY_TIMEOUT_MS = 10_000;
+
+/**
+ * Delay between muting the mic and freezing the gradient's draw loop —
+ * matches the spectrum hook's settle window so the wave has glided down to
+ * flat before the canvas freezes on its final frame.
+ */
+const MUTE_ANIMATION_FREEZE_MS = 700;
 
 interface VoiceControlBarContainerProps {
   /** Rendered inside the session provider so they can read `useVoiceSession()`. */
@@ -173,7 +181,34 @@ function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
       : agentState === "listening"
         ? "mic"
         : "idle";
-  const voice = useVoiceSpectrum({ source: spectrumSource, remoteTrack });
+  // The REAL mic state — LiveKit's track toggle in the control bar — drives
+  // the spectrum's mute, not a hook-local flag. Muted mic ⇒ wave settles
+  // flat and sampling pauses; the agent's own speech still animates.
+  const { isMicrophoneEnabled } = useLocalParticipant();
+  const micMuted = !isMicrophoneEnabled;
+  const voice = useVoiceSpectrum({
+    source: spectrumSource,
+    remoteTrack,
+    muted: micMuted,
+  });
+
+  // Freeze the gradient's GL draw loop once the muted wave has settled flat.
+  // Exempt agent-track frames (agent audibly speaking) and the connecting
+  // phase (loading shimmer should keep running while the room negotiates).
+  const [animationPaused, setAnimationPaused] = useState(false);
+  useEffect(() => {
+    const shouldFreeze =
+      micMuted && spectrumSource !== "agent-track" && !isConnecting;
+    if (!shouldFreeze) {
+      setAnimationPaused(false);
+      return;
+    }
+    const timer = setTimeout(
+      () => setAnimationPaused(true),
+      MUTE_ANIMATION_FREEZE_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [micMuted, spectrumSource, isConnecting]);
 
   // When the connecting state ends, fade the procedural loading jitter to
   // zero over ~300ms before the spectrum source switches to mic/agent-track.
@@ -269,9 +304,17 @@ function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
       agentState,
       conversationId,
       isConnecting,
+      animationPaused,
       sendUserTurn,
     }),
-    [voice.spectrum, agentState, conversationId, isConnecting, sendUserTurn],
+    [
+      voice.spectrum,
+      agentState,
+      conversationId,
+      isConnecting,
+      animationPaused,
+      sendUserTurn,
+    ],
   );
 
   return (

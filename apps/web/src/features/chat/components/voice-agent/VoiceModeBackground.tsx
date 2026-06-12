@@ -43,6 +43,7 @@ export function VoiceModeBackground() {
         key={voiceSessionId ?? "no-session"}
         mode="gaia"
         spectrum={session.spectrum}
+        paused={session.animationPaused}
       />
     </div>
   );

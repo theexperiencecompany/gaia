@@ -16,6 +16,11 @@ export interface VoiceSessionValue {
   /** True while the room is still negotiating (connecting / not yet connected). */
   isConnecting: boolean;
   /**
+   * True once the muted-mic wave has settled flat — the gradient freezes its
+   * draw loop so a muted session shows a still background instead of motion.
+   */
+  animationPaused: boolean;
+  /**
    * Send a typed/clicked message (e.g. a follow-up suggestion) as a new voice
    * turn: renders the user bubble, closes the active bot turn, and publishes the
    * text to the agent over LiveKit.
