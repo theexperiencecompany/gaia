@@ -81,7 +81,9 @@ async def test_full_retain_persists_facts_graph_and_journal(
     assert all(row.is_latest and row.version == 1 for row in rows)
     assert all(row.source_type == MemorySourceType.CONVERSATION.value for row in rows)
     by_content = {row.content: row for row in rows}
-    assert by_content["Arjun's girlfriend Nadia's birthday is March 12."].importance == 0.9
+    assert by_content[
+        "Arjun's girlfriend Nadia's birthday is March 12."
+    ].importance == pytest.approx(0.9)
     assert by_content["Arjun is vegetarian."].category_path == "food-preferences"
 
     # Chroma agrees row-for-row, with filterable metadata.

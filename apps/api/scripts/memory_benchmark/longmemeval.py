@@ -133,11 +133,15 @@ async def _answer(question: str, question_date: str, memories: list[str]) -> str
     result = await _invoke_structured(
         _Answer,
         [
+            # Static system prompt — all benchmark-derived data (date, memory
+            # notes, question) travels in the human message so the privileged
+            # prompt is never built from dataset content.
             SystemMessage(
                 content=(
-                    f"Today is {question_date}. Answer the user's question using ONLY the "
-                    "memory notes below (extracted from past conversations; bracketed "
-                    "dates say when something happened / was mentioned). Be concise.\n"
+                    "Answer the user's question using ONLY the memory notes in the "
+                    "user message (extracted from past conversations; bracketed "
+                    "dates say when something happened / was mentioned). The user "
+                    "message also states today's date. Be concise.\n"
                     "- Use the dates for any 'when / how long ago / which came first' "
                     "arithmetic, and sum or compare quantities across notes for any "
                     "'total / most / higher' question. For dates, use when the event "
@@ -157,13 +161,14 @@ async def _answer(question: str, question_date: str, memories: list[str]) -> str
                     "like podcasts, so try ...'). NEVER abstain and NEVER refuse for "
                     "missing details like location — work with what the notes provide.\n"
                     "- Only if the notes contain nothing relevant at all, reply exactly "
-                    '"I don\'t know".\n\nMEMORY NOTES:\n' + context
+                    '"I don\'t know".'
                 )
             ),
-            # `question` originates from the LongMemEval benchmark JSON loaded
-            # from a trusted local file (--dataset flag); it is NOT real user input.
-            # SonarQube S5131 (prompt-injection hotspot) is a false positive here.
-            HumanMessage(content=question),
+            HumanMessage(
+                content=(
+                    f"Today is {question_date}.\n\nMEMORY NOTES:\n{context}\n\nQuestion: {question}"
+                )
+            ),
         ],
         operation="lme_answer",
     )
