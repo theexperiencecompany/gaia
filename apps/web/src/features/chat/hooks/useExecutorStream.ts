@@ -5,7 +5,7 @@ import {
 import { useCallback, useEffect } from "react";
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
-import type { IMessage } from "@/lib/db/chatDb";
+import { db, type IMessage } from "@/lib/db/chatDb";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStore } from "@/stores/chatStore";
 
@@ -58,6 +58,12 @@ export function useExecutorStream() {
       tool_data: null,
     };
     useChatStore.getState().addOrUpdateMessage(placeholder);
+    // Persist the placeholder (keyed by task_id) so live tool cards survive a
+    // refresh that happens before the final conversation.new_message arrives.
+    // useBgMessageWebSocket replaces this entry by task_id when the final
+    // message lands; an orphaned placeholder is only possible if the run is
+    // never finalized, in which case keeping its cards is the desired outcome.
+    await db.putMessage(placeholder);
 
     const controller = new AbortController();
 
@@ -76,11 +82,13 @@ export function useExecutorStream() {
               if (!current) return;
               const existing: ToolDataEntry[] =
                 (current.tool_data as ToolDataEntry[]) ?? [];
-              useChatStore.getState().addOrUpdateMessage({
+              const updated: IMessage = {
                 ...current,
                 tool_data: [...existing, parsed.entry as ToolDataEntry],
                 updatedAt: new Date(),
-              });
+              };
+              useChatStore.getState().addOrUpdateMessage(updated);
+              void db.putMessage(updated);
             }
 
             if (parsed.type === "tool_output") {
@@ -90,15 +98,17 @@ export function useExecutorStream() {
               if (!current) return;
               const existing: ToolDataEntry[] =
                 (current.tool_data as ToolDataEntry[]) ?? [];
-              const updated = mergeToolOutputIntoToolData(
+              const mergedToolData = mergeToolOutputIntoToolData(
                 existing,
                 parsed.output,
               );
-              useChatStore.getState().addOrUpdateMessage({
+              const updated: IMessage = {
                 ...current,
-                tool_data: updated,
+                tool_data: mergedToolData,
                 updatedAt: new Date(),
-              });
+              };
+              useChatStore.getState().addOrUpdateMessage(updated);
+              void db.putMessage(updated);
             }
           }
         },
@@ -109,11 +119,13 @@ export function useExecutorStream() {
           const msgs = state.messagesByConversation[conversation_id] ?? [];
           const current = msgs.find((m) => m.id === task_id);
           if (current) {
-            useChatStore.getState().addOrUpdateMessage({
+            const finalized: IMessage = {
               ...current,
               status: "sent",
               updatedAt: new Date(),
-            });
+            };
+            useChatStore.getState().addOrUpdateMessage(finalized);
+            void db.putMessage(finalized);
           }
         },
         (err) => {

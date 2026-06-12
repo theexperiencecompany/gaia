@@ -192,6 +192,7 @@ async def _deliver_bg_notification(
     workflow_id: str | None = None,
     workflow_title: str = "",
     workflow_notify_on_completion: bool = True,
+    message_id: str | None = None,
 ) -> None:
     """Run comms once with the executor result, then save + deliver the message.
 
@@ -242,7 +243,12 @@ async def _deliver_bg_notification(
         response=notification_text,
         date=datetime.now(UTC).isoformat(),
     )
-    bot_message.message_id = str(uuid4())
+    # Queued runs pass message_id=task_id so this saved message shares an id with
+    # the live placeholder useExecutorStream rendered — the frontend's existing
+    # conversation sync then reconciles them by id (no duplicate, even if the
+    # WebSocket push below is missed). Other runs have no placeholder, so a fresh
+    # id is fine.
+    bot_message.message_id = message_id or str(uuid4())
     if tool_data:
         bot_message.tool_data = tool_data  # type: ignore[assignment]
 
@@ -500,9 +506,68 @@ async def _dispatch_executor_result(
             workflow_id=workflow_id,
             workflow_title=workflow_title,
             workflow_notify_on_completion=workflow_notify_on_completion,
+            # Only queued runs have a live placeholder to reconcile with; key the
+            # saved message on task_id so sync dedups it by id.
+            message_id=task_id if is_queued else None,
         )
     except Exception as e:
         log.error("Background notification delivery failed", error=str(e))
+
+
+async def _persist_cancelled_executor_result(
+    *,
+    stream_id: str,
+    conversation_id: str,
+    user: dict,
+    task_id: str | None,
+) -> None:
+    """Durably persist the tool cards a cancelled queued executor already streamed.
+
+    The cards were streamed live and the frontend already rendered + persisted
+    them on the placeholder (keyed by task_id). This only writes the same cards to
+    MongoDB so they survive a cache clear and reach the user's other devices via
+    the normal conversation sync. Deliberately:
+      - keyed on ``message_id == task_id`` so sync reconciles with the placeholder
+        by id (no duplicate) — no WebSocket re-push of already-streamed data;
+      - no comms re-narration (the run was stopped) and no result text, mirroring
+        the cards-only placeholder the user saw.
+    """
+    tool_data = drain_executor_tool_data(stream_id)
+    if not tool_data:
+        log.info(
+            "Cancelled executor produced no cards to persist",
+            task_id=task_id,
+            stream_id=stream_id,
+        )
+        return
+
+    bot_message = MessageModel(
+        type="bot",
+        response="",
+        date=datetime.now(UTC).isoformat(),
+    )
+    bot_message.message_id = task_id or str(uuid4())
+    bot_message.tool_data = tool_data  # type: ignore[assignment]
+
+    try:
+        await update_messages(
+            UpdateMessagesRequest(
+                conversation_id=conversation_id,
+                messages=[bot_message],
+            ),
+            user=user,
+        )
+    except Exception as e:  # noqa: BLE001 — best-effort save of a stopped run
+        log.error("Failed to save cancelled executor cards", error=str(e))
+        return
+
+    log.info(
+        "Persisted cancelled executor cards",
+        message_id=bot_message.message_id,
+        task_id=task_id,
+        stream_id=stream_id,
+        tool_card_count=len(tool_data),
+    )
 
 
 async def _finalize_executor_run(
@@ -534,11 +599,24 @@ async def _finalize_executor_run(
         done_event.set()
 
     if was_cancelled:
-        log.info(
-            "Skipping notification for cancelled executor",
-            task_id=task_id,
-            stream_id=stream_id,
-        )
+        # The run was stopped, but cards already produced must not vanish. For
+        # queued/workflow streams the executor is the SOLE owner of its tool_data
+        # (no comms chat stream attaches them), so persist a partial message here
+        # BEFORE teardown below. Live streams are owned by the comms path's
+        # _attach_executor_tool_data, so we skip here to avoid duplicate cards.
+        if is_queued or workflow_id:
+            await _persist_cancelled_executor_result(
+                stream_id=stream_id,
+                conversation_id=conversation_id,
+                user=user,
+                task_id=task_id,
+            )
+        else:
+            log.info(
+                "Live executor cancelled; comms stream owns tool_data persistence",
+                task_id=task_id,
+                stream_id=stream_id,
+            )
     elif result_text:
         await _dispatch_executor_result(
             result_text=result_text,
