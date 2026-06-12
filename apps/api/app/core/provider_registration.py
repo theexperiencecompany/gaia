@@ -224,8 +224,8 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         # The provider is a no-op when R2/JFS settings are unconfigured, so
         # this is safe to include unconditionally.
         (lambda: providers.aget("juicefs_mount"), "juicefs_mount"),
-        # Global shared system subtree (INDEX/GUIDE/builtin skills) — once, here,
-        # not per chat turn. Awaits the mount internally.
+        # Global shared system subtree (INDEX/GUIDE/builtin skills) — once,
+        # Awaits the mount internally.
         (init_system_subtree, "system_subtree"),
     ]
 
