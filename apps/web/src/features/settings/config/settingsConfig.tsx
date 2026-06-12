@@ -7,7 +7,7 @@ import {
   Link03Icon,
   MessageMultiple02Icon,
   NotificationIcon,
-  SparklesIcon,
+  Stamp01Icon,
   UserCircleIcon,
   WhatsappIcon,
 } from "@icons";
@@ -34,7 +34,7 @@ export const settingsPageItems: SettingsMenuItem[] = [
   {
     key: "profile",
     label: "Profile Card",
-    icon: SparklesIcon,
+    icon: Stamp01Icon,
     href: "/settings?section=profile",
   },
   {

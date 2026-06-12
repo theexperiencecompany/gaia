@@ -207,7 +207,11 @@ export default function VoiceSettings() {
         >
           {[
             <SelectItem key={ALL_FILTER}>All genders</SelectItem>,
-            ...genderOptions.map((g) => <SelectItem key={g}>{g}</SelectItem>),
+            ...genderOptions.map((g) => (
+              <SelectItem key={g} startContent={<GenderIcon gender={g} />}>
+                {g}
+              </SelectItem>
+            )),
           ]}
         </Select>
         <Select
