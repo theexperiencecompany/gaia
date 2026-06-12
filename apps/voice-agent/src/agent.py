@@ -175,7 +175,8 @@ async def _apply_participant_credentials(
     slog: "Logger",
 ) -> None:
     """Apply agent token, TTS voice, and conversation id from participant metadata."""
-    token, conv_id, voice_id = extract_meta_data(md)
+    meta = extract_meta_data(md)
+    token, conv_id, voice_id = meta.agent_token, meta.conversation_id, meta.voice_id
     if token:
         custom_llm.set_agent_token(token)
         slog.debug(
@@ -183,6 +184,16 @@ async def _apply_participant_credentials(
             phase="token_set",
             participant=who,
             origin=origin,
+        )
+    if meta.backend_url and meta.backend_url != custom_llm.base_url:
+        # Multi-backend deployments (staging previews) run ONE shared agent;
+        # each session's metadata names the API that minted it.
+        custom_llm.set_backend_url(meta.backend_url)
+        slog.info(
+            f"[{now_ts()}] 🌐 BACKEND URL SET | {meta.backend_url} participant={who}",
+            phase="backend_url_set",
+            backend_url=meta.backend_url,
+            participant=who,
         )
     if voice_id and voice_id != applied_voice.get("id"):
         # User-selected ElevenLabs voice (set in Settings → Voice), carried

@@ -91,6 +91,14 @@ class CustomLLM(LLM):
         """Set the authentication token for backend requests."""
         self.agent_token = token
 
+    def set_backend_url(self, url: str) -> None:
+        """Point this session at the backend that minted it.
+
+        Used by multi-backend deployments (staging previews) where one shared
+        agent serves rooms created by different APIs.
+        """
+        self.base_url = url.rstrip("/")
+
     async def set_conversation_id(self, conversation_id: str) -> None:
         """Store and broadcast conversation ID to room participants."""
         if not conversation_id:

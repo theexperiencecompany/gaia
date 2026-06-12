@@ -76,6 +76,10 @@ async def get_token(
     selected_voice = await get_user_voice(user_id)
     if selected_voice:
         metadata["voiceId"] = selected_voice
+    # Multi-backend deployments (staging previews) run one shared agent —
+    # tell it which API minted this session.
+    if settings.VOICE_AGENT_BACKEND_URL:
+        metadata["backendUrl"] = settings.VOICE_AGENT_BACKEND_URL
     try:
         at = (
             api.AccessToken(settings.LIVEKIT_API_KEY, settings.LIVEKIT_API_SECRET)

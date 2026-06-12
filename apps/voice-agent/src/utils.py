@@ -3,6 +3,7 @@
 from datetime import datetime
 import json
 import time
+from typing import NamedTuple
 
 from livekit.agents.llm import ChatContext
 
@@ -43,22 +44,40 @@ def has_open_openui_fence_at_tail(s: str) -> bool:
     return OPEN_OPENUI_FENCE_TAIL_RE.search(s) is not None
 
 
-def extract_meta_data(md: str | None) -> tuple[str | None, str | None, str | None]:
-    """Extract agentToken, conversationId, and voiceId from participant metadata JSON."""
+class ParticipantMeta(NamedTuple):
+    """Session credentials carried in the LiveKit participant metadata."""
+
+    agent_token: str | None = None
+    conversation_id: str | None = None
+    voice_id: str | None = None
+    backend_url: str | None = None
+
+
+def _clean_str(value: object) -> str | None:
+    """Return the value when it is a non-empty string, else None."""
+    return value if isinstance(value, str) and value else None
+
+
+def extract_meta_data(md: str | None) -> ParticipantMeta:
+    """Extract session credentials from participant metadata JSON.
+
+    ``backendUrl`` lets one shared agent serve many backends (staging
+    previews): the /token endpoint embeds the URL of the API that minted
+    the session.
+    """
     if not md:
-        return None, None, None
+        return ParticipantMeta()
     try:
         obj = json.loads(md)
-        token = obj.get("agentToken")
-        conv_id = obj.get("conversationId")
-        voice_id = obj.get("voiceId")
-        token = token if isinstance(token, str) and token else None
-        conv_id = conv_id if isinstance(conv_id, str) and conv_id else None
-        voice_id = voice_id if isinstance(voice_id, str) and voice_id else None
-        return token, conv_id, voice_id
+        return ParticipantMeta(
+            agent_token=_clean_str(obj.get("agentToken")),
+            conversation_id=_clean_str(obj.get("conversationId")),
+            voice_id=_clean_str(obj.get("voiceId")),
+            backend_url=_clean_str(obj.get("backendUrl")),
+        )
     except (json.JSONDecodeError, AttributeError, TypeError) as e:
         logger.debug("Unparseable participant metadata", error=str(e), metadata=md[:200])
-        return None, None, None
+        return ParticipantMeta()
 
 
 def _extract_text_from_content(content: list) -> str:  # type: ignore[type-arg]
@@ -133,6 +152,7 @@ __all__ = [
     "has_open_tag_at_tail",
     "has_open_openui_fence_at_tail",
     "extract_meta_data",
+    "ParticipantMeta",
     "extract_latest_user_text",
     "build_messages_from_ctx",
     "now_ts",
