@@ -36,10 +36,10 @@ const TimeSavedCounter = dynamic(
   () => import("@/features/landing/components/sections/TimeSavedCounter"),
   { loading: SectionLoader, ssr: false },
 );
-const BuiltForEveryone = dynamic(
-  () => import("@/features/landing/components/sections/BuiltForEveryone"),
-  { loading: SectionLoader, ssr: false },
-);
+// const BuiltForEveryone = dynamic(
+//   () => import("@/features/landing/components/sections/BuiltForEveryone"),
+//   { loading: SectionLoader, ssr: false },
+// );
 const TiredBoringAssistants = dynamic(
   () => import("@/features/landing/components/sections/TiredBoringAssistants"),
   { loading: SectionLoader },
@@ -188,7 +188,7 @@ export default function LandingPageClient({
           <ComparisonGrid />
 
           {/* Positioning — why GAIA exists */}
-          <BuiltForEveryone />
+          {/* <BuiltForEveryone /> */}
 
           <OpenSource />
 
