@@ -368,6 +368,12 @@ export function VoiceControlBarContainer({
     if (!sessionStarted) return;
     let aborted = false;
     if (room.state === "disconnected") {
+      // Unlock audio playback NOW, while the voice-button click's user
+      // activation is still valid. The agent's audio element is created
+      // seconds later (post-connect, post-TTS) — far outside Chrome's
+      // activation window — so without this the browser silently blocks
+      // playback and the StartAudio fallback pill has to appear.
+      room.startAudio().catch(() => {});
       Promise.all([
         room.localParticipant.setMicrophoneEnabled(true, undefined, {
           preConnectBuffer: true,
