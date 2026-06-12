@@ -91,16 +91,23 @@ rsync_safe -aL "$WEB_DIR/public/" "$PREPARED_DIR/apps/web/public/"
 
 # Strip dead weight the desktop runtime never loads:
 # - browser sourcemaps (debugging only)
-# - onnxruntime wasm variants the wake-word engine never requests (it loads
-#   only the plain ort-wasm-simd-threaded pair; jsep=WebGPU, asyncify/jspi
-#   are alternative execution modes)
+# - onnxruntime wasm variants the wake-word engine never requests. ort 1.20's
+#   default ESM entry (what @gaia/wake-word imports) loads the JSEP flavor
+#   `ort-wasm-simd-threaded.jsep.{mjs,wasm}` even for the plain "wasm"
+#   execution provider — JSEP is the unified CPU+WebGPU build. Keep that pair;
+#   drop the plain, asyncify, and jspi flavors the loader never fetches.
+#   (Pruning jsep instead leaves the engine with "no available backend found"
+#   and the wake word silently dead in packaged builds — dev keeps every
+#   variant, so it only surfaces after packaging.)
 # - programmatic-SEO content data (feeds the pruned marketing pages;
 #   loadFeatureTranslations returns {} gracefully when files are missing)
 echo "Pruning sourcemaps, unused wasm variants, and SEO data..."
 find "$PREPARED_DIR/apps/web/.next" -name '*.map' -delete
-rm -f "$PREPARED_DIR/apps/web/public/wake-word/ort/"*.asyncify.* \
-      "$PREPARED_DIR/apps/web/public/wake-word/ort/"*.jsep.* \
-      "$PREPARED_DIR/apps/web/public/wake-word/ort/"*.jspi.*
+ORT_DIR="$PREPARED_DIR/apps/web/public/wake-word/ort"
+rm -f "$ORT_DIR/"*.asyncify.* "$ORT_DIR/"*.jspi.*
+# Plain (non-jsep) pair — a different build flavor the ort 1.20 loader does
+# not request; delete by exact name so the jsep pair is preserved.
+rm -f "$ORT_DIR/ort-wasm-simd-threaded.wasm" "$ORT_DIR/ort-wasm-simd-threaded.mjs"
 rm -rf "$PREPARED_DIR/apps/web/public/data/i18n"
 
 # Strip prerendered marketing/SEO pages the desktop app never serves
