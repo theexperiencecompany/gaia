@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
 import {
   Modal,
   ModalBody,
@@ -10,15 +9,11 @@ import {
   ModalHeader,
 } from "@heroui/modal";
 import { Tab, Tabs } from "@heroui/tabs";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { MentionTextarea } from "@/features/integrations/components/MentionTextarea";
+import { MentionEditor } from "@/features/integrations/components/MentionEditor";
 import type { Integration } from "@/features/integrations/types";
-import {
-  extractMentionedTools,
-  removeToolMention,
-} from "@/features/integrations/utils/toolMentions";
 
 // Matches the backend cap in integration_instructions_models.py
 const MAX_CHARS = 8000;
@@ -32,40 +27,6 @@ interface IntegrationInstructionsModalProps {
   toolNames: string[];
   onSave: (content: string) => Promise<void>;
 }
-
-interface MentionedToolChipsProps {
-  names: string[];
-  integration: Integration;
-  onRemove?: (name: string) => void;
-}
-
-const MentionedToolChips = ({
-  names,
-  integration,
-  onRemove,
-}: MentionedToolChipsProps) => {
-  if (names.length === 0) return null;
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-      {names.map((name) => (
-        <Chip
-          key={name}
-          size="sm"
-          variant="flat"
-          radius="full"
-          startContent={getToolCategoryIcon(
-            integration.id,
-            { size: 14, width: 14, height: 14, showBackground: false },
-            integration.iconUrl,
-          )}
-          onClose={onRemove ? () => onRemove(name) : undefined}
-        >
-          {name}
-        </Chip>
-      ))}
-    </div>
-  );
-};
 
 export const IntegrationInstructionsModal = ({
   isOpen,
@@ -96,9 +57,14 @@ export const IntegrationInstructionsModal = ({
   const isDirty = value !== savedContent;
   const canMention = toolNames.length > 0;
 
-  const mentionedTools = useMemo(
-    () => extractMentionedTools(value, toolNames),
-    [value, toolNames],
+  const renderMentionIcon = useCallback(
+    () =>
+      getToolCategoryIcon(
+        integration.id,
+        { size: 14, width: 14, height: 14, showBackground: false },
+        integration.iconUrl,
+      ),
+    [integration.id, integration.iconUrl],
   );
 
   const handleSave = async () => {
@@ -150,19 +116,13 @@ export const IntegrationInstructionsModal = ({
             }}
           >
             <Tab key="write" title="Write">
-              <MentionTextarea
+              <MentionEditor
                 value={value}
                 onChange={setValue}
                 toolNames={toolNames}
+                renderMentionIcon={renderMentionIcon}
                 maxLength={MAX_CHARS}
-                rows={10}
                 placeholder={`e.g. Focus on #eng, #design, and #pm.\nNever post to #general.\nDefault to a friendly, concise tone.`}
-              />
-
-              <MentionedToolChips
-                names={mentionedTools}
-                integration={integration}
-                onRemove={(name) => setValue(removeToolMention(value, name))}
               />
 
               <div className="mt-2 flex items-center justify-between text-xs font-light text-zinc-500">
@@ -178,7 +138,7 @@ export const IntegrationInstructionsModal = ({
             </Tab>
 
             <Tab key="preview" title="Preview">
-              <div className="min-h-[16rem] rounded-2xl bg-zinc-800/50 p-4">
+              <div className="min-h-60 rounded-2xl bg-zinc-800/50 p-4">
                 {value.trim() ? (
                   <MarkdownRenderer content={value} className="text-sm" />
                 ) : (
@@ -188,11 +148,6 @@ export const IntegrationInstructionsModal = ({
                   </p>
                 )}
               </div>
-
-              <MentionedToolChips
-                names={mentionedTools}
-                integration={integration}
-              />
             </Tab>
           </Tabs>
         </ModalBody>

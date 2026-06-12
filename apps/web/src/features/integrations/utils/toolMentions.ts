@@ -1,7 +1,7 @@
 /**
  * Shared helpers for `@<toolName>` mentions inside integration custom
  * instructions. The regex is the single source of truth for what counts as a
- * mention — the editor backdrop, the chip strip, and removal all use it.
+ * mention — segment building (chips) and autocomplete both derive from it.
  */
 
 export const escapeRegExp = (value: string): string =>
@@ -22,20 +22,33 @@ export const buildMentionRegex = (toolNames: string[]): RegExp | null => {
   return new RegExp(String.raw`@(?:${alternation})(?!\w)`, "g");
 };
 
-/** Unique mentioned tool names (without the `@`), in order of appearance. */
-export const extractMentionedTools = (
+export interface MentionSegment {
+  text: string;
+  mention: boolean;
+  offset: number;
+}
+
+/** Split text on `@<toolName>` occurrences so mentions can render as chips. */
+export const buildMentionSegments = (
   value: string,
   toolNames: string[],
-): string[] => {
+): MentionSegment[] => {
   const re = buildMentionRegex(toolNames);
-  if (!re) return [];
-  const seen = new Set<string>();
-  for (const match of value.matchAll(re)) seen.add(match[0].slice(1));
-  return Array.from(seen);
-};
-
-/** Remove every `@<toolName>` occurrence (plus one trailing space, if any). */
-export const removeToolMention = (value: string, toolName: string): string => {
-  const re = new RegExp(String.raw`@${escapeRegExp(toolName)}(?!\w) ?`, "g");
-  return value.replace(re, "");
+  if (!re) return [{ text: value, mention: false, offset: 0 }];
+  const segments: MentionSegment[] = [];
+  let last = 0;
+  for (const match of value.matchAll(re)) {
+    const index = match.index ?? 0;
+    if (index > last)
+      segments.push({
+        text: value.slice(last, index),
+        mention: false,
+        offset: last,
+      });
+    segments.push({ text: match[0], mention: true, offset: index });
+    last = index + match[0].length;
+  }
+  if (last < value.length)
+    segments.push({ text: value.slice(last), mention: false, offset: last });
+  return segments;
 };
