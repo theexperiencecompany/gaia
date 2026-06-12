@@ -16,6 +16,7 @@ import {
 } from "@/features/chat/components/voice-agent/VoiceControlBarContainer";
 import { VoiceModeBackground } from "@/features/chat/components/voice-agent/VoiceModeBackground";
 import { useFetchIntegrationStatus } from "@/features/integrations/hooks/useIntegrations";
+import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -26,6 +27,7 @@ import {
   useComposerTextActions,
   usePendingPrompt,
 } from "@/stores/composerStore";
+import { usePricingModalStore } from "@/stores/pricingModalStore";
 import {
   useDiscoveredConversationId,
   useVoiceModeActions,
@@ -38,6 +40,8 @@ const ChatPage = React.memo(function MainChat() {
   const voiceModeActive = useVoiceModeActive();
   const storeDiscoveredId = useDiscoveredConversationId();
   const { enterVoiceMode, exitVoiceMode } = useVoiceModeActions();
+  const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const openPricingModal = usePricingModalStore((s) => s.openModal);
   const pendingPrompt = usePendingPrompt();
   const { clearPendingPrompt } = useComposerTextActions();
   const setActiveConversationId = useChatStore(
@@ -176,6 +180,17 @@ const ChatPage = React.memo(function MainChat() {
     hasMessages,
     conversationId: convoIdParam,
     voiceModeActive: () => {
+      // Voice mode is paid-only (the /token endpoint enforces it server-side
+      // too). Free users get the upgrade modal instead of a session.
+      if (!subscriptionStatus?.is_subscribed) {
+        trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
+          voice_mode_enabled: false,
+          conversation_id: convoIdParam,
+          blocked_reason: "upgrade_required",
+        });
+        openPricingModal();
+        return;
+      }
       trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
         voice_mode_enabled: true,
         conversation_id: convoIdParam,

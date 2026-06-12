@@ -54,6 +54,15 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         pro=RateLimitConfig(day=3000, month=60000),  # +20% / +50%
         info=FeatureInfo(title="Chat Messages", description="Send messages to AI assistants"),
     ),
+    # VOICE (Very Expensive - LiveKit + STT + TTS per session)
+    "voice_mode": TieredRateLimits(
+        free=RateLimitConfig(day=0, month=0),  # Paid-only: no free usage
+        pro=RateLimitConfig(day=50, month=1000),
+        info=FeatureInfo(
+            title="Voice Mode",
+            description="Real-time voice conversations with GAIA",
+        ),
+    ),
     # FILE OPERATIONS (Expensive - Storage & Processing)
     "file_upload": TieredRateLimits(
         free=RateLimitConfig(day=2, month=5),  # Keep restrictive

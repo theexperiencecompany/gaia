@@ -9,6 +9,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
 )
 from app.api.v1.middleware.agent_auth import create_agent_token
+from app.api.v1.middleware.tiered_rate_limiter import tiered_rate_limit
 from app.config.settings import settings
 from shared.py.wide_events import log
 
@@ -16,7 +17,8 @@ router = APIRouter()
 
 
 @router.get("/token")
-def get_token(
+@tiered_rate_limit("voice_mode")
+async def get_token(
     user: dict = Depends(get_current_user),
     conversationId: str | None = None,
 ):

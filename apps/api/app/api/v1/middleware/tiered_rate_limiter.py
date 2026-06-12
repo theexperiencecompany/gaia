@@ -23,6 +23,7 @@ from app.config.rate_limits import (
     FEATURE_LIMITS,
     RateLimitPeriod,
     get_feature_info,
+    get_feature_limits,
     get_limits_for_plan,
     get_reset_time,
     get_time_window_key,
@@ -85,6 +86,16 @@ class TieredRateLimiter:
     ) -> dict[str, UsageInfo]:
         current_limits = get_limits_for_plan(feature_key, user_plan)
         usage_info = {}
+
+        # Plan gate: a plan with NO limits at all (day and month both 0) has no
+        # access to the feature — the per-period loop below skips 0 limits, so
+        # without this check a fully-zeroed plan would be unlimited instead of
+        # blocked. plan_required is set when a paid plan does have access.
+        if current_limits.day <= 0 and current_limits.month <= 0:
+            paid_limits = get_feature_limits(feature_key).pro
+            paid_has_access = paid_limits.day > 0 or paid_limits.month > 0
+            plan_required = "pro" if (user_plan == PlanType.FREE and paid_has_access) else None
+            raise RateLimitExceededException(feature_key, plan_required)
 
         for period in [RateLimitPeriod.DAY, RateLimitPeriod.MONTH]:
             limit = getattr(current_limits, period.value)
