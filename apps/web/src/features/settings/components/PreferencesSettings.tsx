@@ -5,7 +5,6 @@ import {
   Select,
   SelectItem,
   type SharedSelection,
-  Textarea,
 } from "@heroui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
@@ -15,6 +14,7 @@ import { StatusIndicator } from "@/features/settings/components/StatusIndicator"
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { mergedOnboardingUpdate } from "@/features/settings/utils/onboardingPreferences";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import {
@@ -68,6 +68,8 @@ export default function PreferencesSettings({
     label: tz.formattedLabel,
   }));
 
+  // custom_instructions is edited in Settings > Custom Instructions, but must
+  // stay in this payload: the backend replaces the whole preferences object.
   const [preferences, setPreferences] = useState({
     profession: user.onboarding?.preferences?.profession || "",
     response_style: user.onboarding?.preferences?.response_style || "",
@@ -126,6 +128,23 @@ export default function PreferencesSettings({
           await authApi.updateOnboardingPreferences(sanitizedPreferences);
 
         if (response.success) {
+          updateUser(
+            mergedOnboardingUpdate(user.onboarding, {
+              ...(sanitizedPreferences.profession
+                ? { profession: sanitizedPreferences.profession }
+                : {}),
+              ...(sanitizedPreferences.response_style
+                ? { response_style: sanitizedPreferences.response_style }
+                : {}),
+              ...(sanitizedPreferences.custom_instructions
+                ? {
+                    custom_instructions:
+                      sanitizedPreferences.custom_instructions,
+                  }
+                : {}),
+            }),
+          );
+
           // If timezone changed, update it separately
           if (timezone !== lastSavedPreferences.current.timezone) {
             await updateTimezone(timezone);
@@ -155,7 +174,7 @@ export default function PreferencesSettings({
         setIsUpdating(false);
       }
     },
-    [updateTimezone],
+    [updateTimezone, updateUser, user.onboarding],
   );
 
   // Debounced update function
@@ -209,18 +228,6 @@ export default function PreferencesSettings({
     const updatedPreferences = {
       ...preferences,
       response_style: customStyle,
-    };
-    setPreferences(updatedPreferences);
-    debouncedUpdate(updatedPreferences);
-  };
-
-  const handleCustomInstructionsChange = (customInstructions: string) => {
-    // Convert empty strings to null for backend
-    const instructions =
-      customInstructions.trim() === "" ? null : customInstructions;
-    const updatedPreferences = {
-      ...preferences,
-      custom_instructions: instructions,
     };
     setPreferences(updatedPreferences);
     debouncedUpdate(updatedPreferences);
@@ -397,24 +404,6 @@ export default function PreferencesSettings({
                 isDisabled={isUpdating}
               />
             )}
-        </SettingsRow>
-
-        <SettingsRow
-          label="Custom Instructions"
-          description="These instructions will be included in every conversation."
-          stacked
-        >
-          <Textarea
-            placeholder="Add any specific instructions for how GAIA should assist you..."
-            value={preferences.custom_instructions || ""}
-            onChange={(e) => handleCustomInstructionsChange(e.target.value)}
-            isDisabled={isUpdating}
-            minRows={3}
-            classNames={{
-              input: "bg-zinc-800/50 text-sm",
-              inputWrapper: "bg-zinc-800/50 hover:bg-zinc-700/50",
-            }}
-          />
         </SettingsRow>
       </SettingsSection>
 

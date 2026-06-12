@@ -1,6 +1,5 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
 import {
   type ClipboardEvent,
   type FormEvent,
@@ -11,6 +10,7 @@ import {
   useMemo,
   useRef,
 } from "react";
+import { MentionChip } from "@/features/integrations/components/MentionChip";
 import { useMentionEditor } from "@/features/integrations/hooks/useMentionEditor";
 import { MENTION_ATTR } from "@/features/integrations/utils/mentionEditorDom";
 import { buildMentionSegments } from "@/features/integrations/utils/toolMentions";
@@ -45,17 +45,13 @@ const MentionChipToken = ({
       contentEditable={false}
       className="mx-0.5 inline-flex translate-y-1 align-baseline"
     >
-      <Chip
-        size="sm"
-        variant="flat"
-        radius="full"
-        startContent={renderMentionIcon?.()}
+      <MentionChip
+        name={name}
+        icon={renderMentionIcon?.()}
         onClose={() => {
           if (tokenRef.current) onRemove(tokenRef.current);
         }}
-      >
-        {name}
-      </Chip>
+      />
     </span>
   );
 };

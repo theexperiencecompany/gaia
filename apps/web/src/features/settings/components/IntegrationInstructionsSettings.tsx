@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Textarea } from "@heroui/input";
 import { Skeleton } from "@heroui/skeleton";
 import { useQueries } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -14,9 +15,11 @@ import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useIntegrationTools } from "@/features/integrations/hooks/useIntegrationTools";
 import type { Integration } from "@/features/integrations/types";
 import { instructionsPreview } from "@/features/integrations/utils/instructionsPreview";
+import { StatusIndicator } from "@/features/settings/components/StatusIndicator";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { useGlobalCustomInstructions } from "@/features/settings/hooks/useGlobalCustomInstructions";
 
 interface InstructionsModalHostProps {
   integration: Integration;
@@ -59,6 +62,7 @@ const SKELETON_KEYS = Array.from(
 
 export function IntegrationInstructionsSettings() {
   const router = useRouter();
+  const globalInstructions = useGlobalCustomInstructions();
   const { integrations, isLoading: integrationsLoading } = useIntegrations();
 
   const connected = useMemo(
@@ -90,9 +94,28 @@ export function IntegrationInstructionsSettings() {
 
   return (
     <SettingsPage>
+      <SettingsSection>
+        <SettingsRow
+          label="Custom Instructions"
+          description="Included in every conversation."
+          stacked
+        >
+          <Textarea
+            placeholder="Add any specific instructions for how GAIA should assist you..."
+            value={globalInstructions.value}
+            onChange={(e) => globalInstructions.onChange(e.target.value)}
+            minRows={3}
+            classNames={{
+              input: "bg-zinc-800/50 text-sm",
+              inputWrapper: "bg-zinc-800/50 hover:bg-zinc-700/50",
+            }}
+          />
+        </SettingsRow>
+      </SettingsSection>
+
       <SettingsSection
-        title="Custom Instructions"
-        description="Standing guidance GAIA follows for each connected app — tap an app to edit what it should know."
+        title="Apps"
+        description="Tap a connected app to tell GAIA how to use it."
       >
         {isLoading ? (
           SKELETON_KEYS.map((key) => (
@@ -148,6 +171,11 @@ export function IntegrationInstructionsSettings() {
           onClose={() => setIsModalOpen(false)}
         />
       )}
+
+      <StatusIndicator
+        isUpdating={globalInstructions.isSaving}
+        hasUnsavedChanges={globalInstructions.hasUnsavedChanges}
+      />
     </SettingsPage>
   );
 }

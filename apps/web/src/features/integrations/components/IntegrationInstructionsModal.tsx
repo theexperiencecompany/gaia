@@ -9,14 +9,24 @@ import {
   ModalHeader,
 } from "@heroui/modal";
 import { Tab, Tabs } from "@heroui/tabs";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Components } from "react-markdown";
+import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { MentionChip } from "@/features/integrations/components/MentionChip";
 import { MentionEditor } from "@/features/integrations/components/MentionEditor";
 import type { Integration } from "@/features/integrations/types";
+import {
+  MENTION_HREF_PREFIX,
+  MENTION_LINK_PROTOCOL,
+  mentionsToMarkdownLinks,
+} from "@/features/integrations/utils/toolMentions";
 
 // Matches the backend cap in integration_instructions_models.py
 const MAX_CHARS = 8000;
+
+const MENTION_PROTOCOLS = [MENTION_LINK_PROTOCOL];
 
 interface IntegrationInstructionsModalProps {
   isOpen: boolean;
@@ -61,10 +71,36 @@ export const IntegrationInstructionsModal = ({
     () =>
       getToolCategoryIcon(
         integration.id,
-        { size: 14, width: 14, height: 14, showBackground: false },
+        { size: 16, width: 16, height: 16, showBackground: false },
         integration.iconUrl,
       ),
     [integration.id, integration.iconUrl],
+  );
+
+  // Preview: mentions become `mention:` links the anchor override renders as
+  // chips, so they look the same as in the editor.
+  const previewContent = useMemo(
+    () => mentionsToMarkdownLinks(value, toolNames),
+    [value, toolNames],
+  );
+
+  const previewComponents = useMemo<Components>(
+    () => ({
+      a: ({ href, children }) => {
+        if (typeof href === "string" && href.startsWith(MENTION_HREF_PREFIX)) {
+          const name = decodeURIComponent(
+            href.slice(MENTION_HREF_PREFIX.length),
+          );
+          return (
+            <span className="mx-0.5 inline-flex translate-y-0.5">
+              <MentionChip name={name} icon={renderMentionIcon()} />
+            </span>
+          );
+        }
+        return <CustomAnchor href={href}>{children}</CustomAnchor>;
+      },
+    }),
+    [renderMentionIcon],
   );
 
   const handleSave = async () => {
@@ -95,9 +131,8 @@ export const IntegrationInstructionsModal = ({
               Custom instructions for {integration.name}
             </span>
             <span className="text-sm font-light text-zinc-400">
-              Tell GAIA how you use {integration.name} — preferences, defaults,
-              and things to avoid. Applied every time GAIA works with it.
-              {canMention ? " Type @ to mention a specific tool." : ""} Markdown
+              Tell GAIA how you use {integration.name}.
+              {canMention ? " Type @ to mention a tool." : ""} Markdown
               supported.
             </span>
           </div>
@@ -140,7 +175,12 @@ export const IntegrationInstructionsModal = ({
             <Tab key="preview" title="Preview">
               <div className="min-h-60 rounded-2xl bg-zinc-800/50 p-4">
                 {value.trim() ? (
-                  <MarkdownRenderer content={value} className="text-sm" />
+                  <MarkdownRenderer
+                    content={previewContent}
+                    className="text-sm"
+                    components={previewComponents}
+                    extraLinkProtocols={MENTION_PROTOCOLS}
+                  />
                 ) : (
                   <p className="py-12 text-center text-sm text-zinc-500">
                     Nothing to preview yet — switch to Write and add some

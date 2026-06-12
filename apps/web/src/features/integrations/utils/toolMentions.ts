@@ -22,6 +22,26 @@ export const buildMentionRegex = (toolNames: string[]): RegExp | null => {
   return new RegExp(String.raw`@(?:${alternation})(?!\w)`, "g");
 };
 
+export const MENTION_LINK_PROTOCOL = "mention";
+export const MENTION_HREF_PREFIX = `${MENTION_LINK_PROTOCOL}:`;
+
+/**
+ * Rewrite `@<toolName>` mentions as `[@<toolName>](mention:<toolName>)`
+ * markdown links so a renderer can swap them for chips.
+ */
+export const mentionsToMarkdownLinks = (
+  value: string,
+  toolNames: string[],
+): string => {
+  const re = buildMentionRegex(toolNames);
+  if (!re) return value;
+  return value.replace(
+    re,
+    (match) =>
+      `[${match}](${MENTION_HREF_PREFIX}${encodeURIComponent(match.slice(1))})`,
+  );
+};
+
 export interface MentionSegment {
   text: string;
   mention: boolean;
