@@ -7,7 +7,7 @@ Covers:
 - integration_connection_service.py (build_integrations_config, connect_mcp_integration,
   connect_composio_integration, connect_self_integration, disconnect_integration,
   _invalidate_caches)
-- user_integrations.py (get_user_integrations, get_user_connected_integrations,
+- user_integrations.py (get_user_integrations, get_user_integration_records,
   add_user_integration, remove_user_integration, check_user_has_integration,
   get_user_integration_capabilities)
 - user_integration_status.py (update_user_integration_status)
@@ -63,8 +63,8 @@ from app.services.integrations.user_integration_status import (
 from app.services.integrations.user_integrations import (
     add_user_integration,
     check_user_has_integration,
-    get_user_connected_integrations,
     get_user_integration_capabilities,
+    get_user_integration_records,
     get_user_integrations,
     remove_user_integration,
 )
@@ -889,7 +889,7 @@ class TestGetUserConnectedIntegrations:
         mock_cursor.__aiter__ = aiter_docs
         mock_collection.find = MagicMock(return_value=mock_cursor)
 
-        result = await get_user_connected_integrations.__wrapped__(USER_ID)
+        result = await get_user_integration_records.__wrapped__(USER_ID)
 
         assert len(result) == 1
         assert result[0]["integration_id"] == "github"
@@ -905,7 +905,7 @@ class TestGetUserConnectedIntegrations:
         mock_cursor.__aiter__ = aiter_empty
         mock_collection.find = MagicMock(return_value=mock_cursor)
 
-        result = await get_user_connected_integrations.__wrapped__(USER_ID)
+        result = await get_user_integration_records.__wrapped__(USER_ID)
         assert result == []
 
 
@@ -1068,7 +1068,7 @@ class TestGetUserIntegrationCapabilities:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_user_connected_integrations",
+        "app.services.integrations.user_integrations.get_user_integration_records",
         new_callable=AsyncMock,
     )
     @patch(
@@ -1116,7 +1116,7 @@ class TestGetUserIntegrationCapabilities:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_user_connected_integrations",
+        "app.services.integrations.user_integrations.get_user_integration_records",
         new_callable=AsyncMock,
     )
     @patch(
@@ -1145,7 +1145,7 @@ class TestGetUserIntegrationCapabilities:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_user_connected_integrations",
+        "app.services.integrations.user_integrations.get_user_integration_records",
         new_callable=AsyncMock,
     )
     @patch(
@@ -1171,7 +1171,7 @@ class TestGetUserIntegrationCapabilities:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_user_connected_integrations",
+        "app.services.integrations.user_integrations.get_user_integration_records",
         new_callable=AsyncMock,
     )
     @patch(

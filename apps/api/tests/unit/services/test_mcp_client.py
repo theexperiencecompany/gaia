@@ -2357,7 +2357,7 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         with (
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
-                "app.services.mcp.mcp_client.get_user_connected_integrations",
+                "app.services.mcp.mcp_client.get_user_integration_records",
                 new_callable=AsyncMock,
                 return_value=[
                     {"integration_id": "db_int", "status": "connected"},
@@ -2378,7 +2378,7 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         client = MCPClient(user_id=USER_ID)
         with (
             patch(
-                "app.services.mcp.mcp_client.get_user_connected_integrations",
+                "app.services.mcp.mcp_client.get_user_integration_records",
                 new_callable=AsyncMock,
                 return_value=[],
             ),
@@ -2390,7 +2390,7 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         client = MCPClient(user_id=USER_ID)
         with (
             patch(
-                "app.services.mcp.mcp_client.get_user_connected_integrations",
+                "app.services.mcp.mcp_client.get_user_integration_records",
                 new_callable=AsyncMock,
                 return_value=[
                     {"integration_id": "pending_int", "status": "created"},
@@ -2404,7 +2404,7 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         client = MCPClient(user_id=USER_ID)
         with (
             patch(
-                "app.services.mcp.mcp_client.get_user_connected_integrations",
+                "app.services.mcp.mcp_client.get_user_integration_records",
                 new_callable=AsyncMock,
                 side_effect=Exception("DB error"),
             ),
@@ -2418,7 +2418,7 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         with (
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
-                "app.services.mcp.mcp_client.get_user_connected_integrations",
+                "app.services.mcp.mcp_client.get_user_integration_records",
                 new_callable=AsyncMock,
                 return_value=[
                     {"integration_id": "err_int", "status": "connected"},
