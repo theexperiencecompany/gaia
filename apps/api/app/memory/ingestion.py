@@ -18,6 +18,7 @@ from app.constants.memory import (
     EPISODE_ENTRY_TIME_FORMAT,
     RECENT_FACTS_LIMIT,
     TRANSCRIPT_CHUNK_MAX_CHARS,
+    TRANSCRIPT_CHUNK_OVERLAP_CHARS,
     TRANSCRIPT_CHUNK_TURNS,
     TRANSCRIPT_CHUNKS_PER_SESSION_CAP,
     MemoryKind,
@@ -455,19 +456,33 @@ async def _store_conversation_chunks(
     chunks: list[str] = []
     current: list[str] = []
     current_len = 0
+
+    def _flush() -> None:
+        nonlocal current, current_len
+        if current:
+            chunks.append("\n".join(current))
+            current, current_len = [], 0
+
     for message in messages:
         content = message.get("content", "")
         if not content:
             continue
         line = f"{message.get('role', 'user')}: {content}"
+        if len(line) > TRANSCRIPT_CHUNK_MAX_CHARS:
+            # A single long turn — typically a list or detailed answer GAIA
+            # generated ("here are 100 prompt parameters: ..."). Split it into
+            # overlapping windows so every item stays searchable; truncating it
+            # would silently drop the tail (and the exact detail asked for later).
+            _flush()
+            step = TRANSCRIPT_CHUNK_MAX_CHARS - TRANSCRIPT_CHUNK_OVERLAP_CHARS
+            for start in range(0, len(line), step):
+                chunks.append(line[start : start + TRANSCRIPT_CHUNK_MAX_CHARS])
+            continue
         current.append(line)
         current_len += len(line)
         if len(current) >= TRANSCRIPT_CHUNK_TURNS or current_len >= TRANSCRIPT_CHUNK_MAX_CHARS:
-            chunks.append("\n".join(current))
-            current, current_len = [], 0
-    if current:
-        chunks.append("\n".join(current))
-    chunks = [chunk[:TRANSCRIPT_CHUNK_MAX_CHARS] for chunk in chunks]
+            _flush()
+    _flush()
     chunks = chunks[:TRANSCRIPT_CHUNKS_PER_SESSION_CAP]
     if not chunks:
         return

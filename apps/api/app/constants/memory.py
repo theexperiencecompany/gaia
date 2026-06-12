@@ -38,6 +38,9 @@ CHROMA_CONVERSATION_CHUNKS_COLLECTION = "gaia_conversation_chunks" + _COLLECTION
 # searchable verbatim — the tier full-context systems win with.
 TRANSCRIPT_CHUNK_TURNS = 4
 TRANSCRIPT_CHUNK_MAX_CHARS = 1_600
+# Overlap when a single long turn is split across windows, so an item near a
+# window boundary isn't cut in half and stays matchable from either side.
+TRANSCRIPT_CHUNK_OVERLAP_CHARS = 200
 TRANSCRIPT_CHUNKS_PER_SESSION_CAP = 40
 TRANSCRIPT_RECALL_LIMIT = 3
 
