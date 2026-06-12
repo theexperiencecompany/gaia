@@ -17,7 +17,7 @@ logger = get_contextual_logger("config")
 class BaseAppSettings(BaseSettings):
     """Base configuration settings for all GAIA applications."""
 
-    ENV: Literal["production", "development"] = "production"
+    ENV: Literal["production", "staging", "development"] = "production"
     SHOW_MISSING_KEY_WARNINGS: bool = True
 
     model_config = SettingsConfigDict(

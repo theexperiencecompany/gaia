@@ -54,7 +54,7 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: production
+      INFISICAL_ENV: prod
     secrets:
       - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
@@ -129,7 +129,7 @@ services:
       LOG_COLORIZE: "false"
       ARQ_METRICS_PORT: "9100"
       ENV: production
-      INFISICAL_ENV: production
+      INFISICAL_ENV: prod
     secrets:
       - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
@@ -176,7 +176,7 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: production
+      INFISICAL_ENV: prod
     secrets:
       - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
@@ -222,7 +222,7 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: production
+      INFISICAL_ENV: prod
     secrets:
       - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
@@ -268,7 +268,7 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: production
+      INFISICAL_ENV: prod
     secrets:
       - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
@@ -314,7 +314,7 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: production
+      INFISICAL_ENV: prod
     secrets:
       - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
@@ -771,7 +771,6 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: production
       # In-cluster route to the API over the overlay network (the chat-stream
       # SSE endpoint the agent's CustomLLM talks to).
       GAIA_BACKEND_URL: http://gaia-backend:80

@@ -30,9 +30,8 @@ def inject_infisical_secrets():
     - INFISICAL_MACHINE_IDENTITY_CLIENT_ID
     - INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET
 
-    The Infisical environment slug defaults to ENV, overridable via
-    INFISICAL_ENV — staging deployments run with ENV=production (or
-    development) while pulling secrets from the "staging" slug.
+    ENV doubles as the Infisical environment slug (development/staging/
+    production).
 
     In development, missing Infisical config logs a warning and returns.
     In production, raises InfisicalConfigError.
@@ -40,7 +39,6 @@ def inject_infisical_secrets():
     INFISICAL_TOKEN = os.getenv("INFISICAL_TOKEN")
     INFISICAL_PROJECT_ID = os.getenv("INFISICAL_PROJECT_ID")
     ENV = os.getenv("ENV", "production")
-    environment_slug = os.getenv("INFISICAL_ENV") or ENV
     CLIENT_ID = os.getenv("INFISICAL_MACHINE_IDENTITY_CLIENT_ID")
     CLIENT_SECRET = os.getenv("INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET")
 
@@ -80,7 +78,7 @@ def inject_infisical_secrets():
         secrets_start = time.time()
         secrets = client.secrets.list_secrets(
             project_id=INFISICAL_PROJECT_ID,
-            environment_slug=environment_slug,
+            environment_slug=ENV,
             secret_path="/",  # nosec B106 - Infisical folder path, not a credential
             expand_secret_references=True,
             view_secret_value=True,
