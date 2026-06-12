@@ -3,6 +3,9 @@
 import {
   Avatar,
   Button,
+  Input,
+  Select,
+  SelectItem,
   type Selection,
   Spinner,
   Table,
@@ -12,7 +15,15 @@ import {
   TableHeader,
   TableRow,
 } from "@heroui/react";
-import { CheckmarkCircle02Icon, PauseIcon, PlayIcon } from "@icons";
+import {
+  CheckmarkCircle02Icon,
+  FemaleSymbolIcon,
+  Globe02Icon,
+  MaleSymbolIcon,
+  PauseIcon,
+  PlayIcon,
+  Search01Icon,
+} from "@icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
@@ -28,10 +39,25 @@ const FLAG_CDN_BASE = "https://flagcdn.com/w80";
 const flagUrl = (countryCode: string) =>
   `${FLAG_CDN_BASE}/${countryCode.toLowerCase()}.png`;
 
+const ALL_FILTER = "all";
+
+function GenderIcon({ gender }: { gender: string }) {
+  if (gender === "Female") {
+    return <FemaleSymbolIcon className="h-3.5 w-3.5 shrink-0 text-pink-400" />;
+  }
+  if (gender === "Male") {
+    return <MaleSymbolIcon className="h-3.5 w-3.5 shrink-0 text-blue-400" />;
+  }
+  return null;
+}
+
 export default function VoiceSettings() {
   const { data, isLoading } = useVoices();
   const selectVoice = useSelectVoice();
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [genderFilter, setGenderFilter] = useState(ALL_FILTER);
+  const [countryFilter, setCountryFilter] = useState(ALL_FILTER);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // One shared audio element; switching voices swaps its source.
@@ -71,18 +97,51 @@ export default function VoiceSettings() {
     [data?.selected_voice_id],
   );
 
+  // Distinct filter options derived from the loaded voices.
+  const genderOptions = useMemo(
+    () => [...new Set((data?.voices ?? []).map((v) => v.gender))].sort(),
+    [data?.voices],
+  );
+  const countryOptions = useMemo(
+    () => [...new Set((data?.voices ?? []).map((v) => v.accent))].sort(),
+    [data?.voices],
+  );
+
   // Selection and playback are baked into the items so the table's cached
   // row nodes rebuild the instant either changes (optimistic select included)
   // — reading them from closure state would lag until the next refetch.
-  const rows = useMemo(
-    () =>
-      (data?.voices ?? []).map((voice) => ({
+  const rows = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return (data?.voices ?? [])
+      .filter((voice) => {
+        if (genderFilter !== ALL_FILTER && voice.gender !== genderFilter) {
+          return false;
+        }
+        if (countryFilter !== ALL_FILTER && voice.accent !== countryFilter) {
+          return false;
+        }
+        if (
+          query &&
+          !voice.name.toLowerCase().includes(query) &&
+          !voice.description.toLowerCase().includes(query)
+        ) {
+          return false;
+        }
+        return true;
+      })
+      .map((voice) => ({
         ...voice,
         isSelected: voice.voice_id === data?.selected_voice_id,
         isPlaying: voice.voice_id === playingVoiceId,
-      })),
-    [data?.voices, data?.selected_voice_id, playingVoiceId],
-  );
+      }));
+  }, [
+    data?.voices,
+    data?.selected_voice_id,
+    playingVoiceId,
+    search,
+    genderFilter,
+    countryFilter,
+  ]);
 
   const handleSelectionChange = useCallback(
     (keys: Selection) => {
@@ -105,6 +164,46 @@ export default function VoiceSettings() {
         </p>
       </div>
 
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <Input
+          aria-label="Search voices"
+          placeholder="Search voices"
+          value={search}
+          onValueChange={setSearch}
+          isClearable
+          startContent={<Search01Icon className="h-4 w-4 text-zinc-500" />}
+          className="sm:max-w-xs"
+        />
+        <Select
+          aria-label="Filter by gender"
+          placeholder="Gender"
+          selectedKeys={[genderFilter]}
+          onSelectionChange={(keys) =>
+            setGenderFilter(String(Array.from(keys)[0] ?? ALL_FILTER))
+          }
+          className="sm:max-w-40"
+        >
+          {[
+            <SelectItem key={ALL_FILTER}>All genders</SelectItem>,
+            ...genderOptions.map((g) => <SelectItem key={g}>{g}</SelectItem>),
+          ]}
+        </Select>
+        <Select
+          aria-label="Filter by country"
+          placeholder="Country"
+          selectedKeys={[countryFilter]}
+          onSelectionChange={(keys) =>
+            setCountryFilter(String(Array.from(keys)[0] ?? ALL_FILTER))
+          }
+          className="sm:max-w-44"
+        >
+          {[
+            <SelectItem key={ALL_FILTER}>All countries</SelectItem>,
+            ...countryOptions.map((c) => <SelectItem key={c}>{c}</SelectItem>),
+          ]}
+        </Select>
+      </div>
+
       <Table
         aria-label="Available voices"
         selectionMode="single"
@@ -122,7 +221,7 @@ export default function VoiceSettings() {
           items={rows}
           isLoading={isLoading}
           loadingContent={<Spinner size="sm" label="Loading voices" />}
-          emptyContent={isLoading ? " " : "No voices available"}
+          emptyContent={isLoading ? " " : "No voices match your filters"}
         >
           {(voice) => {
             const { isSelected, isPlaying } = voice;
@@ -136,6 +235,7 @@ export default function VoiceSettings() {
                         <p className="truncate text-sm text-white">
                           {voice.name}
                         </p>
+                        <GenderIcon gender={voice.gender} />
                         {isSelected && (
                           <CheckmarkCircle02Icon className="h-4 w-4 shrink-0 text-primary" />
                         )}
@@ -153,11 +253,15 @@ export default function VoiceSettings() {
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <Avatar
-                      src={flagUrl(voice.country_code)}
-                      alt={`${voice.accent} flag`}
-                      className="h-5 w-5 shrink-0"
-                    />
+                    {voice.country_code ? (
+                      <Avatar
+                        src={flagUrl(voice.country_code)}
+                        alt={`${voice.accent} flag`}
+                        className="h-5 w-5 shrink-0"
+                      />
+                    ) : (
+                      <Globe02Icon className="h-5 w-5 shrink-0 text-zinc-500" />
+                    )}
                     <span className="text-sm text-zinc-400">
                       {voice.accent}
                     </span>

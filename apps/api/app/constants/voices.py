@@ -228,3 +228,56 @@ VOICE_IDS: frozenset[str] = frozenset(v["voice_id"] for v in VOICE_CATALOG)
 
 # Users collection field holding the user's chosen ElevenLabs voice id.
 SELECTED_VOICE_FIELD = "selected_voice_id"
+
+# Maps ElevenLabs accent labels to ISO country codes for the flag column.
+# Account voices outside the curated catalog derive their flag from this;
+# unmapped accents render without a flag.
+ACCENT_TO_COUNTRY: dict[str, str] = {
+    "american": "US",
+    "british": "GB",
+    "english": "GB",
+    "australian": "AU",
+    "irish": "IE",
+    "scottish": "GB",
+    "canadian": "CA",
+    "swedish": "SE",
+    "transatlantic": "US",
+    "indian": "IN",
+    "nigerian": "NG",
+    "south african": "ZA",
+    "new zealand": "NZ",
+    "german": "DE",
+    "french": "FR",
+    "spanish": "ES",
+    "italian": "IT",
+    "japanese": "JP",
+    "korean": "KR",
+    "chinese": "CN",
+    "brazilian": "BR",
+    "mexican": "MX",
+    "polish": "PL",
+    "portuguese": "PT",
+    "russian": "RU",
+    "turkish": "TR",
+    "arabic": "SA",
+}
+
+# Human names for ElevenLabs ISO-639 language labels.
+LANGUAGE_NAMES: dict[str, str] = {
+    "en": "English",
+    "de": "German",
+    "fr": "French",
+    "es": "Spanish",
+    "it": "Italian",
+    "pt": "Portuguese",
+    "pl": "Polish",
+    "hi": "Hindi",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "zh": "Chinese",
+    "ar": "Arabic",
+    "nl": "Dutch",
+    "tr": "Turkish",
+    "sv": "Swedish",
+    "ru": "Russian",
+}
