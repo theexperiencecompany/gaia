@@ -1,13 +1,13 @@
 import {
-  AiBrain01Icon,
-  AudioWave01Icon,
+  Brain02Icon,
   ChartLineData02Icon,
   CreditCardIcon,
   DiscordIcon,
-  Link03Icon,
+  Link04Icon,
   MessageMultiple02Icon,
   NotificationIcon,
   UserCircleIcon,
+  VoiceIdIcon,
   WhatsappIcon,
 } from "@icons";
 
@@ -41,7 +41,7 @@ export const settingsPageItems: SettingsMenuItem[] = [
   {
     key: "linked-accounts",
     label: "Linked Accounts",
-    icon: Link03Icon,
+    icon: Link04Icon,
     href: "/settings?section=linked-accounts",
   },
   {
@@ -53,13 +53,13 @@ export const settingsPageItems: SettingsMenuItem[] = [
   {
     key: "voice",
     label: "Voice",
-    icon: AudioWave01Icon,
+    icon: VoiceIdIcon,
     href: "/settings?section=voice",
   },
   {
     key: "memory",
     label: "Memories",
-    icon: AiBrain01Icon,
+    icon: Brain02Icon,
     href: "/settings?section=memory",
   },
   {
