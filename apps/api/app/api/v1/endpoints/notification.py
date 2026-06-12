@@ -103,6 +103,7 @@ async def get_channel_preferences(
             telegram=prefs["telegram"],
             discord=prefs["discord"],
             whatsapp=prefs["whatsapp"],
+            slack=prefs["slack"],
         )
     except Exception as e:
         log.error(f"Failed to get channel preferences: {e}")
@@ -132,6 +133,8 @@ async def update_channel_preferences(
             updates["notification_channel_prefs.discord"] = preferences.discord
         if preferences.whatsapp is not None:
             updates["notification_channel_prefs.whatsapp"] = preferences.whatsapp
+        if preferences.slack is not None:
+            updates["notification_channel_prefs.slack"] = preferences.slack
 
         if updates:
             await users_collection.update_one({"_id": ObjectId(user_id)}, {"$set": updates})
@@ -142,6 +145,7 @@ async def update_channel_preferences(
             telegram=prefs["telegram"],
             discord=prefs["discord"],
             whatsapp=prefs["whatsapp"],
+            slack=prefs["slack"],
         )
     except Exception as e:
         log.error(f"Failed to update channel preferences: {e}")

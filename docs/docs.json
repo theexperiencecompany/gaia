@@ -1,7 +1,9 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "maple",
-  "scripts": ["/scripts/changelog-filter.js"],
+  "scripts": [
+    "/scripts/changelog-filter.js"
+  ],
   "name": "GAIA Documentation",
   "colors": {
     "primary": "#00bbff",
@@ -21,7 +23,7 @@
       "og:site_name": "GAIA Documentation",
       "og:url": "https://docs.heygaia.io",
       "canonical": "https://docs.heygaia.io",
-      "description": "Official Hey GAIA documentation. Learn how GAIA proactively manages your email, calendar, tasks, and workflows with 50+ integrations. Setup guides, self-hosting, developer docs, and knowledge base.",
+      "description": "Official Hey GAIA documentation. Learn how GAIA proactively manages your email, calendar, tasks, and workflows with 60+ integrations. Setup guides, self-hosting, developer docs, and knowledge base.",
       "keywords": "Hey GAIA docs, GAIA documentation, GAIA docs, AI assistant docs, GAIA setup guide, GAIA self-hosting, proactive AI assistant, workflow automation, task management AI, email automation"
     }
   },
@@ -32,35 +34,99 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Documentation",
+        "tab": "Docs",
         "groups": [
           {
             "group": "Get Started",
             "pages": [
               "introduction",
               "quick-start",
-              "integrations",
-              "workflows",
-              "resources",
-              "manifesto"
+              "guides/chatting-effectively"
             ]
           },
           {
-            "group": "CLI",
-            "pages": ["cli/installation", "cli/commands"]
+            "group": "What GAIA Can Do",
+            "pages": [
+              "guides/managing-email",
+              "guides/tasks-todos",
+              "guides/reminders",
+              "guides/memory",
+              "workflows",
+              "integrations"
+            ]
+          },
+          {
+            "group": "How-To",
+            "pages": [
+              "guides/connecting-integrations",
+              "guides/adding-mcp-integrations",
+              "guides/building-workflows",
+              "guides/marketplace"
+            ]
+          },
+          {
+            "group": "Use GAIA Anywhere",
+            "pages": [
+              "guides/web-app",
+              "guides/desktop-app",
+              "guides/whatsapp-bot",
+              "guides/telegram-bot",
+              "guides/slack-bot",
+              "guides/discord-bot",
+              "bots/commands"
+            ]
+          },
+          {
+            "group": "Self-Hosting",
+            "pages": [
+              "self-hosting/overview"
+            ]
+          },
+          {
+            "group": "Account",
+            "pages": [
+              "guides/usage-subscription",
+              "guides/notification-settings"
+            ]
+          },
+          {
+            "group": "More",
+            "pages": [
+              "resources",
+              "manifesto"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Developers",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "developers/introduction"
+            ]
           },
           {
             "group": "Self-Hosting",
             "pages": [
               "self-hosting/overview",
               "self-hosting/cli-setup",
-              "self-hosting/docker-setup"
+              "self-hosting/docker-setup",
+              "configuration/environment-variables",
+              "configuration/docker"
             ]
           },
           {
-            "group": "Developers",
+            "group": "CLI",
             "pages": [
-              "developers/introduction",
+              "cli/installation",
+              "cli/commands"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
               "developers/development-setup",
               "developers/monorepo",
               "developers/commands",
@@ -69,28 +135,23 @@
             ]
           },
           {
-            "group": "Messaging Platforms (Bots)",
+            "group": "Bot Development",
             "pages": [
               "bots/overview",
-              "bots/commands",
-              "bots/discord",
+              "bots/whatsapp",
+              "bots/telegram",
               "bots/slack",
-              "bots/telegram"
+              "bots/discord"
             ]
           },
           {
-            "group": "Design System",
-            "pages": ["design-system"]
-          },
-          {
-            "group": "Extra Developer Config",
+            "group": "Conventions",
             "pages": [
-              "configuration/environment-variables",
-              "configuration/docker",
-              "configuration/profiling",
               "configuration/code-style",
               "configuration/pull-requests",
-              "configuration/conventional-commits"
+              "configuration/conventional-commits",
+              "configuration/profiling",
+              "design-system"
             ]
           }
         ]
@@ -100,7 +161,9 @@
         "groups": [
           {
             "group": "Overview",
-            "pages": ["release-notes"]
+            "pages": [
+              "release-notes"
+            ]
           },
           {
             "group": "By App",
@@ -132,48 +195,7 @@
         ]
       },
       {
-        "tab": "Guides",
-        "groups": [
-          {
-            "group": "Getting Started",
-            "pages": [
-              "guides/chatting-effectively",
-              "guides/connecting-integrations",
-              "guides/adding-mcp-integrations",
-              "guides/memory"
-            ]
-          },
-          {
-            "group": "Productivity",
-            "pages": [
-              "guides/managing-email",
-              "guides/tasks-todos",
-              "guides/reminders"
-            ]
-          },
-          {
-            "group": "Automation",
-            "pages": ["guides/building-workflows", "guides/marketplace"]
-          },
-          {
-            "group": "Apps & Platforms",
-            "pages": [
-              "guides/desktop-app",
-              "guides/slack-bot",
-              "guides/discord-telegram"
-            ]
-          },
-          {
-            "group": "Account",
-            "pages": [
-              "guides/usage-subscription",
-              "guides/notification-settings"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "Knowledge Base",
+        "tab": "Learn",
         "groups": [
           {
             "group": "What is GAIA?",
@@ -448,16 +470,10 @@
       "linkedin": "https://linkedin.com/company/heygaia"
     }
   },
-  "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
-    ]
-  }
+  "redirects": [
+    {
+      "source": "/guides/discord-telegram",
+      "destination": "/guides/discord-bot"
+    }
+  ]
 }

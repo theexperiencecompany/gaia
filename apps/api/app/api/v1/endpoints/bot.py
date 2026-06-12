@@ -35,7 +35,7 @@ from app.services.bot_service import BotService
 from app.services.bot_token_service import create_bot_session_token
 from app.services.chat.stream import run_chat_stream_background
 from app.services.integrations.marketplace import get_integration_details
-from app.services.integrations.user_integrations import get_user_connected_integrations
+from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.platform_link_service import Platform, PlatformLinkService
 from shared.py.wide_events import log
 
@@ -404,7 +404,7 @@ async def get_settings(
 
     connected_integrations_list = []
     try:
-        integrations = await get_user_connected_integrations(user_id)
+        integrations = await get_user_integration_records(user_id)
         for integration_doc in integrations:
             integration_id = integration_doc.get("integration_id")
             status = integration_doc.get("status", "created")

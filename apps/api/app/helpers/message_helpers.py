@@ -12,7 +12,9 @@ from app.agents.prompts.onboarding_prompts import (
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     SIGNAL_MATCHING_INSTRUCTIONS,
+    WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_EXECUTION_PROMPT,
+    WORKFLOW_SILENT_NOTIFY_SECTION,
 )
 from app.agents.templates.agent_template import (
     EXECUTOR_PROMPT_TEMPLATE,
@@ -34,7 +36,7 @@ from app.models.message_models import (
 )
 from app.models.user_models import OnboardingPhase
 from app.services.gaia_knowledge_service import gaia_knowledge_service
-from app.services.integrations.user_integrations import get_user_connected_integrations
+from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.memory_service import memory_service
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow import WorkflowService
@@ -245,7 +247,7 @@ async def _get_connected_integrations_manifest(user_id: str) -> str:
     in-memory OAuth config (no extra DB calls); unknown ids fall back to the id.
     """
     try:
-        docs = await get_user_connected_integrations(user_id)
+        docs = await get_user_integration_records(user_id)
     except Exception as e:
         log.warning(f"Error building connected-integrations manifest: {e}")
         return ""
@@ -491,11 +493,28 @@ async def format_workflow_execution_message(
             tracked_todos_context=tracked_todos_ctx
         )
 
+    # Background workflow runs (workflow_id in trigger_context) send an automatic
+    # completion notification unless the workflow opted out — tell the agent which
+    # mode it's in so it neither double-notifies nor stays silent when the
+    # workflow's own instructions ask for an alert. Interactive runs get neither
+    # section: no automatic notification exists there.
+    notification_section = ""
+    if trigger_context and trigger_context.get("workflow_id"):
+        notify_on_completion = (
+            workflow.notify_on_completion
+            if workflow
+            else trigger_context.get("workflow_notify_on_completion", True)
+        )
+        notification_section = (
+            WORKFLOW_AUTO_NOTIFY_SECTION if notify_on_completion else WORKFLOW_SILENT_NOTIFY_SECTION
+        )
+
     common_args = {
         "workflow_title": workflow_title,
         "workflow_description": workflow_description,
         "workflow_steps": steps_text,
         "signal_matching_section": signal_matching_section,
+        "notification_section": notification_section,
     }
 
     # Email-triggered workflows get enhanced context

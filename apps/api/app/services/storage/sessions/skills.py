@@ -1,11 +1,11 @@
-"""SKILL.md catalog materialization + user-root docs.
+"""SKILL.md catalog materialization.
 
 Walks the in-memory skill registry (``app.agents.workspace.skill_loader``)
 and writes the per-user ``integrations/<iid>/agent/skills/`` + ``skills/``
-trees on JuiceFS, alongside the INDEX/GUIDE markdown files that anchor the
-workspace. All writes are hash-compared first — steady-state turns do
-zero I/O when the library hash and connected-integration signature haven't
-changed.
+trees on JuiceFS (plus the ``integrations/GUIDE.md`` anchor). All writes are
+hash-compared first — steady-state turns do zero I/O when the library hash and
+connected-integration signature haven't changed. The root INDEX/GUIDE docs are
+system files, materialized as symlinks by ``link_system_files_into_workspace``.
 
 A separate ``.connected`` marker is dropped (or removed) under each
 integration's ``agent/`` directory so the agent's prompt can tell, in a
@@ -22,9 +22,7 @@ from app.agents.workspace.skill_loader import (
     skills_by_subagent,
 )
 from app.agents.workspace.system_docs import (
-    INDEX_MD,
     INTEGRATIONS_GUIDE_MD,
-    SESSIONS_GUIDE_MD,
 )
 from app.services.storage._vfs_common import matches_text
 from app.services.storage.juicefs import ensure_safe_path_id
@@ -42,18 +40,6 @@ def read_text_or_none(path: Path) -> str | None:
         return path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
-
-
-def write_user_root_docs(user_root: Path) -> None:
-    """Idempotently write ``INDEX.md`` and ``sessions/GUIDE.md``."""
-    index = user_root / "INDEX.md"
-    if not matches_text(index, INDEX_MD):
-        index.parent.mkdir(parents=True, exist_ok=True)
-        index.write_text(INDEX_MD, encoding="utf-8")
-    sessions_guide = user_root / "sessions" / GUIDE_FILENAME
-    if not matches_text(sessions_guide, SESSIONS_GUIDE_MD):
-        sessions_guide.parent.mkdir(parents=True, exist_ok=True)
-        sessions_guide.write_text(SESSIONS_GUIDE_MD, encoding="utf-8")
 
 
 def read_skills_marker(user_root: Path) -> str | None:

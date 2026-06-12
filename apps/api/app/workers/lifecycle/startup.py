@@ -21,6 +21,7 @@ from app.core.provider_registration import (  # noqa: E402
     setup_warnings,
     unified_startup,
 )
+from app.utils.browser_reaper import start_browser_reaper  # noqa: E402
 from app.workers.metrics import start_metrics_server  # noqa: E402
 from shared.py.wide_events import log  # noqa: E402
 
@@ -46,3 +47,7 @@ async def startup(ctx: dict):
 
     # Use unified startup function - handles provider registration, eager init, and auto-init
     await unified_startup("arq_worker")
+
+    # Reap any crawl4ai browser drivers that escape teardown (worker crawl
+    # tasks are routinely cancelled; see app/utils/browser_reaper.py).
+    start_browser_reaper()

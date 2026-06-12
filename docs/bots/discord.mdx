@@ -1,92 +1,24 @@
 ---
-title: "Discord"
-description: "Set up and use the GAIA Discord bot to chat with your AI assistant, manage tasks, and run workflows in your server."
-icon: "discord"
+title: "Discord Bot"
+description: "Self-host the GAIA Discord bot: create a Discord application, configure OAuth, and run it against your GAIA API."
+icon: "/images/icons/discord.webp"
 ---
 
-# GAIA on Discord
+# Discord Bot Development
 
-Chat with your AI assistant, manage todos, and run workflows without leaving Discord. GAIA's Discord bot supports slash commands with autocomplete, DMs, and `@mention` responses in any channel.
+Run your own instance of the GAIA Discord bot.
 
-## Add GAIA to Your Server
+<Note>
+  Looking to use GAIA on Discord as a user? See [Using GAIA on Discord](/guides/discord-bot).
+</Note>
 
-<CardGroup cols={2}>
-  <Card
-    title="Add Bot to Your Server"
-    icon="discord"
-    href="https://heygaia.io/discord-bot"
-  >
-    Invite the GAIA bot to your own Discord server
-  </Card>
-  <Card
-    title="Join the GAIA Community"
-    icon="users"
-    href="https://discord.heygaia.io"
-  >
-    Chat with GAIA in the official GAIA Discord server
-  </Card>
-</CardGroup>
-
-## Getting Started (Users)
-
-Once GAIA is in your server (or you've joined the community server), you can start using it right away.
-
-### 1. Link Your GAIA Account
-
-Before using most commands, link your Discord account to GAIA:
-
-```
-/auth
-```
-
-You'll receive a link — click it, log in to your GAIA account, and your Discord identity will be connected automatically.
-
-### 2. Start Chatting
-
-Use the slash command in any channel:
-
-```
-/gaia What's on my schedule today?
-```
-
-Mention GAIA in any channel:
-
-```
-@GAIA Summarize my pending todos
-```
-
-Or **send GAIA a private message** — open a DM with the bot and type freely, no slash command needed:
-
-```
-What's on my calendar this week?
-```
-
-<Tip>
-  DMs are the most private way to use GAIA on Discord. Your messages are only
-  visible to you and the bot — no server members can see the conversation.
-</Tip>
-
-For the full list of available commands, see the [Commands Reference](/bots/commands).
-
-### Notes
-
-- All slash command responses are **ephemeral** (only visible to you) by default
-- Responses are streamed — a typing indicator appears while GAIA is thinking
-- Long responses are automatically truncated to Discord's 2000 character limit
-
----
-
-## Developer Setup
-
-This section is for developers who want to self-host the GAIA Discord bot.
-
-### Prerequisites
+## Prerequisites
 
 - Node.js 18+ and pnpm
 - A [Discord Developer Account](https://discord.com/developers/applications)
 - GAIA API running (see [Self-Hosting Guide](/self-hosting/overview))
 
-### Step 1: Create a Discord Application
+## Step 1: Create a Discord Application
 
 1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
 2. Click **New Application** and give it a name
@@ -96,14 +28,14 @@ This section is for developers who want to self-host the GAIA Discord bot.
    - **Server Members Intent** (optional)
 5. Copy the **Bot Token**
 
-### Step 2: Configure OAuth2 Scopes
+## Step 2: Configure OAuth2 Scopes
 
 1. Go to **OAuth2 → URL Generator**
 2. Select scopes: `bot` and `applications.commands`
 3. Select bot permissions: **Send Messages**, **Use Slash Commands**, **Read Message History**
 4. Copy the generated URL and use it to invite the bot to your server
 
-### Step 3: Set Up OAuth for Account Linking
+## Step 3: Set Up OAuth for Account Linking
 
 This enables users to link their Discord account from the GAIA web app via OAuth instead of the `/auth` bot command.
 
@@ -124,11 +56,11 @@ DISCORD_OAUTH_CLIENT_SECRET=your_client_secret
 ```
 
 <Note>
-  The Client ID here is the same as your `DISCORD_CLIENT_ID` used by the bot —
+  The Client ID here is the same as your `DISCORD_CLIENT_ID` used by the bot,
   it's the application ID, not a separate credential.
 </Note>
 
-### Step 4: Configure Environment Variables
+## Step 4: Configure Environment Variables
 
 Create a `.env` file in `apps/bots/discord/`:
 
@@ -141,7 +73,7 @@ GAIA_BOT_API_KEY=your_secure_bot_api_key
 
 `GAIA_BOT_API_KEY` must match the value configured in your GAIA API.
 
-### Step 5: Deploy Slash Commands
+## Step 5: Deploy Slash Commands
 
 Register the bot's slash commands with Discord:
 
@@ -151,7 +83,7 @@ nx run bot-discord:deploy-commands
 
 This only needs to be run once (or whenever commands change).
 
-### Step 6: Start the Bot
+## Step 6: Start the Bot
 
 ```bash
 # Development (hot reload)
@@ -161,7 +93,7 @@ nx dev bot-discord
 nx build bot-discord && nx start bot-discord
 ```
 
-### Troubleshooting
+## Troubleshooting
 
 | Problem                          | Solution                                                           |
 | -------------------------------- | ------------------------------------------------------------------ |

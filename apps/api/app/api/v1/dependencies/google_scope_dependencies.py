@@ -22,6 +22,7 @@ import httpx
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.oauth_config import get_integration_by_id, get_short_name_mapping
+from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.services.oauth.oauth_service import check_integration_status
 from shared.py.wide_events import log
 
@@ -74,6 +75,8 @@ def require_integration(integration_short_name: str):
             if not is_connected:
                 detail = {
                     "type": "integration",
+                    "error_code": INTEGRATION_NOT_CONNECTED,
+                    "toolkit": integration_short_name,
                     "message": f"Missing connection: {integration_config.name}. Please connect integrations in settings.",
                 }
                 raise HTTPException(

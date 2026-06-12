@@ -308,6 +308,22 @@ or summarizing data is not trackable work.) If nothing matches, just run the wor
 """
 
 
+WORKFLOW_AUTO_NOTIFY_SECTION = """
+NOTIFICATIONS: GAIA automatically sends the user a completion notification carrying this run's
+result on all their enabled channels when the run finishes. Do NOT call send_notification to
+announce that the workflow finished or to deliver its result — that would notify the user twice.
+Only call send_notification if the workflow instructions above explicitly ask for an immediate
+or conditional alert during the run (e.g. "ping me on WhatsApp if an email is urgent").
+"""
+
+WORKFLOW_SILENT_NOTIFY_SECTION = """
+NOTIFICATIONS: This workflow is configured to run silently — GAIA does NOT send an automatic
+completion notification; the result only lands in this conversation. If the workflow
+instructions above ask to notify, alert, ping, or message the user (including conditionally,
+like "only if something needs my attention"), deliver that alert with send_notification.
+Otherwise finish without notifying.
+"""
+
 WORKFLOW_EXECUTION_PROMPT = """You're running the user's saved workflow on their behalf. This is an automated run, so finish it end to end and don't ask the user anything.
 
 **Workflow:** {workflow_title}
@@ -315,7 +331,7 @@ WORKFLOW_EXECUTION_PROMPT = """You're running the user's saved workflow on their
 
 **Steps the executor should carry out, in order:**
 {workflow_steps}
-{signal_matching_section}
+{signal_matching_section}{notification_section}
 
 Hand the whole workflow to the executor as ONE task in a single call_executor call, with the goal and every step included in that one call. Do not make a separate call_executor call per step and do not split the work across turns: one delegation covers the entire workflow, then let the executor's result come back. Don't summarize anything yourself before the executor returns.
 
@@ -386,7 +402,7 @@ EMAIL_TRIGGERED_WORKFLOW_PROMPT = """You're running the user's saved workflow, t
 
 **Steps:**
 {workflow_steps}
-{signal_matching_section}
+{signal_matching_section}{notification_section}
 
 Use the email above as context for the run, treat the whole workflow as one job, and get it all done in this run. If this workflow only fetches, reads, or summarizes data, do NOT create a tracked todo for it.
 """

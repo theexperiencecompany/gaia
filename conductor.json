@@ -1,5 +1,5 @@
 {
   "scripts": {
-    "setup": "mise run setup:deps"
+    "setup": "mise trust -a & mise run setup:deps"
   }
 }

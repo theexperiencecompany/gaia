@@ -1,13 +1,16 @@
 ---
 title: "Using GAIA in Slack"
 description: "Bring GAIA into your Slack workspace for quick actions and team collaboration"
+icon: "/images/icons/slack.webp"
 ---
 
-## Why Use GAIA in Slack?
+import { PlatformDemo } from "/snippets/platform-demos.jsx";
 
-Switching between apps kills focus. With GAIA in Slack, you can manage todos, run workflows, check your calendar, and get answers — all without leaving the conversation you're already in.
+Switching between apps kills focus. With GAIA in Slack, you can manage todos, run workflows, check your calendar, and get answers, all without leaving the conversation you're already in.
 
 Your team gets the same benefit. Add GAIA to a shared channel and everyone can ask questions, trigger automations, and stay on top of work together.
+
+<PlatformDemo platform="slack" />
 
 ## Connect Your GAIA Account
 
@@ -25,7 +28,7 @@ Before you can use GAIA in Slack, link your Slack identity to your GAIA account.
     /auth
     ```
 
-    GAIA sends you an ephemeral link — only you can see it.
+    GAIA sends you an ephemeral link. Only you can see it.
 
   </Step>
 
@@ -67,7 +70,7 @@ In any channel GAIA has been added to, mention the bot directly:
 @GAIA Summarize the last 5 emails from the marketing team
 ```
 
-The response appears in the channel for everyone to see — useful for team questions.
+The response appears in the channel for everyone to see, useful for team questions.
 
 ### Direct message
 
@@ -78,7 +81,7 @@ Draft a follow-up email to the client about the project timeline
 ```
 
 <Note>
-  Slash command responses are **ephemeral** — only you can see them. @mentions
+  Slash command responses are **ephemeral**, only you can see them. @mentions
   and DM replies are visible to everyone in the channel or conversation.
 </Note>
 
@@ -127,9 +130,9 @@ Here are the most useful commands available in Slack. For the full list, see the
 
 GAIA behaves a little differently depending on where you talk to it.
 
-**In DMs**, every message you type goes straight to GAIA. No prefix needed. This is the best place for personal tasks — checking your calendar, managing todos, or asking questions you don't want to share with the team.
+**In DMs**, every message you type goes straight to GAIA. No prefix needed. This is the best place for personal tasks, checking your calendar, managing todos, or asking questions you don't want to share with the team.
 
-**In channels**, use `/gaia` or `@GAIA` to get the bot's attention. This works better for team collaboration — asking GAIA to summarize a document, trigger a shared workflow, or answer a question the whole team needs to see.
+**In channels**, use `/gaia` or `@GAIA` to get the bot's attention. This works better for team collaboration, asking GAIA to summarize a document, trigger a shared workflow, or answer a question the whole team needs to see.
 
 <Warning>
   Auth URLs and sensitive information are always sent as ephemeral messages
@@ -158,7 +161,7 @@ GAIA gets more useful with every integration you connect. Link Google Calendar, 
 
 <Tip>
   Each team member needs to link their own GAIA account with `/auth` and connect
-  their own integrations. GAIA respects individual permissions — it only
+  their own integrations. GAIA respects individual permissions, it only
   accesses what each user has authorized.
 </Tip>
 

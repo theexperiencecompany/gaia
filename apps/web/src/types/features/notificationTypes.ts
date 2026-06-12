@@ -387,6 +387,17 @@ export enum BulkActions {
   DELETE = "delete",
 }
 
+// Streamed by the send_notification agent tool — rendered as a chat tool card
+export interface SendNotificationData {
+  success: boolean;
+  notification_id: string;
+  title: string;
+  message: string;
+  notification_type: string;
+  status: string;
+  delivered_channels: string[];
+}
+
 // API Request/Response types
 
 export interface BulkActionRequest {

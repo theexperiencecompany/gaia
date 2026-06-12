@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
+import { Switch } from "@heroui/switch";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { InformationCircleIcon } from "@icons";
 import { useCallback, useEffect, useState } from "react";
@@ -346,6 +347,7 @@ export default function WorkflowModal({
         activeTab,
         selectedTrigger: selectedTriggerValue,
         trigger_config: triggerConfig,
+        notify_on_completion: true,
       });
       setIsActivated(true);
       setCreationPhase("form");
@@ -430,6 +432,7 @@ export default function WorkflowModal({
             }))
           : undefined,
         generate_immediately: !hasPredefinedSteps,
+        notify_on_completion: data.notify_on_completion,
         selected_integrations:
           selectedIntegrationSlugs.length > 0
             ? selectedIntegrationSlugs
@@ -489,6 +492,7 @@ export default function WorkflowModal({
         trigger_config: {
           ...data.trigger_config,
         },
+        notify_on_completion: data.notify_on_completion,
         selected_integrations: selectedIntegrationSlugs,
       };
 
@@ -896,6 +900,29 @@ export default function WorkflowModal({
                         }
                         isPreview={mode === "preview"}
                       />
+
+                      <div className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-800/60 px-4 py-3">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-zinc-100">
+                            Notify when runs finish
+                          </span>
+                          <span className="text-xs text-zinc-500">
+                            GAIA pings your channels with the result after each
+                            run
+                          </span>
+                        </div>
+                        <Switch
+                          size="sm"
+                          isSelected={formData.notify_on_completion}
+                          onValueChange={(enabled) =>
+                            setValue("notify_on_completion", enabled, {
+                              shouldDirty: true,
+                            })
+                          }
+                          isDisabled={mode === "preview"}
+                          aria-label="Notify when runs finish"
+                        />
+                      </div>
 
                       <div>
                         <div className="border-t border-zinc-800 mb-2" />

@@ -1,12 +1,13 @@
 import asyncio
 from collections import defaultdict, deque
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 from urllib.parse import urlsplit, urlunsplit
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
 
 from app.config.settings import settings
-from app.constants.search import CRAWL4AI_WAIT_UNTIL
+from app.constants.search import CRAWL4AI_CLOSE_TIMEOUT_SECONDS, CRAWL4AI_WAIT_UNTIL
 from shared.py.wide_events import log
 
 # Shared semaphore binding for the process-wide browser concurrency cap. The
@@ -31,6 +32,65 @@ def get_browser_semaphore() -> asyncio.Semaphore:
         _browser_semaphore = asyncio.Semaphore(settings.CRAWL4AI_MAX_BROWSERS)
         _browser_semaphore_loop = loop
     return _browser_semaphore
+
+
+# Keeps detached close tasks alive until they finish (standard pattern to stop
+# the event loop garbage-collecting running tasks).
+_pending_close_tasks: set[asyncio.Task[None]] = set()
+
+
+async def _close_crawler(crawler: AsyncWebCrawler, context_name: str) -> None:
+    try:
+        await crawler.close()
+    except Exception as e:
+        log.warning(f"{context_name} browser close failed: {e}")
+
+
+def _spawn_shielded_close(crawler: AsyncWebCrawler, context_name: str) -> asyncio.Task[None]:
+    task = asyncio.get_running_loop().create_task(_close_crawler(crawler, context_name))
+    _pending_close_tasks.add(task)
+    task.add_done_callback(_pending_close_tasks.discard)
+    return task
+
+
+@asynccontextmanager
+async def managed_crawler(
+    config: BrowserConfig | None = None,
+    *,
+    context_name: str = "crawl4ai",
+) -> AsyncIterator[AsyncWebCrawler]:
+    """Yield a started ``AsyncWebCrawler`` whose teardown survives cancellation.
+
+    ``async with AsyncWebCrawler()`` runs ``close()`` inside ``__aexit__``, so a
+    ``CancelledError`` arriving mid-close (stream cancellation, tool timeout,
+    client disconnect) aborts the cleanup and orphans the Playwright driver
+    subprocess (~50-130 MB each; these accumulated for days in prod). Running
+    ``close()`` as a detached task means cancellation of the calling task can
+    no longer interrupt the browser teardown; ``app.utils.browser_reaper`` is
+    the backstop for anything that still slips through.
+    """
+    crawler = AsyncWebCrawler(config=config or BrowserConfig(headless=True, verbose=False))
+    try:
+        await crawler.start()
+    except BaseException:
+        # start() may have spawned the driver before failing — close it too.
+        _spawn_shielded_close(crawler, context_name)
+        raise
+    try:
+        yield crawler
+    finally:
+        close_task = _spawn_shielded_close(crawler, context_name)
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(close_task), timeout=CRAWL4AI_CLOSE_TIMEOUT_SECONDS
+            )
+        except TimeoutError:
+            # close() is wedged; it keeps running detached and the reaper
+            # collects the driver if it never finishes.
+            log.warning(
+                f"{context_name} browser close still running after "
+                f"{CRAWL4AI_CLOSE_TIMEOUT_SECONDS:.0f}s; leaving it to finish in background"
+            )
 
 
 def _normalize_url(url: str) -> str:
@@ -137,7 +197,10 @@ async def _recover_with_single_url_crawls(
     errors: dict[str, str] = {}
 
     try:
-        async with get_browser_semaphore(), AsyncWebCrawler(config=browser_config) as crawler:
+        async with (
+            get_browser_semaphore(),
+            managed_crawler(browser_config, context_name=context_name) as crawler,
+        ):
             for url in urls:
                 try:
                     single_results = await asyncio.wait_for(
@@ -198,7 +261,10 @@ async def batch_fetch_with_crawl4ai(
     browser_config = BrowserConfig(headless=True, browser_mode="dedicated", verbose=False)
 
     try:
-        async with get_browser_semaphore(), AsyncWebCrawler(config=browser_config) as crawler:
+        async with (
+            get_browser_semaphore(),
+            managed_crawler(browser_config, context_name=context_name) as crawler,
+        ):
             results = await asyncio.wait_for(
                 crawler.arun_many(urls=list(urls), config=run_config),
                 timeout=total_timeout_seconds,

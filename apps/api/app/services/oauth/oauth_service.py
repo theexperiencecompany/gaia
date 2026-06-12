@@ -33,6 +33,7 @@ from app.services.provider_metadata_service import (
     fetch_and_store_provider_metadata,
 )
 from app.services.system_workflows.provisioner import provision_system_workflows
+from app.services.workspace_sync import schedule_user_provision
 from app.utils.email_utils import add_contact_to_resend, send_welcome_email
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import log
@@ -129,6 +130,10 @@ async def store_user_info(
     except Exception as e:
         log.error(f"Failed to add contact to Resend audience for {email}: {e!s}")
         # Don't raise exception - user creation should still succeed
+
+    # Provision the user's workspace (system files + skills catalog) now, instead
+    # of lazily on the first chat turn. Fire-and-forget so signup isn't blocked.
+    schedule_user_provision(str(result.inserted_id))
 
     return result.inserted_id, True
 

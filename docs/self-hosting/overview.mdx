@@ -1,12 +1,11 @@
 ---
 title: "Overview"
+sidebarTitle: "Self-Hosting GAIA"
 description: "Learn how to self-host GAIA on your own infrastructure"
 icon: "circle-info"
 ---
 
-## Welcome to GAIA Self-Hosting
-
-Self-host GAIA with the CLI. The CLI handles setup, environment scaffolding, and run commands so you can get running quickly.
+Run GAIA on your own machine with the GAIA CLI. It scaffolds your environment, starts every service with Docker, and gets you to a working instance in a few commands.
 
 ## What runs
 
@@ -20,31 +19,13 @@ Self-host GAIA with the CLI. The CLI handles setup, environment scaffolding, and
 - Node.js 20+ and one package manager (npm, pnpm, or bun)
 - Docker Engine 20.10+ and Compose v2+
 - 2+ CPU cores, 4GB+ RAM, 10GB+ disk (8GB+ RAM recommended)
-- API keys as needed (see [Environment Variables](/configuration/environment-variables))
+- An API key for at least one supported LLM provider (OpenAI or Google Gemini), see [Environment variables](/configuration/environment-variables)
 
-<Note>
-Run the backend in a container on every platform. Its workspace storage (file uploads, artifacts, skills) uses JuiceFS, which mounts through Linux FUSE — a native backend on macOS or Windows can't provide it. Docker Desktop covers this on all platforms. See [Docker Setup](/self-hosting/docker-setup#persistent-workspace-storage-juicefs-and-fuse) for the FUSE requirements and configuration.
-</Note>
-
-## Quick Start
+## Quick start
 
 <Steps>
   <Step title="Install the GAIA CLI">
-    <CodeGroup>
-
-    ```bash npm
-    npm install -g @heygaia/cli
-    ```
-
-    ```bash pnpm
-    pnpm add -g @heygaia/cli
-    ```
-
-    ```bash bun
-    bun add -g @heygaia/cli
-    ```
-
-    </CodeGroup>
+    <Snippet file="cli-install.mdx" />
   </Step>
 
   <Step title="Initialize self-host mode">
@@ -72,12 +53,16 @@ Run the backend in a container on every platform. Its workspace storage (file up
   </Step>
 </Steps>
 
-## Next Steps
+## Advanced: workspace storage on macOS and Windows
 
-- [CLI Commands](/cli/commands) - Manage services with GAIA CLI commands
-- [Environment Variables](/configuration/environment-variables) - Configure additional features
-- [Docker Setup](/self-hosting/docker-setup) - Advanced Docker operations
+You only need this if you plan to run the backend outside the default Docker setup.
 
-<Warning>
-  Self-hosting requires ongoing maintenance and security updates.
-</Warning>
+<Note>
+Run the backend in a container on every platform. Its workspace storage (file uploads, artifacts, skills) uses JuiceFS, which mounts through Linux FUSE, a native backend on macOS or Windows can't provide it. Docker Desktop covers this on all platforms. See [Docker setup](/self-hosting/docker-setup#persistent-workspace-storage-juicefs-and-fuse) for the FUSE requirements and configuration.
+</Note>
+
+## Next steps
+
+- [CLI setup](/self-hosting/cli-setup), full CLI installation and service management
+- [Docker setup](/self-hosting/docker-setup), advanced Docker operations and storage configuration
+- [Environment variables](/configuration/environment-variables), configure LLM providers, integrations, and optional features
