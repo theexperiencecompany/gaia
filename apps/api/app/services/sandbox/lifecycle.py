@@ -140,6 +140,9 @@ async def _enforce_creation_limit(user_id: str) -> None:
         if detail.get("plan_required"):
             message += f" (upgrade to {detail['plan_required'].upper()} for higher limits)"
         raise SandboxRateLimitError(message) from e
+    except Exception as e:
+        log.error(f"[sandbox] creation limit check failed for user {user_id}: {e}")
+        raise SandboxAcquisitionError(f"sandbox creation limit check failed: {e}") from e
 
 
 async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
