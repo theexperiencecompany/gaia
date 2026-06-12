@@ -24,7 +24,7 @@ interface MentionEditorProps {
   maxLength?: number;
 }
 
-const EDITOR_TEXT = "px-3.5 py-3 font-mono text-sm leading-8";
+const EDITOR_TEXT = "px-3.5 py-3 text-sm leading-8";
 
 interface MentionChipTokenProps {
   name: string;
