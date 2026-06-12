@@ -241,22 +241,27 @@ function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
     sync();
   }, [discoveredConversationId, conversationDescription]);
 
+  // Single ready-check timer from session start. The ref keeps the check on
+  // the CURRENT agent state — depending on `agentState` instead would restart
+  // the countdown on every transition, so it would never measure "ready within
+  // N seconds of joining".
+  const agentStateRef = useRef(agentState);
+  agentStateRef.current = agentState;
   useEffect(() => {
     const timer = setTimeout(() => {
+      const state = agentStateRef.current;
       const isReady =
-        agentState === "listening" ||
-        agentState === "thinking" ||
-        agentState === "speaking";
+        state === "listening" || state === "thinking" || state === "speaking";
       if (!isReady) {
         const reason =
-          agentState === "connecting"
+          state === "connecting"
             ? "Agent did not join the room."
             : "Agent connected but did not complete initializing.";
         toast.error(`Session ended: ${reason}`);
       }
     }, SESSION_READY_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [agentState]);
+  }, []);
 
   const sessionValue: VoiceSessionValue = useMemo(
     () => ({

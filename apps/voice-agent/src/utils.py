@@ -54,7 +54,8 @@ def extract_meta_data(md: str | None) -> tuple[str | None, str | None]:
         token = token if isinstance(token, str) and token else None
         conv_id = conv_id if isinstance(conv_id, str) and conv_id else None
         return token, conv_id
-    except Exception:
+    except (json.JSONDecodeError, AttributeError, TypeError) as e:
+        logger.debug("Unparseable participant metadata", error=str(e), metadata=md[:200])
         return None, None
 
 

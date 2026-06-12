@@ -52,7 +52,7 @@ OPEN_OPENUI_FENCE_TAIL_RE = re.compile(r":::openui(?![\s\S]*:::)")
 
 VOICE_SYSTEM_PROMPT = (
     "You are a voice assistant. Respond in spoken, conversational language. "
-    # "Use short sentences. No lists, no bullet points, no markdown, no code blocks, "
+    "Use short sentences. No lists, no bullet points, no markdown, no code blocks, "
     "no headings. Do not use symbols or special characters. "
     "Answer directly without preamble. "
     "When uncertain, say so briefly rather than giving a long hedged answer."

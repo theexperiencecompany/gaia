@@ -446,9 +446,13 @@ class CustomLLM(LLM):
     async def aclose(self) -> None:
         """Clean up HTTP session and room reference."""
         self.room = None
-        if self._http_session and not self._http_session.closed:
-            await self._http_session.close()
-        await super().aclose()
+        try:
+            if self._http_session and not self._http_session.closed:
+                await self._http_session.close()
+        except Exception as e:
+            logger.warning("Failed to close backend HTTP session", error=str(e))
+        finally:
+            await super().aclose()
 
 
 __all__ = ["CustomLLM"]

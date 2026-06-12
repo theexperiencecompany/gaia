@@ -413,7 +413,7 @@ services:
       HF_HUB_ENABLE_HF_TRANSFER: "1"
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
-      GAIA_BACKEND_URL: http://localhost:8000
+      GAIA_BACKEND_URL: http://localhost:${API_HOST_PORT:-8000}
     env_file:
       - ../../apps/api/.env
     volumes:
