@@ -12,6 +12,7 @@ import type {
   DesktopToolRequest,
   DesktopToolResult,
 } from "@gaia/shared/desktop-tools";
+import { isDesktopToolName } from "@gaia/shared/desktop-tools";
 import { listWindows, openApp, openUrl } from "./apps";
 import { readClipboardText, writeClipboardText } from "./clipboard";
 import { captureScreenshot } from "./screenshot";
@@ -37,6 +38,12 @@ export async function dispatchDesktopTool(
 async function executeAction(
   request: DesktopToolRequest,
 ): Promise<Record<string, unknown>> {
+  // request.tool is untrusted over the wire — validate against the known
+  // tool names before routing, as the DesktopToolRequest contract documents.
+  if (!isDesktopToolName(request.tool)) {
+    throw new Error(`Unsupported desktop tool: ${request.tool}`);
+  }
+
   const params = request.params ?? {};
 
   switch (request.tool) {
