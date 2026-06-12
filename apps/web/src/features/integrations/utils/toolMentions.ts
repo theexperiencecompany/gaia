@@ -9,8 +9,10 @@ export const escapeRegExp = (value: string): string =>
 
 /**
  * Regex matching `@<toolName>` for any of the given names. Longest names
- * first so e.g. "@Send Email" wins over "@Send"; trailing boundary so a
- * prefix doesn't match inside a longer token ("@Send" vs "@Sender").
+ * first so e.g. "@Send Email" wins over "@Send". Boundaries on both sides so a
+ * mention is only recognized as a standalone token: the leading `(?<!\w)` keeps
+ * `foo@Send` / `name@Send.com` from matching, the trailing `(?!\w)` keeps a
+ * prefix from matching inside a longer token ("@Send" vs "@Sender").
  */
 const buildMentionRegex = (toolNames: string[]): RegExp | null => {
   if (toolNames.length === 0) return null;
@@ -19,11 +21,11 @@ const buildMentionRegex = (toolNames: string[]): RegExp | null => {
     .sort((a, b) => b.length - a.length)
     .map(escapeRegExp)
     .join("|");
-  return new RegExp(String.raw`@(?:${alternation})(?!\w)`, "g");
+  return new RegExp(String.raw`(?<!\w)@(?:${alternation})(?!\w)`, "g");
 };
 
 export const MENTION_LINK_PROTOCOL = "mention";
-export const MENTION_HREF_PREFIX = `${MENTION_LINK_PROTOCOL}:`;
+const MENTION_HREF_PREFIX = `${MENTION_LINK_PROTOCOL}:`;
 
 /**
  * Rewrite `@<toolName>` mentions as `[@<toolName>](mention:<toolName>)`
@@ -40,6 +42,21 @@ export const mentionsToMarkdownLinks = (
     (match) =>
       `[${match}](${MENTION_HREF_PREFIX}${encodeURIComponent(match.slice(1))})`,
   );
+};
+
+/**
+ * Decode a `mention:` link href back to the tool name, or null if the href
+ * isn't a mention or carries malformed percent-encoding. Because the preview
+ * renders arbitrary user markdown, a hand-typed `mention:%xx` must degrade to a
+ * normal link rather than throw out of `decodeURIComponent`.
+ */
+export const decodeMentionHref = (href: string): string | null => {
+  if (!href.startsWith(MENTION_HREF_PREFIX)) return null;
+  try {
+    return decodeURIComponent(href.slice(MENTION_HREF_PREFIX.length));
+  } catch {
+    return null;
+  }
 };
 
 export interface MentionSegment {

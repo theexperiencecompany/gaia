@@ -204,10 +204,11 @@ export const useMentionEditor = ({
     const max = maxLengthRef.current;
     if (!max) return;
     const native = event.nativeEvent as InputEvent;
-    if (
-      native.inputType?.startsWith("insert") &&
-      lastValueRef.current.length >= max
-    ) {
+    if (!native.inputType?.startsWith("insert")) return;
+    // A selection about to be replaced frees up room, so block only when the
+    // post-replacement length would still hit the cap (mirrors onPaste).
+    const selectionLength = window.getSelection()?.toString().length ?? 0;
+    if (lastValueRef.current.length - selectionLength >= max) {
       event.preventDefault();
     }
   }, []);

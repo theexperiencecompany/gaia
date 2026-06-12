@@ -1,18 +1,20 @@
 import type { OnboardingData } from "@/stores/userStore";
 
+type PreferencesPatch = Partial<NonNullable<OnboardingData["preferences"]>>;
+
 /**
- * Build the userStore update that mirrors a saved onboarding-preferences
- * payload. The backend replaces the whole preferences object on save, so the
- * store must mirror exactly what was sent for other settings sections to
- * build their next payload from fresh values.
+ * Build the userStore update that mirrors a saved onboarding-preferences patch.
+ * The backend PATCHes only the fields each surface sends (field-level merge), so
+ * the store must merge the patch into the existing preferences rather than
+ * replace them — keeping fields owned by other settings surfaces intact.
  */
 export const mergedOnboardingUpdate = (
   onboarding: OnboardingData | undefined,
-  preferences: NonNullable<OnboardingData["preferences"]>,
+  patch: PreferencesPatch,
 ): { onboarding: OnboardingData } => ({
   onboarding: {
     completed: onboarding?.completed ?? true,
     ...onboarding,
-    preferences,
+    preferences: { ...onboarding?.preferences, ...patch },
   },
 });

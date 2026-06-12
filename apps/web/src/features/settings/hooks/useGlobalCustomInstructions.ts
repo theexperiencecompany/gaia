@@ -38,22 +38,16 @@ export const useGlobalCustomInstructions = () => {
     async (next: string) => {
       setIsSaving(true);
       setHasUnsavedChanges(false);
-      const preferences = user.onboarding?.preferences;
       const trimmed = next.trim();
       try {
+        // PATCH only the field this surface owns; the backend merges it into the
+        // stored preferences without touching profession/response_style.
         const response = await authApi.updateOnboardingPreferences({
-          ...(preferences?.profession
-            ? { profession: preferences.profession }
-            : {}),
-          ...(preferences?.response_style
-            ? { response_style: preferences.response_style }
-            : {}),
           custom_instructions: trimmed === "" ? null : next,
         });
         if (!response.success) throw new Error(response.message);
         updateUser(
           mergedOnboardingUpdate(user.onboarding, {
-            ...preferences,
             custom_instructions: trimmed === "" ? undefined : next,
           }),
         );

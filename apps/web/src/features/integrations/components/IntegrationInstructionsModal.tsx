@@ -18,7 +18,7 @@ import { MentionChip } from "@/features/integrations/components/MentionChip";
 import { MentionEditor } from "@/features/integrations/components/MentionEditor";
 import type { Integration } from "@/features/integrations/types";
 import {
-  MENTION_HREF_PREFIX,
+  decodeMentionHref,
   MENTION_LINK_PROTOCOL,
   mentionsToMarkdownLinks,
 } from "@/features/integrations/utils/toolMentions";
@@ -87,10 +87,8 @@ export const IntegrationInstructionsModal = ({
   const previewComponents = useMemo<Components>(
     () => ({
       a: ({ href, children }) => {
-        if (typeof href === "string" && href.startsWith(MENTION_HREF_PREFIX)) {
-          const name = decodeURIComponent(
-            href.slice(MENTION_HREF_PREFIX.length),
-          );
+        const name = typeof href === "string" ? decodeMentionHref(href) : null;
+        if (name !== null) {
           return (
             <span className="mx-0.5 inline-flex translate-y-0.5">
               <MentionChip name={name} icon={renderMentionIcon()} />

@@ -68,13 +68,11 @@ export default function PreferencesSettings({
     label: tz.formattedLabel,
   }));
 
-  // custom_instructions is edited in Settings > Custom Instructions, but must
-  // stay in this payload: the backend replaces the whole preferences object.
+  // custom_instructions is owned by Settings > Custom Instructions and saved
+  // independently, so it's deliberately not part of this surface's payload.
   const [preferences, setPreferences] = useState({
     profession: user.onboarding?.preferences?.profession || "",
     response_style: user.onboarding?.preferences?.response_style || "",
-    custom_instructions:
-      user.onboarding?.preferences?.custom_instructions || null,
     timezone: normalizeTimezone(user.timezone || "UTC"),
   });
 
@@ -104,44 +102,21 @@ export default function PreferencesSettings({
         setIsUpdating(true);
         setHasUnsavedChanges(false);
 
-        // Extract timezone for separate handling
-        const { timezone, ...preferencesWithoutTimezone } = updatedPreferences;
+        const { timezone, profession, response_style } = updatedPreferences;
 
-        // Filter out empty strings and only send valid values for non-timezone preferences
-        const sanitizedPreferences = Object.entries(
-          preferencesWithoutTimezone,
-        ).reduce(
-          (acc, [key, value]) => {
-            // Only include non-empty values, convert empty strings to undefined
-            if (value !== "" && value !== null && value !== undefined)
-              acc[key] = value;
-            else if (value === null) acc[key] = null;
-            // Explicitly include null values (for custom_instructions)
-
-            return acc;
-          },
-          {} as Record<string, string | null>,
-        );
-
-        // Update preferences (without timezone)
-        const response =
-          await authApi.updateOnboardingPreferences(sanitizedPreferences);
+        // PATCH only the fields this surface owns. Empty strings are sent as-is
+        // and normalized to "cleared" server-side; the backend merges these in
+        // without disturbing custom_instructions (owned by another surface).
+        const response = await authApi.updateOnboardingPreferences({
+          profession,
+          response_style,
+        });
 
         if (response.success) {
           updateUser(
             mergedOnboardingUpdate(user.onboarding, {
-              ...(sanitizedPreferences.profession
-                ? { profession: sanitizedPreferences.profession }
-                : {}),
-              ...(sanitizedPreferences.response_style
-                ? { response_style: sanitizedPreferences.response_style }
-                : {}),
-              ...(sanitizedPreferences.custom_instructions
-                ? {
-                    custom_instructions:
-                      sanitizedPreferences.custom_instructions,
-                  }
-                : {}),
+              profession: profession || undefined,
+              response_style: response_style || undefined,
             }),
           );
 
@@ -269,8 +244,6 @@ export default function PreferencesSettings({
     const newPreferences = {
       profession: user.onboarding?.preferences?.profession || "",
       response_style: user.onboarding?.preferences?.response_style || "",
-      custom_instructions:
-        user.onboarding?.preferences?.custom_instructions || null,
       timezone: normalizeTimezone(user.timezone || "") || "UTC", // Normalize legacy timezone names
     };
     setPreferences(newPreferences);
