@@ -103,8 +103,12 @@ const buildLoadingSpectrum = (
   amplitude: number,
 ) => {
   if (t - state.lastRefresh > LOADING_TARGET_REFRESH_MS) {
+    // crypto randomness is overkill for visual jitter but free at this
+    // cadence (one call per refresh) and keeps pseudorandom APIs out of
+    // the codebase entirely.
+    const randomWords = crypto.getRandomValues(new Uint32Array(SPECTRUM_BINS));
     for (let i = 0; i < SPECTRUM_BINS; i++) {
-      state.target[i] = Math.random() * LOADING_AMPLITUDE;
+      state.target[i] = (randomWords[i] / 0xffffffff) * LOADING_AMPLITUDE;
     }
     state.lastRefresh = t;
   }

@@ -173,8 +173,7 @@ function VoiceSessionInner({
   // `/c` OR `/c/<id>` to recover the locale prefix, so the id is mounted once.
   const lastAppliedConvoIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!discoveredConversationId || typeof globalThis.window === "undefined")
-      return;
+    if (!discoveredConversationId || globalThis.window === undefined) return;
     if (lastAppliedConvoIdRef.current === discoveredConversationId) return;
 
     const path = globalThis.location.pathname;

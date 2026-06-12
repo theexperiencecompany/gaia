@@ -43,7 +43,9 @@ MIN_ENDPOINTING_DELAY_S = 0.8
 # answer before it is sent.
 BACKEND_REQUEST_TIMEOUT_S = 120.0
 
-TAG_RE = re.compile(r"</?[A-Za-z][A-Za-z0-9_-]*(?:\s+[^>]*)?/?>")
+# Single \s before the attribute tail (not \s+): [^>] also matches whitespace,
+# and the overlap between the two quantifiers is what makes backtracking blow up.
+TAG_RE = re.compile(r"</?[A-Za-z][A-Za-z0-9_-]*(?:\s[^>]*)?/?>")
 # Message-break sentinel only. TAG_RE (run earlier) strips the bracketed
 # <NEW_MESSAGE_BREAK> form; this catches any unbracketed residue. Matching the
 # FULL token name (never the bare word "new") so ordinary prose is left intact.

@@ -23,10 +23,7 @@ const useVoiceModeStore = create<VoiceModeState>()(
         // canvas) — NOT the conversation id. The conversation id is owned by
         // the backend: for a new chat it arrives over the LiveKit
         // `conversation-id` topic; for an existing chat it's the URL param.
-        const newSessionId =
-          typeof crypto !== "undefined" && "randomUUID" in crypto
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const newSessionId = crypto.randomUUID();
         set(
           {
             voiceModeActive: true,

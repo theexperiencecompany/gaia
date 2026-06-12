@@ -52,7 +52,7 @@ export const settingsPageItems: SettingsMenuItem[] = [
   },
   {
     key: "voice",
-    label: "Voice",
+    label: "Voices",
     icon: VoiceIdIcon,
     href: "/settings?section=voice",
   },
