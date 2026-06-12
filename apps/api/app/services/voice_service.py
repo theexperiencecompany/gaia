@@ -24,23 +24,19 @@ ELEVENLABS_REQUEST_TIMEOUT_S = 10.0
 
 
 @Cacheable(ttl=ONE_DAY_TTL, key_pattern="voice:preview_urls")
-async def get_preview_urls() -> dict[str, str]:
-    """Resolve preview MP3 URLs for the catalog from the ElevenLabs voices API.
+async def _fetch_preview_urls() -> dict[str, str]:
+    """Fetch preview MP3 URLs for the catalog from the ElevenLabs voices API.
 
-    Returns an empty mapping when the API key is missing or the call fails —
-    the catalog still lists, just without playable samples.
+    Raises on any upstream failure so a transient error is never cached as an
+    empty mapping for the full TTL — only successful responses are stored.
     """
-    api_key = settings.ELEVENLABS_API_KEY
-    if not api_key:
-        return {}
-    try:
-        async with httpx.AsyncClient(timeout=ELEVENLABS_REQUEST_TIMEOUT_S) as client:
-            resp = await client.get(ELEVENLABS_VOICES_URL, headers={"xi-api-key": api_key})
-            resp.raise_for_status()
-            payload: dict[str, Any] = resp.json()
-    except (httpx.HTTPError, ValueError) as e:
-        log.warning("Failed to fetch ElevenLabs voice previews", error=str(e))
-        return {}
+    async with httpx.AsyncClient(timeout=ELEVENLABS_REQUEST_TIMEOUT_S) as client:
+        resp = await client.get(
+            ELEVENLABS_VOICES_URL,
+            headers={"xi-api-key": settings.ELEVENLABS_API_KEY or ""},
+        )
+        resp.raise_for_status()
+        payload: dict[str, Any] = resp.json()
 
     previews: dict[str, str] = {}
     for voice in payload.get("voices", []):
@@ -49,6 +45,21 @@ async def get_preview_urls() -> dict[str, str]:
         if isinstance(voice_id, str) and isinstance(preview_url, str) and voice_id in VOICE_IDS:
             previews[voice_id] = preview_url
     return previews
+
+
+async def get_preview_urls() -> dict[str, str]:
+    """Resolve preview URLs, degrading to an empty mapping when unavailable.
+
+    The catalog still lists without samples when the API key is missing or
+    ElevenLabs is unreachable; the play buttons simply disable.
+    """
+    if not settings.ELEVENLABS_API_KEY:
+        return {}
+    try:
+        return await _fetch_preview_urls()
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("Failed to fetch ElevenLabs voice previews", error=str(e))
+        return {}
 
 
 async def get_user_voice(user_id: str) -> str | None:

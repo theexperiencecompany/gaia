@@ -71,6 +71,19 @@ export default function VoiceSettings() {
     [data?.selected_voice_id],
   );
 
+  // Selection and playback are baked into the items so the table's cached
+  // row nodes rebuild the instant either changes (optimistic select included)
+  // — reading them from closure state would lag until the next refetch.
+  const rows = useMemo(
+    () =>
+      (data?.voices ?? []).map((voice) => ({
+        ...voice,
+        isSelected: voice.voice_id === data?.selected_voice_id,
+        isPlaying: voice.voice_id === playingVoiceId,
+      })),
+    [data?.voices, data?.selected_voice_id, playingVoiceId],
+  );
+
   const handleSelectionChange = useCallback(
     (keys: Selection) => {
       if (keys === "all") return;
@@ -98,12 +111,6 @@ export default function VoiceSettings() {
         disallowEmptySelection
         selectedKeys={selectedKeys}
         onSelectionChange={handleSelectionChange}
-        classNames={{
-          wrapper: "rounded-2xl bg-zinc-900/60 p-0 shadow-none",
-          th: "bg-transparent px-4 py-3 text-xs font-medium uppercase tracking-wider text-zinc-500 first:rounded-none last:rounded-none",
-          td: "px-4 py-3 first:rounded-l-none last:rounded-r-none",
-          tr: "cursor-pointer border-t border-zinc-800/60 outline-none transition-colors data-[selected=true]:bg-primary/5 data-[hover=true]:bg-zinc-800/40",
-        }}
       >
         <TableHeader>
           <TableColumn>Voice</TableColumn>
@@ -112,14 +119,13 @@ export default function VoiceSettings() {
           <TableColumn className="text-right">Preview</TableColumn>
         </TableHeader>
         <TableBody
-          items={data?.voices ?? []}
+          items={rows}
           isLoading={isLoading}
           loadingContent={<Spinner size="sm" label="Loading voices" />}
           emptyContent={isLoading ? " " : "No voices available"}
         >
           {(voice) => {
-            const isSelected = data?.selected_voice_id === voice.voice_id;
-            const isPlaying = playingVoiceId === voice.voice_id;
+            const { isSelected, isPlaying } = voice;
             const PreviewIcon = isPlaying ? PauseIcon : PlayIcon;
             return (
               <TableRow key={voice.voice_id} textValue={voice.name}>
@@ -158,7 +164,16 @@ export default function VoiceSettings() {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <div className="flex justify-end">
+                  {/* Stop pointer events here so playing a sample never
+                      doubles as selecting the row. */}
+                  {/* biome-ignore lint/a11y/noStaticElementInteractions: propagation guard, not an interactive control */}
+                  <div
+                    className="flex justify-end"
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onPointerUp={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
                     <Button
                       isIconOnly
                       size="sm"
@@ -170,10 +185,7 @@ export default function VoiceSettings() {
                           : `Play ${voice.name} preview`
                       }
                       isDisabled={!voice.preview_url}
-                      className={cn(
-                        "bg-zinc-800 text-zinc-300",
-                        isPlaying && "bg-primary/20 text-primary",
-                      )}
+                      className={cn(isPlaying && "text-primary")}
                       onPress={() => togglePreview(voice)}
                     >
                       <PreviewIcon className="h-4 w-4" />

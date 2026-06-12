@@ -1,13 +1,19 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import {
+  Button,
+  ButtonGroup,
   Dropdown,
   DropdownItem,
   DropdownMenu,
   DropdownTrigger,
-} from "@heroui/dropdown";
-import { ArrowUp01Icon, PhoneOffIcon } from "@icons";
+} from "@heroui/react";
+import {
+  ArrowDown01Icon,
+  CallEnd04Icon,
+  Mic02Icon,
+  MicOff02Icon,
+} from "@icons";
 import { useRoomContext } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import * as React from "react";
@@ -15,7 +21,6 @@ import {
   type UseAgentControlBarProps,
   useAgentControlBar,
 } from "@/features/chat/components/voice-agent/hooks/use-agent-control-bar";
-import { TrackToggle } from "@/features/chat/components/voice-agent/track-toggle";
 import { cn } from "@/lib/utils";
 
 export interface AgentControlBarProps
@@ -48,6 +53,9 @@ export function AgentControlBar({
       controls,
       saveUserChoices,
     });
+
+  const micEnabled = microphoneToggle.enabled;
+  const MicStateIcon = micEnabled ? Mic02Icon : MicOff02Icon;
 
   const refreshDevices = React.useCallback(async () => {
     try {
@@ -101,33 +109,36 @@ export function AgentControlBar({
       className={cn("flex flex-col items-center justify-center p-3", className)}
       {...props}
     >
-      <div className="flex flex-row items-center justify-center gap-6">
-        <div className="flex items-center gap-1">
-          <TrackToggle
-            source={Track.Source.Microphone}
-            enabled={microphoneToggle.enabled}
-            pending={microphoneToggle.pending}
-            onClick={() => microphoneToggle.toggle()}
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-700/20 shadow-md transition-colors hover:bg-gray-700/30 active:bg-gray-700/30"
-          />
+      {/* One floating pill holds every control — iOS-call style. */}
+      <div className="flex items-center gap-1.5 rounded-full bg-zinc-900/80 p-1.5 shadow-lg backdrop-blur-md">
+        <ButtonGroup variant="flat" radius="full">
+          <Button
+            isIconOnly
+            aria-label={micEnabled ? "Mute microphone" : "Unmute microphone"}
+            isLoading={microphoneToggle.pending}
+            onPress={() => microphoneToggle.toggle()}
+            className="h-12 w-14 bg-zinc-800 text-white transition-colors hover:bg-zinc-700 active:bg-zinc-700"
+          >
+            <MicStateIcon className="h-6 w-6" />
+          </Button>
           <Dropdown
-            placement="top"
+            placement="top-end"
             onOpenChange={(open) => open && refreshDevices()}
           >
             <DropdownTrigger>
               <Button
                 isIconOnly
-                size="sm"
-                radius="full"
                 aria-label="Select microphone"
-                className="h-8 w-8 bg-gray-700/20 text-white shadow-md hover:bg-gray-700/30"
+                className="h-12 w-9 bg-zinc-800 text-zinc-400 transition-colors hover:bg-zinc-700"
               >
-                <ArrowUp01Icon className="h-4 w-4" />
+                <ArrowDown01Icon className="h-4 w-4" />
               </Button>
             </DropdownTrigger>
             <DropdownMenu
               aria-label="Audio input devices"
+              className="max-w-[300px]"
               selectionMode="single"
+              disallowEmptySelection
               selectedKeys={activeDeviceId ? [activeDeviceId] : []}
               onAction={(key) => handleDeviceSelect(String(key))}
             >
@@ -144,18 +155,19 @@ export function AgentControlBar({
               )}
             </DropdownMenu>
           </Dropdown>
-        </div>
+        </ButtonGroup>
 
         {visibleControls.leave && (
-          <div className="flex items-center justify-center">
-            <Button
-              onClick={onLeave}
-              disabled={isDisconnecting}
-              className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10 shadow-md transition-colors hover:bg-red-500/15 active:bg-red-500/20"
-            >
-              <PhoneOffIcon className="h-6! w-6! text-red-400" />
-            </Button>
-          </div>
+          <Button
+            isIconOnly
+            radius="full"
+            aria-label="End voice session"
+            onPress={onLeave}
+            isDisabled={isDisconnecting}
+            className="h-12 w-14 bg-red-500/15 transition-colors hover:bg-red-500/20 active:bg-red-500/25"
+          >
+            <CallEnd04Icon className="h-6 w-6 text-red-400" />
+          </Button>
         )}
       </div>
     </div>
