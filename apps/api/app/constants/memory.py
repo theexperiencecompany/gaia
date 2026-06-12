@@ -1,6 +1,7 @@
 """Constants for the GAIA memory engine."""
 
 from enum import StrEnum
+import os
 
 # Local ONNX models (fastembed). Memory must work offline and fast —
 # do NOT swap these for cloud models.
@@ -8,8 +9,13 @@ from enum import StrEnum
 # top-3 on 6/6 hard implicit probes vs 3/6 for bge-small — it is what closes
 # the "vet appointment -> dog fact" class of semantic hops. Changing the model
 # requires re-embedding stored vectors: scripts/reembed_memories.py.
-EMBEDDING_MODEL_NAME = "mixedbread-ai/mxbai-embed-large-v1"
-EMBEDDING_DIM = 1024
+# Env-overridable so a smaller model (e.g. BAAI/bge-base-en-v1.5, 768-dim,
+# ~0.5GB) can be swapped in for memory-constrained hosts or A/B comparison.
+EMBEDDING_MODEL_NAME = os.getenv("GAIA_EMBEDDING_MODEL", "mixedbread-ai/mxbai-embed-large-v1")
+EMBEDDING_DIM = int(os.getenv("GAIA_EMBEDDING_DIM", "1024"))
+# Appended to the Chroma collection names so runs with different embedding
+# dimensions never collide in the same collection (empty = prod default).
+_COLLECTION_SUFFIX = os.getenv("GAIA_CHROMA_COLLECTION_SUFFIX", "")
 # jina-reranker-v1-turbo-en (~150MB) measurably beats ms-marco-MiniLM on
 # implicit conversational queries ("what do I do for a living" -> the job
 # fact): top-3 gold rank 4/6 vs 2/6 on our probe set at the same ~30ms.
@@ -22,9 +28,9 @@ EMBEDDING_SIDECAR_URL_ENV = "MEMORY_EMBEDDING_SIDECAR_URL"
 EMBEDDING_SIDECAR_TIMEOUT_SECONDS = 30.0
 
 # ChromaDB collections holding memory, episode, and conversation vectors.
-CHROMA_MEMORIES_COLLECTION = "gaia_memories"
-CHROMA_MEMORY_EPISODES_COLLECTION = "gaia_memory_episodes"
-CHROMA_CONVERSATION_CHUNKS_COLLECTION = "gaia_conversation_chunks"
+CHROMA_MEMORIES_COLLECTION = "gaia_memories" + _COLLECTION_SUFFIX
+CHROMA_MEMORY_EPISODES_COLLECTION = "gaia_memory_episodes" + _COLLECTION_SUFFIX
+CHROMA_CONVERSATION_CHUNKS_COLLECTION = "gaia_conversation_chunks" + _COLLECTION_SUFFIX
 
 # Raw-conversation retention: extracted facts compress a conversation, which
 # loses verbatim micro-details ("the 27th item in that list you gave me").
