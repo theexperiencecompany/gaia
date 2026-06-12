@@ -229,7 +229,10 @@ async def _run_question(
                 now=_parse_date(date_raw),
             )
 
-        recall = await memory_engine.recall(user_id, item["question"], limit=12)
+        # Higher limit than a normal chat turn: counting / multi-session
+        # questions ("how many appointments did I have") need every matching
+        # instance retrieved, not just the top few.
+        recall = await memory_engine.recall(user_id, item["question"], limit=20)
         episode_hits = await memory_engine.recall_episodes(user_id, item["question"], limit=12)
         transcript_hits = await memory_engine.recall_transcripts(user_id, item["question"], limit=5)
         notes = (

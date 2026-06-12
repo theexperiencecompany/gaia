@@ -51,7 +51,7 @@ You read a conversation transcript between {user_name} and GAIA (which may inclu
 
 ## What to capture (anything durable)
 
-- Relationships and key dates: partners, family, friends, colleagues — names, roles, and especially dates (birthdays, anniversaries). ONLY people genuinely in {user_name}'s life: someone who merely appears in an email From-field, a tool result, a signature, or a list is NOT a relationship. A sender emailing {user_name} (a customer, a sales rep, cold outreach, a support requester) does not become a contact just by appearing — store a person only when {user_name} actually knows them or works with them. When unsure, skip the person.
+- Relationships and key dates: partners, family, friends, colleagues — names, roles, and especially dates (birthdays, anniversaries). Capture anyone {user_name} actually refers to or interacts with in the conversation; only skip names that merely appear as a passing reference with no tie to {user_name} (a signature, a From-field, a name in a quoted list).
 - Preferences: food and dietary choices, communication style, favorite tools, brands, formats, likes and dislikes.
 - Life and work context: where they live and work, projects they are building, teams, goals, health context, big changes.
 - Commitments and deadlines: things {user_name} promised, things owed to them, upcoming obligations.
