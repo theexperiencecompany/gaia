@@ -9,6 +9,10 @@ export interface VoiceOption {
   gender: string;
   description: string;
   preview_url: string | null;
+  source: string;
+  /** All verified languages (display names, primary first). */
+  languages: string[];
+  starred: boolean;
 }
 
 export interface VoiceListResponse {
@@ -30,6 +34,17 @@ export const voiceApi = {
       "/voice/voices/selected",
       { voice_id: voiceId },
       { errorMessage: "Failed to update voice" },
+    );
+  },
+
+  starVoice: async (
+    voiceId: string,
+    starred: boolean,
+  ): Promise<{ starred_voice_ids: string[] }> => {
+    return apiService.put(
+      `/voice/voices/${voiceId}/star`,
+      { starred },
+      { errorMessage: "Failed to update starred voices" },
     );
   },
 };

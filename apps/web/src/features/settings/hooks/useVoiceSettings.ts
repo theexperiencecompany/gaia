@@ -17,6 +17,37 @@ export function useVoices() {
   });
 }
 
+export function useStarVoice() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ voiceId, starred }: { voiceId: string; starred: boolean }) =>
+      voiceApi.starVoice(voiceId, starred),
+    onMutate: async ({ voiceId, starred }) => {
+      await queryClient.cancelQueries({ queryKey: VOICES_QUERY_KEY });
+      const previous =
+        queryClient.getQueryData<VoiceListResponse>(VOICES_QUERY_KEY);
+      if (previous) {
+        queryClient.setQueryData<VoiceListResponse>(VOICES_QUERY_KEY, {
+          ...previous,
+          voices: previous.voices.map((v) =>
+            v.voice_id === voiceId ? { ...v, starred } : v,
+          ),
+        });
+      }
+      return { previous };
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(VOICES_QUERY_KEY, context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: VOICES_QUERY_KEY });
+    },
+  });
+}
+
 export function useSelectVoice() {
   const queryClient = useQueryClient();
 

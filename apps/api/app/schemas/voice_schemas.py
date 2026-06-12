@@ -21,6 +21,11 @@ class VoiceOption(BaseModel):
         default="account",
         description="'account' for voices already usable, 'library' for shared-library voices added to the account on selection",
     )
+    languages: list[str] = Field(
+        default_factory=list,
+        description="All verified languages (display names, primary first)",
+    )
+    starred: bool = Field(default=False, description="Starred by this user")
 
 
 class VoiceListResponse(BaseModel):
@@ -43,3 +48,15 @@ class VoiceSelectionResponse(BaseModel):
     """Confirmation of the persisted voice selection."""
 
     selected_voice_id: str
+
+
+class StarVoiceRequest(BaseModel):
+    """Request body for starring/unstarring a voice."""
+
+    starred: bool = Field(description="True to star, False to unstar")
+
+
+class StarredVoicesResponse(BaseModel):
+    """The user's full starred set after a star/unstar."""
+
+    starred_voice_ids: list[str]

@@ -14,11 +14,18 @@ from app.api.v1.middleware.agent_auth import create_agent_token
 from app.api.v1.middleware.tiered_rate_limiter import tiered_rate_limit
 from app.config.settings import settings
 from app.schemas.voice_schemas import (
+    StarredVoicesResponse,
+    StarVoiceRequest,
     UpdateVoiceRequest,
     VoiceListResponse,
     VoiceSelectionResponse,
 )
-from app.services.voice_service import get_user_voice, list_voices, set_user_voice
+from app.services.voice_service import (
+    get_user_voice,
+    list_voices,
+    set_user_voice,
+    set_voice_star,
+)
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -108,3 +115,20 @@ async def select_voice(
     log.set(user={"id": user["user_id"]}, operation="select_voice", voice_id=payload.voice_id)
     selected = await set_user_voice(user["user_id"], payload.voice_id)
     return VoiceSelectionResponse(selected_voice_id=selected)
+
+
+@router.put("/voice/voices/{voice_id}/star", response_model=StarredVoicesResponse)
+async def star_voice(
+    voice_id: str,
+    payload: StarVoiceRequest,
+    user: dict = Depends(get_current_user),
+) -> StarredVoicesResponse:
+    """Star or unstar a voice; starred voices sort to the top of the picker."""
+    log.set(
+        user={"id": user["user_id"]},
+        operation="star_voice",
+        voice_id=voice_id,
+        starred=payload.starred,
+    )
+    starred_ids = await set_voice_star(user["user_id"], voice_id, payload.starred)
+    return StarredVoicesResponse(starred_voice_ids=starred_ids)

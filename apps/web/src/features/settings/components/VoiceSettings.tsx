@@ -3,6 +3,7 @@
 import {
   Avatar,
   Button,
+  Chip,
   Input,
   Select,
   SelectItem,
@@ -14,6 +15,7 @@ import {
   TableColumn,
   TableHeader,
   TableRow,
+  Tooltip,
 } from "@heroui/react";
 import {
   CheckmarkCircle02Icon,
@@ -23,6 +25,7 @@ import {
   PauseIcon,
   PlayIcon,
   Search01Icon,
+  StarIcon,
 } from "@icons";
 import {
   useCallback,
@@ -36,6 +39,7 @@ import {
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
 import {
   useSelectVoice,
+  useStarVoice,
   useVoices,
 } from "@/features/settings/hooks/useVoiceSettings";
 import { cn } from "@/lib/utils";
@@ -60,6 +64,7 @@ function GenderIcon({ gender }: { gender: string }) {
 export default function VoiceSettings() {
   const { data, isLoading } = useVoices();
   const selectVoice = useSelectVoice();
+  const starVoice = useStarVoice();
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   // Typing stays instant; the (cheap but table-rebuilding) filter pass runs
@@ -127,28 +132,33 @@ export default function VoiceSettings() {
   // — reading them from closure state would lag until the next refetch.
   const rows = useMemo(() => {
     const query = deferredSearch.trim().toLowerCase();
-    return (data?.voices ?? [])
-      .filter((voice) => {
-        if (genderFilter !== ALL_FILTER && voice.gender !== genderFilter) {
-          return false;
-        }
-        if (countryFilter !== ALL_FILTER && voice.accent !== countryFilter) {
-          return false;
-        }
-        if (
-          query &&
-          !voice.name.toLowerCase().includes(query) &&
-          !voice.description.toLowerCase().includes(query)
-        ) {
-          return false;
-        }
-        return true;
-      })
-      .map((voice) => ({
-        ...voice,
-        isSelected: voice.voice_id === data?.selected_voice_id,
-        isPlaying: voice.voice_id === playingVoiceId,
-      }));
+    return (
+      (data?.voices ?? [])
+        .filter((voice) => {
+          if (genderFilter !== ALL_FILTER && voice.gender !== genderFilter) {
+            return false;
+          }
+          if (countryFilter !== ALL_FILTER && voice.accent !== countryFilter) {
+            return false;
+          }
+          if (
+            query &&
+            !voice.name.toLowerCase().includes(query) &&
+            !voice.description.toLowerCase().includes(query)
+          ) {
+            return false;
+          }
+          return true;
+        })
+        .map((voice) => ({
+          ...voice,
+          isSelected: voice.voice_id === data?.selected_voice_id,
+          isPlaying: voice.voice_id === playingVoiceId,
+        }))
+        // Starred first (the backend already orders this way; re-sorting here
+        // makes optimistic star toggles float instantly).
+        .sort((a, b) => Number(b.starred) - Number(a.starred))
+    );
   }, [
     data?.voices,
     data?.selected_voice_id,
@@ -164,9 +174,19 @@ export default function VoiceSettings() {
       const voiceId = Array.from(keys)[0];
       if (typeof voiceId === "string" && voiceId !== data?.selected_voice_id) {
         selectVoice.mutate(voiceId);
+        // Hearing the choice confirms it — selecting also plays the sample.
+        const voice = data?.voices.find((v) => v.voice_id === voiceId);
+        const audio = audioRef.current;
+        if (voice?.preview_url && audio) {
+          audio.src = voice.preview_url;
+          audio
+            .play()
+            .then(() => setPlayingVoiceId(voiceId))
+            .catch(() => setPlayingVoiceId(null));
+        }
       }
     },
-    [data?.selected_voice_id, selectVoice],
+    [data?.selected_voice_id, data?.voices, selectVoice],
   );
 
   return (
@@ -298,6 +318,40 @@ export default function VoiceSettings() {
               <TableRow key={voice.voice_id} textValue={voice.name}>
                 <TableCell>
                   <div className="flex min-w-0 items-center gap-2">
+                    {/* Star toggle — propagation stopped so starring never
+                        doubles as selecting the row. */}
+                    {/* biome-ignore lint/a11y/noStaticElementInteractions: propagation guard, not an interactive control */}
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onPointerUp={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        radius="full"
+                        variant="light"
+                        aria-label={
+                          voice.starred
+                            ? `Unstar ${voice.name}`
+                            : `Star ${voice.name}`
+                        }
+                        className={cn(
+                          "text-zinc-600 hover:text-zinc-300",
+                          voice.starred &&
+                            "text-yellow-400 hover:text-yellow-300",
+                        )}
+                        onPress={() =>
+                          starVoice.mutate({
+                            voiceId: voice.voice_id,
+                            starred: !voice.starred,
+                          })
+                        }
+                      >
+                        <StarIcon className="h-4 w-4" />
+                      </Button>
+                    </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <p className="truncate text-sm text-white">
@@ -322,9 +376,28 @@ export default function VoiceSettings() {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <span className="text-sm text-zinc-400">
-                    {voice.language}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm text-zinc-400">
+                      {voice.language}
+                    </span>
+                    {voice.languages.length > 1 && (
+                      <Tooltip
+                        content={
+                          <div className="max-w-56 px-1 py-1.5 text-xs">
+                            {voice.languages.join(", ")}
+                          </div>
+                        }
+                      >
+                        <Chip
+                          size="sm"
+                          variant="flat"
+                          className="cursor-default bg-zinc-800 text-zinc-400"
+                        >
+                          +{voice.languages.length - 1}
+                        </Chip>
+                      </Tooltip>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">

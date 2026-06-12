@@ -15,9 +15,11 @@ from app.config.settings import settings
 from app.constants.cache import ONE_DAY_TTL
 from app.constants.voices import (
     ACCENT_TO_COUNTRY,
+    DEFAULT_STARRED_VOICE_IDS,
     DEFAULT_VOICE_ID,
     LANGUAGE_NAMES,
     SELECTED_VOICE_FIELD,
+    STARRED_VOICES_FIELD,
     VOICE_CATALOG,
     VOICE_IDS,
 )
@@ -35,6 +37,32 @@ ELEVENLABS_REQUEST_TIMEOUT_S = 10.0
 # One page of featured library voices is plenty for the picker without
 # ballooning the table; previews come straight off the library response.
 SHARED_VOICES_PAGE_SIZE = 100
+
+
+def _verified_language_codes(voice: dict[str, Any]) -> list[str]:
+    """Ordered, deduped ISO codes from a voice's verified_languages.
+
+    ElevenLabs repeats a language once per supporting model — collapse to one
+    entry per language, preserving first-seen order.
+    """
+    seen: list[str] = []
+    for entry in voice.get("verified_languages") or []:
+        code = str(entry.get("language") or "").lower()
+        if code and code not in seen:
+            seen.append(code)
+    return seen
+
+
+def _language_names(codes: list[str], primary: str) -> list[str]:
+    """Display names for language codes, with the primary language first."""
+    names: list[str] = []
+    for code in codes:
+        name = LANGUAGE_NAMES.get(code, code.upper())
+        if name not in names:
+            names.append(name)
+    if primary in names:
+        names.remove(primary)
+    return [primary, *names]
 
 
 def _normalize_accent(raw: str) -> str:
@@ -70,6 +98,7 @@ async def _fetch_elevenlabs_voices() -> list[dict[str, Any]]:
             "name": voice.get("name") or "",
             "preview_url": voice.get("preview_url"),
             "labels": voice.get("labels") or {},
+            "language_codes": _verified_language_codes(voice),
         }
         for voice in payload.get("voices", [])
         if isinstance(voice.get("voice_id"), str)
@@ -118,6 +147,7 @@ async def _fetch_shared_voices() -> list[dict[str, Any]]:
             "language": voice.get("language") or "",
             "descriptive": voice.get("descriptive") or "",
             "use_case": voice.get("use_case") or "",
+            "language_codes": _verified_language_codes(voice),
         }
         for voice in payload.get("voices", [])
         if isinstance(voice.get("voice_id"), str) and voice.get("public_owner_id")
@@ -149,16 +179,18 @@ def _map_account_voice(voice: dict[str, Any]) -> VoiceOption:
     descriptive = str(labels.get("descriptive") or "").replace("_", " ")
     use_case = str(labels.get("use_case") or "").replace("_", " ")
     language_code = str(labels.get("language") or "")
+    primary = LANGUAGE_NAMES.get(language_code, language_code.upper() or "English")
     return VoiceOption(
         voice_id=voice["voice_id"],
         name=name,
-        language=LANGUAGE_NAMES.get(language_code, language_code.upper() or "English"),
+        language=primary,
         accent=accent,
         country_code=ACCENT_TO_COUNTRY.get(accent.lower(), ""),
         gender=str(labels.get("gender") or "").strip().title() or "Neutral",
         description=blurb or descriptive.title() or use_case.title() or "Account voice",
         preview_url=voice.get("preview_url"),
         source="account",
+        languages=_language_names(voice.get("language_codes") or [], primary),
     )
 
 
@@ -168,16 +200,18 @@ def _map_shared_voice(voice: dict[str, Any]) -> VoiceOption:
     accent = _normalize_accent(voice["accent"])
     descriptive = voice["descriptive"].replace("_", " ")
     use_case = voice["use_case"].replace("_", " ")
+    primary = LANGUAGE_NAMES.get(voice["language"], voice["language"].upper() or "English")
     return VoiceOption(
         voice_id=voice["voice_id"],
         name=name,
-        language=LANGUAGE_NAMES.get(voice["language"], voice["language"].upper() or "English"),
+        language=primary,
         accent=accent,
         country_code=ACCENT_TO_COUNTRY.get(accent.lower(), ""),
         gender=voice["gender"].strip().title() or "Neutral",
         description=blurb or descriptive.title() or use_case.title() or "Community voice",
         preview_url=voice.get("preview_url"),
         source="library",
+        languages=_language_names(voice.get("language_codes") or [], primary),
     )
 
 
@@ -218,21 +252,62 @@ async def list_voices(user_id: str) -> VoiceListResponse:
     labels. Catalog entries the account no longer carries are dropped: they
     would have no preview and, worse, fail TTS if selected.
     """
-    account, shared, selected = await asyncio.gather(
-        get_elevenlabs_voices(), get_shared_voices(), get_user_voice(user_id)
+    account, shared, selected, starred = await asyncio.gather(
+        get_elevenlabs_voices(),
+        get_shared_voices(),
+        get_user_voice(user_id),
+        get_starred_voice_ids(user_id),
     )
     by_id = {v["voice_id"]: v for v in account}
-    voices = [
-        VoiceOption(**entry, preview_url=(by_id.get(entry["voice_id"]) or {}).get("preview_url"))
-        for entry in VOICE_CATALOG
-        if not account or entry["voice_id"] in by_id
-    ]
+    voices: list[VoiceOption] = []
+    for entry in VOICE_CATALOG:
+        fetched = by_id.get(entry["voice_id"])
+        if account and not fetched:
+            continue
+        voices.append(
+            VoiceOption(
+                **entry,
+                preview_url=(fetched or {}).get("preview_url"),
+                languages=_language_names(
+                    (fetched or {}).get("language_codes") or [], entry["language"]
+                ),
+            )
+        )
     voices.extend(
         _map_account_voice(voice) for voice in account if voice["voice_id"] not in VOICE_IDS
     )
     listed = {v.voice_id for v in voices}
     voices.extend(_map_shared_voice(voice) for voice in shared if voice["voice_id"] not in listed)
+
+    starred_set = set(starred)
+    for voice in voices:
+        voice.starred = voice.voice_id in starred_set
+    # Starred voices float to the top; order is otherwise preserved
+    # (curated catalog, then account, then library).
+    voices.sort(key=lambda v: not v.starred)
     return VoiceListResponse(voices=voices, selected_voice_id=selected)
+
+
+async def get_starred_voice_ids(user_id: str) -> list[str]:
+    """The user's starred voice ids, defaulting to the product starter set."""
+    doc = await users_collection.find_one({"_id": ObjectId(user_id)}, {STARRED_VOICES_FIELD: 1})
+    stored = (doc or {}).get(STARRED_VOICES_FIELD)
+    if isinstance(stored, list):
+        return [v for v in stored if isinstance(v, str)]
+    return list(DEFAULT_STARRED_VOICE_IDS)
+
+
+async def set_voice_star(user_id: str, voice_id: str, starred: bool) -> list[str]:
+    """Star or unstar a voice for the user; returns the updated starred set."""
+    current = await get_starred_voice_ids(user_id)
+    updated = [v for v in current if v != voice_id]
+    if starred:
+        updated.insert(0, voice_id)
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {STARRED_VOICES_FIELD: updated}},
+    )
+    return updated
 
 
 async def _add_library_voice_to_account(voice: dict[str, Any]) -> str:

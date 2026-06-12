@@ -233,6 +233,16 @@ DEFAULT_VOICE_ID = "cgSgspJ2msm6clMCkdW9"
 # Users collection field holding the user's chosen ElevenLabs voice id.
 SELECTED_VOICE_FIELD = "selected_voice_id"
 
+# Users collection field holding the user's starred voice ids.
+STARRED_VOICES_FIELD = "starred_voice_ids"
+
+# Starred out of the box (until the user edits their stars): Eva, Jessica, Lucy.
+DEFAULT_STARRED_VOICE_IDS: list[str] = [
+    "weA4Q36twV5kwSaTEL0Q",  # Eva - Futuristic Robot Helper
+    "cgSgspJ2msm6clMCkdW9",  # Jessica
+    "lcMyyd2HUfFzxdCaC4Ta",  # Lucy - Fresh & Casual
+]
+
 # Maps ElevenLabs accent labels to ISO country codes for the flag column.
 # Account voices outside the curated catalog derive their flag from this;
 # unmapped accents render without a flag.
