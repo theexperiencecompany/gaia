@@ -35,7 +35,9 @@ from app.constants.cache import (
     EXECUTOR_QUEUE_TTL,
 )
 from app.constants.general import CALL_EXECUTOR_NAME
+from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
+from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.decorators.rate_limiting import LangChainRateLimitException
 from shared.py.wide_events import log
@@ -264,6 +266,15 @@ async def cancel_executor(
         if not cancelled:
             return "None of the specified task_ids matched any running or queued tasks."
 
+        # Tell the client an agent-initiated cancel happened so it can clear the
+        # stuck executor-pending loading state and finalize in-flight tool cards
+        # — it has no other way to learn of a cancel it didn't initiate.
+        await _broadcast_executor_cancelled(
+            user_id=configurable.get("user_id", ""),
+            conversation_id=conversation_id,
+            cancelled=cancelled,
+        )
+
         result = f"Cancelled: {', '.join(cancelled)}."
         if skipped_running:
             result += " Currently running task was not in the cancel list — still running."
@@ -273,6 +284,28 @@ async def cancel_executor(
         log.error("cancel_executor failed", error=str(e))
         await redis_cache.delete(lock_key)
         return f"Cancellation attempted but hit an error: {e}"
+
+
+async def _broadcast_executor_cancelled(
+    *,
+    user_id: str,
+    conversation_id: str,
+    cancelled: list[str],
+) -> None:
+    """Push the executor-cancelled control event to the user's clients."""
+    if not user_id:
+        return
+    try:
+        await websocket_manager.broadcast_to_user(
+            user_id,
+            {
+                "type": WS_EVENT_EXECUTOR_CANCELLED,
+                "conversation_id": conversation_id,
+                "cancelled": cancelled,
+            },
+        )
+    except Exception as e:  # noqa: BLE001 — best-effort UI signal
+        log.warning("Failed to broadcast executor.cancelled", error=str(e))
 
 
 async def _cancel_running_task(

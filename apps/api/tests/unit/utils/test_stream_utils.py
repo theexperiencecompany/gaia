@@ -5,7 +5,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.utils.stream_utils import extract_tool_entries_from_update
+from app.utils.stream_utils import (
+    extract_tool_entries_from_update,
+    reconstruct_subagent_groups,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -289,3 +292,73 @@ class TestExtractToolEntriesFromUpdate:
 
         assert len(result) == 1
         assert result[0][0] == "same-id"
+
+
+@pytest.mark.unit
+class TestReconstructSubagentGroups:
+    """A persisted subagent group must never read as 'still running'.
+
+    reconstruct runs only at turn finalization, so a subagent without an end
+    event was cut short (cancelled / errored / timed out) — its completed_at
+    must be stamped or the frontend spins its card forever.
+    """
+
+    def _data(self, starts: dict, ends: dict, entries: list) -> dict:
+        return {"tool_data": entries, "subagent_starts": starts, "subagent_ends": ends}
+
+    def _group(self, tool_data: dict, subagent_id: str) -> dict:
+        for entry in tool_data["tool_data"]:
+            if entry.get("tool_name") == "subagent_group" and entry["data"]["subagent_id"] == subagent_id:
+                return entry["data"]
+        raise AssertionError(f"no group for {subagent_id}")
+
+    def test_unfinished_subagent_is_stamped_completed(self) -> None:
+        # The regression: cancelled subagent has a start but no end event.
+        td = self._data(
+            starts={"sub-1": {"subagent_name": "todoist", "agent_type": "handoff"}},
+            ends={},
+            entries=[
+                {"tool_name": "tool_calls_data", "subagent_id": "sub-1", "data": {"tool_call_id": "tc-1"}}
+            ],
+        )
+
+        reconstruct_subagent_groups(td)
+
+        group = self._group(td, "sub-1")
+        assert group["completed_at"] is not None  # not "forever running"
+        assert group["duration_ms"] is None  # no end event → no duration
+        assert len(group["tool_calls"]) == 1
+
+    def test_finished_subagent_keeps_end_derived_fields(self) -> None:
+        td = self._data(
+            starts={"sub-1": {"subagent_name": "gmail", "agent_type": "handoff"}},
+            ends={"sub-1": {"duration_ms": 1500, "token_count": 42}},
+            entries=[],
+        )
+
+        reconstruct_subagent_groups(td)
+
+        group = self._group(td, "sub-1")
+        assert group["completed_at"] is not None
+        assert group["duration_ms"] == 1500
+        assert group["token_count"] == 42
+
+    def test_no_subagents_is_noop(self) -> None:
+        td = {"tool_data": [{"tool_name": "search_results", "data": {}}]}
+        reconstruct_subagent_groups(td)
+        assert td["tool_data"] == [{"tool_name": "search_results", "data": {}}]
+
+    def test_mixed_finished_and_cancelled_both_complete(self) -> None:
+        td = self._data(
+            starts={
+                "done": {"subagent_name": "a", "agent_type": "spawned"},
+                "cut": {"subagent_name": "b", "agent_type": "spawned"},
+            },
+            ends={"done": {"duration_ms": 100}},
+            entries=[],
+        )
+
+        reconstruct_subagent_groups(td)
+
+        assert self._group(td, "done")["completed_at"] is not None
+        assert self._group(td, "cut")["completed_at"] is not None
