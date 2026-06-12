@@ -12,6 +12,8 @@ from typing import TypedDict
 
 
 class VoiceCatalogEntry(TypedDict):
+    """Static catalog row describing one ElevenLabs premade voice."""
+
     voice_id: str
     name: str
     language: str

@@ -20,6 +20,8 @@ class VoiceOption(BaseModel):
 
 
 class VoiceListResponse(BaseModel):
+    """Catalog of selectable voices plus the user's current selection."""
+
     voices: list[VoiceOption]
     selected_voice_id: str | None = Field(
         default=None,
@@ -28,8 +30,12 @@ class VoiceListResponse(BaseModel):
 
 
 class UpdateVoiceRequest(BaseModel):
+    """Request body for choosing a voice."""
+
     voice_id: str = Field(min_length=1, description="Catalog voice id to use for voice mode")
 
 
 class VoiceSelectionResponse(BaseModel):
+    """Confirmation of the persisted voice selection."""
+
     selected_voice_id: str

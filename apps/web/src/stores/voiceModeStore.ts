@@ -11,7 +11,7 @@ interface VoiceModeState {
   setDiscoveredConversationId: (id: string | null) => void;
 }
 
-export const useVoiceModeStore = create<VoiceModeState>()(
+const useVoiceModeStore = create<VoiceModeState>()(
   devtools(
     (set) => ({
       voiceModeActive: false,

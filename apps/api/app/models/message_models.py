@@ -9,11 +9,15 @@ SafePathId = Annotated[str, StringConstraints(pattern=SAFE_PATH_ID_PATTERN)]
 
 
 class MessageDict(TypedDict):
+    """One chat turn as {role, content} for LLM history payloads."""
+
     role: str
     content: str
 
 
 class FileData(BaseModel):
+    """Uploaded-file reference attached to a chat message."""
+
     fileId: str
     url: str
     filename: str
@@ -22,6 +26,8 @@ class FileData(BaseModel):
 
 
 class SelectedWorkflowData(BaseModel):
+    """Workflow the user attached to a message for execution."""
+
     id: str
     title: str
     description: str
@@ -30,6 +36,8 @@ class SelectedWorkflowData(BaseModel):
 
 
 class SelectedCalendarEventData(BaseModel):
+    """Calendar event the user attached to a message."""
+
     id: str
     summary: str
     description: str
@@ -50,6 +58,8 @@ class ReplyToMessageData(BaseModel):
 
 
 class MessageRequestWithHistory(BaseModel):
+    """Chat-stream request carrying the full message history and attachments."""
+
     message: str
     conversation_id: SafePathId | None = None
     messages: list[MessageDict]
@@ -69,4 +79,6 @@ class MessageRequestWithHistory(BaseModel):
 
 
 class MessageRequest(BaseModel):
+    """Minimal chat request with a single message."""
+
     message: str

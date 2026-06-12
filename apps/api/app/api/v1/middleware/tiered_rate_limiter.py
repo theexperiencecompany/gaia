@@ -43,6 +43,8 @@ from shared.py.wide_events import log
 
 
 class RateLimitExceededException(HTTPException):
+    """429 carrying the feature, required plan (when gated), and reset time."""
+
     def __init__(
         self,
         feature: str,
@@ -66,6 +68,8 @@ class RateLimitExceededException(HTTPException):
 
 
 class TieredRateLimiter:
+    """Redis-backed per-user, per-feature counters across daily/monthly windows."""
+
     def __init__(self):
         self.redis = redis_cache
 
@@ -84,6 +88,11 @@ class TieredRateLimiter:
         user_plan: PlanType,
         credits_used: float = 0.0,
     ) -> dict[str, UsageInfo]:
+        """Enforce all limits for a feature, then atomically count this use.
+
+        Raises ``RateLimitExceededException`` when any window is exhausted or
+        the user's plan has no access to the feature at all.
+        """
         current_limits = get_limits_for_plan(feature_key, user_plan)
         usage_info = {}
 
@@ -283,6 +292,7 @@ def tiered_rate_limit(feature_key: str):
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(*args, **kwargs):
+            """Resolve the user, enforce the feature's limits, then run the endpoint."""
             # Extract request and user from dependencies
             user = None
 

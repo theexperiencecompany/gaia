@@ -30,6 +30,7 @@ async def get_token(
     user: dict = Depends(get_current_user),
     conversationId: str | None = None,
 ):
+    """Mint a LiveKit room token (and agent credentials) for a voice session."""
     user_id = user.get("user_id")
     user_email: str = user.get("email", "")
     if not user_id or not isinstance(user_id, str):

@@ -26,21 +26,29 @@ from app.models.payment_models import PlanType
 
 
 class RateLimitPeriod(str, Enum):
+    """Time window a limit applies to."""
+
     DAY = "day"
     MONTH = "month"
 
 
 class RateLimitConfig(BaseModel):
+    """Allowed request counts per day and per month (0 = no limit for that period)."""
+
     day: int = 0
     month: int = 0
 
 
 class FeatureInfo(BaseModel):
+    """User-facing title and description for a rate-limited feature."""
+
     title: str
     description: str
 
 
 class TieredRateLimits(BaseModel):
+    """Per-plan rate limit configs for one feature."""
+
     free: RateLimitConfig = RateLimitConfig()
     pro: RateLimitConfig = RateLimitConfig()
     info: FeatureInfo

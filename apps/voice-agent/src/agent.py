@@ -5,7 +5,7 @@ from pathlib import Path
 import time
 from typing import Any
 
-from livekit import rtc
+from livekit import rtc  # type: ignore[attr-defined]
 from livekit.agents import (
     Agent,
     AgentFalseInterruptionEvent,
@@ -189,6 +189,7 @@ async def entrypoint(ctx: JobContext) -> None:
         usage_collector.collect(ev.metrics)
 
     async def log_usage() -> None:
+        """Emit the session's aggregated STT/TTS/LLM usage at shutdown."""
         summary = usage_collector.get_summary()
         slog.info(
             f"[{now_ts()}] 📊 SESSION USAGE",

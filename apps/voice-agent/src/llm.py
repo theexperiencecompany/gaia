@@ -148,12 +148,13 @@ class CustomLLM(LLM):
     # `async with llm.chat(...) as stream: async for chunk in stream:`, which is exactly
     # what @asynccontextmanager + yield gen() provides
     @asynccontextmanager
-    async def chat(
+    async def chat(  # type: ignore[override]
         self, *, chat_ctx: ChatContext, **kwargs: Any
     ) -> AsyncGenerator[AsyncGenerator[ChatChunk, None], None]:
         """Stream SSE from the backend and yield ChatChunks for TTS."""
 
         async def gen() -> AsyncGenerator[ChatChunk, None]:
+            """Run one voice turn: stream backend SSE, flush sentence-sized TTS chunks."""
             turn_start = time.monotonic()
             ts = now_ts()
 
