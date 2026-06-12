@@ -213,6 +213,7 @@ export default function VoiceSettings() {
       >
         <TableHeader>
           <TableColumn>Voice</TableColumn>
+          <TableColumn>Gender</TableColumn>
           <TableColumn>Language</TableColumn>
           <TableColumn>Country</TableColumn>
           <TableColumn className="text-right">Preview</TableColumn>
@@ -235,7 +236,6 @@ export default function VoiceSettings() {
                         <p className="truncate text-sm text-white">
                           {voice.name}
                         </p>
-                        <GenderIcon gender={voice.gender} />
                         {isSelected && (
                           <CheckmarkCircle02Icon className="h-4 w-4 shrink-0 text-primary" />
                         )}
@@ -244,6 +244,14 @@ export default function VoiceSettings() {
                         {voice.description}
                       </p>
                     </div>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1.5">
+                    <GenderIcon gender={voice.gender} />
+                    <span className="text-sm text-zinc-400">
+                      {voice.gender}
+                    </span>
                   </div>
                 </TableCell>
                 <TableCell>
