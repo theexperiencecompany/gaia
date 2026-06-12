@@ -1,11 +1,18 @@
-"""Local embedding + reranking models for the memory engine.
+"""Embedding + reranking for the memory engine.
 
-Wraps fastembed's ONNX ``TextEmbedding`` (``BAAI/bge-small-en-v1.5``,
-384-dim) and ``TextCrossEncoder`` reranker behind lazy process-wide
-singletons. Unlike the providers in ``app.core.lazy_loader`` these do not
-depend on settings keys or the registry's startup registration step, so
-they work identically in the API process and any background context — each
-model loads on first use in whichever process calls it.
+Wraps fastembed's ONNX ``TextEmbedding`` (mxbai-embed-large, 1024-dim) and
+``TextCrossEncoder`` reranker behind lazy process-wide singletons. Unlike the
+providers in ``app.core.lazy_loader`` these do not depend on settings keys or
+the registry's startup registration step, so they work identically in the API
+process and any background context.
+
+Two backends, chosen at call time:
+
+- **Sidecar** (``MEMORY_EMBEDDING_SIDECAR_URL`` set): embed/rerank are HTTP
+  calls to the shared sidecar process, so the model weights load ONCE for the
+  whole deployment instead of in every container (~1.8 GB each). The sidecar
+  reuses these exact ``*_sync`` helpers, so the numbers are identical.
+- **Local** (default / dev): each process loads its own model on first use.
 
 fastembed is sync and CPU-bound; the async API runs it in a thread so the
 event loop is never blocked. The locks are ``threading.Lock`` (not
@@ -13,13 +20,20 @@ event loop is never blocked. The locks are ``threading.Lock`` (not
 """
 
 import asyncio
+import os
 import threading
 import time
 
 from fastembed import TextEmbedding
 from fastembed.rerank.cross_encoder import TextCrossEncoder
+import httpx
 
-from app.constants.memory import EMBEDDING_MODEL_NAME, RERANKER_MODEL_NAME
+from app.constants.memory import (
+    EMBEDDING_MODEL_NAME,
+    EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
+    EMBEDDING_SIDECAR_URL_ENV,
+    RERANKER_MODEL_NAME,
+)
 from shared.py.wide_events import log
 
 _embedding_model: TextEmbedding | None = None
@@ -84,8 +98,23 @@ def _rerank_sync(query: str, documents: list[str]) -> list[float]:
     return [float(score) for score in model.rerank(query, documents)]
 
 
+def _sidecar_url() -> str | None:
+    """The shared sidecar base URL, or None to use the in-process model."""
+    url = os.getenv(EMBEDDING_SIDECAR_URL_ENV, "").strip()
+    return url.rstrip("/") or None
+
+
+async def _sidecar_post(path: str, payload: dict) -> dict:
+    async with httpx.AsyncClient(timeout=EMBEDDING_SIDECAR_TIMEOUT_SECONDS) as client:
+        response = await client.post(f"{_sidecar_url()}{path}", json=payload)
+        response.raise_for_status()
+        return response.json()
+
+
 async def embed_query(text: str) -> list[float]:
     """Embed a single query string (with the model's query instruction)."""
+    if _sidecar_url():
+        return (await _sidecar_post("/embed_query", {"text": text}))["vector"]
     return await asyncio.to_thread(_embed_query_sync, text)
 
 
@@ -93,6 +122,8 @@ async def embed_batch(texts: list[str]) -> list[list[float]]:
     """Embed a batch of texts in one fastembed pass."""
     if not texts:
         return []
+    if _sidecar_url():
+        return (await _sidecar_post("/embed", {"texts": texts}))["vectors"]
     return await asyncio.to_thread(_embed_sync, texts)
 
 
@@ -100,4 +131,6 @@ async def rerank(query: str, documents: list[str]) -> list[float]:
     """Return relevance scores for documents, aligned with input order."""
     if not documents:
         return []
+    if _sidecar_url():
+        return (await _sidecar_post("/rerank", {"query": query, "documents": documents}))["scores"]
     return await asyncio.to_thread(_rerank_sync, query, documents)

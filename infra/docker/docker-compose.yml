@@ -40,6 +40,8 @@ services:
       PYTHONPATH: /app/apps/api
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
+      # Share one copy of the embedding/reranker weights via the sidecar.
+      MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
       # Persistent workspace storage (JuiceFS on Cloudflare R2). Sidecar mount
       # at /mnt/jfs is created on the host (or as a tmpfs in dev when R2 is
       # unset — the storage helper short-circuits gracefully in that case).
@@ -230,6 +232,7 @@ services:
       - PYTHONPATH=/app/apps/api
       - LOG_FORMAT=json
       - LOG_COLORIZE=false
+      - MEMORY_EMBEDDING_SIDECAR_URL=http://embedding-sidecar:8200
       - ARQ_METRICS_PORT=9100
       - JUICEFS_HOST_MOUNT_PATH=/mnt/jfs
       - UV_NO_SYNC=1
@@ -262,6 +265,44 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    networks:
+      - gaia_network
+
+  # Embedding + reranking sidecar. Loads the fastembed models ONCE so the
+  # backend and worker share a single ~1.8GB copy instead of each loading their
+  # own. Reuses the gaia image; the app processes reach it via
+  # MEMORY_EMBEDDING_SIDECAR_URL=http://embedding-sidecar:8200.
+  embedding-sidecar:
+    container_name: embedding-sidecar
+    image: gaia
+    profiles: ["backend", "worker", "all"]
+    working_dir: /app/apps/api
+    environment:
+      - PYTHONPATH=/app/apps/api
+      - LOG_FORMAT=json
+      - LOG_COLORIZE=false
+      - UV_NO_SYNC=1
+      # MUST be unset here so the sidecar itself uses the local models.
+    expose:
+      - "8200"
+    command:
+      [
+        "python",
+        "-m",
+        "uvicorn",
+        "app.services.embedding_sidecar.server:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8200",
+      ]
+    restart: always
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8200/health'); sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
     networks:
       - gaia_network
 

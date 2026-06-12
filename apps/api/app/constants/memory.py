@@ -15,6 +15,12 @@ EMBEDDING_DIM = 1024
 # fact): top-3 gold rank 4/6 vs 2/6 on our probe set at the same ~30ms.
 RERANKER_MODEL_NAME = "jinaai/jina-reranker-v1-turbo-en"
 
+# Optional embedding/reranking sidecar. When this env var holds the sidecar's
+# base URL, embed/rerank become HTTP calls so the ~1.8GB of model weights load
+# ONCE for the deployment instead of in every process. Unset = load locally.
+EMBEDDING_SIDECAR_URL_ENV = "MEMORY_EMBEDDING_SIDECAR_URL"
+EMBEDDING_SIDECAR_TIMEOUT_SECONDS = 30.0
+
 # ChromaDB collections holding memory, episode, and conversation vectors.
 CHROMA_MEMORIES_COLLECTION = "gaia_memories"
 CHROMA_MEMORY_EPISODES_COLLECTION = "gaia_memory_episodes"
