@@ -322,7 +322,14 @@ function VoiceSessionInner({ children }: { children?: React.ReactNode }) {
   return (
     <VoiceSessionProvider value={sessionValue}>
       <RoomAudioRenderer />
-      <StartAudio label="Start Audio" />
+      {/* Only rendered while the browser's autoplay policy blocks playback —
+          without a visible unlock control the agent speaks silently (the
+          waveform still moves because it reads the raw track, not the
+          audible output). */}
+      <StartAudio
+        label="Tap to enable sound"
+        className="fixed top-16 left-1/2 z-50 -translate-x-1/2 cursor-pointer rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-lg transition-transform hover:scale-105"
+      />
       {children}
     </VoiceSessionProvider>
   );
