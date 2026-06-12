@@ -60,11 +60,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         # Routes that also accept an "Authorization: Bearer <agent JWT>" in
         # addition to a WorkOS session cookie.
         self.agent_only_paths = ["/api/v1/chat-stream"]
-        # TODO(REVERT BEFORE PRODUCTION): `/api/v1/memory` was opened to agent
-        # tokens only to run headless end-to-end memory tests in dev. The memory
-        # REST API should require a real WorkOS session in production — remove
-        # this prefix (restore `= ()`) before merging/deploying.
-        self.agent_only_path_prefixes: tuple[str, ...] = ("/api/v1/memory",)
+        self.agent_only_path_prefixes: tuple[str, ...] = ()
         self.user_cache_expiry = 3600
 
     async def dispatch(
