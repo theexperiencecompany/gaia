@@ -48,9 +48,8 @@ def normalize_email(value: str) -> str | None:
 
 def is_email_target(value: str) -> bool:
     """True when the string is a bare email address or a ``mailto:`` URL."""
-    return normalize_email(value) is not None and not value.lower().startswith(
-        ("http://", "https://")
-    )
+    # Exclude web URLs (anything with a scheme) so links never resolve as emails.
+    return normalize_email(value) is not None and "://" not in value
 
 
 async def send_support_team_notification(

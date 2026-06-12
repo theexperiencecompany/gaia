@@ -11,8 +11,16 @@ import {
 // Global set to track failed image URLs across all instances
 const globalFailedUrls = new Set<string>();
 
-const isEmailHref = (href: string) =>
-  href.startsWith("mailto:") || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(href);
+const isEmailHref = (href: string) => {
+  if (href.startsWith("mailto:")) return true;
+  // Linear, non-backtracking email shape check: a single "@" with a "." after
+  // it and no whitespace. Avoids the super-linear regex Sonar flags as ReDoS.
+  if (/\s/.test(href)) return false;
+  const at = href.indexOf("@");
+  if (at <= 0 || href.indexOf("@", at + 1) !== -1) return false;
+  const dot = href.indexOf(".", at + 1);
+  return dot > at + 1 && dot < href.length - 1;
+};
 
 const displayHref = (href: string) =>
   href.replace(/^(https?:\/\/|mailto:)/, "");

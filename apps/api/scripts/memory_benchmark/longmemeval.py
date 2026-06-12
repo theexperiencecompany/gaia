@@ -339,7 +339,9 @@ async def main() -> None:
             continue  # abstention split needs its own grading protocol
         by_type[item["question_type"]].append(item)
 
-    rng = random.Random(args.seed)
+    # Deterministic, seeded sampling for reproducible benchmark runs — not a
+    # security context, so the stdlib PRNG is the correct tool here.
+    rng = random.Random(args.seed)  # NOSONAR python:S2245
     per_type = max(1, args.num // len(by_type))
     if args.types:
         wanted = {t.strip() for t in args.types.split(",")}
@@ -348,9 +350,9 @@ async def main() -> None:
 
     sample: list[dict] = []
     for items in by_type.values():
-        rng.shuffle(items)
+        rng.shuffle(items)  # NOSONAR python:S2245
         sample.extend(items[:per_type])
-    rng.shuffle(sample)
+    rng.shuffle(sample)  # NOSONAR python:S2245
     print(f"Running {len(sample)} questions across {len(by_type)} types...\n", flush=True)
 
     scores: dict[str, list[bool]] = defaultdict(list)
