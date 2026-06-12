@@ -213,45 +213,55 @@ export const useMentionEditor = ({
     }
   }, []);
 
+  // Keys handled by the open suggestion dropdown; returns true when consumed.
+  const handleMentionNavKey = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>): boolean => {
+      const current = mentionRef.current;
+      if (!current) return false;
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setHighlight((i) => (i + 1) % current.matches.length);
+        return true;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setHighlight(
+          (i) => (i - 1 + current.matches.length) % current.matches.length,
+        );
+        return true;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        const name =
+          current.matches[
+            Math.min(highlightRef.current, current.matches.length - 1)
+          ];
+        if (name) insertMention(name);
+        return true;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMention(null);
+        return true;
+      }
+      return false;
+    },
+    [insertMention],
+  );
+
   const onKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
-      const current = mentionRef.current;
-      if (current) {
-        if (event.key === "ArrowDown") {
-          event.preventDefault();
-          setHighlight((i) => (i + 1) % current.matches.length);
-          return;
-        }
-        if (event.key === "ArrowUp") {
-          event.preventDefault();
-          setHighlight(
-            (i) => (i - 1 + current.matches.length) % current.matches.length,
-          );
-          return;
-        }
-        if (event.key === "Enter" || event.key === "Tab") {
-          event.preventDefault();
-          const root = rootRef.current;
-          const name =
-            current.matches[
-              Math.min(highlightRef.current, current.matches.length - 1)
-            ];
-          if (root && name) insertMention(name);
-          return;
-        }
-        if (event.key === "Escape") {
-          event.preventDefault();
-          setMention(null);
-          return;
-        }
-      }
+      // Let Cmd/Ctrl+Enter bubble so an enclosing form can use it to submit,
+      // rather than inserting a line break or accepting a mention.
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") return;
+      if (handleMentionNavKey(event)) return;
       if (event.key === "Enter") {
         // Keep line breaks as <br> so serialization stays flat text + "\n".
         event.preventDefault();
         document.execCommand("insertLineBreak");
       }
     },
-    [insertMention],
+    [handleMentionNavKey],
   );
 
   const onPaste = useCallback(

@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Kbd } from "@heroui/kbd";
 import {
   Modal,
   ModalBody,
@@ -22,6 +23,7 @@ import {
   MENTION_LINK_PROTOCOL,
   mentionsToMarkdownLinks,
 } from "@/features/integrations/utils/toolMentions";
+import { usePlatform } from "@/hooks/ui/usePlatform";
 
 // Matches the backend cap in integration_instructions_models.py
 const MAX_CHARS = 8000;
@@ -50,6 +52,7 @@ export const IntegrationInstructionsModal = ({
   const [value, setValue] = useState(savedContent);
   const [tab, setTab] = useState("write");
   const wasOpenRef = useRef(false);
+  const { isMac, modifierKeyName } = usePlatform();
 
   // Reset the draft to the persisted content only on the closed->open
   // transition — not on every savedContent change, which would clobber
@@ -101,10 +104,36 @@ export const IntegrationInstructionsModal = ({
     [renderMentionIcon],
   );
 
-  const handleSave = async () => {
+  const canSave = isDirty && !isSaving;
+
+  const handleSave = useCallback(async () => {
     await onSave(value);
     onClose();
-  };
+  }, [onSave, value, onClose]);
+
+  // Cmd/Ctrl+Enter saves. Mirror BearerTokenModal: a ref keeps the listener
+  // stable while always reading the latest state. (Escape is handled by the
+  // Modal's built-in dismiss.)
+  const saveShortcutRef = useRef({ isMac, canSave, handleSave });
+  saveShortcutRef.current = { isMac, canSave, handleSave };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const {
+        isMac: mac,
+        canSave: allowed,
+        handleSave: save,
+      } = saveShortcutRef.current;
+      const modifier = mac ? e.metaKey : e.ctrlKey;
+      if (modifier && e.key === "Enter" && allowed) {
+        e.preventDefault();
+        void save();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isOpen]);
 
   return (
     <Modal
@@ -191,14 +220,20 @@ export const IntegrationInstructionsModal = ({
         </ModalBody>
 
         <ModalFooter>
-          <Button variant="light" onPress={onClose} isDisabled={isSaving}>
+          <Button
+            variant="light"
+            onPress={onClose}
+            isDisabled={isSaving}
+            endContent={<Kbd keys={["escape"]} />}
+          >
             Cancel
           </Button>
           <Button
             color="primary"
             onPress={handleSave}
             isLoading={isSaving}
-            isDisabled={!isDirty || isSaving}
+            isDisabled={!canSave}
+            endContent={!isSaving && <Kbd keys={[modifierKeyName, "enter"]} />}
           >
             Save instructions
           </Button>
