@@ -22,6 +22,13 @@ interface VoiceBotTurn {
    * `response` runs ahead (it accumulates as text is HANDED to TTS).
    */
   transcriptTexts: Map<string, string>;
+  /**
+   * Render `response` instead of the transcript. Only flipped once the agent
+   * is back to listening with an empty transcript (a turn whose audio never
+   * materialized, e.g. TTS failure) — falling back any earlier flashes the
+   * full text before the word-by-word transcript replaces it.
+   */
+  showResponseFallback: boolean;
   tool_data: ToolDataEntry[];
   follow_up_actions: string[];
   loading: boolean;
@@ -43,7 +50,8 @@ function turnToIMessage(turn: VoiceBotTurn, conversationId: string): IMessage {
     .map((t) => t.trim())
     .filter(Boolean)
     .join(" ");
-  const content = transcript || (turn.loading ? "" : turn.response);
+  const content =
+    transcript || (turn.showResponseFallback ? turn.response : "");
   return {
     id: turn.localId,
     conversationId,
@@ -115,12 +123,19 @@ export function useVoiceMessages(
   /** Bot-stream events that arrived before the conversation id was known. */
   const pendingEventsRef = useRef<Record<string, unknown>[]>([]);
   /**
-   * Whether the current turn has produced a bot token yet. Once true the
-   * thinking indicator stays cleared until the NEXT user turn — so the backend
-   * re-entering "thinking" to generate follow-ups (after the reply is already
-   * on screen) can't resurrect it.
+   * Whether the current turn has produced an audible bot transcript yet. Once
+   * true the thinking indicator stays cleared until the NEXT user turn — so
+   * the backend re-entering "thinking" to generate follow-ups (after the
+   * reply is already on screen) can't resurrect it.
    */
   const botTokenSeenThisTurnRef = useRef(false);
+  /**
+   * Whether the current turn's USER message has rendered. The agent can enter
+   * "thinking" before the user's transcript reaches the frontend — showing
+   * the indicator first and the user's words after looks glitchy, so the
+   * indicator only shows once the bubble exists.
+   */
+  const userMessageRenderedRef = useRef(false);
 
   // Stash the latest conversationId in a ref so the bot-stream handler closure
   // (registered once) always reads the current value.
@@ -138,6 +153,7 @@ export function useVoiceMessages(
     seqClockRef.current = 0;
     pendingEventsRef.current = [];
     botTokenSeenThisTurnRef.current = false;
+    userMessageRenderedRef.current = false;
   }, []);
 
   // Strictly-increasing timestamp so the chatStore `createdAt` sort matches
@@ -170,8 +186,9 @@ export function useVoiceMessages(
     activeTurnRef.current = null;
   }, []);
 
-  // Open a new bot turn. Closes the open user group and clears the thinking
-  // indicator (this turn's first token has arrived).
+  // Open a new bot turn. Closes the open user group. The thinking indicator
+  // intentionally stays on — backend tokens arrive seconds before any audio,
+  // so it clears on the first audible transcript segment instead.
   const openBotTurn = useCallback((): VoiceBotTurn => {
     closeUserGroup();
     botTurnIndexRef.current += 1;
@@ -180,16 +197,13 @@ export function useVoiceMessages(
       localId: `voice-bot-${sid}-${botTurnIndexRef.current}`,
       response: "",
       transcriptTexts: new Map(),
+      showResponseFallback: false,
       tool_data: [],
       follow_up_actions: [],
       loading: true,
       createdAt: nextCreatedAt(),
     };
     activeTurnRef.current = turn;
-    // This turn's first token has arrived — clear the thinking indicator and
-    // keep it cleared for the rest of the turn.
-    botTokenSeenThisTurnRef.current = true;
-    useLoadingStore.getState().setLoading(false);
     return turn;
   }, [room, nextCreatedAt, closeUserGroup]);
 
@@ -235,6 +249,15 @@ export function useVoiceMessages(
       }
 
       if (!changed) return;
+      // Don't render a visually-empty bubble: response text accumulates
+      // silently until the audio (transcript) starts, or cards/follow-ups
+      // give the bubble something to show.
+      const hasVisibleContent =
+        turn.transcriptTexts.size > 0 ||
+        turn.tool_data.length > 0 ||
+        turn.follow_up_actions.length > 0 ||
+        turn.showResponseFallback;
+      if (!hasVisibleContent) return;
       addOrUpdateMessage(turnToIMessage(turn, cid));
     },
     [addOrUpdateMessage, openBotTurn],
@@ -324,6 +347,7 @@ export function useVoiceMessages(
       group.transcriptionTexts.set(t.streamInfo.id, t.text);
     }
     addOrUpdateMessage(userGroupToIMessage(group, cid));
+    userMessageRenderedRef.current = true;
   }, [
     transcriptions,
     room,
@@ -358,6 +382,10 @@ export function useVoiceMessages(
       changed = true;
     }
     if (changed && turn) {
+      // First audible words of this turn — the thinking indicator's job is
+      // done, and it stays cleared for the rest of the turn.
+      botTokenSeenThisTurnRef.current = true;
+      useLoadingStore.getState().setLoading(false);
       addOrUpdateMessage(turnToIMessage(turn, cid));
     }
   }, [transcriptions, room, addOrUpdateMessage, openBotTurn]);
@@ -387,6 +415,7 @@ export function useVoiceMessages(
         createdAt: nextCreatedAt(),
       };
       addOrUpdateMessage(userGroupToIMessage(group, cid));
+      userMessageRenderedRef.current = true;
 
       await room.localParticipant.sendText(trimmed, { topic: LK_CHAT_TOPIC });
     },
@@ -394,18 +423,40 @@ export function useVoiceMessages(
   );
 
   // Thinking-indicator lifecycle. Armed once per turn: show it when the user's
-  // turn ends and the agent starts processing (`thinking`), but only until this
-  // turn's first token — `botTokenSeenThisTurnRef` (set in openBotTurn, reset
+  // turn ends and the agent starts processing (`thinking`), but only until
+  // this turn's first audible transcript — `botTokenSeenThisTurnRef` (reset
   // when a new user turn starts) suppresses the LATER "thinking" the backend
-  // enters while generating follow-ups, which is what kept the indicator on
-  // screen after the reply. `listening` clears it as a safety net.
+  // enters while generating follow-ups. Skipped when the user's own bubble
+  // hasn't rendered yet (the STT transcript can lag the agent by a beat) —
+  // an indicator above nothing reads as a glitch. `listening` clears it as a
+  // safety net.
   useEffect(() => {
     if (agentState === "thinking" && !botTokenSeenThisTurnRef.current) {
-      useLoadingStore.getState().setLoading(true);
+      if (userMessageRenderedRef.current) {
+        useLoadingStore.getState().setLoading(true);
+      }
     } else if (agentState === "listening") {
       useLoadingStore.getState().setLoading(false);
+
+      // Turn finished with audio never materializing (e.g. TTS failure):
+      // fall back to the backend response text so the reply isn't lost.
+      // Doing this any earlier flashes the full text before the streaming
+      // transcript replaces it.
+      const turn = activeTurnRef.current;
+      const cid = conversationIdRef.current;
+      if (
+        turn &&
+        cid &&
+        !turn.loading &&
+        turn.transcriptTexts.size === 0 &&
+        turn.response &&
+        !turn.showResponseFallback
+      ) {
+        turn.showResponseFallback = true;
+        addOrUpdateMessage(turnToIMessage(turn, cid));
+      }
     }
-  }, [agentState]);
+  }, [agentState, addOrUpdateMessage]);
 
   // Clear the indicator when leaving voice mode.
   useEffect(() => () => useLoadingStore.getState().setLoading(false), []);
