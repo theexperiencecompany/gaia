@@ -8,6 +8,7 @@ import {
   useRoomContext,
   useVoiceAssistant,
 } from "@livekit/components-react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { TextStreamReader } from "livekit-client";
 import { Room } from "livekit-client";
 import { useParams } from "next/navigation";
@@ -369,6 +370,19 @@ export function VoiceControlBarContainer({
   useEffect(() => {
     setSessionStarted(true);
   }, []);
+
+  // Session tokens are single-use: each pins a freshly minted room name, and
+  // that room is deleted when the session ends. Reusing a cached token for
+  // the NEXT session forces LiveKit to resurrect a dead room and re-dispatch
+  // into it — the "Preparing voice mode" hang. Drop the cache on unmount so
+  // every session mints (or consumes a hover-prefetched) fresh token.
+  const queryClient = useQueryClient();
+  useEffect(
+    () => () => {
+      queryClient.removeQueries({ queryKey: ["connectionDetails"] });
+    },
+    [queryClient],
+  );
 
   useEffect(() => {
     if (!sessionStarted) return;

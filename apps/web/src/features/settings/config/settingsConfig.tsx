@@ -23,13 +23,8 @@ export interface SettingsMenuItem {
   external?: boolean;
 }
 
+// Ordered by concern: who you are, how GAIA behaves for you, then billing.
 export const settingsPageItems: SettingsMenuItem[] = [
-  {
-    key: "profile",
-    label: "Profile Card",
-    icon: SparklesIcon,
-    href: "/settings?section=profile",
-  },
   {
     key: "account",
     label: "Account",
@@ -37,28 +32,16 @@ export const settingsPageItems: SettingsMenuItem[] = [
     href: "/settings?section=account",
   },
   {
+    key: "profile",
+    label: "Profile Card",
+    icon: SparklesIcon,
+    href: "/settings?section=profile",
+  },
+  {
     key: "linked-accounts",
     label: "Linked Accounts",
     icon: Link03Icon,
     href: "/settings?section=linked-accounts",
-  },
-  {
-    key: "notifications",
-    label: "Notifications",
-    icon: NotificationIcon,
-    href: "/settings?section=notifications",
-  },
-  {
-    key: "subscription",
-    label: "Subscription",
-    icon: CreditCardIcon,
-    href: "/settings?section=subscription",
-  },
-  {
-    key: "usage",
-    label: "Usage",
-    icon: ChartLineData02Icon,
-    href: "/settings?section=usage",
   },
   {
     key: "preferences",
@@ -77,6 +60,24 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Memories",
     icon: AiBrain01Icon,
     href: "/settings?section=memory",
+  },
+  {
+    key: "notifications",
+    label: "Notifications",
+    icon: NotificationIcon,
+    href: "/settings?section=notifications",
+  },
+  {
+    key: "subscription",
+    label: "Subscription",
+    icon: CreditCardIcon,
+    href: "/settings?section=subscription",
+  },
+  {
+    key: "usage",
+    label: "Usage",
+    icon: ChartLineData02Icon,
+    href: "/settings?section=usage",
   },
 ];
 

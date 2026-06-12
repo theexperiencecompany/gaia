@@ -198,6 +198,11 @@ export default function VoiceSettings() {
           onSelectionChange={(keys) =>
             setGenderFilter(String(Array.from(keys)[0] ?? ALL_FILTER))
           }
+          startContent={
+            genderFilter !== ALL_FILTER ? (
+              <GenderIcon gender={genderFilter} />
+            ) : undefined
+          }
           className="sm:max-w-40"
         >
           {[
@@ -212,6 +217,23 @@ export default function VoiceSettings() {
           onSelectionChange={(keys) =>
             setCountryFilter(String(Array.from(keys)[0] ?? ALL_FILTER))
           }
+          startContent={(() => {
+            // Show the chosen country's flag inline in the trigger, not
+            // just inside the open list.
+            if (countryFilter === ALL_FILTER) return undefined;
+            const code = countryOptions.find(
+              (c) => c.accent === countryFilter,
+            )?.countryCode;
+            return code ? (
+              <Avatar
+                src={flagUrl(code)}
+                alt={`${countryFilter} flag`}
+                className="h-4 w-4 shrink-0"
+              />
+            ) : (
+              <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
+            );
+          })()}
           className="sm:max-w-44"
         >
           {[
