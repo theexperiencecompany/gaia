@@ -174,14 +174,14 @@ export default function LandingPageClient({
           {/* Capabilities — what GAIA does */}
           <TiredBoringAssistants />
 
-          {/* Memory — an assistant that actually knows you */}
-          <MemoryShowcaseSection />
-
           {/* Reach — where you can use it */}
           <BotsShowcaseSection />
 
           <WorkflowSection />
           <UseCasesSectionLanding />
+
+          {/* Memory — an assistant that actually knows you */}
+          <MemoryShowcaseSection />
           <TodoShowcaseSection />
 
           {/* Decision — how it stacks up, trust, price */}

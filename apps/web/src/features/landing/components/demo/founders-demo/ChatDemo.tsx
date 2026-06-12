@@ -98,12 +98,12 @@ export default function ChatDemo({
   return (
     <div
       ref={ref}
-      className="flex flex-col overflow-hidden rounded-3xl bg-zinc-900 p-5 text-left"
+      className="flex h-full flex-col overflow-hidden rounded-3xl bg-zinc-900 p-5 text-left"
       style={{ minHeight }}
     >
       <div
         ref={scrollRef}
-        className="min-h-0 flex-1 space-y-1 overflow-y-auto no-scrollbar"
+        className={`flex min-h-0 flex-1 flex-col space-y-1 overflow-y-auto no-scrollbar ${compact ? "justify-center" : ""}`}
       >
         {messages.slice(0, visibleCount).map((msg, i) => {
           if (msg.role === "thinking" && i < visibleCount - 1) return null;
